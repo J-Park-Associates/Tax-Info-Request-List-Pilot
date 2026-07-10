@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tax Document Tracker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="logo.svg" alt="J Park &amp; Associates" class="brand-logo" />
+      <span class="brand-divider"></span>
+      <span class="brand-product">Tax Document Tracker</span>
+    </div>
+    <span class="demo-badge">Marketing Demo</span>
+  </header>
+
+  <div class="layout">
+    <!-- ═══════════════ Presenter guide ═══════════════ -->
+    <aside class="guide">
+      <div class="guide-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        </svg>
+        <h2>Presenter Guide</h2>
+      </div>
+      <p class="guide-sub">Full script: <em>DEMO-SCRIPT.md</em> in the project folder.</p>
+
+      <details class="step" open>
+        <summary><span class="step-num">1</span> Set the scene</summary>
+        <div class="step-body">
+          <p class="say">"Every tax season starts the same way: we send you a list of documents we need, and then everyone spends February playing email ping-pong. We replaced that with a shared folder that checks the documents itself."</p>
+          <p class="do">Click <strong>Reset Demo</strong> so every request shows <em>Missing</em>.</p>
+        </div>
+      </details>
+
+      <details class="step">
+        <summary><span class="step-num">2</span> Pick the return type</summary>
+        <div class="step-body">
+          <p class="say">"Setting up a new client takes a minute, not a morning. The first question is simply: what kind of return? Each form type carries its own tailored request list — a 1040 asks for W-2s and 1098s, an 1120-S asks for the trial balance and shareholder basis."</p>
+          <p class="do">Click <strong>New Engagement</strong>. Show the form-type cards — <em>1040, 1120, 1120-S, 1065, 1041, 990</em> — then pick <strong>Form 1040</strong>.</p>
+        </div>
+      </details>
+
+      <details class="step">
+        <summary><span class="step-num">3</span> Build the tailored list</summary>
+        <div class="step-body">
+          <p class="say">"Here's the 1040 checklist from years of engagements — I tick what applies to your situation, add anything unusual, and the client's entire folder structure builds itself."</p>
+          <p class="do">Name it after <em>the prospect's own family or company</em>. Untick a couple of items, add one custom request (e.g. "Rental Property Records"). Click <strong>Create Engagement</strong>, then <strong>Open Client Folder</strong> — the folders already exist.</p>
+        </div>
+      </details>
+
+      <details class="step">
+        <summary><span class="step-num">4</span> What the client sees</summary>
+        <div class="step-body">
+          <p class="say">"The client gets one shared folder — one folder per document, plus plain-English instructions. No portal, no logins to forget. It's just... a folder."</p>
+          <p class="do">Click <strong>Open Client Folder</strong>. Show the folders and <em>_README.txt</em>.</p>
+        </div>
+      </details>
+
+      <details class="step">
+        <summary><span class="step-num">5</span> Play the client</summary>
+        <div class="step-body">
+          <p class="say">"Let's be the client. They drag files in — including, as clients do, last year's W-2 instead of this year's, a Word file where we need a PDF, a duplicate, and a vacation photo dropped in the wrong place."</p>
+          <p class="do">Click <strong>Open Sample Documents</strong>. Drag into the client folder:
+            all four <em>W-2</em> PDFs (both spouses, the duplicate, and the 2024 one) → A01 ·
+            <em>1099-INT + 1099-DIV</em> → A02 ·
+            <em>2024 Form 1040 Tax Return</em> → B01 ·
+            <em>Form 1098 + Mortgage Notes.docx</em> → C01 ·
+            <em>Donation Receipts</em> → D01 ·
+            <em>vacation photo.jpg</em> → loose in the top folder.</p>
+        </div>
+      </details>
+
+      <details class="step">
+        <summary><span class="step-num">6</span> The moment — scan</summary>
+        <div class="step-body">
+          <p class="say">"In production this runs automatically every 15 minutes. Watch what it figured out — without any person opening a single file."</p>
+          <p class="do">Click <strong>Run Scan</strong>. Walk the results:
+            A01 <em>Received</em> — both 2025 W-2s found, the duplicate ignored, and the 2024 W-2 flagged in the notes.
+            A02 <em>Partial</em> — 2 of 3, it knows exactly what's still owed.
+            C01 — received the 1098, rejected the Word file.
+            The photo shows up under <em>Unfiled</em> — nothing is ever silently lost.</p>
+        </div>
+      </details>
+
+      <details class="step">
+        <summary><span class="step-num">7</span> The accountant's view</summary>
+        <div class="step-body">
+          <p class="say">"And it all lands in the tool accountants already live in — Excel. Status, dates received, and plain-English notes you can forward to the client verbatim."</p>
+          <p class="do">Click <strong>Open Manifest in Excel</strong>. Show the Status and Notes columns and the Unfiled sheet.</p>
+        </div>
+      </details>
+
+      <details class="step">
+        <summary><span class="step-num">8</span> The trust close</summary>
+        <div class="step-body">
+          <p class="say">"Three guarantees: every decision is a deterministic rule — no AI ever reads your tax documents. The scanner is read-only — it never moves, renames, or deletes a file. And your judgment always wins — one column in Excel overrides any automated result."</p>
+          <p class="do">Point at the assurance bar at the bottom of this screen.</p>
+        </div>
+      </details>
+    </aside>
+
+    <!-- ═══════════════ Dashboard ═══════════════ -->
+    <main class="main">
+      <div class="toolbar">
+        <label class="eng-picker">
+          <span class="visually-hidden">Active engagement</span>
+          <select id="eng-select" aria-label="Active engagement"></select>
+        </label>
+        <button id="btn-new" class="btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          New Engagement
+        </button>
+        <button id="btn-reset" class="btn btn-ghost" title="Rebuild the demo from scratch">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          Reset Demo
+        </button>
+        <span class="toolbar-spacer"></span>
+        <button id="btn-samples" class="btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          Open Sample Documents
+        </button>
+        <button id="btn-shared" class="btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Open Client Folder
+        </button>
+        <button id="btn-excel" class="btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          Open Manifest in Excel
+        </button>
+        <button id="btn-scan" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M22 4 12 14l-3-3"/></svg>
+          <span id="scan-label">Run Scan</span>
+        </button>
+      </div>
+
+      <div id="banner" class="banner hidden" role="status"></div>
+
+      <section class="card">
+        <div class="card-head">
+          <h3>Document Requests</h3>
+          <span id="summary" class="summary"></span>
+        </div>
+        <table class="requests" aria-label="Document requests">
+          <thead>
+            <tr>
+              <th class="col-id">ID</th>
+              <th>Document</th>
+              <th class="col-num">Files</th>
+              <th class="col-status">Status</th>
+              <th class="col-recv">Received</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </section>
+
+      <section id="unfiled-card" class="card hidden">
+        <div class="card-head">
+          <h3>Unfiled — needs attention</h3>
+          <span class="summary">nothing was moved or deleted</span>
+        </div>
+        <ul id="unfiled-list" class="unfiled"></ul>
+      </section>
+
+      <footer class="assurances">
+        <div class="assure">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <div><strong>Deterministic rules</strong><span>No AI ever reads client documents</span></div>
+        </div>
+        <div class="assure">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <div><strong>Read-only scanning</strong><span>Files are never moved, renamed, or deleted</span></div>
+        </div>
+        <div class="assure">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          <div><strong>Excel is the record</strong><span>Everything lands in the manifest you own</span></div>
+        </div>
+        <div class="assure">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <div><strong>Your judgment wins</strong><span>One override column beats any automated result</span></div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- ═══════════════ New Engagement wizard ═══════════════ -->
+  <div id="modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+
+      <!-- Step 1: choose the tax form type -->
+      <div id="wiz-form">
+        <h3 id="modal-title">New Engagement — what type of return?</h3>
+        <p class="wiz-sub">The request list is tailored to the form you pick.</p>
+        <div id="form-grid" class="form-grid"></div>
+        <div class="modal-actions">
+          <button id="wf-cancel" class="btn">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Step 2: tailored request list for the chosen form -->
+      <div id="wiz-items" class="hidden">
+        <h3 id="items-title">New Engagement</h3>
+        <div class="form-chosen">
+          <span id="chosen-form" class="chosen-badge"></span>
+          <button id="wi-back" class="wiz-back">&#8592; Change form type</button>
+        </div>
+
+        <label class="field">
+          <span>Engagement name</span>
+          <input id="ne-name" type="text" placeholder="e.g. Smith Family 2025 Form 1040" />
+        </label>
+
+        <div class="tmpl-head" id="tmpl-head-label">Standard request list — tick what applies</div>
+        <div id="tmpl-list" class="tmpl-list"></div>
+
+        <div class="tmpl-head">Add a custom request</div>
+        <div class="custom-row">
+          <input id="cu-doc" type="text" placeholder="Document (e.g. Rental Property Records)" aria-label="Custom document name" />
+          <input id="cu-ext" type="text" value="pdf" placeholder="File types" aria-label="Allowed file types" />
+          <input id="cu-kw" type="text" placeholder="Must contain (optional)" aria-label="Required keyword" />
+          <button id="cu-add" class="btn">Add</button>
+        </div>
+        <ul id="cu-list" class="cu-list"></ul>
+
+        <div class="modal-actions">
+          <button id="ne-cancel" class="btn">Cancel</button>
+          <button id="ne-create" class="btn btn-primary">Create Engagement</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden" role="alert"></div>
+  <script src="app.js"></script>
+</body>
+</html>
