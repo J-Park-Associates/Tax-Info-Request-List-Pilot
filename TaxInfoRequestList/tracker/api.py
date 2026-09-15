@@ -1,0 +1,791 @@
+"""JSON bridge for the demo UI (Electron) — python -m tracker.api <command>.
+
+Commands print a single JSON object to stdout and exit 0, or {"error": ...}
+and exit 1. All real logic lives in the tracker package; this module only
+serializes it, so the UI can never disagree with the scanner.
+
+Commands:
+  state     current manifest rows + unfiled sheet + useful paths
+  scaffold  build/refresh the Shared/ tree
+  scan      run a full scan and write the manifest back
+  reset     rebuild the entire marketing demo from scratch:
+            engagement folder, manifest, Shared/ tree, sample client docs
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+
+from openpyxl import Workbook, load_workbook
+
+from tracker.manifest import (
+    ManifestError,
+    RequestItem,
+    UNFILED_SHEET_NAME,
+    create_template,
+    load_manifest,
+)
+from tracker.scaffold import (
+    MANIFEST_FILENAME,
+    SHARED_DIR_NAME,
+    sanitize_component,
+    scaffold_engagement,
+)
+from tracker.scanner import ScanLockedError, scan_engagement
+
+# Frozen (PyInstaller) builds live inside the portable package; the demo data
+# root is then supplied by the Electron shell via TRACKER_DEMO_ROOT so it sits
+# next to the packaged exe rather than inside the bundle.
+if getattr(sys, "frozen", False):
+    REPO_ROOT = Path(sys.executable).resolve().parent
+else:
+    REPO_ROOT = Path(__file__).resolve().parent.parent
+DEMO_ROOT = Path(os.environ.get("TRACKER_DEMO_ROOT", REPO_ROOT / "demo-marketing"))
+ENGAGEMENT_DIRNAME = "Engagement - Smith Family 2025 Form 1040"
+SAMPLES_DIRNAME = "Sample Client Documents"
+CONTACT = "J Park & Associates, CPA"
+
+# Tax form catalog — the wizard's first page. Selecting a form type tailors
+# the request template below to that return.
+FORM_TYPES = [
+    {
+        "id": "1040", "label": "Form 1040",
+        "who": "Individual / joint return",
+        "blurb": "Wages, investments, deductions, credits",
+    },
+    {
+        "id": "1120", "label": "Form 1120",
+        "who": "C corporation",
+        "blurb": "Corporate income tax return",
+    },
+    {
+        "id": "1120S", "label": "Form 1120-S",
+        "who": "S corporation",
+        "blurb": "Pass-through corporate return with K-1s",
+    },
+    {
+        "id": "1065", "label": "Form 1065",
+        "who": "Partnership / multi-member LLC",
+        "blurb": "Partnership return with K-1s",
+    },
+    {
+        "id": "1041", "label": "Form 1041",
+        "who": "Estate or trust",
+        "blurb": "Fiduciary income tax return",
+    },
+    {
+        "id": "990", "label": "Form 990",
+        "who": "Tax-exempt organization",
+        "blurb": "Annual information return",
+    },
+]
+
+# Per-form request templates shown on the wizard's second page. "core" items
+# are pre-checked; the 1040 core items also match the staged sample documents,
+# so an engagement created live on stage still plays through the whole
+# drag-and-scan story.
+FORM_TEMPLATES = {
+    "1040": [
+        {
+            "identifier": "A01", "document": "W-2 Wage Statements - All Employers",
+            "period": "TY2025", "expected_count": 2, "extensions": "pdf",
+            "required_keywords": "W-2",
+            "date_pattern": r"(?i)\b2025\b", "core": True,
+        },
+        {
+            "identifier": "A02", "document": "1099-INT / 1099-DIV - Interest & Dividend Income",
+            "period": "TY2025", "expected_count": 3, "extensions": "pdf, csv",
+            "any_keywords": "1099, interest income, dividend", "core": True,
+        },
+        {
+            "identifier": "B01", "document": "Prior-Year Federal & State Tax Returns",
+            "period": "TY2024", "extensions": "pdf",
+            "any_keywords": "form 1040, tax return", "core": True,
+        },
+        {
+            "identifier": "C01", "document": "Mortgage Interest Statement - Form 1098",
+            "period": "TY2025", "extensions": "pdf",
+            "required_keywords": "1098", "core": True,
+        },
+        {
+            "identifier": "D01", "document": "Charitable Contribution Receipts",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
+        },
+        {
+            "identifier": "E01", "document": "1099-B / Brokerage Year-End Statements",
+            "period": "TY2025", "extensions": "pdf, csv", "core": False,
+        },
+        {
+            "identifier": "E02", "document": "1099-R Retirement Distributions",
+            "period": "TY2025", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "F01", "document": "Schedule K-1s Received",
+            "period": "TY2025", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "G01", "document": "Property Tax Statements",
+            "period": "TY2025", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "H01", "document": "Estimated Tax Payment Records",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
+        },
+        {
+            "identifier": "I01", "document": "Form 1095-A - Marketplace Health Insurance",
+            "period": "TY2025", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "J01", "document": "Childcare Provider Statements - Name, EIN, Amounts",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
+        },
+        {
+            "identifier": "K01", "document": "IRA / HSA Contribution Statements - Form 5498",
+            "period": "TY2025", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "L01", "document": "Tuition Statements - Form 1098-T",
+            "period": "TY2025", "extensions": "pdf", "core": False,
+        },
+    ],
+    "1120": [
+        {
+            "identifier": "A01", "document": "Prior-Year Federal & State Corporate Returns",
+            "period": "TY2024", "extensions": "pdf",
+            "any_keywords": "form 1120, tax return", "core": True,
+        },
+        {
+            "identifier": "A02", "document": "Trial Balance - Year-End",
+            "period": "TY2025", "extensions": "xlsx, csv", "core": True,
+        },
+        {
+            "identifier": "A03", "document": "General Ledger Detail",
+            "period": "TY2025", "extensions": "xlsx, csv", "core": True,
+        },
+        {
+            "identifier": "B01", "document": "Year-End Financial Statements",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
+        },
+        {
+            "identifier": "B02", "document": "December Bank Statements & Year-End Reconciliations",
+            "period": "Dec 2025", "extensions": "pdf", "core": True,
+        },
+        {
+            "identifier": "C01", "document": "Fixed Asset Additions & Disposals Detail",
+            "period": "TY2025", "extensions": "xlsx", "core": True,
+        },
+        {
+            "identifier": "C02", "document": "Depreciation Schedules",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+        {
+            "identifier": "D01", "document": "Loan Agreements & Year-End Balances",
+            "period": "As of 12/31/2025", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "E01", "document": "Payroll Tax Returns - Forms 941 & W-3",
+            "period": "TY2025", "extensions": "pdf", "core": True,
+        },
+        {
+            "identifier": "E02", "document": "Officer Compensation Detail",
+            "period": "TY2025", "extensions": "xlsx", "core": False,
+        },
+        {
+            "identifier": "F01", "document": "Estimated Tax Payment Records",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
+        },
+        {
+            "identifier": "G01", "document": "Shareholder List & Ownership Changes",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+        {
+            "identifier": "H01", "document": "State Apportionment Data - Sales, Payroll, Property by State",
+            "period": "TY2025", "extensions": "xlsx", "core": False,
+        },
+        {
+            "identifier": "I01", "document": "Book-Tax Difference Support - Schedule M-1 Items",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+    ],
+    "1120S": [
+        {
+            "identifier": "A01", "document": "Prior-Year Federal & State S-Corp Returns",
+            "period": "TY2024", "extensions": "pdf",
+            "any_keywords": "form 1120-s, form 1120s, tax return", "core": True,
+        },
+        {
+            "identifier": "A02", "document": "Trial Balance - Year-End",
+            "period": "TY2025", "extensions": "xlsx, csv", "core": True,
+        },
+        {
+            "identifier": "A03", "document": "General Ledger Detail",
+            "period": "TY2025", "extensions": "xlsx, csv", "core": True,
+        },
+        {
+            "identifier": "B01", "document": "Year-End Financial Statements",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
+        },
+        {
+            "identifier": "B02", "document": "December Bank Statements & Year-End Reconciliations",
+            "period": "Dec 2025", "extensions": "pdf", "core": True,
+        },
+        {
+            "identifier": "C01", "document": "Shareholder List with Ownership % & Changes",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": True,
+        },
+        {
+            "identifier": "C02", "document": "Distributions by Shareholder",
+            "period": "TY2025", "extensions": "xlsx", "core": True,
+        },
+        {
+            "identifier": "C03", "document": "Shareholder Basis Schedules",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+        {
+            "identifier": "D01", "document": "Officer / Shareholder W-2 Compensation Detail",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": True,
+        },
+        {
+            "identifier": "D02", "document": "Health Insurance Premiums for >2% Shareholders",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
+        },
+        {
+            "identifier": "E01", "document": "Payroll Tax Returns - Forms 941 & W-3",
+            "period": "TY2025", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "F01", "document": "Fixed Asset Additions & Disposals Detail",
+            "period": "TY2025", "extensions": "xlsx", "core": False,
+        },
+        {
+            "identifier": "G01", "document": "Loan Agreements & Shareholder Loan Activity",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
+        },
+        {
+            "identifier": "H01", "document": "State Apportionment Data",
+            "period": "TY2025", "extensions": "xlsx", "core": False,
+        },
+    ],
+    "1065": [
+        {
+            "identifier": "A01", "document": "Prior-Year Federal & State Partnership Returns",
+            "period": "TY2024", "extensions": "pdf",
+            "any_keywords": "form 1065, tax return", "core": True,
+        },
+        {
+            "identifier": "A02", "document": "Partnership Agreement & Amendments",
+            "period": "Current", "extensions": "pdf", "core": True,
+        },
+        {
+            "identifier": "A03", "document": "Trial Balance - Year-End",
+            "period": "TY2025", "extensions": "xlsx, csv", "core": True,
+        },
+        {
+            "identifier": "A04", "document": "General Ledger Detail",
+            "period": "TY2025", "extensions": "xlsx, csv", "core": False,
+        },
+        {
+            "identifier": "B01", "document": "Year-End Financial Statements",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
+        },
+        {
+            "identifier": "B02", "document": "December Bank Statements & Year-End Reconciliations",
+            "period": "Dec 2025", "extensions": "pdf", "core": True,
+        },
+        {
+            "identifier": "C01", "document": "Partner List with Ownership % & Changes",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": True,
+        },
+        {
+            "identifier": "C02", "document": "Partner Capital Account Detail",
+            "period": "TY2025", "extensions": "xlsx", "core": True,
+        },
+        {
+            "identifier": "C03", "document": "Contributions & Distributions by Partner",
+            "period": "TY2025", "extensions": "xlsx", "core": True,
+        },
+        {
+            "identifier": "C04", "document": "Guaranteed Payment Detail",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+        {
+            "identifier": "D01", "document": "Fixed Asset Additions & Disposals Detail",
+            "period": "TY2025", "extensions": "xlsx", "core": False,
+        },
+        {
+            "identifier": "E01", "document": "Loan Agreements & Year-End Balances",
+            "period": "As of 12/31/2025", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "F01", "document": "Special Allocation Support - Section 704(b)",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+        {
+            "identifier": "G01", "document": "State Apportionment Data",
+            "period": "TY2025", "extensions": "xlsx", "core": False,
+        },
+    ],
+    "1041": [
+        {
+            "identifier": "A01", "document": "Trust Instrument / Will & Amendments",
+            "period": "Current", "extensions": "pdf", "core": True,
+        },
+        {
+            "identifier": "A02", "document": "IRS EIN Assignment Letter",
+            "period": "Current", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "A03", "document": "Prior-Year Fiduciary Returns",
+            "period": "TY2024", "extensions": "pdf",
+            "any_keywords": "form 1041, tax return", "core": True,
+        },
+        {
+            "identifier": "B01", "document": "1099s for Trust / Estate Accounts",
+            "period": "TY2025", "expected_count": 3, "extensions": "pdf, csv",
+            "any_keywords": "1099", "core": True,
+        },
+        {
+            "identifier": "B02", "document": "Brokerage Year-End Statements",
+            "period": "TY2025", "extensions": "pdf", "core": True,
+        },
+        {
+            "identifier": "C01", "document": "Distributions to Beneficiaries - Dates & Amounts",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": True,
+        },
+        {
+            "identifier": "C02", "document": "Beneficiary Names, Addresses & Tax IDs",
+            "period": "Current", "extensions": "xlsx, pdf", "core": True,
+        },
+        {
+            "identifier": "D01", "document": "Fiduciary, Attorney & Accounting Fees Paid",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
+        },
+        {
+            "identifier": "E01", "document": "Cost Basis for Assets Sold During the Year",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+        {
+            "identifier": "F01", "document": "Rental / Business Income & Expense Detail",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+    ],
+    "990": [
+        {
+            "identifier": "A01", "document": "Prior-Year Form 990 & State Filings",
+            "period": "TY2024", "extensions": "pdf",
+            "any_keywords": "form 990, return", "core": True,
+        },
+        {
+            "identifier": "A02", "document": "Trial Balance - Year-End",
+            "period": "TY2025", "extensions": "xlsx, csv", "core": True,
+        },
+        {
+            "identifier": "B01", "document": "Year-End Financial Statements",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
+        },
+        {
+            "identifier": "B02", "document": "December Bank Statements & Reconciliations",
+            "period": "Dec 2025", "extensions": "pdf", "core": True,
+        },
+        {
+            "identifier": "C01", "document": "Board of Directors List & Meeting Minutes",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
+        },
+        {
+            "identifier": "C02", "document": "Officer & Key Employee Compensation Detail",
+            "period": "TY2025", "extensions": "xlsx", "core": True,
+        },
+        {
+            "identifier": "D01", "document": "Contribution / Donor Detail - Schedule B Support",
+            "period": "TY2025", "extensions": "xlsx, csv", "core": True,
+        },
+        {
+            "identifier": "D02", "document": "Grants Made - Recipients & Amounts",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+        {
+            "identifier": "E01", "document": "Program Service Accomplishment Descriptions",
+            "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
+        },
+        {
+            "identifier": "F01", "document": "Fundraising Event Revenue & Expense Detail",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+        {
+            "identifier": "G01", "document": "Payroll Tax Returns - Forms 941 & W-3",
+            "period": "TY2025", "extensions": "pdf", "core": False,
+        },
+        {
+            "identifier": "H01", "document": "Unrelated Business Income Detail",
+            "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
+        },
+    ],
+}
+
+DEMO_FORM = "1040"
+
+
+def _csv_field(value) -> tuple[str, ...]:
+    if isinstance(value, (list, tuple)):
+        return tuple(str(v).strip() for v in value if str(v).strip())
+    return tuple(p.strip() for p in str(value or "").split(",") if p.strip())
+
+
+def _item_from_spec(spec: dict) -> RequestItem:
+    identifier = str(spec.get("identifier", "")).strip()
+    document = str(spec.get("document", "")).strip()
+    if not identifier or not document:
+        raise ManifestError("every request needs an identifier and a document name")
+    return RequestItem(
+        identifier=identifier,
+        document=document,
+        period=str(spec.get("period", "") or ""),
+        expected_count=int(spec.get("expected_count") or 1),
+        allowed_extensions=tuple(
+            e.lower().lstrip(".")
+            for e in _csv_field(spec.get("extensions") or spec.get("allowed_extensions"))
+        ),
+        min_size_kb=int(spec.get("min_size_kb") or 5),
+        required_keywords=_csv_field(spec.get("required_keywords")),
+        any_keywords=_csv_field(spec.get("any_keywords")),
+        date_pattern=str(spec.get("date_pattern", "") or ""),
+    )
+
+
+DEMO_ITEMS = [_item_from_spec(t) for t in FORM_TEMPLATES[DEMO_FORM] if t["core"]]
+
+
+# --------------------------------------------------------- sample documents ----
+
+
+def _text_pdf(path: Path, lines: list[str]) -> Path:
+    """Minimal but valid PDF with a real text layer (no extra deps)."""
+    body = "\n".join(
+        f"BT /F1 11 Tf 60 {740 - 14 * i} Td ({line}) Tj ET"
+        for i, line in enumerate(lines[:48])
+    )
+    content = body.encode("ascii", "replace")
+    padding = b" " * 8192  # unreferenced object: realistic file size, renders clean
+    bodies = {
+        1: b"<< /Type /Catalog /Pages 2 0 R >>",
+        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        3: (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>"
+        ),
+        4: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
+        5: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        6: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(padding), padding),
+    }
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = {}
+    for n in sorted(bodies):
+        offsets[n] = len(out)
+        out += b"%d 0 obj\n" % n + bodies[n] + b"\nendobj\n"
+    xref_at = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(bodies) + 1)
+    for n in sorted(bodies):
+        out += b"%010d 00000 n \n" % offsets[n]
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF" % (
+        len(bodies) + 1,
+        xref_at,
+    )
+    path.write_bytes(bytes(out))
+    return path
+
+
+def _w2_lines(employee: str, employer: str, year: int) -> list[str]:
+    return [
+        f"Form W-2 Wage and Tax Statement - Tax Year {year}",
+        f"Employer: {employer}",
+        f"Employee: {employee}",
+        "",
+        "Box 1  Wages, tips, other compensation       $84,500.00",
+        "Box 2  Federal income tax withheld           $11,240.00",
+        "Box 3  Social security wages                 $84,500.00",
+        "Box 4  Social security tax withheld           $5,239.00",
+        "Box 5  Medicare wages and tips               $84,500.00",
+        "Box 6  Medicare tax withheld                  $1,225.25",
+        "",
+        f"Copy B - To Be Filed With Employee's Federal Tax Return, {year}",
+    ]
+
+
+def _1099_int_lines(payer: str, recipient: str, year: int) -> list[str]:
+    return [
+        f"Form 1099-INT Interest Income - {year}",
+        f"Payer: {payer}",
+        f"Recipient: {recipient}",
+        "",
+        "Box 1  Interest income                        $1,842.17",
+        "Box 4  Federal income tax withheld                $0.00",
+        "",
+        "This is important tax information and is being furnished to the IRS.",
+    ]
+
+
+def _prior_return_lines(taxpayer: str, year: int) -> list[str]:
+    return [
+        f"Form 1040 - U.S. Individual Income Tax Return - Tax Year {year}",
+        f"Taxpayer: {taxpayer}",
+        "Filing status: Married filing jointly",
+        "",
+        "Line 1   Wages, salaries, tips                $161,300.00",
+        "Line 11  Adjusted gross income                $168,455.00",
+        "Line 24  Total tax                             $24,918.00",
+        "Line 33  Total payments                        $26,102.00",
+        "Line 34  Overpayment refunded                   $1,184.00",
+    ]
+
+
+def _form_1098_lines(lender: str, borrower: str, year: int) -> list[str]:
+    return [
+        f"Form 1098 Mortgage Interest Statement - {year}",
+        f"Recipient/Lender: {lender}",
+        f"Payer/Borrower: {borrower}",
+        "",
+        "Box 1  Mortgage interest received            $12,411.08",
+        "Box 2  Outstanding mortgage principal       $342,900.00",
+        "Box 5  Mortgage insurance premiums                $0.00",
+        "Box 10 Real property taxes paid               $6,240.00",
+    ]
+
+
+def _donations_xlsx(path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Donations"
+    ws.append(["Smith Family - Charitable Contributions 2025"])
+    ws.append(["Date", "Organization", "Amount", "Receipt on file"])
+    for i in range(1, 301):  # enough rows to clear the size minimum
+        ws.append([f"0{(i % 9) + 1}/12/2025", f"Community Charity {i:03d}", 25 + i, "Yes"])
+    wb.save(path)
+
+
+def _build_samples(samples: Path) -> None:
+    samples.mkdir(parents=True, exist_ok=True)
+
+    good = _text_pdf(
+        samples / "W-2 John Smith 2025.pdf",
+        _w2_lines("John A. Smith", "Acme Manufacturing Inc.", 2025),
+    )
+    # Byte-identical duplicate — demonstrates content-hash de-duplication.
+    shutil.copyfile(good, samples / "W-2 John Smith 2025 - Copy.pdf")
+
+    _text_pdf(
+        samples / "W-2 Jane Smith 2025.pdf",
+        _w2_lines("Jane R. Smith", "Lakeside Medical Group", 2025),
+    )
+    # Wrong tax year — the content date check will flag it.
+    _text_pdf(
+        samples / "W-2 Jane Smith 2024 - old.pdf",
+        _w2_lines("Jane R. Smith", "Lakeside Medical Group", 2024),
+    )
+
+    _text_pdf(
+        samples / "1099-INT First National.pdf",
+        _1099_int_lines("First National Bank", "John A. Smith", 2025),
+    )
+    (samples / "1099-DIV Vanguard 2025.csv").write_text(
+        "Form 1099-DIV dividend summary - Vanguard Brokerage 2025\n"
+        + "date,fund,ordinary dividends,qualified dividends\n" * 300,
+        encoding="utf-8",
+    )
+
+    _text_pdf(
+        samples / "2024 Form 1040 Tax Return.pdf",
+        _prior_return_lines("John A. & Jane R. Smith", 2024),
+    )
+
+    _text_pdf(
+        samples / "Form 1098 Mortgage Interest.pdf",
+        _form_1098_lines("Home Lending Corp.", "John A. & Jane R. Smith", 2025),
+    )
+    (samples / "Mortgage Notes.docx").write_bytes(b"not a real docx " * 800)
+
+    _donations_xlsx(samples / "Donation Receipts 2025.xlsx")
+
+    (samples / "vacation photo.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"J" * 9000)
+
+
+# ----------------------------------------------------------------- commands ----
+
+
+def _engagement_dir(argv: list[str]) -> Path:
+    if "--engagement" in argv:
+        return Path(argv[argv.index("--engagement") + 1])
+    return DEMO_ROOT / ENGAGEMENT_DIRNAME
+
+
+def _read_unfiled(manifest_path: Path) -> list[dict]:
+    if not manifest_path.exists():
+        return []
+    wb = load_workbook(manifest_path, data_only=True)
+    try:
+        if UNFILED_SHEET_NAME not in wb.sheetnames:
+            return []
+        return [
+            {"name": r[0], "kind": r[1], "size_kb": r[2], "seen": str(r[3] or "")}
+            for r in wb[UNFILED_SHEET_NAME].iter_rows(min_row=2, values_only=True)
+            if r and r[0]
+        ]
+    finally:
+        wb.close()
+
+
+def _state(engagement: Path) -> dict:
+    manifest_path = engagement / MANIFEST_FILENAME
+    items = load_manifest(manifest_path)
+    return {
+        "items": [
+            {
+                "identifier": i.identifier,
+                "document": i.document,
+                "period": i.period,
+                "expected_count": i.expected_count,
+                "allowed_extensions": list(i.allowed_extensions),
+                "required_keywords": list(i.required_keywords),
+                "any_keywords": list(i.any_keywords),
+                "manual_override": i.manual_override,
+                "status": i.status,
+                "received_date": i.received_date.isoformat() if i.received_date else None,
+                "file_count": i.file_count,
+                "validation_notes": i.validation_notes,
+            }
+            for i in items
+        ],
+        "unfiled": _read_unfiled(manifest_path),
+        "paths": {
+            "engagement": str(engagement),
+            "shared": str(engagement / SHARED_DIR_NAME),
+            "manifest": str(manifest_path),
+            "samples": str(DEMO_ROOT / SAMPLES_DIRNAME),
+        },
+    }
+
+
+def _cmd_state(argv: list[str]) -> dict:
+    return _state(_engagement_dir(argv))
+
+
+def _cmd_scaffold(argv: list[str]) -> dict:
+    engagement = _engagement_dir(argv)
+    result = scaffold_engagement(engagement, contact=CONTACT)
+    return {
+        "created": [p.name for p in result.created],
+        "existing": result.existing,
+        "waived": result.waived,
+        "state": _state(engagement),
+    }
+
+
+def _cmd_scan(argv: list[str]) -> dict:
+    engagement = _engagement_dir(argv)
+    report = scan_engagement(engagement)
+    return {
+        "written": report.written,
+        "deferred": report.deferred,
+        "updates": {
+            ident: {
+                "status": u.status,
+                "file_count": u.file_count,
+                "received_date": u.received_date.isoformat() if u.received_date else None,
+                "validation_notes": u.validation_notes,
+            }
+            for ident, u in report.updates.items()
+        },
+        "unfiled": [
+            {"name": e.name, "kind": e.kind, "size_kb": e.size_kb, "seen": e.seen}
+            for e in report.unfiled
+        ],
+        "state": _state(engagement),
+    }
+
+
+def _cmd_reset(argv: list[str]) -> dict:
+    if DEMO_ROOT.exists():
+        shutil.rmtree(DEMO_ROOT)
+    engagement = DEMO_ROOT / ENGAGEMENT_DIRNAME
+    engagement.mkdir(parents=True)
+    create_template(engagement / MANIFEST_FILENAME, DEMO_ITEMS)
+    scaffold_engagement(engagement, contact=CONTACT)
+    _build_samples(DEMO_ROOT / SAMPLES_DIRNAME)
+    return {"reset": True, "state": _state(engagement)}
+
+
+def _cmd_templates(argv: list[str]) -> dict:
+    return {"forms": FORM_TYPES, "templates": FORM_TEMPLATES}
+
+
+def _cmd_list(argv: list[str]) -> dict:
+    engagements = []
+    if DEMO_ROOT.is_dir():
+        for child in sorted(DEMO_ROOT.iterdir()):
+            if child.is_dir() and (child / MANIFEST_FILENAME).exists():
+                engagements.append({"name": child.name, "path": str(child)})
+    return {"engagements": engagements}
+
+
+def _cmd_create(argv: list[str]) -> dict:
+    """Create a new engagement from a JSON spec on stdin:
+    {"name": "...", "form": "1040",
+     "items": [{identifier, document, extensions, ...}, ...]}
+    """
+    spec = json.loads(sys.stdin.read() or "{}")
+    form = str(spec.get("form", "")).strip()
+    if form and form not in FORM_TEMPLATES:
+        raise ManifestError(f"Unknown tax form type '{form}'")
+    fallback = f"New Form {form} Engagement" if form else "New Engagement"
+    name = sanitize_component(str(spec.get("name", "")).strip()) or fallback
+    engagement = DEMO_ROOT / name
+    if engagement.exists():
+        raise ManifestError(f"An engagement named '{name}' already exists")
+
+    items = [_item_from_spec(s) for s in spec.get("items", [])]
+    if not items:
+        raise ManifestError("Select at least one request item")
+
+    engagement.mkdir(parents=True)
+    try:
+        create_template(engagement / MANIFEST_FILENAME, items)
+        scaffold_engagement(engagement, contact=CONTACT)  # validates the manifest too
+    except Exception:
+        shutil.rmtree(engagement, ignore_errors=True)  # never leave a half-built one
+        raise
+    return {"created": name, "state": _state(engagement)}
+
+
+COMMANDS = {
+    "state": _cmd_state,
+    "scaffold": _cmd_scaffold,
+    "scan": _cmd_scan,
+    "reset": _cmd_reset,
+    "templates": _cmd_templates,
+    "list": _cmd_list,
+    "create": _cmd_create,
+}
+
+
+def main(argv: list[str]) -> int:
+    if not argv or argv[0] not in COMMANDS:
+        print(json.dumps({"error": f"usage: tracker.api {'|'.join(COMMANDS)}"}))
+        return 1
+    try:
+        payload = COMMANDS[argv[0]](argv[1:])
+    except (ManifestError, ScanLockedError) as exc:
+        print(json.dumps({"error": str(exc)}))
+        return 1
+    except Exception as exc:  # surface anything else as JSON, not a traceback
+        print(json.dumps({"error": f"{exc.__class__.__name__}: {exc}"}))
+        return 1
+    print(json.dumps(payload))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
