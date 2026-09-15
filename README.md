@@ -11,6 +11,12 @@ and a scheduled scanner validates each file against manifest-defined rules
 and writes status back into the manifest — no AI touches client documents,
 no file is ever moved, renamed, or deleted.
 
+Works with any cloud share that syncs to a local folder: **OneDrive and
+Google Drive** are both supported — online-only placeholder files are
+detected on either (and never force-downloaded), Google Drive's `.tmp.drive*`
+transfer temps are ignored, and Google-native documents (`.gdoc`, `.gsheet`)
+are flagged with a note asking the client for an exported PDF/Excel copy.
+
 **Full design & build status: [docs/ROADMAP.md](docs/ROADMAP.md)**
 
 ## How it works

@@ -3,8 +3,8 @@
 A Windows-compatible system for income tax information requests: each engagement
 starts by picking the return type (1040, 1120, 1120-S, 1065, 1041, 990), which
 selects a tailored document request template (`FORM_TEMPLATES` in `tracker/api.py`;
-CSV checklists in `templates/`). The system then scaffolds a OneDrive folder
-structure from an Excel manifest, lets clients drag documents into shared folders,
+CSV checklists in `templates/`). The system then scaffolds a cloud-synced folder
+structure (OneDrive or Google Drive) from an Excel manifest, lets clients drag documents into shared folders,
 and automatically validates and tags document status back into the manifest.
 
 ## Hard Constraints
@@ -30,7 +30,7 @@ and automatically validates and tags document status back into the manifest.
 ## Architecture
 
 ```
-OneDrive (synced locally on Windows)
+OneDrive / Google Drive (synced locally on Windows)
 └── Clients/
     └── {ClientName}/
         └── {EngagementName}/
@@ -86,7 +86,8 @@ Status resolution:
 - valid files < Expected Count → **Partial**
 - files present but a tier fails → **Failed Validation** (+ note)
 - all checks pass → **Received** (+ date stamp on first pass)
-- cloud-only OneDrive placeholders (detected via `st_file_attributes` /
+- cloud-only placeholders — OneDrive Files On-Demand or Google Drive streaming
+  (detected via `st_file_attributes` /
   `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS`, never force-hydrated) → **Pending Sync**
 - previously Received, files changed/removed → auto-revert to current truth,
   Received Date kept, regression note added
@@ -101,7 +102,7 @@ no-genAI-on-financial-docs rule.)*
 |---|-----------|--------|
 | 1 | `tracker/manifest.py` — schema, `RequestItem`, `load_manifest()`, `write_statuses()` with lock-retry + pending-sidecar merge, `create_template()` | ✅ built + tested |
 | 2 | `tracker/scaffold.py` — manifest → `Shared/{Identifier} - {Document}` folders (sanitize `\ / : * ? " < > \|`), `_README.txt`. Idempotent via prefix matching; never touches existing files. CLI: `python -m tracker.scaffold <engagement_dir>` | ✅ built + tested |
-| 3 | `tracker/validators.py` — Tiers 1–2, pure read-only functions; passive OneDrive placeholder detection (plain local files just report False — no cloud dependency). Dry-run CLI: `python -m tracker.validators <engagement_dir>` | ✅ built + tested |
+| 3 | `tracker/validators.py` — Tiers 1–2, pure read-only functions; passive cloud-placeholder detection (OneDrive / Google Drive) (plain local files just report False — no cloud dependency). Dry-run CLI: `python -m tracker.validators <engagement_dir>` | ✅ built + tested |
 | 4 | `tracker/content_check.py` — Tier 3 extraction (pdfplumber / openpyxl / text; optional OCR fallback that degrades to a "review manually" note when Tesseract is absent) + rules + verdict cache. Cache stores pass/fail only — extracted client text is never persisted | ✅ built + tested |
 | 5 | `tracker/scanner.py` — orchestrator: walk `Shared/`, prefix-match folders, run tiers, resolve status (override- and revert-aware), hash-dedupe counts (skipped for 0/1-file rows), Unfiled sheet, write-back, console summary, stale-aware run-lock. CLI: `python -m tracker.scanner <engagement_dir> [--dry-run]` | ✅ built + tested |
 | 6 | `tracker/reminder.py` — draft client email per engagement from Missing/Partial/Failed rows (draft only — no sending) | pending |
@@ -109,8 +110,12 @@ no-genAI-on-financial-docs rule.)*
 
 ## Edge Cases (designed in)
 
-- OneDrive files-on-demand → detect placeholder attributes; mark **Pending Sync**;
+- Cloud-only files (OneDrive Files On-Demand, Google Drive streaming) → detect
+  placeholder attributes; mark **Pending Sync**;
   never force-hydrate (a cloud-only 500 MB file must not be silently downloaded every scan).
+- Google-native documents (`.gdoc`, `.gsheet`, ...) → tier-2 fail with a note asking the
+  client to upload an exported PDF/Excel copy; Google Drive `.tmp.drive*` transfer temps
+  are ignored as junk.
 - Folder renamed but prefix kept → still matched (prefix match on known identifiers).
 - Folder deleted → scaffold re-run recreates; status reverts to Missing with note.
 - Duplicate/versioned uploads → content-hash dedupe before counting.

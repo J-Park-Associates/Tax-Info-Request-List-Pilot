@@ -1,9 +1,10 @@
 """Tier 1-2 file validation for the Client Document Tracker (component 3).
 
-Pure, read-only functions over local paths — no OneDrive dependency. Cloud
-awareness is limited to :func:`is_cloud_placeholder`, a passive check of
-Windows file-attribute flags: on an ordinary desktop file it returns False
-and validation proceeds normally, so the whole layer is fully testable with
+Pure, read-only functions over local paths — no dependency on any one sync
+provider (OneDrive and Google Drive for desktop both work). Cloud awareness
+is limited to :func:`is_cloud_placeholder`, a passive check of Windows
+file-attribute flags: on an ordinary desktop file it returns False and
+validation proceeds normally, so the whole layer is fully testable with
 File Explorer and Excel alone.
 
 - Tier 1 (existence): :func:`iter_candidate_files` / :func:`check_folder` —
@@ -13,8 +14,8 @@ File Explorer and Excel alone.
   size, and a ``pypdf`` open test for PDFs.
 
 Nothing here moves, renames, deletes, or writes client files. Cloud-only
-placeholders are never read (reading would force OneDrive to download them);
-they are reported as ``pending_sync`` and skipped.
+placeholders are never read (reading would force the sync client to download
+them); they are reported as ``pending_sync`` and skipped.
 
 Status resolution (Missing/Partial/Received/...) is NOT done here — these
 functions report facts; the scanner (component 5) applies policy.
@@ -37,10 +38,20 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 # Junk that never counts as a client document.
 _IGNORED_NAMES = {"desktop.ini", "thumbs.db", ".ds_store"}
-_IGNORED_PREFIXES = ("~$",)          # Office owner-lock files
-_IGNORED_SUFFIXES = (".tmp",)
+_IGNORED_PREFIXES = ("~$", ".tmp.drive")  # Office locks; Google Drive transfer temps
+_IGNORED_SUFFIXES = (".tmp", ".driveupload", ".drivedownload")
 
-# Windows file-attribute flags marking OneDrive files-on-demand placeholders.
+# Google-native documents sync down as tiny shortcut/stub files, not real
+# documents. Validating them is impossible locally, so tier 2 fails them with
+# an actionable note instead of a confusing size/extension error.
+_GOOGLE_STUB_EXTENSIONS = {
+    "gdoc", "gsheet", "gslides", "gdraw", "gform",
+    "gtable", "gjam", "gsite", "glink", "gshortcut",
+}
+
+# Windows file-attribute flags marking cloud-only placeholders. OneDrive
+# Files On-Demand and Google Drive for desktop (streaming mode) both mark
+# online-only files with these attributes.
 _FILE_ATTRIBUTE_OFFLINE = 0x00001000
 _FILE_ATTRIBUTE_RECALL_ON_OPEN = 0x00040000
 _FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x00400000
@@ -89,17 +100,23 @@ class FolderResult:
 
 
 def is_ignored(path: Path) -> bool:
-    """True for OS/Office junk that never counts as a client document."""
+    """True for OS/Office/sync junk that never counts as a client document."""
     name = path.name.lower()
-    return (
+    if (
         name in _IGNORED_NAMES
         or name.startswith(_IGNORED_PREFIXES)
         or name.endswith(_IGNORED_SUFFIXES)
-    )
+    ):
+        return True
+    # Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
+    # directories (.tmp.driveupload / .tmp.drivedownload); anything under
+    # one is a partial transfer, not a delivered document.
+    return any(part.lower().startswith(".tmp.drive") for part in path.parts[:-1])
 
 
 def is_cloud_placeholder(path: Path) -> bool:
-    """True if ``path`` is a OneDrive files-on-demand placeholder.
+    """True if ``path`` is a cloud-only placeholder (OneDrive Files
+    On-Demand or Google Drive for desktop streaming mode).
 
     Passive: inspects Windows file-attribute flags only, never opens the
     file (opening would force a download). On non-Windows platforms, or on
@@ -147,10 +164,20 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
             path=path,
             ok=False,
             pending_sync=True,
-            reason="cloud-only placeholder; waiting for OneDrive to sync",
+            reason="cloud-only placeholder; waiting for OneDrive/Google Drive to sync",
         )
 
     extension = path.suffix.lower().lstrip(".")
+    if extension in _GOOGLE_STUB_EXTENSIONS:
+        return FileResult(
+            path=path,
+            ok=False,
+            reason=(
+                f".{extension} is a Google Docs shortcut, not the document "
+                "itself; ask the client to download it (File > Download > "
+                "PDF or Excel) and upload that copy"
+            ),
+        )
     if item.allowed_extensions and extension not in item.allowed_extensions:
         allowed = ", ".join(item.allowed_extensions)
         return FileResult(
@@ -192,7 +219,7 @@ def sha256_of(path: Path) -> str:
     """Content hash used by the scanner to de-duplicate versioned uploads.
 
     Only call on files that passed the placeholder check — reading a
-    cloud-only file forces OneDrive to download it.
+    cloud-only file forces the sync client to download it.
     """
     digest = hashlib.sha256()
     with path.open("rb") as fh:

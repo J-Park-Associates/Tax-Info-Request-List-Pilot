@@ -151,7 +151,7 @@ def _scan_item(
             facts.append(f"{len(pending)} more file(s) still syncing")
     elif pending:
         status = Status.PENDING_SYNC
-        facts.insert(0, f"{len(pending)} file(s) still syncing from OneDrive")
+        facts.insert(0, f"{len(pending)} file(s) still syncing from the cloud")
     elif count > 0:
         status = Status.PARTIAL
         facts.insert(0, f"{count} of {item.expected_count} expected files")

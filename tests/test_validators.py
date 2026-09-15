@@ -53,6 +53,31 @@ def test_junk_files_ignored(tmp_path):
     assert not is_ignored(Path("statement.pdf"))
 
 
+def test_google_drive_transfer_temps_ignored(tmp_path):
+    # Google Drive for desktop stages in-flight transfers as hidden
+    # ".tmp.drive*" entries — both loose files and staging directories.
+    (tmp_path / "w2.pdf.tmp.driveupload").write_bytes(b"partial")
+    staging = tmp_path / ".tmp.drivedownload"
+    staging.mkdir()
+    (staging / "chunk.bin").write_bytes(b"partial")
+    (tmp_path / "real.pdf").write_bytes(b"data")
+
+    names = [p.name for p in iter_candidate_files(tmp_path)]
+    assert names == ["real.pdf"]
+
+
+def test_google_native_stub_fails_with_guidance(tmp_path):
+    # A .gsheet is a shortcut to a cloud document, not the document itself:
+    # it must fail tier 2 with an actionable note, even with no whitelist.
+    stub = tmp_path / "P&L 2025.gsheet"
+    stub.write_text('{"url": "https://docs.google.com/..."}')
+    result = check_file(stub, ANY_ITEM)
+    assert result.ok is False
+    assert result.pending_sync is False
+    assert "Google Docs shortcut" in result.reason
+    assert "Download" in result.reason
+
+
 def test_missing_and_empty_folders(tmp_path):
     missing = check_folder(tmp_path / "nope", ANY_ITEM)
     assert missing.exists is False and missing.files == []
@@ -130,7 +155,7 @@ def test_placeholder_skipped_not_read(tmp_path, monkeypatch):
     result = check_file(ghost, PDF_ITEM)
     assert result.pending_sync is True
     assert result.ok is False
-    assert "OneDrive" in result.reason
+    assert "OneDrive/Google Drive" in result.reason
 
 
 def test_check_folder_classification(tmp_path, monkeypatch):

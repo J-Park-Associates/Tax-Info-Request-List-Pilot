@@ -100,6 +100,7 @@ def test_creates_folders_and_readme(engagement):
     assert "[12 files expected]" in readme
     assert "C01" not in readme                    # waived items dropped
     assert "J Park & Associates" in readme
+    assert "Google Docs" in readme                # export-first guidance
 
 
 def test_idempotent_rerun_creates_nothing(engagement):

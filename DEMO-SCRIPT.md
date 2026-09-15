@@ -160,8 +160,8 @@ banner explains the update was safely parked and merges next scan.
   prefix, tolerant of renames.
 - **"What about scanned paper documents?"** Text PDFs are read directly; pure
   image scans are flagged for human review (OCR is an optional add-on).
-- **"Where do files live?"** Any shared folder — in production, a OneDrive
-  folder shared per engagement; only the request folders are shared, the
+- **"Where do files live?"** Any shared folder — in production, a OneDrive or
+  Google Drive folder shared per engagement; only the request folders are shared, the
   tracking sheet stays private to the firm.
 - **"What does a wrong upload do?"** Nothing destructive — it's flagged with
   a reason; the client just drops in a replacement.
