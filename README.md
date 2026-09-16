@@ -72,11 +72,42 @@ The portable Windows build is the full app: it writes real folders and a real
    Validation / Received / Pending Sync, with plain-English notes
 7. Open the manifest in Excel to see where everything stands, and the index
    to see how any given file got there
+8. `python -m tracker.reminder <engagement_dir>` — drafts the "still waiting
+   on these" email from what the scanner found. **It only drafts it** — there
+   is no SMTP anywhere in the module; a person reads it, edits it and sends it
 
 Run steps 5 and 6 together on a schedule (Task Scheduler or cron).
 `--dry-run` works on both and previews without writing or moving anything.
 A `Manual Override` column (Accepted / Waived) lets accountant judgment
 beat the rules.
+
+### Chasing what's still outstanding
+
+```
+python -m tracker.reminder "Smith Family 2025" --client "John Smith" \
+    --link "https://drive.google.com/drive/folders/..." --due 2026-03-15 --write
+```
+
+The draft asks for Missing, Partial and Failed rows and nothing else —
+`Received` is in, `Pending Sync` is in and still copying down, and a
+`Waived` or `Accepted` row was already decided by a person. Internal
+validation notes never reach the client: each one is translated into a plain
+instruction ("the file is password-protected; please send an unlocked copy")
+by deterministic rules, with a safe generic ask when the cause isn't
+recognized.
+
+Two things are deliberately held back from the client and reported to the
+accountant instead:
+
+- A row whose only problem is that **we** haven't read it yet (an un-OCR'd
+  scan). The document may be perfect; asking a client to resend it is how a
+  firm looks careless.
+- A row with no request folder. We can't tell a client we never received
+  something we never made a place to put — that's a scaffold problem.
+
+And if files are still sitting in `00 - Needs Review`, the CLI says so before
+you send: those are documents the client *has* already sent, so a reminder
+over the top of them risks asking for something already in hand.
 
 ### Returning clients: last year is the starting point
 

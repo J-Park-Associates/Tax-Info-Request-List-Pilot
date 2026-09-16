@@ -7,7 +7,10 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - validators    : tier 1-2 file checks + dry-run preview CLI
 - content_check : tier 3 text extraction + rules + verdict cache
 - scanner       : orchestrator (scan, resolve, write back)
-- reminder      : draft client reminder emails                (pending)
+- router        : deterministic routing of a dropped file to one request
+- filer         : sort the drop folder, preserve originals, write _index.xlsx
+- rollover      : build a returning client's list from their prior year
+- reminder      : draft (never send) the client reminder email
 """
 
 from tracker.manifest import (
