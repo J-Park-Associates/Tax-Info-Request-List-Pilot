@@ -30,6 +30,10 @@ log = logging.getLogger("tracker.manifest")
 
 SHEET_NAME = "Requests"
 UNFILED_SHEET_NAME = "Unfiled"
+#: Who the engagement is for and how it is chased. Lives in the manifest so
+#: the folder carries everything the scheduled run needs to know about it -
+#: there is no separate registry file for a person to keep in step.
+ENGAGEMENT_SHEET_NAME = "Engagement"
 
 # ---------------------------------------------------------------- schema ----
 
@@ -128,6 +132,37 @@ class RequestItem:
     file_count: int | None = None
     validation_notes: str = ""
     row: int = 0                               # Excel row this item came from
+
+
+@dataclass(frozen=True, slots=True)
+class EngagementInfo:
+    """The Engagement sheet: who this is for and how the run should treat it.
+
+    Every field is optional. A manifest without the sheet (one made before
+    it existed) loads as all defaults and is still processed.
+    """
+
+    client: str = ""        # greeting name in the reminder
+    name: str = ""          # engagement label; the folder name if blank
+    link: str = ""          # share link to the client's drop folder
+    due: dt.date | None = None
+    sender: str = ""        # who the reminder is from
+    firm: str = ""          # sign-off line
+    reminders: bool = True  # False: this client is not chased by email
+    active: bool = True     # False: the scheduled run skips this folder
+
+
+#: Row labels on the Engagement sheet, in the order they are written.
+ENGAGEMENT_FIELDS = (
+    ("Client", "client"),
+    ("Engagement Name", "name"),
+    ("Share Link", "link"),
+    ("Due Date", "due"),
+    ("Sender", "sender"),
+    ("Firm", "firm"),
+    ("Reminders", "reminders"),
+    ("Active", "active"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -560,6 +595,121 @@ def write_statuses(
     return False
 
 
+# ------------------------------------------------------------ engagement ----
+
+
+def _parse_yes_no(value: object, label: str, default: bool) -> bool:
+    text = _cell_str(value).lower()
+    if not text:
+        return default
+    if isinstance(value, bool):
+        return value
+    if text in ("yes", "y", "true", "1"):
+        return True
+    if text in ("no", "n", "false", "0"):
+        return False
+    raise ManifestError(
+        f"{ENGAGEMENT_SHEET_NAME} sheet: {label} must be yes or no, got {value!r}"
+    )
+
+
+def _engagement_from_sheet(ws) -> EngagementInfo:
+    raw: dict[str, object] = {}
+    for row in ws.iter_rows(min_row=1, max_col=2, values_only=True):
+        if not row or not _cell_str(row[0]):
+            continue
+        raw[_cell_str(row[0]).lower()] = row[1] if len(row) > 1 else None
+    values: dict[str, object] = {}
+    for label, field_name in ENGAGEMENT_FIELDS:
+        value = raw.get(label.lower())
+        if field_name == "due":
+            values[field_name] = _parse_date(value, label, 0)
+        elif field_name in ("reminders", "active"):
+            values[field_name] = _parse_yes_no(value, label, True)
+        else:
+            values[field_name] = _cell_str(value)
+    return EngagementInfo(**values)
+
+
+def load_engagement_info(path: Path | str) -> EngagementInfo:
+    """The Engagement sheet of ``path``; all defaults if the sheet is absent."""
+    path = Path(path)
+    if not path.exists():
+        raise ManifestError(f"Manifest not found: {path}")
+    try:
+        wb = load_workbook(path, data_only=True)
+    except Exception as exc:
+        raise ManifestError(f"Could not open {path}: {exc}") from exc
+    try:
+        if ENGAGEMENT_SHEET_NAME not in wb.sheetnames:
+            return EngagementInfo()
+        return _engagement_from_sheet(wb[ENGAGEMENT_SHEET_NAME])
+    finally:
+        wb.close()
+
+
+def _write_engagement_sheet(wb: Workbook, info: EngagementInfo) -> None:
+    if ENGAGEMENT_SHEET_NAME in wb.sheetnames:
+        del wb[ENGAGEMENT_SHEET_NAME]
+    ws = wb.create_sheet(ENGAGEMENT_SHEET_NAME)
+    ws.column_dimensions["A"].width = 18
+    ws.column_dimensions["B"].width = 60
+    for row, (label, field_name) in enumerate(ENGAGEMENT_FIELDS, start=1):
+        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+        value = getattr(info, field_name)
+        if isinstance(value, bool):
+            value = "yes" if value else "no"
+        elif isinstance(value, dt.date):
+            cell = ws.cell(row=row, column=2, value=value)
+            cell.number_format = DATE_FORMAT
+            continue
+        ws.cell(row=row, column=2, value=value or None)
+    note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1,
+                   value="Reminders: no = this client is not chased by email. "
+                         "Active: no = the scheduled run skips this folder.")
+    note.font = Font(italic=True, color="666666")
+
+
+def write_engagement_info(path: Path | str, info: EngagementInfo) -> None:
+    """Replace the Engagement sheet. Raises PermissionError if Excel has the file."""
+    path = Path(path)
+    wb = load_workbook(path)
+    try:
+        _write_engagement_sheet(wb, info)
+        save_workbook_atomically(wb, path)
+    finally:
+        wb.close()
+
+
+def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
+    """Append ``keyword`` to a row's Any Keywords so the next such file routes itself.
+
+    Returns False if the row already had it. Raises PermissionError when
+    Excel holds the manifest - the caller decides whether that matters.
+    """
+    path = Path(path)
+    keyword = keyword.strip()
+    if not keyword:
+        return False
+    wb = load_workbook(path)
+    try:
+        ws = wb[SHEET_NAME]
+        columns = _header_map(ws)
+        for row in range(2, (ws.max_row or 1) + 1):
+            if _cell_str(ws.cell(row=row, column=columns[COL_IDENTIFIER]).value) != identifier:
+                continue
+            cell = ws.cell(row=row, column=columns[COL_ANY_KEYWORDS])
+            existing = _csv_tuple(cell.value)
+            if keyword.lower() in (k.lower() for k in existing):
+                return False
+            cell.value = ", ".join((*existing, keyword))
+            save_workbook_atomically(wb, path)
+            return True
+        raise ManifestError(f"No request {identifier!r} in {path.name}")
+    finally:
+        wb.close()
+
+
 # --------------------------------------------------------------- template ----
 
 _COLUMN_WIDTHS = {
@@ -580,9 +730,15 @@ _COLUMN_WIDTHS = {
 }
 
 
-def create_template(path: Path | str, items: Iterable[RequestItem] = ()) -> Path:
+def create_template(
+    path: Path | str,
+    items: Iterable[RequestItem] = (),
+    info: EngagementInfo | None = None,
+) -> Path:
     """Create a fresh manifest workbook at ``path``, optionally seeded with rows.
 
+    Always writes the Engagement sheet (defaults when ``info`` is None) so
+    the person opening the workbook sees where the client's details go.
     Refuses to overwrite an existing file — a live manifest carries scanner
     state and must never be clobbered by a re-run.
     """
@@ -611,6 +767,8 @@ def create_template(path: Path | str, items: Iterable[RequestItem] = ()) -> Path
         ws.cell(row=row, column=9, value=item.date_pattern or None)
         ws.cell(row=row, column=10, value=item.manual_override or None)
 
+    _write_engagement_sheet(wb, info or EngagementInfo())
+    wb.active = 0
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
     wb.close()

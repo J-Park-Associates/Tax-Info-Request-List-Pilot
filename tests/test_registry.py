@@ -1,166 +1,143 @@
-"""Tests for tracker/registry.py — a typo must never silently skip a client."""
+"""Tests for tracker/registry.py — an engagement is a folder with a manifest in it.
+
+The rule under test: nothing has to be registered. The scheduled run walks
+the clients folder, finds every manifest, and reads each one's Engagement
+sheet. A client nobody typed into a list is still found; a manifest nobody
+can read is still reported.
+"""
 
 import datetime as dt
 
 import pytest
 
+from tracker.manifest import EngagementInfo, RequestItem, create_template
 from tracker.registry import (
+    MAX_DEPTH,
     Engagement,
     RegistryError,
-    create_registry_template,
-    load_registry,
+    discover_engagements,
+    engagement_dirs,
 )
+from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 
-GOOD = """
-root: /clients
-defaults:
-  firm: J Park & Associates, CPA
-  sender: Jason Park
-  reminders: true
-engagements:
-  - path: Smith Family 2025
-    client: John Smith
-    link: https://drive.example/abc
-    due: 2026-03-15
-  - path: Acme Corp TY2025
-    client: Dana Lee
-    reminders: false
-  - path: /elsewhere/Old Client 2024
-    active: false
-"""
+ITEMS = [RequestItem(identifier="A01", document="W-2")]
 
 
-def registry(tmp_path, text=GOOD, name="engagements.yaml"):
-    path = tmp_path / name
-    path.write_text(text, encoding="utf-8")
-    return load_registry(path)
+def make(root, *parts, info=None, scaffold=False):
+    folder = root.joinpath(*parts)
+    folder.mkdir(parents=True)
+    create_template(folder / MANIFEST_FILENAME, ITEMS, info)
+    if scaffold:
+        scaffold_engagement(folder)
+    return folder
 
 
-def test_entries_inherit_defaults(tmp_path):
-    smith = registry(tmp_path).engagements[0]
-    assert smith.firm == "J Park & Associates, CPA"
-    assert smith.sender == "Jason Park"
-    assert smith.client == "John Smith"
-    assert smith.due == dt.date(2026, 3, 15)
+def test_every_folder_with_a_manifest_is_an_engagement(tmp_path):
+    a = make(tmp_path, "Smith", "Smith 2025")
+    b = make(tmp_path, "Acme Corp TY2025")
+    c = make(tmp_path, "Office B", "Trusts", "Jones Trust 2025")
+    assert engagement_dirs(tmp_path) == sorted([a, b, c])
 
 
-def test_an_entry_overrides_the_default(tmp_path):
-    acme = registry(tmp_path).engagements[1]
-    assert acme.reminders is False
-    assert acme.firm == "J Park & Associates, CPA", "unset fields still inherit"
+def test_an_engagements_own_subfolders_are_never_engagements(tmp_path):
+    outer = make(tmp_path, "Smith 2025", scaffold=True)
+    # A stray manifest inside Prepared/ (or anywhere below) does not split
+    # the engagement in two.
+    create_template(outer / "Prepared" / MANIFEST_FILENAME, ITEMS)
+    assert engagement_dirs(tmp_path) == [outer]
 
 
-def test_relative_paths_hang_off_root_and_absolute_ones_do_not(tmp_path):
-    loaded = registry(tmp_path)
-    assert loaded.engagements[0].path.as_posix() == "/clients/Smith Family 2025"
-    assert loaded.engagements[2].path.as_posix() == "/elsewhere/Old Client 2024"
+def test_hidden_and_underscore_folders_are_skipped(tmp_path):
+    make(tmp_path, ".tmp.driveupload", "Ghost 2025")
+    make(tmp_path, "_archive", "Old 2019")
+    real = make(tmp_path, "Real 2025")
+    assert engagement_dirs(tmp_path) == [real]
 
 
-def test_without_root_paths_are_taken_as_given(tmp_path):
-    loaded = registry(tmp_path, "engagements:\n  - path: Smith 2025\n")
-    assert loaded.engagements[0].path.as_posix() == "Smith 2025"
+def test_discovery_is_depth_limited(tmp_path):
+    deep = make(tmp_path, *[f"level{i}" for i in range(MAX_DEPTH + 1)], "Too Deep 2025")
+    shallow = make(tmp_path, "Shallow 2025")
+    assert engagement_dirs(tmp_path) == [shallow]
+    assert deep not in engagement_dirs(tmp_path)
 
 
-def test_inactive_engagements_are_kept_but_not_active(tmp_path):
-    loaded = registry(tmp_path)
-    assert len(loaded.engagements) == 3
-    assert [e.label for e in loaded.active] == ["Smith Family 2025", "Acme Corp TY2025"]
+def test_the_engagement_sheet_drives_the_run(tmp_path):
+    make(tmp_path, "Smith 2025", info=EngagementInfo(
+        client="John Smith", link="https://drive.example/abc",
+        due=dt.date(2026, 3, 15), sender="Jason Park", firm="J Park",
+    ))
+    make(tmp_path, "Acme TY2025", info=EngagementInfo(client="Dana Lee", reminders=False))
+    make(tmp_path, "Old 2024", info=EngagementInfo(active=False))
+
+    registry = discover_engagements(tmp_path)
+    by_label = {e.label: e for e in registry.engagements}
+    smith = by_label["Smith 2025"]
+    assert smith.client == "John Smith" and smith.due == dt.date(2026, 3, 15)
+    assert smith.link == "https://drive.example/abc" and smith.sender == "Jason Park"
+    assert by_label["Acme TY2025"].reminders is False
+    assert by_label["Old 2024"].active is False
+    assert [e.label for e in registry.active] == ["Acme TY2025", "Smith 2025"]
+    assert registry.source == tmp_path
 
 
-def test_yaml_dates_are_accepted_as_well_as_strings(tmp_path):
-    """PyYAML parses an unquoted 2026-03-15 into a date object already."""
-    loaded = registry(tmp_path, "engagements:\n  - path: A\n    due: 2026-03-15\n")
-    assert loaded.engagements[0].due == dt.date(2026, 3, 15)
+def test_a_manifest_without_the_sheet_is_still_an_engagement(tmp_path):
+    from openpyxl import load_workbook
+
+    folder = make(tmp_path, "Made Before The Sheet 2024")
+    wb = load_workbook(folder / MANIFEST_FILENAME)
+    del wb["Engagement"]
+    wb.save(folder / MANIFEST_FILENAME)
+    [engagement] = discover_engagements(tmp_path).engagements
+    assert engagement.active and engagement.reminders and engagement.client == ""
+    assert engagement.problem == ""
+
+
+def test_an_unreadable_manifest_is_listed_with_its_problem_not_dropped(tmp_path):
+    folder = tmp_path / "Broken 2025"
+    folder.mkdir()
+    (folder / MANIFEST_FILENAME).write_bytes(b"not a workbook")
+    make(tmp_path, "Fine 2025")
+    registry = discover_engagements(tmp_path)
+    broken = next(e for e in registry.engagements if e.path == folder)
+    assert "Could not open" in broken.problem
+    assert len(registry.engagements) == 2
+
+
+def test_a_bad_yes_no_on_the_sheet_is_reported_not_guessed(tmp_path):
+    from openpyxl import load_workbook
+
+    folder = make(tmp_path, "Smith 2025")
+    wb = load_workbook(folder / MANIFEST_FILENAME)
+    ws = wb["Engagement"]
+    for row in ws.iter_rows(min_row=1, max_col=2):
+        if row[0].value == "Reminders":
+            row[1].value = "maybe"
+    wb.save(folder / MANIFEST_FILENAME)
+    [engagement] = discover_engagements(tmp_path).engagements
+    assert "Reminders must be yes or no" in engagement.problem
 
 
 def test_find_matches_label_or_path(tmp_path):
-    loaded = registry(tmp_path)
-    assert [e.label for e in loaded.find("smith")] == ["Smith Family 2025"]
-    assert [e.label for e in loaded.find("/elsewhere")] == ["Old Client 2024"]
-    assert loaded.find("nobody") == []
+    make(tmp_path, "Smith Family 2025", info=EngagementInfo(name="Smiths"))
+    make(tmp_path, "Acme 2025")
+    registry = discover_engagements(tmp_path)
+    assert [e.label for e in registry.find("smith")] == ["Smiths"]
+    assert [e.label for e in registry.find("acme")] == ["Acme 2025"]
+    assert registry.find("nobody") == []
 
 
 def test_label_falls_back_to_the_folder_name(tmp_path):
-    loaded = registry(tmp_path, "engagements:\n  - path: /x/Smith 2025\n"
-                                "    name: Smith Family Individual\n")
-    assert loaded.engagements[0].label == "Smith Family Individual"
-    assert Engagement(path=loaded.engagements[0].path).label == "Smith 2025"
+    folder = tmp_path / "Smith 2025"
+    assert Engagement(path=folder).label == "Smith 2025"
+    assert Engagement(path=folder, name="The Smiths").label == "The Smiths"
 
 
-# ------------------------------------------------------------ failing loud ----
+def test_a_root_that_is_not_a_folder_is_an_error(tmp_path):
+    with pytest.raises(RegistryError, match="not a folder"):
+        discover_engagements(tmp_path / "nowhere")
 
 
-def test_a_missing_registry_is_an_error(tmp_path):
-    with pytest.raises(RegistryError, match="no registry at"):
-        load_registry(tmp_path / "nope.yaml")
-
-
-def test_an_empty_registry_is_an_error(tmp_path):
-    with pytest.raises(RegistryError, match="empty"):
-        registry(tmp_path, "\n")
-
-
-def test_no_engagements_is_an_error(tmp_path):
-    with pytest.raises(RegistryError, match="no engagements listed"):
-        registry(tmp_path, "defaults:\n  firm: X\n")
-
-
-def test_a_misspelled_key_is_rejected_not_ignored(tmp_path):
-    """Silently ignoring 'reminder' would mean nobody ever gets chased."""
-    with pytest.raises(RegistryError, match="reminder"):
-        registry(tmp_path, "engagements:\n  - path: A\n    reminder: true\n")
-
-
-def test_a_misspelled_top_level_key_is_rejected(tmp_path):
-    with pytest.raises(RegistryError, match="engagments"):
-        registry(tmp_path, "engagments:\n  - path: A\n")
-
-
-def test_a_missing_path_is_an_error(tmp_path):
-    with pytest.raises(RegistryError, match="path is required"):
-        registry(tmp_path, "engagements:\n  - client: John\n")
-
-
-def test_a_bad_date_names_the_engagement(tmp_path):
-    with pytest.raises(RegistryError, match="Smith 2025.*YYYY-MM-DD"):
-        registry(tmp_path, "engagements:\n  - path: Smith 2025\n    due: next friday\n")
-
-
-def test_a_non_boolean_flag_is_an_error(tmp_path):
-    with pytest.raises(RegistryError, match="must be true or false"):
-        registry(tmp_path, "engagements:\n  - path: A\n    reminders: maybe\n")
-
-
-def test_a_duplicated_path_is_an_error(tmp_path):
-    """The same folder twice means filing and scanning it twice per run."""
-    with pytest.raises(RegistryError, match="repeats the path"):
-        registry(tmp_path, "engagements:\n  - path: A\n  - path: A\n")
-
-
-def test_malformed_yaml_is_reported_as_such(tmp_path):
-    with pytest.raises(RegistryError, match="not valid YAML"):
-        registry(tmp_path, "engagements:\n  - path: [unclosed\n")
-
-
-def test_missing_folders_are_not_rejected_at_load_time(tmp_path):
-    """One mistyped path must not stop the other clients from being processed."""
-    loaded = registry(tmp_path, "engagements:\n  - path: /no/such/folder\n")
-    assert loaded.engagements[0].path.as_posix() == "/no/such/folder"
-
-
-# ------------------------------------------------------------------ template ----
-
-
-def test_the_starter_registry_is_valid_and_loads(tmp_path):
-    path = create_registry_template(tmp_path / "engagements.yaml")
-    loaded = load_registry(path)
-    assert [e.label for e in loaded.engagements] == ["Smith Family 2025"]
-    assert loaded.engagements[0].firm == "J Park & Associates, CPA"
-
-
-def test_the_template_never_clobbers_a_live_registry(tmp_path):
-    path = tmp_path / "engagements.yaml"
-    path.write_text(GOOD, encoding="utf-8")
-    with pytest.raises(RegistryError, match="Refusing to overwrite"):
-        create_registry_template(path)
-    assert path.read_text(encoding="utf-8") == GOOD
+def test_a_root_with_no_engagement_is_an_error_not_a_quiet_no_op(tmp_path):
+    (tmp_path / "Empty").mkdir()
+    with pytest.raises(RegistryError, match="no engagement found"):
+        discover_engagements(tmp_path)

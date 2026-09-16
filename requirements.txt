@@ -2,7 +2,6 @@
 openpyxl>=3.1
 pypdf>=6
 pdfplumber>=0.11
-PyYAML>=6          # engagements.yaml registry (tracker/registry.py)
 
 # Optional OCR fallback for scanned/image-only PDFs. Without these,
 # such PDFs are flagged "review manually" — nothing breaks.

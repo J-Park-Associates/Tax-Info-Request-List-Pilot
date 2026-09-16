@@ -11,6 +11,7 @@ Commands:
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
   scan      run a full scan and write the manifest back
+  assign    file one Needs Review document under a request (a person's call)
   reset     rebuild the entire marketing demo from scratch:
             engagement folder, manifest, folder tree, sample client docs
 """
@@ -27,14 +28,24 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 
 from tracker.manifest import (
+    EngagementInfo,
     ManifestError,
     UNFILED_SHEET_NAME,
     create_template,
+    load_engagement_info,
     load_manifest,
     pending_updates,
     with_pending,
+    write_engagement_info,
 )
-from tracker.filer import INDEX_FILENAME, file_drops, read_index
+from tracker.registry import engagement_dirs
+from tracker.filer import (
+    INDEX_FILENAME,
+    FilingError,
+    assign_review_file,
+    file_drops,
+    read_index,
+)
 from tracker.rollover import detect_year, roll_forward, write_rollover_manifest
 from tracker.scaffold import (
     MANIFEST_FILENAME,
@@ -258,6 +269,43 @@ def _read_unfiled(manifest_path: Path) -> list[dict]:
         wb.close()
 
 
+def _info_payload(info: EngagementInfo) -> dict:
+    return {
+        "client": info.client, "name": info.name, "link": info.link,
+        "due": info.due.isoformat() if info.due else "", "sender": info.sender,
+        "firm": info.firm, "reminders": info.reminders, "active": info.active,
+    }
+
+
+def _info_from_spec(spec: dict, *, name: str, carry: EngagementInfo | None = None) -> EngagementInfo:
+    """The Engagement sheet for a new engagement: what the wizard sent, over
+    what last year's sheet said (rollover), over the firm default."""
+    base = carry or EngagementInfo()
+
+    def text(key: str, fallback: str) -> str:
+        value = spec.get(key)
+        return str(value).strip() if value not in (None, "") else fallback
+
+    due_raw = str(spec.get("due", "") or "").strip()
+    if due_raw:
+        try:
+            due = dt.date.fromisoformat(due_raw)
+        except ValueError:
+            raise ManifestError(f"Due date must be YYYY-MM-DD, got {due_raw!r}") from None
+    else:
+        due = None   # a new year never inherits last year's deadline
+    return EngagementInfo(
+        client=text("client", base.client),
+        name=name,
+        link=text("link", ""),          # a new folder has a new share link
+        due=due,
+        sender=text("sender", base.sender),
+        firm=text("firm", base.firm or CONTACT),
+        reminders=bool(spec.get("reminders", base.reminders)),
+        active=True,
+    )
+
+
 def _engagement_name(requested: str, fallback: str) -> str:
     """A folder name from what the user typed, or the fallback if nothing usable is left."""
     name = sanitize_component(requested.strip())
@@ -268,8 +316,10 @@ def _state(engagement: Path) -> dict:
     manifest_path = engagement / MANIFEST_FILENAME
     deferred = pending_updates(manifest_path)
     items = with_pending(load_manifest(manifest_path), deferred)
+    info = load_engagement_info(manifest_path)
     return {
         "pending_statuses": len(deferred),
+        "engagement": _info_payload(info),
         "items": [
             {
                 "identifier": i.identifier,
@@ -406,18 +456,20 @@ def _cmd_templates(argv: list[str]) -> dict:
 
 
 def _cmd_list(argv: list[str]) -> dict:
+    """Every engagement under the root - the same discovery the scheduled run uses."""
     engagements = []
     if DEMO_ROOT.is_dir():
-        for child in sorted(DEMO_ROOT.iterdir()):
-            if child.is_dir() and (child / MANIFEST_FILENAME).exists():
-                engagements.append({"name": child.name, "path": str(child)})
+        for child in engagement_dirs(DEMO_ROOT):
+            engagements.append({"name": child.name, "path": str(child)})
     return {"engagements": engagements}
 
 
 def _cmd_create(argv: list[str]) -> dict:
     """Create a new engagement from a JSON spec on stdin:
-    {"name": "...", "form": "1040",
+    {"name": "...", "form": "1040", "client": "...", "link": "...", "due": "YYYY-MM-DD",
      "items": [{identifier, document, extensions, ...}, ...]}
+    client/link/due land on the manifest's Engagement sheet, which is all the
+    scheduled run needs - there is no registry to add the engagement to.
     """
     spec = json.loads(sys.stdin.read() or "{}")
     form = str(spec.get("form", "")).strip()
@@ -433,9 +485,10 @@ def _cmd_create(argv: list[str]) -> dict:
     if not items:
         raise ManifestError("Select at least one request item")
 
+    info = _info_from_spec(spec, name=name)
     engagement.mkdir(parents=True)
     try:
-        create_template(engagement / MANIFEST_FILENAME, items)
+        create_template(engagement / MANIFEST_FILENAME, items, info)
         scaffold_engagement(engagement, contact=CONTACT)  # validates the manifest too
     except Exception:
         shutil.rmtree(engagement, ignore_errors=True)  # never leave a half-built one
@@ -446,18 +499,18 @@ def _cmd_create(argv: list[str]) -> dict:
 def _cmd_priors(argv: list[str]) -> dict:
     """Engagements already on disk that a new year could be rolled from."""
     priors = []
-    if DEMO_ROOT.exists():
-        for child in sorted(DEMO_ROOT.iterdir()):
+    if DEMO_ROOT.is_dir():
+        for child in engagement_dirs(DEMO_ROOT):
             manifest = child / MANIFEST_FILENAME
-            if not manifest.is_file():
-                continue
             try:
                 items = load_manifest(manifest)
+                info = load_engagement_info(manifest)
             except ManifestError:
                 continue
             priors.append({
                 "name": child.name,
                 "path": str(child),
+                "client": info.client,
                 "year": detect_year(items),
                 "requests": len(items),
                 "received": sum(1 for i in items if i.status == "Received"),
@@ -499,9 +552,12 @@ def _cmd_rollover(argv: list[str]) -> dict:
     if engagement.exists():
         raise ManifestError(f"An engagement named '{name}' already exists")
 
+    carried = load_engagement_info(prior / MANIFEST_FILENAME)
+    info = _info_from_spec(spec, name=name, carry=carried)
     engagement.mkdir(parents=True)
     try:
         write_rollover_manifest(engagement / MANIFEST_FILENAME, report)
+        write_engagement_info(engagement / MANIFEST_FILENAME, info)
         scaffold_engagement(engagement, contact=CONTACT)
     except Exception:
         shutil.rmtree(engagement, ignore_errors=True)
@@ -529,6 +585,48 @@ def _cmd_rollover(argv: list[str]) -> dict:
     }
 
 
+def _cmd_assign(argv: list[str]) -> dict:
+    """File one parked document under a request, by a person's decision.
+
+    JSON spec on stdin: {"original": "<PBC location or original name>",
+                         "identifier": "A01", "keyword": "optional"}
+    The working copy is filed under the canonical name, the index row is
+    rewritten as Filed (attributed to a person), the keyword - if given - is
+    added to the request so the next such file routes itself, and the
+    engagement is re-scanned so the status reflects it straight away.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    original = str(spec.get("original", "")).strip()
+    identifier = str(spec.get("identifier", "")).strip()
+    if not original or not identifier:
+        raise ManifestError("Pick the file and the request it belongs to")
+    result = assign_review_file(
+        engagement, original, identifier, keyword=str(spec.get("keyword", "") or "")
+    )
+    scan_note = ""
+    try:
+        scan = scan_engagement(engagement)
+        if not scan.written:
+            scan_note = "manifest open in Excel; status update saved to the sidecar"
+    except ScanLockedError as exc:
+        scan_note = f"not re-scanned: {exc}"
+    return {
+        "assigned": {
+            "original_name": result.entry.original_name,
+            "identifier": result.entry.identifier,
+            "filed_as": result.entry.filed_as,
+            "prepared_location": result.entry.prepared_location,
+            "moved_review_copy": result.moved_review_copy,
+            "keyword": result.keyword,
+            "keyword_note": result.keyword_note,
+            "index_deferred": result.index_deferred,
+            "scan_note": scan_note,
+        },
+        "state": _state(engagement),
+    }
+
+
 COMMANDS = {
     "state": _cmd_state,
     "scaffold": _cmd_scaffold,
@@ -540,6 +638,7 @@ COMMANDS = {
     "templates": _cmd_templates,
     "list": _cmd_list,
     "create": _cmd_create,
+    "assign": _cmd_assign,
 }
 
 
@@ -549,7 +648,7 @@ def main(argv: list[str]) -> int:
         return 1
     try:
         payload = COMMANDS[argv[0]](argv[1:])
-    except (ManifestError, ScanLockedError) as exc:
+    except (ManifestError, ScanLockedError, FilingError) as exc:
         print(json.dumps({"error": str(exc)}))
         return 1
     except Exception as exc:  # surface anything else as JSON, not a traceback

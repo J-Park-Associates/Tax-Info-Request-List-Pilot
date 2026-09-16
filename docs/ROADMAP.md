@@ -74,6 +74,8 @@ into the manifest.
 | 24 | Re-sent document, working copy gone | **Re-file it.** A re-send is the client answering *Missing*; calling it a duplicate of a copy somebody deleted would keep the row Missing for good. The original was always safe in `PBC/`. |
 | 25 | Document renamed in Excel | **Same folder.** New files go into the folder that already holds the request's earlier files (prefix rule), not a second folder built from the new name. |
 | 26 | Excel open during the Saturday scan | **The draft still knows.** Deferred statuses in `_manifest.pending.json` are overlaid before triage, so the reminder never asks for a document the last scan saw arrive; the draft's footer says how many are waiting. |
+| 27 | The registry | **Gone. An engagement is a folder with a manifest in it.** `engagements.yaml` was a second list a person kept in step with the folders on disk; a mistyped path was a client silently skipped. The run walks the clients root, and each manifest's Engagement sheet (client, link, due, sender, firm, reminders, active) carries what the registry used to. The wizard writes the sheet, so creating an engagement is the only step. |
+| 28 | Needs Review triage | **A click, not a file move.** The person picks the request; the filer moves the parked copy under the canonical name, rewrites the index row as *Filed — assigned by a person*, optionally learns a keyword onto the request, and re-scans. Dragging a copy into a folder by hand can land it under the wrong name or in the wrong folder, and the index never learned the decision. |
 
 ## Architecture
 
@@ -101,10 +103,11 @@ OneDrive / Google Drive (synced locally on Windows)
 ```
 
 One scheduled job runs against the local synced path (Windows Task Scheduler or n8n
-cron) and walks every engagement in `engagements.yaml`:
+cron) and walks the clients folder for every engagement (any folder holding
+`_manifest.xlsx`; the manifest's Engagement sheet carries the client's details):
 
 ```
-python -m tracker.runner engagements.yaml --log
+python -m tracker.runner "D:\OneDrive\Clients" --log
 ```
 
 Per engagement it does, in order:
@@ -184,7 +187,7 @@ no-genAI-on-financial-docs rule.)*
 | 7 | `tracker/filer.py` — sort the drop folder: move each original into `Shared/PBC/` untouched, copy a renamed working file into `Prepared/…` or `00 - Needs Review`, append `_index.xlsx`. Content-hash de-duplication makes re-runs no-ops; cloud-only files are left to finish syncing. CLI: `python -m tracker.filer <engagement_dir> [--dry-run]` | ✅ built + tested |
 | 8 | `tracker/rollover.py` — build a returning client's next-year list from their prior engagement. Prior-year fields always win; the template only fills blanks and its unknown rows are offered rather than added. Years shift as a set (so relative periods stay right), counts learn from what arrived and never shrink, `Waived` carries and `Accepted` does not. Writes a `Carried Forward` sheet explaining every row. CLI: `python -m tracker.rollover <prior_dir> <new_dir> [--form] [--year] [--include-new] [--scaffold]` | ✅ built + tested |
 | 9 | `tracker/reminder.py` — draft client email per engagement from Missing/Partial/Failed rows (draft only — no sending; no SMTP anywhere in the module). Validation notes are translated into plain client instructions, never quoted. Rows we simply have not read yet, and rows with no request folder, are held back for a person instead of being asked for; untriaged `00 - Needs Review` files raise a warning so a reminder never asks for something already in hand. CLI: `python -m tracker.reminder <engagement_dir> [--client] [--link] [--due] [--from-name] [--firm] [--write]` | ✅ built + tested |
-| 10 | Scheduling — `tracker/registry.py` (`engagements.yaml`: one file lists every engagement, validated loudly so a typo cannot silently skip a client), `tracker/runner.py` (one unattended pass: file → scan → draft, with per-engagement failure isolation and a non-zero exit so the scheduler shows a red run), and `tracker/scheduling.py` (generates the Task Scheduler XML / n8n workflow). **Reminders are drafted weekly, on Saturday** — the runner owns the day, so one daily task covers it and a missed Saturday still drafts on the next run. CLI: `python -m tracker.runner <registry> [--only] [--dry-run] [--reminders auto\|always\|never] [--weekday] [--date] [--log]` | ✅ built + tested |
+| 10 | Scheduling — `tracker/registry.py` (discovery: every folder under the clients root holding `_manifest.xlsx` is an engagement; its Engagement sheet supplies client, link, due, reminders and active; an unreadable manifest is listed with its error, never dropped), `tracker/runner.py` (one unattended pass: file → scan → draft, with per-engagement failure isolation and a non-zero exit so the scheduler shows a red run), and `tracker/scheduling.py` (generates the Task Scheduler XML / n8n workflow). **Reminders are drafted weekly, on Saturday** — the runner owns the day, so one daily task covers it and a missed Saturday still drafts on the next run. CLI: `python -m tracker.runner <clients root> [--only] [--dry-run] [--reminders auto\|always\|never] [--weekday] [--date] [--log]` | ✅ built + tested |
 | 11 | `tracker/templates.py` — the per-form request catalog (`FORM_TYPES`, `FORM_TEMPLATES`) and `item_from_spec()`. The one source of truth for the checklists: `templates/*.csv` are generated by `python -m tracker.templates export` and `tests/test_templates.py` (and CI) fail if they drift. A request with no rule gets its own document name as the required keyword. The desktop wizard opens on the returning-client page (`priors` → `rollover`) and falls back to this catalog for a new client. CLI: `python -m tracker.templates export\|check` | ✅ built + tested |
 | 12 | `tracker/locking.py` — the per-engagement lock (`_scan.lock`), taken by the filer while sorting and the scanner while scanning, stale after an hour. One lock, because a sort and a scan overlapping is how an original ends up in `PBC/` with no index row. | ✅ built + tested |
 

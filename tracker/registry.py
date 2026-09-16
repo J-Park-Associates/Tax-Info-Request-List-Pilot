@@ -1,36 +1,32 @@
-"""The list of engagements a scheduled run works through (component 10).
+"""Every engagement the scheduled run should touch, found rather than listed (component 10).
 
-One ``engagements.yaml`` names every engagement the unattended job should
-touch, so adding a client to the nightly run is an edit to one file rather
-than a change to a scheduled task. Everything in it is optional except the
-path — the defaults block fills in the rest.
+There is no registry file. The unattended run is pointed at the folder the
+firm keeps its clients in and walks it for engagement folders - any folder
+holding ``_manifest.xlsx``. What the run needs to know about each one (who
+the client is, the share link, the due date, whether to chase them by email,
+whether the engagement is still active) lives on the manifest's own
+**Engagement** sheet, written by the wizard when the engagement is created.
 
-::
+That is the whole point. The previous ``engagements.yaml`` was a second list
+a person had to keep in step with the folders on disk: a mistyped path or a
+client nobody added was a client silently skipped until a filing deadline.
+A folder with a manifest in it is an engagement; nothing else has to be
+told.
 
-    root: D:\\OneDrive\\Clients          # relative paths hang off this
-    defaults:
-      firm: J Park & Associates, CPA
-      sender: Jason Park
-      reminders: true                   # draft the weekly chase email
-    engagements:
-      - path: Smith Family 2025
-        client: John Smith
-        link: https://drive.google.com/drive/folders/abc123
-        due: 2026-03-15
-      - path: Acme Corp TY2025
-        client: Dana Lee
-        reminders: false                # this one we chase by phone
-      - path: Old Client 2024
-        active: false                   # skipped entirely, kept for the record
+Discovery is bounded and predictable:
 
-Loading fails loudly: an unknown key, a missing path, a malformed date or the
-same folder listed twice all raise :class:`RegistryError` naming the offending
-entry. A scheduled job runs unattended, so a typo that silently skipped a
-client would not be noticed until a filing deadline.
+- It never descends into an engagement folder once found (``Prepared/`` and
+  ``Shared/`` are the engagement's, not other engagements).
+- Folders whose names start with ``.`` or ``_`` are skipped (sync staging,
+  hidden state).
+- Depth is capped so a mistaken root (a whole drive) fails fast instead of
+  crawling for an hour.
 
-Whether an engagement's folder actually exists is *not* checked here. That is
-the runner's business, which reports it per engagement and carries on with
-the rest — one mistyped path must never stop the other clients' runs.
+A manifest that cannot be read is still an engagement: it is listed with its
+error so the runner reports it and moves on, exactly as it would for a
+folder-level problem. A root that is not a folder, or one with no manifest
+under it at all, raises :class:`RegistryError` - that is a typo in the
+scheduled task, not an empty practice.
 """
 
 from __future__ import annotations
@@ -38,23 +34,17 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
-import yaml
+from tracker.manifest import EngagementInfo, ManifestError, load_engagement_info
+from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
 
-REGISTRY_FILENAME = "engagements.yaml"
-
-_TOP_LEVEL_KEYS = {"root", "defaults", "engagements"}
-_ENGAGEMENT_KEYS = {
-    "path", "name", "client", "link", "due", "sender", "firm",
-    "reminders", "active",
-}
-#: Defaults may set anything an engagement can, except its own identity.
-_DEFAULT_KEYS = _ENGAGEMENT_KEYS - {"path", "name", "client", "link", "due"}
+#: How far below the root discovery looks: Clients/{Client}/{Engagement}
+#: is two; four leaves room for a year or office level above that.
+MAX_DEPTH = 4
 
 
 class RegistryError(Exception):
-    """``engagements.yaml`` could not be read or makes no sense."""
+    """The clients root could not be walked, or holds no engagement at all."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +60,7 @@ class Engagement:
     firm: str = ""
     reminders: bool = True
     active: bool = True
+    problem: str = ""   # why the manifest could not be read, if it could not
 
     @property
     def label(self) -> str:
@@ -78,10 +69,9 @@ class Engagement:
 
 @dataclass(slots=True)
 class Registry:
-    """Every engagement named in one ``engagements.yaml``."""
+    """Every engagement found under one clients root."""
 
-    source: Path
-    root: Path | None = None
+    source: Path                       # the root that was walked
     engagements: list[Engagement] = field(default_factory=list)
 
     @property
@@ -97,154 +87,69 @@ class Registry:
         ]
 
 
-# --------------------------------------------------------------- parsing ----
+# ------------------------------------------------------------- discovery ----
 
 
-def _reject_unknown(keys: Any, allowed: set[str], where: str) -> None:
-    unknown = sorted(set(keys) - allowed)
-    if unknown:
-        raise RegistryError(
-            f"{where}: unknown key(s) {', '.join(unknown)}; "
-            f"expected any of {', '.join(sorted(allowed))}"
-        )
+def _skip(folder: Path) -> bool:
+    name = folder.name
+    return name.startswith((".", "_", "~$")) or name in (PREPARED_DIR_NAME, SHARED_DIR_NAME)
 
 
-def _as_bool(value: Any, key: str, where: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    raise RegistryError(f"{where}: {key} must be true or false, got {value!r}")
+def engagement_dirs(root: Path | str, *, max_depth: int = MAX_DEPTH) -> list[Path]:
+    """Every folder under ``root`` holding a manifest, sorted, without descending into one."""
+    root = Path(root)
+    found: list[Path] = []
+
+    def walk(folder: Path, depth: int) -> None:
+        if (folder / MANIFEST_FILENAME).is_file():
+            found.append(folder)
+            return
+        if depth >= max_depth:
+            return
+        try:
+            children = sorted(p for p in folder.iterdir() if p.is_dir())
+        except OSError:
+            return
+        for child in children:
+            if not _skip(child):
+                walk(child, depth + 1)
+
+    walk(root, 0)
+    return found
 
 
-def _as_str(value: Any, key: str, where: str) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, (str, int)):
-        return str(value).strip()
-    raise RegistryError(f"{where}: {key} must be text, got {value!r}")
-
-
-def _as_date(value: Any, where: str) -> dt.date | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, dt.datetime):
-        return value.date()
-    if isinstance(value, dt.date):
-        return value
+def engagement_from(folder: Path) -> Engagement:
+    """One engagement from its folder and Engagement sheet."""
+    folder = Path(folder)
     try:
-        return dt.date.fromisoformat(str(value).strip())
-    except ValueError:
-        raise RegistryError(
-            f"{where}: due must be a date as YYYY-MM-DD, got {value!r}"
-        ) from None
-
-
-def _engagement_from(entry: Any, index: int, defaults: dict, root: Path | None) -> Engagement:
-    where = f"engagement #{index}"
-    if not isinstance(entry, dict):
-        raise RegistryError(f"{where}: expected a mapping, got {entry!r}")
-    _reject_unknown(entry.keys(), _ENGAGEMENT_KEYS, where)
-
-    raw_path = _as_str(entry.get("path"), "path", where)
-    if not raw_path:
-        raise RegistryError(f"{where}: path is required")
-    path = Path(raw_path)
-    if root is not None and not path.is_absolute():
-        path = root / path
-
-    where = f"engagement {raw_path!r}"
-    merged = {**defaults, **entry}
+        info: EngagementInfo = load_engagement_info(folder / MANIFEST_FILENAME)
+    except ManifestError as exc:
+        return Engagement(path=folder, problem=str(exc))
     return Engagement(
-        path=path,
-        name=_as_str(merged.get("name"), "name", where),
-        client=_as_str(merged.get("client"), "client", where),
-        link=_as_str(merged.get("link"), "link", where),
-        due=_as_date(merged.get("due"), where),
-        sender=_as_str(merged.get("sender"), "sender", where),
-        firm=_as_str(merged.get("firm"), "firm", where),
-        reminders=_as_bool(merged.get("reminders", True), "reminders", where),
-        active=_as_bool(merged.get("active", True), "active", where),
+        path=folder,
+        name=info.name,
+        client=info.client,
+        link=info.link,
+        due=info.due,
+        sender=info.sender,
+        firm=info.firm,
+        reminders=info.reminders,
+        active=info.active,
     )
 
 
-def load_registry(path: Path | str) -> Registry:
-    """Read and validate ``engagements.yaml``."""
-    path = Path(path)
-    if not path.is_file():
-        raise RegistryError(f"no registry at {path}")
-
-    try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise RegistryError(f"{path} is not valid YAML: {exc}") from None
-
-    if raw is None:
-        raise RegistryError(f"{path} is empty")
-    if not isinstance(raw, dict):
-        raise RegistryError(f"{path}: expected a mapping at the top level")
-    _reject_unknown(raw.keys(), _TOP_LEVEL_KEYS, str(path))
-
-    root_text = _as_str(raw.get("root"), "root", str(path))
-    root = Path(root_text) if root_text else None
-
-    defaults = raw.get("defaults") or {}
-    if not isinstance(defaults, dict):
-        raise RegistryError(f"{path}: defaults must be a mapping")
-    _reject_unknown(defaults.keys(), _DEFAULT_KEYS, f"{path} defaults")
-
-    entries = raw.get("engagements")
-    if not entries:
-        raise RegistryError(f"{path}: no engagements listed")
-    if not isinstance(entries, list):
-        raise RegistryError(f"{path}: engagements must be a list")
-
-    engagements = [
-        _engagement_from(entry, i, defaults, root)
-        for i, entry in enumerate(entries, start=1)
-    ]
-
-    seen: dict[Path, int] = {}
-    for i, engagement in enumerate(engagements, start=1):
-        first = seen.get(engagement.path)
-        if first is not None:
-            raise RegistryError(
-                f"{path}: engagement #{i} repeats the path of #{first} "
-                f"({engagement.path}); it would be processed twice"
-            )
-        seen[engagement.path] = i
-
-    return Registry(source=path, root=root, engagements=engagements)
-
-
-def create_registry_template(path: Path | str) -> Path:
-    """Write a commented starter ``engagements.yaml``. Never overwrites."""
-    path = Path(path)
-    if path.exists():
-        raise RegistryError(f"Refusing to overwrite existing registry: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "# Every engagement the scheduled run should process.\n"
-        "# Edit this file to add a client; the scheduled task never changes.\n"
-        "\n"
-        "# root: D:\\OneDrive\\Clients     # relative paths below hang off this\n"
-        "\n"
-        "defaults:\n"
-        "  firm: J Park & Associates, CPA\n"
-        "  sender: \n"
-        "  reminders: true               # draft the weekly chase email\n"
-        "\n"
-        "engagements:\n"
-        "  - path: Smith Family 2025\n"
-        "    client: John Smith\n"
-        "    # link: https://drive.google.com/drive/folders/...\n"
-        "    # due: 2026-03-15\n"
-        "\n"
-        "  # - path: Acme Corp TY2025\n"
-        "  #   client: Dana Lee\n"
-        "  #   reminders: false          # this one we chase by phone\n"
-        "  #   active: false             # skip entirely, keep for the record\n",
-        encoding="utf-8",
-    )
-    return path
+def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Registry:
+    """Walk ``root`` and return every engagement found under it."""
+    root = Path(root)
+    if not root.is_dir():
+        raise RegistryError(f"clients root is not a folder: {root}")
+    folders = engagement_dirs(root, max_depth=max_depth)
+    if not folders:
+        raise RegistryError(
+            f"no engagement found under {root} (no folder holding {MANIFEST_FILENAME} "
+            f"within {max_depth} levels) - is this the right folder?"
+        )
+    return Registry(source=root, engagements=[engagement_from(f) for f in folders])
 
 
 # -------------------------------------------------------------------- CLI ----
@@ -252,23 +157,14 @@ def create_registry_template(path: Path | str) -> Path:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Check or create engagements.yaml")
-    parser.add_argument("registry", nargs="?", default=REGISTRY_FILENAME,
-                        help=f"path to the registry (default: {REGISTRY_FILENAME})")
-    parser.add_argument("--init", action="store_true",
-                        help="write a starter registry instead of checking one")
+    parser = argparse.ArgumentParser(
+        description="List every engagement the scheduled run would find under a clients folder"
+    )
+    parser.add_argument("root", help="the folder the firm keeps its clients in")
     ns = parser.parse_args()
 
-    if ns.init:
-        try:
-            written = create_registry_template(ns.registry)
-        except RegistryError as exc:
-            raise SystemExit(f"{exc}")
-        print(f"Wrote {written}")
-        raise SystemExit(0)
-
     try:
-        loaded = load_registry(ns.registry)
+        loaded = discover_engagements(ns.root)
     except RegistryError as exc:
         raise SystemExit(f"Registry problem: {exc}")
 
@@ -280,7 +176,8 @@ if __name__ == "__main__":
             flags.append("inactive")
         if not engagement.reminders:
             flags.append("no reminders")
-        exists = "" if engagement.path.is_dir() else "  [FOLDER NOT FOUND]"
+        if engagement.problem:
+            flags.append(f"MANIFEST PROBLEM: {engagement.problem}")
         suffix = f"  ({', '.join(flags)})" if flags else ""
-        print(f"  {engagement.label}{suffix}{exists}")
+        print(f"  {engagement.label}{suffix}")
         print(f"      {engagement.path}")

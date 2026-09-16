@@ -466,3 +466,83 @@ def test_a_hand_edited_index_cell_does_not_stop_the_next_run(engagement):
     drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
     assert [e.original_name for e in file_drops(engagement, today=DAY2).filed] == ["jane.pdf"]
     assert read_index(engagement / INDEX_FILENAME)[0].size_kb == 0.0
+
+
+# ------------------------------------------------- a person files a parked file ----
+
+
+def test_assigning_a_parked_file_moves_it_under_the_canonical_name(engagement):
+    from tracker.filer import ASSIGNED_BY_PERSON, assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    review_copy = engagement / parked.prepared_location
+    assert review_copy.exists()
+
+    result = assign_review_file(engagement, parked.pbc_location, "C01", keyword="Home Lending", today=DAY2)
+
+    assert result.moved_review_copy is True
+    assert not review_copy.exists()
+    working = engagement / result.entry.prepared_location
+    assert working.name == "C01 - Mortgage Interest Statement - TY2025.pdf"
+    assert working.read_bytes() == (engagement / parked.pbc_location).read_bytes()
+    assert (engagement / parked.pbc_location).exists()               # original untouched
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == FILED and row.identifier == "C01"
+    assert row.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: ")
+    assert result.keyword == "Home Lending" and result.keyword_note == ""
+    from tracker.manifest import load_manifest
+    assert next(i for i in load_manifest(engagement / MANIFEST_FILENAME) if i.identifier == "C01").any_keywords == ("Home Lending",)
+
+
+def test_assigning_copies_from_pbc_when_the_review_copy_is_gone(engagement):
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    (engagement / parked.prepared_location).unlink()
+    result = assign_review_file(engagement, "scan0012.pdf", "A01")   # by original name
+    assert result.moved_review_copy is False
+    assert (engagement / result.entry.prepared_location).exists()
+
+
+def test_assigning_refuses_what_a_person_should_not_do(engagement):
+    from tracker.filer import FilingError, assign_review_file
+    from tracker.manifest import RequestItem, Override, create_template
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    with pytest.raises(FilingError, match="no request 'Z99'"):
+        assign_review_file(engagement, "scan0012.pdf", "Z99")
+    with pytest.raises(FilingError, match="is not waiting for review"):
+        assign_review_file(engagement, "w2.pdf", "C01")               # already filed
+    with pytest.raises(FilingError, match="nothing in the index is called"):
+        assign_review_file(engagement, "ghost.pdf", "C01")
+
+    waived = engagement.parent / "Waived"
+    waived.mkdir()
+    create_template(waived / MANIFEST_FILENAME, [
+        RequestItem(identifier="A01", document="W-2", manual_override=Override.WAIVED)])
+    scaffold_engagement(waived)
+    drop(waived, "x.pdf", "nothing")
+    file_drops(waived, today=DAY1)
+    with pytest.raises(FilingError, match="waived"):
+        assign_review_file(waived, "x.pdf", "A01")
+
+
+def test_assigning_still_files_when_excel_holds_the_manifest(engagement, monkeypatch):
+    import tracker.manifest as manifest_module
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    file_drops(engagement, today=DAY1)
+
+    def locked(*args, **kwargs):
+        raise PermissionError("[Errno 13] locked by Excel")
+
+    monkeypatch.setattr(manifest_module, "add_any_keyword", locked)
+    monkeypatch.setattr("tracker.filer.add_any_keyword", locked)
+    result = assign_review_file(engagement, "scan0012.pdf", "C01", keyword="lender")
+    assert result.entry.decision == FILED
+    assert result.keyword == "" and "open in Excel" in result.keyword_note

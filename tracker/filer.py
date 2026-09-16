@@ -54,13 +54,19 @@ import logging
 import shutil
 import time
 from contextlib import nullcontext
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
 from tracker.locking import engagement_lock
-from tracker.manifest import RequestItem, load_manifest, save_workbook_atomically
+from tracker.manifest import (
+    Override,
+    RequestItem,
+    add_any_keyword,
+    load_manifest,
+    save_workbook_atomically,
+)
 from tracker.router import route_file
 from tracker.scaffold import (
     MANIFEST_FILENAME,
@@ -108,6 +114,13 @@ INDEX_COLUMNS = (
 FILED = "Filed"
 NEEDS_REVIEW = "Needs Review"
 DUPLICATE = "Duplicate"
+
+#: Reason prefix on index rows a person filed from 00 - Needs Review.
+ASSIGNED_BY_PERSON = "assigned by a person"
+
+
+class FilingError(Exception):
+    """A person's filing decision could not be carried out as asked."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -603,6 +616,128 @@ def _sort_one(
     )
     report.review.append(entry)
     return entry
+
+
+# ----------------------------------------------------------------- assign ----
+
+
+@dataclass(frozen=True, slots=True)
+class AssignResult:
+    """What filing one parked document by hand did."""
+
+    entry: IndexEntry            # the rewritten index row
+    moved_review_copy: bool      # True: the copy in 00 - Needs Review became the working copy
+    keyword: str = ""            # keyword added to the row's Any Keywords, if any
+    keyword_note: str = ""       # why it was not added, when it was not
+    index_deferred: bool = False
+
+
+def assign_review_file(
+    engagement_dir: Path | str,
+    original: str,
+    identifier: str,
+    *,
+    keyword: str = "",
+    today: dt.date | None = None,
+) -> AssignResult:
+    """File a parked document under a request, the way the filer would have.
+
+    ``original`` is the index row to act on: its PBC location
+    (``Shared/PBC/scan0012.pdf``) or, failing that, its original name among
+    the rows still marked Needs Review. The working copy is created under the
+    canonical name in the request's folder - moved from ``00 - Needs
+    Review`` when it is still there, copied from ``PBC/`` when it is not -
+    and the index row is rewritten as Filed with the decision attributed to
+    a person. The original in ``PBC/`` is not touched.
+
+    ``keyword`` is optional: added to the request's Any Keywords so the next
+    document like this one routes itself. If Excel holds the manifest the
+    filing still happens and the note says the keyword was not saved.
+
+    The rules the filer lives by still hold: nothing is guessed (the person
+    chose), the engagement lock is held, and the index is written
+    lock-resiliently.
+    """
+    engagement_dir = Path(engagement_dir)
+    today = today or dt.date.today()
+    items = {i.identifier: i for i in load_manifest(engagement_dir / MANIFEST_FILENAME)}
+    item = items.get(identifier)
+    if item is None:
+        raise FilingError(f"no request {identifier!r} in the manifest")
+    if item.manual_override == Override.WAIVED:
+        raise FilingError(f"{identifier} is waived; clear the override first")
+
+    index_path = engagement_dir / INDEX_FILENAME
+    prepared_dir = engagement_dir / PREPARED_DIR_NAME
+
+    with engagement_lock(engagement_dir):
+        entries = read_index(index_path)
+        position = _find_parked(entries, original)
+        entry = entries[position]
+        source = engagement_dir / entry.pbc_location
+        if not source.is_file():
+            raise FilingError(
+                f"the original {entry.pbc_location} is no longer in {PBC_DIR_NAME}"
+            )
+
+        existing = assign_folders(prepared_dir, list(items)).get(identifier) or []
+        dest_folder = existing[0] if existing else prepared_dir / folder_name_for(item)
+        dest_folder.mkdir(parents=True, exist_ok=True)
+        taken = {p.name.lower() for p in dest_folder.iterdir()}
+        filed_as = prepared_name_for(item, source.suffix.lower().lstrip("."), taken)
+        target = dest_folder / filed_as
+
+        parked = engagement_dir / entry.prepared_location if entry.prepared_location else None
+        moved = False
+        if parked is not None and parked.is_file():
+            shutil.move(str(parked), target)   # keeps any notes a person made on it
+            moved = True
+        else:
+            shutil.copy2(source, target)
+
+        new_entry = replace(
+            entry,
+            identifier=item.identifier,
+            document=item.document,
+            filed_as=filed_as,
+            prepared_location=f"{PREPARED_DIR_NAME}/{dest_folder.name}/{filed_as}",
+            decision=FILED,
+            reason=f"{ASSIGNED_BY_PERSON} on {today.isoformat()}; was: {entry.reason}",
+        )
+        entries[position] = new_entry
+        deferred = not write_index(index_path, entries)
+
+    keyword = keyword.strip()
+    note = ""
+    if keyword:
+        try:
+            if not add_any_keyword(engagement_dir / MANIFEST_FILENAME, identifier, keyword):
+                note = f"{identifier} already had the keyword {keyword!r}"
+        except PermissionError:
+            note = (
+                f"keyword {keyword!r} not saved: the manifest is open in Excel; "
+                f"add it to {identifier}'s Any Keywords by hand or close Excel and try again"
+            )
+    return AssignResult(
+        entry=new_entry, moved_review_copy=moved, keyword=keyword if not note else "",
+        keyword_note=note, index_deferred=deferred,
+    )
+
+
+def _find_parked(entries: list[IndexEntry], original: str) -> int:
+    """Index of the row ``original`` names; the newest Needs Review row wins a name."""
+    wanted = original.replace("\\", "/").strip()
+    for position in range(len(entries) - 1, -1, -1):
+        entry = entries[position]
+        if entry.pbc_location == wanted or entry.original_name == wanted:
+            if entry.decision == NEEDS_REVIEW:
+                return position
+            raise FilingError(
+                f"{entry.original_name} is not waiting for review (it is {entry.decision}"
+                + (f" as {entry.prepared_location}" if entry.prepared_location else "")
+                + ")"
+            )
+    raise FilingError(f"nothing in the index is called {original!r}")
 
 
 # -------------------------------------------------------------------- CLI ----

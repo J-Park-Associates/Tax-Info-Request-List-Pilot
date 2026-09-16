@@ -11,7 +11,8 @@ import pytest
 
 from tracker.api import DEMO_ITEMS, _build_samples
 from tracker.manifest import Status, create_template
-from tracker.registry import Engagement, Registry, load_registry
+from tracker.manifest import EngagementInfo, write_engagement_info
+from tracker.registry import Engagement, Registry, discover_engagements
 from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
 from tracker.runner import (
     REMINDERS_ALWAYS,
@@ -194,7 +195,7 @@ def test_one_broken_engagement_does_not_stop_the_others(tmp_path, samples):
     later = build_engagement(tmp_path, samples, name="Jones TY2025")
 
     report = run_registry(
-        Registry(source=tmp_path / "engagements.yaml",
+        Registry(source=tmp_path,
                  engagements=[good, broken, later]),
         today=SATURDAY,
     )
@@ -210,14 +211,14 @@ def test_one_broken_engagement_does_not_stop_the_others(tmp_path, samples):
 def test_inactive_engagements_are_skipped_not_failed(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples, active=False)
     run = run_engagement(engagement, today=SATURDAY)
-    assert run.ok and run.skipped == "inactive in the registry"
+    assert run.ok and run.skipped.startswith("inactive")
     assert run.filed == 0
 
 
 def test_only_selects_a_subset(tmp_path, samples):
     smith = build_engagement(tmp_path, samples, name="Smith TY2025")
     jones = build_engagement(tmp_path, samples, name="Jones TY2025")
-    registry = Registry(source=tmp_path / "engagements.yaml",
+    registry = Registry(source=tmp_path,
                         engagements=[smith, jones])
 
     report = run_registry(registry, today=SATURDAY, only="jones")
@@ -228,7 +229,7 @@ def test_only_selects_a_subset(tmp_path, samples):
 
 
 def test_an_unknown_reminder_mode_fails_loudly(tmp_path):
-    registry = Registry(source=tmp_path / "engagements.yaml", engagements=[])
+    registry = Registry(source=tmp_path, engagements=[])
     with pytest.raises(ValueError, match="reminders must be one of"):
         run_registry(registry, reminders="sometimes")
 
@@ -239,7 +240,7 @@ def test_an_unknown_reminder_mode_fails_loudly(tmp_path):
 def test_the_report_says_what_day_it_is_and_never_claims_a_send(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
     text = format_report(run_registry(
-        Registry(source=tmp_path / "r.yaml", engagements=[engagement]),
+        Registry(source=tmp_path, engagements=[engagement]),
         today=SATURDAY,
     ))
     assert "saturday" in text
@@ -251,7 +252,7 @@ def test_the_report_says_what_day_it_is_and_never_claims_a_send(tmp_path, sample
 def test_a_weekday_report_says_why_there_are_no_drafts(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
     text = format_report(run_registry(
-        Registry(source=tmp_path / "r.yaml", engagements=[engagement]),
+        Registry(source=tmp_path, engagements=[engagement]),
         today=FRIDAY,
     ))
     assert "no reminders today" in text
@@ -260,7 +261,7 @@ def test_a_weekday_report_says_why_there_are_no_drafts(tmp_path, samples):
 
 def test_the_log_appends_rather_than_replaces(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
-    registry = Registry(source=tmp_path / "r.yaml", engagements=[engagement])
+    registry = Registry(source=tmp_path, engagements=[engagement])
     log = tmp_path / "runs.log"
 
     append_log(log, run_registry(registry, today=FRIDAY))
@@ -271,25 +272,31 @@ def test_the_log_appends_rather_than_replaces(tmp_path, samples):
     assert "2026-03-13" in text and "2026-03-14" in text
 
 
-# -------------------------------------------------------- registry end to end ----
+# ------------------------------------------------------- discovery end to end ----
 
 
-def test_a_real_registry_file_drives_a_real_run(tmp_path, samples):
-    engagement = build_engagement(tmp_path, samples)
-    (tmp_path / "engagements.yaml").write_text(
-        "defaults:\n"
-        "  firm: J Park & Associates, CPA\n"
-        "engagements:\n"
-        f"  - path: {engagement.path}\n"
-        "    client: John Smith\n"
-        "    due: 2026-04-15\n",
-        encoding="utf-8",
-    )
+def test_a_clients_folder_drives_a_real_run_with_nothing_registered(tmp_path, samples):
+    engagement = build_engagement(tmp_path / "Clients" / "Smith", samples)
+    write_engagement_info(engagement.path / MANIFEST_FILENAME, EngagementInfo(
+        client="John Smith", due=dt.date(2026, 4, 15), firm="J Park & Associates, CPA",
+    ))
 
-    report = run_registry(load_registry(tmp_path / "engagements.yaml"), today=SATURDAY)
+    report = run_registry(discover_engagements(tmp_path / "Clients"), today=SATURDAY)
 
     assert len(report.processed) == 1
     draft = (engagement.path / DRAFT_FILENAME).read_text(encoding="utf-8")
     assert "Hi John Smith," in draft
     assert "April 15, 2026" in draft
     assert "J Park & Associates, CPA" in draft
+
+
+def test_an_engagement_whose_manifest_cannot_be_read_fails_alone(tmp_path, samples):
+    good = build_engagement(tmp_path / "Clients", samples, name="Good")
+    bad = tmp_path / "Clients" / "Bad 2025"
+    bad.mkdir()
+    (bad / MANIFEST_FILENAME).write_bytes(b"not a workbook")
+
+    report = run_registry(discover_engagements(tmp_path / "Clients"), today=FRIDAY)
+    outcomes = {r.engagement.path.name: r for r in report.runs}
+    assert outcomes["Good"].ok
+    assert "manifest could not be read" in outcomes["Bad 2025"].error
