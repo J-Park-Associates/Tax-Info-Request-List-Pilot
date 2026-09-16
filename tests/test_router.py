@@ -173,3 +173,11 @@ def test_keywords_match_on_token_boundaries(tmp_path):
     )
     f = text_pdf(tmp_path / "note.pdf", "This is being sent regarding 10983 units")
     assert route_file(f, [ein, MORTGAGE]).identifier is None
+
+
+def test_google_stub_review_reason_tells_the_client_what_to_do(tmp_path):
+    f = tmp_path / "Donation Receipts 2025.gsheet"
+    f.write_text('{"url": "https://docs.google.com/..."}', encoding="utf-8")
+    reason = route_file(f, ITEMS).reason
+    assert "Google Docs shortcut" in reason
+    assert "File > Download" in reason

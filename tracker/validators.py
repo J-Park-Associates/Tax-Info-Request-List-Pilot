@@ -114,6 +114,22 @@ def is_ignored(path: Path) -> bool:
     return any(part.lower().startswith(".tmp.drive") for part in path.parts[:-1])
 
 
+def google_stub_reason(path: Path) -> str:
+    """Why this file is a Google Docs shortcut rather than a document.
+
+    Empty string for anything else. Shared by tier-2 validation and the
+    router so the client gets the same actionable sentence either way.
+    """
+    extension = path.suffix.lower().lstrip(".")
+    if extension not in _GOOGLE_STUB_EXTENSIONS:
+        return ""
+    return (
+        f".{extension} is a Google Docs shortcut, not the document itself; "
+        "ask the client to download it (File > Download > PDF or Excel) "
+        "and upload that copy"
+    )
+
+
 def is_cloud_placeholder(path: Path) -> bool:
     """True if ``path`` is a cloud-only placeholder (OneDrive Files
     On-Demand or Google Drive for desktop streaming mode).
@@ -168,16 +184,8 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
         )
 
     extension = path.suffix.lower().lstrip(".")
-    if extension in _GOOGLE_STUB_EXTENSIONS:
-        return FileResult(
-            path=path,
-            ok=False,
-            reason=(
-                f".{extension} is a Google Docs shortcut, not the document "
-                "itself; ask the client to download it (File > Download > "
-                "PDF or Excel) and upload that copy"
-            ),
-        )
+    if stub := google_stub_reason(path):
+        return FileResult(path=path, ok=False, reason=stub)
     if item.allowed_extensions and extension not in item.allowed_extensions:
         allowed = ", ".join(item.allowed_extensions)
         return FileResult(

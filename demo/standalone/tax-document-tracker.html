@@ -366,6 +366,25 @@ table.grid tr:nth-child(even) td{background:var(--card-2)}
 }
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
+/* ── the one drop folder ──────────────────────────────────── */
+.dropzone{
+  margin:13px 16px 16px;padding:16px;border-radius:10px;
+  border:2px dashed var(--border-strong);background:var(--card-2);
+  min-height:96px;display:flex;flex-direction:column;justify-content:center;gap:10px;
+  transition:border-color .12s,background .12s;
+}
+.dropzone.drop-on{border-color:var(--blue);background:var(--sync-bg)}
+.dz-empty{
+  display:flex;flex-direction:column;align-items:center;gap:7px;
+  color:var(--faint);font-size:13.5px;text-align:center;padding:8px 0;
+}
+.dz-empty svg{width:26px;height:26px;color:var(--border-strong)}
+.dropzone .drops{margin-top:0;justify-content:flex-start}
+.doc.is-kept{cursor:default}
+.doc.is-kept:hover{border-color:var(--border);background:var(--card-2)}
+.unfiled .why{margin-left:auto;text-align:right;max-width:58%}
+@media (max-width:640px){.unfiled li{flex-wrap:wrap}.unfiled .why{margin-left:0;max-width:100%;text-align:left}}
+
 @media (max-width:920px){
   /* One document-length scroll instead of two trapped panes. */
   html,body{height:auto}
@@ -411,7 +430,7 @@ table.grid tr:nth-child(even) td{background:var(--card-2)}
     <details class="step" open>
       <summary><span class="step-num">1</span> Set the scene</summary>
       <div class="step-body">
-        <p class="say">"Every tax season starts the same way: we send you a list of documents we need, and then everyone spends February playing email ping-pong. We replaced that with a shared folder that checks the documents itself."</p>
+        <p class="say">"Every tax season starts the same way: we send you a list of documents we need, and then everyone spends February playing email ping-pong. We replaced that with one shared folder that sorts itself."</p>
         <p class="do">Every request below starts at <strong>Missing</strong>. That's a brand-new engagement.</p>
       </div>
     </details>
@@ -427,7 +446,7 @@ table.grid tr:nth-child(even) td{background:var(--card-2)}
     <details class="step">
       <summary><span class="step-num">3</span> Build the tailored list</summary>
       <div class="step-body">
-        <p class="say">"Here's the checklist from years of engagements. I tick what applies to your situation and the client's entire folder structure builds itself."</p>
+        <p class="say">"Here's the checklist from years of engagements. I tick what applies to your situation, and everything behind the scenes builds itself."</p>
         <p class="do">Name it after <strong>the prospect's own family or company</strong>. Untick a couple of rows, then create it.</p>
       </div>
     </details>
@@ -435,40 +454,40 @@ table.grid tr:nth-child(even) td{background:var(--card-2)}
     <details class="step">
       <summary><span class="step-num">4</span> What the client sees</summary>
       <div class="step-body">
-        <p class="say">"The client gets one shared folder — one folder per document, plus plain-English instructions. No portal, no password to forget. It's just a folder."</p>
-        <p class="do">Click <strong>Client folder</strong> and read the <em>_README.txt</em> aloud.</p>
+        <p class="say">"Here's the part your clients actually notice. They get <em>one folder</em>. Not a folder per document, not a portal with another password. The instruction is: drop everything in here. They never sort anything, never rename anything, never work out which file matches which line on our list."</p>
+        <p class="do">Click <strong>Client folder</strong> and read a line of the README aloud.</p>
       </div>
     </details>
 
     <details class="step">
       <summary><span class="step-num">5</span> Play the client</summary>
       <div class="step-body">
-        <p class="say">"Let's be an honest client: helpful, busy, and occasionally wrong. Both spouses' W-2s — plus last year's by mistake, the same one twice, a Word file where we need the 1098, and a vacation photo in the wrong place."</p>
-        <p class="do">Drag every file from the tray into a row. Put <strong>vacation photo.jpg</strong> in the shared-folder root at the bottom.</p>
+        <p class="say">"Let's be an honest client: helpful, busy, and occasionally wrong. Both spouses' W-2s — plus last year's by mistake, the same one twice, a Word file where we need the 1098, and a vacation photo."</p>
+        <p class="do">Drag the whole tray into the one drop folder. <strong>Don't sort it.</strong> The pile is the point — click <em>Drop all of it in</em> if you'd rather do it in one go.</p>
       </div>
     </details>
 
     <details class="step">
-      <summary><span class="step-num">6</span> The moment — scan</summary>
+      <summary><span class="step-num">6</span> The moment — sort and scan</summary>
       <div class="step-body">
-        <p class="say">"In production this runs by itself every fifteen minutes. Watch what it worked out — without a person opening a single file."</p>
-        <p class="do">Click <strong>Run Scan</strong>, then read the notes column out loud. That wording is what you forward to the client.</p>
+        <p class="say">"In production this runs by itself every fifteen minutes. Watch it take that pile apart — without a person opening a single file."</p>
+        <p class="do">Click <strong>Sort &amp; Scan</strong>. The drop folder empties, every original lands in <strong>PBC</strong> under the client's own name, and the renamed copies appear against each request.</p>
       </div>
     </details>
 
     <details class="step">
-      <summary><span class="step-num">7</span> The accountant's view</summary>
+      <summary><span class="step-num">7</span> The part that sells it</summary>
       <div class="step-body">
-        <p class="say">"And it lands in the tool accountants already live in — Excel. Status, date received, plain-English notes, and an override column where your judgment beats any rule."</p>
-        <p class="do">Click <strong>Manifest</strong> and show both sheets.</p>
+        <p class="say">"Four things it refused to guess about. Read that first note: <em>looks like A01, but the period is wrong</em> — that's last year's W-2. It would have been easy to drop it into the prior-year returns folder. It didn't."</p>
+        <p class="do">Walk <strong>Needs review</strong>, then open <strong>Index</strong> — every file the client sent, where it went, what we renamed it to.</p>
       </div>
     </details>
 
     <details class="step">
       <summary><span class="step-num">8</span> The trust close</summary>
       <div class="step-body">
-        <p class="say">"Three guarantees: every decision is a deterministic rule — no AI ever reads your tax documents. The scanner is read-only — it never moves, renames, or deletes a file. And your judgment always wins."</p>
-        <p class="do">Point at the four assurances at the bottom of the screen.</p>
+        <p class="say">"Three guarantees. Every decision is a deterministic rule — no AI ever reads your tax documents. Your originals are never altered: we move them into PBC byte for byte under your own file names and work from copies. And your judgment always wins."</p>
+        <p class="do">Point at the four assurances at the bottom of this screen.</p>
       </div>
     </details>
 
@@ -494,23 +513,44 @@ table.grid tr:nth-child(even) td{background:var(--card-2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
         Manifest
       </button>
+      <button id="btn-index" class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h5"/></svg>
+        Index
+      </button>
       <button id="btn-reset" class="btn btn-ghost">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
         Reset
       </button>
       <button id="btn-scan" class="btn btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M22 4 12 14l-3-3"/></svg>
-        <span id="scan-label">Run Scan</span>
+        <span id="scan-label">Sort &amp; Scan</span>
       </button>
     </div>
 
     <section class="card">
       <div class="card-head">
-        <h3>Sample client documents</h3>
+        <h3>The client's documents</h3>
         <span class="card-note" id="tray-count"></span>
       </div>
       <div class="tray-grid" id="tray"></div>
-      <p class="tray-hint">Drag a file onto a request row — or <kbd>click</kbd> the file, then <kbd>click</kbd> the row.</p>
+      <p class="tray-hint">
+        <span id="hint-send">Drag them into the folder below — or <button id="btn-dropall" class="linkish">drop all of it in</button>, which is what a real client does.</span>
+        <span id="hint-done" hidden>Everything has been sent. Now click <strong>Sort &amp; Scan</strong>.</span>
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Shared folder — the only thing the client sees</h3>
+        <span class="card-note" id="drop-count">one folder, no sorting required</span>
+      </div>
+      <div class="dropzone" id="dropzone">
+        <div class="dz-empty" id="dz-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span>Drop anything here — we sort it</span>
+        </div>
+        <div class="drops" id="drop-list"></div>
+      </div>
     </section>
 
     <section class="card">
@@ -523,7 +563,7 @@ table.grid tr:nth-child(even) td{background:var(--card-2)}
           <thead>
             <tr>
               <th class="col-id">ID</th>
-              <th>Document &amp; folder</th>
+              <th>Document &amp; what we filed</th>
               <th class="col-files">Files</th>
               <th class="col-status">Status</th>
               <th class="col-recv">Received</th>
@@ -533,18 +573,23 @@ table.grid tr:nth-child(even) td{background:var(--card-2)}
           <tbody id="rows"></tbody>
         </table>
       </div>
-      <div class="rootzone" id="rootzone">
-        <span>📂 <b>Shared folder root</b> — anything loose lands here</span>
-        <div class="drops" id="root-drops"></div>
-      </div>
     </section>
 
-    <section class="card" id="unfiled-card" hidden>
+    <section class="card" id="review-card" hidden>
       <div class="card-head">
-        <h3>Unfiled — needs attention</h3>
-        <span class="card-note">nothing was moved, renamed, or deleted</span>
+        <h3>Needs review — it refused to guess</h3>
+        <span class="card-note">originals preserved in PBC; every reason is in the index</span>
       </div>
-      <ul class="unfiled" id="unfiled-list"></ul>
+      <ul class="unfiled" id="review-list"></ul>
+    </section>
+
+    <section class="card" id="pbc-card" hidden>
+      <div class="card-head">
+        <h3>PBC — provided by client</h3>
+        <span class="card-note" id="pbc-count"></span>
+      </div>
+      <div class="tray-grid" id="pbc-list"></div>
+      <p class="tray-hint">Every file the client sent, under the name they gave it, byte for byte. We work from copies.</p>
     </section>
 
     <footer class="assurances">
@@ -554,15 +599,15 @@ table.grid tr:nth-child(even) td{background:var(--card-2)}
       </div>
       <div class="assure">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        <div><strong>Read-only scanning</strong><span>Files are never moved, renamed, or deleted</span></div>
+        <div><strong>Originals never altered</strong><span>Preserved in PBC — never renamed, edited or deleted</span></div>
       </div>
       <div class="assure">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        <div><strong>Excel is the record</strong><span>Everything lands in the manifest you own</span></div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <div><strong>Every move is logged</strong><span>The index maps each original to where it landed</span></div>
       </div>
       <div class="assure">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <div><strong>Your judgment wins</strong><span>One override column beats any automated result</span></div>
+        <div><strong>Your judgment wins</strong><span>Anything unclear waits for a person, never a guess</span></div>
       </div>
     </footer>
   </main>
@@ -572,7 +617,7 @@ table.grid tr:nth-child(even) td{background:var(--card-2)}
 <div id="toast" class="toast" hidden></div>
 
 <script>
-const FORM_DATA = {"forms":[{"id":"1040","label":"Form 1040","who":"Individual / joint return","blurb":"Wages, investments, deductions, credits"},{"id":"1120","label":"Form 1120","who":"C corporation","blurb":"Corporate income tax return"},{"id":"1120S","label":"Form 1120-S","who":"S corporation","blurb":"Pass-through corporate return with K-1s"},{"id":"1065","label":"Form 1065","who":"Partnership / multi-member LLC","blurb":"Partnership return with K-1s"},{"id":"1041","label":"Form 1041","who":"Estate or trust","blurb":"Fiduciary income tax return"},{"id":"990","label":"Form 990","who":"Tax-exempt organization","blurb":"Annual information return"}],"templates":{"1040":[{"identifier":"A01","document":"W-2 Wage Statements - All Employers","period":"TY2025","expected_count":2,"extensions":"pdf","required_keywords":"W-2","date_pattern":"(?i)\\b2025\\b","core":true},{"identifier":"A02","document":"1099-INT / 1099-DIV - Interest & Dividend Income","period":"TY2025","expected_count":3,"extensions":"pdf, csv","any_keywords":"1099, interest income, dividend","core":true},{"identifier":"B01","document":"Prior-Year Federal & State Tax Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1040, tax return","core":true},{"identifier":"C01","document":"Mortgage Interest Statement - Form 1098","period":"TY2025","extensions":"pdf","required_keywords":"1098","core":true},{"identifier":"D01","document":"Charitable Contribution Receipts","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"E01","document":"1099-B / Brokerage Year-End Statements","period":"TY2025","extensions":"pdf, csv","core":false},{"identifier":"E02","document":"1099-R Retirement Distributions","period":"TY2025","extensions":"pdf","core":false},{"identifier":"F01","document":"Schedule K-1s Received","period":"TY2025","extensions":"pdf","core":false},{"identifier":"G01","document":"Property Tax Statements","period":"TY2025","extensions":"pdf","core":false},{"identifier":"H01","document":"Estimated Tax Payment Records","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"I01","document":"Form 1095-A - Marketplace Health Insurance","period":"TY2025","extensions":"pdf","core":false},{"identifier":"J01","document":"Childcare Provider Statements - Name, EIN, Amounts","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"K01","document":"IRA / HSA Contribution Statements - Form 5498","period":"TY2025","extensions":"pdf","core":false},{"identifier":"L01","document":"Tuition Statements - Form 1098-T","period":"TY2025","extensions":"pdf","core":false}],"1120":[{"identifier":"A01","document":"Prior-Year Federal & State Corporate Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1120, tax return","core":true},{"identifier":"A02","document":"Trial Balance - Year-End","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"A03","document":"General Ledger Detail","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"B01","document":"Year-End Financial Statements","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Year-End Reconciliations","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Fixed Asset Additions & Disposals Detail","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C02","document":"Depreciation Schedules","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"D01","document":"Loan Agreements & Year-End Balances","period":"As of 12/31/2025","extensions":"pdf","core":false},{"identifier":"E01","document":"Payroll Tax Returns - Forms 941 & W-3","period":"TY2025","extensions":"pdf","core":true},{"identifier":"E02","document":"Officer Compensation Detail","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"F01","document":"Estimated Tax Payment Records","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"G01","document":"Shareholder List & Ownership Changes","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"H01","document":"State Apportionment Data - Sales, Payroll, Property by State","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"I01","document":"Book-Tax Difference Support - Schedule M-1 Items","period":"TY2025","extensions":"xlsx, pdf","core":false}],"1120S":[{"identifier":"A01","document":"Prior-Year Federal & State S-Corp Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1120-s, form 1120s, tax return","core":true},{"identifier":"A02","document":"Trial Balance - Year-End","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"A03","document":"General Ledger Detail","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"B01","document":"Year-End Financial Statements","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Year-End Reconciliations","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Shareholder List with Ownership % & Changes","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"C02","document":"Distributions by Shareholder","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C03","document":"Shareholder Basis Schedules","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"D01","document":"Officer / Shareholder W-2 Compensation Detail","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"D02","document":"Health Insurance Premiums for >2% Shareholders","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"E01","document":"Payroll Tax Returns - Forms 941 & W-3","period":"TY2025","extensions":"pdf","core":false},{"identifier":"F01","document":"Fixed Asset Additions & Disposals Detail","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"G01","document":"Loan Agreements & Shareholder Loan Activity","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"H01","document":"State Apportionment Data","period":"TY2025","extensions":"xlsx","core":false}],"1065":[{"identifier":"A01","document":"Prior-Year Federal & State Partnership Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1065, tax return","core":true},{"identifier":"A02","document":"Partnership Agreement & Amendments","period":"Current","extensions":"pdf","core":true},{"identifier":"A03","document":"Trial Balance - Year-End","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"A04","document":"General Ledger Detail","period":"TY2025","extensions":"xlsx, csv","core":false},{"identifier":"B01","document":"Year-End Financial Statements","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Year-End Reconciliations","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Partner List with Ownership % & Changes","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"C02","document":"Partner Capital Account Detail","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C03","document":"Contributions & Distributions by Partner","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C04","document":"Guaranteed Payment Detail","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"D01","document":"Fixed Asset Additions & Disposals Detail","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"E01","document":"Loan Agreements & Year-End Balances","period":"As of 12/31/2025","extensions":"pdf","core":false},{"identifier":"F01","document":"Special Allocation Support - Section 704(b)","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"G01","document":"State Apportionment Data","period":"TY2025","extensions":"xlsx","core":false}],"1041":[{"identifier":"A01","document":"Trust Instrument / Will & Amendments","period":"Current","extensions":"pdf","core":true},{"identifier":"A02","document":"IRS EIN Assignment Letter","period":"Current","extensions":"pdf","core":false},{"identifier":"A03","document":"Prior-Year Fiduciary Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1041, tax return","core":true},{"identifier":"B01","document":"1099s for Trust / Estate Accounts","period":"TY2025","expected_count":3,"extensions":"pdf, csv","any_keywords":"1099","core":true},{"identifier":"B02","document":"Brokerage Year-End Statements","period":"TY2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Distributions to Beneficiaries - Dates & Amounts","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"C02","document":"Beneficiary Names, Addresses & Tax IDs","period":"Current","extensions":"xlsx, pdf","core":true},{"identifier":"D01","document":"Fiduciary, Attorney & Accounting Fees Paid","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"E01","document":"Cost Basis for Assets Sold During the Year","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"F01","document":"Rental / Business Income & Expense Detail","period":"TY2025","extensions":"xlsx, pdf","core":false}],"990":[{"identifier":"A01","document":"Prior-Year Form 990 & State Filings","period":"TY2024","extensions":"pdf","any_keywords":"form 990, return","core":true},{"identifier":"A02","document":"Trial Balance - Year-End","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"B01","document":"Year-End Financial Statements","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Reconciliations","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Board of Directors List & Meeting Minutes","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"C02","document":"Officer & Key Employee Compensation Detail","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"D01","document":"Contribution / Donor Detail - Schedule B Support","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"D02","document":"Grants Made - Recipients & Amounts","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"E01","document":"Program Service Accomplishment Descriptions","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"F01","document":"Fundraising Event Revenue & Expense Detail","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"G01","document":"Payroll Tax Returns - Forms 941 & W-3","period":"TY2025","extensions":"pdf","core":false},{"identifier":"H01","document":"Unrelated Business Income Detail","period":"TY2025","extensions":"xlsx, pdf","core":false}]}};
+const FORM_DATA = {"forms":[{"id":"1040","label":"Form 1040","who":"Individual / joint return","blurb":"Wages, investments, deductions, credits"},{"id":"1120","label":"Form 1120","who":"C corporation","blurb":"Corporate income tax return"},{"id":"1120S","label":"Form 1120-S","who":"S corporation","blurb":"Pass-through corporate return with K-1s"},{"id":"1065","label":"Form 1065","who":"Partnership / multi-member LLC","blurb":"Partnership return with K-1s"},{"id":"1041","label":"Form 1041","who":"Estate or trust","blurb":"Fiduciary income tax return"},{"id":"990","label":"Form 990","who":"Tax-exempt organization","blurb":"Annual information return"}],"templates":{"1040":[{"identifier":"A01","document":"W-2 Wage Statements - All Employers","period":"TY2025","expected_count":2,"extensions":"pdf","required_keywords":"W-2","date_pattern":"(?i)\\b2025\\b","core":true},{"identifier":"A02","document":"1099-INT / 1099-DIV - Interest & Dividend Income","period":"TY2025","expected_count":3,"extensions":"pdf, csv","any_keywords":"1099, interest income, dividend","core":true},{"identifier":"B01","document":"Prior-Year Federal & State Tax Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1040, tax return","core":true},{"identifier":"C01","document":"Mortgage Interest Statement - Form 1098","period":"TY2025","extensions":"pdf","required_keywords":"1098","core":true},{"identifier":"D01","document":"Charitable Contribution Receipts","any_keywords":"charitable, contribution, donation","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"E01","document":"1099-B / Brokerage Year-End Statements","any_keywords":"1099-b, brokerage, proceeds from broker","period":"TY2025","extensions":"pdf, csv","core":false},{"identifier":"E02","document":"1099-R Retirement Distributions","any_keywords":"1099-r, retirement distribution","period":"TY2025","extensions":"pdf","core":false},{"identifier":"F01","document":"Schedule K-1s Received","any_keywords":"schedule k-1, k-1","period":"TY2025","extensions":"pdf","core":false},{"identifier":"G01","document":"Property Tax Statements","any_keywords":"property tax, assessor, parcel","period":"TY2025","extensions":"pdf","core":false},{"identifier":"H01","document":"Estimated Tax Payment Records","any_keywords":"estimated tax, 1040-es, 1120-w","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"I01","document":"Form 1095-A - Marketplace Health Insurance","any_keywords":"1095-a, marketplace","period":"TY2025","extensions":"pdf","core":false},{"identifier":"J01","document":"Childcare Provider Statements - Name, EIN, Amounts","any_keywords":"childcare, dependent care, provider","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"K01","document":"IRA / HSA Contribution Statements - Form 5498","any_keywords":"5498, ira contribution, hsa","period":"TY2025","extensions":"pdf","core":false},{"identifier":"L01","document":"Tuition Statements - Form 1098-T","any_keywords":"1098-t, tuition","period":"TY2025","extensions":"pdf","core":false}],"1120":[{"identifier":"A01","document":"Prior-Year Federal & State Corporate Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1120, tax return","core":true},{"identifier":"A02","document":"Trial Balance - Year-End","any_keywords":"trial balance","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"A03","document":"General Ledger Detail","any_keywords":"general ledger","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"B01","document":"Year-End Financial Statements","any_keywords":"balance sheet, income statement, statement of operations, statement of activities","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Year-End Reconciliations","any_keywords":"bank statement, ending balance, reconciliation","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Fixed Asset Additions & Disposals Detail","any_keywords":"fixed asset, asset detail, disposals","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C02","document":"Depreciation Schedules","any_keywords":"depreciation","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"D01","document":"Loan Agreements & Year-End Balances","any_keywords":"loan agreement, promissory note, amortization","period":"As of 12/31/2025","extensions":"pdf","core":false},{"identifier":"E01","document":"Payroll Tax Returns - Forms 941 & W-3","any_keywords":"941, w-3, payroll tax","period":"TY2025","extensions":"pdf","core":true},{"identifier":"E02","document":"Officer Compensation Detail","any_keywords":"officer compensation","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"F01","document":"Estimated Tax Payment Records","any_keywords":"estimated tax, 1040-es, 1120-w","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"G01","document":"Shareholder List & Ownership Changes","any_keywords":"shareholder list, ownership","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"H01","document":"State Apportionment Data - Sales, Payroll, Property by State","any_keywords":"apportionment","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"I01","document":"Book-Tax Difference Support - Schedule M-1 Items","any_keywords":"schedule m-1, book-tax","period":"TY2025","extensions":"xlsx, pdf","core":false}],"1120S":[{"identifier":"A01","document":"Prior-Year Federal & State S-Corp Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1120-s, form 1120s, tax return","core":true},{"identifier":"A02","document":"Trial Balance - Year-End","any_keywords":"trial balance","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"A03","document":"General Ledger Detail","any_keywords":"general ledger","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"B01","document":"Year-End Financial Statements","any_keywords":"balance sheet, income statement, statement of operations, statement of activities","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Year-End Reconciliations","any_keywords":"bank statement, ending balance, reconciliation","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Shareholder List with Ownership % & Changes","any_keywords":"shareholder list, ownership","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"C02","document":"Distributions by Shareholder","any_keywords":"distributions","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C03","document":"Shareholder Basis Schedules","any_keywords":"stock basis, shareholder basis","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"D01","document":"Officer / Shareholder W-2 Compensation Detail","any_keywords":"officer compensation, shareholder w-2","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"D02","document":"Health Insurance Premiums for >2% Shareholders","any_keywords":"health insurance premium","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"E01","document":"Payroll Tax Returns - Forms 941 & W-3","any_keywords":"941, w-3, payroll tax","period":"TY2025","extensions":"pdf","core":false},{"identifier":"F01","document":"Fixed Asset Additions & Disposals Detail","any_keywords":"fixed asset, asset detail, disposals","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"G01","document":"Loan Agreements & Shareholder Loan Activity","any_keywords":"loan agreement, promissory note, shareholder loan","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"H01","document":"State Apportionment Data","any_keywords":"apportionment","period":"TY2025","extensions":"xlsx","core":false}],"1065":[{"identifier":"A01","document":"Prior-Year Federal & State Partnership Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1065, tax return","core":true},{"identifier":"A02","document":"Partnership Agreement & Amendments","any_keywords":"partnership agreement, operating agreement","period":"Current","extensions":"pdf","core":true},{"identifier":"A03","document":"Trial Balance - Year-End","any_keywords":"trial balance","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"A04","document":"General Ledger Detail","any_keywords":"general ledger","period":"TY2025","extensions":"xlsx, csv","core":false},{"identifier":"B01","document":"Year-End Financial Statements","any_keywords":"balance sheet, income statement, statement of operations, statement of activities","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Year-End Reconciliations","any_keywords":"bank statement, ending balance, reconciliation","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Partner List with Ownership % & Changes","any_keywords":"partner list, ownership","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"C02","document":"Partner Capital Account Detail","any_keywords":"capital account","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C03","document":"Contributions & Distributions by Partner","any_keywords":"contributions, distributions","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C04","document":"Guaranteed Payment Detail","any_keywords":"guaranteed payment","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"D01","document":"Fixed Asset Additions & Disposals Detail","any_keywords":"fixed asset, asset detail, disposals","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"E01","document":"Loan Agreements & Year-End Balances","any_keywords":"loan agreement, promissory note, amortization","period":"As of 12/31/2025","extensions":"pdf","core":false},{"identifier":"F01","document":"Special Allocation Support - Section 704(b)","any_keywords":"special allocation, 704","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"G01","document":"State Apportionment Data","any_keywords":"apportionment","period":"TY2025","extensions":"xlsx","core":false}],"1041":[{"identifier":"A01","document":"Trust Instrument / Will & Amendments","any_keywords":"trust agreement, last will, codicil","period":"Current","extensions":"pdf","core":true},{"identifier":"A02","document":"IRS EIN Assignment Letter","any_keywords":"cp 575, employer identification number","period":"Current","extensions":"pdf","core":false},{"identifier":"A03","document":"Prior-Year Fiduciary Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1041, tax return","core":true},{"identifier":"B01","document":"1099s for Trust / Estate Accounts","period":"TY2025","expected_count":3,"extensions":"pdf, csv","any_keywords":"1099","core":true},{"identifier":"B02","document":"Brokerage Year-End Statements","any_keywords":"1099-b, brokerage, realized gain","period":"TY2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Distributions to Beneficiaries - Dates & Amounts","any_keywords":"beneficiary, distribution","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"C02","document":"Beneficiary Names, Addresses & Tax IDs","any_keywords":"beneficiary","period":"Current","extensions":"xlsx, pdf","core":true},{"identifier":"D01","document":"Fiduciary, Attorney & Accounting Fees Paid","any_keywords":"fiduciary fee, attorney fee, accounting fee","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"E01","document":"Cost Basis for Assets Sold During the Year","any_keywords":"cost basis, acquired, sold","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"F01","document":"Rental / Business Income & Expense Detail","any_keywords":"rental income, schedule e, schedule c","period":"TY2025","extensions":"xlsx, pdf","core":false}],"990":[{"identifier":"A01","document":"Prior-Year Form 990 & State Filings","period":"TY2024","extensions":"pdf","any_keywords":"form 990, return","core":true},{"identifier":"A02","document":"Trial Balance - Year-End","any_keywords":"trial balance","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"B01","document":"Year-End Financial Statements","any_keywords":"balance sheet, income statement, statement of operations, statement of activities","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Reconciliations","any_keywords":"bank statement, ending balance, reconciliation","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Board of Directors List & Meeting Minutes","any_keywords":"board of directors, minutes","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"C02","document":"Officer & Key Employee Compensation Detail","any_keywords":"officer compensation, key employee","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"D01","document":"Contribution / Donor Detail - Schedule B Support","any_keywords":"donor, contribution, schedule b","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"D02","document":"Grants Made - Recipients & Amounts","any_keywords":"grant, grantee","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"E01","document":"Program Service Accomplishment Descriptions","any_keywords":"program service","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"F01","document":"Fundraising Event Revenue & Expense Detail","any_keywords":"fundraising","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"G01","document":"Payroll Tax Returns - Forms 941 & W-3","any_keywords":"941, w-3, payroll tax","period":"TY2025","extensions":"pdf","core":false},{"identifier":"H01","document":"Unrelated Business Income Detail","any_keywords":"unrelated business, 990-t","period":"TY2025","extensions":"xlsx, pdf","core":false}]}};
 
 /* ══ sample corpus ══════════════════════════════════════════
    Mirrors demo/_build_samples in tracker/api.py. `text` stands in
@@ -606,12 +651,15 @@ const DOCS = [
    text:'Form 1099-B Proceeds From Broker Transactions 2025 Charles Schwab & Co. dividend'},
 ];
 
-/* ══ the rule engine — a faithful port of tracker/validators.py,
-      tracker/content_check.py and tracker/scanner.py ═══════════ */
+/* ══ the rule engine — a faithful port of tracker/router.py,
+      tracker/filer.py, tracker/validators.py, tracker/content_check.py
+      and tracker/scanner.py. Same decisions, same wording. ═══════════ */
 const GOOGLE_STUBS = ['gdoc','gsheet','gslides','gdraw','gform','gtable','gjam','gsite','glink','gshortcut'];
 const IGNORED_NAMES = ['desktop.ini','thumbs.db','.ds_store'];
 const EXTRACTABLE = ['pdf','xlsx','csv','txt'];
 const MIN_KB = 5;
+const REVIEW_DIR = '00 - Needs Review';
+const PENDING_REASON = 'cloud-only placeholder; waiting for OneDrive/Google Drive to sync';
 
 const extOf = n => (n.includes('.') ? n.slice(n.lastIndexOf('.') + 1) : '').toLowerCase();
 
@@ -622,12 +670,27 @@ function isIgnored(name){
   return n.endsWith('.tmp') || n.endsWith('.driveupload') || n.endsWith('.drivedownload');
 }
 
+function googleStubReason(name){
+  const ext = extOf(name);
+  if (!GOOGLE_STUBS.includes(ext)) return '';
+  return `.${ext} is a Google Docs shortcut, not the document itself; ask the `
+       + 'client to download it (File > Download > PDF or Excel) and upload that copy';
+}
+
+// Keywords are matched on token boundaries, never as bare substrings: "EIN"
+// must not match "being", "1098" must not match "10983". Keywords decide
+// where a document gets filed, so a coincidence must never count as evidence.
+function tokenMatch(text, keyword){
+  const escaped = keyword.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!escaped) return false;
+  return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`).test(text.toLowerCase());
+}
+
 function checkFile(doc, item){
-  if (doc.cloudOnly)
-    return {ok:false, pending:true, reason:'cloud-only placeholder; waiting for OneDrive/Google Drive to sync'};
+  if (doc.cloudOnly) return {ok:false, pending:true, reason:PENDING_REASON};
+  const stub = googleStubReason(doc.name);
+  if (stub) return {ok:false, reason:stub};
   const ext = extOf(doc.name);
-  if (GOOGLE_STUBS.includes(ext))
-    return {ok:false, reason:`.${ext} is a Google Docs shortcut, not the document itself; ask the client to download it (File > Download > PDF or Excel) and upload that copy`};
   if (item.ext.length && !item.ext.includes(ext))
     return {ok:false, reason:`extension .${ext} not allowed (expected: ${item.ext.join(', ')})`};
   if (doc.kb < MIN_KB)
@@ -635,102 +698,119 @@ function checkFile(doc, item){
   return {ok:true};
 }
 
-function checkContent(doc, item){
-  const hasRules = item.required.length || item.any.length || item.datePattern;
-  if (!hasRules) return {ok:true};
-  const ext = extOf(doc.name);
-  if (!EXTRACTABLE.includes(ext))
-    return {ok:false, reason:`content rules cannot be checked on .${ext} files; review manually`};
-  const text = doc.text || '', lowered = text.toLowerCase();
-  const missing = item.required.filter(k => !lowered.includes(k.toLowerCase()));
+const hasRules = item => !!(item.required.length || item.any.length || item.datePattern);
+const readableText = doc => EXTRACTABLE.includes(extOf(doc.name)) ? (doc.text || '') : '';
+
+function evaluateRules(text, item){
+  const missing = item.required.filter(k => !tokenMatch(text, k));
   if (missing.length)
     return {ok:false, reason:`required keyword(s) ${missing.map(k => `'${k}'`).join(', ')} not found; possible wrong document`};
-  if (item.any.length && !item.any.some(k => lowered.includes(k.toLowerCase())))
+  if (item.any.length && !item.any.some(k => tokenMatch(text, k)))
     return {ok:false, reason:`none of the expected keywords found (${item.any.join(', ')})`};
   if (item.datePattern){
-    const re = new RegExp(item.datePattern.replace('(?i)',''), 'i');
+    const re = new RegExp(item.datePattern.replace('(?i)', ''), 'i');
     if (!re.test(text))
       return {ok:false, reason:`expected period not found (pattern: ${item.datePattern}); possible wrong period`};
   }
   return {ok:true};
 }
 
-function resolveRow(item, docs, today){
-  const live = docs.filter(d => !isIgnored(d.name));
-  const tier2 = live.map(d => ({doc:d, res:checkFile(d, item)}));
-  const pending = tier2.filter(t => t.res.pending);
-  const tier2Bad = tier2.filter(t => !t.res.ok && !t.res.pending);
-  const contentBad = [];
-  let passed = [];
-  for (const t of tier2.filter(t => t.res.ok)){
-    const c = checkContent(t.doc, item);
-    if (c.ok) passed.push(t.doc);
-    else contentBad.push({doc:t.doc, reason:c.reason});
+const requiredMatched = (text, item) =>
+  item.required.length > 0 && item.required.every(k => tokenMatch(text, k));
+
+function filenameHit(doc, item){
+  const words = new Set(doc.name.replace(/\.[^.]+$/, '').toLowerCase().split(/[^a-z0-9]+/));
+  return [...item.required, ...item.any].some(kw => {
+    const parts = kw.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    return parts.length && parts.every(p => words.has(p));
+  });
+}
+
+/* Which request does this file satisfy? Exactly one, or nobody. */
+function routeFile(doc, items){
+  if (doc.cloudOnly) return {id:null, pending:true, reason:PENDING_REASON};
+  const stub = googleStubReason(doc.name);
+  if (stub) return {id:null, reason:stub};
+
+  const text = readableText(doc);
+  const strong = [], medium = [], near = [], byName = [];
+  for (const item of items){
+    if (!hasRules(item) || !checkFile(doc, item).ok) continue;
+    if (text){
+      const verdict = evaluateRules(text, item);
+      if (verdict.ok) (requiredMatched(text, item) ? strong : medium).push(item.id);
+      else if (requiredMatched(text, item)) near.push([item.id, verdict.reason]);
+    } else if (filenameHit(doc, item)) byName.push(item.id);
   }
-  // content-hash de-duplication (skipped when 0 or 1 file, as in the scanner)
-  let duplicates = 0;
-  const dupIds = [];
-  if (passed.length > 1){
-    const seen = new Set(), distinct = [];
-    for (const d of passed){
-      if (seen.has(d.hash)){ duplicates++; dupIds.push(d.id); }
-      else { seen.add(d.hash); distinct.push(d); }
-    }
-    passed = distinct;
+
+  // Announces itself as one request's paperwork but fails that request's
+  // other rules — never file it somewhere else. This is last year's W-2.
+  if (near.length && !strong.length){
+    const listed = near.map(([id, why]) => `${id} (${why})`).join('; ');
+    return {id:null, reason:`looks like ${listed} — a person should confirm`, contested:true};
   }
-  const count = passed.length;
 
-  const facts = [];
-  if (duplicates) facts.push(`${duplicates} duplicate file(s) ignored`);
-  const failures = tier2Bad.map(t => `${t.doc.name}: ${t.res.reason}`)
-    .concat(contentBad.map(c => `${c.doc.name}: ${c.reason}`));
-  facts.push(...failures.slice(0, 3));
-  if (failures.length > 3) facts.push(`(+${failures.length - 3} more issues)`);
+  for (const [hits, how] of [
+    [strong, "content matched this request's keywords"],
+    [medium, "content matched this request's keywords"],
+    [byName, "file name matched this request's keywords"],
+  ]){
+    if (hits.length === 1) return {id:hits[0], reason:how};
+    if (hits.length > 1)
+      return {id:null, reason:`matched more than one request (${hits.join(', ')}); a person should choose`};
+  }
 
-  let status;
-  if (!docs.length && !item.placed) { status = 'Missing'; facts.unshift('request folder not found; re-run scaffold'); }
-  else if (count >= item.expected){
-    status = 'Received';
-    if (pending.length) facts.push(`${pending.length} more file(s) still syncing`);
-  } else if (pending.length){
-    status = 'Pending Sync';
-    facts.unshift(`${pending.length} file(s) still syncing from the cloud`);
-  } else if (count > 0){
-    status = 'Partial';
-    facts.unshift(`${count} of ${item.expected} expected files`);
-  } else if (failures.length) status = 'Failed Validation';
-  else status = 'Missing';
+  const ruleLess = items.filter(i => !hasRules(i)).map(i => i.id);
+  const hint = ruleLess.length
+    ? `; add a keyword to ${ruleLess.slice(0, 3).join(', ')} in the manifest to route files like this automatically`
+    : '';
+  return {id:null, reason:`matched no request${hint}`};
+}
 
-  return {status, count, facts, received: status === 'Received' ? today : null,
-          okIds:passed.map(d => d.id), pendingIds:pending.map(t => t.doc.id), dupIds};
+/* ══ naming ════════════════════════════════════════════════ */
+const sanitize = s => s.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '');
+const folderNameFor = item => `${sanitize(item.id)} - ${sanitize(item.doc)}`.slice(0, 100).replace(/[. ]+$/, '');
+
+function preparedName(item, ext, taken){
+  const stem = [item.id, item.doc, item.period].filter(Boolean).map(sanitize)
+    .join(' - ').slice(0, 110).replace(/[. ]+$/, '');
+  const suffix = ext ? `.${ext}` : '';
+  let candidate = `${stem}${suffix}`, n = 2;
+  while (taken.has(candidate.toLowerCase())){
+    candidate = `${stem} (${n})${suffix}`;
+    n++;
+  }
+  taken.add(candidate.toLowerCase());
+  return candidate;
 }
 
 /* ══ state ═════════════════════════════════════════════════ */
-const sanitize = s => s.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g,' ').trim().replace(/[. ]+$/,'');
-const TODAY = new Date().toISOString().slice(0,10);
+const TODAY = new Date().toISOString().slice(0, 10);
 
 function itemsFromSpecs(specs){
   return specs.map(s => ({
     id:s.identifier, doc:s.document, period:s.period || '',
     expected:Number(s.expected_count || 1),
-    ext:(s.extensions || '').split(',').map(x => x.trim().replace(/^\./,'').toLowerCase()).filter(Boolean),
+    ext:(s.extensions || '').split(',').map(x => x.trim().replace(/^\./, '').toLowerCase()).filter(Boolean),
     required:(s.required_keywords || '').split(',').map(x => x.trim()).filter(Boolean),
     any:(s.any_keywords || '').split(',').map(x => x.trim()).filter(Boolean),
     datePattern:s.date_pattern || '',
-    folder:`${s.identifier} - ${sanitize(s.document)}`,
   }));
 }
 
 let state = {};
 function freshState(formId, name, specs){
   return {
-    provider: state.provider || 'gdrive',
+    provider:state.provider || 'gdrive',
     formId, name,
-    items: itemsFromSpecs(specs),
-    placed: {},            // itemId -> [docId]
-    root: [],              // docIds loose in Shared/
-    results: null,
-    scanning: false,
+    items:itemsFromSpecs(specs),
+    dropped:[],           // sitting in the client's one folder
+    pbc:[],               // originals, preserved
+    filed:{},             // itemId -> [{docId, filedAs}]
+    review:[],            // [{docId, reason}]
+    index:[],             // the _index.xlsx rows
+    results:null,
+    scanning:false,
   };
 }
 function resetDemo(keepProvider){
@@ -743,237 +823,335 @@ function resetDemo(keepProvider){
 
 const docById = id => DOCS.find(d => d.id === id);
 const visibleDocs = () => DOCS.filter(d => !d.driveOnly || state.provider === 'gdrive');
-const placedIds = () => new Set([...Object.values(state.placed).flat(), ...state.root]);
+const placedIds = () => new Set([...state.dropped, ...state.pbc]);
+
+/* ══ sort, then scan ═══════════════════════════════════════ */
+function sortDrops(){
+  const remaining = [];
+  const known = new Map(state.index.filter(r => r.digest).map(r => [r.digest, r]));
+  const taken = {};
+
+  for (const docId of state.dropped){
+    const doc = docById(docId);
+
+    // Sync junk and cloud-only stubs are not documents yet: leave them be.
+    if (isIgnored(doc.name) || doc.cloudOnly){ remaining.push(docId); continue; }
+
+    // The original is preserved first — it is the record, whatever follows.
+    state.pbc.push(docId);
+
+    if (known.has(doc.hash)){
+      const earlier = known.get(doc.hash);
+      state.index.push({
+        received:TODAY, original:doc.name, digest:doc.hash,
+        identifier:earlier.identifier, filedAs:'', location:'',
+        pbc:`Shared/PBC/${doc.name}`, decision:'Duplicate',
+        reason:`identical to ${earlier.original}`
+             + (earlier.filedAs ? `; already filed as ${earlier.filedAs}` : ''),
+      });
+      continue;
+    }
+
+    const routing = routeFile(doc, state.items);
+    const item = state.items.find(i => i.id === routing.id);
+
+    if (item){
+      const folder = folderNameFor(item);
+      if (!taken[folder])
+        taken[folder] = new Set((state.filed[item.id] || []).map(f => f.filedAs.toLowerCase()));
+      const filedAs = preparedName(item, extOf(doc.name), taken[folder]);
+      (state.filed[item.id] = state.filed[item.id] || []).push({docId, filedAs});
+      state.index.push({
+        received:TODAY, original:doc.name, digest:doc.hash, identifier:item.id,
+        filedAs, location:`Prepared/${folder}/${filedAs}`,
+        pbc:`Shared/PBC/${doc.name}`, decision:'Filed', reason:routing.reason,
+      });
+      known.set(doc.hash, {original:doc.name, filedAs, identifier:item.id});
+    } else {
+      state.review.push({docId, reason:routing.reason});
+      state.index.push({
+        received:TODAY, original:doc.name, digest:doc.hash, identifier:'',
+        filedAs:doc.name, location:`Prepared/${REVIEW_DIR}/${doc.name}`,
+        pbc:`Shared/PBC/${doc.name}`, decision:'Needs Review', reason:routing.reason,
+      });
+      known.set(doc.hash, {original:doc.name, filedAs:'', identifier:''});
+    }
+  }
+  state.dropped = remaining;
+}
+
+function scanPrepared(){
+  const results = {};
+  for (const item of state.items){
+    const count = (state.filed[item.id] || []).length;
+    const facts = [];
+    let status;
+    if (count >= item.expected) status = 'Received';
+    else if (count > 0){ status = 'Partial'; facts.push(`${count} of ${item.expected} expected files`); }
+    else status = 'Missing';
+    results[item.id] = {status, count, facts, received:status === 'Received' ? TODAY : null};
+  }
+  state.results = results;
+}
 
 /* ══ rendering ═════════════════════════════════════════════ */
 const $ = s => document.querySelector(s);
-const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+const el = (tag, cls, txt) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (txt != null) n.textContent = txt;
+  return n;
+};
 
 function render(){
   $('#eng-title').textContent = state.name;
   $('#p-gdrive').setAttribute('aria-pressed', state.provider === 'gdrive');
   $('#p-onedrive').setAttribute('aria-pressed', state.provider === 'onedrive');
-  renderTray(); renderRows(); renderRoot(); renderTallies();
+  renderTray(); renderDrop(); renderRows(); renderReview(); renderPbc(); renderTallies();
+}
+
+function docChip(doc, cls, label){
+  const c = el('span', `chip${cls ? ' ' + cls : ''}`);
+  c.append(el('b', null, label || doc.name));
+  return c;
 }
 
 function renderTray(){
-  const tray = $('#tray'); tray.textContent = '';
+  const tray = $('#tray');
+  tray.textContent = '';
   const placed = placedIds();
   const docs = visibleDocs();
   for (const d of docs){
-    const b = el('button','doc');
-    b.type = 'button'; b.draggable = !placed.has(d.id);
+    const b = el('button', 'doc');
+    b.type = 'button';
+    b.draggable = !placed.has(d.id);
     b.dataset.id = d.id;
     b.setAttribute('aria-pressed', armed === d.id);
     if (placed.has(d.id)) b.classList.add('is-placed');
     const ext = extOf(d.name);
-    b.append(el('span',`doc-ext ${ext}`, ext || 'file'));
-    const nm = el('span','doc-name', d.name); nm.title = d.name; b.append(nm);
-    if (d.tag) b.append(el('span','doc-tag', d.tag));
-    else b.append(el('span','doc-kb', `${d.kb.toFixed(1)} KB`));
+    b.append(el('span', `doc-ext ${ext}`, ext || 'file'));
+    const nm = el('span', 'doc-name', d.name);
+    nm.title = d.name;
+    b.append(nm);
+    if (d.tag) b.append(el('span', 'doc-tag', d.tag));
+    else b.append(el('span', 'doc-kb', `${d.kb.toFixed(1)} KB`));
     tray.append(b);
   }
   const left = docs.filter(d => !placed.has(d.id)).length;
-  $('#tray-count').textContent = left ? `${left} of ${docs.length} still to drag` : 'all files placed';
+  $('#tray-count').textContent = left ? `${left} of ${docs.length} still to send` : 'all sent';
+  $('#hint-send').hidden = left === 0;
+  $('#hint-done').hidden = left > 0;
 }
 
-function chipFor(docId, itemResult){
-  const d = docById(docId);
-  const c = el('span','chip');
-  if (isIgnored(d.name)) c.classList.add('dim');
-  else if (itemResult){
-    if (itemResult.okIds.includes(docId)) c.classList.add('ok');
-    else if (itemResult.pendingIds.includes(docId)) c.classList.add('sync');
-    else if (itemResult.dupIds.includes(docId)) c.classList.add('dup');
-    else c.classList.add('bad');
+function renderDrop(){
+  const box = $('#drop-list');
+  box.textContent = '';
+  for (const id of state.dropped){
+    const d = docById(id);
+    let cls = '', note = '';
+    if (d.cloudOnly){ cls = 'sync'; note = ' — still syncing'; }
+    else if (isIgnored(d.name)){ cls = 'dim'; note = ' — part-uploaded, ignored'; }
+    const chip = docChip(d, cls, d.name + note);
+    const x = el('button', null, '×');
+    x.type = 'button';
+    x.setAttribute('aria-label', `Take ${d.name} back out`);
+    x.addEventListener('click', ev => { ev.stopPropagation(); unplace(id); });
+    chip.append(x);
+    box.append(chip);
   }
-  c.append(el('b', null, d.name));
-  const x = el('button', null, '×');
-  x.type = 'button'; x.title = 'Take this file back out';
-  x.setAttribute('aria-label', `Remove ${d.name}`);
-  x.addEventListener('click', ev => { ev.stopPropagation(); unplace(docId); });
-  c.append(x);
-  return c;
+  $('#dz-empty').hidden = state.dropped.length > 0;
+  const waiting = state.dropped.filter(id => docById(id).cloudOnly).length;
+  $('#drop-count').textContent = state.dropped.length
+    ? `${state.dropped.length} waiting to be sorted${waiting ? ` (${waiting} still syncing)` : ''}`
+    : 'one folder, no sorting required';
 }
 
 function renderRows(){
-  const body = $('#rows'); body.textContent = '';
-  state.items.forEach((item, i) => {
+  const body = $('#rows');
+  body.textContent = '';
+  for (const item of state.items){
     const r = state.results ? state.results[item.id] : null;
     const tr = el('tr');
-    tr.dataset.item = item.id;
-    if (armed) tr.classList.add('armed');
 
-    const td1 = el('td','cell-id', item.id); tr.append(td1);
+    tr.append(el('td', 'cell-id', item.id));
 
-    const td2 = el('td','cell-doc');
+    const td2 = el('td', 'cell-doc');
     td2.append(document.createTextNode(item.doc));
-    if (item.period) td2.append(el('span','folder', `${item.folder}  ·  ${item.period}`));
-    else td2.append(el('span','folder', item.folder));
-    const drops = el('div','drops');
-    for (const id of (state.placed[item.id] || [])) drops.append(chipFor(id, r));
-    td2.append(drops);
+    td2.append(el('span', 'folder', `Prepared/${folderNameFor(item)}/`));
+    const filed = state.filed[item.id] || [];
+    if (filed.length){
+      const drops = el('div', 'drops');
+      for (const f of filed) drops.append(docChip(docById(f.docId), 'ok', f.filedAs));
+      td2.append(drops);
+    }
     tr.append(td2);
 
-    const files = r ? `${r.count}/${item.expected}` : `—/${item.expected}`;
-    tr.append(el('td','cell-num', files));
+    tr.append(el('td', 'cell-num', r ? `${r.count}/${item.expected}` : `—/${item.expected}`));
 
     const td4 = el('td');
-    if (state.scanning) td4.append(el('span','pill scanning','Scanning'));
+    if (state.scanning) td4.append(el('span', 'pill scanning', 'Sorting'));
     else {
       const s = r ? r.status : 'Missing';
-      td4.append(el('span',`pill ${s.toLowerCase().replace(' ','')}`, s));
+      td4.append(el('span', `pill ${s.toLowerCase().replace(' ', '')}`, s));
     }
     tr.append(td4);
 
-    tr.append(el('td','cell-recv', r && r.received ? r.received : '—'));
+    tr.append(el('td', 'cell-recv', r && r.received ? r.received : '—'));
 
-    const td6 = el('td','cell-notes');
-    if (r && r.facts.length) for (const f of r.facts) td6.append(el('span','fact', f));
-    else td6.append(el('span','fact', r ? '' : ''));
+    const td6 = el('td', 'cell-notes');
+    if (r) for (const f of r.facts) td6.append(el('span', 'fact', f));
     tr.append(td6);
 
     body.append(tr);
-  });
+  }
 }
 
-function renderRoot(){
-  const box = $('#root-drops'); box.textContent = '';
-  for (const id of state.root) box.append(chipFor(id, null));
-  const card = $('#unfiled-card'), list = $('#unfiled-list');
-  const unfiled = state.results ? state.root.filter(id => !isIgnored(docById(id).name)) : [];
-  card.hidden = unfiled.length === 0;
+function renderReview(){
+  const card = $('#review-card'), list = $('#review-list');
+  card.hidden = state.review.length === 0;
   list.textContent = '';
-  for (const id of unfiled){
-    const d = docById(id);
+  for (const entry of state.review){
+    const d = docById(entry.docId);
     const li = el('li');
-    li.append(el('span','fname', d.name));
-    li.append(el('span','why','loose file in Shared root'));
+    li.append(el('span', 'fname', d.name));
+    li.append(el('span', 'why', entry.reason));
     list.append(li);
   }
 }
 
+function renderPbc(){
+  const card = $('#pbc-card'), list = $('#pbc-list');
+  card.hidden = state.pbc.length === 0;
+  list.textContent = '';
+  for (const id of state.pbc){
+    const d = docById(id);
+    const row = el('span', 'doc is-kept');
+    const ext = extOf(d.name);
+    row.append(el('span', `doc-ext ${ext}`, ext || 'file'));
+    row.append(el('span', 'doc-name', d.name));
+    row.append(el('span', 'doc-kb', `${d.kb.toFixed(1)} KB`));
+    list.append(row);
+  }
+  $('#pbc-count').textContent = `${state.pbc.length} original${state.pbc.length === 1 ? '' : 's'}, untouched`;
+}
+
 function renderTallies(){
-  const box = $('#tallies'); box.textContent = '';
-  if (!state.results){ box.append(el('span','card-note','not scanned yet')); return; }
+  const box = $('#tallies');
+  box.textContent = '';
+  if (!state.results){ box.append(el('span', 'card-note', 'not sorted yet')); return; }
   const counts = {};
   for (const item of state.items){
     const s = state.results[item.id].status;
     counts[s] = (counts[s] || 0) + 1;
   }
-  for (const [s,n] of Object.entries(counts))
-    box.append(el('span',`pill ${s.toLowerCase().replace(' ','')}`, `${s} ${n}`));
+  for (const [s, n] of Object.entries(counts))
+    box.append(el('span', `pill ${s.toLowerCase().replace(' ', '')}`, `${s} ${n}`));
 }
 
 /* ══ interaction ═══════════════════════════════════════════ */
 let armed = null;
 
-function place(docId, itemId){
+function place(docId){
   if (placedIds().has(docId)) return;
-  if (itemId === '__root__') state.root.push(docId);
-  else (state.placed[itemId] = state.placed[itemId] || []).push(docId);
+  state.dropped.push(docId);
   armed = null;
-  state.results = null;
   render();
 }
 function unplace(docId){
-  state.root = state.root.filter(x => x !== docId);
-  for (const k of Object.keys(state.placed))
-    state.placed[k] = state.placed[k].filter(x => x !== docId);
-  state.results = null;
+  state.dropped = state.dropped.filter(x => x !== docId);
   render();
 }
 
 document.addEventListener('dragstart', e => {
   const doc = e.target.closest('.doc');
-  if (!doc || doc.classList.contains('is-placed')) return;
+  if (!doc || doc.classList.contains('is-placed') || doc.classList.contains('is-kept')) return;
   e.dataTransfer.setData('text/plain', doc.dataset.id);
   e.dataTransfer.effectAllowed = 'move';
 });
-function dropTargetOf(node){
-  const tr = node.closest && node.closest('tr[data-item]');
-  if (tr) return {node:tr, id:tr.dataset.item};
-  const rz = node.closest && node.closest('#rootzone');
-  if (rz) return {node:rz, id:'__root__'};
-  return null;
-}
 document.addEventListener('dragover', e => {
-  const t = dropTargetOf(e.target);
-  if (!t) return;
+  const zone = e.target.closest && e.target.closest('#dropzone');
+  if (!zone) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
-  t.node.classList.add('drop-on');
+  zone.classList.add('drop-on');
 });
 document.addEventListener('dragleave', e => {
-  const t = dropTargetOf(e.target);
-  if (t && !t.node.contains(e.relatedTarget)) t.node.classList.remove('drop-on');
+  const zone = e.target.closest && e.target.closest('#dropzone');
+  if (zone && !zone.contains(e.relatedTarget)) zone.classList.remove('drop-on');
 });
 document.addEventListener('drop', e => {
-  const t = dropTargetOf(e.target);
-  if (!t) return;
+  const zone = e.target.closest && e.target.closest('#dropzone');
+  if (!zone) return;
   e.preventDefault();
-  t.node.classList.remove('drop-on');
+  zone.classList.remove('drop-on');
   const id = e.dataTransfer.getData('text/plain');
-  if (id) place(id, t.id);
+  if (id) place(id);
 });
 
 document.addEventListener('click', e => {
   const doc = e.target.closest('.doc');
-  if (doc && !doc.classList.contains('is-placed')){
-    armed = armed === doc.dataset.id ? null : doc.dataset.id;
-    render();
-    if (armed) toast('Now click the row this file belongs in');
+  if (doc && !doc.classList.contains('is-placed') && !doc.classList.contains('is-kept')){
+    place(doc.dataset.id);
     return;
   }
-  if (!armed) return;
-  const t = dropTargetOf(e.target);
-  if (t) place(armed, t.id);
+});
+
+$('#btn-dropall').addEventListener('click', () => {
+  const placed = placedIds();
+  for (const d of visibleDocs()) if (!placed.has(d.id)) state.dropped.push(d.id);
+  render();
+  toast('Everything is in the one folder — exactly what a client does');
 });
 
 let toastTimer;
 function toast(msg){
   const t = $('#toast');
-  t.textContent = msg; t.hidden = false;
+  t.textContent = msg;
+  t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
 }
 
-/* ══ scan ══════════════════════════════════════════════════ */
+/* ══ the button ════════════════════════════════════════════ */
 $('#btn-scan').addEventListener('click', () => {
   if (state.scanning) return;
+  if (!state.dropped.length && !state.pbc.length){
+    toast('Put some documents in the folder first');
+    return;
+  }
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   state.scanning = true;
-  $('#scan-label').textContent = 'Scanning…';
+  $('#scan-label').textContent = 'Sorting…';
   render();
   setTimeout(() => {
-    const results = {};
-    for (const item of state.items){
-      const ids = state.placed[item.id] || [];
-      results[item.id] = resolveRow({...item, placed:true}, ids.map(docById), TODAY);
-    }
-    state.results = results;
+    sortDrops();
+    scanPrepared();
     state.scanning = false;
-    $('#scan-label').textContent = 'Run Scan';
+    $('#scan-label').textContent = 'Sort & Scan';
     render();
-    const done = Object.values(results).filter(r => r.status === 'Received').length;
-    toast(`Scan complete — ${done} of ${state.items.length} received. Nothing was moved or deleted.`);
-  }, reduce ? 60 : 850);
+    const received = Object.values(state.results).filter(r => r.status === 'Received').length;
+    const review = state.review.length;
+    toast(`${received} of ${state.items.length} requests received · ${review} sent to review · originals preserved in PBC`);
+  }, reduce ? 60 : 900);
 });
 
-$('#btn-reset').addEventListener('click', () => { resetDemo(true); toast('Demo reset — every request back to Missing'); });
+$('#btn-reset').addEventListener('click', () => {
+  resetDemo(true);
+  toast('Demo reset — every request back to Missing');
+});
 
-document.getElementById('p-gdrive').addEventListener('click', () => switchProvider('gdrive'));
-document.getElementById('p-onedrive').addEventListener('click', () => switchProvider('onedrive'));
+$('#p-gdrive').addEventListener('click', () => switchProvider('gdrive'));
+$('#p-onedrive').addEventListener('click', () => switchProvider('onedrive'));
 function switchProvider(p){
   if (state.provider === p) return;
-  state.provider = p;
-  // Drop any Google-only files that are no longer on the shelf.
-  const gone = DOCS.filter(d => d.driveOnly && p !== 'gdrive').map(d => d.id);
-  for (const id of gone) unplace(id);
-  state.results = null;
+  const prov = p;
+  state = freshState(state.formId, state.name, []);
+  state.provider = prov;
+  state.items = itemsFromSpecs(FORM_DATA.templates[state.formId].filter(s => s.core));
   render();
-  toast(p === 'gdrive' ? 'Google Drive — Google Docs shortcuts and part-uploaded files included'
-                       : 'OneDrive — the Google-specific sample files are hidden');
+  toast(p === 'gdrive'
+    ? 'Google Drive — Google Docs shortcuts and part-uploaded files included'
+    : 'OneDrive — the Google-specific sample files are hidden');
 }
 
 /* ══ modals ════════════════════════════════════════════════ */
@@ -984,8 +1162,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.h
 
 function openModal(build){
   overlay.textContent = '';
-  const m = el('div','modal');
-  m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true');
+  const m = el('div', 'modal');
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
   build(m);
   overlay.append(m);
   overlay.hidden = false;
@@ -993,31 +1172,43 @@ function openModal(build){
   if (first) first.focus();
 }
 
+function modalFooter(m){
+  const foot = el('div', 'modal-foot');
+  const c = el('button', 'btn btn-primary', 'Close');
+  c.type = 'button';
+  c.addEventListener('click', closeModal);
+  foot.append(c);
+  m.append(foot);
+}
+
 /* — New Engagement wizard — */
 $('#btn-new').addEventListener('click', () => openFormPicker());
 
 function openFormPicker(){
   openModal(m => {
-    const head = el('div','modal-head');
-    head.append(el('h3','','New engagement — what type of return?'));
-    head.append(el('p','','The request list is tailored to the form you pick.'));
+    const head = el('div', 'modal-head');
+    head.append(el('h3', '', 'New engagement — what type of return?'));
+    head.append(el('p', '', 'The request list is tailored to the form you pick.'));
     m.append(head);
-    const body = el('div','modal-body');
-    const grid = el('div','form-grid');
+    const body = el('div', 'modal-body');
+    const grid = el('div', 'form-grid');
     for (const f of FORM_DATA.forms){
-      const b = el('button','form-card'); b.type = 'button';
-      b.append(el('span','fc-label', f.label));
-      b.append(el('span','fc-who', f.who));
-      b.append(el('span','fc-blurb', f.blurb));
+      const b = el('button', 'form-card');
+      b.type = 'button';
+      b.append(el('span', 'fc-label', f.label));
+      b.append(el('span', 'fc-who', f.who));
+      b.append(el('span', 'fc-blurb', f.blurb));
       b.addEventListener('click', () => openItemPicker(f));
       grid.append(b);
     }
     body.append(grid);
     m.append(body);
-    const foot = el('div','modal-foot');
-    const c = el('button','btn','Cancel'); c.type = 'button';
+    const foot = el('div', 'modal-foot');
+    const c = el('button', 'btn', 'Cancel');
+    c.type = 'button';
     c.addEventListener('click', closeModal);
-    foot.append(c); m.append(foot);
+    foot.append(c);
+    m.append(foot);
   });
 }
 
@@ -1025,66 +1216,77 @@ function openItemPicker(form){
   const specs = FORM_DATA.templates[form.id];
   const chosen = new Set(specs.filter(s => s.core).map(s => s.identifier));
   openModal(m => {
-    const head = el('div','modal-head');
-    head.append(el('h3','', `New engagement — ${form.label}`));
-    head.append(el('p','', `${form.who} · tick the requests that apply to this client.`));
+    const head = el('div', 'modal-head');
+    head.append(el('h3', '', `New engagement — ${form.label}`));
+    head.append(el('p', '', `${form.who} · tick the requests that apply to this client.`));
     m.append(head);
 
-    const body = el('div','modal-body');
-    const chosenRow = el('div','chosen');
-    chosenRow.append(el('span','chosen-badge', form.label));
-    const back = el('button','linkish','← Change form type'); back.type = 'button';
+    const body = el('div', 'modal-body');
+    const chosenRow = el('div', 'chosen');
+    chosenRow.append(el('span', 'chosen-badge', form.label));
+    const back = el('button', 'linkish', '← Change form type');
+    back.type = 'button';
     back.addEventListener('click', openFormPicker);
     chosenRow.append(back);
     body.append(chosenRow);
 
-    const field = el('label','field');
-    field.append(el('span','','Engagement name'));
+    const field = el('label', 'field');
+    field.append(el('span', '', 'Engagement name'));
     const input = document.createElement('input');
-    input.id = 'ne-name'; input.type = 'text';
+    input.id = 'ne-name';
+    input.type = 'text';
     input.value = `Smith Family 2025 — ${form.label}`;
     field.append(input);
     body.append(field);
 
-    body.append(el('div','tmpl-head', `Standard ${form.label} request list — ${specs.length} items`));
-    const list = el('div','tmpl-list');
+    body.append(el('div', 'tmpl-head', `Standard ${form.label} request list — ${specs.length} items`));
+    const list = el('div', 'tmpl-list');
+    const count = el('div', 'card-note', `${chosen.size} selected`);
     for (const s of specs){
-      const row = el('label','tmpl-row');
+      const row = el('label', 'tmpl-row');
       const cb = document.createElement('input');
-      cb.type = 'checkbox'; cb.checked = chosen.has(s.identifier);
+      cb.type = 'checkbox';
+      cb.checked = chosen.has(s.identifier);
       cb.addEventListener('change', () => {
         cb.checked ? chosen.add(s.identifier) : chosen.delete(s.identifier);
         count.textContent = `${chosen.size} selected`;
       });
       row.append(cb);
-      row.append(el('span','t-id', s.identifier));
+      row.append(el('span', 't-id', s.identifier));
       const txt = el('span');
       txt.append(document.createTextNode(s.document));
-      const bits = [s.period, s.extensions ? `.${s.extensions.replace(/,\s*/g,' / .')}` : '',
-                    Number(s.expected_count||1) > 1 ? `${s.expected_count} expected` : ''].filter(Boolean);
-      txt.append(el('span','t-meta', bits.join('  ·  ')));
+      const keywords = s.required_keywords || s.any_keywords || '';
+      const bits = [
+        s.period,
+        s.extensions ? `.${s.extensions.replace(/,\s*/g, ' / .')}` : '',
+        keywords ? `matches on: ${keywords}` : 'no keywords — will need a person',
+      ].filter(Boolean);
+      txt.append(el('span', 't-meta', bits.join('  ·  ')));
       row.append(txt);
       list.append(row);
     }
     body.append(list);
-    const count = el('div','card-note', `${chosen.size} selected`);
     body.append(count);
     m.append(body);
 
-    const foot = el('div','modal-foot');
-    const cancel = el('button','btn','Cancel'); cancel.type = 'button';
+    const foot = el('div', 'modal-foot');
+    const cancel = el('button', 'btn', 'Cancel');
+    cancel.type = 'button';
     cancel.addEventListener('click', closeModal);
-    const create = el('button','btn btn-primary','Create engagement'); create.type = 'button';
+    const create = el('button', 'btn btn-primary', 'Create engagement');
+    create.type = 'button';
     create.addEventListener('click', () => {
       if (!chosen.size){ toast('Tick at least one request first'); return; }
       const picked = specs.filter(s => chosen.has(s.identifier));
       const prov = state.provider;
       state = freshState(form.id, input.value.trim() || `New ${form.label} engagement`, picked);
       state.provider = prov;
-      closeModal(); render();
-      toast(`${picked.length} folders scaffolded — the client's folder is ready`);
+      closeModal();
+      render();
+      toast(`Ready — the client gets one folder, and ${picked.length} requests are waiting behind it`);
     });
-    foot.append(cancel, create); m.append(foot);
+    foot.append(cancel, create);
+    m.append(foot);
   });
 }
 
@@ -1096,18 +1298,23 @@ function readmeText(){
     '',
     `Engagement: ${state.name}`,
     '',
-    '1. Each document we need has its own folder here.',
-    '2. Drag each file INTO its matching folder.',
-    "   Please don't leave files loose in this top-level folder.",
-    "3. Please don't create new folders or rename these ones.",
+    "Just drop everything into this folder. One folder, that's it -",
+    "you don't need to sort anything or name anything. We sort it.",
+    '',
+    '1. Drag your documents anywhere in this folder.',
+    '2. Within a few minutes each file moves into the PBC folder.',
+    '   That is us filing it - your file is safe, unchanged, and still',
+    '   yours to look at. Nothing is ever renamed or deleted.',
+    "3. Keep going until the list below is covered. Send them as you",
+    "   find them; there's no need to wait and send everything at once.",
     '4. Original PDFs or Excel files are preferred; scans and photos',
     '   are fine as long as they are readable.',
     '5. If a document lives in Google Docs or Google Sheets, please',
     '   download it first (File > Download > PDF or Excel) and upload',
     "   that copy - Google shortcut files (.gdoc, .gsheet) can't be read.",
-    '6. You can replace a file at any time by dropping in a new copy.',
+    '6. To replace something, just drop in the new copy.',
     '',
-    'DOCUMENTS REQUESTED',
+    'WHAT WE STILL NEED',
     '-'.repeat(45),
   ];
   for (const i of state.items){
@@ -1122,103 +1329,124 @@ function readmeText(){
 }
 
 $('#btn-folder').addEventListener('click', () => openModal(m => {
-  const head = el('div','modal-head');
-  head.append(el('h3','','What the client sees'));
-  head.append(el('p','', state.provider === 'gdrive'
-    ? 'One Google Drive folder, shared with edit rights. The manifest sits one level up — the client never sees it.'
-    : 'One OneDrive folder, shared with edit rights. The manifest sits one level up — the client never sees it.'));
+  const head = el('div', 'modal-head');
+  head.append(el('h3', '', 'What the client sees'));
+  head.append(el('p', '', state.provider === 'gdrive'
+    ? 'One Google Drive folder, shared with edit rights. Everything else lives on our side.'
+    : 'One OneDrive folder, shared with edit rights. Everything else lives on our side.'));
   m.append(head);
-  const body = el('div','modal-body');
-  const tree = el('div','tree');
-  const lines = [`📁 ${state.name}/`,
-    `   📊 _manifest.xlsx      ← yours only, never shared`,
-    `   📁 Shared/             ← the client's link points here`,
-    `      📄 _README.txt`];
-  for (const i of state.items) lines.push(`      📁 ${i.folder}/`);
-  for (const l of lines){ const d = el('div'); d.append(el('b', null, l)); tree.append(d); }
+
+  const body = el('div', 'modal-body');
+  const tree = el('div', 'tree');
+  const lines = [
+    `📁 ${state.name}/`,
+    '   📊 _manifest.xlsx      ← ours only, never shared',
+    '   📊 _index.xlsx         ← ours only: what became what',
+    '   📁 Prepared/           ← ours only: the renamed working set',
+  ];
+  for (const i of state.items) lines.push(`      📁 ${folderNameFor(i)}/`);
+  lines.push(`      📁 ${REVIEW_DIR}/`);
+  lines.push('   📁 Shared/             ← the client\'s link points HERE');
+  lines.push('      📄 _README.txt');
+  lines.push('      📁 PBC/             ← their originals, untouched');
+  for (const id of state.pbc.slice(0, 4)) lines.push(`         📄 ${docById(id).name}`);
+  if (state.pbc.length > 4) lines.push(`         … ${state.pbc.length - 4} more`);
+  for (const l of lines){
+    const d = el('div');
+    d.append(el('b', null, l));
+    tree.append(d);
+  }
   body.append(tree);
-  body.append(el('div','tmpl-head','_README.txt — generated for the client'));
-  body.append(el('pre','readme', readmeText()));
+  body.append(el('div', 'tmpl-head', '_README.txt — generated for the client'));
+  body.append(el('pre', 'readme', readmeText()));
   m.append(body);
-  const foot = el('div','modal-foot');
-  const c = el('button','btn btn-primary','Close'); c.type='button';
-  c.addEventListener('click', closeModal); foot.append(c); m.append(foot);
+  modalFooter(m);
 }));
 
 /* — Manifest (Excel view) — */
 $('#btn-manifest').addEventListener('click', () => openModal(m => {
-  const head = el('div','modal-head');
-  head.append(el('h3','','_manifest.xlsx'));
-  head.append(el('p','','The accountant-owned workbook the scanner writes back into. Excel is the record.'));
+  const head = el('div', 'modal-head');
+  head.append(el('h3', '', '_manifest.xlsx'));
+  head.append(el('p', '', 'Where each request stands. The scanner writes these columns; Excel is the record.'));
   m.append(head);
-  const body = el('div','modal-body');
 
-  const tabs = el('div','sheet-tabs');
-  const tRequests = el('button','sheet-tab','Requests'); tRequests.type='button';
-  const tUnfiled = el('button','sheet-tab','Unfiled'); tUnfiled.type='button';
-  tabs.append(tRequests, tUnfiled);
-  body.append(tabs);
-  const holder = el('div','sheet');
+  const body = el('div', 'modal-body');
+  const holder = el('div', 'sheet');
+  const t = el('table', 'grid');
+  const thead = el('thead'), htr = el('tr');
+  for (const h of ['Identifier', 'Document', 'Period', 'Expected', 'Manual Override',
+                   'Status', 'Received Date', 'File Count', 'Validation Notes'])
+    htr.append(el('th', '', h));
+  thead.append(htr);
+  t.append(thead);
+  const tb = el('tbody');
+  for (const i of state.items){
+    const r = state.results ? state.results[i.id] : null;
+    const tr = el('tr');
+    tr.append(el('td', 'mono', i.id));
+    tr.append(el('td', '', i.doc));
+    tr.append(el('td', 'mono', i.period || ''));
+    tr.append(el('td', 'mono', String(i.expected)));
+    tr.append(el('td', '', ''));
+    const st = el('td', '');
+    const status = r ? r.status : 'Missing';
+    st.append(el('span', `pill ${status.toLowerCase().replace(' ', '')}`, status));
+    tr.append(st);
+    tr.append(el('td', 'mono', r && r.received ? r.received : ''));
+    tr.append(el('td', 'mono', r ? String(r.count) : ''));
+    tr.append(el('td', 'mono', r ? r.facts.join('; ') : ''));
+    tb.append(tr);
+  }
+  t.append(tb);
+  holder.append(t);
   body.append(holder);
-
-  const showRequests = () => {
-    tRequests.setAttribute('aria-selected','true'); tUnfiled.setAttribute('aria-selected','false');
-    holder.textContent = '';
-    const t = el('table','grid');
-    const thead = el('thead'), htr = el('tr');
-    for (const h of ['Identifier','Document','Period','Expected','Manual Override','Status','Received Date','File Count','Validation Notes'])
-      htr.append(el('th','',h));
-    thead.append(htr); t.append(thead);
-    const tb = el('tbody');
-    for (const i of state.items){
-      const r = state.results ? state.results[i.id] : null;
-      const tr = el('tr');
-      tr.append(el('td','mono', i.id));
-      tr.append(el('td','', i.doc));
-      tr.append(el('td','mono', i.period || ''));
-      tr.append(el('td','mono', String(i.expected)));
-      tr.append(el('td','',''));
-      const st = el('td','');
-      st.append(el('span',`pill ${(r?r.status:'Missing').toLowerCase().replace(' ','')}`, r ? r.status : 'Missing'));
-      tr.append(st);
-      tr.append(el('td','mono', r && r.received ? r.received : ''));
-      tr.append(el('td','mono', r ? String(r.count) : ''));
-      tr.append(el('td','mono', r ? r.facts.join('; ') : ''));
-      tb.append(tr);
-    }
-    t.append(tb); holder.append(t);
-  };
-  const showUnfiled = () => {
-    tUnfiled.setAttribute('aria-selected','true'); tRequests.setAttribute('aria-selected','false');
-    holder.textContent = '';
-    const t = el('table','grid');
-    const thead = el('thead'), htr = el('tr');
-    for (const h of ['Path','Kind','Size KB','First Seen']) htr.append(el('th','',h));
-    thead.append(htr); t.append(thead);
-    const tb = el('tbody');
-    const rows = state.results ? state.root.filter(id => !isIgnored(docById(id).name)) : [];
-    if (!rows.length){
-      const tr = el('tr'); const td = el('td','',"nothing unfiled — every file landed in a request folder");
-      td.colSpan = 4; tr.append(td); tb.append(tr);
-    }
-    for (const id of rows){
-      const d = docById(id); const tr = el('tr');
-      tr.append(el('td','mono', `Shared/${d.name}`));
-      tr.append(el('td','','loose file in Shared root'));
-      tr.append(el('td','mono', d.kb.toFixed(1)));
-      tr.append(el('td','mono', TODAY));
-      tb.append(tr);
-    }
-    t.append(tb); holder.append(t);
-  };
-  tRequests.addEventListener('click', showRequests);
-  tUnfiled.addEventListener('click', showUnfiled);
-  showRequests();
-
   m.append(body);
-  const foot = el('div','modal-foot');
-  const c = el('button','btn btn-primary','Close'); c.type='button';
-  c.addEventListener('click', closeModal); foot.append(c); m.append(foot);
+  modalFooter(m);
+}));
+
+/* — The index: every original, and what became of it — */
+$('#btn-index').addEventListener('click', () => openModal(m => {
+  const head = el('div', 'modal-head');
+  head.append(el('h3', '', '_index.xlsx'));
+  head.append(el('p', '', 'Every file the client sent, where it went, and what we renamed it to. '
+    + 'If they ever ask what happened to the thing they sent, the answer is written down.'));
+  m.append(head);
+
+  const body = el('div', 'modal-body');
+  const holder = el('div', 'sheet');
+  const t = el('table', 'grid');
+  const thead = el('thead'), htr = el('tr');
+  for (const h of ['Received', 'Original Name', 'Filed As', 'Prepared Location', 'Decision', 'Reason'])
+    htr.append(el('th', '', h));
+  thead.append(htr);
+  t.append(thead);
+  const tb = el('tbody');
+  if (!state.index.length){
+    const tr = el('tr');
+    const td = el('td', '', 'Nothing sorted yet — click Sort & Scan.');
+    td.colSpan = 6;
+    tr.append(td);
+    tb.append(tr);
+  }
+  for (const row of state.index){
+    const tr = el('tr');
+    tr.append(el('td', 'mono', row.received));
+    tr.append(el('td', 'mono', row.original));
+    tr.append(el('td', 'mono', row.filedAs || '—'));
+    tr.append(el('td', 'mono', row.location || '—'));
+    const d = el('td', '');
+    const cls = row.decision === 'Filed' ? 'received'
+              : row.decision === 'Duplicate' ? 'partial' : 'failed';
+    d.append(el('span', `pill ${cls}`, row.decision));
+    tr.append(d);
+    tr.append(el('td', 'mono', row.reason));
+    tb.append(tr);
+  }
+  t.append(tb);
+  holder.append(t);
+  body.append(holder);
+  m.append(body);
+  modalFooter(m);
 }));
 
 /* ══ boot ══════════════════════════════════════════════════ */

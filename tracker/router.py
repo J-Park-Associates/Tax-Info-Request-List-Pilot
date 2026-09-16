@@ -50,7 +50,12 @@ from tracker.content_check import (
     has_content_rules,
 )
 from tracker.manifest import Override, RequestItem
-from tracker.validators import check_file, is_cloud_placeholder, is_ignored
+from tracker.validators import (
+    check_file,
+    google_stub_reason,
+    is_cloud_placeholder,
+    is_ignored,
+)
 
 #: Why a file was not routed. Stored verbatim in the index's Reason column.
 UNMATCHED = "matched no request"
@@ -122,6 +127,11 @@ def route_file(
     """
     if is_cloud_placeholder(path):
         return Routing(path=path, identifier=None, reason=PENDING, pending=True)
+
+    # A Google-native stub can never be filed, and the client can fix it —
+    # say so instead of the generic "matched no request".
+    if stub := google_stub_reason(path):
+        return Routing(path=path, identifier=None, reason=stub)
 
     if text is None:
         text = extract_text(path)
