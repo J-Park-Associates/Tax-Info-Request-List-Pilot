@@ -2,7 +2,7 @@
   "schema": 1,
   "generated": "2026-09-16",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "d4bdc9219f86c770",
+  "generator_sha256": "d23f3d7ab7345fdf",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -13,8 +13,8 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 77,
-    "edges": 147,
+    "nodes": 78,
+    "edges": 149,
     "reused": 0
   },
   "node_types": [
@@ -28,7 +28,8 @@
     "template",
     "test",
     "tool",
-    "ui"
+    "ui",
+    "workflow"
   ],
   "edge_types": [
     "calls",
@@ -43,11 +44,21 @@
     "mirrors",
     "precedes",
     "reads",
+    "runs",
     "spawns",
     "tests",
     "writes"
   ],
   "nodes": [
+    {
+      "id": ".github/workflows/ci.yml",
+      "type": "workflow",
+      "layer": "ci",
+      "sha256": "90fd2a79c4f2b787",
+      "lines": 50,
+      "role": "CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.",
+      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Both steps always report, so a stale map and a failing test surface in the same run."
+    },
     {
       "id": "rule:no-AI-on-client-documents",
       "type": "concept",
@@ -572,8 +583,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "af0fdb39701f3dbe",
-      "lines": 244,
+      "sha256": "4ae0eda566caa719",
+      "lines": 250,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -883,8 +894,8 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "26d35d1849b0f8c4",
-      "lines": 369,
+      "sha256": "c241d10aaecb340d",
+      "lines": 383,
       "exports": [
         "ROOT",
         "edges",
@@ -905,6 +916,7 @@
         "test_an_unchanged_file_is_reused_rather_than_reparsed",
         "test_any_other_test_importing_a_module_only_exercises_it",
         "test_changing_the_generator_invalidates_every_cached_edge",
+        "test_ci_config_is_mapped",
         "test_curated_descriptions_are_merged_onto_derived_nodes",
         "test_curated_nodes_that_are_not_files_are_added",
         "test_deleting_a_file_the_curated_layer_describes_fails_loudly",
@@ -1134,8 +1146,8 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "d4bdc9219f86c770",
-      "lines": 682,
+      "sha256": "d23f3d7ab7345fdf",
+      "lines": 688,
       "cli": "python -m tools.repo_map",
       "exports": [
         "CURATED_PATH",
@@ -1173,6 +1185,18 @@
     }
   ],
   "edges": [
+    {
+      "from": ".github/workflows/ci.yml",
+      "to": "requirements.txt",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": ".github/workflows/ci.yml",
+      "to": "tools/repo_map.py",
+      "type": "runs",
+      "source": "curated"
+    },
     {
       "from": "Build Portable Demo.bat",
       "to": "api_entry.py",

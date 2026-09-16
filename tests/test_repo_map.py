@@ -313,6 +313,20 @@ def test_a_removed_file_is_reported_as_removed(repo):
     assert repo_map.stale_files(graph, repo)["removed"] == ["pkg/app.py"]
 
 
+def test_ci_config_is_mapped(repo):
+    """A workflow is part of how the repo works, so the map must know it exists."""
+    (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / ".github" / "workflows" / "ci.yml").write_text(
+        "name: CI\non: [push]\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+
+    graph = repo_map.build(repo)
+    ci = node(graph, ".github/workflows/ci.yml")
+
+    assert ci["type"] == "workflow"
+    assert ci["layer"] == "ci"
+
+
 def test_the_generated_outputs_are_not_mapped(repo):
     """Mapping the map would leave it permanently stale against itself."""
     repo_map.write_outputs(repo_map.build(repo),

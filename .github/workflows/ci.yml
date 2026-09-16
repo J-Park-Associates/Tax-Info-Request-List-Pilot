@@ -1,0 +1,49 @@
+# Runs the test suite and verifies the repository map still matches the tree.
+#
+# The map check is here because docs/repo-map.md is what agents read instead of
+# re-scanning the repo (see CLAUDE.md). Its freshness is guarded by a test, but
+# a guard nothing runs is a convention rather than a rule — this is what makes
+# it enforced on every push and pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push makes an in-flight run irrelevant; don't pay for both.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests and repository map
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 3.11 is the documented minimum and what the firm's Windows box runs,
+      # so it is the version worth the signal.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run the test suite
+        run: python -m pytest -q
+
+      # always(): a stale map and a failing test are separate problems, and
+      # seeing both in one run beats finding the second after fixing the first.
+      - name: Check the repository map is current
+        if: always()
+        run: python tools/repo_map.py check
