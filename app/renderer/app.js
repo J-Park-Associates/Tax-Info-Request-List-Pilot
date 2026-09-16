@@ -83,9 +83,11 @@ function render(state) {
     const key = item.status || "Requested";
     counts[key] = (counts[key] || 0) + 1;
   }
-  $("summary").textContent = Object.entries(counts)
-    .map(([k, n]) => `${k}: ${n}`)
-    .join("   ·   ");
+  const summary = Object.entries(counts).map(([k, n]) => `${k}: ${n}`);
+  if (state.pending_statuses) {
+    summary.push(`${state.pending_statuses} update(s) waiting for Excel to close`);
+  }
+  $("summary").textContent = summary.join("   ·   ");
 
   const unfiled = state.unfiled || [];
   $("unfiled-card").classList.toggle("hidden", unfiled.length === 0);

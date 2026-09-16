@@ -18,7 +18,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -375,6 +375,36 @@ def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
         sidecar.replace(corrupt)
         log.error("Unreadable pending sidecar moved to %s: %s", corrupt.name, exc)
         return {}
+
+
+def pending_updates(manifest_path: Path | str) -> dict[str, StatusUpdate]:
+    """Status updates a locked Excel kept out of the workbook, if any.
+
+    Readers that must not act on stale statuses - the reminder above all,
+    which would otherwise ask a client for a document the last scan saw
+    arrive - overlay these on what :func:`load_manifest` returned.
+    """
+    return _load_pending(Path(manifest_path))
+
+
+def with_pending(
+    items: Iterable[RequestItem], updates: Mapping[str, StatusUpdate]
+) -> list[RequestItem]:
+    """``items`` with the scanner columns replaced by any deferred update."""
+    out = []
+    for item in items:
+        update = updates.get(item.identifier)
+        if update is None:
+            out.append(item)
+        else:
+            out.append(replace(
+                item,
+                status=update.status,
+                file_count=update.file_count,
+                received_date=update.received_date,
+                validation_notes=update.validation_notes,
+            ))
+    return out
 
 
 def _save_pending(manifest_path: Path, updates: Mapping[str, StatusUpdate]) -> None:

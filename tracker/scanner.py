@@ -23,20 +23,24 @@ Status policy (docs/ROADMAP.md decision log):
 Strictly read-only: the scanner reads the prepared copies and writes only
 the manifest, content cache and run-lock. It never touches ``Shared/`` at
 all — the client's originals are the filer's business, and even there they
-are only ever moved, never altered. A per-engagement lock file prevents
-overlapping scheduled runs; stale locks (>1 h) are replaced.
+are only ever moved, never altered. The engagement lock (:mod:`tracker.locking`,
+shared with the filer) prevents overlapping runs; stale locks (>1 h) are replaced.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import logging
-import os
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker.content_check import ContentCache, check_content
+from tracker.locking import (
+    LOCK_FILENAME,
+    STALE_LOCK_SECONDS,
+    EngagementLockedError,
+    acquire_lock,
+)
 from tracker.manifest import (
     RequestItem,
     Status,
@@ -61,14 +65,13 @@ from tracker.validators import (
 log = logging.getLogger("tracker.scanner")
 
 CACHE_FILENAME = "_content_cache.json"
-LOCK_FILENAME = "_scan.lock"
-STALE_LOCK_SECONDS = 3600
 _MAX_NOTE_LEN = 500
 _MAX_LISTED_FAILURES = 3
 
-
-class ScanLockedError(RuntimeError):
-    """Another scan of this engagement appears to be running."""
+#: The lock is the engagement's, not the scanner's: tracker.filer takes the
+#: same one, so a sort and a scan can never overlap. The old name stays
+#: importable for the runner, the API and anyone's scripts.
+ScanLockedError = EngagementLockedError
 
 
 @dataclass(slots=True)
@@ -171,9 +174,16 @@ def _scan_item(
     else:
         received = item.received_date
         if item.received_date is not None:
-            facts.insert(
-                0, f"was Received {item.received_date.isoformat()}; files changed"
-            )
+            # A row that was Received and is not any more either lost files
+            # or was asked for more. Say which; "files changed" on a row
+            # whose Expected Count somebody raised sends a person hunting
+            # for a file that never went anywhere.
+            had = item.file_count if item.file_count is not None else 0
+            if count >= had and item.expected_count > count and not failures:
+                why = f"Expected Count is now {item.expected_count}"
+            else:
+                why = "files changed"
+            facts.insert(0, f"was Received {item.received_date.isoformat()}; {why}")
 
     return StatusUpdate(
         status=status,
@@ -245,32 +255,6 @@ def _size_kb(path: Path) -> float | None:
         return None
 
 
-# ------------------------------------------------------------- run lock ----
-
-
-def _acquire_lock(engagement_dir: Path) -> Path:
-    lock = engagement_dir / LOCK_FILENAME
-    for attempt in (1, 2):
-        try:
-            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            with os.fdopen(fd, "w") as fh:
-                fh.write(f"pid={os.getpid()} started={dt.datetime.now().isoformat()}")
-            return lock
-        except FileExistsError:
-            try:
-                age = time.time() - lock.stat().st_mtime
-            except OSError:
-                continue  # lock vanished between checks; retry
-            if age < STALE_LOCK_SECONDS:
-                raise ScanLockedError(
-                    f"another scan appears to be running ({lock.name} is "
-                    f"{age:.0f}s old); if not, delete the lock file"
-                ) from None
-            log.warning("Replacing stale scan lock (%.0f s old)", age)
-            lock.unlink(missing_ok=True)
-    raise ScanLockedError(f"could not acquire {lock.name}")
-
-
 # ----------------------------------------------------------------- scan ----
 
 
@@ -291,7 +275,7 @@ def scan_engagement(
 
     lock: Path | None = None
     if not dry_run:
-        lock = _acquire_lock(engagement_dir)
+        lock = acquire_lock(engagement_dir)
     try:
         prepared_dir = engagement_dir / PREPARED_DIR_NAME
         cache = ContentCache(engagement_dir / CACHE_FILENAME)

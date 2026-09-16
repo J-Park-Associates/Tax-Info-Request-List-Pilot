@@ -26,6 +26,17 @@ Guarantees:
   file the client drops twice is preserved but filed once.
 - **Cloud-only files are left alone** until the sync client has them, so a
   placeholder is never moved as if it were the document.
+- **One run at a time.** The filer holds the engagement lock
+  (:mod:`tracker.locking`, the same one the scanner takes) while it works,
+  so a scheduled run and a click in the desktop app cannot both move the
+  same originals and overwrite each other's index rows.
+- **Wherever the client put it counts.** ``PBC/`` is visible to the client
+  and the README says "drop it anywhere", so a file that lands straight in
+  ``PBC/`` is treated as a drop that has already been preserved: it is
+  filed and indexed in place, never ignored.
+- **A working copy that went missing is replaced.** A re-sent document
+  whose earlier copy is no longer in ``Prepared/`` is filed again rather
+  than dismissed as a duplicate; the original was always safe in ``PBC/``.
 - **One bad file never costs the audit trail.** Each drop is handled on its
   own: a file the sync client still holds open is left in place for the
   next run, a file that fails *after* it was preserved is recorded as
@@ -42,11 +53,13 @@ import json
 import logging
 import shutil
 import time
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
+from tracker.locking import engagement_lock
 from tracker.manifest import RequestItem, load_manifest, save_workbook_atomically
 from tracker.router import route_file
 from tracker.scaffold import (
@@ -56,10 +69,16 @@ from tracker.scaffold import (
     README_NAME,
     REVIEW_DIR_NAME,
     SHARED_DIR_NAME,
+    assign_folders,
     folder_name_for,
     sanitize_component,
 )
-from tracker.validators import is_cloud_placeholder, is_ignored, sha256_of
+from tracker.validators import (
+    is_cloud_placeholder,
+    is_ignored,
+    iter_candidate_files,
+    sha256_of,
+)
 
 log = logging.getLogger("tracker.filer")
 
@@ -215,6 +234,14 @@ def read_index(path: Path) -> list[IndexEntry]:
     return _read_index_workbook(path) + _read_pending_index(path)
 
 
+def _as_float(value: object) -> float:
+    """A number from an index cell, or 0.0 if somebody typed over it in Excel."""
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _read_index_workbook(path: Path) -> list[IndexEntry]:
     if not path.exists():
         return []
@@ -233,7 +260,7 @@ def _read_index_workbook(path: Path) -> list[IndexEntry]:
             IndexEntry(
                 received=str(padded[0] or ""),
                 original_name=str(padded[1] or ""),
-                size_kb=float(padded[2] or 0),
+                size_kb=_as_float(padded[2]),
                 digest=str(padded[3] or ""),
                 identifier=str(padded[4] or ""),
                 document=str(padded[5] or ""),
@@ -326,6 +353,40 @@ def iter_drops(shared_dir: Path) -> list[Path]:
     return drops
 
 
+def unrecorded_in_pbc(pbc_dir: Path, engagement_dir: Path, entries: list[IndexEntry]) -> list[Path]:
+    """Files sitting in ``PBC/`` that no index row accounts for.
+
+    The client can see ``PBC/`` and has been told to drop things anywhere,
+    so some will land here. They are already where an original belongs;
+    they just have not been filed or recorded yet.
+    """
+    recorded = {e.pbc_location for e in entries if e.pbc_location}
+    return [
+        path for path in iter_candidate_files(pbc_dir)
+        if path.relative_to(engagement_dir).as_posix() not in recorded
+    ]
+
+
+def _prune_empty_dirs(shared_dir: Path, keep: Path) -> None:
+    """Remove folders the client dragged in that are empty now their files
+    have moved to PBC/. Deepest first; anything that is not empty, is the
+    PBC folder, or is a sync client's staging folder is left alone."""
+    candidates = sorted(
+        (p for p in shared_dir.rglob("*") if p.is_dir()),
+        key=lambda p: len(p.parts),
+        reverse=True,
+    )
+    for folder in candidates:
+        if folder == keep or keep in folder.parents:
+            continue
+        if any(part.lower().startswith(".tmp.drive") for part in folder.parts):
+            continue
+        try:
+            folder.rmdir()  # only succeeds when empty
+        except OSError:
+            continue
+
+
 # ------------------------------------------------------------------- file ----
 
 
@@ -356,87 +417,97 @@ def file_drops(
     known = {e.digest: e for e in entries if e.digest}
 
     drops = iter_drops(shared_dir)
-    if not drops:
+    strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
+    if not drops and not strays:
         # Nothing new, but rows a locked Excel deferred last time still
         # belong in the workbook - fold them in as soon as it is free.
         if not dry_run and _pending_index_path(index_path).exists():
             report.index_deferred = not write_index(index_path, entries)
         return report
 
-    if not dry_run:
-        pbc_dir.mkdir(parents=True, exist_ok=True)
-        prepared_dir.mkdir(parents=True, exist_ok=True)
-
     stamp = today.isoformat()
     # Names claimed during this run, so a dry run previews the same numbering
     # a real run would produce (nothing is on disk to collide with yet).
     reserved: dict[Path, set[str]] = {}
     recorded = len(entries)
-    try:
-        for drop in drops:
-            # A file the sync client has not downloaded is not a document yet.
-            if is_cloud_placeholder(drop):
-                report.waiting.append(drop)
-                continue
+    # A sort and a scan must never overlap (see tracker.locking). A dry run
+    # writes nothing, so it needs no lock and never blocks a real run.
+    with engagement_lock(engagement_dir) if not dry_run else nullcontext():
+        if not dry_run:
+            pbc_dir.mkdir(parents=True, exist_ok=True)
+            prepared_dir.mkdir(parents=True, exist_ok=True)
+        # Existing request folders, so a Document renamed in Excel keeps
+        # filing into the folder that already holds its earlier files.
+        assigned = assign_folders(prepared_dir, [i.identifier for i in items])
+        try:
+            for drop, already_in_pbc in (
+                [(d, False) for d in drops] + [(p, True) for p in strays]
+            ):
+                # A file the sync client has not downloaded is not a document yet.
+                if is_cloud_placeholder(drop):
+                    report.waiting.append(drop)
+                    continue
 
-            try:
-                digest = sha256_of(drop)
-                size_kb = round(drop.stat().st_size / 1024, 1)
-            except OSError as exc:
-                # Still being written, or withdrawn between listing and now.
-                # Nothing has moved, so leaving it is safe; next run retries.
-                report.errors.append(FileError(
-                    drop.name, f"could not read it ({exc}); left in place", True
-                ))
-                log.warning("Left %s in place: %s", drop.name, exc)
-                continue
-
-            # Preserve the original first: it is the record, whatever happens next.
-            if dry_run:
-                pbc_target = pbc_dir / drop.name
-            else:
                 try:
-                    pbc_target = _unique_path(pbc_dir, drop.name)
-                    shutil.move(str(drop), pbc_target)
+                    digest = sha256_of(drop)
+                    size_kb = round(drop.stat().st_size / 1024, 1)
                 except OSError as exc:
+                    # Still being written, or withdrawn between listing and now.
+                    # Nothing has moved, so leaving it is safe; next run retries.
                     report.errors.append(FileError(
-                        drop.name,
-                        f"could not move it into {PBC_DIR_NAME} ({exc}); "
-                        "left in place",
-                        True,
+                        drop.name, f"could not read it ({exc}); left in place", True
                     ))
                     log.warning("Left %s in place: %s", drop.name, exc)
                     continue
-            pbc_rel = pbc_target.relative_to(engagement_dir).as_posix()
 
-            try:
-                entry = _sort_one(
-                    drop, pbc_target, pbc_rel, digest, size_kb, stamp,
-                    items, by_id, known, prepared_dir, review_dir, reserved,
-                    dry_run, report,
-                )
-            except Exception as exc:  # the original is safe; say so and go on
-                log.exception("Could not file %s", drop.name)
-                entry = IndexEntry(
-                    received=stamp, original_name=drop.name, size_kb=size_kb,
-                    digest=digest, identifier="", document="", filed_as="",
-                    prepared_location="", pbc_location=pbc_rel,
-                    decision=NEEDS_REVIEW,
-                    reason=(
-                        f"could not be filed ({exc.__class__.__name__}: {exc}); "
-                        f"original preserved in {pbc_rel} - file it by hand"
-                    ),
-                )
-                report.errors.append(FileError(drop.name, entry.reason, False))
-                report.review.append(entry)
+                # Preserve the original first: it is the record, whatever happens next.
+                if already_in_pbc or dry_run:
+                    pbc_target = drop if already_in_pbc else pbc_dir / drop.name
+                else:
+                    try:
+                        pbc_target = _unique_path(pbc_dir, drop.name)
+                        shutil.move(str(drop), pbc_target)
+                    except OSError as exc:
+                        report.errors.append(FileError(
+                            drop.name,
+                            f"could not move it into {PBC_DIR_NAME} ({exc}); "
+                            "left in place",
+                            True,
+                        ))
+                        log.warning("Left %s in place: %s", drop.name, exc)
+                        continue
+                pbc_rel = pbc_target.relative_to(engagement_dir).as_posix()
 
-            entries.append(entry)
-            if entry.decision != DUPLICATE:
-                known[digest] = entry
-    finally:
-        # Whatever happened above, every original that was moved is on record.
-        if not dry_run and len(entries) > recorded:
-            report.index_deferred = not write_index(index_path, entries)
+                try:
+                    entry = _sort_one(
+                        drop, pbc_target, pbc_rel, digest, size_kb, stamp,
+                        items, by_id, known, prepared_dir, review_dir, reserved,
+                        assigned, dry_run, report,
+                    )
+                except Exception as exc:  # the original is safe; say so and go on
+                    log.exception("Could not file %s", drop.name)
+                    entry = IndexEntry(
+                        received=stamp, original_name=drop.name, size_kb=size_kb,
+                        digest=digest, identifier="", document="", filed_as="",
+                        prepared_location="", pbc_location=pbc_rel,
+                        decision=NEEDS_REVIEW,
+                        reason=(
+                            f"could not be filed ({exc.__class__.__name__}: {exc}); "
+                            f"original preserved in {pbc_rel} - file it by hand"
+                        ),
+                    )
+                    report.errors.append(FileError(drop.name, entry.reason, False))
+                    report.review.append(entry)
+
+                entries.append(entry)
+                if entry.decision != DUPLICATE:
+                    known[digest] = entry
+        finally:
+            # Whatever happened above, every original that was moved is on record.
+            if not dry_run and len(entries) > recorded:
+                report.index_deferred = not write_index(index_path, entries)
+        if not dry_run:
+            _prune_empty_dirs(shared_dir, keep=pbc_dir)
     return report
 
 
@@ -453,30 +524,48 @@ def _sort_one(
     prepared_dir: Path,
     review_dir: Path,
     reserved: dict[Path, set[str]],
+    assigned: dict[str, list[Path]],
     dry_run: bool,
     report: FileReport,
 ) -> IndexEntry:
     """Decide one preserved original's fate and, unless dry-running, copy it."""
+    refiled = ""
     if digest in known:
         earlier = known[digest]
-        entry = IndexEntry(
-            received=stamp, original_name=drop.name, size_kb=size_kb,
-            digest=digest, identifier=earlier.identifier,
-            document=earlier.document, filed_as="", prepared_location="",
-            pbc_location=pbc_rel, decision=DUPLICATE,
-            reason=(
-                f"identical to {earlier.original_name}"
-                + (f"; already filed as {earlier.filed_as}" if earlier.filed_as else "")
-            ),
-        )
-        report.duplicates.append(entry)
-        return entry
+        engagement_dir = prepared_dir.parent
+        if (
+            earlier.decision == FILED
+            and earlier.prepared_location
+            and not (engagement_dir / earlier.prepared_location).exists()
+        ):
+            # The same document again, and its working copy is gone from
+            # Prepared/ - deleted by hand, most likely. A re-send is the
+            # client answering "Missing"; calling it a duplicate would keep
+            # the row Missing for ever. File it again.
+            refiled = (
+                f"re-filed: the earlier copy {earlier.prepared_location} "
+                "was no longer in Prepared"
+            )
+        else:
+            entry = IndexEntry(
+                received=stamp, original_name=drop.name, size_kb=size_kb,
+                digest=digest, identifier=earlier.identifier,
+                document=earlier.document, filed_as="", prepared_location="",
+                pbc_location=pbc_rel, decision=DUPLICATE,
+                reason=(
+                    f"identical to {earlier.original_name}"
+                    + (f"; already filed as {earlier.filed_as}" if earlier.filed_as else "")
+                ),
+            )
+            report.duplicates.append(entry)
+            return entry
 
     routing = route_file(pbc_target if not dry_run else drop, items)
     item = by_id.get(routing.identifier or "")
 
     if routing.routed and item is not None:
-        dest_folder = prepared_dir / folder_name_for(item)
+        existing = assigned.get(item.identifier) or []
+        dest_folder = existing[0] if existing else prepared_dir / folder_name_for(item)
         if dest_folder not in reserved:
             reserved[dest_folder] = (
                 {p.name.lower() for p in dest_folder.iterdir()}
@@ -494,7 +583,8 @@ def _sort_one(
             digest=digest, identifier=item.identifier, document=item.document,
             filed_as=filed_as,
             prepared_location=f"{PREPARED_DIR_NAME}/{dest_folder.name}/{filed_as}",
-            pbc_location=pbc_rel, decision=FILED, reason=routing.reason,
+            pbc_location=pbc_rel, decision=FILED,
+            reason=f"{routing.reason}; {refiled}" if refiled else routing.reason,
         )
         report.filed.append(entry)
         return entry

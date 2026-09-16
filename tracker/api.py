@@ -31,6 +31,8 @@ from tracker.manifest import (
     UNFILED_SHEET_NAME,
     create_template,
     load_manifest,
+    pending_updates,
+    with_pending,
 )
 from tracker.filer import INDEX_FILENAME, file_drops, read_index
 from tracker.rollover import detect_year, roll_forward, write_rollover_manifest
@@ -256,10 +258,18 @@ def _read_unfiled(manifest_path: Path) -> list[dict]:
         wb.close()
 
 
+def _engagement_name(requested: str, fallback: str) -> str:
+    """A folder name from what the user typed, or the fallback if nothing usable is left."""
+    name = sanitize_component(requested.strip())
+    return name if any(ch.isalnum() for ch in name) else fallback
+
+
 def _state(engagement: Path) -> dict:
     manifest_path = engagement / MANIFEST_FILENAME
-    items = load_manifest(manifest_path)
+    deferred = pending_updates(manifest_path)
+    items = with_pending(load_manifest(manifest_path), deferred)
     return {
+        "pending_statuses": len(deferred),
         "items": [
             {
                 "identifier": i.identifier,
@@ -414,7 +424,7 @@ def _cmd_create(argv: list[str]) -> dict:
     if form and form not in FORM_TEMPLATES:
         raise ManifestError(f"Unknown tax form type '{form}'")
     fallback = f"New Form {form} Engagement" if form else "New Engagement"
-    name = sanitize_component(str(spec.get("name", "")).strip()) or fallback
+    name = _engagement_name(str(spec.get("name", "")), fallback)
     engagement = DEMO_ROOT / name
     if engagement.exists():
         raise ManifestError(f"An engagement named '{name}' already exists")
@@ -484,7 +494,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
     )
 
     default_name = f"{prior.name} - {report.target_year}" if report.target_year else f"{prior.name} - next year"
-    name = sanitize_component(str(spec.get("name", "")).strip()) or default_name
+    name = _engagement_name(str(spec.get("name", "")), default_name)
     engagement = DEMO_ROOT / name
     if engagement.exists():
         raise ManifestError(f"An engagement named '{name}' already exists")

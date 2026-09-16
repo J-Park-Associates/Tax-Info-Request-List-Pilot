@@ -15,6 +15,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - runner        : the unattended pass (file -> scan -> Saturday draft)
 - scheduling    : generate the Task Scheduler / n8n job
 - templates     : the per-form request catalog; templates/*.csv are generated from it
+- locking       : the one lock per engagement that sort and scan both hold
 """
 
 from tracker.manifest import (

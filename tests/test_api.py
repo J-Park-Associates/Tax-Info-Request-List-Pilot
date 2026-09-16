@@ -193,3 +193,23 @@ def test_rollover_refuses_a_missing_prior(capsys, demo_root):
     code, payload = run(capsys, "rollover", stdin={"prior": "Nobody 2020"})
     assert code == 1
     assert "No manifest found" in payload["error"]
+
+
+def test_a_name_of_only_illegal_characters_falls_back(capsys, demo_root):
+    spec = {"name": "///:::", "form": "1040", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["created"] == "New Form 1040 Engagement"
+
+
+def test_state_shows_statuses_a_locked_excel_deferred(capsys, demo_root):
+    from tracker.manifest import StatusUpdate, _save_pending
+
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    _save_pending(demo_root / "Smith" / MANIFEST_FILENAME,
+                  {"A01": StatusUpdate(status="Received", file_count=1)})
+    code, payload = run(capsys, "state", "--engagement", str(demo_root / "Smith"))
+    assert code == 0
+    assert payload["pending_statuses"] == 1
+    assert payload["items"][0]["status"] == "Received"
