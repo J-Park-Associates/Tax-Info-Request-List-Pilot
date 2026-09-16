@@ -1,9 +1,10 @@
 """Scan orchestrator for the Client Document Tracker (component 5).
 
-Ties the layers together for one engagement: walk ``Shared/``, match folders
-to manifest rows (prefix rule, longest identifier wins), run validation
-tiers 1-3, resolve each row's status deterministically, and write results
-back to ``_manifest.xlsx`` (lock-resiliently, via the manifest layer).
+Ties the layers together for one engagement: walk ``Prepared/`` — the
+working set :mod:`tracker.filer` built from the client's drop folder — match
+folders to manifest rows (prefix rule, longest identifier wins), run
+validation tiers 1-3, resolve each row's status deterministically, and write
+results back to ``_manifest.xlsx`` (lock-resiliently, via the manifest layer).
 
 Status policy (docs/ROADMAP.md decision log):
 
@@ -19,10 +20,11 @@ Status policy (docs/ROADMAP.md decision log):
   hash before counting — only when more than one valid file exists, so the
   common single-file case never pays for hashing.
 
-Strictly read-only against client files. The only writes are to the
-accountant-side manifest, content cache, and run-lock — all outside
-``Shared/``. A per-engagement lock file prevents overlapping scheduled runs;
-stale locks (>1 h) are replaced.
+Strictly read-only: the scanner reads the prepared copies and writes only
+the manifest, content cache and run-lock. It never touches ``Shared/`` at
+all — the client's originals are the filer's business, and even there they
+are only ever moved, never altered. A per-engagement lock file prevents
+overlapping scheduled runs; stale locks (>1 h) are replaced.
 """
 
 from __future__ import annotations
@@ -45,8 +47,8 @@ from tracker.manifest import (
 )
 from tracker.scaffold import (
     MANIFEST_FILENAME,
-    README_NAME,
-    SHARED_DIR_NAME,
+    PREPARED_DIR_NAME,
+    REVIEW_DIR_NAME,
     assign_folders,
 )
 from tracker.validators import (
@@ -187,24 +189,39 @@ def _join(facts: list[str]) -> str:
 
 
 def _find_unfiled(
-    shared_dir: Path, claimed: set[Path], today: dt.date
+    prepared_dir: Path, claimed: set[Path], today: dt.date
 ) -> list[UnfiledEntry]:
-    """Loose files in the Shared root and folders matching no identifier."""
+    """Everything in ``Prepared/`` that no manifest row accounts for.
+
+    Chiefly the contents of ``00 - Needs Review``: documents the filer
+    preserved but could not confidently route. ``_index.xlsx`` records why
+    each one landed there; this sheet is the at-a-glance version.
+    """
     entries: list[UnfiledEntry] = []
-    if not shared_dir.is_dir():
+    if not prepared_dir.is_dir():
         return entries
-    for child in sorted(shared_dir.iterdir()):
+    for child in sorted(prepared_dir.iterdir()):
         if child.is_file():
-            if is_ignored(child) or child.name == README_NAME:
+            if is_ignored(child):
                 continue
             entries.append(
                 UnfiledEntry(
                     name=child.name,
-                    kind="loose file in Shared root",
+                    kind="loose file in Prepared root",
                     size_kb=round(child.stat().st_size / 1024, 1),
                     seen=today.isoformat(),
                 )
             )
+        elif child.is_dir() and child.name == REVIEW_DIR_NAME:
+            for path in iter_candidate_files(child):
+                entries.append(
+                    UnfiledEntry(
+                        name=path.name,
+                        kind="needs review - could not be matched to a request",
+                        size_kb=round(path.stat().st_size / 1024, 1),
+                        seen=today.isoformat(),
+                    )
+                )
         elif child.is_dir() and child not in claimed:
             n = len(iter_candidate_files(child))
             entries.append(
@@ -265,9 +282,9 @@ def scan_engagement(
     if not dry_run:
         lock = _acquire_lock(engagement_dir)
     try:
-        shared_dir = engagement_dir / SHARED_DIR_NAME
+        prepared_dir = engagement_dir / PREPARED_DIR_NAME
         cache = ContentCache(engagement_dir / CACHE_FILENAME)
-        assigned = assign_folders(shared_dir, [i.identifier for i in items])
+        assigned = assign_folders(prepared_dir, [i.identifier for i in items])
 
         updates = {
             item.identifier: _scan_item(item, assigned[item.identifier], cache, today)
@@ -275,7 +292,7 @@ def scan_engagement(
         }
 
         claimed = {folder for folders in assigned.values() for folder in folders}
-        unfiled = _find_unfiled(shared_dir, claimed, today)
+        unfiled = _find_unfiled(prepared_dir, claimed, today)
 
         report = ScanReport(
             engagement_dir=engagement_dir,
@@ -306,7 +323,7 @@ def scan_engagement(
 
 def _print_report(report: ScanReport) -> None:
     counts: dict[str, int] = {}
-    print(f"\nScan of {report.engagement_dir / SHARED_DIR_NAME}")
+    print(f"\nScan of {report.engagement_dir / PREPARED_DIR_NAME}")
     print(f"  {'ID':<8} {'Status':<18} {'Files':<6} Notes")
     print(f"  {'-'*8} {'-'*18} {'-'*6} {'-'*40}")
     for identifier, update in report.updates.items():
@@ -316,7 +333,7 @@ def _print_report(report: ScanReport) -> None:
             note = note[:67] + "..."
         print(f"  {identifier:<8} {update.status or '-':<18} {update.file_count:<6} {note}")
     if report.unfiled:
-        print("\n  Unfiled (needs your attention; nothing was moved):")
+        print("\n  Needs review (originals preserved in Shared/PBC; see _index.xlsx):")
         for entry in report.unfiled:
             print(f"    ? {entry.name}  ({entry.kind})")
     summary = " | ".join(f"{status}: {n}" for status, n in sorted(counts.items()))
@@ -334,7 +351,7 @@ if __name__ == "__main__":
     from logging.handlers import RotatingFileHandler
 
     parser = argparse.ArgumentParser(
-        description="Scan an engagement's Shared/ tree and update _manifest.xlsx"
+        description="Scan an engagement's Prepared/ tree and update _manifest.xlsx"
     )
     parser.add_argument("engagement_dir", help="folder containing _manifest.xlsx")
     parser.add_argument(

@@ -1,18 +1,26 @@
-# Tax Document Tracker — Build Plan (v1.1)
+# Tax Document Tracker — Build Plan (v1.2)
 
 A Windows-compatible system for income tax information requests: each engagement
 starts by picking the return type (1040, 1120, 1120-S, 1065, 1041, 990), which
 selects a tailored document request template (`FORM_TEMPLATES` in `tracker/api.py`;
 CSV checklists in `templates/`). The system then scaffolds a cloud-synced folder
-structure (OneDrive or Google Drive) from an Excel manifest, lets clients drag documents into shared folders,
-and automatically validates and tags document status back into the manifest.
+structure (OneDrive or Google Drive) from an Excel manifest, gives the client **one
+folder** to drop everything into, then sorts what arrives: originals are preserved in
+`Shared/PBC/`, renamed working copies are filed into `Prepared/{Identifier} - {Document}/`,
+every move is written to `_index.xlsx`, and each request's status is validated back
+into the manifest.
 
 ## Hard Constraints
 
-- **No generative AI touches client financial documents and no automated file moves.**
-  All status decisions are made by deterministic rules. The scanner is strictly
-  read-only against client files: it reads, validates, and reports — it never moves,
-  renames, or deletes.
+- **No generative AI touches client financial documents.** Every routing and status
+  decision comes from deterministic rules in the manifest.
+- **Originals are never altered.** The filer *moves* each dropped file into
+  `Shared/PBC/` under its own name, byte for byte, and works from a copy. Nothing is
+  renamed in place, edited, or deleted, and every move and rename is recorded in
+  `_index.xlsx`. The scanner never touches `Shared/` at all.
+- **Nothing is guessed.** A document is filed only when exactly one request accepts
+  it. Ambiguous, contested and unrecognized files go to `Prepared/00 - Needs Review/`
+  for a person — misfiling a tax document is worse than not filing it.
 - Python 3.11+, `pathlib.Path` throughout.
 - Atomic, incremental development: one complete, verified component at a time.
 - All manifest write-backs go through `openpyxl`, preserving existing content
@@ -27,6 +35,16 @@ and automatically validates and tags document status back into the manifest.
 | 2 | Manual Override column | **Yes.** `Accepted` / `Waived`; scanner never overwrites status on overridden rows. |
 | 3 | Received-then-changed | **Auto-revert.** Status always reflects the current scan; original Received Date preserved with a regression note. |
 
+## Decision Log (2026-09-16)
+
+| # | Decision | Choice |
+|---|----------|--------|
+| 4 | Client-facing structure | **One folder.** The client drops everything into `Shared/`; they never sort, name or match anything. |
+| 5 | Where originals live | **`Shared/PBC/`.** Moved out of the drop zone, name and bytes untouched, still visible to the client. |
+| 6 | Where working copies live | **Firm side only (`Prepared/`).** The client never sees the organized tree, so they cannot edit it. |
+| 7 | Unidentifiable files | **`00 - Needs Review`, never a guess.** Extension alone does not route; a contested document blocks its own filing. |
+| 8 | Rename convention | **`{Identifier} - {Document} - {Period}.ext`**, with `(2)`, `(3)`… for rows expecting several files. |
+
 ## Architecture
 
 ```
@@ -35,18 +53,34 @@ OneDrive / Google Drive (synced locally on Windows)
     └── {ClientName}/
         └── {EngagementName}/
             ├── _manifest.xlsx        ← accountant-only (NOT in the shared scope)
+            ├── _index.xlsx           ← every original: where it went, what it became
             ├── _manifest.pending.json← sidecar written only if Excel had the file locked
             ├── scan.log              ← rotating log
+            ├── Prepared/             ← firm-side working set (NOT shared)
+            │   ├── A01 - W-2 Wage Statements - All Employers/
+            │   │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
+            │   ├── A02 - 1099-INT - 1099-DIV - Interest & Dividend Income/
+            │   └── 00 - Needs Review/  ← could not be identified; a person decides
             └── Shared/               ← client's edit-rights link points HERE
-                ├── _README.txt       ← client instructions (auto-generated)
-                ├── A01 - W-2 Wage Statements - All Employers/
-                ├── A02 - 1099-INT - 1099-DIV - Interest & Dividend Income/
-                └── ...
+                ├── _README.txt       ← "just drop everything here" (auto-generated)
+                ├── (client drops land here, briefly)
+                └── PBC/              ← their originals, untouched, still visible
+                    ├── scan0012.pdf
+                    └── W-2 John Smith 2025.pdf
 ```
 
-The scanner runs against the local synced path on a schedule (Windows Task Scheduler
-or n8n cron). A per-engagement lock file prevents overlapping runs when an OCR-heavy
-scan exceeds the interval.
+Two jobs run against the local synced path on a schedule (Windows Task Scheduler or
+n8n cron), in order:
+
+1. `python -m tracker.filer <engagement_dir>` — sort the drop folder: preserve each
+   original in `PBC/`, file a renamed copy into `Prepared/`, append to `_index.xlsx`.
+2. `python -m tracker.scanner <engagement_dir>` — validate `Prepared/` and write
+   statuses into `_manifest.xlsx`.
+
+A per-engagement lock file prevents overlapping runs when an OCR-heavy scan exceeds
+the interval. Cloud-only placeholders are left in the drop folder until the sync
+client has actually downloaded them, so a stub is never filed as if it were the
+document.
 
 ## Manifest Schema (`_manifest.xlsx`, sheet "Requests")
 
@@ -101,18 +135,25 @@ no-genAI-on-financial-docs rule.)*
 | # | Component | Status |
 |---|-----------|--------|
 | 1 | `tracker/manifest.py` — schema, `RequestItem`, `load_manifest()`, `write_statuses()` with lock-retry + pending-sidecar merge, `create_template()` | ✅ built + tested |
-| 2 | `tracker/scaffold.py` — manifest → `Shared/{Identifier} - {Document}` folders (sanitize `\ / : * ? " < > \|`), `_README.txt`. Idempotent via prefix matching; never touches existing files. CLI: `python -m tracker.scaffold <engagement_dir>` | ✅ built + tested |
+| 2 | `tracker/scaffold.py` — manifest → `Shared/` drop folder + `Shared/PBC/`, and `Prepared/{Identifier} - {Document}` + `00 - Needs Review` (sanitize `\ / : * ? " < > \|`), `_README.txt`. Idempotent via prefix matching; never touches existing files. CLI: `python -m tracker.scaffold <engagement_dir>` | ✅ built + tested |
 | 3 | `tracker/validators.py` — Tiers 1–2, pure read-only functions; passive cloud-placeholder detection (OneDrive / Google Drive) (plain local files just report False — no cloud dependency). Dry-run CLI: `python -m tracker.validators <engagement_dir>` | ✅ built + tested |
 | 4 | `tracker/content_check.py` — Tier 3 extraction (pdfplumber / openpyxl / text; optional OCR fallback that degrades to a "review manually" note when Tesseract is absent) + rules + verdict cache. Cache stores pass/fail only — extracted client text is never persisted | ✅ built + tested |
-| 5 | `tracker/scanner.py` — orchestrator: walk `Shared/`, prefix-match folders, run tiers, resolve status (override- and revert-aware), hash-dedupe counts (skipped for 0/1-file rows), Unfiled sheet, write-back, console summary, stale-aware run-lock. CLI: `python -m tracker.scanner <engagement_dir> [--dry-run]` | ✅ built + tested |
-| 6 | `tracker/reminder.py` — draft client email per engagement from Missing/Partial/Failed rows (draft only — no sending) | pending |
-| 7 | Scheduling — Task Scheduler XML / n8n cron; `engagements.yaml` registry | pending |
+| 5 | `tracker/scanner.py` — orchestrator: walk `Prepared/`, prefix-match folders, run tiers, resolve status (override- and revert-aware), hash-dedupe counts (skipped for 0/1-file rows), Unfiled sheet, write-back, console summary, stale-aware run-lock. CLI: `python -m tracker.scanner <engagement_dir> [--dry-run]` | ✅ built + tested |
+| 6 | `tracker/router.py` — deterministic routing of a dropped file to one manifest row. Evidence order: required keywords → any-keywords/period → filename (text-less scans only). Extension alone never routes; a document matching one row's required keywords but failing its other rules is contested and blocks its own filing | ✅ built + tested |
+| 7 | `tracker/filer.py` — sort the drop folder: move each original into `Shared/PBC/` untouched, copy a renamed working file into `Prepared/…` or `00 - Needs Review`, append `_index.xlsx`. Content-hash de-duplication makes re-runs no-ops; cloud-only files are left to finish syncing. CLI: `python -m tracker.filer <engagement_dir> [--dry-run]` | ✅ built + tested |
+| 8 | `tracker/reminder.py` — draft client email per engagement from Missing/Partial/Failed rows (draft only — no sending) | pending |
+| 9 | Scheduling — Task Scheduler XML / n8n cron; `engagements.yaml` registry | pending |
 
 ## Edge Cases (designed in)
 
 - Cloud-only files (OneDrive Files On-Demand, Google Drive streaming) → detect
   placeholder attributes; mark **Pending Sync**;
   never force-hydrate (a cloud-only 500 MB file must not be silently downloaded every scan).
+- Client drops a whole folder → recursed into and flattened; the folder itself is left behind.
+- Same document sent twice under different names → both originals preserved in `PBC/`,
+  filed once (content-hash match), the second recorded in the index as a duplicate.
+- Two files that would take the same prepared name → `(2)`, `(3)`… never an overwrite.
+- A name already used in `PBC/` → the newcomer becomes `name (2).ext`; nothing is replaced.
 - Google-native documents (`.gdoc`, `.gsheet`, ...) → tier-2 fail with a note asking the
   client to upload an exported PDF/Excel copy; Google Drive `.tmp.drive*` transfer temps
   are ignored as junk.

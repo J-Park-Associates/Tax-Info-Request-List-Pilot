@@ -80,11 +80,25 @@ def rules_fingerprint(item: RequestItem) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+def contains_keyword(text: str, keyword: str) -> bool:
+    """True if ``keyword`` appears in ``text`` as a whole token.
+
+    Matched on token boundaries rather than as a bare substring, so ``EIN``
+    does not match "being", ``1098`` does not match "10983", and ``W-2``
+    still matches "W-2 Wage and Tax Statement". Keywords drive both status
+    and — via :mod:`tracker.router` — where a document gets filed, so a
+    coincidental substring must never count as evidence.
+    """
+    escaped = re.escape(keyword.strip().lower())
+    if not escaped:
+        return False
+    pattern = rf"(?<![a-z0-9]){escaped}(?![a-z0-9])"
+    return re.search(pattern, text.lower()) is not None
+
+
 def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
     """Apply the manifest row's content rules to extracted text."""
-    lowered = text.lower()
-
-    missing = [k for k in item.required_keywords if k.lower() not in lowered]
+    missing = [k for k in item.required_keywords if not contains_keyword(text, k)]
     if missing:
         listed = ", ".join(f"'{k}'" for k in missing)
         return ContentResult(
@@ -92,7 +106,9 @@ def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
             reason=f"required keyword(s) {listed} not found; possible wrong document",
         )
 
-    if item.any_keywords and not any(k.lower() in lowered for k in item.any_keywords):
+    if item.any_keywords and not any(
+        contains_keyword(text, k) for k in item.any_keywords
+    ):
         listed = ", ".join(item.any_keywords)
         return ContentResult(
             ok=False,

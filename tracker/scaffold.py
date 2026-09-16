@@ -1,8 +1,15 @@
 """Folder scaffolding for the Client Document Tracker (component 2, docs/ROADMAP.md).
 
-Reads an engagement's ``_manifest.xlsx`` and creates the client-facing
-``Shared/`` tree: one ``{Identifier} - {Document}`` folder per request row,
-plus an auto-generated ``_README.txt`` with client instructions.
+Reads an engagement's ``_manifest.xlsx`` and lays out both sides of one
+engagement:
+
+- **Client side** — ``Shared/``, a single folder the client drops everything
+  into, with ``Shared/PBC/`` holding the originals once
+  :mod:`tracker.filer` has sorted them, and an auto-generated
+  ``_README.txt`` telling the client they need not sort anything.
+- **Firm side** — ``Prepared/``, one ``{Identifier} - {Document}`` folder per
+  request row for the renamed working copies, plus ``00 - Needs Review``
+  for anything the rules could not confidently identify.
 
 Guarantees:
 
@@ -32,6 +39,13 @@ from tracker.manifest import Override, RequestItem, load_manifest
 MANIFEST_FILENAME = "_manifest.xlsx"
 SHARED_DIR_NAME = "Shared"
 README_NAME = "_README.txt"
+
+#: The client's untouched originals, inside the folder they can see.
+PBC_DIR_NAME = "PBC"
+#: The firm's working set: renamed copies, one folder per request.
+PREPARED_DIR_NAME = "Prepared"
+#: Where anything the rules could not confidently identify waits for a human.
+REVIEW_DIR_NAME = "00 - Needs Review"
 
 #: Characters Windows forbids in file/folder names, plus control chars.
 _ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -70,19 +84,19 @@ def matches_identifier(folder_name: str, identifier: str) -> bool:
 
 
 def assign_folders(
-    shared_dir: Path, identifiers: Sequence[str]
+    parent_dir: Path, identifiers: Sequence[str]
 ) -> dict[str, list[Path]]:
     """Map each identifier to the existing folders that belong to it.
 
-    Every subfolder of ``shared_dir`` is assigned to the *longest* matching
+    Every subfolder of ``parent_dir`` is assigned to the *longest* matching
     identifier, so with identifiers ``A01`` and ``A01-B`` a folder named
     ``A01-B - Loan Docs`` belongs to ``A01-B`` only. Folders matching no
     identifier are ignored here (the scanner reports them, component 5).
     """
     assigned: dict[str, list[Path]] = {ident: [] for ident in identifiers}
-    if not shared_dir.is_dir():
+    if not parent_dir.is_dir():
         return assigned
-    for child in sorted(shared_dir.iterdir()):
+    for child in sorted(parent_dir.iterdir()):
         if not child.is_dir():
             continue
         best: str | None = None
@@ -101,6 +115,8 @@ def assign_folders(
 @dataclass(slots=True)
 class ScaffoldResult:
     shared_dir: Path
+    prepared_dir: Path | None = None                        # firm-side working set
+    pbc_dir: Path | None = None                             # client's originals
     created: list[Path] = field(default_factory=list)       # new folders made
     existing: list[str] = field(default_factory=list)       # identifiers already present
     waived: list[str] = field(default_factory=list)         # skipped (Override=Waived)
@@ -121,11 +137,22 @@ def scaffold_engagement(
     engagement_dir = Path(engagement_dir)
     items = load_manifest(engagement_dir / MANIFEST_FILENAME)
 
+    # Client side: one folder to drop into, plus the originals we keep.
     shared_dir = engagement_dir / SHARED_DIR_NAME
     shared_dir.mkdir(parents=True, exist_ok=True)
-    result = ScaffoldResult(shared_dir=shared_dir)
+    pbc_dir = shared_dir / PBC_DIR_NAME
+    pbc_dir.mkdir(exist_ok=True)
 
-    assigned = assign_folders(shared_dir, [i.identifier for i in items])
+    # Firm side: one folder per request, plus somewhere for the unclear.
+    prepared_dir = engagement_dir / PREPARED_DIR_NAME
+    prepared_dir.mkdir(exist_ok=True)
+    (prepared_dir / REVIEW_DIR_NAME).mkdir(exist_ok=True)
+
+    result = ScaffoldResult(
+        shared_dir=shared_dir, prepared_dir=prepared_dir, pbc_dir=pbc_dir
+    )
+
+    assigned = assign_folders(prepared_dir, [i.identifier for i in items])
     for item in items:
         if item.manual_override == Override.WAIVED:
             result.waived.append(item.identifier)
@@ -133,7 +160,7 @@ def scaffold_engagement(
         if assigned[item.identifier]:
             result.existing.append(item.identifier)
             continue
-        folder = shared_dir / folder_name_for(item)
+        folder = prepared_dir / folder_name_for(item)
         folder.mkdir(exist_ok=True)  # identifiers are unique, so names are too
         result.created.append(folder)
 
@@ -154,18 +181,23 @@ def _write_readme(
         "",
         f"Engagement: {engagement_name}",
         "",
-        "1. Each document we need has its own folder here.",
-        "2. Drag each file INTO its matching folder.",
-        "   Please don't leave files loose in this top-level folder.",
-        "3. Please don't create new folders or rename these ones.",
+        "Just drop everything into this folder. One folder, that's it -",
+        "you don't need to sort anything or name anything. We sort it.",
+        "",
+        "1. Drag your documents anywhere in this folder.",
+        "2. Within a few minutes each file moves into the PBC folder.",
+        "   That is us filing it - your file is safe, unchanged, and still",
+        "   yours to look at. Nothing is ever renamed or deleted.",
+        "3. Keep going until the list below is covered. Send them as you",
+        "   find them; there's no need to wait and send everything at once.",
         "4. Original PDFs or Excel files are preferred; scans and photos",
         "   are fine as long as they are readable.",
         "5. If a document lives in Google Docs or Google Sheets, please",
         "   download it first (File > Download > PDF or Excel) and upload",
         "   that copy - Google shortcut files (.gdoc, .gsheet) can't be read.",
-        "6. You can replace a file at any time by dropping in a new copy.",
+        "6. To replace something, just drop in the new copy.",
         "",
-        "DOCUMENTS REQUESTED",
+        "WHAT WE STILL NEED",
         "-" * 45,
     ]
     for item in items:
@@ -192,14 +224,15 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Scaffold the client-facing Shared/ tree from _manifest.xlsx"
+        description="Lay out Shared/ (client drop folder) and Prepared/ from _manifest.xlsx"
     )
     parser.add_argument("engagement_dir", help="folder containing _manifest.xlsx")
     parser.add_argument("--contact", default="", help="contact line for _README.txt")
     ns = parser.parse_args()
 
     res = scaffold_engagement(ns.engagement_dir, contact=ns.contact)
-    print(f"Shared tree: {res.shared_dir}")
+    print(f"Client drop folder: {res.shared_dir}")
+    print(f"Prepared tree:      {res.prepared_dir}")
     for folder in res.created:
         print(f"  + created  {folder.name}")
     for ident in res.existing:

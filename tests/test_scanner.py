@@ -15,7 +15,12 @@ from tracker.manifest import (
     create_template,
     load_manifest,
 )
-from tracker.scaffold import MANIFEST_FILENAME, SHARED_DIR_NAME, scaffold_engagement
+from tracker.scaffold import (
+    MANIFEST_FILENAME,
+    PREPARED_DIR_NAME,
+    REVIEW_DIR_NAME,
+    scaffold_engagement,
+)
 from tracker.scanner import (
     LOCK_FILENAME,
     ScanLockedError,
@@ -79,8 +84,9 @@ def engagement(tmp_path):
 
 
 def folder(engagement, prefix):
-    shared = engagement / SHARED_DIR_NAME
-    return next(p for p in shared.iterdir() if p.is_dir() and p.name.startswith(prefix))
+    """The Prepared/ working folder for one request row."""
+    prepared = engagement / PREPARED_DIR_NAME
+    return next(p for p in prepared.iterdir() if p.is_dir() and p.name.startswith(prefix))
 
 
 def statuses(engagement):
@@ -204,9 +210,11 @@ def test_deleted_folder_reported_missing(engagement):
 
 
 def test_unfiled_sheet_written(engagement):
-    shared = engagement / SHARED_DIR_NAME
-    (shared / "loose_notes.txt").write_text("oops", encoding="utf-8")
-    rogue = shared / "misc uploads"
+    prepared = engagement / PREPARED_DIR_NAME
+    review = prepared / REVIEW_DIR_NAME
+    (review / "scan0012.pdf").write_bytes(b"x" * 100)
+    (prepared / "loose_notes.txt").write_text("oops", encoding="utf-8")
+    rogue = prepared / "misc uploads"
     rogue.mkdir()
     (rogue / "something.pdf").write_bytes(b"x")
 
@@ -216,11 +224,13 @@ def test_unfiled_sheet_written(engagement):
     rows = list(wb[UNFILED_SHEET_NAME].iter_rows(min_row=2, values_only=True))
     wb.close()
     names = {r[0]: r[1] for r in rows}
-    assert names["loose_notes.txt"] == "loose file in Shared root"
+    assert names["scan0012.pdf"] == "needs review - could not be matched to a request"
+    assert names["loose_notes.txt"] == "loose file in Prepared root"
     assert names["misc uploads"] == "unrecognized folder (1 file(s))"
 
     # resolved next scan -> sheet snapshot empties
-    (shared / "loose_notes.txt").unlink()
+    (review / "scan0012.pdf").unlink()
+    (prepared / "loose_notes.txt").unlink()
     (rogue / "something.pdf").unlink()
     rogue.rmdir()
     scan_engagement(engagement, today=DAY2)

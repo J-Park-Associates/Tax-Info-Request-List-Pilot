@@ -240,7 +240,7 @@ if __name__ == "__main__":
     from tracker.scaffold import (
         MANIFEST_FILENAME,
         README_NAME,
-        SHARED_DIR_NAME,
+        PREPARED_DIR_NAME,
         assign_folders,
     )
 
@@ -252,10 +252,10 @@ if __name__ == "__main__":
 
     engagement = Path(ns.engagement_dir)
     items = load_manifest(engagement / MANIFEST_FILENAME)
-    shared = engagement / SHARED_DIR_NAME
-    assigned = assign_folders(shared, [i.identifier for i in items])
+    prepared = engagement / PREPARED_DIR_NAME
+    assigned = assign_folders(prepared, [i.identifier for i in items])
 
-    print(f"Dry-run validation of {shared}  (nothing is written)\n")
+    print(f"Dry-run validation of {prepared}  (nothing is written)\n")
     for item in items:
         if item.manual_override == Override.WAIVED:
             print(f"[{item.identifier}] {item.document}")
@@ -281,16 +281,16 @@ if __name__ == "__main__":
             n = len(result.valid)
             print(f"    => {n} valid file(s), expected {item.expected_count}\n")
 
-    # Anything loose in Shared/ root or in folders matching no identifier.
+    # Anything loose in Prepared/ or in folders matching no identifier.
     claimed = {f for folders in assigned.values() for f in folders}
-    if shared.is_dir():
+    if prepared.is_dir():
         loose = [
             p.name
-            for p in sorted(shared.iterdir())
+            for p in sorted(prepared.iterdir())
             if (p.is_file() and not is_ignored(p) and p.name != README_NAME)
             or (p.is_dir() and p not in claimed)
         ]
         if loose:
-            print("Unfiled (loose files / unrecognized folders in Shared root):")
+            print("Not matched to a request (see 00 - Needs Review):")
             for name in loose:
                 print(f"    ? {name}")

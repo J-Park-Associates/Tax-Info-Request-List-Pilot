@@ -167,7 +167,7 @@ async function runScan() {
   } finally {
     btn.disabled = false;
     btn.classList.remove("spinning");
-    $("scan-label").textContent = "Run Scan";
+    $("scan-label").textContent = "Sort & Scan";
   }
 }
 
@@ -322,6 +322,7 @@ $("btn-new").addEventListener("click", openWizard);
 $("btn-shared").addEventListener("click", () => paths && window.tracker.open(paths.shared));
 $("btn-samples").addEventListener("click", () => paths && window.tracker.open(paths.samples));
 $("btn-excel").addEventListener("click", () => paths && window.tracker.open(paths.manifest));
+$("btn-index").addEventListener("click", () => paths && window.tracker.open(paths.index));
 $("eng-select").addEventListener("change", (e) => {
   active = e.target.value;
   refresh(active);

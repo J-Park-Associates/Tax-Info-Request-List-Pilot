@@ -6,10 +6,11 @@ serializes it, so the UI can never disagree with the scanner.
 
 Commands:
   state     current manifest rows + unfiled sheet + useful paths
-  scaffold  build/refresh the Shared/ tree
+  scaffold  build/refresh the Shared/ drop folder and Prepared/ tree
+  sort      file the client's drops into PBC/ and Prepared/
   scan      run a full scan and write the manifest back
   reset     rebuild the entire marketing demo from scratch:
-            engagement folder, manifest, Shared/ tree, sample client docs
+            engagement folder, manifest, folder tree, sample client docs
 """
 
 from __future__ import annotations
@@ -30,8 +31,11 @@ from tracker.manifest import (
     create_template,
     load_manifest,
 )
+from tracker.filer import INDEX_FILENAME, file_drops, read_index
 from tracker.scaffold import (
     MANIFEST_FILENAME,
+    PBC_DIR_NAME,
+    PREPARED_DIR_NAME,
     SHARED_DIR_NAME,
     sanitize_component,
     scaffold_engagement,
@@ -114,42 +118,52 @@ FORM_TEMPLATES = {
         },
         {
             "identifier": "D01", "document": "Charitable Contribution Receipts",
+            "any_keywords": "charitable, contribution, donation",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
         },
         {
             "identifier": "E01", "document": "1099-B / Brokerage Year-End Statements",
+            "any_keywords": "1099-b, brokerage, proceeds from broker",
             "period": "TY2025", "extensions": "pdf, csv", "core": False,
         },
         {
             "identifier": "E02", "document": "1099-R Retirement Distributions",
+            "any_keywords": "1099-r, retirement distribution",
             "period": "TY2025", "extensions": "pdf", "core": False,
         },
         {
             "identifier": "F01", "document": "Schedule K-1s Received",
+            "any_keywords": "schedule k-1, k-1",
             "period": "TY2025", "extensions": "pdf", "core": False,
         },
         {
             "identifier": "G01", "document": "Property Tax Statements",
+            "any_keywords": "property tax, assessor, parcel",
             "period": "TY2025", "extensions": "pdf", "core": False,
         },
         {
             "identifier": "H01", "document": "Estimated Tax Payment Records",
+            "any_keywords": "estimated tax, 1040-es, 1120-w",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
         },
         {
             "identifier": "I01", "document": "Form 1095-A - Marketplace Health Insurance",
+            "any_keywords": "1095-a, marketplace",
             "period": "TY2025", "extensions": "pdf", "core": False,
         },
         {
             "identifier": "J01", "document": "Childcare Provider Statements - Name, EIN, Amounts",
+            "any_keywords": "childcare, dependent care, provider",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
         },
         {
             "identifier": "K01", "document": "IRA / HSA Contribution Statements - Form 5498",
+            "any_keywords": "5498, ira contribution, hsa",
             "period": "TY2025", "extensions": "pdf", "core": False,
         },
         {
             "identifier": "L01", "document": "Tuition Statements - Form 1098-T",
+            "any_keywords": "1098-t, tuition",
             "period": "TY2025", "extensions": "pdf", "core": False,
         },
     ],
@@ -161,54 +175,67 @@ FORM_TEMPLATES = {
         },
         {
             "identifier": "A02", "document": "Trial Balance - Year-End",
+            "any_keywords": "trial balance",
             "period": "TY2025", "extensions": "xlsx, csv", "core": True,
         },
         {
             "identifier": "A03", "document": "General Ledger Detail",
+            "any_keywords": "general ledger",
             "period": "TY2025", "extensions": "xlsx, csv", "core": True,
         },
         {
             "identifier": "B01", "document": "Year-End Financial Statements",
+            "any_keywords": "balance sheet, income statement, statement of operations, statement of activities",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
         },
         {
             "identifier": "B02", "document": "December Bank Statements & Year-End Reconciliations",
+            "any_keywords": "bank statement, ending balance, reconciliation",
             "period": "Dec 2025", "extensions": "pdf", "core": True,
         },
         {
             "identifier": "C01", "document": "Fixed Asset Additions & Disposals Detail",
+            "any_keywords": "fixed asset, asset detail, disposals",
             "period": "TY2025", "extensions": "xlsx", "core": True,
         },
         {
             "identifier": "C02", "document": "Depreciation Schedules",
+            "any_keywords": "depreciation",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
         {
             "identifier": "D01", "document": "Loan Agreements & Year-End Balances",
+            "any_keywords": "loan agreement, promissory note, amortization",
             "period": "As of 12/31/2025", "extensions": "pdf", "core": False,
         },
         {
             "identifier": "E01", "document": "Payroll Tax Returns - Forms 941 & W-3",
+            "any_keywords": "941, w-3, payroll tax",
             "period": "TY2025", "extensions": "pdf", "core": True,
         },
         {
             "identifier": "E02", "document": "Officer Compensation Detail",
+            "any_keywords": "officer compensation",
             "period": "TY2025", "extensions": "xlsx", "core": False,
         },
         {
             "identifier": "F01", "document": "Estimated Tax Payment Records",
+            "any_keywords": "estimated tax, 1040-es, 1120-w",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
         },
         {
             "identifier": "G01", "document": "Shareholder List & Ownership Changes",
+            "any_keywords": "shareholder list, ownership",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
         {
             "identifier": "H01", "document": "State Apportionment Data - Sales, Payroll, Property by State",
+            "any_keywords": "apportionment",
             "period": "TY2025", "extensions": "xlsx", "core": False,
         },
         {
             "identifier": "I01", "document": "Book-Tax Difference Support - Schedule M-1 Items",
+            "any_keywords": "schedule m-1, book-tax",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
     ],
@@ -220,54 +247,67 @@ FORM_TEMPLATES = {
         },
         {
             "identifier": "A02", "document": "Trial Balance - Year-End",
+            "any_keywords": "trial balance",
             "period": "TY2025", "extensions": "xlsx, csv", "core": True,
         },
         {
             "identifier": "A03", "document": "General Ledger Detail",
+            "any_keywords": "general ledger",
             "period": "TY2025", "extensions": "xlsx, csv", "core": True,
         },
         {
             "identifier": "B01", "document": "Year-End Financial Statements",
+            "any_keywords": "balance sheet, income statement, statement of operations, statement of activities",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
         },
         {
             "identifier": "B02", "document": "December Bank Statements & Year-End Reconciliations",
+            "any_keywords": "bank statement, ending balance, reconciliation",
             "period": "Dec 2025", "extensions": "pdf", "core": True,
         },
         {
             "identifier": "C01", "document": "Shareholder List with Ownership % & Changes",
+            "any_keywords": "shareholder list, ownership",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": True,
         },
         {
             "identifier": "C02", "document": "Distributions by Shareholder",
+            "any_keywords": "distributions",
             "period": "TY2025", "extensions": "xlsx", "core": True,
         },
         {
             "identifier": "C03", "document": "Shareholder Basis Schedules",
+            "any_keywords": "stock basis, shareholder basis",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
         {
             "identifier": "D01", "document": "Officer / Shareholder W-2 Compensation Detail",
+            "any_keywords": "officer compensation, shareholder w-2",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": True,
         },
         {
             "identifier": "D02", "document": "Health Insurance Premiums for >2% Shareholders",
+            "any_keywords": "health insurance premium",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
         },
         {
             "identifier": "E01", "document": "Payroll Tax Returns - Forms 941 & W-3",
+            "any_keywords": "941, w-3, payroll tax",
             "period": "TY2025", "extensions": "pdf", "core": False,
         },
         {
             "identifier": "F01", "document": "Fixed Asset Additions & Disposals Detail",
+            "any_keywords": "fixed asset, asset detail, disposals",
             "period": "TY2025", "extensions": "xlsx", "core": False,
         },
         {
             "identifier": "G01", "document": "Loan Agreements & Shareholder Loan Activity",
+            "any_keywords": "loan agreement, promissory note, shareholder loan",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
         },
         {
             "identifier": "H01", "document": "State Apportionment Data",
+            "any_keywords": "apportionment",
             "period": "TY2025", "extensions": "xlsx", "core": False,
         },
     ],
@@ -279,64 +319,79 @@ FORM_TEMPLATES = {
         },
         {
             "identifier": "A02", "document": "Partnership Agreement & Amendments",
+            "any_keywords": "partnership agreement, operating agreement",
             "period": "Current", "extensions": "pdf", "core": True,
         },
         {
             "identifier": "A03", "document": "Trial Balance - Year-End",
+            "any_keywords": "trial balance",
             "period": "TY2025", "extensions": "xlsx, csv", "core": True,
         },
         {
             "identifier": "A04", "document": "General Ledger Detail",
+            "any_keywords": "general ledger",
             "period": "TY2025", "extensions": "xlsx, csv", "core": False,
         },
         {
             "identifier": "B01", "document": "Year-End Financial Statements",
+            "any_keywords": "balance sheet, income statement, statement of operations, statement of activities",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
         },
         {
             "identifier": "B02", "document": "December Bank Statements & Year-End Reconciliations",
+            "any_keywords": "bank statement, ending balance, reconciliation",
             "period": "Dec 2025", "extensions": "pdf", "core": True,
         },
         {
             "identifier": "C01", "document": "Partner List with Ownership % & Changes",
+            "any_keywords": "partner list, ownership",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": True,
         },
         {
             "identifier": "C02", "document": "Partner Capital Account Detail",
+            "any_keywords": "capital account",
             "period": "TY2025", "extensions": "xlsx", "core": True,
         },
         {
             "identifier": "C03", "document": "Contributions & Distributions by Partner",
+            "any_keywords": "contributions, distributions",
             "period": "TY2025", "extensions": "xlsx", "core": True,
         },
         {
             "identifier": "C04", "document": "Guaranteed Payment Detail",
+            "any_keywords": "guaranteed payment",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
         {
             "identifier": "D01", "document": "Fixed Asset Additions & Disposals Detail",
+            "any_keywords": "fixed asset, asset detail, disposals",
             "period": "TY2025", "extensions": "xlsx", "core": False,
         },
         {
             "identifier": "E01", "document": "Loan Agreements & Year-End Balances",
+            "any_keywords": "loan agreement, promissory note, amortization",
             "period": "As of 12/31/2025", "extensions": "pdf", "core": False,
         },
         {
             "identifier": "F01", "document": "Special Allocation Support - Section 704(b)",
+            "any_keywords": "special allocation, 704",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
         {
             "identifier": "G01", "document": "State Apportionment Data",
+            "any_keywords": "apportionment",
             "period": "TY2025", "extensions": "xlsx", "core": False,
         },
     ],
     "1041": [
         {
             "identifier": "A01", "document": "Trust Instrument / Will & Amendments",
+            "any_keywords": "trust agreement, last will, codicil",
             "period": "Current", "extensions": "pdf", "core": True,
         },
         {
             "identifier": "A02", "document": "IRS EIN Assignment Letter",
+            "any_keywords": "cp 575, employer identification number",
             "period": "Current", "extensions": "pdf", "core": False,
         },
         {
@@ -351,26 +406,32 @@ FORM_TEMPLATES = {
         },
         {
             "identifier": "B02", "document": "Brokerage Year-End Statements",
+            "any_keywords": "1099-b, brokerage, realized gain",
             "period": "TY2025", "extensions": "pdf", "core": True,
         },
         {
             "identifier": "C01", "document": "Distributions to Beneficiaries - Dates & Amounts",
+            "any_keywords": "beneficiary, distribution",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": True,
         },
         {
             "identifier": "C02", "document": "Beneficiary Names, Addresses & Tax IDs",
+            "any_keywords": "beneficiary",
             "period": "Current", "extensions": "xlsx, pdf", "core": True,
         },
         {
             "identifier": "D01", "document": "Fiduciary, Attorney & Accounting Fees Paid",
+            "any_keywords": "fiduciary fee, attorney fee, accounting fee",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
         },
         {
             "identifier": "E01", "document": "Cost Basis for Assets Sold During the Year",
+            "any_keywords": "cost basis, acquired, sold",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
         {
             "identifier": "F01", "document": "Rental / Business Income & Expense Detail",
+            "any_keywords": "rental income, schedule e, schedule c",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
     ],
@@ -382,46 +443,57 @@ FORM_TEMPLATES = {
         },
         {
             "identifier": "A02", "document": "Trial Balance - Year-End",
+            "any_keywords": "trial balance",
             "period": "TY2025", "extensions": "xlsx, csv", "core": True,
         },
         {
             "identifier": "B01", "document": "Year-End Financial Statements",
+            "any_keywords": "balance sheet, income statement, statement of operations, statement of activities",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
         },
         {
             "identifier": "B02", "document": "December Bank Statements & Reconciliations",
+            "any_keywords": "bank statement, ending balance, reconciliation",
             "period": "Dec 2025", "extensions": "pdf", "core": True,
         },
         {
             "identifier": "C01", "document": "Board of Directors List & Meeting Minutes",
+            "any_keywords": "board of directors, minutes",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": True,
         },
         {
             "identifier": "C02", "document": "Officer & Key Employee Compensation Detail",
+            "any_keywords": "officer compensation, key employee",
             "period": "TY2025", "extensions": "xlsx", "core": True,
         },
         {
             "identifier": "D01", "document": "Contribution / Donor Detail - Schedule B Support",
+            "any_keywords": "donor, contribution, schedule b",
             "period": "TY2025", "extensions": "xlsx, csv", "core": True,
         },
         {
             "identifier": "D02", "document": "Grants Made - Recipients & Amounts",
+            "any_keywords": "grant, grantee",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
         {
             "identifier": "E01", "document": "Program Service Accomplishment Descriptions",
+            "any_keywords": "program service",
             "period": "TY2025", "extensions": "pdf, xlsx", "core": False,
         },
         {
             "identifier": "F01", "document": "Fundraising Event Revenue & Expense Detail",
+            "any_keywords": "fundraising",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
         {
             "identifier": "G01", "document": "Payroll Tax Returns - Forms 941 & W-3",
+            "any_keywords": "941, w-3, payroll tax",
             "period": "TY2025", "extensions": "pdf", "core": False,
         },
         {
             "identifier": "H01", "document": "Unrelated Business Income Detail",
+            "any_keywords": "unrelated business, 990-t",
             "period": "TY2025", "extensions": "xlsx, pdf", "core": False,
         },
     ],
@@ -672,9 +744,25 @@ def _state(engagement: Path) -> dict:
             for i in items
         ],
         "unfiled": _read_unfiled(manifest_path),
+        "index": [
+            {
+                "received": e.received,
+                "original_name": e.original_name,
+                "identifier": e.identifier,
+                "filed_as": e.filed_as,
+                "prepared_location": e.prepared_location,
+                "pbc_location": e.pbc_location,
+                "decision": e.decision,
+                "reason": e.reason,
+            }
+            for e in read_index(engagement / INDEX_FILENAME)
+        ],
         "paths": {
             "engagement": str(engagement),
             "shared": str(engagement / SHARED_DIR_NAME),
+            "pbc": str(engagement / SHARED_DIR_NAME / PBC_DIR_NAME),
+            "prepared": str(engagement / PREPARED_DIR_NAME),
+            "index": str(engagement / INDEX_FILENAME),
             "manifest": str(manifest_path),
             "samples": str(DEMO_ROOT / SAMPLES_DIRNAME),
         },
@@ -696,10 +784,44 @@ def _cmd_scaffold(argv: list[str]) -> dict:
     }
 
 
-def _cmd_scan(argv: list[str]) -> dict:
+def _cmd_sort(argv: list[str]) -> dict:
+    """Sort the drop folder without validating — the filer on its own."""
     engagement = _engagement_dir(argv)
+    filed = file_drops(engagement)
+    return {"sorted": _sorted_payload(filed), "state": _state(engagement)}
+
+
+def _sorted_payload(filed) -> dict:
+    return {
+        "filed": [
+            {
+                "original_name": e.original_name,
+                "identifier": e.identifier,
+                "filed_as": e.filed_as,
+                "prepared_location": e.prepared_location,
+                "reason": e.reason,
+            }
+            for e in filed.filed
+        ],
+        "review": [
+            {"original_name": e.original_name, "reason": e.reason}
+            for e in filed.review
+        ],
+        "duplicates": [
+            {"original_name": e.original_name, "reason": e.reason}
+            for e in filed.duplicates
+        ],
+        "waiting": [p.name for p in filed.waiting],
+    }
+
+
+def _cmd_scan(argv: list[str]) -> dict:
+    """What the scheduled job does: sort the drop folder, then validate."""
+    engagement = _engagement_dir(argv)
+    filed = file_drops(engagement)
     report = scan_engagement(engagement)
     return {
+        "sorted": _sorted_payload(filed),
         "written": report.written,
         "deferred": report.deferred,
         "updates": {
@@ -775,6 +897,7 @@ def _cmd_create(argv: list[str]) -> dict:
 COMMANDS = {
     "state": _cmd_state,
     "scaffold": _cmd_scaffold,
+    "sort": _cmd_sort,
     "scan": _cmd_scan,
     "reset": _cmd_reset,
     "templates": _cmd_templates,

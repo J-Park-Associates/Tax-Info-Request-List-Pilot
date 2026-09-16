@@ -6,6 +6,9 @@ from tracker.manifest import ManifestError, Override, RequestItem, create_templa
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     README_NAME,
+    PBC_DIR_NAME,
+    PREPARED_DIR_NAME,
+    REVIEW_DIR_NAME,
     SHARED_DIR_NAME,
     assign_folders,
     folder_name_for,
@@ -85,15 +88,21 @@ def test_assign_folders_longest_identifier_wins(tmp_path):
 def test_creates_folders_and_readme(engagement):
     result = scaffold_engagement(engagement, contact="J Park & Associates")
     shared = engagement / SHARED_DIR_NAME
+    prepared = engagement / PREPARED_DIR_NAME
 
+    # Client side: one drop folder plus the place their originals are kept.
     assert shared.is_dir()
+    assert (shared / PBC_DIR_NAME).is_dir()
+    assert not any(p.is_dir() and p.name.startswith("A01") for p in shared.iterdir())
+    # Firm side: one folder per request, plus somewhere for the unclear.
+    assert (prepared / REVIEW_DIR_NAME).is_dir()
     assert [p.name for p in result.created] == [
         "A01 - Dec 2025 Bank Statement",
         "A02 - Monthly Bank Statements FY2025",
         "B01 - Q4- A-R -Aging- -Final--",
     ]
     assert result.waived == ["C01"]
-    assert not (shared / "C01 - Fixed Asset Register").exists()
+    assert not (prepared / "C01 - Fixed Asset Register").exists()
 
     readme = (shared / README_NAME).read_text(encoding="utf-8")
     assert "A01 - Dec 2025 Bank Statement" in readme
@@ -112,25 +121,25 @@ def test_idempotent_rerun_creates_nothing(engagement):
 
 def test_recreates_deleted_folder(engagement):
     scaffold_engagement(engagement)
-    (engagement / SHARED_DIR_NAME / "A01 - Dec 2025 Bank Statement").rmdir()
+    (engagement / PREPARED_DIR_NAME / "A01 - Dec 2025 Bank Statement").rmdir()
     result = scaffold_engagement(engagement)
     assert [p.name for p in result.created] == ["A01 - Dec 2025 Bank Statement"]
 
 
 def test_client_rename_with_prefix_not_duplicated(engagement):
     scaffold_engagement(engagement)
-    shared = engagement / SHARED_DIR_NAME
-    (shared / "A01 - Dec 2025 Bank Statement").rename(shared / "A01 - bank stuff")
+    prepared = engagement / PREPARED_DIR_NAME
+    (prepared / "A01 - Dec 2025 Bank Statement").rename(prepared / "A01 - bank stuff")
 
     result = scaffold_engagement(engagement)
     assert result.created == []
     assert "A01" in result.existing
-    assert sum(1 for p in shared.iterdir() if p.name.startswith("A01")) == 1
+    assert sum(1 for p in prepared.iterdir() if p.name.startswith("A01")) == 1
 
 
 def test_existing_client_files_never_touched(engagement):
     scaffold_engagement(engagement)
-    folder = engagement / SHARED_DIR_NAME / "A01 - Dec 2025 Bank Statement"
+    folder = engagement / PREPARED_DIR_NAME / "A01 - Dec 2025 Bank Statement"
     client_file = folder / "chase_dec_2025.pdf"
     client_file.write_bytes(b"%PDF-1.7 fake")
 
@@ -140,9 +149,9 @@ def test_existing_client_files_never_touched(engagement):
 
 def test_waived_folder_left_alone_if_it_exists(engagement):
     # Client already uploaded to C01 before the item was waived.
-    shared = engagement / SHARED_DIR_NAME
-    shared.mkdir()
-    stale = shared / "C01 - Fixed Asset Register"
+    prepared = engagement / PREPARED_DIR_NAME
+    prepared.mkdir()
+    stale = prepared / "C01 - Fixed Asset Register"
     stale.mkdir()
     (stale / "far.xlsx").write_bytes(b"data")
 
@@ -157,7 +166,7 @@ def test_readme_refreshed_on_rerun(engagement):
     readme.write_text("client scribbled over this", encoding="utf-8")
 
     scaffold_engagement(engagement)
-    assert "DOCUMENTS REQUESTED" in readme.read_text(encoding="utf-8")
+    assert "WHAT WE STILL NEED" in readme.read_text(encoding="utf-8")
 
 
 def test_missing_manifest_raises(tmp_path):
