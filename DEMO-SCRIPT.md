@@ -105,7 +105,12 @@ engagement with the dropdown; both work identically.)*
 | `Form 1098 Mortgage Interest.pdf` | C01 | valid |
 | `Mortgage Notes.docx` | C01 | wrong file type |
 | `Donation Receipts 2025.xlsx` | D01 | valid |
+| `Donation Receipts 2025.gsheet` | D01 | Google Sheets *shortcut*, not the file — rejected with export instructions |
+| `W-2 Jane Smith 2025.pdf.tmp.driveupload` | A01 | Google Drive upload caught mid-sync — ignored, never counted |
 | `vacation photo.jpg` | **loose in the top folder** | goes to "Unfiled" |
+
+*Using OneDrive rather than Google Drive at this prospect? Skip the two Google
+rows — everything else is identical. The tracker doesn't care which one you use.*
 
 ### 6. The moment — run the scan *(2 min)*
 
@@ -122,9 +127,17 @@ engagement with the dropdown; both work identically.)*
 - **B01 — Received.** "Prior-year return, verified by content."
 - **C01 — Received**, with a note rejecting the Word file. "Right document
   accepted, wrong format called out."
-- **D01 — Received.**
+- **D01 — Received**, with a note on the `.gsheet`. "Their bookkeeper works in
+  Google Sheets, so what actually arrived was a *link*, not the spreadsheet.
+  Rather than a cryptic error, the note tells the client exactly what to do:
+  File → Download → Excel, then re-upload. You can forward that note verbatim."
 - **Unfiled: vacation photo.jpg.** "Nothing is ever silently lost or deleted —
   anything unexpected is surfaced for a human to look at."
+
+If someone asks about the half-uploaded `.tmp.driveupload` file: it was ignored
+entirely. "A file still uploading is never mistaken for a delivered document —
+and if Drive is still syncing a big file, the row says *Pending Sync* rather
+than wrongly reporting it missing."
 
 ### 7. The accountant's view *(1 min)*
 

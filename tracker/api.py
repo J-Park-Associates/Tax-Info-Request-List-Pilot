@@ -610,6 +610,18 @@ def _build_samples(samples: Path) -> None:
 
     _donations_xlsx(samples / "Donation Receipts 2025.xlsx")
 
+    # Google Drive realities. A client who keeps records in Google Sheets
+    # shares a .gsheet shortcut, which is a link — not the spreadsheet; the
+    # scanner rejects it with export instructions rather than a size error.
+    (samples / "Donation Receipts 2025.gsheet").write_text(
+        '{"url": "https://docs.google.com/spreadsheets/d/1aB2cD3eF4gH5iJ6kL7mN8oP/edit",'
+        ' "doc_id": "1aB2cD3eF4gH5iJ6kL7mN8oP", "email": "client@example.com"}',
+        encoding="utf-8",
+    )
+    # A Google Drive upload caught mid-flight: ignored, never counted as a
+    # delivered document, and it disappears on its own once sync finishes.
+    (samples / "W-2 Jane Smith 2025.pdf.tmp.driveupload").write_bytes(b"\x00" * 4096)
+
     (samples / "vacation photo.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"J" * 9000)
 
 

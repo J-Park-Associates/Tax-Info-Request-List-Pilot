@@ -1,0 +1,1226 @@
+<title>Tax Document Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,600;0,8..60,700;1,8..60,400&display=swap">
+
+<style>
+:root{
+  --navy-900:#0b1f3a; --navy-800:#0e2544; --navy-700:#14335c;
+  --gold:#c9a84c;
+  --blue:#2563eb; --blue-ink:#1d4ed8; --on-blue:#ffffff;
+  --ground:#f4f6f9; --card:#ffffff; --card-2:#fafbfd; --rail:#eef2f7;
+  --border:#dde4ec; --border-strong:#c3cedc;
+  --ink:#0f172a; --muted:#55627a; --faint:#7d8aa0;
+  --ok-ink:#0f6b4f;   --ok-bg:#e6f5ee;   --ok-line:#a3d6c0;
+  --warn-ink:#8a5a09; --warn-bg:#fdf2de; --warn-line:#e7c583;
+  --bad-ink:#b3261e;  --bad-bg:#fdeceb;  --bad-line:#efb2ac;
+  --sync-ink:#1d4ed8; --sync-bg:#e9effd; --sync-line:#b4c6f5;
+  --idle-ink:#5b6880; --idle-bg:#eef1f6; --idle-line:#d2d9e3;
+  --sans:"Source Sans 3",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --r:10px;
+  --shadow:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.05);
+  --shadow-lift:0 8px 28px rgba(11,31,58,.16),0 2px 8px rgba(11,31,58,.10);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0a1420; --card:#101f31; --card-2:#0d1a2a; --rail:#0d1a2a;
+    --border:#22374f; --border-strong:#31485f;
+    --ink:#e8eff8; --muted:#a4b4c9; --faint:#7f92aa;
+    --blue:#4b82f5; --blue-ink:#6f9bf8;
+    --ok-ink:#74dcb0;   --ok-bg:#0d2c24;   --ok-line:#1d5744;
+    --warn-ink:#f0c274; --warn-bg:#31240f; --warn-line:#5d451f;
+    --bad-ink:#f6a69e;  --bad-bg:#35191a;  --bad-line:#5d2b2a;
+    --sync-ink:#9dbcfb; --sync-bg:#15243f; --sync-line:#2c4578;
+    --idle-ink:#93a2b8; --idle-bg:#172536; --idle-line:#293a50;
+    --shadow:0 1px 2px rgba(0,0,0,.35);
+    --shadow-lift:0 10px 32px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0a1420; --card:#101f31; --card-2:#0d1a2a; --rail:#0d1a2a;
+  --border:#22374f; --border-strong:#31485f;
+  --ink:#e8eff8; --muted:#a4b4c9; --faint:#7f92aa;
+  --blue:#4b82f5; --blue-ink:#6f9bf8;
+  --ok-ink:#74dcb0;   --ok-bg:#0d2c24;   --ok-line:#1d5744;
+  --warn-ink:#f0c274; --warn-bg:#31240f; --warn-line:#5d451f;
+  --bad-ink:#f6a69e;  --bad-bg:#35191a;  --bad-line:#5d2b2a;
+  --sync-ink:#9dbcfb; --sync-bg:#15243f; --sync-line:#2c4578;
+  --idle-ink:#93a2b8; --idle-bg:#172536; --idle-line:#293a50;
+  --shadow:0 1px 2px rgba(0,0,0,.35);
+  --shadow-lift:0 10px 32px rgba(0,0,0,.5);
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{
+  margin:0;background:var(--ground);color:var(--ink);
+  font-family:var(--sans);font-size:15px;line-height:1.5;
+  display:flex;flex-direction:column;
+}
+button{font:inherit;color:inherit}
+h1,h2,h3{text-wrap:balance;margin:0}
+
+/* ── chrome ───────────────────────────────────────────────── */
+.topbar{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:12px 20px;background:linear-gradient(135deg,var(--navy-900),var(--navy-700));
+  color:#f1f5f9;flex-shrink:0;
+}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.mark{
+  width:32px;height:32px;border-radius:50%;flex-shrink:0;
+  border:2px solid var(--gold);display:grid;place-items:center;
+  font-family:var(--serif);font-weight:700;font-size:15px;color:var(--gold);
+}
+.brand-name{font-family:var(--serif);font-weight:600;font-size:17px;letter-spacing:.2px}
+.brand-sub{color:#adbdd2;font-size:13px}
+.bar-spacer{flex:1 1 auto}
+.demo-badge{
+  font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;
+  padding:4px 10px;border:1px solid rgba(241,245,249,.38);border-radius:999px;color:#dbe4ef;
+}
+.seg{display:flex;background:rgba(255,255,255,.10);border-radius:999px;padding:3px;gap:2px}
+.seg button{
+  border:0;background:transparent;color:#c6d4e4;cursor:pointer;
+  padding:4px 12px;border-radius:999px;font-size:13px;font-weight:600;
+}
+.seg button[aria-pressed="true"]{background:#f8fafc;color:var(--navy-800)}
+.seg button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.provider-label{font-size:12px;color:#adbdd2;letter-spacing:.3px}
+
+/* ── shell ────────────────────────────────────────────────── */
+.shell{flex:1;min-height:0;display:grid;grid-template-columns:326px minmax(0,1fr)}
+.rail{
+  background:var(--rail);border-right:1px solid var(--border);
+  overflow-y:auto;padding:18px 18px 40px;
+}
+.main{overflow-y:auto;padding:18px 20px 40px;display:flex;flex-direction:column;gap:16px;min-width:0}
+
+/* ── presenter rail ───────────────────────────────────────── */
+.rail-head{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.rail-head h2{font-family:var(--serif);font-size:17px;font-weight:600}
+.rail-sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.step{border-top:1px solid var(--border);padding:0}
+.step:last-of-type{border-bottom:1px solid var(--border)}
+.step>summary{
+  display:flex;gap:10px;align-items:flex-start;cursor:pointer;
+  padding:11px 2px;list-style:none;font-weight:600;font-size:14px;
+}
+.step>summary::-webkit-details-marker{display:none}
+.step>summary:focus-visible{outline:2px solid var(--blue);outline-offset:-2px;border-radius:4px}
+.step-num{
+  font-family:var(--mono);font-size:11px;font-weight:500;
+  width:20px;height:20px;flex-shrink:0;border-radius:50%;
+  display:grid;place-items:center;margin-top:1px;
+  background:var(--card);border:1px solid var(--border-strong);color:var(--muted);
+}
+.step[open] .step-num{background:var(--navy-700);border-color:var(--navy-700);color:var(--gold)}
+.step-body{padding:0 2px 14px 32px;display:flex;flex-direction:column;gap:9px}
+.say{
+  font-family:var(--serif);font-style:italic;font-size:14.5px;line-height:1.55;
+  color:var(--ink);border-left:2px solid var(--gold);padding-left:11px;margin:0;
+}
+.do{font-size:13.5px;color:var(--muted);margin:0}
+.do strong{color:var(--ink);font-weight:600}
+.rail-foot{margin-top:16px;font-size:12.5px;color:var(--faint);line-height:1.5}
+
+/* ── toolbar ──────────────────────────────────────────────── */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+  border:1px solid var(--border-strong);background:var(--card);color:var(--ink);
+  padding:7px 13px;border-radius:8px;font-size:13.5px;font-weight:600;
+  box-shadow:var(--shadow);transition:background .12s,border-color .12s,transform .08s;
+}
+.btn:hover{background:var(--card-2);border-color:var(--faint)}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
+.btn-primary:hover{background:var(--blue-ink);border-color:var(--blue-ink)}
+.btn-ghost{background:transparent;box-shadow:none;border-color:var(--border)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn svg{width:15px;height:15px;flex-shrink:0}
+.eng-name{
+  font-family:var(--serif);font-size:15px;font-weight:600;
+  padding:6px 12px 6px 0;margin-right:2px;
+}
+.eng-name small{
+  font-family:var(--sans);font-weight:600;font-size:11px;letter-spacing:.6px;
+  text-transform:uppercase;color:var(--faint);display:block;line-height:1.3;
+}
+
+/* ── cards ────────────────────────────────────────────────── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow)}
+.card-head{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:12px 16px;border-bottom:1px solid var(--border);
+}
+.card-head h3{font-size:14px;font-weight:700;letter-spacing:.2px}
+.card-note{font-size:12.5px;color:var(--faint)}
+.tallies{display:flex;gap:6px;flex-wrap:wrap}
+
+/* ── file tray ────────────────────────────────────────────── */
+.tray-grid{display:flex;flex-wrap:wrap;gap:7px;padding:13px 16px}
+.doc{
+  display:flex;align-items:center;gap:8px;cursor:grab;
+  border:1px solid var(--border);background:var(--card-2);border-radius:8px;
+  padding:6px 10px 6px 8px;max-width:100%;
+  transition:border-color .12s,background .12s,box-shadow .12s;
+}
+.doc:hover{border-color:var(--blue);background:var(--card)}
+.doc:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.doc[aria-pressed="true"]{border-color:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.2);background:var(--card)}
+.doc.is-placed{opacity:.42;cursor:default;pointer-events:none}
+.doc-ext{
+  font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.3px;
+  text-transform:uppercase;padding:3px 5px;border-radius:4px;flex-shrink:0;
+  background:var(--idle-bg);color:var(--idle-ink);border:1px solid var(--idle-line);
+}
+.doc-ext.pdf{background:var(--bad-bg);color:var(--bad-ink);border-color:var(--bad-line)}
+.doc-ext.xlsx,.doc-ext.csv{background:var(--ok-bg);color:var(--ok-ink);border-color:var(--ok-line)}
+.doc-ext.docx{background:var(--sync-bg);color:var(--sync-ink);border-color:var(--sync-line)}
+.doc-ext.gsheet{background:var(--warn-bg);color:var(--warn-ink);border-color:var(--warn-line)}
+.doc-name{font-size:12.5px;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-kb{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums;flex-shrink:0}
+.doc-tag{
+  font-size:10px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
+  padding:2px 6px;border-radius:999px;flex-shrink:0;
+  background:var(--sync-bg);color:var(--sync-ink);border:1px solid var(--sync-line);
+}
+.tray-hint{padding:0 16px 13px;font-size:12.5px;color:var(--muted)}
+.tray-hint kbd{
+  font-family:var(--mono);font-size:11px;background:var(--idle-bg);
+  border:1px solid var(--idle-line);border-radius:4px;padding:1px 5px;
+}
+
+/* ── request table ────────────────────────────────────────── */
+.table-wrap{overflow-x:auto}
+table.requests{width:100%;border-collapse:collapse;font-size:13.5px;min-width:720px}
+.requests th{
+  text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--faint);padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap;
+}
+.requests td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+.requests tr:last-child td{border-bottom:0}
+.requests tr.drop-on td{background:var(--sync-bg)}
+.requests tr.armed td{background:var(--card-2)}
+.col-id{width:52px}
+.col-files{width:62px;text-align:right}
+.col-status{width:152px}
+.col-recv{width:108px}
+.cell-id{font-family:var(--mono);font-size:12.5px;font-weight:500;color:var(--muted)}
+.cell-doc{font-weight:600;min-width:200px}
+.cell-doc .folder{
+  display:block;font-family:var(--mono);font-weight:400;font-size:11.5px;
+  color:var(--faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34ch;
+}
+.cell-num{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.cell-recv{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px;white-space:nowrap}
+.cell-notes{font-family:var(--mono);font-size:11.5px;line-height:1.5;color:var(--muted);min-width:220px}
+.cell-notes .fact{display:block}
+.cell-notes .fact+.fact{margin-top:3px}
+.drops{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.chip{
+  display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;
+  background:var(--idle-bg);border:1px solid var(--idle-line);color:var(--idle-ink);
+  border-radius:5px;padding:2px 5px;max-width:100%;
+}
+.chip b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok-ink)}
+.chip.bad{background:var(--bad-bg);border-color:var(--bad-line);color:var(--bad-ink)}
+.chip.sync{background:var(--sync-bg);border-color:var(--sync-line);color:var(--sync-ink)}
+.chip.dup{background:var(--idle-bg);border-color:var(--idle-line);color:var(--idle-ink);opacity:.8}
+.chip.dup b{text-decoration:line-through;text-decoration-thickness:1px}
+.chip.dim{opacity:.6;text-decoration:line-through}
+.chip button{
+  border:0;background:transparent;cursor:pointer;padding:0 0 0 1px;
+  font-size:13px;line-height:1;color:inherit;opacity:.65;
+}
+.chip button:hover{opacity:1}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;border-radius:999px;
+  padding:3px 10px;font-size:12px;font-weight:700;letter-spacing:.2px;white-space:nowrap;
+  background:var(--idle-bg);color:var(--idle-ink);border:1px solid var(--idle-line);
+}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.pill.received{background:var(--ok-bg);color:var(--ok-ink);border-color:var(--ok-line)}
+.pill.partial{background:var(--warn-bg);color:var(--warn-ink);border-color:var(--warn-line)}
+.pill.failed{background:var(--bad-bg);color:var(--bad-ink);border-color:var(--bad-line)}
+.pill.pending{background:var(--sync-bg);color:var(--sync-ink);border-color:var(--sync-line)}
+.pill.scanning{background:var(--sync-bg);color:var(--sync-ink);border-color:var(--sync-line)}
+.pill.scanning::before{animation:blink .7s steps(2,end) infinite}
+@keyframes blink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pill.scanning::before{animation:none}}
+
+/* ── shared-root drop zone + unfiled ──────────────────────── */
+.rootzone{
+  margin:0;padding:11px 16px;border-top:1px dashed var(--border-strong);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  font-size:12.5px;color:var(--muted);background:var(--card-2);
+  border-radius:0 0 var(--r) var(--r);
+}
+.rootzone.drop-on{background:var(--sync-bg);color:var(--sync-ink)}
+.rootzone .drops{margin-top:0}
+.unfiled li{
+  display:flex;align-items:center;gap:9px;padding:9px 16px;
+  border-bottom:1px solid var(--border);font-size:13px;
+}
+.unfiled li:last-child{border-bottom:0}
+.unfiled{list-style:none;margin:0;padding:0}
+.unfiled .fname{font-family:var(--mono);font-size:12.5px}
+.unfiled .why{color:var(--faint);font-size:12px}
+
+/* ── assurances ───────────────────────────────────────────── */
+.assurances{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.assure{display:flex;gap:10px;padding:13px 15px;background:var(--card)}
+.assure svg{width:17px;height:17px;flex-shrink:0;margin-top:2px;color:var(--gold)}
+.assure strong{display:block;font-size:13px}
+.assure span{font-size:12px;color:var(--muted);line-height:1.45}
+
+/* ── modal ────────────────────────────────────────────────── */
+.overlay{
+  position:fixed;inset:0;background:rgba(8,18,32,.55);backdrop-filter:blur(2px);
+  display:flex;align-items:center;justify-content:center;padding:20px;z-index:40;
+}
+.modal{
+  background:var(--card);border-radius:14px;box-shadow:var(--shadow-lift);
+  width:min(760px,100%);max-height:min(86vh,760px);display:flex;flex-direction:column;
+  border:1px solid var(--border);
+}
+.modal-head{padding:18px 20px 12px;border-bottom:1px solid var(--border)}
+.modal-head h3{font-family:var(--serif);font-size:19px;font-weight:600}
+.modal-head p{margin:4px 0 0;color:var(--muted);font-size:13.5px}
+.modal-body{padding:16px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.modal-foot{
+  padding:13px 20px;border-top:1px solid var(--border);
+  display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;
+}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:9px}
+.form-card{
+  text-align:left;cursor:pointer;border:1px solid var(--border);background:var(--card-2);
+  border-radius:10px;padding:12px 13px;display:flex;flex-direction:column;gap:2px;
+  transition:border-color .12s,box-shadow .12s,background .12s;
+}
+.form-card:hover{border-color:var(--blue);background:var(--card);box-shadow:var(--shadow)}
+.form-card:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.form-card .fc-label{font-family:var(--serif);font-size:16px;font-weight:700}
+.form-card .fc-who{font-size:12.5px;font-weight:600;color:var(--blue-ink)}
+.form-card .fc-blurb{font-size:12px;color:var(--muted);line-height:1.4}
+.field{display:flex;flex-direction:column;gap:5px}
+.field span{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--faint)}
+.field input{
+  font:inherit;font-size:14px;padding:8px 11px;border-radius:8px;
+  border:1px solid var(--border-strong);background:var(--card-2);color:var(--ink);
+}
+.field input:focus{outline:2px solid var(--blue);outline-offset:-1px;background:var(--card)}
+.chosen{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.chosen-badge{
+  font-family:var(--serif);font-weight:700;font-size:14px;padding:3px 11px;border-radius:999px;
+  background:var(--navy-700);color:#f1f5f9;
+}
+.linkish{border:0;background:transparent;color:var(--blue-ink);cursor:pointer;font-size:13px;font-weight:600;padding:2px}
+.linkish:hover{text-decoration:underline}
+.tmpl-head{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--faint)}
+.tmpl-list{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:9px;overflow:hidden;max-height:260px;overflow-y:auto}
+.tmpl-row{display:flex;gap:10px;align-items:flex-start;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13.5px}
+.tmpl-row:last-child{border-bottom:0}
+.tmpl-row:nth-child(even){background:var(--card-2)}
+.tmpl-row input{margin-top:3px;accent-color:var(--blue);width:15px;height:15px;flex-shrink:0}
+.tmpl-row .t-id{font-family:var(--mono);font-size:11.5px;color:var(--faint);flex-shrink:0;width:34px;margin-top:2px}
+.tmpl-row .t-meta{display:block;font-size:11.5px;color:var(--faint);font-family:var(--mono)}
+
+/* readme + manifest views */
+.readme{
+  font-family:var(--mono);font-size:12px;line-height:1.65;white-space:pre-wrap;
+  background:var(--card-2);border:1px solid var(--border);border-radius:9px;padding:14px;
+  color:var(--ink);overflow-x:auto;
+}
+.tree{font-family:var(--mono);font-size:12.5px;line-height:1.75;color:var(--muted)}
+.tree b{color:var(--ink);font-weight:500}
+.sheet-tabs{display:flex;gap:4px}
+.sheet-tab{
+  border:1px solid var(--border);border-bottom:0;background:var(--card-2);cursor:pointer;
+  padding:5px 13px;border-radius:7px 7px 0 0;font-size:12.5px;font-weight:600;color:var(--muted);
+}
+.sheet-tab[aria-selected="true"]{background:var(--card);color:var(--ink);box-shadow:inset 0 2px 0 var(--ok-ink)}
+.sheet{overflow-x:auto;border:1px solid var(--border);border-radius:0 9px 9px 9px}
+table.grid{width:100%;border-collapse:collapse;font-size:12px;min-width:660px;font-family:var(--sans)}
+table.grid th{
+  background:var(--idle-bg);color:var(--muted);font-weight:700;font-size:10.5px;
+  letter-spacing:.5px;text-transform:uppercase;padding:7px 9px;
+  border:1px solid var(--border);white-space:nowrap;text-align:left;
+}
+table.grid td{padding:6px 9px;border:1px solid var(--border);vertical-align:top}
+table.grid td.mono{font-family:var(--mono);font-size:11px;color:var(--muted)}
+table.grid tr:nth-child(even) td{background:var(--card-2)}
+
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(22px + env(safe-area-inset-bottom,0px));
+  background:var(--navy-800);color:#f1f5f9;padding:10px 18px;border-radius:999px;
+  font-size:13.5px;font-weight:600;box-shadow:var(--shadow-lift);z-index:60;
+  border:1px solid rgba(201,168,76,.4);
+  max-width:min(440px,calc(100vw - 32px));text-align:center;
+}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:920px){
+  /* One document-length scroll instead of two trapped panes. */
+  html,body{height:auto}
+  body{min-height:100%}
+  .shell{display:flex;flex-direction:column;min-height:0}
+  .rail,.main{overflow:visible}
+  .rail{order:2;border-right:0;border-top:1px solid var(--border)}
+  .main{order:1}
+  .brand-sub{display:none}
+}
+@media (max-width:520px){
+  .topbar{padding:10px 16px;gap:10px}
+  .main{padding:14px 16px 32px}
+  .rail{padding:16px 16px 32px}
+  .demo-badge{display:none}
+}
+</style>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">JP</span>
+    <span>
+      <span class="brand-name">Tax Document Tracker</span>
+      <span class="brand-sub"> — J Park &amp; Associates, CPA</span>
+    </span>
+  </div>
+  <span class="bar-spacer"></span>
+  <span class="provider-label">Client shares via</span>
+  <div class="seg" role="group" aria-label="Cloud provider">
+    <button id="p-gdrive" aria-pressed="true">Google Drive</button>
+    <button id="p-onedrive" aria-pressed="false">OneDrive</button>
+  </div>
+  <span class="demo-badge">Demo</span>
+</header>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="rail-head">
+      <h2>Presenter Guide</h2>
+    </div>
+    <p class="rail-sub">Eight steps, about ten minutes. Everything on the right is live — drag the files yourself.</p>
+
+    <details class="step" open>
+      <summary><span class="step-num">1</span> Set the scene</summary>
+      <div class="step-body">
+        <p class="say">"Every tax season starts the same way: we send you a list of documents we need, and then everyone spends February playing email ping-pong. We replaced that with a shared folder that checks the documents itself."</p>
+        <p class="do">Every request below starts at <strong>Missing</strong>. That's a brand-new engagement.</p>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="step-num">2</span> Pick the return type</summary>
+      <div class="step-body">
+        <p class="say">"Setting up a new client takes a minute, not a morning. The first question is simply: what kind of return? A 1040 asks for W-2s and 1098s; an 1120-S asks for the trial balance and shareholder basis."</p>
+        <p class="do">Click <strong>New Engagement</strong> and show the six form types.</p>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="step-num">3</span> Build the tailored list</summary>
+      <div class="step-body">
+        <p class="say">"Here's the checklist from years of engagements. I tick what applies to your situation and the client's entire folder structure builds itself."</p>
+        <p class="do">Name it after <strong>the prospect's own family or company</strong>. Untick a couple of rows, then create it.</p>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="step-num">4</span> What the client sees</summary>
+      <div class="step-body">
+        <p class="say">"The client gets one shared folder — one folder per document, plus plain-English instructions. No portal, no password to forget. It's just a folder."</p>
+        <p class="do">Click <strong>Client folder</strong> and read the <em>_README.txt</em> aloud.</p>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="step-num">5</span> Play the client</summary>
+      <div class="step-body">
+        <p class="say">"Let's be an honest client: helpful, busy, and occasionally wrong. Both spouses' W-2s — plus last year's by mistake, the same one twice, a Word file where we need the 1098, and a vacation photo in the wrong place."</p>
+        <p class="do">Drag every file from the tray into a row. Put <strong>vacation photo.jpg</strong> in the shared-folder root at the bottom.</p>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="step-num">6</span> The moment — scan</summary>
+      <div class="step-body">
+        <p class="say">"In production this runs by itself every fifteen minutes. Watch what it worked out — without a person opening a single file."</p>
+        <p class="do">Click <strong>Run Scan</strong>, then read the notes column out loud. That wording is what you forward to the client.</p>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="step-num">7</span> The accountant's view</summary>
+      <div class="step-body">
+        <p class="say">"And it lands in the tool accountants already live in — Excel. Status, date received, plain-English notes, and an override column where your judgment beats any rule."</p>
+        <p class="do">Click <strong>Manifest</strong> and show both sheets.</p>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary><span class="step-num">8</span> The trust close</summary>
+      <div class="step-body">
+        <p class="say">"Three guarantees: every decision is a deterministic rule — no AI ever reads your tax documents. The scanner is read-only — it never moves, renames, or deletes a file. And your judgment always wins."</p>
+        <p class="do">Point at the four assurances at the bottom of the screen.</p>
+      </div>
+    </details>
+
+    <p class="rail-foot">Works the same on OneDrive or Google Drive — switch providers in the top bar to show a prospect their own setup.</p>
+  </aside>
+
+  <main class="main">
+    <div class="toolbar">
+      <div class="eng-name">
+        <small>Engagement</small>
+        <span id="eng-title">Smith Family 2025 — Form 1040</span>
+      </div>
+      <span class="bar-spacer"></span>
+      <button id="btn-new" class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        New Engagement
+      </button>
+      <button id="btn-folder" class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Client folder
+      </button>
+      <button id="btn-manifest" class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Manifest
+      </button>
+      <button id="btn-reset" class="btn btn-ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        Reset
+      </button>
+      <button id="btn-scan" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M22 4 12 14l-3-3"/></svg>
+        <span id="scan-label">Run Scan</span>
+      </button>
+    </div>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Sample client documents</h3>
+        <span class="card-note" id="tray-count"></span>
+      </div>
+      <div class="tray-grid" id="tray"></div>
+      <p class="tray-hint">Drag a file onto a request row — or <kbd>click</kbd> the file, then <kbd>click</kbd> the row.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Document requests</h3>
+        <div class="tallies" id="tallies"></div>
+      </div>
+      <div class="table-wrap">
+        <table class="requests">
+          <thead>
+            <tr>
+              <th class="col-id">ID</th>
+              <th>Document &amp; folder</th>
+              <th class="col-files">Files</th>
+              <th class="col-status">Status</th>
+              <th class="col-recv">Received</th>
+              <th>Validation notes</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="rootzone" id="rootzone">
+        <span>📂 <b>Shared folder root</b> — anything loose lands here</span>
+        <div class="drops" id="root-drops"></div>
+      </div>
+    </section>
+
+    <section class="card" id="unfiled-card" hidden>
+      <div class="card-head">
+        <h3>Unfiled — needs attention</h3>
+        <span class="card-note">nothing was moved, renamed, or deleted</span>
+      </div>
+      <ul class="unfiled" id="unfiled-list"></ul>
+    </section>
+
+    <footer class="assurances">
+      <div class="assure">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <div><strong>Deterministic rules</strong><span>No AI ever reads client documents</span></div>
+      </div>
+      <div class="assure">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <div><strong>Read-only scanning</strong><span>Files are never moved, renamed, or deleted</span></div>
+      </div>
+      <div class="assure">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        <div><strong>Excel is the record</strong><span>Everything lands in the manifest you own</span></div>
+      </div>
+      <div class="assure">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <div><strong>Your judgment wins</strong><span>One override column beats any automated result</span></div>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<div id="overlay" class="overlay" hidden></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+const FORM_DATA = {"forms":[{"id":"1040","label":"Form 1040","who":"Individual / joint return","blurb":"Wages, investments, deductions, credits"},{"id":"1120","label":"Form 1120","who":"C corporation","blurb":"Corporate income tax return"},{"id":"1120S","label":"Form 1120-S","who":"S corporation","blurb":"Pass-through corporate return with K-1s"},{"id":"1065","label":"Form 1065","who":"Partnership / multi-member LLC","blurb":"Partnership return with K-1s"},{"id":"1041","label":"Form 1041","who":"Estate or trust","blurb":"Fiduciary income tax return"},{"id":"990","label":"Form 990","who":"Tax-exempt organization","blurb":"Annual information return"}],"templates":{"1040":[{"identifier":"A01","document":"W-2 Wage Statements - All Employers","period":"TY2025","expected_count":2,"extensions":"pdf","required_keywords":"W-2","date_pattern":"(?i)\\b2025\\b","core":true},{"identifier":"A02","document":"1099-INT / 1099-DIV - Interest & Dividend Income","period":"TY2025","expected_count":3,"extensions":"pdf, csv","any_keywords":"1099, interest income, dividend","core":true},{"identifier":"B01","document":"Prior-Year Federal & State Tax Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1040, tax return","core":true},{"identifier":"C01","document":"Mortgage Interest Statement - Form 1098","period":"TY2025","extensions":"pdf","required_keywords":"1098","core":true},{"identifier":"D01","document":"Charitable Contribution Receipts","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"E01","document":"1099-B / Brokerage Year-End Statements","period":"TY2025","extensions":"pdf, csv","core":false},{"identifier":"E02","document":"1099-R Retirement Distributions","period":"TY2025","extensions":"pdf","core":false},{"identifier":"F01","document":"Schedule K-1s Received","period":"TY2025","extensions":"pdf","core":false},{"identifier":"G01","document":"Property Tax Statements","period":"TY2025","extensions":"pdf","core":false},{"identifier":"H01","document":"Estimated Tax Payment Records","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"I01","document":"Form 1095-A - Marketplace Health Insurance","period":"TY2025","extensions":"pdf","core":false},{"identifier":"J01","document":"Childcare Provider Statements - Name, EIN, Amounts","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"K01","document":"IRA / HSA Contribution Statements - Form 5498","period":"TY2025","extensions":"pdf","core":false},{"identifier":"L01","document":"Tuition Statements - Form 1098-T","period":"TY2025","extensions":"pdf","core":false}],"1120":[{"identifier":"A01","document":"Prior-Year Federal & State Corporate Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1120, tax return","core":true},{"identifier":"A02","document":"Trial Balance - Year-End","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"A03","document":"General Ledger Detail","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"B01","document":"Year-End Financial Statements","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Year-End Reconciliations","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Fixed Asset Additions & Disposals Detail","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C02","document":"Depreciation Schedules","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"D01","document":"Loan Agreements & Year-End Balances","period":"As of 12/31/2025","extensions":"pdf","core":false},{"identifier":"E01","document":"Payroll Tax Returns - Forms 941 & W-3","period":"TY2025","extensions":"pdf","core":true},{"identifier":"E02","document":"Officer Compensation Detail","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"F01","document":"Estimated Tax Payment Records","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"G01","document":"Shareholder List & Ownership Changes","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"H01","document":"State Apportionment Data - Sales, Payroll, Property by State","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"I01","document":"Book-Tax Difference Support - Schedule M-1 Items","period":"TY2025","extensions":"xlsx, pdf","core":false}],"1120S":[{"identifier":"A01","document":"Prior-Year Federal & State S-Corp Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1120-s, form 1120s, tax return","core":true},{"identifier":"A02","document":"Trial Balance - Year-End","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"A03","document":"General Ledger Detail","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"B01","document":"Year-End Financial Statements","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Year-End Reconciliations","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Shareholder List with Ownership % & Changes","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"C02","document":"Distributions by Shareholder","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C03","document":"Shareholder Basis Schedules","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"D01","document":"Officer / Shareholder W-2 Compensation Detail","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"D02","document":"Health Insurance Premiums for >2% Shareholders","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"E01","document":"Payroll Tax Returns - Forms 941 & W-3","period":"TY2025","extensions":"pdf","core":false},{"identifier":"F01","document":"Fixed Asset Additions & Disposals Detail","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"G01","document":"Loan Agreements & Shareholder Loan Activity","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"H01","document":"State Apportionment Data","period":"TY2025","extensions":"xlsx","core":false}],"1065":[{"identifier":"A01","document":"Prior-Year Federal & State Partnership Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1065, tax return","core":true},{"identifier":"A02","document":"Partnership Agreement & Amendments","period":"Current","extensions":"pdf","core":true},{"identifier":"A03","document":"Trial Balance - Year-End","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"A04","document":"General Ledger Detail","period":"TY2025","extensions":"xlsx, csv","core":false},{"identifier":"B01","document":"Year-End Financial Statements","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Year-End Reconciliations","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Partner List with Ownership % & Changes","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"C02","document":"Partner Capital Account Detail","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C03","document":"Contributions & Distributions by Partner","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"C04","document":"Guaranteed Payment Detail","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"D01","document":"Fixed Asset Additions & Disposals Detail","period":"TY2025","extensions":"xlsx","core":false},{"identifier":"E01","document":"Loan Agreements & Year-End Balances","period":"As of 12/31/2025","extensions":"pdf","core":false},{"identifier":"F01","document":"Special Allocation Support - Section 704(b)","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"G01","document":"State Apportionment Data","period":"TY2025","extensions":"xlsx","core":false}],"1041":[{"identifier":"A01","document":"Trust Instrument / Will & Amendments","period":"Current","extensions":"pdf","core":true},{"identifier":"A02","document":"IRS EIN Assignment Letter","period":"Current","extensions":"pdf","core":false},{"identifier":"A03","document":"Prior-Year Fiduciary Returns","period":"TY2024","extensions":"pdf","any_keywords":"form 1041, tax return","core":true},{"identifier":"B01","document":"1099s for Trust / Estate Accounts","period":"TY2025","expected_count":3,"extensions":"pdf, csv","any_keywords":"1099","core":true},{"identifier":"B02","document":"Brokerage Year-End Statements","period":"TY2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Distributions to Beneficiaries - Dates & Amounts","period":"TY2025","extensions":"xlsx, pdf","core":true},{"identifier":"C02","document":"Beneficiary Names, Addresses & Tax IDs","period":"Current","extensions":"xlsx, pdf","core":true},{"identifier":"D01","document":"Fiduciary, Attorney & Accounting Fees Paid","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"E01","document":"Cost Basis for Assets Sold During the Year","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"F01","document":"Rental / Business Income & Expense Detail","period":"TY2025","extensions":"xlsx, pdf","core":false}],"990":[{"identifier":"A01","document":"Prior-Year Form 990 & State Filings","period":"TY2024","extensions":"pdf","any_keywords":"form 990, return","core":true},{"identifier":"A02","document":"Trial Balance - Year-End","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"B01","document":"Year-End Financial Statements","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"B02","document":"December Bank Statements & Reconciliations","period":"Dec 2025","extensions":"pdf","core":true},{"identifier":"C01","document":"Board of Directors List & Meeting Minutes","period":"TY2025","extensions":"pdf, xlsx","core":true},{"identifier":"C02","document":"Officer & Key Employee Compensation Detail","period":"TY2025","extensions":"xlsx","core":true},{"identifier":"D01","document":"Contribution / Donor Detail - Schedule B Support","period":"TY2025","extensions":"xlsx, csv","core":true},{"identifier":"D02","document":"Grants Made - Recipients & Amounts","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"E01","document":"Program Service Accomplishment Descriptions","period":"TY2025","extensions":"pdf, xlsx","core":false},{"identifier":"F01","document":"Fundraising Event Revenue & Expense Detail","period":"TY2025","extensions":"xlsx, pdf","core":false},{"identifier":"G01","document":"Payroll Tax Returns - Forms 941 & W-3","period":"TY2025","extensions":"pdf","core":false},{"identifier":"H01","document":"Unrelated Business Income Detail","period":"TY2025","extensions":"xlsx, pdf","core":false}]}};
+
+/* ══ sample corpus ══════════════════════════════════════════
+   Mirrors demo/_build_samples in tracker/api.py. `text` stands in
+   for the extracted text layer the real content check reads.      */
+const DOCS = [
+  {id:'w2a', name:'W-2 John Smith 2025.pdf', kb:12.4, hash:'w2john',
+   text:'Form W-2 Wage and Tax Statement - Tax Year 2025 Employee John A. Smith Employer Acme Manufacturing Inc. Wages tips other compensation 98,420.00'},
+  {id:'w2acopy', name:'W-2 John Smith 2025 - Copy.pdf', kb:12.4, hash:'w2john',
+   text:'Form W-2 Wage and Tax Statement - Tax Year 2025 Employee John A. Smith Employer Acme Manufacturing Inc. Wages tips other compensation 98,420.00'},
+  {id:'w2b', name:'W-2 Jane Smith 2025.pdf', kb:12.1, hash:'w2jane25',
+   text:'Form W-2 Wage and Tax Statement - Tax Year 2025 Employee Jane R. Smith Employer Lakeside Medical Group Wages tips other compensation 76,180.00'},
+  {id:'w2old', name:'W-2 Jane Smith 2024 - old.pdf', kb:12.0, hash:'w2jane24',
+   text:'Form W-2 Wage and Tax Statement - Tax Year 2024 Employee Jane R. Smith Employer Lakeside Medical Group Wages tips other compensation 71,905.00'},
+  {id:'int', name:'1099-INT First National.pdf', kb:9.8, hash:'int',
+   text:'Form 1099-INT Interest Income 2025 Payer First National Bank Recipient John A. Smith Interest income 1,204.66'},
+  {id:'div', name:'1099-DIV Vanguard 2025.csv', kb:31.5, hash:'div',
+   text:'Form 1099-DIV dividend summary - Vanguard Brokerage 2025 date,fund,ordinary dividends,qualified dividends'},
+  {id:'prior', name:'2024 Form 1040 Tax Return.pdf', kb:18.2, hash:'prior',
+   text:'Form 1040 U.S. Individual Income Tax Return 2024 John A. & Jane R. Smith Adjusted gross income'},
+  {id:'f1098', name:'Form 1098 Mortgage Interest.pdf', kb:10.6, hash:'m1098',
+   text:'Form 1098 Mortgage Interest Statement 2025 Lender Home Lending Corp. Borrower John A. & Jane R. Smith Mortgage interest received 14,882.31'},
+  {id:'notes', name:'Mortgage Notes.docx', kb:12.8, hash:'notes', text:''},
+  {id:'don', name:'Donation Receipts 2025.xlsx', kb:24.3, hash:'don',
+   text:'Smith Family - Charitable Contributions 2025 Date Organization Amount Receipt on file Community Charity'},
+  {id:'photo', name:'vacation photo.jpg', kb:8.8, hash:'photo', text:''},
+  {id:'gsheet', name:'Donation Receipts 2025.gsheet', kb:0.2, hash:'gsheet', text:'', driveOnly:true,
+   tag:'Google Sheets link'},
+  {id:'tmpup', name:'W-2 Jane Smith 2025.pdf.tmp.driveupload', kb:4.0, hash:'tmp', text:'', driveOnly:true,
+   tag:'uploading'},
+  {id:'brok', name:'1099-B Schwab Year-End.pdf', kb:0, hash:'brok', cloudOnly:true, tag:'online only',
+   text:'Form 1099-B Proceeds From Broker Transactions 2025 Charles Schwab & Co. dividend'},
+];
+
+/* ══ the rule engine — a faithful port of tracker/validators.py,
+      tracker/content_check.py and tracker/scanner.py ═══════════ */
+const GOOGLE_STUBS = ['gdoc','gsheet','gslides','gdraw','gform','gtable','gjam','gsite','glink','gshortcut'];
+const IGNORED_NAMES = ['desktop.ini','thumbs.db','.ds_store'];
+const EXTRACTABLE = ['pdf','xlsx','csv','txt'];
+const MIN_KB = 5;
+
+const extOf = n => (n.includes('.') ? n.slice(n.lastIndexOf('.') + 1) : '').toLowerCase();
+
+function isIgnored(name){
+  const n = name.toLowerCase();
+  if (IGNORED_NAMES.includes(n)) return true;
+  if (n.startsWith('~$') || n.startsWith('.tmp.drive')) return true;
+  return n.endsWith('.tmp') || n.endsWith('.driveupload') || n.endsWith('.drivedownload');
+}
+
+function checkFile(doc, item){
+  if (doc.cloudOnly)
+    return {ok:false, pending:true, reason:'cloud-only placeholder; waiting for OneDrive/Google Drive to sync'};
+  const ext = extOf(doc.name);
+  if (GOOGLE_STUBS.includes(ext))
+    return {ok:false, reason:`.${ext} is a Google Docs shortcut, not the document itself; ask the client to download it (File > Download > PDF or Excel) and upload that copy`};
+  if (item.ext.length && !item.ext.includes(ext))
+    return {ok:false, reason:`extension .${ext} not allowed (expected: ${item.ext.join(', ')})`};
+  if (doc.kb < MIN_KB)
+    return {ok:false, reason:`file is ${doc.kb.toFixed(1)} KB, below the ${MIN_KB} KB minimum; possible placeholder or failed upload`};
+  return {ok:true};
+}
+
+function checkContent(doc, item){
+  const hasRules = item.required.length || item.any.length || item.datePattern;
+  if (!hasRules) return {ok:true};
+  const ext = extOf(doc.name);
+  if (!EXTRACTABLE.includes(ext))
+    return {ok:false, reason:`content rules cannot be checked on .${ext} files; review manually`};
+  const text = doc.text || '', lowered = text.toLowerCase();
+  const missing = item.required.filter(k => !lowered.includes(k.toLowerCase()));
+  if (missing.length)
+    return {ok:false, reason:`required keyword(s) ${missing.map(k => `'${k}'`).join(', ')} not found; possible wrong document`};
+  if (item.any.length && !item.any.some(k => lowered.includes(k.toLowerCase())))
+    return {ok:false, reason:`none of the expected keywords found (${item.any.join(', ')})`};
+  if (item.datePattern){
+    const re = new RegExp(item.datePattern.replace('(?i)',''), 'i');
+    if (!re.test(text))
+      return {ok:false, reason:`expected period not found (pattern: ${item.datePattern}); possible wrong period`};
+  }
+  return {ok:true};
+}
+
+function resolveRow(item, docs, today){
+  const live = docs.filter(d => !isIgnored(d.name));
+  const tier2 = live.map(d => ({doc:d, res:checkFile(d, item)}));
+  const pending = tier2.filter(t => t.res.pending);
+  const tier2Bad = tier2.filter(t => !t.res.ok && !t.res.pending);
+  const contentBad = [];
+  let passed = [];
+  for (const t of tier2.filter(t => t.res.ok)){
+    const c = checkContent(t.doc, item);
+    if (c.ok) passed.push(t.doc);
+    else contentBad.push({doc:t.doc, reason:c.reason});
+  }
+  // content-hash de-duplication (skipped when 0 or 1 file, as in the scanner)
+  let duplicates = 0;
+  const dupIds = [];
+  if (passed.length > 1){
+    const seen = new Set(), distinct = [];
+    for (const d of passed){
+      if (seen.has(d.hash)){ duplicates++; dupIds.push(d.id); }
+      else { seen.add(d.hash); distinct.push(d); }
+    }
+    passed = distinct;
+  }
+  const count = passed.length;
+
+  const facts = [];
+  if (duplicates) facts.push(`${duplicates} duplicate file(s) ignored`);
+  const failures = tier2Bad.map(t => `${t.doc.name}: ${t.res.reason}`)
+    .concat(contentBad.map(c => `${c.doc.name}: ${c.reason}`));
+  facts.push(...failures.slice(0, 3));
+  if (failures.length > 3) facts.push(`(+${failures.length - 3} more issues)`);
+
+  let status;
+  if (!docs.length && !item.placed) { status = 'Missing'; facts.unshift('request folder not found; re-run scaffold'); }
+  else if (count >= item.expected){
+    status = 'Received';
+    if (pending.length) facts.push(`${pending.length} more file(s) still syncing`);
+  } else if (pending.length){
+    status = 'Pending Sync';
+    facts.unshift(`${pending.length} file(s) still syncing from the cloud`);
+  } else if (count > 0){
+    status = 'Partial';
+    facts.unshift(`${count} of ${item.expected} expected files`);
+  } else if (failures.length) status = 'Failed Validation';
+  else status = 'Missing';
+
+  return {status, count, facts, received: status === 'Received' ? today : null,
+          okIds:passed.map(d => d.id), pendingIds:pending.map(t => t.doc.id), dupIds};
+}
+
+/* ══ state ═════════════════════════════════════════════════ */
+const sanitize = s => s.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g,' ').trim().replace(/[. ]+$/,'');
+const TODAY = new Date().toISOString().slice(0,10);
+
+function itemsFromSpecs(specs){
+  return specs.map(s => ({
+    id:s.identifier, doc:s.document, period:s.period || '',
+    expected:Number(s.expected_count || 1),
+    ext:(s.extensions || '').split(',').map(x => x.trim().replace(/^\./,'').toLowerCase()).filter(Boolean),
+    required:(s.required_keywords || '').split(',').map(x => x.trim()).filter(Boolean),
+    any:(s.any_keywords || '').split(',').map(x => x.trim()).filter(Boolean),
+    datePattern:s.date_pattern || '',
+    folder:`${s.identifier} - ${sanitize(s.document)}`,
+  }));
+}
+
+let state = {};
+function freshState(formId, name, specs){
+  return {
+    provider: state.provider || 'gdrive',
+    formId, name,
+    items: itemsFromSpecs(specs),
+    placed: {},            // itemId -> [docId]
+    root: [],              // docIds loose in Shared/
+    results: null,
+    scanning: false,
+  };
+}
+function resetDemo(keepProvider){
+  const prov = keepProvider ? state.provider : 'gdrive';
+  state = freshState('1040', 'Smith Family 2025 — Form 1040',
+                     FORM_DATA.templates['1040'].filter(s => s.core));
+  state.provider = prov;
+  render();
+}
+
+const docById = id => DOCS.find(d => d.id === id);
+const visibleDocs = () => DOCS.filter(d => !d.driveOnly || state.provider === 'gdrive');
+const placedIds = () => new Set([...Object.values(state.placed).flat(), ...state.root]);
+
+/* ══ rendering ═════════════════════════════════════════════ */
+const $ = s => document.querySelector(s);
+const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+
+function render(){
+  $('#eng-title').textContent = state.name;
+  $('#p-gdrive').setAttribute('aria-pressed', state.provider === 'gdrive');
+  $('#p-onedrive').setAttribute('aria-pressed', state.provider === 'onedrive');
+  renderTray(); renderRows(); renderRoot(); renderTallies();
+}
+
+function renderTray(){
+  const tray = $('#tray'); tray.textContent = '';
+  const placed = placedIds();
+  const docs = visibleDocs();
+  for (const d of docs){
+    const b = el('button','doc');
+    b.type = 'button'; b.draggable = !placed.has(d.id);
+    b.dataset.id = d.id;
+    b.setAttribute('aria-pressed', armed === d.id);
+    if (placed.has(d.id)) b.classList.add('is-placed');
+    const ext = extOf(d.name);
+    b.append(el('span',`doc-ext ${ext}`, ext || 'file'));
+    const nm = el('span','doc-name', d.name); nm.title = d.name; b.append(nm);
+    if (d.tag) b.append(el('span','doc-tag', d.tag));
+    else b.append(el('span','doc-kb', `${d.kb.toFixed(1)} KB`));
+    tray.append(b);
+  }
+  const left = docs.filter(d => !placed.has(d.id)).length;
+  $('#tray-count').textContent = left ? `${left} of ${docs.length} still to drag` : 'all files placed';
+}
+
+function chipFor(docId, itemResult){
+  const d = docById(docId);
+  const c = el('span','chip');
+  if (isIgnored(d.name)) c.classList.add('dim');
+  else if (itemResult){
+    if (itemResult.okIds.includes(docId)) c.classList.add('ok');
+    else if (itemResult.pendingIds.includes(docId)) c.classList.add('sync');
+    else if (itemResult.dupIds.includes(docId)) c.classList.add('dup');
+    else c.classList.add('bad');
+  }
+  c.append(el('b', null, d.name));
+  const x = el('button', null, '×');
+  x.type = 'button'; x.title = 'Take this file back out';
+  x.setAttribute('aria-label', `Remove ${d.name}`);
+  x.addEventListener('click', ev => { ev.stopPropagation(); unplace(docId); });
+  c.append(x);
+  return c;
+}
+
+function renderRows(){
+  const body = $('#rows'); body.textContent = '';
+  state.items.forEach((item, i) => {
+    const r = state.results ? state.results[item.id] : null;
+    const tr = el('tr');
+    tr.dataset.item = item.id;
+    if (armed) tr.classList.add('armed');
+
+    const td1 = el('td','cell-id', item.id); tr.append(td1);
+
+    const td2 = el('td','cell-doc');
+    td2.append(document.createTextNode(item.doc));
+    if (item.period) td2.append(el('span','folder', `${item.folder}  ·  ${item.period}`));
+    else td2.append(el('span','folder', item.folder));
+    const drops = el('div','drops');
+    for (const id of (state.placed[item.id] || [])) drops.append(chipFor(id, r));
+    td2.append(drops);
+    tr.append(td2);
+
+    const files = r ? `${r.count}/${item.expected}` : `—/${item.expected}`;
+    tr.append(el('td','cell-num', files));
+
+    const td4 = el('td');
+    if (state.scanning) td4.append(el('span','pill scanning','Scanning'));
+    else {
+      const s = r ? r.status : 'Missing';
+      td4.append(el('span',`pill ${s.toLowerCase().replace(' ','')}`, s));
+    }
+    tr.append(td4);
+
+    tr.append(el('td','cell-recv', r && r.received ? r.received : '—'));
+
+    const td6 = el('td','cell-notes');
+    if (r && r.facts.length) for (const f of r.facts) td6.append(el('span','fact', f));
+    else td6.append(el('span','fact', r ? '' : ''));
+    tr.append(td6);
+
+    body.append(tr);
+  });
+}
+
+function renderRoot(){
+  const box = $('#root-drops'); box.textContent = '';
+  for (const id of state.root) box.append(chipFor(id, null));
+  const card = $('#unfiled-card'), list = $('#unfiled-list');
+  const unfiled = state.results ? state.root.filter(id => !isIgnored(docById(id).name)) : [];
+  card.hidden = unfiled.length === 0;
+  list.textContent = '';
+  for (const id of unfiled){
+    const d = docById(id);
+    const li = el('li');
+    li.append(el('span','fname', d.name));
+    li.append(el('span','why','loose file in Shared root'));
+    list.append(li);
+  }
+}
+
+function renderTallies(){
+  const box = $('#tallies'); box.textContent = '';
+  if (!state.results){ box.append(el('span','card-note','not scanned yet')); return; }
+  const counts = {};
+  for (const item of state.items){
+    const s = state.results[item.id].status;
+    counts[s] = (counts[s] || 0) + 1;
+  }
+  for (const [s,n] of Object.entries(counts))
+    box.append(el('span',`pill ${s.toLowerCase().replace(' ','')}`, `${s} ${n}`));
+}
+
+/* ══ interaction ═══════════════════════════════════════════ */
+let armed = null;
+
+function place(docId, itemId){
+  if (placedIds().has(docId)) return;
+  if (itemId === '__root__') state.root.push(docId);
+  else (state.placed[itemId] = state.placed[itemId] || []).push(docId);
+  armed = null;
+  state.results = null;
+  render();
+}
+function unplace(docId){
+  state.root = state.root.filter(x => x !== docId);
+  for (const k of Object.keys(state.placed))
+    state.placed[k] = state.placed[k].filter(x => x !== docId);
+  state.results = null;
+  render();
+}
+
+document.addEventListener('dragstart', e => {
+  const doc = e.target.closest('.doc');
+  if (!doc || doc.classList.contains('is-placed')) return;
+  e.dataTransfer.setData('text/plain', doc.dataset.id);
+  e.dataTransfer.effectAllowed = 'move';
+});
+function dropTargetOf(node){
+  const tr = node.closest && node.closest('tr[data-item]');
+  if (tr) return {node:tr, id:tr.dataset.item};
+  const rz = node.closest && node.closest('#rootzone');
+  if (rz) return {node:rz, id:'__root__'};
+  return null;
+}
+document.addEventListener('dragover', e => {
+  const t = dropTargetOf(e.target);
+  if (!t) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  t.node.classList.add('drop-on');
+});
+document.addEventListener('dragleave', e => {
+  const t = dropTargetOf(e.target);
+  if (t && !t.node.contains(e.relatedTarget)) t.node.classList.remove('drop-on');
+});
+document.addEventListener('drop', e => {
+  const t = dropTargetOf(e.target);
+  if (!t) return;
+  e.preventDefault();
+  t.node.classList.remove('drop-on');
+  const id = e.dataTransfer.getData('text/plain');
+  if (id) place(id, t.id);
+});
+
+document.addEventListener('click', e => {
+  const doc = e.target.closest('.doc');
+  if (doc && !doc.classList.contains('is-placed')){
+    armed = armed === doc.dataset.id ? null : doc.dataset.id;
+    render();
+    if (armed) toast('Now click the row this file belongs in');
+    return;
+  }
+  if (!armed) return;
+  const t = dropTargetOf(e.target);
+  if (t) place(armed, t.id);
+});
+
+let toastTimer;
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
+/* ══ scan ══════════════════════════════════════════════════ */
+$('#btn-scan').addEventListener('click', () => {
+  if (state.scanning) return;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  state.scanning = true;
+  $('#scan-label').textContent = 'Scanning…';
+  render();
+  setTimeout(() => {
+    const results = {};
+    for (const item of state.items){
+      const ids = state.placed[item.id] || [];
+      results[item.id] = resolveRow({...item, placed:true}, ids.map(docById), TODAY);
+    }
+    state.results = results;
+    state.scanning = false;
+    $('#scan-label').textContent = 'Run Scan';
+    render();
+    const done = Object.values(results).filter(r => r.status === 'Received').length;
+    toast(`Scan complete — ${done} of ${state.items.length} received. Nothing was moved or deleted.`);
+  }, reduce ? 60 : 850);
+});
+
+$('#btn-reset').addEventListener('click', () => { resetDemo(true); toast('Demo reset — every request back to Missing'); });
+
+document.getElementById('p-gdrive').addEventListener('click', () => switchProvider('gdrive'));
+document.getElementById('p-onedrive').addEventListener('click', () => switchProvider('onedrive'));
+function switchProvider(p){
+  if (state.provider === p) return;
+  state.provider = p;
+  // Drop any Google-only files that are no longer on the shelf.
+  const gone = DOCS.filter(d => d.driveOnly && p !== 'gdrive').map(d => d.id);
+  for (const id of gone) unplace(id);
+  state.results = null;
+  render();
+  toast(p === 'gdrive' ? 'Google Drive — Google Docs shortcuts and part-uploaded files included'
+                       : 'OneDrive — the Google-specific sample files are hidden');
+}
+
+/* ══ modals ════════════════════════════════════════════════ */
+const overlay = $('#overlay');
+function closeModal(){ overlay.hidden = true; overlay.textContent = ''; }
+overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.hidden) closeModal(); });
+
+function openModal(build){
+  overlay.textContent = '';
+  const m = el('div','modal');
+  m.setAttribute('role','dialog'); m.setAttribute('aria-modal','true');
+  build(m);
+  overlay.append(m);
+  overlay.hidden = false;
+  const first = m.querySelector('button, input');
+  if (first) first.focus();
+}
+
+/* — New Engagement wizard — */
+$('#btn-new').addEventListener('click', () => openFormPicker());
+
+function openFormPicker(){
+  openModal(m => {
+    const head = el('div','modal-head');
+    head.append(el('h3','','New engagement — what type of return?'));
+    head.append(el('p','','The request list is tailored to the form you pick.'));
+    m.append(head);
+    const body = el('div','modal-body');
+    const grid = el('div','form-grid');
+    for (const f of FORM_DATA.forms){
+      const b = el('button','form-card'); b.type = 'button';
+      b.append(el('span','fc-label', f.label));
+      b.append(el('span','fc-who', f.who));
+      b.append(el('span','fc-blurb', f.blurb));
+      b.addEventListener('click', () => openItemPicker(f));
+      grid.append(b);
+    }
+    body.append(grid);
+    m.append(body);
+    const foot = el('div','modal-foot');
+    const c = el('button','btn','Cancel'); c.type = 'button';
+    c.addEventListener('click', closeModal);
+    foot.append(c); m.append(foot);
+  });
+}
+
+function openItemPicker(form){
+  const specs = FORM_DATA.templates[form.id];
+  const chosen = new Set(specs.filter(s => s.core).map(s => s.identifier));
+  openModal(m => {
+    const head = el('div','modal-head');
+    head.append(el('h3','', `New engagement — ${form.label}`));
+    head.append(el('p','', `${form.who} · tick the requests that apply to this client.`));
+    m.append(head);
+
+    const body = el('div','modal-body');
+    const chosenRow = el('div','chosen');
+    chosenRow.append(el('span','chosen-badge', form.label));
+    const back = el('button','linkish','← Change form type'); back.type = 'button';
+    back.addEventListener('click', openFormPicker);
+    chosenRow.append(back);
+    body.append(chosenRow);
+
+    const field = el('label','field');
+    field.append(el('span','','Engagement name'));
+    const input = document.createElement('input');
+    input.id = 'ne-name'; input.type = 'text';
+    input.value = `Smith Family 2025 — ${form.label}`;
+    field.append(input);
+    body.append(field);
+
+    body.append(el('div','tmpl-head', `Standard ${form.label} request list — ${specs.length} items`));
+    const list = el('div','tmpl-list');
+    for (const s of specs){
+      const row = el('label','tmpl-row');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = chosen.has(s.identifier);
+      cb.addEventListener('change', () => {
+        cb.checked ? chosen.add(s.identifier) : chosen.delete(s.identifier);
+        count.textContent = `${chosen.size} selected`;
+      });
+      row.append(cb);
+      row.append(el('span','t-id', s.identifier));
+      const txt = el('span');
+      txt.append(document.createTextNode(s.document));
+      const bits = [s.period, s.extensions ? `.${s.extensions.replace(/,\s*/g,' / .')}` : '',
+                    Number(s.expected_count||1) > 1 ? `${s.expected_count} expected` : ''].filter(Boolean);
+      txt.append(el('span','t-meta', bits.join('  ·  ')));
+      row.append(txt);
+      list.append(row);
+    }
+    body.append(list);
+    const count = el('div','card-note', `${chosen.size} selected`);
+    body.append(count);
+    m.append(body);
+
+    const foot = el('div','modal-foot');
+    const cancel = el('button','btn','Cancel'); cancel.type = 'button';
+    cancel.addEventListener('click', closeModal);
+    const create = el('button','btn btn-primary','Create engagement'); create.type = 'button';
+    create.addEventListener('click', () => {
+      if (!chosen.size){ toast('Tick at least one request first'); return; }
+      const picked = specs.filter(s => chosen.has(s.identifier));
+      const prov = state.provider;
+      state = freshState(form.id, input.value.trim() || `New ${form.label} engagement`, picked);
+      state.provider = prov;
+      closeModal(); render();
+      toast(`${picked.length} folders scaffolded — the client's folder is ready`);
+    });
+    foot.append(cancel, create); m.append(foot);
+  });
+}
+
+/* — Client folder + README — */
+function readmeText(){
+  const lines = [
+    'HOW TO SEND US YOUR DOCUMENTS',
+    '='.repeat(45),
+    '',
+    `Engagement: ${state.name}`,
+    '',
+    '1. Each document we need has its own folder here.',
+    '2. Drag each file INTO its matching folder.',
+    "   Please don't leave files loose in this top-level folder.",
+    "3. Please don't create new folders or rename these ones.",
+    '4. Original PDFs or Excel files are preferred; scans and photos',
+    '   are fine as long as they are readable.',
+    '5. If a document lives in Google Docs or Google Sheets, please',
+    '   download it first (File > Download > PDF or Excel) and upload',
+    "   that copy - Google shortcut files (.gdoc, .gsheet) can't be read.",
+    '6. You can replace a file at any time by dropping in a new copy.',
+    '',
+    'DOCUMENTS REQUESTED',
+    '-'.repeat(45),
+  ];
+  for (const i of state.items){
+    let e = `${i.id} - ${i.doc}`;
+    if (i.period) e += `  (${i.period})`;
+    if (i.expected > 1) e += `  [${i.expected} files expected]`;
+    lines.push(e);
+  }
+  lines.push('', 'Questions? Contact J Park & Associates, CPA.', '',
+             '(This file is generated automatically - edits will be overwritten.)');
+  return lines.join('\n');
+}
+
+$('#btn-folder').addEventListener('click', () => openModal(m => {
+  const head = el('div','modal-head');
+  head.append(el('h3','','What the client sees'));
+  head.append(el('p','', state.provider === 'gdrive'
+    ? 'One Google Drive folder, shared with edit rights. The manifest sits one level up — the client never sees it.'
+    : 'One OneDrive folder, shared with edit rights. The manifest sits one level up — the client never sees it.'));
+  m.append(head);
+  const body = el('div','modal-body');
+  const tree = el('div','tree');
+  const lines = [`📁 ${state.name}/`,
+    `   📊 _manifest.xlsx      ← yours only, never shared`,
+    `   📁 Shared/             ← the client's link points here`,
+    `      📄 _README.txt`];
+  for (const i of state.items) lines.push(`      📁 ${i.folder}/`);
+  for (const l of lines){ const d = el('div'); d.append(el('b', null, l)); tree.append(d); }
+  body.append(tree);
+  body.append(el('div','tmpl-head','_README.txt — generated for the client'));
+  body.append(el('pre','readme', readmeText()));
+  m.append(body);
+  const foot = el('div','modal-foot');
+  const c = el('button','btn btn-primary','Close'); c.type='button';
+  c.addEventListener('click', closeModal); foot.append(c); m.append(foot);
+}));
+
+/* — Manifest (Excel view) — */
+$('#btn-manifest').addEventListener('click', () => openModal(m => {
+  const head = el('div','modal-head');
+  head.append(el('h3','','_manifest.xlsx'));
+  head.append(el('p','','The accountant-owned workbook the scanner writes back into. Excel is the record.'));
+  m.append(head);
+  const body = el('div','modal-body');
+
+  const tabs = el('div','sheet-tabs');
+  const tRequests = el('button','sheet-tab','Requests'); tRequests.type='button';
+  const tUnfiled = el('button','sheet-tab','Unfiled'); tUnfiled.type='button';
+  tabs.append(tRequests, tUnfiled);
+  body.append(tabs);
+  const holder = el('div','sheet');
+  body.append(holder);
+
+  const showRequests = () => {
+    tRequests.setAttribute('aria-selected','true'); tUnfiled.setAttribute('aria-selected','false');
+    holder.textContent = '';
+    const t = el('table','grid');
+    const thead = el('thead'), htr = el('tr');
+    for (const h of ['Identifier','Document','Period','Expected','Manual Override','Status','Received Date','File Count','Validation Notes'])
+      htr.append(el('th','',h));
+    thead.append(htr); t.append(thead);
+    const tb = el('tbody');
+    for (const i of state.items){
+      const r = state.results ? state.results[i.id] : null;
+      const tr = el('tr');
+      tr.append(el('td','mono', i.id));
+      tr.append(el('td','', i.doc));
+      tr.append(el('td','mono', i.period || ''));
+      tr.append(el('td','mono', String(i.expected)));
+      tr.append(el('td','',''));
+      const st = el('td','');
+      st.append(el('span',`pill ${(r?r.status:'Missing').toLowerCase().replace(' ','')}`, r ? r.status : 'Missing'));
+      tr.append(st);
+      tr.append(el('td','mono', r && r.received ? r.received : ''));
+      tr.append(el('td','mono', r ? String(r.count) : ''));
+      tr.append(el('td','mono', r ? r.facts.join('; ') : ''));
+      tb.append(tr);
+    }
+    t.append(tb); holder.append(t);
+  };
+  const showUnfiled = () => {
+    tUnfiled.setAttribute('aria-selected','true'); tRequests.setAttribute('aria-selected','false');
+    holder.textContent = '';
+    const t = el('table','grid');
+    const thead = el('thead'), htr = el('tr');
+    for (const h of ['Path','Kind','Size KB','First Seen']) htr.append(el('th','',h));
+    thead.append(htr); t.append(thead);
+    const tb = el('tbody');
+    const rows = state.results ? state.root.filter(id => !isIgnored(docById(id).name)) : [];
+    if (!rows.length){
+      const tr = el('tr'); const td = el('td','',"nothing unfiled — every file landed in a request folder");
+      td.colSpan = 4; tr.append(td); tb.append(tr);
+    }
+    for (const id of rows){
+      const d = docById(id); const tr = el('tr');
+      tr.append(el('td','mono', `Shared/${d.name}`));
+      tr.append(el('td','','loose file in Shared root'));
+      tr.append(el('td','mono', d.kb.toFixed(1)));
+      tr.append(el('td','mono', TODAY));
+      tb.append(tr);
+    }
+    t.append(tb); holder.append(t);
+  };
+  tRequests.addEventListener('click', showRequests);
+  tUnfiled.addEventListener('click', showUnfiled);
+  showRequests();
+
+  m.append(body);
+  const foot = el('div','modal-foot');
+  const c = el('button','btn btn-primary','Close'); c.type='button';
+  c.addEventListener('click', closeModal); foot.append(c); m.append(foot);
+}));
+
+/* ══ boot ══════════════════════════════════════════════════ */
+resetDemo(false);
+</script>

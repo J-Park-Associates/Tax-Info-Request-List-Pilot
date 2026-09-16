@@ -19,6 +19,19 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 
 **Full design & build status: [docs/ROADMAP.md](docs/ROADMAP.md)**
 
+## Two ways to demo it
+
+| | Runs on | Needs |
+|---|---|---|
+| [`demo/standalone/tax-document-tracker.html`](demo/standalone/tax-document-tracker.html) | any browser, any OS, offline | nothing — double-click the file |
+| `Build Portable Demo.bat` → `Tax Document Tracker.exe` | Windows 10/11 | built once on a Windows PC with Python + Node |
+
+The standalone page is a faithful port of the scanner's rules — the same
+statuses and the same validation notes the Python scanner writes — so it can
+be emailed to staff or opened on a prospect's laptop with nothing installed.
+The portable Windows build is the full app: it writes real folders and a real
+`_manifest.xlsx` you can open in Excel.
+
 ## How it works
 
 ```
