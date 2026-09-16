@@ -7,11 +7,12 @@ hardcoded — everything comes from the manifest.
 
 Extractors by extension:
 
-- ``.pdf``            → pdfplumber; if the PDF has no text layer (a scan),
-                        fall back to OCR *if available* (pytesseract +
-                        pypdfium2 + Tesseract). The OCR stack is entirely
-                        optional: when absent, the file is reported as
-                        unverifiable with a clear note — nothing breaks.
+- ``.pdf``            → pdfplumber, first ``MAX_PAGES`` pages only; if the
+                        PDF has no text layer (a scan), fall back to OCR
+                        *if available* (pytesseract + pypdfium2 + Tesseract).
+                        The OCR stack is entirely optional: when absent, the
+                        file is reported as unverifiable with a clear note —
+                        nothing breaks.
 - ``.xlsx`` / ``.xlsm`` → openpyxl (all sheets, cached formula values);
                         date cells are rendered in both ISO (2025-12-31)
                         and US (12/31/2025) forms so either pattern style
@@ -51,9 +52,14 @@ logging.getLogger("pdfminer").setLevel(logging.ERROR)
 #: scan/image-only PDF and routed to the OCR fallback.
 _MIN_TEXT_CHARS = 20
 
-#: OCR at most this many pages — identifying keywords/dates live up front,
-#: and OCR-ing a 300-page ledger would stall the scan.
-_MAX_OCR_PAGES = 10
+#: Read at most this many pages of any PDF, with or without OCR. The words
+#: that identify a document - its form number, the tax year, the payer -
+#: are on its first pages; a 500-page general ledger dropped by a client
+#: used to be read cover to cover on every route and scan, and that is what
+#: stalled a run. A keyword deep in a long document is not evidence the
+#: router should be acting on anyway.
+MAX_PAGES = 10
+_MAX_OCR_PAGES = MAX_PAGES
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +141,7 @@ def _extract_pdf(path: Path) -> str:
 
     parts: list[str] = []
     with pdfplumber.open(path) as pdf:
-        for page in pdf.pages:
+        for page in pdf.pages[:MAX_PAGES]:
             parts.append(page.extract_text() or "")
     return "\n".join(parts)
 

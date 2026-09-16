@@ -6,6 +6,8 @@ let engagements = [];      // [{name, path}]
 let active = null;         // path of the active engagement
 let forms = [];            // tax form catalog [{id, label, who, blurb}]
 let templatesByForm = {};  // form id -> tailored request template items
+let yearsByForm = {};      // form id -> tax year the template is written for
+let nameIsAuto = true;     // new-client name follows client + year + form until typed
 let selectedForm = null;   // form id chosen on the wizard's first page
 let templates = [];        // template items for the chosen form
 let customItems = [];      // custom rows added in the wizard
@@ -90,6 +92,7 @@ function render(state) {
   $("summary").textContent = summary.join("   ·   ");
 
   renderReview(state);
+  renderLock(state);
 
   // Folders and loose files the scanner found that belong to no request.
   // Parked documents are handled above, from the index, where the person
@@ -163,7 +166,61 @@ function renderEngagements() {
 function banner(text, cls) {
   const el = $("banner");
   el.textContent = text;
-  el.className = `banner ${cls}`;
+  el.className = `banner ${cls}${text.includes("\n") ? " multi" : ""}`;
+}
+
+// ── the engagement lock, shown instead of left as a mystery file ─────────
+
+function renderLock(state) {
+  const lock = state.lock;
+  const notice = $("lock-notice");
+  notice.classList.toggle("hidden", !lock);
+  if (!lock) return;
+  const since = lock.started ? ` started at ${lock.started.replace("T", " ").slice(0, 16)}` : "";
+  if (lock.stale) {
+    $("lock-text").textContent =
+      `A run${since} left its lock behind (${lock.age_minutes} min old) — it has most likely died. Nothing will sort or scan this engagement until the lock is cleared.`;
+    notice.className = "banner warn";
+    $("btn-unlock").classList.remove("hidden");
+  } else {
+    $("lock-text").textContent =
+      `A run${since} is still going (${lock.age_minutes} min). Sort & Scan will wait for it; a lock older than an hour can be cleared here.`;
+    notice.className = "banner ok";
+    $("btn-unlock").classList.add("hidden");
+  }
+}
+
+async function clearLock() {
+  const btn = $("btn-unlock");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("unlock"));
+    render(result.state);
+    banner(`Stale lock cleared (${result.age_minutes} min old). Run Sort & Scan when ready.`, "ok");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function checkManifest() {
+  const btn = $("btn-check");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("check"));
+    if (!result.ok) {
+      banner(`The manifest cannot be used until this is fixed:\n${result.problems.map((p) => "• " + p).join("\n")}`, "err");
+    } else if (result.warnings.length) {
+      banner(`The manifest is valid. Worth a look:\n${result.warnings.map((w) => "• " + w).join("\n")}`, "warn");
+    } else {
+      banner("The manifest is valid: every row has a rule the filer can act on.", "ok");
+    }
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── data flows ──────────────────────────────────────────────────────────
@@ -267,6 +324,7 @@ async function openWizard() {
       const result = await call(["templates"]);
       forms = result.forms;
       templatesByForm = result.templates;
+      yearsByForm = result.years || {};
     }
     priors = (await call(["priors"])).priors;
   } catch (err) {
@@ -378,14 +436,27 @@ function chooseForm(formId) {
   $("chosen-form").textContent = `${form.label} · ${form.who}`;
   $("tmpl-head-label").textContent = `${form.label} request list — tick what applies`;
   $("ne-name").value = "";
-  $("ne-name").placeholder = `e.g. Smith Family 2025 ${form.label}`;
+  nameIsAuto = true;
+  $("ne-name").placeholder = `e.g. Smith Family TY${yearsByForm[formId] || ""} ${form.label}`;
   $("ne-client").value = "";
   $("ne-link").value = "";
   $("ne-due").value = "";
   renderTemplateList();
   renderCustomList();
   showStep("items");
-  $("ne-name").focus();
+  $("ne-client").focus();
+}
+
+// The engagement name is what the client, the year and the form already
+// say. It follows the client field until the user types a name of their own.
+function syncNameDefault() {
+  if (!nameIsAuto) return;
+  const client = $("ne-client").value.trim();
+  const form = forms.find((f) => f.id === selectedForm);
+  const year = yearsByForm[selectedForm];
+  $("ne-name").value = client
+    ? [client, year ? `TY${year}` : "", form ? form.label : ""].filter(Boolean).join(" ")
+    : "";
 }
 
 function templateSummary(t) {
@@ -506,6 +577,13 @@ $("prior-list").addEventListener("change", (e) => {
 });
 $("ro-create").addEventListener("click", rollForward);
 $("ro-name").addEventListener("keydown", (e) => e.key === "Enter" && rollForward());
+$("btn-check").addEventListener("click", checkManifest);
+$("btn-unlock").addEventListener("click", clearLock);
+$("ne-client").addEventListener("input", syncNameDefault);
+$("ne-name").addEventListener("input", () => {
+  nameIsAuto = $("ne-name").value.trim() === "";
+  syncNameDefault();
+});
 $("cu-add").addEventListener("click", addCustomItem);
 $("cu-doc").addEventListener("input", syncKeywordDefault);
 $("cu-kw").addEventListener("input", () => {

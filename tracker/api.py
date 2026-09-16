@@ -12,6 +12,8 @@ Commands:
   rollover  build next year's list from a returning client's prior year
   scan      run a full scan and write the manifest back
   assign    file one Needs Review document under a request (a person's call)
+  check     validate the manifest now, with row numbers, instead of at the next scan
+  unlock    clear a stale engagement lock (a fresh one is refused)
   reset     rebuild the entire marketing demo from scratch:
             engagement folder, manifest, folder tree, sample client docs
 """
@@ -27,10 +29,12 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
+from tracker.locking import clear_stale_lock, lock_status
 from tracker.manifest import (
     EngagementInfo,
     ManifestError,
     UNFILED_SHEET_NAME,
+    check_manifest,
     create_template,
     load_engagement_info,
     load_manifest,
@@ -269,6 +273,17 @@ def _read_unfiled(manifest_path: Path) -> list[dict]:
         wb.close()
 
 
+def _lock_payload(engagement: Path) -> dict | None:
+    status = lock_status(engagement)
+    if status is None:
+        return None
+    return {
+        "started": status.started,
+        "age_minutes": int(status.age_seconds // 60),
+        "stale": status.stale,
+    }
+
+
 def _info_payload(info: EngagementInfo) -> dict:
     return {
         "client": info.client, "name": info.name, "link": info.link,
@@ -320,6 +335,7 @@ def _state(engagement: Path) -> dict:
     return {
         "pending_statuses": len(deferred),
         "engagement": _info_payload(info),
+        "lock": _lock_payload(engagement),
         "items": [
             {
                 "identifier": i.identifier,
@@ -452,7 +468,23 @@ def _cmd_reset(argv: list[str]) -> dict:
 
 
 def _cmd_templates(argv: list[str]) -> dict:
-    return {"forms": FORM_TYPES, "templates": FORM_TEMPLATES}
+    years = {form: detect_year(template_items(form)) for form in FORM_TEMPLATES}
+    return {"forms": FORM_TYPES, "templates": FORM_TEMPLATES, "years": years}
+
+
+def _cmd_check(argv: list[str]) -> dict:
+    """Say now what the next scan would fail on, and what it would let slide."""
+    engagement = _engagement_dir(argv)
+    result = check_manifest(engagement / MANIFEST_FILENAME)
+    return {"ok": result.ok, "problems": result.problems, "warnings": result.warnings}
+
+
+def _cmd_unlock(argv: list[str]) -> dict:
+    """Clear a stale engagement lock. A fresh one is refused with how long to wait."""
+    engagement = _engagement_dir(argv)
+    status = clear_stale_lock(engagement)
+    return {"cleared": True, "age_minutes": int(status.age_seconds // 60),
+            "state": _state(engagement)}
 
 
 def _cmd_list(argv: list[str]) -> dict:
@@ -475,7 +507,15 @@ def _cmd_create(argv: list[str]) -> dict:
     form = str(spec.get("form", "")).strip()
     if form and form not in FORM_TEMPLATES:
         raise ManifestError(f"Unknown tax form type '{form}'")
-    fallback = f"New Form {form} Engagement" if form else "New Engagement"
+    client = str(spec.get("client", "") or "").strip()
+    year = detect_year(template_items(form)) if form else None
+    fallback = " ".join(
+        part for part in (
+            client or "New",
+            f"TY{year}" if year else "",
+            f"Form {form}" if form else "Engagement",
+        ) if part
+    )
     name = _engagement_name(str(spec.get("name", "")), fallback)
     engagement = DEMO_ROOT / name
     if engagement.exists():
@@ -639,6 +679,8 @@ COMMANDS = {
     "list": _cmd_list,
     "create": _cmd_create,
     "assign": _cmd_assign,
+    "check": _cmd_check,
+    "unlock": _cmd_unlock,
 }
 
 

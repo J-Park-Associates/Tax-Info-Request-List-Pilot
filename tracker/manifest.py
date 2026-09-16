@@ -78,6 +78,11 @@ HEADERS = ACCOUNTANT_COLUMNS + SCANNER_COLUMNS
 
 DEFAULT_EXPECTED_COUNT = 1
 DEFAULT_MIN_SIZE_KB = 5
+#: What a blank Allowed Extensions cell means. A blank used to mean "accept
+#: anything", which is easy to leave by accident and lets an .exe count as a
+#: document; accepting anything now has to be said out loud with "*".
+DEFAULT_EXTENSIONS = ("pdf", "xlsx", "csv")
+ANY_EXTENSION = "*"
 DATE_FORMAT = "yyyy-mm-dd"
 
 #: Characters an identifier may not contain. The identifier becomes the
@@ -240,6 +245,16 @@ def _parse_enum(value: object, allowed: tuple[str, ...], column: str, row: int) 
     )
 
 
+def _parse_extensions(value: object) -> tuple[str, ...]:
+    """Blank → the safe default; ``*`` → anything (empty tuple); else the list."""
+    parts = _csv_tuple(value)
+    if not parts:
+        return DEFAULT_EXTENSIONS
+    if any(p == ANY_EXTENSION for p in parts):
+        return ()
+    return tuple(e.lower().lstrip(".") for e in parts)
+
+
 def identifier_problem(identifier: str) -> str:
     """Why ``identifier`` cannot name a request folder, or "" if it can.
 
@@ -348,10 +363,7 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
                     document=document,
                     period=_cell_str(values[COL_PERIOD]),
                     expected_count=expected_count,
-                    allowed_extensions=tuple(
-                        e.lower().lstrip(".")
-                        for e in _csv_tuple(values[COL_ALLOWED_EXTENSIONS])
-                    ),
+                    allowed_extensions=_parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
                     min_size_kb=min_size_kb,
                     required_keywords=_csv_tuple(values[COL_REQUIRED_KEYWORDS]),
                     any_keywords=_csv_tuple(values[COL_ANY_KEYWORDS]),
@@ -595,6 +607,67 @@ def write_statuses(
     return False
 
 
+# ----------------------------------------------------------------- check ----
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestCheck:
+    """What a person should know about a manifest before the run relies on it."""
+
+    problems: list[str]   # the manifest cannot be used until these are fixed
+    warnings: list[str]   # legal, but probably not what was meant
+
+    @property
+    def ok(self) -> bool:
+        return not self.problems
+
+
+def check_manifest(path: Path | str) -> ManifestCheck:
+    """Everything load-time validation would say, plus what it would let slide.
+
+    Meant for a button in the app and the top of the scheduled run, so a
+    typo made in Excel is reported with its row now rather than as a failed
+    job hours later. Problems are the loader's own messages. Warnings are
+    rows the rules cannot act on: a request with no keyword or date rule
+    never auto-files, a row accepting any file type will count an .exe, and
+    statuses still waiting in the pending sidecar are not in the sheet yet.
+    """
+    path = Path(path)
+    problems: list[str] = []
+    warnings: list[str] = []
+    items: list[RequestItem] = []
+    try:
+        items = load_manifest(path)
+    except ManifestError as exc:
+        problems.append(str(exc))
+    try:
+        load_engagement_info(path)
+    except ManifestError as exc:
+        problems.append(str(exc))
+    if not items and not problems:
+        warnings.append(f"{SHEET_NAME} sheet has no request rows")
+    for item in items:
+        if item.manual_override == Override.WAIVED:
+            continue
+        if not (item.required_keywords or item.any_keywords or item.date_pattern):
+            warnings.append(
+                f"Row {item.row} ({item.identifier}): no Required Keywords, Any Keywords "
+                "or Date Pattern, so its documents can never be filed automatically"
+            )
+        if not item.allowed_extensions:
+            warnings.append(
+                f"Row {item.row} ({item.identifier}): Allowed Extensions is '*', so any "
+                "file type counts as this document"
+            )
+    pending = pending_path(path)
+    if pending.exists():
+        warnings.append(
+            f"{pending.name} is waiting: the last scan could not write into the sheet "
+            "(was it open in Excel?); close Excel and re-scan"
+        )
+    return ManifestCheck(problems=problems, warnings=warnings)
+
+
 # ------------------------------------------------------------ engagement ----
 
 
@@ -760,7 +833,9 @@ def create_template(
         ws.cell(row=row, column=2, value=item.document)
         ws.cell(row=row, column=3, value=item.period or None)
         ws.cell(row=row, column=4, value=item.expected_count)
-        ws.cell(row=row, column=5, value=", ".join(item.allowed_extensions) or None)
+        # An item built in code with no extensions means "anything"; say so,
+        # or the loader would read the blank back as the safe default.
+        ws.cell(row=row, column=5, value=", ".join(item.allowed_extensions) or ANY_EXTENSION)
         ws.cell(row=row, column=6, value=item.min_size_kb)
         ws.cell(row=row, column=7, value=", ".join(item.required_keywords) or None)
         ws.cell(row=row, column=8, value=", ".join(item.any_keywords) or None)

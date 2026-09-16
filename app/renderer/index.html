@@ -122,6 +122,10 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
           Open Manifest in Excel
         </button>
+        <button id="btn-check" class="btn" title="Validate the manifest now, with row numbers, instead of finding out at the next scan">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Check Manifest
+        </button>
         <button id="btn-index" class="btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h7"/></svg>
           Open Index
@@ -133,6 +137,10 @@
       </div>
 
       <div id="banner" class="banner hidden" role="status"></div>
+      <div id="lock-notice" class="banner hidden" role="status">
+        <span id="lock-text"></span>
+        <button id="btn-unlock" class="btn btn-small hidden">Clear lock</button>
+      </div>
 
       <section class="card">
         <div class="card-head">

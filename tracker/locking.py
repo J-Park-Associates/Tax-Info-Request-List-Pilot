@@ -25,6 +25,7 @@ import logging
 import os
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
@@ -61,6 +62,56 @@ def acquire_lock(engagement_dir: Path) -> Path:
             log.warning("Replacing stale engagement lock (%.0f s old)", age)
             lock.unlink(missing_ok=True)
     raise EngagementLockedError(f"could not acquire {lock.name}")
+
+
+@dataclass(frozen=True, slots=True)
+class LockStatus:
+    """What the lock file says, for the app to show instead of a mystery."""
+
+    path: Path
+    age_seconds: float
+    started: str        # ISO time the run began, if the file said
+    pid: str            # process id, if the file said
+
+    @property
+    def stale(self) -> bool:
+        return self.age_seconds >= STALE_LOCK_SECONDS
+
+
+def lock_status(engagement_dir: Path | str) -> LockStatus | None:
+    """The engagement's lock if one is present, else None. Never raises."""
+    lock = Path(engagement_dir) / LOCK_FILENAME
+    try:
+        age = time.time() - lock.stat().st_mtime
+        text = lock.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
+    return LockStatus(
+        path=lock, age_seconds=max(age, 0.0),
+        started=fields.get("started", ""), pid=fields.get("pid", ""),
+    )
+
+
+def clear_stale_lock(engagement_dir: Path | str) -> LockStatus:
+    """Remove a lock older than :data:`STALE_LOCK_SECONDS`; refuse a fresh one.
+
+    A fresh lock is a run in progress; clearing it would let two runs race,
+    which is the one thing the lock exists to prevent. The caller is told
+    how long to wait instead.
+    """
+    status = lock_status(engagement_dir)
+    if status is None:
+        raise EngagementLockedError("there is no lock to clear")
+    if not status.stale:
+        wait = int((STALE_LOCK_SECONDS - status.age_seconds) // 60) + 1
+        raise EngagementLockedError(
+            f"a run started {int(status.age_seconds // 60)} minute(s) ago may still be "
+            f"going; if it has really died, try again in {wait} minute(s)"
+        )
+    status.path.unlink(missing_ok=True)
+    log.warning("Stale engagement lock cleared by hand (%.0f s old)", status.age_seconds)
+    return status
 
 
 @contextmanager

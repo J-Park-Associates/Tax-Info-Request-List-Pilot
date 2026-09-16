@@ -623,3 +623,12 @@ body {
 .review input { grid-area: keyword; width: 190px; }
 .review .r-file { grid-area: button; }
 .review select:focus-visible, .review input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+/* ── Lock notice + small buttons ─────────────────────────────────────── */
+
+#lock-notice { display: flex; align-items: center; gap: 12px; }
+#lock-notice.hidden { display: none; }
+#lock-notice #lock-text { flex: 1; }
+.btn-small { padding: 5px 10px; font-size: 12.5px; }
+.banner.err { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.banner.multi { white-space: pre-line; }

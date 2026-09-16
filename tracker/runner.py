@@ -47,7 +47,8 @@ from pathlib import Path
 from typing import Sequence
 
 from tracker.filer import file_drops
-from tracker.manifest import ManifestError, Status
+from tracker.manifest import ManifestError, Status, check_manifest
+from tracker.scaffold import MANIFEST_FILENAME
 from tracker.registry import Engagement, Registry, RegistryError, discover_engagements
 from tracker.reminder import (
     DRAFT_FILENAME,
@@ -82,6 +83,7 @@ class EngagementRun:
     review: int = 0
     waiting: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
+    warnings: list[str] = field(default_factory=list)     # manifest rows the rules cannot act on
     index_deferred: bool = False   # _index.xlsx was locked; rows in the sidecar
     statuses: dict[str, int] = field(default_factory=dict)
     drafted: Path | None = None
@@ -203,6 +205,16 @@ def run_engagement(
     if engagement.problem:
         run.error = f"manifest could not be read: {engagement.problem}"
         return run
+
+    # The same check the app's button runs: a typo made in Excel is named
+    # with its row before a single file is touched, and rows the rules
+    # cannot act on are carried into the report rather than left to be
+    # noticed at a deadline.
+    checked = check_manifest(engagement.path / MANIFEST_FILENAME)
+    if not checked.ok:
+        run.error = "; ".join(checked.problems)
+        return run
+    run.warnings = checked.warnings
 
     try:
         filed = file_drops(engagement.path, today=today, dry_run=dry_run)
@@ -329,6 +341,8 @@ def format_report(report: RunReport) -> str:
         lines.append("  " + run.summary())
         if run.draft_note and not run.error:
             lines.append(f"            {run.draft_note}")
+        for warning in run.warnings:
+            lines.append(f"            ! {warning}")
 
     lines += [
         "",

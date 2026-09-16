@@ -76,6 +76,10 @@ into the manifest.
 | 26 | Excel open during the Saturday scan | **The draft still knows.** Deferred statuses in `_manifest.pending.json` are overlaid before triage, so the reminder never asks for a document the last scan saw arrive; the draft's footer says how many are waiting. |
 | 27 | The registry | **Gone. An engagement is a folder with a manifest in it.** `engagements.yaml` was a second list a person kept in step with the folders on disk; a mistyped path was a client silently skipped. The run walks the clients root, and each manifest's Engagement sheet (client, link, due, sender, firm, reminders, active) carries what the registry used to. The wizard writes the sheet, so creating an engagement is the only step. |
 | 28 | Needs Review triage | **A click, not a file move.** The person picks the request; the filer moves the parked copy under the canonical name, rewrites the index row as *Filed — assigned by a person*, optionally learns a keyword onto the request, and re-scans. Dragging a copy into a folder by hand can land it under the wrong name or in the wrong folder, and the index never learned the decision. |
+| 29 | Manifest typos | **Named with their row before anything moves.** `check_manifest()` runs behind the app's *Check Manifest* button and at the top of every scheduled pass; a bad regex or a non-number typed in Excel fails that engagement's run immediately with the row, and rows the rules cannot act on (no keyword, `*` types, statuses waiting in the sidecar) are warnings in the report instead of surprises at a deadline. |
+| 30 | Blank Allowed Extensions | **The safe default, not "anything".** Blank means `pdf, xlsx, csv`; accepting any file type has to be written as `*`. A blank left by accident used to let an `.exe` count as a document. Items built in code with no extensions are written as `*` so a round trip keeps their meaning. |
+| 31 | Long PDFs | **First 10 pages only, text and OCR alike.** The words that identify a document are on its first pages; a 500-page ledger was being read cover to cover on every route and scan, and that is what stalled a run. A keyword deep in a long document is not evidence the router should act on. |
+| 32 | The lock, and the name | **Shown, not left as a mystery file.** The app shows a running lock with its start time, and offers to clear one older than an hour; a fresh lock is refused with how long to wait, because clearing a live one is the race the lock exists to prevent. A new-client engagement is named from the client, the template's tax year and the form unless a name is typed. |
 
 ## Architecture
 
@@ -134,7 +138,7 @@ document.
 | Document | str | accountant | Human-readable name |
 | Period | str | accountant | e.g., "Dec 2025" |
 | Expected Count | int, default 1 | accountant | For multi-file items; counted over content-hash-distinct valid files (duplicates like "statement (1).pdf" don't inflate the count) |
-| Allowed Extensions | csv str | accountant | Tier-2 whitelist |
+| Allowed Extensions | csv str | accountant | Tier-2 whitelist. Blank = `pdf, xlsx, csv`; `*` = any type (say it out loud) |
 | Min Size KB | int, default 5 | accountant | Rejects 0-byte / placeholder files |
 | Required Keywords | csv str, optional | accountant | Tier-3: ALL must appear in extracted text |
 | Any Keywords | csv str, optional | accountant | Tier-3: at least ONE must appear |

@@ -166,6 +166,18 @@ The schedule is a default, not a cage:
 client isn't chased by email — neither the schedule nor `--reminders always`
 overrides it, though the per-engagement CLI above still drafts one on demand.
 
+### Catching a typo before the run does
+
+**Check Manifest** in the app runs the same validation the scheduled job
+runs before it touches a file: a bad regex or a non-number typed in Excel is
+named with its row, and rows the rules cannot act on (no keyword, `*` file
+types, statuses still waiting for Excel to close) are listed as warnings.
+Allowed Extensions left blank means `pdf, xlsx, csv`; accepting any file
+type has to be written as `*`. Only the first 10 pages of a PDF are read.
+
+If a run dies, its lock is shown in the app with its start time; one older
+than an hour can be cleared there, a fresh one is refused.
+
 ### Triage without moving files by hand
 
 A document the rules could not place waits in `00 - Needs Review`. In the

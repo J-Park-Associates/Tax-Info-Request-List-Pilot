@@ -24,7 +24,13 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from tracker.manifest import ManifestError, RequestItem, identifier_problem
+from tracker.manifest import (
+    ANY_EXTENSION,
+    DEFAULT_EXTENSIONS,
+    ManifestError,
+    RequestItem,
+    identifier_problem,
+)
 
 #: Where the generated CSV copies live, relative to the repository root.
 TEMPLATES_DIRNAME = "templates"
@@ -509,11 +515,22 @@ def _whole_number(spec: dict, key: str, default: int, minimum: int, label: str) 
     return number
 
 
+def _extensions(spec: dict) -> tuple[str, ...]:
+    """Same rule as the manifest: blank is the safe default, ``*`` is anything."""
+    parts = _csv_field(spec.get("extensions") or spec.get("allowed_extensions"))
+    if not parts:
+        return DEFAULT_EXTENSIONS
+    if ANY_EXTENSION in parts:
+        return ()
+    return tuple(e.lower().lstrip(".") for e in parts)
+
+
 def item_from_spec(spec: dict) -> RequestItem:
     """One catalog row (or one wizard row) as a validated :class:`RequestItem`.
 
-    A row with no content rule at all gets its own document name as the
-    required keyword. Without a rule the request could never auto-file, and
+    A row with no file types gets the manifest's safe default (``pdf, xlsx,
+    csv``); ``*`` means any type. A row with no content rule at all gets its
+    own document name as the required keyword. Without a rule the request could never auto-file, and
     a custom request typed into the wizard in a hurry should still work;
     the manifest shows the rule, so it is a visible default, not a secret.
     """
@@ -534,10 +551,7 @@ def item_from_spec(spec: dict) -> RequestItem:
         document=document,
         period=str(spec.get("period", "") or ""),
         expected_count=_whole_number(spec, "expected_count", 1, 1, "Expected count"),
-        allowed_extensions=tuple(
-            e.lower().lstrip(".")
-            for e in _csv_field(spec.get("extensions") or spec.get("allowed_extensions"))
-        ),
+        allowed_extensions=_extensions(spec),
         min_size_kb=_whole_number(spec, "min_size_kb", 5, 0, "Minimum size"),
         required_keywords=required,
         any_keywords=any_keywords,
