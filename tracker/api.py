@@ -8,6 +8,8 @@ Commands:
   state     current manifest rows + unfiled sheet + useful paths
   scaffold  build/refresh the Shared/ drop folder and Prepared/ tree
   sort      file the client's drops into PBC/ and Prepared/
+  priors    list engagements a new year could be rolled forward from
+  rollover  build next year's list from a returning client's prior year
   scan      run a full scan and write the manifest back
   reset     rebuild the entire marketing demo from scratch:
             engagement folder, manifest, folder tree, sample client docs
@@ -32,6 +34,7 @@ from tracker.manifest import (
     load_manifest,
 )
 from tracker.filer import INDEX_FILENAME, file_drops, read_index
+from tracker.rollover import detect_year, roll_forward, write_rollover_manifest
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PBC_DIR_NAME,
@@ -894,10 +897,100 @@ def _cmd_create(argv: list[str]) -> dict:
     return {"created": name, "state": _state(engagement)}
 
 
+def _cmd_priors(argv: list[str]) -> dict:
+    """Engagements already on disk that a new year could be rolled from."""
+    priors = []
+    if DEMO_ROOT.exists():
+        for child in sorted(DEMO_ROOT.iterdir()):
+            manifest = child / MANIFEST_FILENAME
+            if not manifest.is_file():
+                continue
+            try:
+                items = load_manifest(manifest)
+            except ManifestError:
+                continue
+            priors.append({
+                "name": child.name,
+                "path": str(child),
+                "year": detect_year(items),
+                "requests": len(items),
+                "received": sum(1 for i in items if i.status == "Received"),
+            })
+    return {"priors": priors}
+
+
+def _cmd_rollover(argv: list[str]) -> dict:
+    """Build next year's engagement from a returning client's prior one.
+
+    JSON spec on stdin: {"prior": "<path or name>", "name": "...",
+                         "form": "1040", "year": 2026, "include_new": false}
+    Prior-year data wins on every field it specifies; the form template only
+    fills blanks. Rows the client has never had are offered, not added.
+    """
+    spec = json.loads(sys.stdin.read() or "{}")
+    prior_raw = str(spec.get("prior", "")).strip()
+    if not prior_raw:
+        raise ManifestError("Pick the engagement to roll forward")
+    prior = Path(prior_raw)
+    if not prior.is_absolute():
+        prior = DEMO_ROOT / prior_raw
+    if not (prior / MANIFEST_FILENAME).is_file():
+        raise ManifestError(f"No manifest found in '{prior_raw}'")
+
+    form = str(spec.get("form", "")).strip()
+    if form and form not in FORM_TEMPLATES:
+        raise ManifestError(f"Unknown tax form type '{form}'")
+    template = [_item_from_spec(s) for s in FORM_TEMPLATES.get(form, [])]
+
+    report = roll_forward(
+        prior,
+        target_year=spec.get("year") or None,
+        template=template,
+        include_new=bool(spec.get("include_new")),
+    )
+
+    default_name = f"{prior.name} - {report.target_year}" if report.target_year else f"{prior.name} - next year"
+    name = sanitize_component(str(spec.get("name", "")).strip()) or default_name
+    engagement = DEMO_ROOT / name
+    if engagement.exists():
+        raise ManifestError(f"An engagement named '{name}' already exists")
+
+    engagement.mkdir(parents=True)
+    try:
+        write_rollover_manifest(engagement / MANIFEST_FILENAME, report)
+        scaffold_engagement(engagement, contact=CONTACT)
+    except Exception:
+        shutil.rmtree(engagement, ignore_errors=True)
+        raise
+
+    return {
+        "created": name,
+        "rollover": {
+            "prior": prior.name,
+            "prior_year": report.prior_year,
+            "target_year": report.target_year,
+            "carried": [
+                {"identifier": r.item.identifier, "document": r.item.document,
+                 "origin": r.origin, "note": r.note}
+                for r in report.rolled
+            ],
+            "offered": [
+                {"identifier": r.item.identifier, "document": r.item.document,
+                 "note": r.note}
+                for r in report.offered
+            ],
+            "unfiled_last_year": report.unfiled_last_year,
+        },
+        "state": _state(engagement),
+    }
+
+
 COMMANDS = {
     "state": _cmd_state,
     "scaffold": _cmd_scaffold,
     "sort": _cmd_sort,
+    "priors": _cmd_priors,
+    "rollover": _cmd_rollover,
     "scan": _cmd_scan,
     "reset": _cmd_reset,
     "templates": _cmd_templates,

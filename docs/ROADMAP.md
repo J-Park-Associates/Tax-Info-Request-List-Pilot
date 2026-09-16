@@ -44,6 +44,8 @@ into the manifest.
 | 6 | Where working copies live | **Firm side only (`Prepared/`).** The client never sees the organized tree, so they cannot edit it. |
 | 7 | Unidentifiable files | **`00 - Needs Review`, never a guess.** Extension alone does not route; a contested document blocks its own filing. |
 | 8 | Rename convention | **`{Identifier} - {Document} - {Period}.ext`**, with `(2)`, `(3)`… for rows expecting several files. |
+| 9 | Returning clients | **Prior year takes absolute precedence.** The template may fill a blank but never overwrite one; rows the client has never had are offered, not added. |
+| 10 | Rolling `Accepted` forward | **No.** `Waived` is a decision about the client and persists; `Accepted` judged one year's files and must not pre-approve the next. |
 
 ## Architecture
 
@@ -141,8 +143,9 @@ no-genAI-on-financial-docs rule.)*
 | 5 | `tracker/scanner.py` — orchestrator: walk `Prepared/`, prefix-match folders, run tiers, resolve status (override- and revert-aware), hash-dedupe counts (skipped for 0/1-file rows), Unfiled sheet, write-back, console summary, stale-aware run-lock. CLI: `python -m tracker.scanner <engagement_dir> [--dry-run]` | ✅ built + tested |
 | 6 | `tracker/router.py` — deterministic routing of a dropped file to one manifest row. Evidence order: required keywords → any-keywords/period → filename (text-less scans only). Extension alone never routes; a document matching one row's required keywords but failing its other rules is contested and blocks its own filing | ✅ built + tested |
 | 7 | `tracker/filer.py` — sort the drop folder: move each original into `Shared/PBC/` untouched, copy a renamed working file into `Prepared/…` or `00 - Needs Review`, append `_index.xlsx`. Content-hash de-duplication makes re-runs no-ops; cloud-only files are left to finish syncing. CLI: `python -m tracker.filer <engagement_dir> [--dry-run]` | ✅ built + tested |
-| 8 | `tracker/reminder.py` — draft client email per engagement from Missing/Partial/Failed rows (draft only — no sending) | pending |
-| 9 | Scheduling — Task Scheduler XML / n8n cron; `engagements.yaml` registry | pending |
+| 8 | `tracker/rollover.py` — build a returning client's next-year list from their prior engagement. Prior-year fields always win; the template only fills blanks and its unknown rows are offered rather than added. Years shift as a set (so relative periods stay right), counts learn from what arrived and never shrink, `Waived` carries and `Accepted` does not. Writes a `Carried Forward` sheet explaining every row. CLI: `python -m tracker.rollover <prior_dir> <new_dir> [--form] [--year] [--include-new] [--scaffold]` | ✅ built + tested |
+| 9 | `tracker/reminder.py` — draft client email per engagement from Missing/Partial/Failed rows (draft only — no sending) | pending |
+| 10 | Scheduling — Task Scheduler XML / n8n cron; `engagements.yaml` registry | pending |
 
 ## Edge Cases (designed in)
 

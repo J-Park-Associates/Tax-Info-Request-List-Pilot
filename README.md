@@ -78,6 +78,38 @@ Run steps 5 and 6 together on a schedule (Task Scheduler or cron).
 A `Manual Override` column (Accepted / Waived) lets accountant judgment
 beat the rules.
 
+### Returning clients: last year is the starting point
+
+A client who filed with us last year is not a blank form, so their next
+engagement is built from their own prior year rather than the generic
+checklist:
+
+```
+python -m tracker.rollover "Smith Family 2025" "Smith Family 2026" --form 1040 --scaffold
+```
+
+Prior-year data takes precedence over the template, absolutely:
+
+- Every field last year specifies is carried forward untouched — document
+  names, keywords, extensions, custom rows the accountant added by hand. The
+  template may only **fill a blank**, which overrides nothing.
+- Periods, date rules and years inside document names all shift together, so
+  `TY2025` becomes `TY2026` **and** the row that asked for the TY2024
+  prior-year return now asks for the TY2025 one.
+- Counts learn from what actually arrived: expected 2 W-2s, received 3 → ask
+  for 3. Counts never shrink, so a client who under-delivered still owes what
+  was asked.
+- `Waived` carries forward (it is a decision about the client). `Accepted`
+  does not — that was a judgment about one year's particular files.
+- Checklist rows this client has never had are **offered, not added**. They
+  are listed in the output and on the manifest's `Carried Forward` sheet;
+  `--include-new` adds them.
+- Documents that arrived last year and matched no request are surfaced too —
+  exactly the gap next year's list should close.
+
+The new manifest carries a `Carried Forward` sheet explaining why every row
+is there. The prior engagement is opened read-only and never modified.
+
 ### How files get matched
 
 Routing is deterministic and refuses to guess. A document is filed only
