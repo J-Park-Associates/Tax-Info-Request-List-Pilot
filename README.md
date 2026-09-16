@@ -109,6 +109,77 @@ And if files are still sitting in `00 - Needs Review`, the CLI says so before
 you send: those are documents the client *has* already sent, so a reminder
 over the top of them risks asking for something already in hand.
 
+### Running it unattended
+
+One file lists every engagement the scheduled job should touch:
+
+```yaml
+# engagements.yaml
+root: D:\OneDrive\Clients
+defaults:
+  firm: J Park & Associates, CPA
+  sender: Jason Park
+  reminders: true
+engagements:
+  - path: Smith Family 2025
+    client: John Smith
+    link: https://drive.google.com/drive/folders/abc123
+    due: 2026-04-15
+  - path: Acme Corp TY2025
+    client: Dana Lee
+    reminders: false      # this one we chase by phone
+```
+
+```
+python -m tracker.runner engagements.yaml --log
+```
+
+That single command is the whole scheduled task. Per engagement it files the
+drop folder, scans it, and **on Saturdays** drafts the chase email. Adding a
+client is an edit to `engagements.yaml`, not a change to Task Scheduler —
+`python -m tracker.registry engagements.yaml` checks the file first and names
+any folder it cannot find.
+
+Generate the job itself with:
+
+```
+python -m tracker.scheduling --registry "D:\OneDrive\Clients\engagements.yaml" ^
+    --working-dir "C:\Tools\tax-tracker" --every 120 --out tax-tracker.xml
+schtasks /create /xml tax-tracker.xml /tn "Tax Document Tracker"
+```
+
+One daily task is enough: the **runner** decides whether today is a drafting
+day, not the scheduler. So a Saturday the machine spent switched off still
+drafts on the next run instead of skipping the week, and `--every 120` keeps
+filing and scanning running through the day without touching that.
+
+**Reminders are weekly, on Saturday, and always just drafts.** The run writes
+`reminder-draft.txt` into the engagement folder; a person opens it, edits it
+and sends it. Nothing in the scheduled path sends email.
+
+The schedule is a default, not a cage:
+
+| | |
+|---|---|
+| draft for one client, any day | `python -m tracker.reminder <engagement_dir> --write` |
+| draft the whole batch today | `python -m tracker.runner engagements.yaml --reminders always` |
+| file and scan, no drafts | `python -m tracker.runner engagements.yaml --reminders never` |
+| just one client | `python -m tracker.runner engagements.yaml --only smith` |
+| see what would happen | `python -m tracker.runner engagements.yaml --dry-run` |
+| move the drafting day | `python -m tracker.runner engagements.yaml --weekday monday` |
+
+`reminders: false` on an engagement is a standing decision that this client
+isn't chased by email — neither the schedule nor `--reminders always`
+overrides it, though the per-engagement CLI above still drafts one on demand.
+
+**An edited draft is never overwritten.** Each draft carries a fingerprint of
+its own text in the header; if what's on disk no longer matches, the weekly
+run leaves it alone and writes `reminder-draft.NEW.txt` beside it instead.
+
+One engagement failing never stops the others — a missing folder or an
+unreadable manifest is recorded against that client and the run moves on, then
+exits non-zero so the scheduler shows a red run rather than a silent one.
+
 ### Returning clients: last year is the starting point
 
 A client who filed with us last year is not a blank form, so their next

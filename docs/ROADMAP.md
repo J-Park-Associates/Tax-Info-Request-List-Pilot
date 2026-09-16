@@ -47,6 +47,17 @@ into the manifest.
 | 9 | Returning clients | **Prior year takes absolute precedence.** The template may fill a blank but never overwrite one; rows the client has never had are offered, not added. |
 | 10 | Rolling `Accepted` forward | **No.** `Waived` is a decision about the client and persists; `Accepted` judged one year's files and must not pre-approve the next. |
 
+## Decision Log (2026-09-16, scheduling)
+
+| # | Decision | Choice |
+|---|----------|--------|
+| 11 | Reminder cadence | **Weekly, Saturday.** A nightly reminder is noise that gets ignored; one a week, waiting on Saturday for a Monday send, gets read. Filing and scanning still run on whatever cadence the task is set to. |
+| 12 | Who decides the day | **The runner, not the scheduler.** One daily task, with `is_draft_day()` as the only place Saturday is written down. A run the scheduler misses still drafts when it next runs, instead of skipping the week. |
+| 13 | Manual drafting | **Always available.** `python -m tracker.reminder <dir>` is unconditional, and `--reminders always` forces the batch on any day. The schedule is a default, not a cage. |
+| 14 | `reminders: false` | **A standing decision, not a flag.** It means this client is not chased by email; neither the schedule nor `--reminders always` overrides it. The manual CLI still drafts one on demand. |
+| 15 | Regenerating a draft | **Never overwrite an edit.** The header carries a fingerprint of the generated text; anything that no longer matches is somebody's work, so the new draft goes to `reminder-draft.NEW.txt` beside it. |
+| 16 | One engagement fails | **Record it and carry on.** A mistyped path must not be why nine other clients went unprocessed. The run exits non-zero so the scheduler still shows a failure. |
+
 ## Architecture
 
 ```
@@ -71,13 +82,23 @@ OneDrive / Google Drive (synced locally on Windows)
                     └── W-2 John Smith 2025.pdf
 ```
 
-Two jobs run against the local synced path on a schedule (Windows Task Scheduler or
-n8n cron), in order:
+One scheduled job runs against the local synced path (Windows Task Scheduler or n8n
+cron) and walks every engagement in `engagements.yaml`:
 
-1. `python -m tracker.filer <engagement_dir>` — sort the drop folder: preserve each
-   original in `PBC/`, file a renamed copy into `Prepared/`, append to `_index.xlsx`.
-2. `python -m tracker.scanner <engagement_dir>` — validate `Prepared/` and write
-   statuses into `_manifest.xlsx`.
+```
+python -m tracker.runner engagements.yaml --log
+```
+
+Per engagement it does, in order:
+
+1. `tracker.filer` — sort the drop folder: preserve each original in `PBC/`, file a
+   renamed copy into `Prepared/`, append to `_index.xlsx`.
+2. `tracker.scanner` — validate `Prepared/` and write statuses into `_manifest.xlsx`.
+3. `tracker.reminder` — **on Saturdays only**, draft the client chase email into
+   `reminder-draft.txt`. Never sends it; never overwrites a draft somebody edited.
+
+Each step is still its own module with its own CLI, so any one of them can be run by
+hand against a single engagement. The runner is the unattended path, not the only one.
 
 A per-engagement lock file prevents overlapping runs when an OCR-heavy scan exceeds
 the interval. Cloud-only placeholders are left in the drop folder until the sync
@@ -145,7 +166,7 @@ no-genAI-on-financial-docs rule.)*
 | 7 | `tracker/filer.py` — sort the drop folder: move each original into `Shared/PBC/` untouched, copy a renamed working file into `Prepared/…` or `00 - Needs Review`, append `_index.xlsx`. Content-hash de-duplication makes re-runs no-ops; cloud-only files are left to finish syncing. CLI: `python -m tracker.filer <engagement_dir> [--dry-run]` | ✅ built + tested |
 | 8 | `tracker/rollover.py` — build a returning client's next-year list from their prior engagement. Prior-year fields always win; the template only fills blanks and its unknown rows are offered rather than added. Years shift as a set (so relative periods stay right), counts learn from what arrived and never shrink, `Waived` carries and `Accepted` does not. Writes a `Carried Forward` sheet explaining every row. CLI: `python -m tracker.rollover <prior_dir> <new_dir> [--form] [--year] [--include-new] [--scaffold]` | ✅ built + tested |
 | 9 | `tracker/reminder.py` — draft client email per engagement from Missing/Partial/Failed rows (draft only — no sending; no SMTP anywhere in the module). Validation notes are translated into plain client instructions, never quoted. Rows we simply have not read yet, and rows with no request folder, are held back for a person instead of being asked for; untriaged `00 - Needs Review` files raise a warning so a reminder never asks for something already in hand. CLI: `python -m tracker.reminder <engagement_dir> [--client] [--link] [--due] [--from-name] [--firm] [--write]` | ✅ built + tested |
-| 10 | Scheduling — Task Scheduler XML / n8n cron; `engagements.yaml` registry | pending |
+| 10 | Scheduling — `tracker/registry.py` (`engagements.yaml`: one file lists every engagement, validated loudly so a typo cannot silently skip a client), `tracker/runner.py` (one unattended pass: file → scan → draft, with per-engagement failure isolation and a non-zero exit so the scheduler shows a red run), and `tracker/scheduling.py` (generates the Task Scheduler XML / n8n workflow). **Reminders are drafted weekly, on Saturday** — the runner owns the day, so one daily task covers it and a missed Saturday still drafts on the next run. CLI: `python -m tracker.runner <registry> [--only] [--dry-run] [--reminders auto\|always\|never] [--weekday] [--date] [--log]` | ✅ built + tested |
 
 ## Edge Cases (designed in)
 

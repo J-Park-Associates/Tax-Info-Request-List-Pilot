@@ -2,14 +2,12 @@
 openpyxl>=3.1
 pypdf>=6
 pdfplumber>=0.11
+PyYAML>=6          # engagements.yaml registry (tracker/registry.py)
 
 # Optional OCR fallback for scanned/image-only PDFs. Without these,
 # such PDFs are flagged "review manually" — nothing breaks.
 #   pip install pytesseract pypdfium2 pillow
 #   plus the Tesseract engine: https://github.com/UB-Mannheim/tesseract/wiki
-
-# Future components (see docs/ROADMAP.md build order):
-# PyYAML       — engagements.yaml registry    (component 7)
 
 # Dev / test
 pytest>=8

@@ -44,6 +44,7 @@ is reported and the CLI says so plainly before you send.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -56,6 +57,12 @@ from tracker.scaffold import (
 )
 
 DRAFT_FILENAME = "reminder-draft.txt"
+
+#: Where a fresh draft goes when the standing one has been edited by hand.
+NEW_DRAFT_FILENAME = "reminder-draft.NEW.txt"
+
+_FINGERPRINT_PREFIX = "Fingerprint: "
+_SEPARATOR = "=" * 60
 
 #: Statuses that mean the client still owes us something.
 OUTSTANDING = (Status.MISSING, Status.PARTIAL, Status.FAILED)
@@ -398,12 +405,51 @@ def draft_reminder(
     )
 
 
+def draft_fingerprint(text: str) -> str:
+    """Fingerprint of a draft's content, ignoring the header banner."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def is_unedited(path: Path | str) -> bool:
+    """True when the file on disk is exactly as this module last wrote it.
+
+    A draft with no fingerprint, an unreadable one, or one whose content no
+    longer matches its fingerprint all answer False. The weekly job leans on
+    this, so the conservative answer is the right one: anything we are not
+    certain we wrote ourselves is treated as somebody's edit and left alone.
+    """
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    recorded = ""
+    for line in text.splitlines():
+        if line.startswith(_FINGERPRINT_PREFIX):
+            recorded = line[len(_FINGERPRINT_PREFIX):].strip()
+            break
+    if not recorded:
+        return False
+
+    _, separator, body = text.partition(_SEPARATOR + "\n")
+    if not separator:
+        return False
+    return draft_fingerprint(body) == recorded
+
+
 def write_draft(draft: ReminderDraft, path: Path | str | None = None,
-                engagement_dir: Path | str | None = None) -> Path:
+                engagement_dir: Path | str | None = None,
+                preserve_edits: bool = False) -> Path:
     """Write the draft to a text file. Give it ``path`` or ``engagement_dir``.
 
     The file opens with a banner saying it is a draft, because a file that
     reads like a sent email is a file someone will believe was sent.
+
+    With ``preserve_edits`` (what the weekly job uses), a draft somebody has
+    already edited is never overwritten — the new one is written alongside it
+    as ``reminder-draft.NEW.txt`` and that path is returned instead. An hour
+    of someone's editing is worth more than this week's regenerated text.
     """
     if path is None:
         if engagement_dir is None:
@@ -411,12 +457,9 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
         path = Path(engagement_dir) / DRAFT_FILENAME
     path = Path(path)
 
-    header = [
-        "DRAFT - NOTHING HAS BEEN SENT.",
-        "Read it, edit it, then send it yourself.",
-        "=" * 60,
-        "",
-    ]
+    if preserve_edits and path.exists() and not is_unedited(path):
+        path = path.with_name(NEW_DRAFT_FILENAME)
+
     footer: list[str] = []
     if draft.scaffold_gaps:
         footer += ["", "-" * 60,
@@ -434,10 +477,20 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
                    f"still in {REVIEW_DIR_NAME}.",
                    "Identify them before sending, or you may ask for something you have."]
 
-    text = "\n".join(header) + draft.text
+    body = draft.text
     if footer:
-        text += "\n" + "\n".join(footer) + "\n"
-    path.write_text(text, encoding="utf-8", newline="\r\n")
+        body += "\n" + "\n".join(footer) + "\n"
+
+    header = [
+        "DRAFT - NOTHING HAS BEEN SENT.",
+        "Read it, edit it, then send it yourself.",
+        f"{_FINGERPRINT_PREFIX}{draft_fingerprint(body)}",
+        "(That line is how the weekly job tells whether you have edited this",
+        " draft. Edit it freely - an edited draft is never overwritten.)",
+        _SEPARATOR,
+        "",
+    ]
+    path.write_text("\n".join(header) + body, encoding="utf-8", newline="\r\n")
     return path
 
 

@@ -11,6 +11,9 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - filer         : sort the drop folder, preserve originals, write _index.xlsx
 - rollover      : build a returning client's list from their prior year
 - reminder      : draft (never send) the client reminder email
+- registry      : engagements.yaml — every engagement the scheduled run touches
+- runner        : the unattended pass (file -> scan -> Saturday draft)
+- scheduling    : generate the Task Scheduler / n8n job
 """
 
 from tracker.manifest import (
