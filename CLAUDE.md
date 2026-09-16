@@ -30,6 +30,19 @@ Useful lookups:
 python tools/repo_map.py show tracker/runner.py    # one node, its imports, tests, artifacts
 ```
 
+**Read the test edges precisely.** They make two different claims, and the
+difference is the point:
+
+- **tested by** — the test file that owns the module by name
+  (`tests/test_filer.py` → `tracker/filer.py`). This is coverage.
+- **exercised by** — some other test imports it, usually to borrow a fixture.
+  Real and worth knowing (ten test files import `manifest.py`, so its schema
+  is load-bearing across the suite) but it is *not* coverage of that module.
+- **no dedicated test file** — said plainly where it is true. As of this
+  writing that is `tracker/api.py`, the desktop app's whole command layer.
+
+An "exercised by" edge is never evidence a module is tested.
+
 ## Keeping the map current
 
 **Refresh the map in the same commit as any change to the code.** A stale map

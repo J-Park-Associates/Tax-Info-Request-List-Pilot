@@ -2,6 +2,7 @@
   "schema": 1,
   "generated": "2026-09-16",
   "generator": "tools/repo_map.py",
+  "generator_sha256": "d4bdc9219f86c770",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -12,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 78,
+    "nodes": 77,
     "edges": 147,
-    "reused": 54
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -34,6 +35,7 @@
     "depends_on",
     "documents",
     "enforces",
+    "exercises",
     "freezes",
     "imports",
     "launches",
@@ -98,7 +100,7 @@
         "main"
       ],
       "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also holds FORM_TEMPLATES (the per-form request checklists) and the demo sample-file builder.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. GAP: it has no dedicated test file. test_runner.py imports DEMO_ITEMS and _build_samples from it for fixtures, which is not coverage of it."
     },
     {
       "id": "tracker/content_check.py",
@@ -536,8 +538,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "208a5a9dbe21bcaf",
-      "lines": 103,
+      "sha256": "8ae906796559414d",
+      "lines": 116,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -570,7 +572,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4b533d469b369479",
+      "sha256": "af0fdb39701f3dbe",
       "lines": 244,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -640,11 +642,6 @@
     },
     {
       "id": "pkg:pytest",
-      "type": "package",
-      "layer": "external"
-    },
-    {
-      "id": "pkg:repo_map",
       "type": "package",
       "layer": "external"
     },
@@ -886,13 +883,14 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ed10a22563f447b0",
-      "lines": 288,
+      "sha256": "26d35d1849b0f8c4",
+      "lines": 369,
       "exports": [
         "ROOT",
         "edges",
         "node",
         "repo",
+        "test_a_bare_import_of_a_repo_file_is_not_an_external_package",
         "test_a_curated_edge_to_a_nonexistent_node_fails_loudly",
         "test_a_deleted_file_drops_out_of_the_map",
         "test_a_fresh_map_reports_no_drift",
@@ -901,9 +899,12 @@
         "test_a_new_file_is_reported_as_added",
         "test_a_removed_file_is_reported_as_removed",
         "test_a_reused_node_keeps_its_derived_detail",
-        "test_a_test_file_gets_a_tests_edge_not_an_imports_edge",
+        "test_a_test_importing_another_test_is_not_coverage_of_it",
+        "test_an_ambiguous_bare_name_is_not_guessed_at",
         "test_an_edited_file_is_reported_as_changed",
         "test_an_unchanged_file_is_reused_rather_than_reparsed",
+        "test_any_other_test_importing_a_module_only_exercises_it",
+        "test_changing_the_generator_invalidates_every_cached_edge",
         "test_curated_descriptions_are_merged_onto_derived_nodes",
         "test_curated_nodes_that_are_not_files_are_added",
         "test_deleting_a_file_the_curated_layer_describes_fails_loudly",
@@ -917,6 +918,8 @@
         "test_the_generated_outputs_are_not_mapped",
         "test_the_markdown_carries_the_curated_pipeline_and_roles",
         "test_the_markdown_leads_with_how_to_use_and_refresh_it",
+        "test_the_owning_test_file_is_found_by_name",
+        "test_the_test_file_that_owns_a_module_by_name_gets_a_tests_edge",
         "test_third_party_imports_become_dependency_nodes"
       ],
       "role": "Guards the map's trust contract: derived facts come from source, curated judgment survives regeneration, drift is detected, and the committed map matches the tree.",
@@ -1131,8 +1134,8 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "b2b6128f03a6868b",
-      "lines": 613,
+      "sha256": "d4bdc9219f86c770",
+      "lines": 682,
       "cli": "python -m tools.repo_map",
       "exports": [
         "CURATED_PATH",
@@ -1149,7 +1152,9 @@
         "_STDLIB",
         "build",
         "classify",
+        "dedicated_test_for",
         "derive_node",
+        "generator_fingerprint",
         "hash_file",
         "load_curated",
         "load_map",
@@ -1159,11 +1164,12 @@
         "parse_python",
         "render_markdown",
         "stale_files",
+        "test_edge_kind",
         "tracked_files",
         "write_outputs"
       ],
       "role": "Builds and incrementally updates this map. Derives imports, exports, CLIs, test coverage and hashes from source; merges the curated layer on top.",
-      "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed."
+      "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed, and a change to this file forces a full rebuild \u2014 new derivation rules must not leave edges typed by the old ones. Test edges are three-way on purpose: `tests` (the test file owning the module by name) is coverage, `exercises` (any other test importing it) is not, and a test importing another test is a plain `imports`."
     }
   ],
   "edges": [
@@ -1301,13 +1307,13 @@
     },
     {
       "from": "tests/test_content_check.py",
-      "to": "tracker/content_check.py",
-      "type": "tests",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_content_check.py",
-      "to": "tracker/manifest.py",
+      "to": "tracker/content_check.py",
       "type": "tests",
       "source": "derived"
     },
@@ -1325,25 +1331,25 @@
     },
     {
       "from": "tests/test_filer.py",
-      "to": "tests/test_scanner.py",
-      "type": "tests",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_filer.py",
-      "to": "tracker/filer.py",
-      "type": "tests",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_filer.py",
       "to": "tracker/manifest.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_filer.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tests/test_scanner.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tracker/filer.py",
       "type": "tests",
       "source": "derived"
     },
@@ -1386,18 +1392,18 @@
     {
       "from": "tests/test_reminder.py",
       "to": "tracker/manifest.py",
-      "type": "tests",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_reminder.py",
-      "to": "tracker/reminder.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_reminder.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
+      "to": "tracker/reminder.py",
       "type": "tests",
       "source": "derived"
     },
@@ -1409,8 +1415,8 @@
     },
     {
       "from": "tests/test_repo_map.py",
-      "to": "pkg:repo_map",
-      "type": "depends_on",
+      "to": "tools/repo_map.py",
+      "type": "tests",
       "source": "derived"
     },
     {
@@ -1428,24 +1434,24 @@
     {
       "from": "tests/test_rollover.py",
       "to": "tracker/filer.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_rollover.py",
       "to": "tracker/manifest.py",
-      "type": "tests",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_rollover.py",
-      "to": "tracker/rollover.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_rollover.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_rollover.py",
+      "to": "tracker/rollover.py",
       "type": "tests",
       "source": "derived"
     },
@@ -1457,14 +1463,14 @@
     },
     {
       "from": "tests/test_router.py",
-      "to": "tests/test_scanner.py",
-      "type": "tests",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_router.py",
-      "to": "tracker/manifest.py",
-      "type": "tests",
+      "to": "tests/test_scanner.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -1482,36 +1488,36 @@
     {
       "from": "tests/test_runner.py",
       "to": "tracker/api.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_runner.py",
       "to": "tracker/manifest.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_runner.py",
       "to": "tracker/registry.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_runner.py",
       "to": "tracker/reminder.py",
-      "type": "tests",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_runner.py",
-      "to": "tracker/runner.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_runner.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
+      "to": "tracker/runner.py",
       "type": "tests",
       "source": "derived"
     },
@@ -1524,7 +1530,7 @@
     {
       "from": "tests/test_scaffold.py",
       "to": "tracker/manifest.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
@@ -1554,13 +1560,13 @@
     {
       "from": "tests/test_scanner.py",
       "to": "tracker/manifest.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_scanner.py",
       "to": "tracker/scaffold.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {
@@ -1596,7 +1602,7 @@
     {
       "from": "tests/test_validators.py",
       "to": "tracker/manifest.py",
-      "type": "tests",
+      "type": "exercises",
       "source": "derived"
     },
     {

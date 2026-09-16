@@ -157,6 +157,45 @@ def module_name(path: str) -> str:
     return stem[: -len(".__init__")] if stem.endswith(".__init__") else stem
 
 
+def dedicated_test_for(path: str) -> str:
+    """The test file that *owns* a module: ``tracker/filer.py`` → ``tests/test_filer.py``."""
+    return f"tests/test_{Path(path).stem}.py"
+
+
+def test_edge_kind(test_path: str, target: str) -> str:
+    """How strong a claim a test file's import of ``target`` actually supports.
+
+    One import can mean two very different things, and collapsing them
+    overstates coverage — the failure the map exists to prevent:
+
+    - ``tests``     — the test file that owns this module by name. This is
+      coverage, and renders as "tested by".
+    - ``exercises`` — any other test importing it. Real and worth knowing
+      (ten test files import manifest.py, so its schema is load-bearing
+      across the suite) but it is not that module's coverage. A test
+      borrowing DEMO_ITEMS from tracker/api.py to build a fixture asserts
+      nothing whatsoever about tracker/api.py.
+    - ``imports``   — a test importing another *test* for a shared helper.
+      Not coverage in any sense; a fixture builder being reused.
+    """
+    if target.startswith("tests/"):
+        return "imports"
+    return "tests" if test_path == dedicated_test_for(target) else "exercises"
+
+
+def _unambiguous_stems(paths: list[str]) -> dict[str, str]:
+    """Stem → path, but only for stems belonging to exactly one file.
+
+    Used to resolve a bare `import repo_map`. A stem shared by two files is
+    left out entirely: guessing which one was meant is how a map starts
+    lying.
+    """
+    counts: dict[str, list[str]] = {}
+    for path in paths:
+        counts.setdefault(Path(path).stem, []).append(path)
+    return {stem: found[0] for stem, found in counts.items() if len(found) == 1}
+
+
 # ---------------------------------------------------------------- parsing ----
 
 
@@ -220,12 +259,18 @@ def derive_node(path: str, root: Path) -> tuple[Node, list[dict]]:
         if has_cli:
             node.cli = f"python -m {module_name(path)}" if "/" in path else f"python {path}"
 
-        internal = {module_name(p): p for p in tracked_files(root) if p.endswith(".py")}
+        python_files = [p for p in tracked_files(root) if p.endswith(".py")]
+        internal = {module_name(p): p for p in python_files}
+        by_stem = _unambiguous_stems(python_files)
+
         seen: set[tuple[str, str]] = set()
         for name, _kind in imports:
-            target = internal.get(name)
+            # A bare name can still be ours: tests reach tools/repo_map.py as
+            # `import repo_map` after a sys.path insert. Without this it would
+            # be filed as an external package the project does not depend on.
+            target = internal.get(name) or by_stem.get(name)
             if target and target != path:
-                kind = "tests" if node_type == "test" else "imports"
+                kind = test_edge_kind(path, target) if node_type == "test" else "imports"
                 key = (target, kind)
                 if key not in seen:
                     seen.add(key)
@@ -287,10 +332,26 @@ def load_curated(path: Path | None = None) -> dict:
     return data
 
 
+def generator_fingerprint() -> str:
+    """Hash of this file — the cache key for everything it derives."""
+    return hash_file(Path(__file__))
+
+
 def build(root: Path | None = None, previous: dict | None = None) -> dict:
-    """Build the graph, reusing unchanged nodes from ``previous`` when given."""
+    """Build the graph, reusing unchanged nodes from ``previous`` when given.
+
+    Reuse is keyed on file content *and* on this generator's own hash. When the
+    derivation logic changes, every cached node and edge is suspect even though
+    not one source file moved — so a changed generator forces a full rebuild.
+    Skipping that would leave edges typed by rules the tool no longer follows,
+    which is precisely the silent lie the map exists to avoid.
+    """
     root = root or ROOT
     curated = load_curated()
+
+    fingerprint = generator_fingerprint()
+    if previous and previous.get("generator_sha256") != fingerprint:
+        previous = None
     old_nodes = {n["id"]: n for n in (previous or {}).get("nodes", [])}
     old_edges = (previous or {}).get("edges", [])
     edges_by_source: dict[str, list[dict]] = {}
@@ -358,6 +419,7 @@ def build(root: Path | None = None, previous: dict | None = None) -> dict:
         "schema": SCHEMA_VERSION,
         "generated": date.today().isoformat(),
         "generator": "tools/repo_map.py",
+        "generator_sha256": fingerprint,
         "pipeline": curated.get("pipeline", []),
         "counts": {"nodes": len(nodes), "edges": len(edges), "reused": reused},
         "node_types": sorted({n.type for n in nodes}),
@@ -449,6 +511,13 @@ def render_markdown(graph: dict) -> str:
                                  if e["type"] == "tests"})
             if covered_by:
                 lines.append(f"  - tested by: {', '.join(f'`{c}`' for c in covered_by)}")
+            elif node["type"] in ("module", "tool"):
+                lines.append("  - tested by: **no dedicated test file**")
+            exercised_by = sorted({e["from"] for e in in_edges.get(node["id"], [])
+                                   if e["type"] == "exercises"})
+            if exercised_by:
+                lines.append("  - exercised by (imported, not its coverage): "
+                             + ", ".join(f"`{x}`" for x in exercised_by))
             writes = sorted({e["to"] for e in out_edges.get(node["id"], [])
                              if e["type"] == "writes"})
             if writes:

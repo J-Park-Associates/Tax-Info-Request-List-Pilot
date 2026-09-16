@@ -81,10 +81,74 @@ def test_imports_between_internal_modules_become_edges(repo):
     assert edges(graph, **{"from": "pkg/app.py", "to": "pkg/core.py", "type": "imports"})
 
 
-def test_a_test_file_gets_a_tests_edge_not_an_imports_edge(repo):
+def test_the_test_file_that_owns_a_module_by_name_gets_a_tests_edge(repo):
     graph = repo_map.build(repo)
-    assert edges(graph, **{"from": "tests/test_core.py", "type": "tests"})
+    assert edges(graph, **{"from": "tests/test_core.py", "to": "pkg/core.py",
+                           "type": "tests"})
     assert not edges(graph, **{"from": "tests/test_core.py", "type": "imports"})
+
+
+def test_any_other_test_importing_a_module_only_exercises_it(repo):
+    """Borrowing a fixture is not coverage, and must not read as coverage."""
+    (repo / "tests" / "test_other.py").write_text(
+        "from pkg.core import public\n\n\ndef test_something_else():\n    assert True\n",
+        encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+
+    graph = repo_map.build(repo)
+
+    assert edges(graph, **{"from": "tests/test_other.py", "to": "pkg/core.py",
+                           "type": "exercises"})
+    assert not edges(graph, **{"from": "tests/test_other.py", "to": "pkg/core.py",
+                               "type": "tests"})
+
+
+def test_a_test_importing_another_test_is_not_coverage_of_it(repo):
+    """A shared fixture helper is an import, nothing more."""
+    (repo / "tests" / "test_helper_user.py").write_text(
+        "from tests.test_core import public\n\n\ndef test_x():\n    assert True\n",
+        encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+
+    graph = repo_map.build(repo)
+
+    assert edges(graph, **{"from": "tests/test_helper_user.py",
+                           "to": "tests/test_core.py", "type": "imports"})
+    assert not edges(graph, to="tests/test_core.py", type="tests")
+    assert not edges(graph, to="tests/test_core.py", type="exercises")
+
+
+@pytest.mark.parametrize("module, expected", [
+    ("tracker/filer.py", "tests/test_filer.py"),
+    ("tools/repo_map.py", "tests/test_repo_map.py"),
+])
+def test_the_owning_test_file_is_found_by_name(module, expected):
+    assert repo_map.dedicated_test_for(module) == expected
+
+
+def test_a_bare_import_of_a_repo_file_is_not_an_external_package(repo):
+    """`import repo_map` after a sys.path insert is ours, not a dependency."""
+    (repo / "tests" / "test_tooling.py").write_text(
+        "import core\n\n\ndef test_x():\n    assert True\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+
+    graph = repo_map.build(repo)
+
+    assert not edges(graph, to="pkg:core")
+    assert edges(graph, **{"from": "tests/test_tooling.py", "to": "pkg/core.py"})
+
+
+def test_an_ambiguous_bare_name_is_not_guessed_at(repo):
+    """Two files share the stem, so neither is assumed — guessing is how a map lies."""
+    (repo / "pkg" / "dup.py").write_text("x = 1\n", encoding="utf-8")
+    (repo / "tests" / "dup.py").write_text("y = 2\n", encoding="utf-8")
+    (repo / "pkg" / "uses.py").write_text("import dup\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+
+    graph = repo_map.build(repo)
+
+    assert not edges(graph, **{"from": "pkg/uses.py", "to": "pkg/dup.py"})
+    assert not edges(graph, **{"from": "pkg/uses.py", "to": "tests/dup.py"})
 
 
 def test_public_names_are_exported_and_private_ones_are_not(repo):
@@ -164,6 +228,23 @@ def test_an_unchanged_file_is_reused_rather_than_reparsed(repo):
     assert second["counts"]["reused"] == len(
         [n for n in first["nodes"] if "sha256" in n]) - 1, "only the edited file re-parsed"
     assert node(second, "pkg/core.py")["exports"] == ["CONSTANT", "NEW", "public"]
+
+
+def test_changing_the_generator_invalidates_every_cached_edge(repo):
+    """New derivation rules must not leave edges typed by the old ones."""
+    first = repo_map.build(repo)
+    assert first["generator_sha256"] == repo_map.generator_fingerprint()
+
+    stale = {**first, "generator_sha256": "0000000000000000"}
+    stale["edges"] = [{"from": "pkg/app.py", "to": "pkg/core.py",
+                       "type": "a-rule-we-no-longer-use", "source": "derived"}]
+
+    second = repo_map.build(repo, previous=stale)
+
+    assert not edges(second, type="a-rule-we-no-longer-use")
+    assert second["counts"]["reused"] == 0, "a changed generator rebuilds everything"
+    assert edges(second, **{"from": "pkg/app.py", "to": "pkg/core.py",
+                            "type": "imports"})
 
 
 def test_a_reused_node_keeps_its_derived_detail(repo):

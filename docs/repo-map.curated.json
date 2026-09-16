@@ -71,7 +71,7 @@
     },
     "tracker/api.py": {
       "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also holds FORM_TEMPLATES (the per-form request checklists) and the demo sample-file builder.",
-      "notes": "Every command prints one JSON object and returns an exit code — errors are JSON too, never a traceback. This is the only module the Electron app knows about."
+      "notes": "Every command prints one JSON object and returns an exit code — errors are JSON too, never a traceback. This is the only module the Electron app knows about. GAP: it has no dedicated test file. test_runner.py imports DEMO_ITEMS and _build_samples from it for fixtures, which is not coverage of it."
     },
     "tracker/__init__.py": {
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
@@ -97,7 +97,7 @@
     },
     "tools/repo_map.py": {
       "role": "Builds and incrementally updates this map. Derives imports, exports, CLIs, test coverage and hashes from source; merges the curated layer on top.",
-      "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed."
+      "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed, and a change to this file forces a full rebuild — new derivation rules must not leave edges typed by the old ones. Test edges are three-way on purpose: `tests` (the test file owning the module by name) is coverage, `exercises` (any other test importing it) is not, and a test importing another test is a plain `imports`."
     },
     "app/main.js": {
       "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen tracker-api.exe in the portable build) and relays its JSON to the renderer over IPC.",
