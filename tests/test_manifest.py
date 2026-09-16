@@ -290,3 +290,62 @@ def test_a_crash_mid_save_leaves_the_previous_manifest_intact(manifest, monkeypa
 
     assert not manifest.with_name(manifest.name + ".tmp").exists()
     assert [i.identifier for i in load_manifest(manifest)] == ["A01", "A02", "B01"]
+
+
+# --------------------------------------------------------- engagement sheet ----
+
+
+def test_the_engagement_sheet_round_trips(tmp_path):
+    from tracker.manifest import EngagementInfo, load_engagement_info, write_engagement_info
+
+    info = EngagementInfo(client="John Smith", name="Smiths 2025", link="https://drive.example/abc",
+                          due=dt.date(2026, 4, 15), sender="Jason Park", firm="J Park",
+                          reminders=False, active=True)
+    path = create_template(tmp_path / "_manifest.xlsx", SAMPLE_ITEMS, info)
+    assert load_engagement_info(path) == info
+    assert [i.identifier for i in load_manifest(path)] == ["A01", "A02", "B01"]  # Requests untouched
+
+    write_engagement_info(path, EngagementInfo(client="Jane", active=False))
+    loaded = load_engagement_info(path)
+    assert loaded.client == "Jane" and loaded.active is False and loaded.reminders is True
+
+
+def test_a_manifest_without_the_sheet_loads_as_defaults(manifest):
+    from openpyxl import load_workbook as lw
+    from tracker.manifest import EngagementInfo, load_engagement_info
+
+    wb = lw(manifest)
+    del wb["Engagement"]
+    wb.save(manifest)
+    assert load_engagement_info(manifest) == EngagementInfo()
+
+
+def test_yes_no_cells_are_forgiving_but_not_guessing(manifest):
+    from openpyxl import load_workbook as lw
+    from tracker.manifest import load_engagement_info
+
+    def set_cell(label, value):
+        wb = lw(manifest)
+        for row in wb["Engagement"].iter_rows(min_row=1, max_col=2):
+            if row[0].value == label:
+                row[1].value = value
+        wb.save(manifest)
+
+    set_cell("Reminders", "No ")
+    assert load_engagement_info(manifest).reminders is False
+    set_cell("Active", "TRUE")
+    assert load_engagement_info(manifest).active is True
+    set_cell("Active", "later")
+    with pytest.raises(ManifestError, match="Active must be yes or no"):
+        load_engagement_info(manifest)
+
+
+def test_add_any_keyword_appends_once_and_names_a_missing_row(manifest):
+    from tracker.manifest import add_any_keyword
+
+    assert add_any_keyword(manifest, "A01", "Schedule E") is True
+    assert add_any_keyword(manifest, "A01", "schedule e") is False     # case-insensitive
+    assert load_manifest(manifest)[0].any_keywords == ("Schedule E",)
+    assert add_any_keyword(manifest, "A01", "   ") is False
+    with pytest.raises(ManifestError, match="No request 'Z99'"):
+        add_any_keyword(manifest, "Z99", "x")

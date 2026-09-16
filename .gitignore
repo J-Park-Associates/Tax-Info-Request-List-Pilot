@@ -54,10 +54,9 @@ client-files/**
 ~$*.xlsx
 ~$*.docx
 
-# Scheduled-run artifacts. engagements.yaml names real clients and carries
-# their share links; drafts quote their outstanding documents. Neither
-# belongs in the repo — keep them beside the client folders instead.
-engagements.yaml
+# Scheduled-run artifacts. Drafts quote real clients' outstanding documents
+# and the run log names them. Neither belongs in the repo — they live beside
+# the client folders.
 runs.log
 reminder-draft.txt
 reminder-draft.NEW.txt

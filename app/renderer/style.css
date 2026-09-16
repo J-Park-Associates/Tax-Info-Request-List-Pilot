@@ -590,3 +590,36 @@ body {
   cursor: pointer;
 }
 .wiz-check input { margin-top: 3px; accent-color: var(--blue); }
+
+/* ── Needs review: file it from here ─────────────────────────────────── */
+
+.roll-grid.three { grid-template-columns: 1.2fr 1.6fr 1fr; margin-top: 0; }
+
+.review { list-style: none; padding: 0 18px 14px; }
+.review li {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  grid-template-areas: "name select keyword button" "why select keyword button";
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid #eef2f7;
+  font-size: 13.5px;
+}
+.review li:first-child { border-top: none; }
+.review .r-name { grid-area: name; font-weight: 600; color: #b45309; }
+.review .r-why { grid-area: why; color: var(--subtle); font-size: 12.5px; }
+.review select, .review input {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: var(--text);
+}
+.review select { grid-area: select; max-width: 300px; }
+.review input { grid-area: keyword; width: 190px; }
+.review .r-file { grid-area: button; }
+.review select:focus-visible, .review input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }

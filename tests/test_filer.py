@@ -379,3 +379,170 @@ def test_a_drop_still_held_open_is_left_for_the_next_run(engagement, monkeypatch
     report = file_drops(engagement, today=DAY2)
     assert [e.original_name for e in report.filed] == ["a-w2.pdf"]
     assert report.errors == []
+
+
+# ------------------------------------------------------------ one run at a time ----
+
+
+def test_the_filer_holds_the_engagement_lock(engagement):
+    # A second run mid-way used to move the remaining files and overwrite
+    # the first run's index rows. Same lock as the scanner, same answer.
+    from tracker.locking import LOCK_FILENAME, EngagementLockedError
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    (engagement / LOCK_FILENAME).write_text("pid=999", encoding="utf-8")
+    with pytest.raises(EngagementLockedError):
+        file_drops(engagement, today=DAY1)
+    assert (engagement / SHARED_DIR_NAME / "w2.pdf").exists()   # nothing moved
+    # A dry run writes nothing, so it needs no lock.
+    assert file_drops(engagement, today=DAY1, dry_run=True).handled == 1
+    (engagement / LOCK_FILENAME).unlink()
+    assert file_drops(engagement, today=DAY1).handled == 1
+    assert not (engagement / LOCK_FILENAME).exists()
+
+
+def test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder(engagement):
+    drop(engagement, "john.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    wb = load_workbook(engagement / MANIFEST_FILENAME)
+    wb["Requests"].cell(row=2, column=2, value="W-2s (all employers)")
+    wb.save(engagement / MANIFEST_FILENAME)
+    wb.close()
+    drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
+    report = file_drops(engagement, today=DAY2)
+    folders = [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir() if p.name.startswith("A01")]
+    assert folders == ["A01 - W-2 Wage Statements"]
+    assert report.filed[0].prepared_location.startswith("Prepared/A01 - W-2 Wage Statements/")
+
+
+def test_a_file_dropped_straight_into_pbc_is_filed_and_indexed(engagement):
+    # The client can see PBC/ and was told to drop things anywhere.
+    original = text_pdf(pbc(engagement) / "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    before = original.read_bytes()
+    report = file_drops(engagement, today=DAY1)
+    assert [e.original_name for e in report.filed] == ["w2.pdf"]
+    assert original.read_bytes() == before                    # not moved, not touched
+    rows = read_index(engagement / INDEX_FILENAME)
+    assert rows[0].pbc_location == "Shared/PBC/w2.pdf"
+    assert (engagement / rows[0].prepared_location).exists()
+    # Recorded now, so the next run leaves it alone.
+    assert file_drops(engagement, today=DAY2).handled == 0
+
+
+def test_a_resend_is_refiled_when_the_working_copy_was_deleted(engagement):
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    first = file_drops(engagement, today=DAY1).filed[0]
+    working = engagement / first.prepared_location
+    working.unlink()                                          # a preparer's slip
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
+    report = file_drops(engagement, today=DAY2)
+    assert report.duplicates == []
+    assert [e.original_name for e in report.filed] == ["w2 again.pdf"]
+    assert "re-filed" in report.filed[0].reason
+    assert working.exists()                                   # same canonical name again
+    # A re-send whose working copy is still there is still just a duplicate.
+    drop(engagement, "w2 third time.pdf", "Form W-2 Wage and Tax Statement 2025")
+    assert [e.decision for e in file_drops(engagement, today=DAY2).duplicates] == [DUPLICATE]
+
+
+def test_empty_client_folders_are_cleared_after_sorting(engagement):
+    nested = engagement / SHARED_DIR_NAME / "from my phone" / "scans"
+    nested.mkdir(parents=True)
+    text_pdf(nested / "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    (engagement / SHARED_DIR_NAME / "keep" ).mkdir()
+    (engagement / SHARED_DIR_NAME / "keep" / "later.txt.tmp").write_text("x")  # still uploading
+    file_drops(engagement, today=DAY1)
+    left = sorted(p.name for p in (engagement / SHARED_DIR_NAME).iterdir() if p.is_dir())
+    assert left == [PBC_DIR_NAME, "keep"]
+
+
+def test_a_hand_edited_index_cell_does_not_stop_the_next_run(engagement):
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    wb = load_workbook(engagement / INDEX_FILENAME)
+    wb.active.cell(row=2, column=3, value="about 9 KB")
+    wb.save(engagement / INDEX_FILENAME)
+    wb.close()
+    drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
+    assert [e.original_name for e in file_drops(engagement, today=DAY2).filed] == ["jane.pdf"]
+    assert read_index(engagement / INDEX_FILENAME)[0].size_kb == 0.0
+
+
+# ------------------------------------------------- a person files a parked file ----
+
+
+def test_assigning_a_parked_file_moves_it_under_the_canonical_name(engagement):
+    from tracker.filer import ASSIGNED_BY_PERSON, assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    review_copy = engagement / parked.prepared_location
+    assert review_copy.exists()
+
+    result = assign_review_file(engagement, parked.pbc_location, "C01", keyword="Home Lending", today=DAY2)
+
+    assert result.moved_review_copy is True
+    assert not review_copy.exists()
+    working = engagement / result.entry.prepared_location
+    assert working.name == "C01 - Mortgage Interest Statement - TY2025.pdf"
+    assert working.read_bytes() == (engagement / parked.pbc_location).read_bytes()
+    assert (engagement / parked.pbc_location).exists()               # original untouched
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == FILED and row.identifier == "C01"
+    assert row.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: ")
+    assert result.keyword == "Home Lending" and result.keyword_note == ""
+    from tracker.manifest import load_manifest
+    assert next(i for i in load_manifest(engagement / MANIFEST_FILENAME) if i.identifier == "C01").any_keywords == ("Home Lending",)
+
+
+def test_assigning_copies_from_pbc_when_the_review_copy_is_gone(engagement):
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    (engagement / parked.prepared_location).unlink()
+    result = assign_review_file(engagement, "scan0012.pdf", "A01")   # by original name
+    assert result.moved_review_copy is False
+    assert (engagement / result.entry.prepared_location).exists()
+
+
+def test_assigning_refuses_what_a_person_should_not_do(engagement):
+    from tracker.filer import FilingError, assign_review_file
+    from tracker.manifest import RequestItem, Override, create_template
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    with pytest.raises(FilingError, match="no request 'Z99'"):
+        assign_review_file(engagement, "scan0012.pdf", "Z99")
+    with pytest.raises(FilingError, match="is not waiting for review"):
+        assign_review_file(engagement, "w2.pdf", "C01")               # already filed
+    with pytest.raises(FilingError, match="nothing in the index is called"):
+        assign_review_file(engagement, "ghost.pdf", "C01")
+
+    waived = engagement.parent / "Waived"
+    waived.mkdir()
+    create_template(waived / MANIFEST_FILENAME, [
+        RequestItem(identifier="A01", document="W-2", manual_override=Override.WAIVED)])
+    scaffold_engagement(waived)
+    drop(waived, "x.pdf", "nothing")
+    file_drops(waived, today=DAY1)
+    with pytest.raises(FilingError, match="waived"):
+        assign_review_file(waived, "x.pdf", "A01")
+
+
+def test_assigning_still_files_when_excel_holds_the_manifest(engagement, monkeypatch):
+    import tracker.manifest as manifest_module
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    file_drops(engagement, today=DAY1)
+
+    def locked(*args, **kwargs):
+        raise PermissionError("[Errno 13] locked by Excel")
+
+    monkeypatch.setattr(manifest_module, "add_any_keyword", locked)
+    monkeypatch.setattr("tracker.filer.add_any_keyword", locked)
+    result = assign_review_file(engagement, "scan0012.pdf", "C01", keyword="lender")
+    assert result.entry.decision == FILED
+    assert result.keyword == "" and "open in Excel" in result.keyword_note

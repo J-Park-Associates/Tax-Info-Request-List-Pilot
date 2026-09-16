@@ -111,5 +111,5 @@ Conventions worth matching:
 - Tests are named as the claim they make
   (`test_overrides_are_never_asked_for`), not `test_case_3`.
 
-Client data never enters the repo: `engagements.yaml`, `runs.log` and the
+Client data never enters the repo: `runs.log` and the
 drafts are gitignored because they carry real client names and share links.

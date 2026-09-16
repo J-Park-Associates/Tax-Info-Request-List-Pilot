@@ -7,11 +7,12 @@ people side.
 ## Roles
 
 - **Engagement lead** — owns the engagement's request list: picks the return
-  type or rolls last year's list forward, trims and extends it, sets the due
-  date in `engagements.yaml`.
-- **Preparer / staff** — works the `Prepared/` tree, triages
-  `00 - Needs Review`, sets `Manual Override` when their judgment beats the
-  rules, and sends the drafted reminders.
+  type or rolls last year's list forward, trims and extends it, and fills in
+  the client, share link and due date in the wizard (they land on the
+  manifest's Engagement sheet; nothing else needs registering).
+- **Preparer / staff** — works the `Prepared/` tree, files anything in
+  `00 - Needs Review` with the app's *File it* action, sets `Manual Override`
+  when their judgment beats the rules, and sends the drafted reminders.
 - **Client** — drops everything into one shared folder. Nothing else.
 
 ## Starting an engagement
@@ -52,14 +53,14 @@ The scanner owns the status column; people own the override column.
 
 ## Rules
 
-- **Never commit client material.** `engagements.yaml`, `runs.log` and the
-  drafts are gitignored because they carry real names and share links.
+- **Never commit client material.** `runs.log` and the drafts are gitignored
+  because they carry real names and share links.
   Client documents live in the synced engagement folders, never here.
 - **Originals are never altered.** Work from the `Prepared/` copies; the
   `PBC/` originals are the record and `_index.xlsx` says where each one went.
 - **Nothing is guessed.** If a file is in `00 - Needs Review`, a person
-  decides. Move the copy into the right `Prepared/` folder; the next scan
-  counts it.
+  decides — in the app, by picking the request and clicking *File it*. The
+  filer does the move, the rename, the index row and the re-scan.
 - **Nothing is ever sent by the system.** Open `reminder-draft.txt`, edit
   it, send it yourself. An edited draft is never overwritten.
 - **Catalog changes affect every future engagement.** Edit

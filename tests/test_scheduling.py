@@ -14,7 +14,7 @@ from tracker.scheduling import (
     TASK_NAME,
     is_absolute_path,
     n8n_workflow,
-    resolve_registry,
+    resolve_root,
     task_scheduler_xml,
 )
 
@@ -22,7 +22,7 @@ NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 
 ARGS = dict(
     python=r"C:\Python311\python.exe",
-    registry=r"D:\OneDrive\Clients\engagements.yaml",
+    root=r"D:\OneDrive\Clients",
     working_dir=r"C:\Tools\tax-tracker",
 )
 
@@ -38,7 +38,7 @@ def test_the_xml_is_well_formed_and_runs_the_runner():
 
     assert command == ARGS["python"]
     assert "-m tracker.runner" in arguments
-    assert ARGS["registry"] in arguments
+    assert ARGS["root"] in arguments
 
 
 def test_the_job_runs_daily_so_saturday_is_never_missed():
@@ -90,33 +90,30 @@ def test_the_start_time_can_be_moved():
 
 
 @pytest.mark.parametrize("text", [
-    r"D:\OneDrive\Clients\engagements.yaml",
-    r"\\server\share\engagements.yaml",
-    "/srv/clients/engagements.yaml",
+    r"D:\OneDrive\Clients",
+    r"\\server\share\Clients",
+    "/srv/clients",
 ])
 def test_absolute_paths_are_recognized_in_either_flavour(text):
     """A Windows path is absolute even when the XML is generated on Linux."""
     assert is_absolute_path(text) is True
 
 
-@pytest.mark.parametrize("text", ["engagements.yaml", r"Clients\engagements.yaml",
-                                  "Clients/engagements.yaml"])
+@pytest.mark.parametrize("text", ["Clients", r"OneDrive\Clients", "OneDrive/Clients"])
 def test_relative_paths_are_not_mistaken_for_absolute(text):
     assert is_absolute_path(text) is False
 
 
-def test_an_absolute_registry_is_left_exactly_as_given():
-    registry = r"D:\OneDrive\Clients\engagements.yaml"
-    assert resolve_registry(registry, r"C:\Tools\tax-tracker") == registry
+def test_an_absolute_root_is_left_exactly_as_given():
+    root = r"D:\OneDrive\Clients"
+    assert resolve_root(root, r"C:\Tools\tax-tracker") == root
 
 
-def test_a_relative_registry_joins_in_the_flavour_of_the_working_directory():
-    assert resolve_registry("engagements.yaml", r"C:\Tools\tax-tracker") == (
-        r"C:\Tools\tax-tracker\engagements.yaml"
+def test_a_relative_root_joins_in_the_flavour_of_the_working_directory():
+    assert resolve_root("Clients", r"C:\Tools\tax-tracker") == (
+        r"C:\Tools\tax-tracker\Clients"
     )
-    assert resolve_registry("engagements.yaml", "/opt/tracker") == (
-        "/opt/tracker/engagements.yaml"
-    )
+    assert resolve_root("Clients", "/opt/tracker") == "/opt/tracker/Clients"
 
 
 # ---------------------------------------------------------------------- n8n ----
@@ -135,7 +132,7 @@ def test_the_n8n_command_runs_the_runner_from_the_working_directory():
     command = n8n_workflow(**ARGS)["nodes"][1]["parameters"]["command"]
     assert ARGS["working_dir"] in command
     assert "-m tracker.runner" in command
-    assert ARGS["registry"] in command
+    assert ARGS["root"] in command
 
 
 def test_the_n8n_hour_is_validated():

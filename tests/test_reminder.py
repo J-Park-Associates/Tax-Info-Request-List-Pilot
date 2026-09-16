@@ -295,3 +295,32 @@ def test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients():
     assert lines == []
     assert [flag.item.identifier for flag in attention] == ["A01"]
     assert "person here" in attention[0].reason
+
+
+def test_statuses_deferred_by_a_locked_excel_still_count(tmp_path):
+    # Friday: Excel open, the scan saw A01 arrive but could not write it.
+    # Saturday: the draft must not ask for A01.
+    from tracker.manifest import _save_pending
+
+    folder = engagement(tmp_path, [
+        item("A01", "W-2 Wage Statements", Status.MISSING),
+        item("A02", "Bank Statements", Status.MISSING),
+    ])
+    _save_pending(folder / MANIFEST_FILENAME, {
+        "A01": StatusUpdate(status=Status.RECEIVED, file_count=1, received_date=dt.date(2026, 2, 1)),
+    })
+    draft = draft_reminder(folder)
+    assert [line.item.identifier for line in draft.lines] == ["A02"]
+    assert draft.received_requests == 1
+    assert draft.pending_statuses == 1
+    written = write_draft(draft, engagement_dir=folder).read_text(encoding="utf-8")
+    assert "1 status update(s) are still waiting" in written
+
+
+def test_needs_review_count_ignores_junk_and_sees_nested_files(tmp_path):
+    review = tmp_path / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    (review / "sub").mkdir(parents=True)
+    (review / "desktop.ini").write_text("x")
+    (review / "top.pdf").write_bytes(b"x" * 10)
+    (review / "sub" / "nested.pdf").write_bytes(b"x" * 10)
+    assert count_needs_review(tmp_path) == 2

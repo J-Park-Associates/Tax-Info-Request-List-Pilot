@@ -1,12 +1,15 @@
 """The unattended run across every engagement in the registry (component 10).
 
 One command does a full pass — file the drop folder, scan, and on Saturdays
-draft the week's chase email — for every engagement in ``engagements.yaml``:
+draft the week's chase email — for every engagement found under the firm's
+clients folder:
 
-    python -m tracker.runner engagements.yaml
+    python -m tracker.runner "D:\\OneDrive\\Clients"
 
-That is the whole scheduled task. Adding a client is an edit to the registry,
-not a change to Task Scheduler.
+That is the whole scheduled task. There is nothing to register: a folder
+holding ``_manifest.xlsx`` is an engagement, and the manifest's Engagement
+sheet says who the client is and how they are chased. Creating an engagement
+in the desktop app is all it takes for the nightly run to pick it up.
 
 **Drafting is weekly, on Saturday.** A reminder that lands in the accountant's
 lap every night is noise that gets ignored; one a week, waiting on Saturday
@@ -17,9 +20,9 @@ step looks at the day. ``--reminders always`` forces a draft on any day and
 
 **Nothing is ever sent.** The Saturday step writes ``reminder-draft.txt`` into
 the engagement folder and stops there. A person opens it, edits it and sends
-it. An engagement with ``reminders: false`` is left out of the automated draft
-entirely — that is a standing decision about that client, and neither the
-schedule nor ``--reminders always`` overrides it. Drafting one by hand for
+it. An engagement whose Engagement sheet says ``Reminders: no`` is left out of
+the automated draft entirely — that is a standing decision about that client,
+and neither the schedule nor ``--reminders always`` overrides it. Drafting one by hand for
 anybody, any time, is still just:
 
     python -m tracker.reminder <engagement_dir> --write
@@ -28,9 +31,9 @@ anybody, any time, is still just:
 its own unedited output by the fingerprint in the header; anything else it
 leaves alone and writes ``reminder-draft.NEW.txt`` beside it instead.
 
-One engagement's failure never stops the others. A missing folder, an
-unreadable manifest, a scan already running — each is recorded against that
-engagement and the run moves on, because a typo in one client's path must not
+One engagement's failure never stops the others. An unreadable manifest, a
+scan already running, a drop that would not sort — each is recorded against
+that engagement and the run moves on, because one client's problem must not
 be the reason nine other clients went unprocessed. The command exits non-zero
 if anything failed, so the scheduler shows a red run instead of a silent one.
 """
@@ -45,7 +48,7 @@ from typing import Sequence
 
 from tracker.filer import file_drops
 from tracker.manifest import ManifestError, Status
-from tracker.registry import Engagement, Registry, RegistryError, load_registry
+from tracker.registry import Engagement, Registry, RegistryError, discover_engagements
 from tracker.reminder import (
     DRAFT_FILENAME,
     NEW_DRAFT_FILENAME,
@@ -159,10 +162,10 @@ def should_draft(
 ) -> bool:
     """Whether the automated run drafts a reminder for this engagement today.
 
-    ``reminders: false`` in the registry wins over every mode. It is a
-    standing decision that this client is not chased by email, and a command
-    line flag is not the place to reverse it — ``python -m tracker.reminder``
-    still drafts one on demand for anybody.
+    ``Reminders: no`` on the manifest's Engagement sheet wins over every
+    mode. It is a standing decision that this client is not chased by email,
+    and a command line flag is not the place to reverse it —
+    ``python -m tracker.reminder`` still drafts one on demand for anybody.
     """
     if not engagement.reminders or mode == REMINDERS_NEVER:
         return False
@@ -192,10 +195,13 @@ def run_engagement(
     run = EngagementRun(engagement=engagement)
 
     if not engagement.active:
-        run.skipped = "inactive in the registry"
+        run.skipped = "inactive (Engagement sheet says Active: no)"
         return run
     if not engagement.path.is_dir():
         run.error = f"folder not found: {engagement.path}"
+        return run
+    if engagement.problem:
+        run.error = f"manifest could not be read: {engagement.problem}"
         return run
 
     try:
@@ -353,14 +359,11 @@ def append_log(path: Path | str, report: RunReport) -> Path:
 if __name__ == "__main__":
     import argparse
 
-    from tracker.registry import REGISTRY_FILENAME
-
     parser = argparse.ArgumentParser(
         description="File, scan and (on Saturdays) draft reminders for every "
-                    "engagement in the registry. Never sends anything."
+                    "engagement found under the clients folder. Never sends anything."
     )
-    parser.add_argument("registry", nargs="?", default=REGISTRY_FILENAME,
-                        help=f"the engagement registry (default: {REGISTRY_FILENAME})")
+    parser.add_argument("root", help="the folder the firm keeps its clients in")
     parser.add_argument("--only", default="",
                         help="just the engagements matching this text")
     parser.add_argument("--dry-run", action="store_true",
@@ -377,9 +380,9 @@ if __name__ == "__main__":
     ns = parser.parse_args()
 
     try:
-        loaded = load_registry(ns.registry)
+        loaded = discover_engagements(ns.root)
     except RegistryError as exc:
-        raise SystemExit(f"Registry problem: {exc}")
+        raise SystemExit(f"Clients folder problem: {exc}")
 
     when = dt.date.today()
     if ns.date:
@@ -400,7 +403,7 @@ if __name__ == "__main__":
     if ns.log:
         log_path = Path(ns.log)
         if not log_path.is_absolute() and ns.log == LOG_FILENAME:
-            log_path = loaded.source.parent / LOG_FILENAME
+            log_path = loaded.source / LOG_FILENAME
         append_log(log_path, result)
         print(f"\n  Logged to {log_path}")
 

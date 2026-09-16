@@ -107,39 +107,37 @@ over the top of them risks asking for something already in hand.
 
 ### Running it unattended
 
-One file lists every engagement the scheduled job should touch:
+There is nothing to register. Point the scheduled job at the folder you keep
+your clients in; every folder under it holding `_manifest.xlsx` is an
+engagement, and the manifest's **Engagement** sheet (written by the wizard
+when you create or roll forward an engagement) says who the client is, the
+share link, the due date, whether they are chased by email and whether the
+engagement is still active:
 
-```yaml
-# engagements.yaml
-root: D:\OneDrive\Clients
-defaults:
-  firm: J Park & Associates, CPA
-  sender: Jason Park
-  reminders: true
-engagements:
-  - path: Smith Family 2025
-    client: John Smith
-    link: https://drive.google.com/drive/folders/abc123
-    due: 2026-04-15
-  - path: Acme Corp TY2025
-    client: Dana Lee
-    reminders: false      # this one we chase by phone
-```
+| Engagement sheet | |
+|---|---|
+| Client | greeting name in the reminder |
+| Engagement Name | label; the folder name if blank |
+| Share Link | pasted into the reminder |
+| Due Date | "if you can send these by…" |
+| Sender / Firm | sign-off |
+| Reminders | `no` = this client is chased by phone, never by draft |
+| Active | `no` = the scheduled run skips this folder |
 
 ```
-python -m tracker.runner engagements.yaml --log
+python -m tracker.runner "D:\OneDrive\Clients" --log
 ```
 
 That single command is the whole scheduled task. Per engagement it files the
-drop folder, scans it, and **on Saturdays** drafts the chase email. Adding a
-client is an edit to `engagements.yaml`, not a change to Task Scheduler —
-`python -m tracker.registry engagements.yaml` checks the file first and names
-any folder it cannot find.
+drop folder, scans it, and **on Saturdays** drafts the chase email. Creating
+an engagement in the app is all it takes for the next run to include it —
+`python -m tracker.registry "D:\OneDrive\Clients"` lists what the run would
+find and flags any manifest it cannot read.
 
 Generate the job itself with:
 
 ```
-python -m tracker.scheduling --registry "D:\OneDrive\Clients\engagements.yaml" ^
+python -m tracker.scheduling --root "D:\OneDrive\Clients" ^
     --working-dir "C:\Tools\tax-tracker" --every 120 --out tax-tracker.xml
 schtasks /create /xml tax-tracker.xml /tn "Tax Document Tracker"
 ```
@@ -158,15 +156,25 @@ The schedule is a default, not a cage:
 | | |
 |---|---|
 | draft for one client, any day | `python -m tracker.reminder <engagement_dir> --write` |
-| draft the whole batch today | `python -m tracker.runner engagements.yaml --reminders always` |
-| file and scan, no drafts | `python -m tracker.runner engagements.yaml --reminders never` |
-| just one client | `python -m tracker.runner engagements.yaml --only smith` |
-| see what would happen | `python -m tracker.runner engagements.yaml --dry-run` |
-| move the drafting day | `python -m tracker.runner engagements.yaml --weekday monday` |
+| draft the whole batch today | `python -m tracker.runner "D:\OneDrive\Clients" --reminders always` |
+| file and scan, no drafts | `python -m tracker.runner "D:\OneDrive\Clients" --reminders never` |
+| just one client | `python -m tracker.runner "D:\OneDrive\Clients" --only smith` |
+| see what would happen | `python -m tracker.runner "D:\OneDrive\Clients" --dry-run` |
+| move the drafting day | `python -m tracker.runner "D:\OneDrive\Clients" --weekday monday` |
 
-`reminders: false` on an engagement is a standing decision that this client
-isn't chased by email — neither the schedule nor `--reminders always`
+`Reminders: no` on an engagement's sheet is a standing decision that this
+client isn't chased by email — neither the schedule nor `--reminders always`
 overrides it, though the per-engagement CLI above still drafts one on demand.
+
+### Triage without moving files by hand
+
+A document the rules could not place waits in `00 - Needs Review`. In the
+app, each one shows why it was parked, a picker of the engagement's requests
+and a **File it** button: the working copy goes under the request's canonical
+name, the index row is rewritten as *Filed — assigned by a person*, an
+optional keyword is added to the request so the next such document files
+itself, and the engagement is re-scanned. Nobody drags a file into a folder
+or types a name. The same action is `python -m tracker.api assign`.
 
 **An edited draft is never overwritten.** Each draft carries a fingerprint of
 its own text in the header; if what's on disk no longer matches, the weekly

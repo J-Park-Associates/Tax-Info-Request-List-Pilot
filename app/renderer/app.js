@@ -83,11 +83,18 @@ function render(state) {
     const key = item.status || "Requested";
     counts[key] = (counts[key] || 0) + 1;
   }
-  $("summary").textContent = Object.entries(counts)
-    .map(([k, n]) => `${k}: ${n}`)
-    .join("   ·   ");
+  const summary = Object.entries(counts).map(([k, n]) => `${k}: ${n}`);
+  if (state.pending_statuses) {
+    summary.push(`${state.pending_statuses} update(s) waiting for Excel to close`);
+  }
+  $("summary").textContent = summary.join("   ·   ");
 
-  const unfiled = state.unfiled || [];
+  renderReview(state);
+
+  // Folders and loose files the scanner found that belong to no request.
+  // Parked documents are handled above, from the index, where the person
+  // can act on them.
+  const unfiled = (state.unfiled || []).filter((e) => !String(e.kind).startsWith("needs review"));
   $("unfiled-card").classList.toggle("hidden", unfiled.length === 0);
   $("unfiled-list").innerHTML = unfiled.map((e) => `
     <li>
@@ -95,6 +102,55 @@ function render(state) {
       <span class="u-name">${esc(e.name)}</span>
       <span class="u-kind">${esc(e.kind)}</span>
     </li>`).join("");
+}
+
+// ── Needs review: a person's decision, carried out by the filer ──────────
+
+function renderReview(state) {
+  const parked = (state.index || []).filter((e) => e.decision === "Needs Review");
+  $("review-card").classList.toggle("hidden", parked.length === 0);
+  const options = state.items
+    .filter((i) => i.manual_override !== "Waived")
+    .map((i) => `<option value="${esc(i.identifier)}">${esc(i.identifier)} — ${esc(i.document)}</option>`)
+    .join("");
+  $("review-list").innerHTML = parked.map((e) => `
+    <li data-original="${esc(e.pbc_location)}">
+      <span class="r-name">${esc(e.original_name)}</span>
+      <span class="r-why">${esc(e.reason)}</span>
+      <select aria-label="Request for ${esc(e.original_name)}">
+        <option value="">Belongs to…</option>${options}
+      </select>
+      <input type="text" placeholder="keyword to learn (optional)" aria-label="Keyword to add to the request" title="A word this document contains that others like it will too. Added to the request's Any Keywords so the next one files itself." />
+      <button class="btn btn-primary r-file">File it</button>
+    </li>`).join("");
+}
+
+async function assignParked(li) {
+  const identifier = li.querySelector("select").value;
+  if (!identifier) {
+    toast("Pick the request this document belongs to first.");
+    return;
+  }
+  const btn = li.querySelector(".r-file");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("assign"), {
+      original: li.dataset.original,
+      identifier,
+      keyword: li.querySelector("input").value.trim(),
+    });
+    render(result.state);
+    const a = result.assigned;
+    const notes = [`${a.original_name} filed as ${a.filed_as}`];
+    if (a.keyword) notes.push(`"${a.keyword}" added to ${a.identifier} so the next one files itself`);
+    if (a.keyword_note) notes.push(a.keyword_note);
+    if (a.index_deferred) notes.push("the index is open in Excel — the row is saved beside it and merges on the next run");
+    if (a.scan_note) notes.push(a.scan_note);
+    banner(notes.join(". ") + ".", a.keyword_note || a.index_deferred || a.scan_note ? "warn" : "ok");
+  } catch (err) {
+    toast(err.message);
+    btn.disabled = false;
+  }
 }
 
 function renderEngagements() {
@@ -263,6 +319,9 @@ function syncPriorDefaults() {
   const year = prior && prior.year ? prior.year + 1 : "";
   $("ro-year").value = year;
   $("ro-name").value = "";
+  $("ro-client").value = prior ? prior.client || "" : "";
+  $("ro-link").value = "";
+  $("ro-due").value = "";
   $("ro-name").placeholder = prior
     ? `${prior.name} - ${year || "next year"}`
     : "defaults to last year's name and the new year";
@@ -282,6 +341,9 @@ async function rollForward() {
       form: $("ro-form").value,
       year: Number($("ro-year").value) || null,
       include_new: $("ro-include-new").checked,
+      client: $("ro-client").value.trim(),
+      link: $("ro-link").value.trim(),
+      due: $("ro-due").value,
     });
     $("modal").classList.add("hidden");
     await refresh(result.state.paths.engagement);
@@ -317,6 +379,9 @@ function chooseForm(formId) {
   $("tmpl-head-label").textContent = `${form.label} request list — tick what applies`;
   $("ne-name").value = "";
   $("ne-name").placeholder = `e.g. Smith Family 2025 ${form.label}`;
+  $("ne-client").value = "";
+  $("ne-link").value = "";
+  $("ne-due").value = "";
   renderTemplateList();
   renderCustomList();
   showStep("items");
@@ -394,6 +459,9 @@ async function createEngagement() {
       name: $("ne-name").value.trim(),
       form: selectedForm,
       items,
+      client: $("ne-client").value.trim(),
+      link: $("ne-link").value.trim(),
+      due: $("ne-due").value,
     });
     $("modal").classList.add("hidden");
     await refresh(result.state.paths.engagement);
@@ -449,6 +517,10 @@ $("ne-create").addEventListener("click", createEngagement);
 $("ne-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
 $("modal").addEventListener("click", (e) => {
   if (e.target === $("modal")) $("modal").classList.add("hidden");
+});
+$("review-list").addEventListener("click", (e) => {
+  const btn = e.target.closest(".r-file");
+  if (btn) assignParked(btn.closest("li"));
 });
 $("cu-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".cu-remove");

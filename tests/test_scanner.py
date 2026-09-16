@@ -306,3 +306,18 @@ def test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan(engagement, monke
     report = scan_engagement(engagement, today=DAY1)
     assert report.written
     assert report.updates["A01"].status == Status.PENDING_SYNC
+
+
+def test_raising_expected_count_after_received_names_the_real_change(engagement):
+    text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
+    scan_engagement(engagement, today=DAY1)
+    wb = load_workbook(engagement / MANIFEST_FILENAME)
+    wb["Requests"].cell(row=2, column=4, value=2)   # A01 Expected Count 1 -> 2
+    wb.save(engagement / MANIFEST_FILENAME)
+    wb.close()
+    report = scan_engagement(engagement, today=DAY2)
+    update = report.updates["A01"]
+    assert update.status == Status.PARTIAL
+    assert update.received_date == DAY1
+    assert "Expected Count is now 2" in update.validation_notes
+    assert "files changed" not in update.validation_notes

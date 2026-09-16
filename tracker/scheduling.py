@@ -2,7 +2,7 @@
 
 Emits a Windows Task Scheduler job definition, or the n8n equivalent, for::
 
-    python -m tracker.runner <registry>
+    python -m tracker.runner <clients root>
 
 **One task, not two.** The runner decides for itself whether today is the day
 to draft reminders, so the schedule does not need a second weekly job — a
@@ -13,8 +13,8 @@ misses (laptop closed on Saturday) still drafts when it next runs, rather than
 skipping the week.
 
 Paths differ on every machine, so the definition is generated rather than
-committed: point it at the Python you use and the registry you keep, and
-import the XML with ``schtasks /create /xml``.
+committed: point it at the Python you use and the folder you keep your
+clients in, and import the XML with ``schtasks /create /xml``.
 
 Nothing generated here sends email. The scheduled command files documents,
 updates the manifest and writes draft text files; a person still sends them.
@@ -45,24 +45,24 @@ def is_absolute_path(text: str) -> bool:
     return PureWindowsPath(text).is_absolute() or PurePosixPath(text).is_absolute()
 
 
-def resolve_registry(registry: str, working_dir: str) -> str:
-    """The registry path as the scheduled job will see it.
+def resolve_root(root: str, working_dir: str) -> str:
+    """The clients root as the scheduled job will see it.
 
-    A relative registry hangs off the working directory, joined in the flavour
+    A relative root hangs off the working directory, joined in the flavour
     of that directory so a Windows task never ends up with a mixed separator.
     """
-    if is_absolute_path(registry):
-        return registry
+    if is_absolute_path(root):
+        return root
     flavour = PureWindowsPath if is_absolute_path(working_dir) and (
         PureWindowsPath(working_dir).drive or working_dir.startswith("\\\\")
     ) else PurePosixPath
-    return str(flavour(working_dir) / registry)
+    return str(flavour(working_dir) / root)
 
 
 def task_scheduler_xml(
     *,
     python: str | Path,
-    registry: str | Path,
+    root: str | Path,
     working_dir: str | Path,
     start_time: str = DEFAULT_START,
     repeat_minutes: int = 0,
@@ -91,7 +91,7 @@ def task_scheduler_xml(
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>{_xml_escape(author)}</Author>
-    <Description>Files and scans every engagement in {_xml_escape(registry)}.
+    <Description>Files and scans every engagement found under {_xml_escape(root)}.
 On Saturdays it also drafts the client reminder emails. It never sends them.</Description>
     <URI>\\{_xml_escape(task_name)}</URI>
   </RegistrationInfo>
@@ -125,7 +125,7 @@ On Saturdays it also drafts the client reminder emails. It never sends them.</De
   <Actions Context="Author">
     <Exec>
       <Command>{_xml_escape(python)}</Command>
-      <Arguments>-m tracker.runner "{_xml_escape(registry)}" --log</Arguments>
+      <Arguments>-m tracker.runner "{_xml_escape(root)}" --log</Arguments>
       <WorkingDirectory>{_xml_escape(working_dir)}</WorkingDirectory>
     </Exec>
   </Actions>
@@ -136,7 +136,7 @@ On Saturdays it also drafts the client reminder emails. It never sends them.</De
 def n8n_workflow(
     *,
     python: str | Path,
-    registry: str | Path,
+    root: str | Path,
     working_dir: str | Path,
     hour: int = 7,
     task_name: str = TASK_NAME,
@@ -145,7 +145,7 @@ def n8n_workflow(
     if not 0 <= hour <= 23:
         raise ValueError(f"hour must be 0-23, got {hour}")
 
-    command = f'cd "{working_dir}" && "{python}" -m tracker.runner "{registry}" --log'
+    command = f'cd "{working_dir}" && "{python}" -m tracker.runner "{root}" --log'
     return {
         "name": task_name,
         "nodes": [
@@ -180,13 +180,11 @@ def n8n_workflow(
 if __name__ == "__main__":
     import argparse
 
-    from tracker.registry import REGISTRY_FILENAME
-
     parser = argparse.ArgumentParser(
         description="Generate the scheduled job that runs the tracker unattended"
     )
-    parser.add_argument("--registry", default=REGISTRY_FILENAME,
-                        help="the engagement registry the job should read")
+    parser.add_argument("--root", required=True,
+                        help="the folder the firm keeps its clients in")
     parser.add_argument("--python", default=sys.executable,
                         help="the Python to run it with (default: this one)")
     parser.add_argument("--working-dir", default=str(Path.cwd()),
@@ -203,7 +201,7 @@ if __name__ == "__main__":
                         help="write to this file instead of standard output")
     ns = parser.parse_args()
 
-    registry_arg = resolve_registry(ns.registry, ns.working_dir)
+    root_arg = resolve_root(ns.root, ns.working_dir)
 
     try:
         if ns.format == "xml":
@@ -212,7 +210,7 @@ if __name__ == "__main__":
                 parser.error(f"--start must be HH:MM, got {ns.start!r}")
             payload = task_scheduler_xml(
                 python=ns.python,
-                registry=registry_arg,
+                root=root_arg,
                 working_dir=ns.working_dir,
                 start_time=hhmm,
                 repeat_minutes=ns.every,
@@ -224,7 +222,7 @@ if __name__ == "__main__":
             payload = json.dumps(
                 n8n_workflow(
                     python=ns.python,
-                    registry=registry_arg,
+                    root=root_arg,
                     working_dir=ns.working_dir,
                     hour=int(ns.start.split(":")[0]),
                     task_name=ns.name,

@@ -154,10 +154,18 @@
         </table>
       </section>
 
-      <section id="unfiled-card" class="card hidden">
+      <section id="review-card" class="card hidden">
         <div class="card-head">
           <h3>Needs review</h3>
-          <span class="summary">originals preserved in PBC — see the index</span>
+          <span class="summary">the client sent these; pick the request each belongs to — nothing is guessed</span>
+        </div>
+        <ul id="review-list" class="review"></ul>
+      </section>
+
+      <section id="unfiled-card" class="card hidden">
+        <div class="card-head">
+          <h3>Not part of any request</h3>
+          <span class="summary">folders and loose files in Prepared that no manifest row accounts for</span>
         </div>
         <ul id="unfiled-list" class="unfiled"></ul>
       </section>
@@ -210,6 +218,20 @@
           <span>Engagement name</span>
           <input id="ro-name" type="text" placeholder="defaults to last year's name and the new year" />
         </label>
+        <div class="roll-grid three">
+          <label class="field">
+            <span>Client (greeting name)</span>
+            <input id="ro-client" type="text" placeholder="carried from last year" />
+          </label>
+          <label class="field">
+            <span>Share link (optional)</span>
+            <input id="ro-link" type="text" placeholder="paste once the folder is shared" />
+          </label>
+          <label class="field">
+            <span>Due date (optional)</span>
+            <input id="ro-due" type="date" />
+          </label>
+        </div>
         <label class="wiz-check">
           <input id="ro-include-new" type="checkbox" />
           <span>Also add checklist rows this client has never had (otherwise they are listed as offers on the Carried Forward sheet)</span>
@@ -247,6 +269,20 @@
           <span>Engagement name</span>
           <input id="ne-name" type="text" placeholder="e.g. Smith Family 2025 Form 1040" />
         </label>
+        <div class="roll-grid three">
+          <label class="field">
+            <span>Client (greeting name)</span>
+            <input id="ne-client" type="text" placeholder="e.g. John Smith" />
+          </label>
+          <label class="field">
+            <span>Share link (optional)</span>
+            <input id="ne-link" type="text" placeholder="paste once the folder is shared" />
+          </label>
+          <label class="field">
+            <span>Due date (optional)</span>
+            <input id="ne-due" type="date" />
+          </label>
+        </div>
 
         <div class="tmpl-head" id="tmpl-head-label">Standard request list — tick what applies</div>
         <div id="tmpl-list" class="tmpl-list"></div>

@@ -193,3 +193,102 @@ def test_rollover_refuses_a_missing_prior(capsys, demo_root):
     code, payload = run(capsys, "rollover", stdin={"prior": "Nobody 2020"})
     assert code == 1
     assert "No manifest found" in payload["error"]
+
+
+def test_a_name_of_only_illegal_characters_falls_back(capsys, demo_root):
+    spec = {"name": "///:::", "form": "1040", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["created"] == "New Form 1040 Engagement"
+
+
+def test_state_shows_statuses_a_locked_excel_deferred(capsys, demo_root):
+    from tracker.manifest import StatusUpdate, _save_pending
+
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    _save_pending(demo_root / "Smith" / MANIFEST_FILENAME,
+                  {"A01": StatusUpdate(status="Received", file_count=1)})
+    code, payload = run(capsys, "state", "--engagement", str(demo_root / "Smith"))
+    assert code == 0
+    assert payload["pending_statuses"] == 1
+    assert payload["items"][0]["status"] == "Received"
+
+
+# ------------------------------------------------------------ needs review ----
+
+
+def test_assign_files_a_parked_document_and_rescans(capsys, demo_root):
+    assert run(capsys, "reset")[0] == 0
+    engagement = demo_root / api.ENGAGEMENT_DIRNAME
+    samples = demo_root / api.SAMPLES_DIRNAME
+    for name in ("Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf"):
+        (engagement / SHARED_DIR_NAME / name).write_bytes((samples / name).read_bytes())
+    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    assert code == 0
+    parked = [e for e in payload["state"]["index"] if e["decision"] == "Needs Review"]
+    assert [e["original_name"] for e in parked] == ["Mortgage Notes.docx"]
+
+    code, payload = run(capsys, "assign", "--engagement", str(engagement),
+                        stdin={"original": parked[0]["pbc_location"], "identifier": "D01",
+                               "keyword": "mortgage notes"})
+    assert code == 0, payload
+    assigned = payload["assigned"]
+    assert assigned["identifier"] == "D01" and assigned["moved_review_copy"] is True
+    assert assigned["keyword"] == "mortgage notes" and assigned["scan_note"] == ""
+    assert not [e for e in payload["state"]["index"] if e["decision"] == "Needs Review"]
+    d01 = next(i for i in payload["state"]["items"] if i["identifier"] == "D01")
+    assert "mortgage notes" in d01["any_keywords"]
+    # The re-scan saw it straight away. D01 accepts pdf/xlsx, so a .docx is
+    # Failed Validation with the reason - the person's filing is recorded,
+    # the rules still say what is wrong with it.
+    assert d01["status"] == "Failed Validation"
+    assert ".docx not allowed" in d01["validation_notes"]
+
+
+def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root):
+    assert run(capsys, "reset")[0] == 0
+    engagement = demo_root / api.ENGAGEMENT_DIRNAME
+    code, payload = run(capsys, "assign", "--engagement", str(engagement),
+                        stdin={"original": "ghost.pdf", "identifier": "A01"})
+    assert code == 1
+    assert "nothing in the index is called 'ghost.pdf'" in payload["error"]
+
+
+# --------------------------------------------------------- engagement sheet ----
+
+
+def test_create_writes_the_engagement_sheet_the_scheduled_run_reads(capsys, demo_root):
+    from tracker.registry import discover_engagements
+
+    spec = {"name": "Smith Family 2025", "form": "1040", "client": "John Smith",
+            "link": "https://drive.example/abc", "due": "2026-04-15",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["client"] == "John Smith"
+    assert payload["state"]["engagement"]["due"] == "2026-04-15"
+    [found] = discover_engagements(demo_root).engagements
+    assert found.client == "John Smith" and found.link == "https://drive.example/abc"
+    assert found.firm == api.CONTACT and found.reminders is True
+
+
+def test_rollover_carries_the_client_but_not_last_years_link_or_due(capsys, demo_root):
+    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
+            "link": "https://drive.example/old", "due": "2026-04-15", "sender": "Jason",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    assert code == 0, payload
+    info = payload["state"]["engagement"]
+    assert info["client"] == "John Smith" and info["sender"] == "Jason"
+    assert info["link"] == "" and info["due"] == ""
+    assert info["name"] == "Smith 2025 - 2026"
+
+
+def test_a_bad_due_date_is_a_sentence(capsys, demo_root):
+    spec = {"name": "X", "due": "next friday", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 1
+    assert payload["error"] == "Due date must be YYYY-MM-DD, got 'next friday'"
+    assert not (demo_root / "X").exists()

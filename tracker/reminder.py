@@ -51,12 +51,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from tracker.manifest import RequestItem, Status, load_manifest
+from tracker.manifest import (
+    RequestItem,
+    Status,
+    load_manifest,
+    pending_updates,
+    with_pending,
+)
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
 )
+from tracker.validators import iter_candidate_files
 
 DRAFT_FILENAME = "reminder-draft.txt"
 
@@ -164,6 +171,7 @@ class ReminderDraft:
     needs_review_files: int = 0
     total_requests: int = 0
     received_requests: int = 0
+    pending_statuses: int = 0   # deferred by a locked Excel; already reflected here
 
     @property
     def has_outstanding(self) -> bool:
@@ -276,9 +284,7 @@ def triage(items: Sequence[RequestItem]) -> tuple[
 def count_needs_review(engagement_dir: Path) -> int:
     """Files parked in ``00 - Needs Review`` — already sent, not yet identified."""
     review = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
-    if not review.is_dir():
-        return 0
-    return sum(1 for path in review.iterdir() if path.is_file())
+    return len(iter_candidate_files(review))
 
 
 # ----------------------------------------------------------------- drafts ----
@@ -370,7 +376,11 @@ def draft_reminder(
     if not manifest.is_file():
         raise ReminderError(f"no {MANIFEST_FILENAME} in {engagement_dir}")
 
-    items = load_manifest(manifest)
+    # Statuses the last scan could not write because Excel had the manifest
+    # open are still the truth about what arrived; a draft that ignored
+    # them would ask for documents already in hand.
+    deferred = pending_updates(manifest)
+    items = with_pending(load_manifest(manifest), deferred)
     if not items:
         raise ReminderError(f"{manifest} has no request rows")
     if not any(item.status for item in items):
@@ -411,6 +421,7 @@ def draft_reminder(
         needs_review_files=count_needs_review(engagement_dir),
         total_requests=len(active),
         received_requests=received,
+        pending_statuses=len(deferred),
     )
 
 
@@ -480,6 +491,12 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
                    "NOT ASKED FOR - waiting on us, not the client:"]
         footer += [f"  {flag.item.identifier} - {flag.item.document}: {flag.reason}"
                    for flag in draft.needs_attention]
+    if draft.pending_statuses:
+        footer += ["", "-" * 60,
+                   f"{draft.pending_statuses} status update(s) are still waiting to be "
+                   "written into the manifest (it was open in Excel during the last",
+                   "scan). This draft already reflects them; close Excel and re-scan",
+                   "to see them in the sheet."]
     if draft.needs_review_files:
         footer += ["", "-" * 60,
                    f"{draft.needs_review_files} file(s) the client already sent are "
