@@ -72,11 +72,113 @@ The portable Windows build is the full app: it writes real folders and a real
    Validation / Received / Pending Sync, with plain-English notes
 7. Open the manifest in Excel to see where everything stands, and the index
    to see how any given file got there
+8. `python -m tracker.reminder <engagement_dir>` — drafts the "still waiting
+   on these" email from what the scanner found. **It only drafts it** — there
+   is no SMTP anywhere in the module; a person reads it, edits it and sends it
 
 Run steps 5 and 6 together on a schedule (Task Scheduler or cron).
 `--dry-run` works on both and previews without writing or moving anything.
 A `Manual Override` column (Accepted / Waived) lets accountant judgment
 beat the rules.
+
+### Chasing what's still outstanding
+
+```
+python -m tracker.reminder "Smith Family 2025" --client "John Smith" \
+    --link "https://drive.google.com/drive/folders/..." --due 2026-03-15 --write
+```
+
+The draft asks for Missing, Partial and Failed rows and nothing else —
+`Received` is in, `Pending Sync` is in and still copying down, and a
+`Waived` or `Accepted` row was already decided by a person. Internal
+validation notes never reach the client: each one is translated into a plain
+instruction ("the file is password-protected; please send an unlocked copy")
+by deterministic rules, with a safe generic ask when the cause isn't
+recognized.
+
+Two things are deliberately held back from the client and reported to the
+accountant instead:
+
+- A row whose only problem is that **we** haven't read it yet (an un-OCR'd
+  scan). The document may be perfect; asking a client to resend it is how a
+  firm looks careless.
+- A row with no request folder. We can't tell a client we never received
+  something we never made a place to put — that's a scaffold problem.
+
+And if files are still sitting in `00 - Needs Review`, the CLI says so before
+you send: those are documents the client *has* already sent, so a reminder
+over the top of them risks asking for something already in hand.
+
+### Running it unattended
+
+One file lists every engagement the scheduled job should touch:
+
+```yaml
+# engagements.yaml
+root: D:\OneDrive\Clients
+defaults:
+  firm: J Park & Associates, CPA
+  sender: Jason Park
+  reminders: true
+engagements:
+  - path: Smith Family 2025
+    client: John Smith
+    link: https://drive.google.com/drive/folders/abc123
+    due: 2026-04-15
+  - path: Acme Corp TY2025
+    client: Dana Lee
+    reminders: false      # this one we chase by phone
+```
+
+```
+python -m tracker.runner engagements.yaml --log
+```
+
+That single command is the whole scheduled task. Per engagement it files the
+drop folder, scans it, and **on Saturdays** drafts the chase email. Adding a
+client is an edit to `engagements.yaml`, not a change to Task Scheduler —
+`python -m tracker.registry engagements.yaml` checks the file first and names
+any folder it cannot find.
+
+Generate the job itself with:
+
+```
+python -m tracker.scheduling --registry "D:\OneDrive\Clients\engagements.yaml" ^
+    --working-dir "C:\Tools\tax-tracker" --every 120 --out tax-tracker.xml
+schtasks /create /xml tax-tracker.xml /tn "Tax Document Tracker"
+```
+
+One daily task is enough: the **runner** decides whether today is a drafting
+day, not the scheduler. So a Saturday the machine spent switched off still
+drafts on the next run instead of skipping the week, and `--every 120` keeps
+filing and scanning running through the day without touching that.
+
+**Reminders are weekly, on Saturday, and always just drafts.** The run writes
+`reminder-draft.txt` into the engagement folder; a person opens it, edits it
+and sends it. Nothing in the scheduled path sends email.
+
+The schedule is a default, not a cage:
+
+| | |
+|---|---|
+| draft for one client, any day | `python -m tracker.reminder <engagement_dir> --write` |
+| draft the whole batch today | `python -m tracker.runner engagements.yaml --reminders always` |
+| file and scan, no drafts | `python -m tracker.runner engagements.yaml --reminders never` |
+| just one client | `python -m tracker.runner engagements.yaml --only smith` |
+| see what would happen | `python -m tracker.runner engagements.yaml --dry-run` |
+| move the drafting day | `python -m tracker.runner engagements.yaml --weekday monday` |
+
+`reminders: false` on an engagement is a standing decision that this client
+isn't chased by email — neither the schedule nor `--reminders always`
+overrides it, though the per-engagement CLI above still drafts one on demand.
+
+**An edited draft is never overwritten.** Each draft carries a fingerprint of
+its own text in the header; if what's on disk no longer matches, the weekly
+run leaves it alone and writes `reminder-draft.NEW.txt` beside it instead.
+
+One engagement failing never stops the others — a missing folder or an
+unreadable manifest is recorded against that client and the run moves on, then
+exits non-zero so the scheduler shows a red run rather than a silent one.
 
 ### Returning clients: last year is the starting point
 

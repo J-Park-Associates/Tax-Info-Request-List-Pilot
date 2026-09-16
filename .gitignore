@@ -53,3 +53,12 @@ client-files/**
 *.tlg
 ~$*.xlsx
 ~$*.docx
+
+# Scheduled-run artifacts. engagements.yaml names real clients and carries
+# their share links; drafts quote their outstanding documents. Neither
+# belongs in the repo — keep them beside the client folders instead.
+engagements.yaml
+runs.log
+reminder-draft.txt
+reminder-draft.NEW.txt
+tax-tracker.xml
