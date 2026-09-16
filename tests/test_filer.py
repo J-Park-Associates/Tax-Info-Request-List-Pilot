@@ -280,3 +280,102 @@ def test_dry_run_previews_real_numbering(engagement):
         "A01 - W-2 Wage Statements - TY2025 (2).pdf",
         "A01 - W-2 Wage Statements - TY2025.pdf",
     ]
+
+
+# ------------------------------------------- one bad file never costs the trail ----
+
+
+def test_a_locked_index_never_orphans_files_already_moved(engagement, monkeypatch):
+    # Originals are moved into PBC before the index is written. If Excel
+    # holds _index.xlsx, the rows must still be recorded somewhere the next
+    # run reads — a moved file that is nowhere in the index is lost to the
+    # workflow, because PBC is never re-sorted.
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "mortgage.pdf", "Form 1098 Mortgage Interest Statement")
+
+    def locked(wb, path):
+        raise PermissionError(f"[Errno 13] locked: {path}")
+
+    monkeypatch.setattr(filer_module, "save_workbook_atomically", locked)
+    monkeypatch.setattr(filer_module, "INDEX_RETRY_DELAY", 0.001)
+    report = file_drops(engagement, today=DAY1)
+    assert report.handled == 2
+    assert report.index_deferred is True
+    assert (engagement / filer_module.INDEX_PENDING_FILENAME).exists()
+    assert not (engagement / INDEX_FILENAME).exists()
+    # The deferred rows are already visible to whoever reads the index.
+    assert {e.original_name for e in read_index(engagement / INDEX_FILENAME)} == {
+        "w2.pdf", "mortgage.pdf",
+    }
+
+    # Excel closed; the next run has nothing to sort but folds the rows in.
+    monkeypatch.undo()
+    report = file_drops(engagement, today=DAY2)
+    assert report.index_deferred is False
+    assert (engagement / INDEX_FILENAME).exists()
+    assert not (engagement / filer_module.INDEX_PENDING_FILENAME).exists()
+    rows = read_index(engagement / INDEX_FILENAME)
+    assert {e.original_name for e in rows} == {"w2.pdf", "mortgage.pdf"}
+    assert all(e.decision == FILED for e in rows)
+
+
+def test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed(engagement, monkeypatch):
+    import shutil
+
+    drop(engagement, "a-w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "b-mortgage.pdf", "Form 1098 Mortgage Interest Statement")
+    drop(engagement, "c-w2.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
+    real_copy = shutil.copy2
+
+    def disk_full(src, dst, *args, **kwargs):
+        if "b-mortgage" in str(src):
+            raise OSError(28, "No space left on device")
+        return real_copy(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", disk_full)
+    report = file_drops(engagement, today=DAY1)
+
+    assert [e.original_name for e in report.filed] == ["a-w2.pdf", "c-w2.pdf"]
+    assert [e.name for e in report.errors] == ["b-mortgage.pdf"]
+    assert report.errors[0].left_in_place is False
+    # Every original is in PBC, and every one of them is in the index.
+    assert {p.name for p in pbc(engagement).iterdir()} == {
+        "a-w2.pdf", "b-mortgage.pdf", "c-w2.pdf",
+    }
+    rows = {e.original_name: e for e in read_index(engagement / INDEX_FILENAME)}
+    assert set(rows) == {"a-w2.pdf", "b-mortgage.pdf", "c-w2.pdf"}
+    assert rows["b-mortgage.pdf"].decision == NEEDS_REVIEW
+    assert "No space left" in rows["b-mortgage.pdf"].reason
+    assert "PBC/b-mortgage.pdf" in rows["b-mortgage.pdf"].reason
+
+
+def test_a_drop_still_held_open_is_left_for_the_next_run(engagement, monkeypatch):
+    import shutil
+
+    drop(engagement, "a-w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "b-mortgage.pdf", "Form 1098 Mortgage Interest Statement")
+    real_move = shutil.move
+
+    def held_open(src, dst, *args, **kwargs):
+        if "a-w2" in str(src):
+            raise PermissionError("[WinError 32] used by another process")
+        return real_move(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "move", held_open)
+    report = file_drops(engagement, today=DAY1)
+
+    assert [e.original_name for e in report.filed] == ["b-mortgage.pdf"]
+    assert [e.name for e in report.errors] == ["a-w2.pdf"]
+    assert report.errors[0].left_in_place is True
+    assert (engagement / SHARED_DIR_NAME / "a-w2.pdf").exists()  # untouched
+    assert {e.original_name for e in read_index(engagement / INDEX_FILENAME)} == {
+        "b-mortgage.pdf",
+    }
+
+    # Released: the next run sorts it as if nothing had happened.
+    monkeypatch.undo()
+    report = file_drops(engagement, today=DAY2)
+    assert [e.original_name for e in report.filed] == ["a-w2.pdf"]
+    assert report.errors == []

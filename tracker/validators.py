@@ -194,7 +194,18 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
             reason=f"extension .{extension} not allowed (expected: {allowed})",
         )
 
-    size = path.stat().st_size
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        # Listed a moment ago, gone now: the sync client is replacing it or
+        # the client withdrew it. Either way the row should wait, not fail,
+        # and a scheduled scan must never die on one vanished file.
+        return FileResult(
+            path=path,
+            ok=False,
+            pending_sync=True,
+            reason=f"file disappeared during the scan ({exc.__class__.__name__}); will re-check next run",
+        )
     if size < item.min_size_kb * 1024:
         return FileResult(
             path=path,

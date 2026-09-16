@@ -22,7 +22,9 @@ What the client is deliberately *not* asked for:
 - Rows whose only problem is that *we* have not looked yet ("review
   manually", an un-OCR'd scan). The document may be perfect. Asking a client
   to resend something we simply have not read is how a firm looks careless,
-  so those rows go to the accountant instead, under *needs a person*.
+  so those rows go to the accountant instead, under *needs a person*. That
+  holds for a ``Partial`` row too: if the file that would complete it is one
+  we have not read, "1 of 2 received" is not something we know yet.
 - Rows whose request folder does not exist. We cannot honestly tell a client
   we never received something we never made a place to put — that is a
   scaffold problem, and it is reported as one.
@@ -250,8 +252,15 @@ def triage(items: Sequence[RequestItem]) -> tuple[
             ))
             continue
 
+        # A Failed row we have not read is ours, not the client's. So is a
+        # Partial row whose shortfall is a file we have not read: the client
+        # may well have sent everything, and "1 of 2 received" would tell
+        # them otherwise.
         reason = _firm_side_reason(item)
-        if reason and item.status == Status.FAILED:
+        if reason and item.status in (Status.FAILED, Status.PARTIAL):
+            if item.status == Status.PARTIAL:
+                reason = ("some of what arrived is waiting on a person here to "
+                          "read it; confirm before asking for more")
             attention.append(FirmSideFlag(item=item, reason=reason))
             continue
 

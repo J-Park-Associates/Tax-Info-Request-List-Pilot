@@ -181,3 +181,48 @@ def test_google_stub_review_reason_tells_the_client_what_to_do(tmp_path):
     reason = route_file(f, ITEMS).reason
     assert "Google Docs shortcut" in reason
     assert "File > Download" in reason
+
+
+# ------------------------------------------------------ honest review reasons ----
+
+
+def test_a_matching_document_the_row_refuses_says_why(tmp_path):
+    # The content says "W-2", but the row's size floor rejects the file. The
+    # review reason must carry the real cause, not "matched no request".
+    strict = RequestItem(
+        identifier="A01", document="W-2 Wage Statements", allowed_extensions=("pdf",),
+        min_size_kb=50, required_keywords=("W-2",),
+    )
+    f = text_pdf(tmp_path / "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    routing = route_file(f, [strict])
+    assert routing.identifier is None
+    assert "looks like A01" in routing.reason
+    assert "below the 50 KB minimum" in routing.reason
+    assert routing.candidates == ("A01",)
+
+
+def test_a_file_type_nobody_accepts_is_named_as_such(tmp_path):
+    f = tmp_path / "notes.docx"
+    f.write_bytes(b"not a real docx " * 100)
+    routing = route_file(f, ITEMS)
+    assert routing.identifier is None
+    assert "no request accepts .docx files" in routing.reason
+
+
+def test_a_corrupt_pdf_is_a_review_reason_not_a_crash(tmp_path):
+    f = tmp_path / "broken.pdf"
+    f.write_bytes(b"%PDF-1.4 garbage " * 40)
+    routing = route_file(f, ITEMS)
+    assert routing.identifier is None
+    assert "not a readable PDF" in routing.reason
+
+
+def test_filename_fallback_tolerates_the_run_together_spelling(tmp_path):
+    # Clients name scans "W2", not "W-2". Same whole token, not a substring.
+    f = text_pdf(tmp_path / "Smith W2 2025.pdf", "")
+    routing = route_file(f, ITEMS)
+    assert routing.identifier == "A01"
+    assert routing.evidence == "filename"
+    # ...but "W20" is still not "W-2".
+    other = text_pdf(tmp_path / "Smith W20 form.pdf", "")
+    assert route_file(other, ITEMS).identifier is None

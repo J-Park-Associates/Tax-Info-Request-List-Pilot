@@ -42,6 +42,7 @@ The portable Windows build is the full app: it writes real folders and a real
 {EngagementName}/
 ├── _manifest.xlsx        ← accountant-owned: requests, rules, statuses
 ├── _index.xlsx           ← every original: where it went, what it became
+├── _index.pending.json   ← only while Excel has the index open; merged next run
 ├── _content_cache.json   ← verdict cache (no client text is ever stored)
 ├── _scan.log
 ├── Prepared/             ← the firm's working set (the client never sees it)

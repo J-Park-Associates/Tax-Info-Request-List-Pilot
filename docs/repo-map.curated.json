@@ -23,7 +23,7 @@
   "nodes": {
     "tracker/manifest.py": {
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
-      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns — scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls."
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns — scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are."
     },
     "tracker/scaffold.py": {
       "role": "Turns a manifest into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/{Identifier} - {Document}/ plus 00 - Needs Review. Writes the client's _README.txt.",
@@ -31,7 +31,7 @@
     },
     "tracker/validators.py": {
       "role": "Tiers 1-2: does the file exist, is the extension allowed, is it big enough, is the PDF readable. Pure read-only functions plus passive cloud-placeholder detection for OneDrive and Google Drive.",
-      "notes": "Never downloads a cloud-only placeholder — a stub must never be filed as if it were the document."
+      "notes": "Never downloads a cloud-only placeholder — a stub must never be filed as if it were the document. A file that vanishes between listing and stat is reported pending_sync, never raised — a scheduled scan must not die on one replaced file."
     },
     "tracker/content_check.py": {
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. Caches verdicts.",
@@ -39,11 +39,11 @@
     },
     "tracker/router.py": {
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only).",
-      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing — misfiling a tax document is worse than not filing it."
+      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing — misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as 'looks like A01 (...)', and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token."
     },
     "tracker/filer.py": {
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, new rows wait in _index.pending.json and read_index() already sees them."
     },
     "tracker/scanner.py": {
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and writes the result back into the manifest.",
@@ -55,7 +55,7 @@
     },
     "tracker/reminder.py": {
       "role": "Drafts the client chase email from a scanned manifest. Draft only — there is no SMTP anywhere in this module.",
-      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten."
+      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too."
     },
     "tracker/registry.py": {
       "role": "Loads and validates engagements.yaml — the one file listing every engagement the scheduled run touches.",
@@ -63,7 +63,7 @@
     },
     "tracker/runner.py": {
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on Saturdays) draft. This is the whole scheduled task.",
-      "notes": "Owns the Saturday rule in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red."
+      "notes": "Owns the Saturday rule in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran."
     },
     "tracker/scheduling.py": {
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
@@ -71,7 +71,7 @@
     },
     "tracker/api.py": {
       "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also holds FORM_TEMPLATES (the per-form request checklists) and the demo sample-file builder.",
-      "notes": "Every command prints one JSON object and returns an exit code — errors are JSON too, never a traceback. This is the only module the Electron app knows about. GAP: it has no dedicated test file. test_runner.py imports DEMO_ITEMS and _build_samples from it for fixtures, which is not coverage of it."
+      "notes": "Every command prints one JSON object and returns an exit code — errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind."
     },
     "tracker/__init__.py": {
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
@@ -146,6 +146,11 @@
       "layer": "runtime",
       "role": "Sidecar holding status updates that could not be written because Excel had the manifest locked. Merged into the next successful write."
     },
+    "artifact:_index.pending.json": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Sidecar holding index rows for originals already moved into PBC/ that could not be written because Excel had _index.xlsx open. Read alongside the workbook and folded into the next successful write."
+    },
     "artifact:Shared/": {
       "type": "artifact",
       "layer": "runtime",
@@ -193,6 +198,7 @@
     {"from": "tracker/filer.py", "to": "artifact:Shared/", "type": "reads"},
     {"from": "tracker/filer.py", "to": "artifact:Prepared/", "type": "writes"},
     {"from": "tracker/filer.py", "to": "artifact:_index.xlsx", "type": "writes"},
+    {"from": "tracker/filer.py", "to": "artifact:_index.pending.json", "type": "writes"},
     {"from": "tracker/filer.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
 
     {"from": "tracker/scanner.py", "to": "artifact:Prepared/", "type": "reads"},

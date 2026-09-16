@@ -2,6 +2,7 @@
 
 import datetime as dt
 import json
+from pathlib import Path
 
 import pytest
 from openpyxl import Workbook, load_workbook
@@ -242,3 +243,50 @@ def test_corrupt_sidecar_quarantined(manifest, caplog):
     assert not pending_path(manifest).exists()
     assert pending_path(manifest).with_suffix(".corrupt.json").exists()
     assert "Unreadable pending sidecar" in caplog.text
+
+
+# -------------------------------------------------------- identifier safety ----
+
+
+def _manifest_with_identifiers(tmp_path, *identifiers):
+    items = [
+        RequestItem(identifier=ident, document=f"Doc {n}")
+        for n, ident in enumerate(identifiers, start=1)
+    ]
+    return create_template(tmp_path / "_manifest.xlsx", items)
+
+
+@pytest.mark.parametrize("identifier", ["A:01", "A/01", "A?1", 'B"1', "A01.", "A<1>"])
+def test_identifier_that_cannot_name_a_folder_is_rejected(tmp_path, identifier):
+    # The identifier is the folder-name prefix the scanner matches back on.
+    # One the filesystem would alter is a permanent "folder not found".
+    path = _manifest_with_identifiers(tmp_path, identifier)
+    with pytest.raises(ManifestError, match="Identifier"):
+        load_manifest(path)
+
+
+def test_identifiers_differing_only_by_case_are_duplicates(tmp_path):
+    # Windows folder names are case-insensitive: "A01" and "a01" would fight
+    # over one folder, so they are the same identifier.
+    path = _manifest_with_identifiers(tmp_path, "A01", "a01")
+    with pytest.raises(ManifestError, match="Duplicate identifier"):
+        load_manifest(path)
+
+
+# ------------------------------------------------------------ atomic saves ----
+
+
+def test_a_crash_mid_save_leaves_the_previous_manifest_intact(manifest, monkeypatch):
+    # openpyxl streams straight into the target; a killed task mid-write
+    # used to leave a manifest Excel could not open. The save now lands
+    # beside the file and is swapped in whole, or not at all.
+    def crash(self, filename):
+        Path(str(filename)).write_bytes(b"PK\x03\x04 half a zip")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(WorkbookClass, "save", crash)
+    with pytest.raises(KeyboardInterrupt):
+        write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}, retries=1)
+
+    assert not manifest.with_name(manifest.name + ".tmp").exists()
+    assert [i.identifier for i in load_manifest(manifest)] == ["A01", "A02", "B01"]

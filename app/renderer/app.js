@@ -157,10 +157,21 @@ async function runScan() {
     const counts = {};
     for (const u of Object.values(result.updates)) counts[u.status] = (counts[u.status] || 0) + 1;
     const summary = Object.entries(counts).map(([k, n]) => `${k}: ${n}`).join("  ·  ");
-    if (result.written) {
-      banner(`Scan complete — manifest updated.   ${summary}`, "ok");
+    const sorted = result.sorted || {};
+    const problems = [];
+    if ((sorted.errors || []).length) {
+      problems.push(`${sorted.errors.length} file(s) could not be sorted: ${sorted.errors.map((e) => e.name).join(", ")}`);
+    }
+    if (sorted.index_deferred) {
+      problems.push("the index is open in Excel — new rows are saved beside it and will merge on the next scan");
+    }
+    if (!result.written) {
+      problems.push("the manifest is open in Excel — updates saved to a sidecar and will merge on the next scan");
+    }
+    if (problems.length) {
+      banner(`Scan complete, but ${problems.join("; ")}.   ${summary}`, "warn");
     } else {
-      banner(`Scan complete, but the manifest is open in Excel — updates saved to a sidecar and will merge on the next scan.   ${summary}`, "warn");
+      banner(`Scan complete — manifest updated.   ${summary}`, "ok");
     }
   } catch (err) {
     toast(err.message);

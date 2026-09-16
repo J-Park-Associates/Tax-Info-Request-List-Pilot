@@ -31,6 +31,7 @@ from tracker.manifest import (
     RequestItem,
     UNFILED_SHEET_NAME,
     create_template,
+    identifier_problem,
     load_manifest,
 )
 from tracker.filer import INDEX_FILENAME, file_drops, read_index
@@ -511,21 +512,40 @@ def _csv_field(value) -> tuple[str, ...]:
     return tuple(p.strip() for p in str(value or "").split(",") if p.strip())
 
 
+def _whole_number(spec: dict, key: str, default: int, minimum: int, label: str) -> int:
+    """A wizard field as an int, refused with a sentence rather than a traceback."""
+    raw = spec.get(key)
+    if raw in (None, ""):
+        return default
+    try:
+        number = int(raw)
+    except (TypeError, ValueError):
+        raise ManifestError(
+            f"{label} for {spec.get('identifier', '?')} must be a whole number, got {raw!r}"
+        ) from None
+    if number < minimum:
+        raise ManifestError(f"{label} for {spec.get('identifier', '?')} must be at least {minimum}")
+    return number
+
+
 def _item_from_spec(spec: dict) -> RequestItem:
     identifier = str(spec.get("identifier", "")).strip()
     document = str(spec.get("document", "")).strip()
     if not identifier or not document:
         raise ManifestError("every request needs an identifier and a document name")
+    problem = identifier_problem(identifier)
+    if problem:
+        raise ManifestError(f"Identifier {identifier!r} {problem}")
     return RequestItem(
         identifier=identifier,
         document=document,
         period=str(spec.get("period", "") or ""),
-        expected_count=int(spec.get("expected_count") or 1),
+        expected_count=_whole_number(spec, "expected_count", 1, 1, "Expected count"),
         allowed_extensions=tuple(
             e.lower().lstrip(".")
             for e in _csv_field(spec.get("extensions") or spec.get("allowed_extensions"))
         ),
-        min_size_kb=int(spec.get("min_size_kb") or 5),
+        min_size_kb=_whole_number(spec, "min_size_kb", 5, 0, "Minimum size"),
         required_keywords=_csv_field(spec.get("required_keywords")),
         any_keywords=_csv_field(spec.get("any_keywords")),
         date_pattern=str(spec.get("date_pattern", "") or ""),
@@ -815,6 +835,11 @@ def _sorted_payload(filed) -> dict:
             for e in filed.duplicates
         ],
         "waiting": [p.name for p in filed.waiting],
+        "errors": [
+            {"name": e.name, "error": e.error, "left_in_place": e.left_in_place}
+            for e in filed.errors
+        ],
+        "index_deferred": filed.index_deferred,
     }
 
 

@@ -61,7 +61,9 @@ CARRIED_HEADERS = (
     "Last Year Status", "Last Year Files",
 )
 
-_YEAR = re.compile(r"(?:19|20)\d{2}")
+#: A four-digit year standing on its own. The digit guards keep an account
+#: number like 120250 from being read as "2025" and quietly shifted.
+_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 
 
 @dataclass(frozen=True, slots=True)

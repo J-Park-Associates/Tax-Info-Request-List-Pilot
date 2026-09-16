@@ -185,3 +185,13 @@ def test_sha256_of(tmp_path):
     c.write_bytes(b"other bytes")
     assert sha256_of(a) == sha256_of(b)
     assert sha256_of(a) != sha256_of(c)
+
+
+def test_a_file_that_vanishes_mid_scan_is_pending_not_a_crash(tmp_path):
+    # Listed a moment ago, replaced by the sync client now. The scheduled
+    # scan must carry on, and the row should wait rather than fail.
+    ghost = tmp_path / "ghost.pdf"
+    result = check_file(ghost, PDF_ITEM)
+    assert result.ok is False
+    assert result.pending_sync is True
+    assert "disappeared" in result.reason

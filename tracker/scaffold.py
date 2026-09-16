@@ -99,6 +99,10 @@ def assign_folders(
     for child in sorted(parent_dir.iterdir()):
         if not child.is_dir():
             continue
+        # The review folder belongs to nobody. An identifier such as "00"
+        # would otherwise claim it and count every parked file as its own.
+        if child.name.lower() == REVIEW_DIR_NAME.lower():
+            continue
         best: str | None = None
         for ident in identifiers:
             if matches_identifier(child.name, ident):

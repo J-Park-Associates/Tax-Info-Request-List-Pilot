@@ -58,6 +58,16 @@ into the manifest.
 | 15 | Regenerating a draft | **Never overwrite an edit.** The header carries a fingerprint of the generated text; anything that no longer matches is somebody's work, so the new draft goes to `reminder-draft.NEW.txt` beside it. |
 | 16 | One engagement fails | **Record it and carry on.** A mistyped path must not be why nine other clients went unprocessed. The run exits non-zero so the scheduler still shows a failure. |
 
+## Decision Log (2026-09-16, hardening)
+
+| # | Decision | Choice |
+|---|----------|--------|
+| 17 | One drop fails | **Isolate it, record it, keep sorting.** Originals are moved into `PBC/` before anything else, so a failure after the move (disk full, a copy error) is indexed as *Needs Review* with the error and the rest of the pile is still sorted. A file the sync client still holds open is left in place for the next run. The index is written in a `finally`, and if Excel has it open the rows wait in `_index.pending.json` — nothing moved into `PBC/` is ever unrecorded. The engagement still counts as failed so the scheduler shows it. |
+| 18 | Workbook saves | **Atomic.** Every `_manifest.xlsx` / `_index.xlsx` save lands beside the file and is swapped in with `os.replace`. A killed task mid-save used to leave a workbook Excel could not open; now it leaves the previous one. |
+| 19 | Identifiers | **Must survive as a folder-name prefix.** `A:01` or `A01.` scaffolds a folder the scanner can never match back (permanent "folder not found"), so the loader refuses them, and `A01`/`a01` are one identifier because Windows folders are case-insensitive. |
+| 20 | Why a file was not filed | **The most useful reason available.** A document whose content fits a request that refused the file (below the size floor, wrong type, unreadable) is parked as *looks like A01 (…)*; a file every request refused for one reason carries that reason. "Matched no request" is the last resort, not the default. |
+| 21 | Partial rows we have not read | **Ours, not the client's.** If the file that would complete a `Partial` row is an un-OCR'd scan, "1 of 2 received" is not something we know yet; the row goes to the accountant with the other firm-side flags. |
+
 ## Architecture
 
 ```
@@ -68,6 +78,7 @@ OneDrive / Google Drive (synced locally on Windows)
             ├── _manifest.xlsx        ← accountant-only (NOT in the shared scope)
             ├── _index.xlsx           ← every original: where it went, what it became
             ├── _manifest.pending.json← sidecar written only if Excel had the file locked
+            ├── _index.pending.json   ← same, for index rows while Excel has _index.xlsx open
             ├── scan.log              ← rotating log
             ├── Prepared/             ← firm-side working set (NOT shared)
             │   ├── A01 - W-2 Wage Statements - All Employers/

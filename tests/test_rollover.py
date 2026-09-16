@@ -298,3 +298,10 @@ def test_prior_engagement_is_never_written_to(prior):
     before = (prior / MANIFEST_FILENAME).read_bytes()
     roll_forward(prior, template=TEMPLATE)
     assert (prior / MANIFEST_FILENAME).read_bytes() == before
+
+
+def test_shift_years_leaves_digits_inside_longer_numbers_alone():
+    # An account number is not a year, even when four of its digits look
+    # like one.
+    assert shift_years("Account 120250 statement TY2025", 1) == "Account 120250 statement TY2026"
+    assert shift_years("Policy 2025-1234 for 2025", 1) == "Policy 2026-1234 for 2026"

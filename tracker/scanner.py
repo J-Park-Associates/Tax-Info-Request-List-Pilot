@@ -112,7 +112,10 @@ def _scan_item(
         seen: set[str] = set()
         distinct: list[Path] = []
         for path in valid:
-            digest = sha256_of(path)
+            try:
+                digest = sha256_of(path)
+            except OSError:
+                continue  # vanished since tier 2 ran; it is not a valid file now
             if digest in seen:
                 duplicates += 1
             else:
@@ -208,7 +211,7 @@ def _find_unfiled(
                 UnfiledEntry(
                     name=child.name,
                     kind="loose file in Prepared root",
-                    size_kb=round(child.stat().st_size / 1024, 1),
+                    size_kb=_size_kb(child),
                     seen=today.isoformat(),
                 )
             )
@@ -218,7 +221,7 @@ def _find_unfiled(
                     UnfiledEntry(
                         name=path.name,
                         kind="needs review - could not be matched to a request",
-                        size_kb=round(path.stat().st_size / 1024, 1),
+                        size_kb=_size_kb(path),
                         seen=today.isoformat(),
                     )
                 )
@@ -232,6 +235,14 @@ def _find_unfiled(
                 )
             )
     return entries
+
+
+def _size_kb(path: Path) -> float | None:
+    """Size for the Unfiled sheet; None if the file vanished mid-scan."""
+    try:
+        return round(path.stat().st_size / 1024, 1)
+    except OSError:
+        return None
 
 
 # ------------------------------------------------------------- run lock ----

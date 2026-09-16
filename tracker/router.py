@@ -33,6 +33,13 @@ Two things deliberately do *not* route a file:
   it must not be filed as a prior-year return; a person gets it, with the
   failed rule quoted.
 
+When a file is not routed, the reason says why in the most useful terms
+available: a document whose content fits a request but which that request
+refused (too small, wrong type, unreadable) is reported as *looks like A01
+(file is 3.1 KB, below the 5 KB minimum)*, and a file every request refused
+for the same reason carries that reason — "matched no request" alone is the
+last resort, not the default.
+
 Routing is read-only. Moving, renaming and indexing happen in
 :mod:`tracker.filer`, which uses the decisions made here.
 """
@@ -90,7 +97,13 @@ def _filename_hit(path: Path, item: RequestItem) -> bool:
     words = set(_WORD_SPLIT.split(path.stem.lower()))
     for keyword in (*item.required_keywords, *item.any_keywords):
         parts = [p for p in _WORD_SPLIT.split(keyword.lower()) if p]
-        if parts and all(p in words for p in parts):
+        if not parts:
+            continue
+        if all(p in words for p in parts):
+            return True
+        # Clients write "W2" for "W-2" and "1099INT" for "1099-INT"; the
+        # run-together spelling is the same whole token, not a substring.
+        if len(parts) > 1 and "".join(parts) in words:
             return True
     return False
 
@@ -108,13 +121,13 @@ def _required_matched(text: str, item: RequestItem) -> bool:
     return all(contains_keyword(text, k) for k in item.required_keywords)
 
 
-def _eligible(path: Path, item: RequestItem) -> bool:
-    """Could this request accept this file at all (type, size, readability)?"""
-    return (
-        item.manual_override != Override.WAIVED
-        and has_content_rules(item)
-        and check_file(path, item).ok
-    )
+def _considers(item: RequestItem) -> bool:
+    """Could this request accept any file at all?
+
+    Waived rows want nothing, and a row with no content rule has no way to
+    recognise a document — it never auto-routes, by design.
+    """
+    return item.manual_override != Override.WAIVED and has_content_rules(item)
 
 
 def route_file(
@@ -134,15 +147,31 @@ def route_file(
         return Routing(path=path, identifier=None, reason=stub)
 
     if text is None:
-        text = extract_text(path)
+        try:
+            text = extract_text(path)
+        except Exception as exc:  # a corrupt file is a review reason, not a crash
+            text = None
+            extraction_error = f"{exc.__class__.__name__}: {exc}"
+        else:
+            extraction_error = ""
+    else:
+        extraction_error = ""
 
     strong: list[str] = []      # required keywords matched and every rule passed
     medium: list[str] = []      # passed on any_keywords / date alone
     near: list[tuple[str, str]] = []   # looks like this request but fails a rule
     by_name: list[str] = []     # no readable text; the filename is all we have
+    blocked: list[tuple[str, str]] = []  # content fits, but tier 2 refused the file
+    refusals: list[str] = []    # every tier-2 reason, for an honest "why not"
 
     for item in items:
-        if not _eligible(path, item):
+        if not _considers(item):
+            continue
+        tier2 = check_file(path, item)
+        if not tier2.ok:
+            refusals.append(tier2.reason)
+            if text and evaluate_rules(text, item).ok:
+                blocked.append((item.identifier, tier2.reason))
             continue
         if text:
             verdict = evaluate_rules(text, item)
@@ -189,11 +218,43 @@ def route_file(
                 evidence=strength,
             )
 
-    rule_less = [
-        i.identifier
-        for i in items
-        if i.manual_override != Override.WAIVED and not has_content_rules(i)
-    ]
+    # The content says which request this is, but the file itself was
+    # refused (too small, wrong type, unreadable PDF). Say that, so the
+    # person reviewing it - and the client, via the reminder - hears the
+    # real reason instead of "matched no request".
+    if blocked:
+        listed = "; ".join(f"{ident} ({why})" for ident, why in blocked)
+        return Routing(
+            path=path,
+            identifier=None,
+            reason=f"looks like {listed} - a person should confirm",
+            candidates=tuple(ident for ident, _ in blocked),
+            evidence="content",
+        )
+
+    # Nothing matched and every request refused the file for the same
+    # reason: that reason is the story (a corrupt PDF, a locked PDF, a
+    # file type nobody accepts), not the keyword rules.
+    if refusals and len(refusals) == sum(1 for i in items if _considers(i)):
+        if len(set(refusals)) == 1:
+            return Routing(path=path, identifier=None, reason=f"{UNMATCHED}; {refusals[0]}")
+        if all(r.startswith("extension .") for r in refusals):
+            ext = path.suffix.lower().lstrip(".") or "(none)"
+            return Routing(
+                path=path,
+                identifier=None,
+                reason=f"{UNMATCHED}; no request accepts .{ext} files",
+            )
+
+    if extraction_error:
+        return Routing(
+            path=path,
+            identifier=None,
+            reason=f"{UNMATCHED}; could not read it ({extraction_error})",
+        )
+
+    rule_less = [i.identifier for i in items if not _considers(i)
+                 and i.manual_override != Override.WAIVED]
     hint = ""
     if rule_less:
         hint = (

@@ -172,3 +172,12 @@ def test_readme_refreshed_on_rerun(engagement):
 def test_missing_manifest_raises(tmp_path):
     with pytest.raises(ManifestError, match="not found"):
         scaffold_engagement(tmp_path)
+
+
+def test_the_review_folder_is_never_assigned_to_an_identifier(tmp_path):
+    # "00 - Needs Review" starts with "00"; an identifier "00" must not
+    # claim it and count every parked file as its own.
+    (tmp_path / REVIEW_DIR_NAME).mkdir()
+    (tmp_path / "00 - Opening Balances").mkdir()
+    assigned = assign_folders(tmp_path, ["00"])
+    assert [p.name for p in assigned["00"]] == ["00 - Opening Balances"]
