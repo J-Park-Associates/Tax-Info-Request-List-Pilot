@@ -159,8 +159,35 @@ def iter_candidate_files(folder: Path) -> list[Path]:
 # ----------------------------------------------------------------- tier 2 ----
 
 
+#: Readability verdicts keyed by (path, size, mtime_ns). The router asks
+#: check_file() once per manifest row for the same file, and the scanner
+#: asks again; parsing a PDF fifteen times to learn the same thing is the
+#: cost this saves. Bounded, and a changed file gets a fresh key.
+_PDF_VERDICTS: dict[tuple[str, int, int], str] = {}
+_PDF_VERDICTS_MAX = 512
+
+
 def _pdf_error(path: Path) -> str:
-    """Empty string if the PDF opens cleanly, else a failure reason."""
+    """Empty string if the PDF opens cleanly, else a failure reason.
+
+    Cached per file identity (path, size, mtime), so the same file checked
+    against every manifest row is parsed once.
+    """
+    try:
+        stat = path.stat()
+        key = (str(path), stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return _pdf_error_uncached(path)
+    if key in _PDF_VERDICTS:
+        return _PDF_VERDICTS[key]
+    verdict = _pdf_error_uncached(path)
+    if len(_PDF_VERDICTS) >= _PDF_VERDICTS_MAX:
+        _PDF_VERDICTS.clear()
+    _PDF_VERDICTS[key] = verdict
+    return verdict
+
+
+def _pdf_error_uncached(path: Path) -> str:
     try:
         reader = PdfReader(path)
         if reader.is_encrypted:

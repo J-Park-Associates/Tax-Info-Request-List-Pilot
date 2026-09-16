@@ -187,12 +187,50 @@
   <div id="modal" class="modal-overlay hidden">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
 
-      <!-- Step 1: choose the tax form type -->
-      <div id="wiz-form">
-        <h3 id="modal-title">New Engagement — what type of return?</h3>
+      <!-- Step 0 (default): returning client — roll last year forward -->
+      <div id="wiz-prior">
+        <h3 id="modal-title">New Engagement — returning client</h3>
+        <p class="wiz-sub">Last year's list is the starting point. Everything the client actually sent, waived or under-delivered carries forward; the form template only fills blanks.</p>
+
+        <div class="tmpl-head">Roll forward from</div>
+        <div id="prior-list" class="tmpl-list" role="radiogroup" aria-label="Prior engagement"></div>
+        <p id="prior-empty" class="wiz-note hidden">No prior engagement on file yet — start this client from a form template below.</p>
+
+        <div class="roll-grid">
+          <label class="field">
+            <span>Tax year</span>
+            <input id="ro-year" type="number" min="2000" max="2100" placeholder="e.g. 2026" />
+          </label>
+          <label class="field">
+            <span>Form template (fills blanks, offers new rows)</span>
+            <select id="ro-form"></select>
+          </label>
+        </div>
+        <label class="field">
+          <span>Engagement name</span>
+          <input id="ro-name" type="text" placeholder="defaults to last year's name and the new year" />
+        </label>
+        <label class="wiz-check">
+          <input id="ro-include-new" type="checkbox" />
+          <span>Also add checklist rows this client has never had (otherwise they are listed as offers on the Carried Forward sheet)</span>
+        </label>
+
+        <div class="modal-actions">
+          <button id="wp-new-client" class="btn">New client — start from a form template</button>
+          <span class="toolbar-spacer"></span>
+          <button id="wp-cancel" class="btn">Cancel</button>
+          <button id="ro-create" class="btn btn-primary">Roll Forward</button>
+        </div>
+      </div>
+
+      <!-- Step 1: choose the tax form type (new client) -->
+      <div id="wiz-form" class="hidden">
+        <h3 id="form-title">New Engagement — what type of return?</h3>
         <p class="wiz-sub">The request list is tailored to the form you pick.</p>
         <div id="form-grid" class="form-grid"></div>
         <div class="modal-actions">
+          <button id="wf-back" class="btn">&#8592; Returning client</button>
+          <span class="toolbar-spacer"></span>
           <button id="wf-cancel" class="btn">Cancel</button>
         </div>
       </div>
@@ -217,7 +255,7 @@
         <div class="custom-row">
           <input id="cu-doc" type="text" placeholder="Document (e.g. Rental Property Records)" aria-label="Custom document name" />
           <input id="cu-ext" type="text" value="pdf" placeholder="File types" aria-label="Allowed file types" />
-          <input id="cu-kw" type="text" placeholder="Must contain (needed to auto-file)" aria-label="Required keyword" title="A word the document itself contains, e.g. 'Schedule E'. Without one, files for this request always go to Needs Review." />
+          <input id="cu-kw" type="text" placeholder="Must contain (defaults to the document name)" aria-label="Required keyword" title="A word the document itself contains, e.g. 'Schedule E'. It defaults to the document name; shorten it to something the file really says." />
           <button id="cu-add" class="btn">Add</button>
         </div>
         <ul id="cu-list" class="cu-list"></ul>

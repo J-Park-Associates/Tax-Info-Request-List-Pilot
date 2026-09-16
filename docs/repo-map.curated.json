@@ -51,7 +51,7 @@
     },
     "tracker/rollover.py": {
       "role": "Builds a returning client's next-year request list from their prior engagement. Prior-year data always wins; the template may only fill blanks.",
-      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. NOTE: rollover and api import each other - api imports rollover at module scope, rollover imports api only inside its __main__ block. That cycle is deliberate; do not \"fix\" it by hoisting the import."
+      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other."
     },
     "tracker/reminder.py": {
       "role": "Drafts the client chase email from a scanned manifest. Draft only — there is no SMTP anywhere in this module.",
@@ -70,8 +70,12 @@
       "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux."
     },
     "tracker/api.py": {
-      "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also holds FORM_TEMPLATES (the per-form request checklists) and the demo sample-file builder.",
+      "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also the demo sample-file builder.",
       "notes": "Every command prints one JSON object and returns an exit code — errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind."
+    },
+    "tracker/templates.py": {
+      "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword/date rules that recognise each document. The ONLY source of truth for the checklists; templates/*.csv are generated from it.",
+      "notes": "Edit the Python, run `python -m tracker.templates export`, commit both. tests/test_templates.py and CI fail if the CSVs drift. item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file."
     },
     "tracker/__init__.py": {
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
@@ -115,10 +119,6 @@
     },
     "app/renderer/index.html": { "role": "Desktop app shell markup." },
     "app/renderer/style.css": { "role": "Desktop app styling." },
-    "demo/standalone/tax-document-tracker.html": {
-      "role": "A single self-contained HTML file that ports the scanner's rules to the browser. Opens offline with nothing installed, for emailing to staff or demoing on a prospect's laptop.",
-      "notes": "A faithful port, not a shim: same statuses and same validation notes as the Python scanner. It has to be kept in step with tracker/scanner.py and tracker/validators.py by hand."
-    },
     "demo/demo_manifest.py": {
       "role": "Hands-on walkthrough of the manifest layer, including the Excel-lock retry and sidecar behaviour you can watch live by holding the file open in Excel."
     },
@@ -199,6 +199,13 @@
     {"from": "tracker/filer.py", "to": "artifact:Prepared/", "type": "writes"},
     {"from": "tracker/filer.py", "to": "artifact:_index.xlsx", "type": "writes"},
     {"from": "tracker/filer.py", "to": "artifact:_index.pending.json", "type": "writes"},
+
+    {"from": "tracker/templates.py", "to": "templates/form-1040.csv", "type": "writes"},
+    {"from": "tracker/templates.py", "to": "templates/form-1120.csv", "type": "writes"},
+    {"from": "tracker/templates.py", "to": "templates/form-1120s.csv", "type": "writes"},
+    {"from": "tracker/templates.py", "to": "templates/form-1065.csv", "type": "writes"},
+    {"from": "tracker/templates.py", "to": "templates/form-1041.csv", "type": "writes"},
+    {"from": "tracker/templates.py", "to": "templates/form-990.csv", "type": "writes"},
     {"from": "tracker/filer.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
 
     {"from": "tracker/scanner.py", "to": "artifact:Prepared/", "type": "reads"},
@@ -233,8 +240,6 @@
     {"from": "Start Demo.bat", "to": "app/main.js", "type": "launches"},
     {"from": "Scan Demo.bat", "to": "tracker/scanner.py", "type": "launches"},
 
-    {"from": "demo/standalone/tax-document-tracker.html", "to": "tracker/scanner.py", "type": "mirrors"},
-    {"from": "demo/standalone/tax-document-tracker.html", "to": "tracker/validators.py", "type": "mirrors"},
 
     {"from": "tracker/router.py", "to": "rule:nothing-is-guessed", "type": "enforces"},
     {"from": "tracker/filer.py", "to": "rule:originals-are-never-altered", "type": "enforces"},

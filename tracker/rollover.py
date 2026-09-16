@@ -330,8 +330,7 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
 if __name__ == "__main__":
     import argparse
 
-    # Imported here, not at module scope: tracker.api imports this module.
-    from tracker.api import FORM_TEMPLATES, _item_from_spec
+    from tracker.templates import FORM_TEMPLATES, template_items
 
     parser = argparse.ArgumentParser(
         description="Build next year's request list from a returning client's prior engagement"
@@ -351,7 +350,7 @@ if __name__ == "__main__":
     if ns.form:
         if ns.form not in FORM_TEMPLATES:
             parser.error(f"unknown form {ns.form}; try one of {', '.join(FORM_TEMPLATES)}")
-        template = [_item_from_spec(s) for s in FORM_TEMPLATES[ns.form]]
+        template = template_items(ns.form)
 
     result = roll_forward(
         ns.prior_engagement_dir,

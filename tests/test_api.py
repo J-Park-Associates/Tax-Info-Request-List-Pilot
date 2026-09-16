@@ -151,9 +151,45 @@ def test_reset_then_scan_plays_the_demo_end_to_end(capsys, demo_root):
 
 
 def test_item_from_spec_normalizes_extensions():
-    item = api._item_from_spec(
+    item = api.item_from_spec(
         {"identifier": "A01", "document": "W-2", "extensions": ".PDF, Csv"}
     )
     assert item.allowed_extensions == ("pdf", "csv")
     with pytest.raises(ManifestError):
-        api._item_from_spec({"identifier": "", "document": "W-2"})
+        api.item_from_spec({"identifier": "", "document": "W-2"})
+
+
+# ------------------------------------------------------- returning clients ----
+
+
+def test_priors_then_rollover_is_the_desktop_returning_client_path(capsys, demo_root):
+    # The wizard's default page: list what is on disk, roll one forward.
+    spec = {"name": "Smith Family 2025", "form": "1040",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+
+    code, payload = run(capsys, "priors")
+    assert code == 0
+    assert [p["name"] for p in payload["priors"]] == ["Smith Family 2025"]
+    assert payload["priors"][0]["year"] == 2025
+
+    code, payload = run(capsys, "rollover", stdin={
+        "prior": "Smith Family 2025", "form": "1040", "year": 2026,
+    })
+    assert code == 0, payload
+    assert payload["created"] == "Smith Family 2025 - 2026"
+    assert payload["rollover"]["prior_year"] == 2025
+    assert payload["rollover"]["target_year"] == 2026
+    carried = {r["identifier"] for r in payload["rollover"]["carried"]}
+    offered = {r["identifier"] for r in payload["rollover"]["offered"]}
+    assert "A01" in carried and "E01" in offered and not carried & offered
+    periods = {i["identifier"]: i["period"] for i in payload["state"]["items"]}
+    assert periods["A01"] == "TY2026"          # shifted with the year
+    engagement = demo_root / payload["created"]
+    assert (engagement / SHARED_DIR_NAME).is_dir()  # scaffolded, ready to share
+
+
+def test_rollover_refuses_a_missing_prior(capsys, demo_root):
+    code, payload = run(capsys, "rollover", stdin={"prior": "Nobody 2020"})
+    assert code == 1
+    assert "No manifest found" in payload["error"]

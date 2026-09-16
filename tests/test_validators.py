@@ -195,3 +195,24 @@ def test_a_file_that_vanishes_mid_scan_is_pending_not_a_crash(tmp_path):
     assert result.ok is False
     assert result.pending_sync is True
     assert "disappeared" in result.reason
+
+
+def test_pdf_readability_is_parsed_once_per_file(tmp_path, monkeypatch):
+    # The router asks check_file() once per manifest row for one file; the
+    # verdict is cached per (path, size, mtime) so the PDF is parsed once,
+    # and a rewritten file gets a fresh parse.
+    import tracker.validators as v
+
+    calls = []
+    real = v._pdf_error_uncached
+    monkeypatch.setattr(v, "_pdf_error_uncached", lambda p: (calls.append(p), real(p))[1])
+    pdf = write_pdf(tmp_path / "statement.pdf")
+    for _ in range(5):
+        assert check_file(pdf, PDF_ITEM).ok
+    assert len(calls) == 1
+
+    write_pdf(pdf, pages=2)
+    import os
+    os.utime(pdf, ns=(1, 1))  # a different mtime, whatever the clock did
+    assert check_file(pdf, PDF_ITEM).ok
+    assert len(calls) == 2

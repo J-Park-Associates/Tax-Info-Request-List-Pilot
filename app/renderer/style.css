@@ -541,3 +541,52 @@ body {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* Wizard page 0 — returning client */
+
+.wiz-note { font-size: 13px; color: var(--subtle); margin: 8px 0 0; }
+
+.prior-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #eef2f7;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.prior-item:last-child { border-bottom: none; }
+.prior-item:hover { background: #f8fafc; }
+.prior-item input { cursor: pointer; accent-color: var(--blue); }
+.prior-name { font-weight: 600; flex: 1; }
+.prior-meta { font-size: 12px; color: var(--subtle); white-space: nowrap; }
+
+.roll-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+.field select {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: #fbfcfe;
+}
+.field select:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+.wiz-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 2px 0 6px;
+  cursor: pointer;
+}
+.wiz-check input { margin-top: 3px; accent-color: var(--blue); }

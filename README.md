@@ -23,18 +23,12 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 
 **Full design & build status: [docs/ROADMAP.md](docs/ROADMAP.md)**
 
-## Two ways to demo it
+## Demo
 
-| | Runs on | Needs |
-|---|---|---|
-| [`demo/standalone/tax-document-tracker.html`](demo/standalone/tax-document-tracker.html) | any browser, any OS, offline | nothing — double-click the file |
-| `Build Portable Demo.bat` → `Tax Document Tracker.exe` | Windows 10/11 | built once on a Windows PC with Python + Node |
-
-The standalone page is a faithful port of the scanner's rules — the same
-statuses and the same validation notes the Python scanner writes — so it can
-be emailed to staff or opened on a prospect's laptop with nothing installed.
-The portable Windows build is the full app: it writes real folders and a real
-`_manifest.xlsx` you can open in Excel.
+`Build Portable Demo.bat` builds `Tax Document Tracker.exe`, the full desktop
+app on Windows 10/11: it writes real folders and a real `_manifest.xlsx` you
+can open in Excel. `Start Demo.bat` runs the same app from source with Python
+and Node installed.
 
 ## How it works
 
@@ -55,9 +49,10 @@ The portable Windows build is the full app: it writes real folders and a real
         └── scan0012.pdf
 ```
 
-1. Pick the tax form type — the tailored request template lives in
-   `tracker/api.py` (used by the demo app's wizard) and as plain-CSV
-   checklists in [templates/](templates/)
+1. Roll a returning client's list forward from last year (the default), or
+   pick the tax form type for a new client — the catalog lives in
+   `tracker/templates.py`; the CSVs in [templates/](templates/) are
+   generated from it
 2. List the engagement's document requests (and validation rules) in
    `_manifest.xlsx`
 3. `python -m tracker.scaffold <engagement_dir>` — builds `Shared/` and
@@ -226,8 +221,11 @@ the index, because misfiling a tax document is worse than not filing it.
 
 ## Form-type templates
 
-The first thing you choose for a new engagement is the return type; every
-form carries its own document checklist:
+For a returning client the request list is last year's, rolled forward
+(`python -m tracker.rollover`, or the desktop wizard's first page). For a new
+client you choose the return type; every form carries its own checklist.
+The catalog is `tracker/templates.py`; the CSVs below are generated from it
+by `python -m tracker.templates export` and checked by the suite:
 
 | Form | Return | Template |
 |---|---|---|
@@ -238,9 +236,9 @@ form carries its own document checklist:
 | 1041 | Estate or trust | [templates/form-1041.csv](templates/form-1041.csv) |
 | 990 | Tax-exempt organization | [templates/form-990.csv](templates/form-990.csv) |
 
-The same catalog drives the demo app: **New Engagement** opens with a
-form-type picker, then shows that form's tailored request list to tick,
-trim, and extend before scaffolding the client folders.
+The same catalog drives the desktop app: **New Engagement** opens on the
+returning-client page (pick last year's engagement, the list rolls forward),
+with a form-type picker behind it for a client who is new to the firm.
 
 ## Setup
 

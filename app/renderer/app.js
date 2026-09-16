@@ -9,6 +9,8 @@ let templatesByForm = {};  // form id -> tailored request template items
 let selectedForm = null;   // form id chosen on the wizard's first page
 let templates = [];        // template items for the chosen form
 let customItems = [];      // custom rows added in the wizard
+let priors = [];           // engagements a new year can roll forward from
+let selectedPrior = null;  // path of the prior engagement chosen on page 0
 
 const $ = (id) => document.getElementById(id);
 
@@ -200,7 +202,8 @@ async function resetDemo() {
 }
 
 // ── New Engagement wizard ───────────────────────────────────────────────
-// Two pages: pick the tax form type first, then the tailored request list.
+// Opens on the returning-client page — rolling last year forward is the
+// default action. Behind it: pick a tax form type, then trim its list.
 
 async function openWizard() {
   try {
@@ -209,19 +212,89 @@ async function openWizard() {
       forms = result.forms;
       templatesByForm = result.templates;
     }
+    priors = (await call(["priors"])).priors;
   } catch (err) {
     toast(err.message);
     return;
   }
   selectedForm = null;
+  selectedPrior = priors.length ? priors[priors.length - 1].path : null;
+  renderPriorPage();
   renderFormGrid();
-  showStep("form");
+  showStep("prior");
   $("modal").classList.remove("hidden");
 }
 
 function showStep(step) {
+  $("wiz-prior").classList.toggle("hidden", step !== "prior");
   $("wiz-form").classList.toggle("hidden", step !== "form");
   $("wiz-items").classList.toggle("hidden", step !== "items");
+}
+
+// ── page 0: returning client ────────────────────────────────────────────
+
+function priorMeta(p) {
+  const bits = [];
+  if (p.year) bits.push(`TY${p.year}`);
+  bits.push(`${p.requests} request${p.requests === 1 ? "" : "s"}`);
+  if (p.requests) bits.push(`${p.received} received`);
+  return bits.join(" · ");
+}
+
+function renderPriorPage() {
+  $("prior-list").innerHTML = priors.map((p) => `
+    <label class="prior-item">
+      <input type="radio" name="prior" value="${esc(p.path)}"${p.path === selectedPrior ? " checked" : ""} />
+      <span class="prior-name">${esc(p.name)}</span>
+      <span class="prior-meta">${esc(priorMeta(p))}</span>
+    </label>`).join("");
+  $("prior-list").classList.toggle("hidden", priors.length === 0);
+  $("prior-empty").classList.toggle("hidden", priors.length > 0);
+  $("ro-create").disabled = priors.length === 0;
+
+  $("ro-form").innerHTML =
+    `<option value="">No template — carry last year's list as it is</option>` +
+    forms.map((f) => `<option value="${esc(f.id)}">${esc(f.label)} · ${esc(f.who)}</option>`).join("");
+  syncPriorDefaults();
+}
+
+function syncPriorDefaults() {
+  const prior = priors.find((p) => p.path === selectedPrior);
+  const year = prior && prior.year ? prior.year + 1 : "";
+  $("ro-year").value = year;
+  $("ro-name").value = "";
+  $("ro-name").placeholder = prior
+    ? `${prior.name} - ${year || "next year"}`
+    : "defaults to last year's name and the new year";
+}
+
+async function rollForward() {
+  if (!selectedPrior) {
+    toast("Pick the engagement to roll forward, or start from a form template.");
+    return;
+  }
+  const btn = $("ro-create");
+  btn.disabled = true;
+  try {
+    const result = await call(["rollover"], {
+      prior: selectedPrior,
+      name: $("ro-name").value.trim(),
+      form: $("ro-form").value,
+      year: Number($("ro-year").value) || null,
+      include_new: $("ro-include-new").checked,
+    });
+    $("modal").classList.add("hidden");
+    await refresh(result.state.paths.engagement);
+    const r = result.rollover;
+    const parts = [`${r.carried.length} request(s) carried from ${r.prior}`];
+    if (r.offered.length) parts.push(`${r.offered.length} template row(s) offered but not added — see the Carried Forward sheet`);
+    if (r.unfiled_last_year.length) parts.push(`${r.unfiled_last_year.length} file(s) sent last year were never filed — check the Carried Forward sheet`);
+    banner(`Engagement "${result.created}" rolled forward: ${parts.join("; ")}.`, "ok");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function renderFormGrid() {
@@ -279,6 +352,15 @@ function renderCustomList() {
     </li>`).join("");
 }
 
+// The keyword field follows the document name until the user types their
+// own. A request with no keyword can never auto-file, so the default is
+// visible here and again in the manifest, never silent.
+let keywordIsAuto = true;
+
+function syncKeywordDefault() {
+  if (keywordIsAuto) $("cu-kw").value = $("cu-doc").value.trim();
+}
+
 function addCustomItem() {
   const doc = $("cu-doc").value.trim();
   if (!doc) {
@@ -289,10 +371,11 @@ function addCustomItem() {
     identifier: `X${String(customItems.length + 1).padStart(2, "0")}`,
     document: doc,
     extensions: $("cu-ext").value.trim() || "pdf",
-    required_keywords: $("cu-kw").value.trim(),
+    required_keywords: $("cu-kw").value.trim() || doc,
   });
   $("cu-doc").value = "";
   $("cu-kw").value = "";
+  keywordIsAuto = true;
   renderCustomList();
 }
 
@@ -343,8 +426,24 @@ $("form-grid").addEventListener("click", (e) => {
   if (card) chooseForm(card.dataset.form);
 });
 $("wi-back").addEventListener("click", () => showStep("form"));
+$("wf-back").addEventListener("click", () => showStep("prior"));
 $("wf-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
+$("wp-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
+$("wp-new-client").addEventListener("click", () => showStep("form"));
+$("prior-list").addEventListener("change", (e) => {
+  if (e.target.name === "prior") {
+    selectedPrior = e.target.value;
+    syncPriorDefaults();
+  }
+});
+$("ro-create").addEventListener("click", rollForward);
+$("ro-name").addEventListener("keydown", (e) => e.key === "Enter" && rollForward());
 $("cu-add").addEventListener("click", addCustomItem);
+$("cu-doc").addEventListener("input", syncKeywordDefault);
+$("cu-kw").addEventListener("input", () => {
+  keywordIsAuto = $("cu-kw").value.trim() === "";
+  syncKeywordDefault();
+});
 $("cu-doc").addEventListener("keydown", (e) => e.key === "Enter" && addCustomItem());
 $("ne-create").addEventListener("click", createEngagement);
 $("ne-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));

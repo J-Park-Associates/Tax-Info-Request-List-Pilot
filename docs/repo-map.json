@@ -13,8 +13,8 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 80,
-    "edges": 154,
+    "nodes": 82,
+    "edges": 164,
     "reused": 57
   },
   "node_types": [
@@ -41,7 +41,6 @@
     "imports",
     "launches",
     "loads",
-    "mirrors",
     "precedes",
     "reads",
     "runs",
@@ -54,8 +53,8 @@
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "90fd2a79c4f2b787",
-      "lines": 50,
+      "sha256": "1734d2b5d1dd1434",
+      "lines": 56,
       "role": "CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.",
       "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Both steps always report, so a stale map and a failing test surface in the same run."
     },
@@ -87,30 +86,27 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f3aaf8444392c0a0",
-      "lines": 52,
+      "sha256": "ac8690ab9d11e14f",
+      "lines": 53,
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
     },
     {
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "413180656a770442",
-      "lines": 1045,
+      "sha256": "5663b47e34cbf8bb",
+      "lines": 554,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
         "CONTACT",
-        "DEMO_FORM",
         "DEMO_ITEMS",
         "DEMO_ROOT",
         "ENGAGEMENT_DIRNAME",
-        "FORM_TEMPLATES",
-        "FORM_TYPES",
         "SAMPLES_DIRNAME",
         "main"
       ],
-      "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also holds FORM_TEMPLATES (the per-form request checklists) and the demo sample-file builder.",
+      "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also the demo sample-file builder.",
       "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind."
     },
     {
@@ -271,8 +267,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "18254b1c2724d62a",
-      "lines": 394,
+      "sha256": "e4a72a9489681b0b",
+      "lines": 393,
       "cli": "python -m tracker.rollover",
       "exports": [
         "CARRIED_HEADERS",
@@ -289,7 +285,7 @@
         "write_rollover_manifest"
       ],
       "role": "Builds a returning client's next-year request list from their prior engagement. Prior-year data always wins; the template may only fill blanks.",
-      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. NOTE: rollover and api import each other - api imports rollover at module scope, rollover imports api only inside its __main__ block. That cycle is deliberate; do not \"fix\" it by hoisting the import."
+      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other."
     },
     {
       "id": "tracker/router.py",
@@ -401,11 +397,35 @@
       "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux."
     },
     {
+      "id": "tracker/templates.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "ed94837a46949ffc",
+      "lines": 648,
+      "cli": "python -m tracker.templates",
+      "exports": [
+        "CSV_COLUMNS",
+        "DEMO_FORM",
+        "FORM_TEMPLATES",
+        "FORM_TYPES",
+        "TEMPLATES_DIRNAME",
+        "csv_name",
+        "csv_rows",
+        "export_csvs",
+        "item_from_spec",
+        "render_csv",
+        "stale_csvs",
+        "template_items"
+      ],
+      "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword/date rules that recognise each document. The ONLY source of truth for the checklists; templates/*.csv are generated from it.",
+      "notes": "Edit the Python, run `python -m tracker.templates export`, commit both. tests/test_templates.py and CI fail if the CSVs drift. item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file."
+    },
+    {
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "72d81f3c12198bcc",
-      "lines": 316,
+      "sha256": "1c21f3379a852f04",
+      "lines": 343,
       "cli": "python -m tracker.validators",
       "exports": [
         "FileResult",
@@ -417,6 +437,7 @@
         "_IGNORED_NAMES",
         "_IGNORED_PREFIXES",
         "_IGNORED_SUFFIXES",
+        "_PDF_VERDICTS_MAX",
         "_PLACEHOLDER_MASK",
         "check_file",
         "check_folder",
@@ -430,45 +451,52 @@
       "notes": "Never downloads a cloud-only placeholder \u2014 a stub must never be filed as if it were the document. A file that vanishes between listing and stat is reported pending_sync, never raised \u2014 a scheduled scan must not die on one replaced file."
     },
     {
+      "id": "templates/README.md",
+      "type": "template",
+      "layer": "data",
+      "sha256": "da62c1d5ef3d18bb",
+      "lines": 17
+    },
+    {
       "id": "templates/form-1040.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "096c6811115820c6",
-      "lines": 19
+      "sha256": "1be0a962e0e2d8bb",
+      "lines": 16
     },
     {
       "id": "templates/form-1041.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "52d5b0f856f36bc5",
+      "sha256": "be8da7002781800a",
       "lines": 12
     },
     {
       "id": "templates/form-1065.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "b2acca8b284f6ef5",
+      "sha256": "1ced951bb3d77db4",
       "lines": 16
     },
     {
       "id": "templates/form-1120.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "ef26238f70004555",
+      "sha256": "ac53af5644672860",
       "lines": 16
     },
     {
       "id": "templates/form-1120s.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "05b4c20384e6865c",
+      "sha256": "b3ebb3e4669045c0",
       "lines": 16
     },
     {
       "id": "templates/form-990.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "17cf51e991637ec5",
+      "sha256": "2d5baa239f8e82b6",
       "lines": 14
     },
     {
@@ -487,15 +515,6 @@
         "show"
       ],
       "role": "Hands-on walkthrough of the manifest layer, including the Excel-lock retry and sidecar behaviour you can watch live by holding the file open in Excel."
-    },
-    {
-      "id": "demo/standalone/tax-document-tracker.html",
-      "type": "demo",
-      "layer": "demo",
-      "sha256": "fc0c7e7544b58ec5",
-      "lines": 1455,
-      "role": "A single self-contained HTML file that ports the scanner's rules to the browser. Opens offline with nothing installed, for emailing to staff or demoing on a prospect's laptop.",
-      "notes": "A faithful port, not a shim: same statuses and same validation notes as the Python scanner. It has to be kept in step with tracker/scanner.py and tracker/validators.py by hand."
     },
     {
       "id": "app/main.js",
@@ -525,16 +544,16 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "ff80270646e59759",
-      "lines": 367,
+      "sha256": "332e3ac91602313f",
+      "lines": 466,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "b2dda0dad4249056",
-      "lines": 238,
+      "sha256": "91f38ee756a3ae40",
+      "lines": 276,
       "role": "Desktop app shell markup."
     },
     {
@@ -548,8 +567,8 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "635ecbf484c61d9c",
-      "lines": 544,
+      "sha256": "ff89b944b5c6e847",
+      "lines": 593,
       "role": "Desktop app styling."
     },
     {
@@ -573,16 +592,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "30a32563c5bbd88b",
-      "lines": 260,
+      "sha256": "86538f1b1489fd1c",
+      "lines": 258,
       "role": "What the system is, how to run each stage, and the two ways to demo it."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "07277ec55d149c39",
-      "lines": 208,
+      "sha256": "67a34d610eb3482c",
+      "lines": 211,
       "role": "The build plan, the hard constraints and the decision log. Components 1-10, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -590,8 +609,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "05286d3591ebeb85",
-      "lines": 256,
+      "sha256": "8c02276b0afb2c9d",
+      "lines": 261,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -599,8 +618,8 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b29b6e8ac9668409",
-      "lines": 40,
+      "sha256": "3c964dcb0735ac5c",
+      "lines": 75,
       "role": "How the day-to-day workflow runs."
     },
     {
@@ -679,8 +698,8 @@
       "id": "Scan Demo.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "0a693467b637319b",
-      "lines": 7
+      "sha256": "7cf6d4803c10af1e",
+      "lines": 16
     },
     {
       "id": "Start Demo.bat",
@@ -759,8 +778,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c8e484d4afa13fb3",
-      "lines": 160,
+      "sha256": "c04c51964c6571b4",
+      "lines": 196,
       "exports": [
         "demo_root",
         "run",
@@ -771,7 +790,9 @@
         "test_create_refuses_an_identifier_that_cannot_name_a_folder",
         "test_create_will_not_overwrite_an_existing_engagement",
         "test_item_from_spec_normalizes_extensions",
+        "test_priors_then_rollover_is_the_desktop_returning_client_path",
         "test_reset_then_scan_plays_the_demo_end_to_end",
+        "test_rollover_refuses_a_missing_prior",
         "test_templates_lists_every_form_with_its_checklist",
         "test_unknown_command_is_a_json_error"
       ]
@@ -1164,11 +1185,29 @@
       ]
     },
     {
+      "id": "tests/test_templates.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "9e5331d37a86c5f3",
+      "lines": 88,
+      "exports": [
+        "REPO",
+        "TEMPLATES_DIR",
+        "test_a_request_with_no_rule_defaults_to_its_own_name",
+        "test_csv_carries_the_manifest_columns_and_the_core_flag",
+        "test_each_checklist_is_a_valid_manifest",
+        "test_every_form_type_has_a_checklist_and_a_csv",
+        "test_export_writes_one_csv_per_form",
+        "test_the_committed_csvs_match_the_catalog",
+        "test_unknown_form_is_refused"
+      ]
+    },
+    {
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b22450fbd8bc9cde",
-      "lines": 198,
+      "sha256": "d198454c00796dd1",
+      "lines": 219,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
@@ -1185,6 +1224,7 @@
         "test_missing_and_empty_folders",
         "test_no_whitelist_allows_anything",
         "test_password_protected_pdf_fails",
+        "test_pdf_readability_is_parsed_once_per_file",
         "test_placeholder_skipped_not_read",
         "test_sha256_of",
         "test_valid_pdf_passes",
@@ -1341,18 +1381,6 @@
       "to": "tracker/manifest.py",
       "type": "imports",
       "source": "derived"
-    },
-    {
-      "from": "demo/standalone/tax-document-tracker.html",
-      "to": "tracker/scanner.py",
-      "type": "mirrors",
-      "source": "curated"
-    },
-    {
-      "from": "demo/standalone/tax-document-tracker.html",
-      "to": "tracker/validators.py",
-      "type": "mirrors",
-      "source": "curated"
     },
     {
       "from": "docs/ROADMAP.md",
@@ -1685,6 +1713,30 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_templates.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_templates.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_templates.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_templates.py",
+      "to": "tracker/templates.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_validators.py",
       "to": "pkg:pypdf",
       "type": "depends_on",
@@ -1759,6 +1811,12 @@
     {
       "from": "tracker/api.py",
       "to": "tracker/scanner.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "tracker/templates.py",
       "type": "imports",
       "source": "derived"
     },
@@ -1950,12 +2008,6 @@
     },
     {
       "from": "tracker/rollover.py",
-      "to": "tracker/api.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/rollover.py",
       "to": "tracker/filer.py",
       "type": "imports",
       "source": "derived"
@@ -1969,6 +2021,12 @@
     {
       "from": "tracker/rollover.py",
       "to": "tracker/scaffold.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/rollover.py",
+      "to": "tracker/templates.py",
       "type": "imports",
       "source": "derived"
     },
@@ -2133,6 +2191,48 @@
       "to": "tracker/registry.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1040.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1041.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1065.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1120.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1120s.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-990.csv",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tracker/validators.py",

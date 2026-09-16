@@ -1,11 +1,11 @@
-ID,Category,Item Description,Requested From,Assigned To,Due Date,Status,Date Received,File Location,Notes
-1,Governing,Trust instrument / will & amendments,Client,,,Requested,,,
-2,Governing,IRS EIN assignment letter,Client,,,Requested,,,
-3,Prior Year,Prior-year fiduciary returns,Client,,,Requested,,,
-4,Income,1099s for trust / estate accounts,Client,,,Requested,,,
-5,Income,Brokerage year-end statements,Client,,,Requested,,,
-6,Income,Rental / business income & expense detail,Client,,,Requested,,,
-7,Distributions,Distributions to beneficiaries (dates & amounts),Client,,,Requested,,,
-8,Beneficiaries,Beneficiary names addresses & tax IDs,Client,,,Requested,,,
-9,Expenses,Fiduciary attorney & accounting fees paid,Client,,,Requested,,,
-10,Basis,Cost basis for assets sold during the year,Client,,,Requested,,,
+Identifier,Document,Period,Expected Count,Allowed Extensions,Min Size KB,Required Keywords,Any Keywords,Date Pattern,Core
+A01,Trust Instrument / Will & Amendments,Current,1,pdf,5,,"trust agreement, last will, codicil",,yes
+A02,IRS EIN Assignment Letter,Current,1,pdf,5,,"cp 575, employer identification number",,
+A03,Prior-Year Fiduciary Returns,TY2024,1,pdf,5,,"form 1041, tax return",,yes
+B01,1099s for Trust / Estate Accounts,TY2025,3,"pdf, csv",5,,1099,,yes
+B02,Brokerage Year-End Statements,TY2025,1,pdf,5,,"1099-b, brokerage, realized gain",,yes
+C01,Distributions to Beneficiaries - Dates & Amounts,TY2025,1,"xlsx, pdf",5,,"beneficiary, distribution",,yes
+C02,"Beneficiary Names, Addresses & Tax IDs",Current,1,"xlsx, pdf",5,,beneficiary,,yes
+D01,"Fiduciary, Attorney & Accounting Fees Paid",TY2025,1,"pdf, xlsx",5,,"fiduciary fee, attorney fee, accounting fee",,
+E01,Cost Basis for Assets Sold During the Year,TY2025,1,"xlsx, pdf",5,,"cost basis, acquired, sold",,
+F01,Rental / Business Income & Expense Detail,TY2025,1,"xlsx, pdf",5,,"rental income, schedule e, schedule c",,

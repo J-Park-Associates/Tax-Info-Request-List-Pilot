@@ -1,18 +1,15 @@
-ID,Category,Item Description,Requested From,Assigned To,Due Date,Status,Date Received,File Location,Notes
-1,Income,W-2 wage statements (all employers),Client,,,Requested,,,
-2,Income,1099-INT / 1099-DIV interest & dividend statements,Client,,,Requested,,,
-3,Income,1099-B / brokerage year-end statements,Client,,,Requested,,,
-4,Income,1099-R retirement distributions,Client,,,Requested,,,
-5,Income,1099-NEC / self-employment income and expense detail,Client,,,Requested,,,
-6,Income,Schedule K-1s received (partnerships / S-corps / trusts),Client,,,Requested,,,
-7,Income,Social Security benefit statements (SSA-1099),Client,,,Requested,,,
-8,Prior Year,Prior-year federal & state tax returns,Client,,,Requested,,,
-9,Deductions,Mortgage interest statement (Form 1098),Client,,,Requested,,,
-10,Deductions,Property tax statements,Client,,,Requested,,,
-11,Deductions,Charitable contribution receipts,Client,,,Requested,,,
-12,Deductions,Medical expense summary (if itemizing),Client,,,Requested,,,
-13,Credits,Childcare provider statements (name EIN amounts),Client,,,Requested,,,
-14,Credits,Tuition statements (Form 1098-T),Client,,,Requested,,,
-15,Health,Form 1095-A marketplace health insurance statement,Client,,,Requested,,,
-16,Retirement,IRA / HSA contribution statements (Form 5498),Client,,,Requested,,,
-17,Payments,Estimated tax payment records,Client,,,Requested,,,
+Identifier,Document,Period,Expected Count,Allowed Extensions,Min Size KB,Required Keywords,Any Keywords,Date Pattern,Core
+A01,W-2 Wage Statements - All Employers,TY2025,2,pdf,5,W-2,,(?i)\b2025\b,yes
+A02,1099-INT / 1099-DIV - Interest & Dividend Income,TY2025,3,"pdf, csv",5,,"1099, interest income, dividend",,yes
+B01,Prior-Year Federal & State Tax Returns,TY2024,1,pdf,5,,"form 1040, tax return",,yes
+C01,Mortgage Interest Statement - Form 1098,TY2025,1,pdf,5,1098,,,yes
+D01,Charitable Contribution Receipts,TY2025,1,"pdf, xlsx",5,,"charitable, contribution, donation",,yes
+E01,1099-B / Brokerage Year-End Statements,TY2025,1,"pdf, csv",5,,"1099-b, brokerage, proceeds from broker",,
+E02,1099-R Retirement Distributions,TY2025,1,pdf,5,,"1099-r, retirement distribution",,
+F01,Schedule K-1s Received,TY2025,1,pdf,5,,"schedule k-1, k-1",,
+G01,Property Tax Statements,TY2025,1,pdf,5,,"property tax, assessor, parcel",,
+H01,Estimated Tax Payment Records,TY2025,1,"pdf, xlsx",5,,"estimated tax, 1040-es, 1120-w",,
+I01,Form 1095-A - Marketplace Health Insurance,TY2025,1,pdf,5,,"1095-a, marketplace",,
+J01,"Childcare Provider Statements - Name, EIN, Amounts",TY2025,1,"pdf, xlsx",5,,"childcare, dependent care, provider",,
+K01,IRA / HSA Contribution Statements - Form 5498,TY2025,1,pdf,5,,"5498, ira contribution, hsa",,
+L01,Tuition Statements - Form 1098-T,TY2025,1,pdf,5,,"1098-t, tuition",,
