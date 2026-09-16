@@ -61,7 +61,9 @@ CARRIED_HEADERS = (
     "Last Year Status", "Last Year Files",
 )
 
-_YEAR = re.compile(r"(?:19|20)\d{2}")
+#: A four-digit year standing on its own. The digit guards keep an account
+#: number like 120250 from being read as "2025" and quietly shifted.
+_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,8 +330,7 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
 if __name__ == "__main__":
     import argparse
 
-    # Imported here, not at module scope: tracker.api imports this module.
-    from tracker.api import FORM_TEMPLATES, _item_from_spec
+    from tracker.templates import FORM_TEMPLATES, template_items
 
     parser = argparse.ArgumentParser(
         description="Build next year's request list from a returning client's prior engagement"
@@ -349,7 +350,7 @@ if __name__ == "__main__":
     if ns.form:
         if ns.form not in FORM_TEMPLATES:
             parser.error(f"unknown form {ns.form}; try one of {', '.join(FORM_TEMPLATES)}")
-        template = [_item_from_spec(s) for s in FORM_TEMPLATES[ns.form]]
+        template = template_items(ns.form)
 
     result = roll_forward(
         ns.prior_engagement_dir,

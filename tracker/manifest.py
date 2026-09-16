@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -74,6 +75,13 @@ HEADERS = ACCOUNTANT_COLUMNS + SCANNER_COLUMNS
 DEFAULT_EXPECTED_COUNT = 1
 DEFAULT_MIN_SIZE_KB = 5
 DATE_FORMAT = "yyyy-mm-dd"
+
+#: Characters an identifier may not contain. The identifier becomes the
+#: prefix of a Windows folder name and is matched back by that prefix, so
+#: anything the filesystem would alter (\\ / : * ? " < > | and control
+#: characters) or strip (a trailing dot) would leave the scanner unable to
+#: find the folder scaffold just made — a permanent "folder not found".
+_ILLEGAL_IDENTIFIER_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 
 class Status:
@@ -197,6 +205,19 @@ def _parse_enum(value: object, allowed: tuple[str, ...], column: str, row: int) 
     )
 
 
+def identifier_problem(identifier: str) -> str:
+    """Why ``identifier`` cannot name a request folder, or "" if it can.
+
+    Shared by :func:`load_manifest` and the desktop app's create path so a
+    bad identifier is refused with the same sentence wherever it is typed.
+    """
+    if _ILLEGAL_IDENTIFIER_CHARS.search(identifier):
+        return 'may not contain any of \\ / : * ? " < > | (it becomes a folder name)'
+    if identifier != identifier.rstrip(". "):
+        return "may not end with a dot or a space (Windows drops them from folder names)"
+    return ""
+
+
 def _header_map(ws) -> dict[str, int]:
     """Map canonical column names to 1-based column indexes; fail on missing."""
     found: dict[str, int] = {}
@@ -249,11 +270,17 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
             identifier = _cell_str(values[COL_IDENTIFIER])
             if not identifier:
                 raise ManifestError(f"Row {row}: {COL_IDENTIFIER} is required")
-            if identifier in seen:
+            problem = identifier_problem(identifier)
+            if problem:
+                raise ManifestError(f"Row {row}: {COL_IDENTIFIER} {identifier!r} {problem}")
+            # Windows folder names are case-insensitive, so "A01" and "a01"
+            # would claim the same folder; treat them as the same identifier.
+            if identifier.lower() in seen:
                 raise ManifestError(
-                    f"Duplicate identifier {identifier!r} (rows {seen[identifier]} and {row})"
+                    f"Duplicate identifier {identifier!r} "
+                    f"(rows {seen[identifier.lower()]} and {row})"
                 )
-            seen[identifier] = row
+            seen[identifier.lower()] = row
 
             document = _cell_str(values[COL_DOCUMENT])
             if not document:
@@ -365,6 +392,26 @@ def _save_pending(manifest_path: Path, updates: Mapping[str, StatusUpdate]) -> N
     )
 
 
+def save_workbook_atomically(wb: Workbook, path: Path) -> None:
+    """Save ``wb`` to ``path`` without ever leaving a half-written file there.
+
+    openpyxl streams the zip straight into the target, so a crash, a full
+    disk or a killed scheduled task mid-save would leave a manifest that
+    Excel cannot open and ``load_manifest`` rejects. Writing beside the file
+    and swapping it in with ``os.replace`` makes the update all-or-nothing;
+    the swap is atomic on NTFS and on every POSIX filesystem.
+
+    A file Excel holds open still raises ``PermissionError`` (from the
+    replace rather than the save), so lock-retry callers behave as before.
+    """
+    temp = path.with_name(path.name + ".tmp")
+    try:
+        wb.save(temp)
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
 def _write_unfiled_sheet(wb: Workbook, entries: list[UnfiledEntry]) -> None:
     """Replace the Unfiled sheet with a fresh snapshot (it is scanner-owned)."""
     if UNFILED_SHEET_NAME in wb.sheetnames:
@@ -427,7 +474,7 @@ def _apply_updates(
             )
         if unfiled is not None:
             _write_unfiled_sheet(wb, unfiled)
-        wb.save(path)
+        save_workbook_atomically(wb, path)
     finally:
         wb.close()
 

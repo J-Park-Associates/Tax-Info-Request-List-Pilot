@@ -283,3 +283,26 @@ def test_content_cache_created_and_pruned(engagement):
     scan_engagement(engagement, today=DAY2)            # prune removes entry
     data = json.loads(cache_file.read_text(encoding="utf-8"))
     assert not any("chase.pdf" in k for k in data["files"])
+
+
+def test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan(engagement, monkeypatch):
+    # The sync client replaces a file between the directory listing and the
+    # stat. The scan must finish and write; the row waits for the next run.
+    import tracker.scanner as scanner_module
+
+    ghost = folder(engagement, "A01") / "ghost.pdf"
+    ghost.write_bytes(b"%PDF-1.4 " + b"x" * 9000)
+    real_listing = scanner_module.iter_candidate_files
+
+    def listing_then_vanish(path):
+        found = real_listing(path)
+        if ghost in found:
+            ghost.unlink()
+        return found
+
+    monkeypatch.setattr(scanner_module, "iter_candidate_files", listing_then_vanish)
+    monkeypatch.setattr("tracker.validators.iter_candidate_files", listing_then_vanish)
+
+    report = scan_engagement(engagement, today=DAY1)
+    assert report.written
+    assert report.updates["A01"].status == Status.PENDING_SYNC

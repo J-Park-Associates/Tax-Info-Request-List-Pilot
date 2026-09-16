@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 78,
-    "edges": 149,
-    "reused": 0
+    "nodes": 82,
+    "edges": 164,
+    "reused": 57
   },
   "node_types": [
     "artifact",
@@ -41,7 +41,6 @@
     "imports",
     "launches",
     "loads",
-    "mirrors",
     "precedes",
     "reads",
     "runs",
@@ -54,8 +53,8 @@
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "90fd2a79c4f2b787",
-      "lines": 50,
+      "sha256": "1734d2b5d1dd1434",
+      "lines": 56,
       "role": "CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.",
       "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Both steps always report, so a stale map and a failing test surface in the same run."
     },
@@ -87,38 +86,35 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f3aaf8444392c0a0",
-      "lines": 52,
+      "sha256": "ac8690ab9d11e14f",
+      "lines": 53,
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
     },
     {
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "91d1da81668da38a",
-      "lines": 1020,
+      "sha256": "5663b47e34cbf8bb",
+      "lines": 554,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
         "CONTACT",
-        "DEMO_FORM",
         "DEMO_ITEMS",
         "DEMO_ROOT",
         "ENGAGEMENT_DIRNAME",
-        "FORM_TEMPLATES",
-        "FORM_TYPES",
         "SAMPLES_DIRNAME",
         "main"
       ],
-      "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also holds FORM_TEMPLATES (the per-form request checklists) and the demo sample-file builder.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. GAP: it has no dedicated test file. test_runner.py imports DEMO_ITEMS and _build_samples from it for fixtures, which is not coverage of it."
+      "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also the demo sample-file builder.",
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind."
     },
     {
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "92839bae609015da",
-      "lines": 361,
+      "sha256": "164242f92c61b3af",
+      "lines": 364,
       "exports": [
         "ContentCache",
         "ContentResult",
@@ -138,15 +134,19 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ed1930b9a64e1175",
-      "lines": 388,
+      "sha256": "92b832996699fff3",
+      "lines": 554,
       "cli": "python -m tracker.filer",
       "exports": [
         "DUPLICATE",
         "FILED",
+        "FileError",
         "FileReport",
         "INDEX_COLUMNS",
         "INDEX_FILENAME",
+        "INDEX_PENDING_FILENAME",
+        "INDEX_RETRIES",
+        "INDEX_RETRY_DELAY",
         "INDEX_SHEET",
         "IndexEntry",
         "NEEDS_REVIEW",
@@ -158,14 +158,14 @@
         "write_index"
       ],
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, new rows wait in _index.pending.json and read_index() already sees them."
     },
     {
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9e765370c17f95d6",
-      "lines": 541,
+      "sha256": "1b053725b626e0e5",
+      "lines": 588,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "COL_ALLOWED_EXTENSIONS",
@@ -196,13 +196,16 @@
         "UNFILED_SHEET_NAME",
         "UnfiledEntry",
         "_COLUMN_WIDTHS",
+        "_ILLEGAL_IDENTIFIER_CHARS",
         "create_template",
+        "identifier_problem",
         "load_manifest",
         "pending_path",
+        "save_workbook_atomically",
         "write_statuses"
       ],
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
-      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls."
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are."
     },
     {
       "id": "tracker/registry.py",
@@ -229,8 +232,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "19ae0fcb4f58bfbb",
-      "lines": 551,
+      "sha256": "719882f54f99f43d",
+      "lines": 560,
       "cli": "python -m tracker.reminder",
       "exports": [
         "DRAFT_FILENAME",
@@ -258,14 +261,14 @@
         "write_draft"
       ],
       "role": "Drafts the client chase email from a scanned manifest. Draft only \u2014 there is no SMTP anywhere in this module.",
-      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten."
+      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too."
     },
     {
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f2e26ad77832fad6",
-      "lines": 392,
+      "sha256": "e4a72a9489681b0b",
+      "lines": 393,
       "cli": "python -m tracker.rollover",
       "exports": [
         "CARRIED_HEADERS",
@@ -282,14 +285,14 @@
         "write_rollover_manifest"
       ],
       "role": "Builds a returning client's next-year request list from their prior engagement. Prior-year data always wins; the template may only fill blanks.",
-      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. NOTE: rollover and api import each other - api imports rollover at module scope, rollover imports api only inside its __main__ block. That cycle is deliberate; do not \"fix\" it by hoisting the import."
+      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other."
     },
     {
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "17b48a4ed8f3bfaa",
-      "lines": 209,
+      "sha256": "f31dd0aaa1b757f3",
+      "lines": 270,
       "exports": [
         "AMBIGUOUS",
         "PENDING",
@@ -300,14 +303,14 @@
         "route_files"
       ],
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only).",
-      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it."
+      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as 'looks like A01 (...)', and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token."
     },
     {
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2bed266ba24b6378",
-      "lines": 392,
+      "sha256": "5205d34709b71691",
+      "lines": 408,
       "cli": "python -m tracker.runner",
       "exports": [
         "DRAFT_WEEKDAY",
@@ -327,14 +330,14 @@
         "should_draft"
       ],
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on Saturdays) draft. This is the whole scheduled task.",
-      "notes": "Owns the Saturday rule in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red."
+      "notes": "Owns the Saturday rule in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran."
     },
     {
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "df21803116d7e64c",
-      "lines": 243,
+      "sha256": "c7a7c607045098af",
+      "lines": 247,
       "cli": "python -m tracker.scaffold",
       "exports": [
         "MANIFEST_FILENAME",
@@ -359,8 +362,8 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1924273f2560c6b4",
-      "lines": 388,
+      "sha256": "64e5e0837adbac77",
+      "lines": 399,
       "cli": "python -m tracker.scanner",
       "exports": [
         "CACHE_FILENAME",
@@ -394,11 +397,35 @@
       "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux."
     },
     {
+      "id": "tracker/templates.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "ed94837a46949ffc",
+      "lines": 648,
+      "cli": "python -m tracker.templates",
+      "exports": [
+        "CSV_COLUMNS",
+        "DEMO_FORM",
+        "FORM_TEMPLATES",
+        "FORM_TYPES",
+        "TEMPLATES_DIRNAME",
+        "csv_name",
+        "csv_rows",
+        "export_csvs",
+        "item_from_spec",
+        "render_csv",
+        "stale_csvs",
+        "template_items"
+      ],
+      "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword/date rules that recognise each document. The ONLY source of truth for the checklists; templates/*.csv are generated from it.",
+      "notes": "Edit the Python, run `python -m tracker.templates export`, commit both. tests/test_templates.py and CI fail if the CSVs drift. item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file."
+    },
+    {
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2fe9ced1bba5f059",
-      "lines": 305,
+      "sha256": "1c21f3379a852f04",
+      "lines": 343,
       "cli": "python -m tracker.validators",
       "exports": [
         "FileResult",
@@ -410,6 +437,7 @@
         "_IGNORED_NAMES",
         "_IGNORED_PREFIXES",
         "_IGNORED_SUFFIXES",
+        "_PDF_VERDICTS_MAX",
         "_PLACEHOLDER_MASK",
         "check_file",
         "check_folder",
@@ -420,48 +448,55 @@
         "sha256_of"
       ],
       "role": "Tiers 1-2: does the file exist, is the extension allowed, is it big enough, is the PDF readable. Pure read-only functions plus passive cloud-placeholder detection for OneDrive and Google Drive.",
-      "notes": "Never downloads a cloud-only placeholder \u2014 a stub must never be filed as if it were the document."
+      "notes": "Never downloads a cloud-only placeholder \u2014 a stub must never be filed as if it were the document. A file that vanishes between listing and stat is reported pending_sync, never raised \u2014 a scheduled scan must not die on one replaced file."
+    },
+    {
+      "id": "templates/README.md",
+      "type": "template",
+      "layer": "data",
+      "sha256": "da62c1d5ef3d18bb",
+      "lines": 17
     },
     {
       "id": "templates/form-1040.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "096c6811115820c6",
-      "lines": 19
+      "sha256": "1be0a962e0e2d8bb",
+      "lines": 16
     },
     {
       "id": "templates/form-1041.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "52d5b0f856f36bc5",
+      "sha256": "be8da7002781800a",
       "lines": 12
     },
     {
       "id": "templates/form-1065.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "b2acca8b284f6ef5",
+      "sha256": "1ced951bb3d77db4",
       "lines": 16
     },
     {
       "id": "templates/form-1120.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "ef26238f70004555",
+      "sha256": "ac53af5644672860",
       "lines": 16
     },
     {
       "id": "templates/form-1120s.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "05b4c20384e6865c",
+      "sha256": "b3ebb3e4669045c0",
       "lines": 16
     },
     {
       "id": "templates/form-990.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "17cf51e991637ec5",
+      "sha256": "2d5baa239f8e82b6",
       "lines": 14
     },
     {
@@ -480,15 +515,6 @@
         "show"
       ],
       "role": "Hands-on walkthrough of the manifest layer, including the Excel-lock retry and sidecar behaviour you can watch live by holding the file open in Excel."
-    },
-    {
-      "id": "demo/standalone/tax-document-tracker.html",
-      "type": "demo",
-      "layer": "demo",
-      "sha256": "fc0c7e7544b58ec5",
-      "lines": 1455,
-      "role": "A single self-contained HTML file that ports the scanner's rules to the browser. Opens offline with nothing installed, for emailing to staff or demoing on a prospect's laptop.",
-      "notes": "A faithful port, not a shim: same statuses and same validation notes as the Python scanner. It has to be kept in step with tracker/scanner.py and tracker/validators.py by hand."
     },
     {
       "id": "app/main.js",
@@ -518,16 +544,16 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "6839bc07c32a01bb",
-      "lines": 356,
+      "sha256": "332e3ac91602313f",
+      "lines": 466,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "1112c4ccf617b5a6",
-      "lines": 238,
+      "sha256": "91f38ee756a3ae40",
+      "lines": 276,
       "role": "Desktop app shell markup."
     },
     {
@@ -541,8 +567,8 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "635ecbf484c61d9c",
-      "lines": 544,
+      "sha256": "ff89b944b5c6e847",
+      "lines": 593,
       "role": "Desktop app styling."
     },
     {
@@ -566,16 +592,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5e72938d96bcc790",
-      "lines": 259,
+      "sha256": "86538f1b1489fd1c",
+      "lines": 258,
       "role": "What the system is, how to run each stage, and the two ways to demo it."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d6a46b5df874c71c",
-      "lines": 197,
+      "sha256": "67a34d610eb3482c",
+      "lines": 211,
       "role": "The build plan, the hard constraints and the decision log. Components 1-10, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -583,8 +609,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4ae0eda566caa719",
-      "lines": 250,
+      "sha256": "8c02276b0afb2c9d",
+      "lines": 261,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -592,8 +618,8 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b29b6e8ac9668409",
-      "lines": 40,
+      "sha256": "3c964dcb0735ac5c",
+      "lines": 75,
       "role": "How the day-to-day workflow runs."
     },
     {
@@ -672,8 +698,8 @@
       "id": "Scan Demo.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "0a693467b637319b",
-      "lines": 7
+      "sha256": "7cf6d4803c10af1e",
+      "lines": 16
     },
     {
       "id": "Start Demo.bat",
@@ -713,6 +739,12 @@
       "role": "The client's one drop folder \u2014 the only thing they see and the only thing they touch. Their originals end up in Shared/PBC/, still visible to them, untouched."
     },
     {
+      "id": "artifact:_index.pending.json",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Sidecar holding index rows for originals already moved into PBC/ that could not be written because Excel had _index.xlsx open. Read alongside the workbook and folded into the next successful write."
+    },
+    {
       "id": "artifact:_index.xlsx",
       "type": "artifact",
       "layer": "runtime",
@@ -741,6 +773,29 @@
       "type": "artifact",
       "layer": "runtime",
       "role": "The drafted chase email, waiting for a person to read, edit and send. Carries a fingerprint so the weekly job can tell whether it has been edited."
+    },
+    {
+      "id": "tests/test_api.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "c04c51964c6571b4",
+      "lines": 196,
+      "exports": [
+        "demo_root",
+        "run",
+        "test_a_manifest_problem_is_a_json_error_not_a_traceback",
+        "test_create_builds_manifest_and_folders",
+        "test_create_refuses_a_duplicate_identifier",
+        "test_create_refuses_a_non_numeric_count_with_a_sentence",
+        "test_create_refuses_an_identifier_that_cannot_name_a_folder",
+        "test_create_will_not_overwrite_an_existing_engagement",
+        "test_item_from_spec_normalizes_extensions",
+        "test_priors_then_rollover_is_the_desktop_returning_client_path",
+        "test_reset_then_scan_plays_the_demo_end_to_end",
+        "test_rollover_refuses_a_missing_prior",
+        "test_templates_lists_every_form_with_its_checklist",
+        "test_unknown_command_is_a_json_error"
+      ]
     },
     {
       "id": "tests/test_content_check.py",
@@ -772,8 +827,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ba4749c5d637b5b0",
-      "lines": 283,
+      "sha256": "228bb79bbd3ce095",
+      "lines": 382,
       "exports": [
         "DAY1",
         "DAY2",
@@ -782,6 +837,9 @@
         "engagement",
         "pbc",
         "prepared",
+        "test_a_drop_still_held_open_is_left_for_the_next_run",
+        "test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed",
+        "test_a_locked_index_never_orphans_files_already_moved",
         "test_client_subfolders_are_flattened",
         "test_dry_run_moves_nothing",
         "test_dry_run_previews_real_numbering",
@@ -803,16 +861,19 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "89b876a9cb2e744e",
-      "lines": 245,
+      "sha256": "4a8a544625261051",
+      "lines": 293,
       "exports": [
         "SAMPLE_ITEMS",
         "manifest",
+        "test_a_crash_mid_save_leaves_the_previous_manifest_intact",
         "test_bad_expected_count_rejected",
         "test_bad_regex_rejected",
         "test_blank_rows_skipped",
         "test_corrupt_sidecar_quarantined",
         "test_duplicate_identifier_rejected",
+        "test_identifier_that_cannot_name_a_folder_is_rejected",
+        "test_identifiers_differing_only_by_case_are_duplicates",
         "test_locked_write_defers_to_sidecar",
         "test_missing_column_rejected",
         "test_missing_manifest",
@@ -861,13 +922,14 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7bf53cead24f678f",
-      "lines": 284,
+      "sha256": "00c7686b2f304431",
+      "lines": 298,
       "exports": [
         "SCANNED",
         "engagement",
         "item",
         "test_a_missing_request_folder_is_our_problem_not_the_clients",
+        "test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients",
         "test_an_unscanned_manifest_will_not_be_drafted_from",
         "test_draft_greets_signs_and_counts",
         "test_draft_with_nothing_outstanding_says_so",
@@ -941,8 +1003,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9ab6727836d345b9",
-      "lines": 301,
+      "sha256": "7f67daab067dce07",
+      "lines": 308,
       "exports": [
         "PRIOR",
         "TEMPLATE",
@@ -960,6 +1022,7 @@
         "test_prior_year_beats_the_template",
         "test_relative_periods_roll_too",
         "test_rollover_without_a_template_still_works",
+        "test_shift_years_leaves_digits_inside_longer_numbers_alone",
         "test_shift_years_leaves_form_numbers_alone",
         "test_shift_years_moves_every_year",
         "test_template_only_fills_blanks",
@@ -974,17 +1037,21 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "856fef8420e4c3c1",
-      "lines": 184,
+      "sha256": "c406430667048128",
+      "lines": 229,
       "exports": [
         "DONATIONS",
         "INT_DIV",
         "ITEMS",
         "MORTGAGE",
         "W2",
+        "test_a_corrupt_pdf_is_a_review_reason_not_a_crash",
+        "test_a_file_type_nobody_accepts_is_named_as_such",
+        "test_a_matching_document_the_row_refuses_says_why",
         "test_ambiguous_match_goes_to_review",
         "test_content_match_routes",
         "test_extension_alone_is_not_evidence",
+        "test_filename_fallback_tolerates_the_run_together_spelling",
         "test_filename_match_respects_word_boundaries",
         "test_filename_rescues_a_scan_with_no_text_layer",
         "test_google_stub_is_not_routed",
@@ -1039,8 +1106,8 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "04281f9770b67567",
-      "lines": 175,
+      "sha256": "31c5e8289ef3c0f5",
+      "lines": 184,
       "exports": [
         "ITEMS",
         "engagement",
@@ -1055,6 +1122,7 @@
         "test_readme_refreshed_on_rerun",
         "test_recreates_deleted_folder",
         "test_sanitize_component",
+        "test_the_review_folder_is_never_assigned_to_an_identifier",
         "test_waived_folder_left_alone_if_it_exists"
       ]
     },
@@ -1062,8 +1130,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e8003d9f356daa22",
-      "lines": 286,
+      "sha256": "a42a06081afbd534",
+      "lines": 309,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1071,6 +1139,7 @@
         "engagement",
         "folder",
         "statuses",
+        "test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan",
         "test_auto_revert_preserves_date_and_notes",
         "test_content_cache_created_and_pruned",
         "test_deleted_folder_reported_missing",
@@ -1116,15 +1185,34 @@
       ]
     },
     {
+      "id": "tests/test_templates.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "9e5331d37a86c5f3",
+      "lines": 88,
+      "exports": [
+        "REPO",
+        "TEMPLATES_DIR",
+        "test_a_request_with_no_rule_defaults_to_its_own_name",
+        "test_csv_carries_the_manifest_columns_and_the_core_flag",
+        "test_each_checklist_is_a_valid_manifest",
+        "test_every_form_type_has_a_checklist_and_a_csv",
+        "test_export_writes_one_csv_per_form",
+        "test_the_committed_csvs_match_the_catalog",
+        "test_unknown_form_is_refused"
+      ]
+    },
+    {
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f31b1edfa361f74f",
-      "lines": 188,
+      "sha256": "d198454c00796dd1",
+      "lines": 219,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
         "SIZED_ITEM",
+        "test_a_file_that_vanishes_mid_scan_is_pending_not_a_crash",
         "test_check_folder_classification",
         "test_corrupt_pdf_fails",
         "test_extension_whitelist",
@@ -1136,6 +1224,7 @@
         "test_missing_and_empty_folders",
         "test_no_whitelist_allows_anything",
         "test_password_protected_pdf_fails",
+        "test_pdf_readability_is_parsed_once_per_file",
         "test_placeholder_skipped_not_read",
         "test_sha256_of",
         "test_valid_pdf_passes",
@@ -1294,22 +1383,34 @@
       "source": "derived"
     },
     {
-      "from": "demo/standalone/tax-document-tracker.html",
-      "to": "tracker/scanner.py",
-      "type": "mirrors",
-      "source": "curated"
-    },
-    {
-      "from": "demo/standalone/tax-document-tracker.html",
-      "to": "tracker/validators.py",
-      "type": "mirrors",
-      "source": "curated"
-    },
-    {
       "from": "docs/ROADMAP.md",
       "to": "tracker/__init__.py",
       "type": "documents",
       "source": "curated"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tracker/api.py",
+      "type": "tests",
+      "source": "derived"
     },
     {
       "from": "tests/test_content_check.py",
@@ -1612,6 +1713,30 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_templates.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_templates.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_templates.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_templates.py",
+      "to": "tracker/templates.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_validators.py",
       "to": "pkg:pypdf",
       "type": "depends_on",
@@ -1686,6 +1811,12 @@
     {
       "from": "tracker/api.py",
       "to": "tracker/scanner.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "tracker/templates.py",
       "type": "imports",
       "source": "derived"
     },
@@ -1793,6 +1924,12 @@
     },
     {
       "from": "tracker/filer.py",
+      "to": "artifact:_index.pending.json",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/filer.py",
       "to": "artifact:_index.xlsx",
       "type": "writes",
       "source": "curated"
@@ -1871,12 +2008,6 @@
     },
     {
       "from": "tracker/rollover.py",
-      "to": "tracker/api.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/rollover.py",
       "to": "tracker/filer.py",
       "type": "imports",
       "source": "derived"
@@ -1890,6 +2021,12 @@
     {
       "from": "tracker/rollover.py",
       "to": "tracker/scaffold.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/rollover.py",
+      "to": "tracker/templates.py",
       "type": "imports",
       "source": "derived"
     },
@@ -2054,6 +2191,48 @@
       "to": "tracker/registry.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1040.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1041.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1065.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1120.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-1120s.csv",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "templates/form-990.csv",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tracker/validators.py",

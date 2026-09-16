@@ -14,6 +14,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - registry      : engagements.yaml — every engagement the scheduled run touches
 - runner        : the unattended pass (file -> scan -> Saturday draft)
 - scheduling    : generate the Task Scheduler / n8n job
+- templates     : the per-form request catalog; templates/*.csv are generated from it
 """
 
 from tracker.manifest import (

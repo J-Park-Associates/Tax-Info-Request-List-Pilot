@@ -47,3 +47,9 @@ jobs:
       - name: Check the repository map is current
         if: always()
         run: python tools/repo_map.py check
+
+      # The CSV checklists are generated from tracker/templates.py; a hand
+      # edit to either side without the other is a second source of truth.
+      - name: Check the template CSVs match the catalog
+        if: always()
+        run: python -m tracker.templates check

@@ -78,6 +78,8 @@ class EngagementRun:
     filed: int = 0
     review: int = 0
     waiting: int = 0
+    file_errors: list[str] = field(default_factory=list)  # drops that went wrong
+    index_deferred: bool = False   # _index.xlsx was locked; rows in the sidecar
     statuses: dict[str, int] = field(default_factory=dict)
     drafted: Path | None = None
     draft_note: str = ""      # why there is no draft, when there is a reason
@@ -105,6 +107,10 @@ class EngagementRun:
             parts.append(f"review {self.review}")
         if self.waiting:
             parts.append(f"syncing {self.waiting}")
+        if self.file_errors:
+            parts.append(f"could not sort {len(self.file_errors)}")
+        if self.index_deferred:
+            parts.append("index locked (rows deferred)")
         parts.append(f"outstanding {self.outstanding}")
         if self.drafted:
             parts.append(f"drafted {self.drafted.name}")
@@ -197,6 +203,8 @@ def run_engagement(
         run.filed = len(filed.filed)
         run.review = len(filed.review)
         run.waiting = len(filed.waiting)
+        run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]
+        run.index_deferred = filed.index_deferred
 
         scanned = scan_engagement(engagement.path, today=today, dry_run=dry_run)
         counts: dict[str, int] = {}
@@ -249,6 +257,14 @@ def run_engagement(
         run.error = f"{exc.__class__.__name__}: {exc}"
         run.draft_note = traceback.format_exc(limit=3).strip().splitlines()[-1]
 
+    if run.file_errors and not run.error:
+        # The rest of the pass went ahead, but a drop that could not be
+        # sorted is a failure the scheduler must show, not a footnote.
+        run.error = (
+            f"{len(run.file_errors)} file(s) could not be sorted "
+            f"(filed {run.filed}, review {run.review}): "
+            + "; ".join(run.file_errors[:3])
+        )
     return run
 
 

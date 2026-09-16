@@ -281,3 +281,17 @@ def test_written_draft_appends_firm_side_notes_below_the_email(tmp_path):
 def test_write_draft_needs_somewhere_to_write(tmp_path):
     with pytest.raises(ReminderError, match="path or engagement_dir"):
         write_draft(draft_reminder(engagement(tmp_path)))
+
+
+def test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients():
+    # One of two arrived and was read; the other is an un-OCR'd scan. The
+    # client may well have sent both, so "1 of 2 received" is not known yet.
+    row = item("A01", "W-2 Wage Statements", Status.PARTIAL, expected_count=2,
+               file_count=1,
+               validation_notes="1 of 2 expected files; scan.pdf: PDF appears to be a "
+                                "scan with no text layer and OCR is not installed; "
+                                "review manually")
+    lines, attention, _ = triage([row])
+    assert lines == []
+    assert [flag.item.identifier for flag in attention] == ["A01"]
+    assert "person here" in attention[0].reason

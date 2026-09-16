@@ -2,8 +2,10 @@
 
 A Windows-compatible system for income tax information requests: each engagement
 starts by picking the return type (1040, 1120, 1120-S, 1065, 1041, 990), which
-selects a tailored document request template (`FORM_TEMPLATES` in `tracker/api.py`;
-CSV checklists in `templates/`). The system then scaffolds a cloud-synced folder
+selects a tailored document request template (`FORM_TEMPLATES` in
+`tracker/templates.py`, the one source of truth; the CSV checklists in `templates/`
+are generated from it). A returning client's list is rolled forward from last year
+instead. The system then scaffolds a cloud-synced folder
 structure (OneDrive or Google Drive) from an Excel manifest, gives the client **one
 folder** to drop everything into, then sorts what arrives: originals are preserved in
 `Shared/PBC/`, renamed working copies are filed into `Prepared/{Identifier} - {Document}/`,
@@ -58,6 +60,16 @@ into the manifest.
 | 15 | Regenerating a draft | **Never overwrite an edit.** The header carries a fingerprint of the generated text; anything that no longer matches is somebody's work, so the new draft goes to `reminder-draft.NEW.txt` beside it. |
 | 16 | One engagement fails | **Record it and carry on.** A mistyped path must not be why nine other clients went unprocessed. The run exits non-zero so the scheduler still shows a failure. |
 
+## Decision Log (2026-09-16, hardening)
+
+| # | Decision | Choice |
+|---|----------|--------|
+| 17 | One drop fails | **Isolate it, record it, keep sorting.** Originals are moved into `PBC/` before anything else, so a failure after the move (disk full, a copy error) is indexed as *Needs Review* with the error and the rest of the pile is still sorted. A file the sync client still holds open is left in place for the next run. The index is written in a `finally`, and if Excel has it open the rows wait in `_index.pending.json` — nothing moved into `PBC/` is ever unrecorded. The engagement still counts as failed so the scheduler shows it. |
+| 18 | Workbook saves | **Atomic.** Every `_manifest.xlsx` / `_index.xlsx` save lands beside the file and is swapped in with `os.replace`. A killed task mid-save used to leave a workbook Excel could not open; now it leaves the previous one. |
+| 19 | Identifiers | **Must survive as a folder-name prefix.** `A:01` or `A01.` scaffolds a folder the scanner can never match back (permanent "folder not found"), so the loader refuses them, and `A01`/`a01` are one identifier because Windows folders are case-insensitive. |
+| 20 | Why a file was not filed | **The most useful reason available.** A document whose content fits a request that refused the file (below the size floor, wrong type, unreadable) is parked as *looks like A01 (…)*; a file every request refused for one reason carries that reason. "Matched no request" is the last resort, not the default. |
+| 21 | Partial rows we have not read | **Ours, not the client's.** If the file that would complete a `Partial` row is an un-OCR'd scan, "1 of 2 received" is not something we know yet; the row goes to the accountant with the other firm-side flags. |
+
 ## Architecture
 
 ```
@@ -68,6 +80,7 @@ OneDrive / Google Drive (synced locally on Windows)
             ├── _manifest.xlsx        ← accountant-only (NOT in the shared scope)
             ├── _index.xlsx           ← every original: where it went, what it became
             ├── _manifest.pending.json← sidecar written only if Excel had the file locked
+            ├── _index.pending.json   ← same, for index rows while Excel has _index.xlsx open
             ├── scan.log              ← rotating log
             ├── Prepared/             ← firm-side working set (NOT shared)
             │   ├── A01 - W-2 Wage Statements - All Employers/
@@ -167,6 +180,7 @@ no-genAI-on-financial-docs rule.)*
 | 8 | `tracker/rollover.py` — build a returning client's next-year list from their prior engagement. Prior-year fields always win; the template only fills blanks and its unknown rows are offered rather than added. Years shift as a set (so relative periods stay right), counts learn from what arrived and never shrink, `Waived` carries and `Accepted` does not. Writes a `Carried Forward` sheet explaining every row. CLI: `python -m tracker.rollover <prior_dir> <new_dir> [--form] [--year] [--include-new] [--scaffold]` | ✅ built + tested |
 | 9 | `tracker/reminder.py` — draft client email per engagement from Missing/Partial/Failed rows (draft only — no sending; no SMTP anywhere in the module). Validation notes are translated into plain client instructions, never quoted. Rows we simply have not read yet, and rows with no request folder, are held back for a person instead of being asked for; untriaged `00 - Needs Review` files raise a warning so a reminder never asks for something already in hand. CLI: `python -m tracker.reminder <engagement_dir> [--client] [--link] [--due] [--from-name] [--firm] [--write]` | ✅ built + tested |
 | 10 | Scheduling — `tracker/registry.py` (`engagements.yaml`: one file lists every engagement, validated loudly so a typo cannot silently skip a client), `tracker/runner.py` (one unattended pass: file → scan → draft, with per-engagement failure isolation and a non-zero exit so the scheduler shows a red run), and `tracker/scheduling.py` (generates the Task Scheduler XML / n8n workflow). **Reminders are drafted weekly, on Saturday** — the runner owns the day, so one daily task covers it and a missed Saturday still drafts on the next run. CLI: `python -m tracker.runner <registry> [--only] [--dry-run] [--reminders auto\|always\|never] [--weekday] [--date] [--log]` | ✅ built + tested |
+| 11 | `tracker/templates.py` — the per-form request catalog (`FORM_TYPES`, `FORM_TEMPLATES`) and `item_from_spec()`. The one source of truth for the checklists: `templates/*.csv` are generated by `python -m tracker.templates export` and `tests/test_templates.py` (and CI) fail if they drift. A request with no rule gets its own document name as the required keyword. The desktop wizard opens on the returning-client page (`priors` → `rollover`) and falls back to this catalog for a new client. CLI: `python -m tracker.templates export\|check` | ✅ built + tested |
 
 ## Edge Cases (designed in)
 

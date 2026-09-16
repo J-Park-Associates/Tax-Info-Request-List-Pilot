@@ -159,8 +159,35 @@ def iter_candidate_files(folder: Path) -> list[Path]:
 # ----------------------------------------------------------------- tier 2 ----
 
 
+#: Readability verdicts keyed by (path, size, mtime_ns). The router asks
+#: check_file() once per manifest row for the same file, and the scanner
+#: asks again; parsing a PDF fifteen times to learn the same thing is the
+#: cost this saves. Bounded, and a changed file gets a fresh key.
+_PDF_VERDICTS: dict[tuple[str, int, int], str] = {}
+_PDF_VERDICTS_MAX = 512
+
+
 def _pdf_error(path: Path) -> str:
-    """Empty string if the PDF opens cleanly, else a failure reason."""
+    """Empty string if the PDF opens cleanly, else a failure reason.
+
+    Cached per file identity (path, size, mtime), so the same file checked
+    against every manifest row is parsed once.
+    """
+    try:
+        stat = path.stat()
+        key = (str(path), stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return _pdf_error_uncached(path)
+    if key in _PDF_VERDICTS:
+        return _PDF_VERDICTS[key]
+    verdict = _pdf_error_uncached(path)
+    if len(_PDF_VERDICTS) >= _PDF_VERDICTS_MAX:
+        _PDF_VERDICTS.clear()
+    _PDF_VERDICTS[key] = verdict
+    return verdict
+
+
+def _pdf_error_uncached(path: Path) -> str:
     try:
         reader = PdfReader(path)
         if reader.is_encrypted:
@@ -194,7 +221,18 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
             reason=f"extension .{extension} not allowed (expected: {allowed})",
         )
 
-    size = path.stat().st_size
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        # Listed a moment ago, gone now: the sync client is replacing it or
+        # the client withdrew it. Either way the row should wait, not fail,
+        # and a scheduled scan must never die on one vanished file.
+        return FileResult(
+            path=path,
+            ok=False,
+            pending_sync=True,
+            reason=f"file disappeared during the scan ({exc.__class__.__name__}); will re-check next run",
+        )
     if size < item.min_size_kb * 1024:
         return FileResult(
             path=path,

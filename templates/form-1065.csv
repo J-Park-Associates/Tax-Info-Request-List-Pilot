@@ -1,15 +1,15 @@
-ID,Category,Item Description,Requested From,Assigned To,Due Date,Status,Date Received,File Location,Notes
-1,Prior Year,Prior-year federal & state partnership returns,Client,,,Requested,,,
-2,Agreements,Partnership agreement & amendments,Client,,,Requested,,,
-3,General,Trial balance (year-end),Client,,,Requested,,,
-4,General,General ledger detail,Client,,,Requested,,,
-5,General,Year-end financial statements,Client,,,Requested,,,
-6,Cash,December bank statements & year-end reconciliations,Client,,,Requested,,,
-7,Partners,Partner list with ownership % & changes,Client,,,Requested,,,
-8,Partners,Partner capital account detail,Client,,,Requested,,,
-9,Partners,Contributions & distributions by partner,Client,,,Requested,,,
-10,Partners,Guaranteed payment detail,Client,,,Requested,,,
-11,Fixed Assets,Fixed asset additions & disposals detail,Client,,,Requested,,,
-12,Debt,Loan agreements & year-end balances,Client,,,Requested,,,
-13,Allocations,Special allocation support (Section 704(b)),Client,,,Requested,,,
-14,State,State apportionment data,Client,,,Requested,,,
+Identifier,Document,Period,Expected Count,Allowed Extensions,Min Size KB,Required Keywords,Any Keywords,Date Pattern,Core
+A01,Prior-Year Federal & State Partnership Returns,TY2024,1,pdf,5,,"form 1065, tax return",,yes
+A02,Partnership Agreement & Amendments,Current,1,pdf,5,,"partnership agreement, operating agreement",,yes
+A03,Trial Balance - Year-End,TY2025,1,"xlsx, csv",5,,trial balance,,yes
+A04,General Ledger Detail,TY2025,1,"xlsx, csv",5,,general ledger,,
+B01,Year-End Financial Statements,TY2025,1,"pdf, xlsx",5,,"balance sheet, income statement, statement of operations, statement of activities",,yes
+B02,December Bank Statements & Year-End Reconciliations,Dec 2025,1,pdf,5,,"bank statement, ending balance, reconciliation",,yes
+C01,Partner List with Ownership % & Changes,TY2025,1,"xlsx, pdf",5,,"partner list, ownership",,yes
+C02,Partner Capital Account Detail,TY2025,1,xlsx,5,,capital account,,yes
+C03,Contributions & Distributions by Partner,TY2025,1,xlsx,5,,"contributions, distributions",,yes
+C04,Guaranteed Payment Detail,TY2025,1,"xlsx, pdf",5,,guaranteed payment,,
+D01,Fixed Asset Additions & Disposals Detail,TY2025,1,xlsx,5,,"fixed asset, asset detail, disposals",,
+E01,Loan Agreements & Year-End Balances,As of 12/31/2025,1,pdf,5,,"loan agreement, promissory note, amortization",,
+F01,Special Allocation Support - Section 704(b),TY2025,1,"xlsx, pdf",5,,"special allocation, 704",,
+G01,State Apportionment Data,TY2025,1,xlsx,5,,apportionment,,

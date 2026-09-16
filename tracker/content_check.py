@@ -333,7 +333,10 @@ class ContentCache:
         )
 
     def put(self, file: Path, fingerprint: str, result: ContentResult) -> None:
-        stat = file.stat()
+        try:
+            stat = file.stat()
+        except OSError:
+            return  # gone already; nothing worth remembering about it
         self._entries[self._key(file)] = {
             "size": stat.st_size,
             "mtime_ns": stat.st_mtime_ns,
