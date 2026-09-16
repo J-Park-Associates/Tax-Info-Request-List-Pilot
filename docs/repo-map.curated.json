@@ -80,6 +80,10 @@
       "role": "PyInstaller entry point. Freezes tracker.api into tracker-api.exe for the portable Windows demo.",
       "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module."
     },
+    ".github/workflows/ci.yml": {
+      "role": "CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.",
+      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Both steps always report, so a stale map and a failing test surface in the same run."
+    },
     "CLAUDE.md": {
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
@@ -238,6 +242,8 @@
     {"from": "docs/ROADMAP.md", "to": "tracker/__init__.py", "type": "documents"},
     {"from": "README.md", "to": "tracker/runner.py", "type": "documents"},
     {"from": "CLAUDE.md", "to": "tools/repo_map.py", "type": "documents"},
-    {"from": "tools/repo_map.py", "to": "docs/repo-map.curated.json", "type": "reads"}
+    {"from": "tools/repo_map.py", "to": "docs/repo-map.curated.json", "type": "reads"},
+    {"from": ".github/workflows/ci.yml", "to": "tools/repo_map.py", "type": "runs"},
+    {"from": ".github/workflows/ci.yml", "to": "requirements.txt", "type": "reads"}
   ]
 }
