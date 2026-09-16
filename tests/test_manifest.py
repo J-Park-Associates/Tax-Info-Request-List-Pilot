@@ -349,3 +349,63 @@ def test_add_any_keyword_appends_once_and_names_a_missing_row(manifest):
     assert add_any_keyword(manifest, "A01", "   ") is False
     with pytest.raises(ManifestError, match="No request 'Z99'"):
         add_any_keyword(manifest, "Z99", "x")
+
+
+# ------------------------------------------------------ allowed extensions ----
+
+
+def test_a_blank_allowed_extensions_means_the_safe_default_not_anything(tmp_path):
+    from openpyxl import load_workbook as lw
+    from tracker.manifest import DEFAULT_EXTENSIONS
+
+    path = create_template(tmp_path / "_manifest.xlsx", [RequestItem(identifier="A01", document="W-2")])
+    wb = lw(path)
+    wb["Requests"].cell(row=2, column=5).value = None   # the accountant cleared the cell
+    wb.save(path)
+    assert load_manifest(path)[0].allowed_extensions == DEFAULT_EXTENSIONS
+
+
+def test_accepting_any_file_type_has_to_be_said_with_a_star(tmp_path):
+    from openpyxl import load_workbook as lw
+
+    path = create_template(tmp_path / "_manifest.xlsx", [RequestItem(identifier="A01", document="W-2")])
+    # An item built with no extensions means anything; the template writes "*"
+    # so the workbook says so and the loader reads it back the same way.
+    wb = lw(path)
+    assert wb["Requests"].cell(row=2, column=5).value == "*"
+    wb.close()
+    assert load_manifest(path)[0].allowed_extensions == ()
+
+
+# ------------------------------------------------------------------ check ----
+
+
+def test_check_manifest_reports_problems_with_their_row(manifest):
+    from openpyxl import load_workbook as lw
+    from tracker.manifest import check_manifest
+
+    assert check_manifest(manifest).ok
+    wb = lw(manifest)
+    wb["Requests"].cell(row=3, column=9, value="(unclosed")   # A02 Date Pattern
+    wb.save(manifest)
+    result = check_manifest(manifest)
+    assert not result.ok
+    assert result.problems[0].startswith("Row 3: Date Pattern is not a valid regex")
+
+
+def test_check_manifest_warns_about_rows_the_rules_cannot_act_on(tmp_path):
+    from tracker.manifest import _save_pending, check_manifest
+
+    path = create_template(tmp_path / "_manifest.xlsx", [
+        RequestItem(identifier="A01", document="Anything goes"),              # no rule, "*"
+        RequestItem(identifier="A02", document="W-2", required_keywords=("W-2",),
+                    allowed_extensions=("pdf",)),
+        RequestItem(identifier="A03", document="Waived", manual_override=Override.WAIVED),
+    ])
+    _save_pending(path, {"A02": StatusUpdate(status=Status.RECEIVED)})
+    result = check_manifest(path)
+    assert result.ok
+    assert [w[:14] for w in result.warnings] == ["Row 2 (A01): n", "Row 2 (A01): A", "_manifest.pend"]
+    assert "never be filed automatically" in result.warnings[0]
+    assert "any file type counts" in result.warnings[1]
+    assert "close Excel and re-scan" in result.warnings[2]

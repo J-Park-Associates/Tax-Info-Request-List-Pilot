@@ -300,3 +300,31 @@ def test_an_engagement_whose_manifest_cannot_be_read_fails_alone(tmp_path, sampl
     outcomes = {r.engagement.path.name: r for r in report.runs}
     assert outcomes["Good"].ok
     assert "manifest could not be read" in outcomes["Bad 2025"].error
+
+
+def test_the_run_names_a_manifest_typo_with_its_row_before_touching_files(tmp_path, samples):
+    from openpyxl import load_workbook
+
+    engagement = build_engagement(tmp_path, samples)
+    manifest = engagement.path / MANIFEST_FILENAME
+    wb = load_workbook(manifest)
+    wb["Requests"].cell(row=2, column=9, value="(unclosed")
+    wb.save(manifest)
+    run = run_engagement(engagement, today=FRIDAY)
+    assert run.error.startswith("Row 2: Date Pattern is not a valid regex")
+    assert (engagement.path / "Shared" / "W-2 John Smith 2025.pdf").exists()   # nothing moved
+
+
+def test_rows_the_rules_cannot_act_on_are_reported_not_buried(tmp_path, samples):
+    from tracker.manifest import RequestItem, create_template
+
+    folder = tmp_path / "Loose 2025"
+    folder.mkdir()
+    create_template(folder / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="Anything")])
+    scaffold_engagement(folder)
+    engagement = Engagement(path=folder)
+    run = run_engagement(engagement, today=FRIDAY)
+    assert run.ok
+    assert any("never be filed automatically" in w for w in run.warnings)
+    text = format_report(run_registry(Registry(source=tmp_path, engagements=[engagement]), today=FRIDAY))
+    assert "! Row 2 (A01)" in text

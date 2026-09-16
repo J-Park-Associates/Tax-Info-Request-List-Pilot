@@ -7,6 +7,7 @@ on. The demo root is redirected into a temp folder so no test touches the
 real demo-marketing tree.
 """
 
+import datetime as dt
 import io
 import json
 
@@ -199,7 +200,7 @@ def test_a_name_of_only_illegal_characters_falls_back(capsys, demo_root):
     spec = {"name": "///:::", "form": "1040", "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == "New Form 1040 Engagement"
+    assert payload["created"] == "New TY2025 Form 1040"
 
 
 def test_state_shows_statuses_a_locked_excel_deferred(capsys, demo_root):
@@ -292,3 +293,55 @@ def test_a_bad_due_date_is_a_sentence(capsys, demo_root):
     assert code == 1
     assert payload["error"] == "Due date must be YYYY-MM-DD, got 'next friday'"
     assert not (demo_root / "X").exists()
+
+
+# ---------------------------------------------------- check, lock and names ----
+
+
+def test_check_reports_problems_and_warnings_with_rows(capsys, demo_root):
+    from openpyxl import load_workbook
+
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    manifest = demo_root / "Smith" / MANIFEST_FILENAME
+    code, payload = run(capsys, "check", "--engagement", str(demo_root / "Smith"))
+    assert code == 0 and payload["ok"] and payload["warnings"] == []
+
+    wb = load_workbook(manifest)
+    wb["Requests"].cell(row=2, column=4, value="two")
+    wb.save(manifest)
+    code, payload = run(capsys, "check", "--engagement", str(demo_root / "Smith"))
+    assert code == 0 and payload["ok"] is False
+    assert payload["problems"] == ["Row 2: Expected Count must be a whole number, got 'two'"]
+
+
+def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_root):
+    import os
+    from tracker.locking import LOCK_FILENAME
+
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    assert run(capsys, "state", "--engagement", str(engagement))[1]["lock"] is None
+
+    lock = engagement / LOCK_FILENAME
+    lock.write_text("pid=999 started=2026-03-14T07:03:00", encoding="utf-8")
+    code, payload = run(capsys, "state", "--engagement", str(engagement))
+    assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False}
+    code, payload = run(capsys, "unlock", "--engagement", str(engagement))
+    assert code == 1 and "may still be going" in payload["error"]
+
+    old = (dt.datetime.now() - dt.timedelta(hours=2)).timestamp()
+    os.utime(lock, (old, old))
+    code, payload = run(capsys, "unlock", "--engagement", str(engagement))
+    assert code == 0 and payload["cleared"] and payload["state"]["lock"] is None
+
+
+def test_a_new_client_engagement_is_named_from_client_year_and_form(capsys, demo_root):
+    spec = {"form": "1040", "client": "Smith Family",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["created"] == "Smith Family TY2025 Form 1040"
+    code, payload = run(capsys, "templates")
+    assert payload["years"]["1040"] == 2025

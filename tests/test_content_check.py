@@ -214,3 +214,49 @@ def test_cache_prune(tmp_path):
 
     cache.prune(existing=set())                   # file no longer in any folder
     assert cache.get(pdf, rules_fingerprint(rule)) is None
+
+
+def _many_page_pdf(path, texts):
+    """One page per entry in ``texts``, each with a real text layer."""
+    pages = []
+    for text in texts:
+        content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("ascii")
+        pages.append(content)
+    n = len(pages)
+    objects = {1: b"<< /Type /Catalog /Pages 2 0 R >>"}
+    kids = " ".join(f"{3 + 2 * i} 0 R" for i in range(n)).encode()
+    objects[2] = b"<< /Type /Pages /Kids [" + kids + b"] /Count %d >>" % n
+    font_id = 3 + 2 * n
+    for i, content in enumerate(pages):
+        page_id, stream_id = 3 + 2 * i, 4 + 2 * i
+        objects[page_id] = (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents %d 0 R "
+            b"/Resources << /Font << /F1 %d 0 R >> >> >>" % (stream_id, font_id)
+        )
+        objects[stream_id] = b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content)
+    objects[font_id] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = {}
+    for num in sorted(objects):
+        offsets[num] = len(out)
+        out += b"%d 0 obj\n" % num + objects[num] + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    for num in sorted(objects):
+        out += b"%010d 00000 n \n" % offsets[num]
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF" % (len(objects) + 1, xref)
+    path.write_bytes(bytes(out))
+    return path
+
+
+def test_only_the_first_pages_of_a_pdf_are_read(tmp_path):
+    from tracker.content_check import MAX_PAGES, extract_text
+
+    assert MAX_PAGES == 10
+    texts = [f"page {i + 1} filler" for i in range(15)]
+    texts[2] = "Form W-2 early"
+    texts[12] = "Form 1098 late"
+    text = extract_text(_many_page_pdf(tmp_path / "long.pdf", texts))
+    assert "W-2 early" in text
+    assert "1098 late" not in text
+    assert "page 10 filler" in text and "page 11 filler" not in text
