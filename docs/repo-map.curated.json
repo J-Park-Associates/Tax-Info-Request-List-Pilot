@@ -1,0 +1,243 @@
+{
+  "_comment": [
+    "The judgment half of the repository map: what each part is FOR, the files",
+    "that flow through the pipeline at runtime, the cross-language hops, and the",
+    "rules that cut across modules. None of this can be parsed out of the source,",
+    "so it is written by hand here and merged on top of the derived facts by",
+    "tools/repo_map.py.",
+    "",
+    "Edit this file, then run `python tools/repo_map.py update`. Never edit",
+    "docs/repo-map.json or docs/repo-map.md directly — both are generated."
+  ],
+
+  "pipeline": [
+    "tracker.api / create",
+    "tracker.scaffold",
+    "client drops into Shared/",
+    "tracker.filer",
+    "tracker.scanner",
+    "tracker.reminder (Saturdays)",
+    "a person sends the draft"
+  ],
+
+  "nodes": {
+    "tracker/manifest.py": {
+      "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns — scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls."
+    },
+    "tracker/scaffold.py": {
+      "role": "Turns a manifest into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/{Identifier} - {Document}/ plus 00 - Needs Review. Writes the client's _README.txt.",
+      "notes": "Also the home of the path constants every other module imports: MANIFEST_FILENAME, SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME."
+    },
+    "tracker/validators.py": {
+      "role": "Tiers 1-2: does the file exist, is the extension allowed, is it big enough, is the PDF readable. Pure read-only functions plus passive cloud-placeholder detection for OneDrive and Google Drive.",
+      "notes": "Never downloads a cloud-only placeholder — a stub must never be filed as if it were the document."
+    },
+    "tracker/content_check.py": {
+      "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. Caches verdicts.",
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted."
+    },
+    "tracker/router.py": {
+      "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only).",
+      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing — misfiling a tax document is worse than not filing it."
+    },
+    "tracker/filer.py": {
+      "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
+      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered."
+    },
+    "tracker/scanner.py": {
+      "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and writes the result back into the manifest.",
+      "notes": "Holds a stale-aware per-engagement run lock, so two scheduled runs cannot overlap. Never touches Shared/ at all."
+    },
+    "tracker/rollover.py": {
+      "role": "Builds a returning client's next-year request list from their prior engagement. Prior-year data always wins; the template may only fill blanks.",
+      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. NOTE: rollover and api import each other - api imports rollover at module scope, rollover imports api only inside its __main__ block. That cycle is deliberate; do not \"fix\" it by hoisting the import."
+    },
+    "tracker/reminder.py": {
+      "role": "Drafts the client chase email from a scanned manifest. Draft only — there is no SMTP anywhere in this module.",
+      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten."
+    },
+    "tracker/registry.py": {
+      "role": "Loads and validates engagements.yaml — the one file listing every engagement the scheduled run touches.",
+      "notes": "Fails loudly on an unknown key, a bad date or a duplicated path, because a typo that silently skipped a client would surface at a filing deadline. A missing folder is NOT rejected here; that is the runner's call, per engagement."
+    },
+    "tracker/runner.py": {
+      "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on Saturdays) draft. This is the whole scheduled task.",
+      "notes": "Owns the Saturday rule in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red."
+    },
+    "tracker/scheduling.py": {
+      "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux."
+    },
+    "tracker/api.py": {
+      "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, create, rollover, templates, list, priors, reset. Also holds FORM_TEMPLATES (the per-form request checklists) and the demo sample-file builder.",
+      "notes": "Every command prints one JSON object and returns an exit code — errors are JSON too, never a traceback. This is the only module the Electron app knows about."
+    },
+    "tracker/__init__.py": {
+      "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
+    },
+    "api_entry.py": {
+      "role": "PyInstaller entry point. Freezes tracker.api into tracker-api.exe for the portable Windows demo.",
+      "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module."
+    },
+    "CLAUDE.md": {
+      "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
+      "notes": "Points at docs/repo-map.md as the first thing to read in a session."
+    },
+    "docs/repo-map.curated.json": {
+      "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
+      "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
+    },
+    "tests/test_repo_map.py": {
+      "role": "Guards the map's trust contract: derived facts come from source, curated judgment survives regeneration, drift is detected, and the committed map matches the tree.",
+      "notes": "test_the_committed_map_is_current fails the suite if someone changed code without running `repo_map.py update`."
+    },
+    "conftest.py": {
+      "role": "Puts the repo root on sys.path so tests can `import tracker` without installing the package."
+    },
+    "tools/repo_map.py": {
+      "role": "Builds and incrementally updates this map. Derives imports, exports, CLIs, test coverage and hashes from source; merges the curated layer on top.",
+      "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed."
+    },
+    "app/main.js": {
+      "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen tracker-api.exe in the portable build) and relays its JSON to the renderer over IPC.",
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command."
+    },
+    "app/preload.js": {
+      "role": "Context bridge exposing exactly two calls to the renderer: tracker.call(args, payload) and tracker.open(path). Nothing else crosses."
+    },
+    "app/renderer/app.js": {
+      "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge."
+    },
+    "app/renderer/index.html": { "role": "Desktop app shell markup." },
+    "app/renderer/style.css": { "role": "Desktop app styling." },
+    "demo/standalone/tax-document-tracker.html": {
+      "role": "A single self-contained HTML file that ports the scanner's rules to the browser. Opens offline with nothing installed, for emailing to staff or demoing on a prospect's laptop.",
+      "notes": "A faithful port, not a shim: same statuses and same validation notes as the Python scanner. It has to be kept in step with tracker/scanner.py and tracker/validators.py by hand."
+    },
+    "demo/demo_manifest.py": {
+      "role": "Hands-on walkthrough of the manifest layer, including the Excel-lock retry and sidecar behaviour you can watch live by holding the file open in Excel."
+    },
+    "docs/ROADMAP.md": {
+      "role": "The build plan, the hard constraints and the decision log. Components 1-10, all built and tested.",
+      "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
+    },
+    "docs/workflow.md": { "role": "How the day-to-day workflow runs." },
+    "README.md": { "role": "What the system is, how to run each stage, and the two ways to demo it." },
+    "DEMO-SCRIPT.md": { "role": "The script for walking someone through a demo." },
+    "requirements.txt": { "role": "Runtime and dev dependencies; the optional OCR extras are documented here too." },
+
+    "artifact:_manifest.xlsx": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The engagement's request list and its live status. Sits OUTSIDE the client's shared scope — the accountant's file, not theirs."
+    },
+    "artifact:_index.xlsx": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Every original the client sent: where it came from, where it went, and what it was renamed to. The audit trail."
+    },
+    "artifact:_manifest.pending.json": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Sidecar holding status updates that could not be written because Excel had the manifest locked. Merged into the next successful write."
+    },
+    "artifact:Shared/": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The client's one drop folder — the only thing they see and the only thing they touch. Their originals end up in Shared/PBC/, still visible to them, untouched."
+    },
+    "artifact:Prepared/": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The firm-side working set: renamed copies sorted per request, plus 00 - Needs Review for anything that could not be identified. The client never sees this."
+    },
+    "artifact:reminder-draft.txt": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The drafted chase email, waiting for a person to read, edit and send. Carries a fingerprint so the weekly job can tell whether it has been edited."
+    },
+    "artifact:engagements.yaml": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The registry: every engagement the scheduled run should process. Gitignored — it names real clients and carries their share links."
+    },
+
+    "rule:no-AI-on-client-documents": {
+      "type": "concept",
+      "layer": "constraint",
+      "role": "No generative AI ever reads a client financial document. Every routing and status decision comes from deterministic rules in the manifest."
+    },
+    "rule:originals-are-never-altered": {
+      "type": "concept",
+      "layer": "constraint",
+      "role": "Originals are moved byte for byte under their own names into Shared/PBC/ and never renamed in place, edited or deleted. All work happens on copies."
+    },
+    "rule:nothing-is-guessed": {
+      "type": "concept",
+      "layer": "constraint",
+      "role": "A document is filed only when exactly one request accepts it. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person."
+    },
+    "rule:nothing-is-ever-sent": {
+      "type": "concept",
+      "layer": "constraint",
+      "role": "The system drafts client emails and stops. There is no SMTP, no mail client and no network call in the reminder or scheduling path; a person always sends."
+    }
+  },
+
+  "edges": [
+    {"from": "tracker/filer.py", "to": "artifact:Shared/", "type": "reads"},
+    {"from": "tracker/filer.py", "to": "artifact:Prepared/", "type": "writes"},
+    {"from": "tracker/filer.py", "to": "artifact:_index.xlsx", "type": "writes"},
+    {"from": "tracker/filer.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
+
+    {"from": "tracker/scanner.py", "to": "artifact:Prepared/", "type": "reads"},
+    {"from": "tracker/scanner.py", "to": "artifact:_manifest.xlsx", "type": "writes"},
+    {"from": "tracker/scanner.py", "to": "artifact:_manifest.pending.json", "type": "writes"},
+
+    {"from": "tracker/scaffold.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
+    {"from": "tracker/scaffold.py", "to": "artifact:Shared/", "type": "writes"},
+    {"from": "tracker/scaffold.py", "to": "artifact:Prepared/", "type": "writes"},
+
+    {"from": "tracker/manifest.py", "to": "artifact:_manifest.xlsx", "type": "writes"},
+    {"from": "tracker/manifest.py", "to": "artifact:_manifest.pending.json", "type": "writes"},
+
+    {"from": "tracker/reminder.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
+    {"from": "tracker/reminder.py", "to": "artifact:reminder-draft.txt", "type": "writes"},
+    {"from": "tracker/reminder.py", "to": "artifact:Prepared/", "type": "reads"},
+
+    {"from": "tracker/rollover.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
+    {"from": "tracker/registry.py", "to": "artifact:engagements.yaml", "type": "reads"},
+    {"from": "tracker/runner.py", "to": "artifact:engagements.yaml", "type": "reads"},
+
+    {"from": "tracker/filer.py", "to": "tracker/scanner.py", "type": "precedes"},
+    {"from": "tracker/scanner.py", "to": "tracker/reminder.py", "type": "precedes"},
+    {"from": "tracker/scaffold.py", "to": "tracker/filer.py", "type": "precedes"},
+
+    {"from": "app/main.js", "to": "api_entry.py", "type": "spawns"},
+    {"from": "app/main.js", "to": "tracker/api.py", "type": "spawns"},
+    {"from": "app/renderer/app.js", "to": "app/preload.js", "type": "calls"},
+    {"from": "app/renderer/index.html", "to": "app/renderer/app.js", "type": "loads"},
+    {"from": "app/renderer/index.html", "to": "app/renderer/style.css", "type": "loads"},
+    {"from": "Build Portable Demo.bat", "to": "api_entry.py", "type": "freezes"},
+    {"from": "Start Demo.bat", "to": "app/main.js", "type": "launches"},
+    {"from": "Scan Demo.bat", "to": "tracker/scanner.py", "type": "launches"},
+
+    {"from": "demo/standalone/tax-document-tracker.html", "to": "tracker/scanner.py", "type": "mirrors"},
+    {"from": "demo/standalone/tax-document-tracker.html", "to": "tracker/validators.py", "type": "mirrors"},
+
+    {"from": "tracker/router.py", "to": "rule:nothing-is-guessed", "type": "enforces"},
+    {"from": "tracker/filer.py", "to": "rule:originals-are-never-altered", "type": "enforces"},
+    {"from": "tracker/filer.py", "to": "rule:nothing-is-guessed", "type": "enforces"},
+    {"from": "tracker/content_check.py", "to": "rule:no-AI-on-client-documents", "type": "enforces"},
+    {"from": "tracker/validators.py", "to": "rule:no-AI-on-client-documents", "type": "enforces"},
+    {"from": "tracker/reminder.py", "to": "rule:nothing-is-ever-sent", "type": "enforces"},
+    {"from": "tracker/runner.py", "to": "rule:nothing-is-ever-sent", "type": "enforces"},
+    {"from": "tracker/scheduling.py", "to": "rule:nothing-is-ever-sent", "type": "enforces"},
+
+    {"from": "docs/ROADMAP.md", "to": "tracker/__init__.py", "type": "documents"},
+    {"from": "README.md", "to": "tracker/runner.py", "type": "documents"},
+    {"from": "CLAUDE.md", "to": "tools/repo_map.py", "type": "documents"},
+    {"from": "tools/repo_map.py", "to": "docs/repo-map.curated.json", "type": "reads"}
+  ]
+}
