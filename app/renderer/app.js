@@ -218,8 +218,20 @@ async function checkManifest() {
 
 // ── data flows ──────────────────────────────────────────────────────────
 
+let clientsRoot = "";      // the one folder every engagement sits under
+
 async function loadEngagements(preferPath) {
-  engagements = (await call(["list"])).engagements;
+  const listed = await call(["list"]);
+  engagements = listed.engagements;
+  clientsRoot = listed.root || "";
+  $("setup-card").classList.toggle("hidden", !listed.needs_root);
+  if (listed.needs_root) {
+    $("root-input").value = clientsRoot;
+    $("setup-note").textContent = clientsRoot
+      ? `${clientsRoot} is not a folder any more. Point the app at the right one.`
+      : "The scheduled job walks this same folder, so this is the only place it is set.";
+    return false;
+  }
   if (!engagements.length) return false;
   active =
     (preferPath && engagements.find((e) => e.path === preferPath)?.path) ||
@@ -229,28 +241,49 @@ async function loadEngagements(preferPath) {
   return true;
 }
 
-let autoResetDone = false;
-
 async function refresh(preferPath) {
   try {
-    if (!(await loadEngagements(preferPath))) throw new Error("No demo data yet");
+    if (!(await loadEngagements(preferPath))) {
+      if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
+      banner(`No engagements under ${clientsRoot} yet — click New Engagement to create the first.`, "ok");
+      $("rows").innerHTML = "";
+      return;
+    }
     render(await call(withEng("state")));
   } catch (err) {
-    // First launch on a fresh machine: build the demo data automatically.
-    if (!autoResetDone) {
-      autoResetDone = true;
-      try {
-        await call(["reset"]);
-        await loadEngagements();
-        render(await call(withEng("state")));
-        banner("Welcome — demo data built and ready.", "ok");
-        return;
-      } catch (resetErr) {
-        toast(resetErr.message);
-        return;
-      }
+    toast(err.message);
+  }
+}
+
+async function saveRoot() {
+  const btn = $("btn-save-root");
+  btn.disabled = true;
+  try {
+    const result = await call(["set-root"], { root: $("root-input").value.trim() });
+    banner(`Clients folder set to ${result.root} (written to ${result.settings_path}).`, "ok");
+    await refresh();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function installSchedule() {
+  if (!confirm("Register the daily job with Task Scheduler for this clients folder?\n\nIt files, scans and (on Saturdays) drafts reminders. Nothing is ever sent.")) return;
+  const btn = $("btn-schedule");
+  btn.disabled = true;
+  try {
+    const result = await call(["install-schedule"], { start: "07:00", every: 120 });
+    if (result.installed) {
+      banner(`Scheduled: every day from 07:00, repeating every 2 hours, over ${result.root}. Re-run this to change it.`, "ok");
+    } else {
+      banner(`Not Windows here. On the scheduling machine run:  ${result.command.join(" ")}`, "warn");
     }
-    toast(`${err.message} — click Reset Demo to build the demo data.`);
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -578,6 +611,13 @@ $("prior-list").addEventListener("change", (e) => {
 $("ro-create").addEventListener("click", rollForward);
 $("ro-name").addEventListener("keydown", (e) => e.key === "Enter" && rollForward());
 $("btn-check").addEventListener("click", checkManifest);
+$("btn-schedule").addEventListener("click", installSchedule);
+$("btn-save-root").addEventListener("click", saveRoot);
+$("root-input").addEventListener("keydown", (e) => e.key === "Enter" && saveRoot());
+$("btn-browse").addEventListener("click", async () => {
+  const picked = await window.tracker.pickFolder();
+  if (picked) $("root-input").value = picked;
+});
 $("btn-unlock").addEventListener("click", clearLock);
 $("ne-client").addEventListener("input", syncNameDefault);
 $("ne-year").addEventListener("input", syncNameDefault);

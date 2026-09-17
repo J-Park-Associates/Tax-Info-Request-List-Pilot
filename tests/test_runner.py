@@ -44,7 +44,10 @@ def build_engagement(tmp_path, samples, drops=("W-2 John Smith 2025.pdf",),
     """A scaffolded engagement with files waiting in the client's drop folder."""
     folder = tmp_path / name
     folder.mkdir(parents=True)
-    create_template(folder / MANIFEST_FILENAME, DEMO_ITEMS)
+    # The Engagement sheet is where the draft learns who the client is; the
+    # Engagement dataclass only echoes it.
+    create_template(folder / MANIFEST_FILENAME, DEMO_ITEMS,
+                    EngagementInfo(client="John Smith", firm="J Park"))
     result = scaffold_engagement(folder)
     for drop in drops:
         (result.shared_dir / drop).write_bytes((samples / drop).read_bytes())

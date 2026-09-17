@@ -211,8 +211,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate the scheduled job that runs the tracker unattended"
     )
-    parser.add_argument("--root", required=True,
-                        help="the folder the firm keeps its clients in")
+    parser.add_argument("--root", default="",
+                        help="the folder the firm keeps its clients in "
+                             "(default: the one in settings.json)")
     parser.add_argument("--python", default=sys.executable,
                         help="the Python to run it with (default: this one)")
     parser.add_argument("--working-dir", default=str(Path.cwd()),
@@ -233,6 +234,13 @@ if __name__ == "__main__":
     if ns.install and (ns.format != "xml" or not ns.out):
         parser.error("--install needs --format xml and --out")
 
+    if not ns.root:
+        from tracker.settings import clients_root, settings_path
+
+        configured = clients_root()
+        if configured is None:
+            parser.error(f"no --root given and none in {settings_path()}")
+        ns.root = str(configured)
     root_arg = resolve_root(ns.root, ns.working_dir)
 
     try:

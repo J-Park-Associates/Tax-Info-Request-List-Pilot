@@ -181,3 +181,16 @@ def test_the_review_folder_is_never_assigned_to_an_identifier(tmp_path):
     (tmp_path / "00 - Opening Balances").mkdir()
     assigned = assign_folders(tmp_path, ["00"])
     assert [p.name for p in assigned["00"]] == ["00 - Opening Balances"]
+
+
+def test_the_readme_contact_comes_from_the_engagement_sheet(tmp_path):
+    from tracker.manifest import EngagementInfo, RequestItem, create_template
+
+    folder = tmp_path / "Smith 2025"
+    folder.mkdir()
+    create_template(folder / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="W-2")],
+                    EngagementInfo(firm="J Park & Associates, CPA"))
+    result = scaffold_engagement(folder)
+    assert "Questions? Contact J Park & Associates, CPA." in result.readme.read_text(encoding="utf-8")
+    result = scaffold_engagement(folder, contact="Someone Else")
+    assert "Contact Someone Else." in result.readme.read_text(encoding="utf-8")

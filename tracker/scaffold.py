@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from tracker.manifest import Override, RequestItem, load_manifest
+from tracker.manifest import Override, RequestItem, load_engagement_info, load_manifest
 
 MANIFEST_FILENAME = "_manifest.xlsx"
 SHARED_DIR_NAME = "Shared"
@@ -132,16 +132,23 @@ class ScaffoldResult:
 def scaffold_engagement(
     engagement_dir: Path | str,
     *,
-    contact: str = "",
+    contact: str | None = None,
 ) -> ScaffoldResult:
     """Create/refresh the ``Shared/`` tree for one engagement.
 
     ``engagement_dir`` must contain ``_manifest.xlsx``. Raises
     :class:`tracker.manifest.ManifestError` if it is missing or invalid —
     scaffolding never proceeds from a manifest it can't fully validate.
+
+    The README's "Questions? Contact ..." line comes from the manifest's
+    Engagement sheet (firm, else sender) unless ``contact`` is given, so the
+    client's README and the reminder's sign-off never disagree.
     """
     engagement_dir = Path(engagement_dir)
     items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+    if contact is None:
+        info = load_engagement_info(engagement_dir / MANIFEST_FILENAME)
+        contact = info.firm or info.sender
 
     # Client side: one folder to drop into, plus the originals we keep.
     shared_dir = engagement_dir / SHARED_DIR_NAME
@@ -242,7 +249,8 @@ if __name__ == "__main__":
         description="Lay out Shared/ (client drop folder) and Prepared/ from _manifest.xlsx"
     )
     parser.add_argument("engagement_dir", help="folder containing _manifest.xlsx")
-    parser.add_argument("--contact", default="", help="contact line for _README.txt")
+    parser.add_argument("--contact", default=None,
+                        help="contact line for _README.txt (default: the Engagement sheet's firm)")
     ns = parser.parse_args()
 
     res = scaffold_engagement(ns.engagement_dir, contact=ns.contact)

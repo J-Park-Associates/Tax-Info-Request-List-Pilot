@@ -10,6 +10,7 @@ real demo-marketing tree.
 import datetime as dt
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -20,8 +21,13 @@ from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NA
 
 @pytest.fixture
 def demo_root(tmp_path, monkeypatch):
-    root = tmp_path / "demo"
-    monkeypatch.setattr(api, "DEMO_ROOT", root)
+    """A clients root recorded the way the app records it: settings.json beside the app."""
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    root = tmp_path / "Clients"
+    root.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    set_clients_root(root)
     return root
 
 
@@ -48,7 +54,6 @@ def test_unknown_command_is_a_json_error(capsys):
 
 
 def test_a_manifest_problem_is_a_json_error_not_a_traceback(capsys, demo_root):
-    demo_root.mkdir()
     code, payload = run(capsys, "state", "--engagement", str(demo_root / "nowhere"))
     assert code == 1
     assert "Manifest not found" in payload["error"]
@@ -274,7 +279,8 @@ def test_create_writes_the_engagement_sheet_the_scheduled_run_reads(capsys, demo
     assert payload["state"]["engagement"]["due"] == "2026-04-15"
     [found] = discover_engagements(demo_root).engagements
     assert found.client == "John Smith" and found.link == "https://drive.example/abc"
-    assert found.firm == api.CONTACT and found.reminders is True
+    assert found.firm == api.DEFAULT_FIRM and found.reminders is True
+    assert found.name == ""          # the folder is the name; nothing to drift
 
 
 def test_rollover_carries_the_client_but_not_last_years_link_or_due(capsys, demo_root):
@@ -287,7 +293,8 @@ def test_rollover_carries_the_client_but_not_last_years_link_or_due(capsys, demo
     info = payload["state"]["engagement"]
     assert info["client"] == "John Smith" and info["sender"] == "Jason"
     assert info["link"] == "" and info["due"] == ""
-    assert info["name"] == "Smith 2025 - 2026"
+    assert info["name"] == ""                      # the folder is the name
+    assert payload["created"] == "Smith 2025 - 2026"
 
 
 def test_a_bad_due_date_is_a_sentence(capsys, demo_root):
@@ -413,3 +420,53 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     wb.save(engagement / MANIFEST_FILENAME)
     code, payload = run(capsys, "scan", "--engagement", str(engagement))
     assert code == 1 and payload["error"].startswith("Row 2: Date Pattern")
+
+
+# ------------------------------------------------------------------ the root ----
+
+
+def test_without_a_root_the_app_is_told_to_set_one(capsys, tmp_path, monkeypatch):
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    code, payload = run(capsys, "list")
+    assert code == 0 and payload["needs_root"] is True and payload["engagements"] == []
+    code, payload = run(capsys, "create", stdin={"items": [{"identifier": "A01", "document": "W-2"}]})
+    assert code == 1 and "where your clients live" in payload["error"]
+
+
+def test_set_root_records_the_folder_the_job_will_walk(capsys, tmp_path, monkeypatch):
+    from tracker.settings import ENV_SETTINGS_DIR, clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    code, payload = run(capsys, "set-root", stdin={"root": str(clients)})
+    assert code == 0 and payload["root"] == str(clients)
+    assert clients_root() == clients
+    code, payload = run(capsys, "set-root", stdin={"root": str(tmp_path / "nope")})
+    assert code == 1 and "not a folder" in payload["error"]
+    code, payload = run(capsys, "settings")
+    assert payload["root"] == str(clients) and payload["exists"] is True
+
+
+def test_the_firm_is_typed_once_and_copied_after(capsys, demo_root):
+    first = {"name": "First", "firm": "Park & Daughters CPA",
+             "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=first)[0] == 0
+    second = {"name": "Second", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=second)
+    assert code == 0 and payload["state"]["engagement"]["firm"] == "Park & Daughters CPA"
+
+
+def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monkeypatch):
+    import tracker.api as api_module
+
+    calls = []
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name="Tax Document Tracker": (calls.append(xml), ["schtasks", "/create", "/xml", str(xml)])[1])
+    code, payload = run(capsys, "install-schedule", stdin={"start": "06:30", "every": 60})
+    assert code == 0, payload
+    assert payload["root"] == str(demo_root)
+    xml = Path(payload["xml"]).read_text(encoding="utf-16")
+    assert str(demo_root) in xml and "T06:30:00" in xml and "PT60M" in xml
+    assert calls == [Path(payload["xml"])]

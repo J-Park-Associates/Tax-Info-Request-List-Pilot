@@ -54,8 +54,10 @@ from typing import Iterable, Sequence
 from tracker.manifest import (
     RequestItem,
     Status,
+    load_engagement_info,
     load_manifest,
     pending_updates,
+    summarize,
     with_pending,
 )
 from tracker.scaffold import (
@@ -367,6 +369,11 @@ def draft_reminder(
 ) -> ReminderDraft:
     """Draft the reminder for one engagement. Reads only; sends nothing.
 
+    Who the client is, the share link, the due date and the sign-off come
+    from the manifest's Engagement sheet - the one place they are kept. The
+    keyword arguments override it for a one-off (the CLI's flags); nothing
+    else needs to pass them in.
+
     Raises :class:`ReminderError` when the manifest is missing or has never
     been scanned — a reminder built from unscanned rows would ask for
     documents the client may well have sent already.
@@ -375,6 +382,13 @@ def draft_reminder(
     manifest = engagement_dir / MANIFEST_FILENAME
     if not manifest.is_file():
         raise ReminderError(f"no {MANIFEST_FILENAME} in {engagement_dir}")
+    info = load_engagement_info(manifest)
+    client_name = client_name or info.client
+    engagement_name = engagement_name or info.name
+    share_link = share_link or info.link
+    due_date = due_date or info.due
+    sender = sender or info.sender
+    firm = firm or info.firm
 
     # Statuses the last scan could not write because Excel had the manifest
     # open are still the truth about what arrived; a draft that ignored
@@ -390,8 +404,8 @@ def draft_reminder(
         )
 
     lines, attention, gaps = triage(items)
-    active = [item for item in items if not item.manual_override]
-    received = sum(1 for item in active if item.status == Status.RECEIVED)
+    summary = summarize(items)
+    received, total = summary.received, summary.total
     engagement = engagement_name or engagement_dir.name
 
     body = _compose_body(
@@ -403,7 +417,7 @@ def draft_reminder(
         sender=sender,
         firm=firm,
         received=received,
-        total=len(active),
+        total=total,
     )
 
     if lines:
@@ -419,7 +433,7 @@ def draft_reminder(
         needs_attention=attention,
         scaffold_gaps=gaps,
         needs_review_files=count_needs_review(engagement_dir),
-        total_requests=len(active),
+        total_requests=total,
         received_requests=received,
         pending_statuses=len(deferred),
     )
