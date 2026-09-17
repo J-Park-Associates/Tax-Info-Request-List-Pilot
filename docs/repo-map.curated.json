@@ -15,7 +15,7 @@
     "client drops into Shared/",
     "tracker.filer",
     "tracker.scanner",
-    "tracker.reminder (Saturdays)",
+    "tracker.reminder (on DRAFT_WEEKDAY)",
     "a person sends the draft"
   ],
   "nodes": {
@@ -33,7 +33,7 @@
     },
     "tracker/content_check.py": {
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. Caches verdicts.",
-      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES (10) pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run."
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run."
     },
     "tracker/router.py": {
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only).",
@@ -48,11 +48,11 @@
       "notes": "Holds a stale-aware per-engagement run lock, so two scheduled runs cannot overlap. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of 'files changed'. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them."
     },
     "tracker/locking.py": {
-      "role": "One lock per engagement (_scan.lock, O_EXCL, stale after an hour), held by the filer while sorting and by the scanner while scanning. EngagementLockedError; engagement_lock() context manager.",
+      "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by the filer while sorting and by the scanner while scanning. EngagementLockedError; engagement_lock() context manager.",
       "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's index rows were overwritten. Dry runs never take it. lock_status()/clear_stale_lock() back the app's lock notice: a stale lock can be cleared from the app, a fresh one is refused with how long to wait."
     },
     "tracker/settings.py": {
-      "role": "settings.json beside the app: the one place the clients root and the firm are kept. clients_root()/set_clients_root(), firm()/set_firm(); product_name() reads app/package.json productName (or TRACKER_PRODUCT_NAME from the shell). TRACKER_SETTINGS_DIR from the Electron shell says where beside-the-app is.",
+      "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root and the firm are kept. clients_root()/set_clients_root(), firm()/set_firm(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is.",
       "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever."
     },
     "tracker/reasons.py": {
@@ -72,15 +72,15 @@
       "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, an unreadable manifest is listed with its problem rather than dropped, and a root with no manifest at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's sheet is the record. Engagement wraps EngagementInfo (the sheet as loaded) and delegates its fields rather than copying them, so a field added to the sheet reaches discovery without a second edit."
     },
     "tracker/runner.py": {
-      "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on Saturdays) draft. This is the whole scheduled task.",
+      "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
       "notes": "Owns the Saturday rule in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too."
     },
     "tracker/scheduling.py": {
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings.json root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name, time limit) are module constants the API's install-schedule reports back so the app shows what was actually installed."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings file's root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name, time limit) are module constants the API's install-schedule reports back so the app shows what was actually installed."
     },
     "tracker/api.py": {
-      "role": "The JSON command layer the desktop app talks to: state, scan, assign, create, rollover, templates, list, priors, check, unlock, settings, set-root, install-schedule.",
+      "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
       "notes": "Every command prints one JSON object and returns an exit code — errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=never - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and copies the newest engagement's firm. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes."
     },
     "tracker/templates.py": {
@@ -91,7 +91,7 @@
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
     },
     "api_entry.py": {
-      "role": "PyInstaller entry point. Freezes tracker.api into tracker-api.exe for the portable Windows app.",
+      "role": "PyInstaller entry point. Freezes tracker.api into the executable app/package.json's config.apiName names, for the portable Windows app.",
       "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module."
     },
     ".github/workflows/ci.yml": {
@@ -118,7 +118,7 @@
       "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed, and a change to this file forces a full rebuild — new derivation rules must not leave edges typed by the old ones. Test edges are three-way on purpose: `tests` (the test file owning the module by name) is coverage, `exercises` (any other test importing it) is not, and a test importing another test is a plain `imports`."
     },
     "app/main.js": {
-      "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen tracker-api.exe in the portable build) and relays its JSON to the renderer over IPC.",
+      "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC.",
       "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command."
     },
     "app/preload.js": {
@@ -189,17 +189,17 @@
     "rule:originals-are-never-altered": {
       "type": "concept",
       "layer": "constraint",
-      "role": "Originals are moved byte for byte under their own names into Shared/PBC/ and never renamed in place, edited or deleted. All work happens on copies."
+      "role": "Originals are never altered. Files are moved byte for byte under their own names into Shared/PBC/; all work happens on copies, and every move is recorded in _index.xlsx."
     },
     "rule:nothing-is-guessed": {
       "type": "concept",
       "layer": "constraint",
-      "role": "A document is filed only when exactly one request accepts it. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person."
+      "role": "Nothing is guessed. A document is filed only when exactly one request accepts it. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person - misfiling a tax document is worse than not filing it."
     },
     "rule:nothing-is-ever-sent": {
       "type": "concept",
       "layer": "constraint",
-      "role": "The system drafts client emails and stops. There is no SMTP, no mail client and no network call in the reminder or scheduling path; a person always sends."
+      "role": "Nothing is ever sent. The system drafts client emails and stops. There is no SMTP, no mail client and no network call in the reminder or scheduling path."
     }
   },
   "edges": [

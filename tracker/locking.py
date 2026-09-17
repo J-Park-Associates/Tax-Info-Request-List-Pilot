@@ -11,8 +11,8 @@ and it is not per step: whoever holds ``_scan.lock`` owns the engagement
 until they let go.
 
 The lock is a file created with ``O_EXCL`` (atomic on NTFS and POSIX) that
-names the process and the time. A lock older than an hour is assumed to
-belong to a run that died without cleaning up and is replaced with a
+names the process and the time. A lock older than ``STALE_LOCK_SECONDS`` is
+assumed to belong to a run that died without cleaning up and is replaced with a
 warning; a younger one is respected and the caller is told to wait.
 
 Dry runs never take the lock - they write nothing, so they cannot race.

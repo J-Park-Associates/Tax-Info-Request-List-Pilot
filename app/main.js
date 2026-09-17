@@ -4,6 +4,7 @@
 
 const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -63,6 +64,14 @@ ipcMain.handle("pick-folder", async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
+// The window's colour before the page paints is the stylesheet's page
+// background, read from the one place it is defined.
+function pageBackground() {
+  const css = fs.readFileSync(path.join(__dirname, "renderer", "style.css"), "utf8");
+  const match = /--bg:\s*(#[0-9a-fA-F]{3,8})/.exec(css);
+  return match ? match[1] : undefined;
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
@@ -70,7 +79,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     title: PRODUCT_NAME,
-    backgroundColor: "#F5F7FA",
+    backgroundColor: pageBackground(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

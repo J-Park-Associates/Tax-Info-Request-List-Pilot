@@ -9,7 +9,9 @@ import datetime as dt
 
 import pytest
 
+from tracker import reasons
 from tracker.manifest import (
+    EXPECTED_PATTERN,
     Override,
     RequestItem,
     Status,
@@ -154,7 +156,7 @@ def test_internal_vocabulary_never_reaches_the_client(tmp_path):
 def test_multi_file_requests_say_how_many_are_expected(tmp_path):
     draft = draft_reminder(engagement(tmp_path))
     line = next(l for l in draft.lines if l.item.identifier == "A01")
-    assert line.ask == "2 files expected"
+    assert line.ask == EXPECTED_PATTERN.format(n=2)
 
 
 # ------------------------------------------------- what we hold back, and why ----
@@ -172,7 +174,7 @@ def test_rows_we_have_not_read_go_to_the_accountant_not_the_client():
 
 def test_a_missing_request_folder_is_our_problem_not_the_clients():
     rows = [item("B02", "Payroll Reports", Status.MISSING,
-                 validation_notes="request folder not found; re-run scaffold")]
+                 validation_notes=reasons.NO_REQUEST_FOLDER.format())]
     lines, _, gaps = triage(rows)
     assert lines == [], "we cannot claim a document never arrived with nowhere to put it"
     assert [f.item.identifier for f in gaps] == ["B02"]
@@ -263,7 +265,7 @@ def test_written_draft_appends_firm_side_notes_below_the_email(tmp_path):
              validation_notes="scan.pdf: no readable text found in PDF, even after "
                               "OCR; review manually"),
         item("B02", "Payroll Reports", Status.MISSING,
-             validation_notes="request folder not found; re-run scaffold"),
+             validation_notes=reasons.NO_REQUEST_FOLDER.format()),
     ]
     folder = engagement(tmp_path, rows)
     review = folder / PREPARED_DIR_NAME / REVIEW_DIR_NAME

@@ -24,6 +24,11 @@ from dataclasses import dataclass
 #: vague about our rules and specific about what the client should do.
 GENERIC_ASK = "we could not read the file that arrived; please send it again"
 
+#: The one firm-side sentence: the row is ours to look at, not the client's.
+FIRM_WAITING = "waiting on a person here to read it, not on the client"
+FIRM_WAITING_PARTIAL = ("some of what arrived is waiting on a person here to "
+                        "read it; confirm before asking for more")
+
 
 @dataclass(frozen=True, slots=True)
 class Reason:
@@ -34,6 +39,7 @@ class Reason:
     marker: str        # a literal part of the template the reminder keys on
     ask: str = ""      # the client-facing sentence; "" means GENERIC_ASK
     firm_side: bool = False   # True: waiting on a person here, never put to the client
+    firm_note: str = ""       # what the firm is told instead; "" means FIRM_WAITING
 
     def format(self, **detail: object) -> str:
         return self.template.format(**detail)
@@ -45,6 +51,14 @@ class Reason:
     def client_ask(self) -> str:
         return self.ask or GENERIC_ASK
 
+    @property
+    def firm_side_note(self) -> str:
+        return self.firm_note or FIRM_WAITING
+
+
+#: How a client turns a Google Docs/Sheets shortcut into a document we can
+#: read. Said once: the note, the ask and the folder README all quote it.
+GOOGLE_EXPORT_HINT = "File > Download > PDF or Excel"
 
 # ---- tier 2: the file itself -----------------------------------------------
 
@@ -57,10 +71,10 @@ UNREADABLE_PDF = Reason("unreadable-pdf", "not a readable PDF ({error})", "not a
 GOOGLE_STUB = Reason(
     "google-stub",
     ".{extension} is a Google Docs shortcut, not the document itself; "
-    "ask the client to download it (File > Download > PDF or Excel) and upload that copy",
+    f"ask the client to download it ({GOOGLE_EXPORT_HINT}) and upload that copy",
     "Google Docs shortcut",
     "that was a Google Docs/Sheets shortcut rather than the document itself; "
-    "please download it (File > Download > PDF or Excel) and send that copy",
+    f"please download it ({GOOGLE_EXPORT_HINT}) and send that copy",
 )
 EXTENSION_NOT_ALLOWED = Reason(
     "extension", "extension .{extension} not allowed (expected: {allowed})", "not allowed",
@@ -118,8 +132,9 @@ NO_TEXT_AFTER_OCR = Reason(
 # ---- the folder ---------------------------------------------------------------
 
 NO_REQUEST_FOLDER = Reason(
-    "no-folder", "request folder not found; re-run scaffold", "request folder not found",
+    "no-folder", "request folder not found; the next pass creates it", "request folder not found",
     firm_side=True,
+    firm_note="no request folder, so nothing could be filed here; the next pass creates it",
 )
 
 #: Every reason, in the order the reminder tries them: the specific causes

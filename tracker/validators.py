@@ -39,9 +39,14 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 # Junk that never counts as a client document.
 _IGNORED_NAMES = {"desktop.ini", "thumbs.db", ".ds_store"}
-#: Office lock files; Google Drive transfer temps share the staging prefix below.
+#: Office lock files.
 OFFICE_LOCK_PREFIX = "~$"
-_IGNORED_PREFIXES = (OFFICE_LOCK_PREFIX, ".tmp.drive")
+#: Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
+#: folders (.tmp.driveupload / .tmp.drivedownload); anything under one is a
+#: partial transfer, not a delivered document, and the folder itself is
+#: the sync client's, never the client's.
+_SYNC_STAGING_PREFIX = ".tmp.drive"
+_IGNORED_PREFIXES = (OFFICE_LOCK_PREFIX, _SYNC_STAGING_PREFIX)
 _IGNORED_SUFFIXES = (".tmp", ".driveupload", ".drivedownload")
 
 # Google-native documents sync down as tiny shortcut/stub files, not real
@@ -102,11 +107,13 @@ class FolderResult:
 # ----------------------------------------------------------------- tier 1 ----
 
 
-#: Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
-#: folders (.tmp.driveupload / .tmp.drivedownload); anything under one is a
-#: partial transfer, not a delivered document, and the folder itself is
-#: the sync client's, never the client's.
-_SYNC_STAGING_PREFIX = ".tmp.drive"
+
+
+
+def google_stub_examples(limit: int = 2) -> str:
+    """``.gdoc, .gsheet`` - the commonest stub types, for a sentence to a client."""
+    common = [ext for ext in ("gdoc", "gsheet", "gslides") if ext in _GOOGLE_STUB_EXTENSIONS]
+    return ", ".join(f".{ext}" for ext in common[:limit])
 
 
 def is_sync_staging(name: str) -> bool:
@@ -321,7 +328,7 @@ if __name__ == "__main__":
         folders = assigned[item.identifier]
         print(f"[{item.identifier}] {item.document}")
         if not folders:
-            print("    ! no folder found (re-run scaffold?)\n")
+            print(f"    ! {reasons.NO_REQUEST_FOLDER.format()}\n")
             continue
         for folder in folders:
             result = check_folder(folder, item)

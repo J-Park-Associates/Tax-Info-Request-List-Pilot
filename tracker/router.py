@@ -238,7 +238,7 @@ def route_file(
     if refusals and len(refusals) == sum(1 for i in items if _considers(i)):
         if len(set(refusals)) == 1:
             return Routing(path=path, identifier=None, reason=f"{UNMATCHED}; {refusals[0]}")
-        if all(r.startswith("extension .") for r in refusals):
+        if all(reasons.EXTENSION_NOT_ALLOWED.matches(r) for r in refusals):
             ext = extension_of(path) or "(none)"
             return Routing(
                 path=path,

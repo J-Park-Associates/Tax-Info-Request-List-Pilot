@@ -49,7 +49,7 @@
         </button>
         <button id="btn-scan" class="btn btn-primary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M22 4 12 14l-3-3"/></svg>
-          <span id="scan-label">Sort &amp; Scan</span>
+          <span id="scan-label"></span>
         </button>
       </div>
 
@@ -63,7 +63,7 @@
           <span class="summary">one folder; every engagement is a folder under it holding a manifest</span>
         </div>
         <div class="setup-row">
-          <input id="root-input" type="text" placeholder="e.g. D:\OneDrive\Clients" aria-label="Clients folder" />
+          <input id="root-input" type="text" aria-label="Clients folder" />
           <button id="btn-browse" class="btn">Browse…</button>
         </div>
         <div class="setup-row">
@@ -105,22 +105,22 @@
         <ul id="review-list" class="review"></ul>
       </section>
 
-      <footer class="assurances">
+      <footer id="assurances" class="assurances">
         <div class="assure">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <div><strong>Deterministic rules</strong><span>No AI ever reads client documents</span></div>
+          <div><strong></strong><span></span></div>
         </div>
         <div class="assure">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          <div><strong>Originals never altered</strong><span>Preserved byte-for-byte in PBC, never renamed or deleted</span></div>
+          <div><strong></strong><span></span></div>
         </div>
         <div class="assure">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-          <div><strong>Every move is logged</strong><span>The index maps each original to where it was filed</span></div>
+          <div><strong></strong><span></span></div>
         </div>
         <div class="assure">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <div><strong>Your judgment wins</strong><span>One override column beats any automated result</span></div>
+          <div><strong></strong><span></span></div>
         </div>
       </footer>
     </main>
@@ -142,7 +142,7 @@
         <div class="roll-grid">
           <label class="field">
             <span>Tax year</span>
-            <input id="ro-year" type="number" min="2000" max="2100" placeholder="e.g. 2026" />
+            <input id="ro-year" type="number" />
           </label>
           <label class="field">
             <span>Form template (fills blanks, offers new rows)</span>
@@ -151,7 +151,7 @@
         </div>
         <label class="field">
           <span>Engagement name</span>
-          <input id="ro-name" type="text" placeholder="defaults to last year's name and the new year" />
+          <input id="ro-name" type="text" />
         </label>
         <div class="roll-grid three">
           <label class="field">
@@ -169,7 +169,7 @@
         </div>
         <label class="wiz-check">
           <input id="ro-include-new" type="checkbox" />
-          <span>Also add checklist rows this client has never had (otherwise they are listed as offers on the Carried Forward sheet)</span>
+          <span id="ro-include-note"></span>
         </label>
 
         <div class="modal-actions">
@@ -211,7 +211,7 @@
           </label>
           <label class="field">
             <span>Tax year</span>
-            <input id="ne-year" type="number" min="2000" max="2100" title="Defaults to the most recently ended year; the checklist's periods follow it" />
+            <input id="ne-year" type="number" title="Defaults to the most recently ended year; the checklist's periods follow it" />
           </label>
           <label class="field">
             <span>Share link (optional)</span>

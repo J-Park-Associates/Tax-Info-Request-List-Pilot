@@ -62,6 +62,10 @@ from openpyxl.utils import get_column_letter
 
 from tracker.locking import engagement_lock
 from tracker.manifest import (
+    CORRUPT_SUFFIX,
+    LOCK_RETRIES,
+    LOCK_RETRY_DELAY,
+    PENDING_SUFFIX,
     Override,
     RequestItem,
     add_any_keyword,
@@ -94,9 +98,7 @@ log = logging.getLogger("tracker.filer")
 INDEX_FILENAME = "_index.xlsx"
 INDEX_SHEET = "Index"
 #: Rows that could not be written because Excel had the index open.
-INDEX_PENDING_FILENAME = "_index.pending.json"
-INDEX_RETRIES = 5
-INDEX_RETRY_DELAY = 0.5
+INDEX_PENDING_FILENAME = Path(INDEX_FILENAME).stem + PENDING_SUFFIX
 _MAX_STEM = 110
 
 #: Decision values written to the index.
@@ -260,7 +262,7 @@ def _read_pending_index(path: Path) -> list[IndexEntry]:
         return [IndexEntry(**row) for row in raw]
     except (json.JSONDecodeError, TypeError, ValueError, OSError) as exc:
         # Keep the evidence; an unreadable sidecar must not be retried forever.
-        corrupt = sidecar.with_suffix(".corrupt.json")
+        corrupt = sidecar.with_suffix(CORRUPT_SUFFIX)
         sidecar.replace(corrupt)
         log.error("Unreadable index sidecar moved to %s: %s", corrupt.name, exc)
         return []
@@ -347,8 +349,8 @@ def write_index(
 
     Returns True if the workbook was written, False if rows were deferred.
     """
-    retries = INDEX_RETRIES if retries is None else retries
-    delay = INDEX_RETRY_DELAY if retry_delay is None else retry_delay
+    retries = LOCK_RETRIES if retries is None else retries
+    delay = LOCK_RETRY_DELAY if retry_delay is None else retry_delay
     for attempt in range(1, retries + 1):
         try:
             _save_index(path, entries)

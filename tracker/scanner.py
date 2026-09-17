@@ -25,7 +25,7 @@ Strictly read-only: the scanner reads the prepared copies and writes only
 the manifest, content cache and run-lock. It never touches ``Shared/`` at
 all — the client's originals are the filer's business, and even there they
 are only ever moved, never altered. The engagement lock (:mod:`tracker.locking`,
-shared with the filer) prevents overlapping runs; stale locks (>1 h) are replaced.
+shared with the filer) prevents overlapping runs; stale locks are replaced.
 """
 
 from __future__ import annotations

@@ -60,13 +60,13 @@ ORIGIN_WAIVED = "waived last year"
 ORIGIN_NEW = "new this year"
 
 CARRIED_SHEET = "Carried Forward"
-CARRIED_HEADERS = (
-    COL_IDENTIFIER, COL_DOCUMENT, "Origin", "Why it is on the list",
-    "Last Year Status", "Last Year Files",
-)
+#: The Carried Forward sheet, described once: header -> column width.
+CARRIED_LAYOUT: dict[str, int] = {
+    COL_IDENTIFIER: 12, COL_DOCUMENT: 40, "Origin": 22, "Why it is on the list": 52,
+    "Last Year Status": 18, "Last Year Files": 14,
+}
+CARRIED_HEADERS = tuple(CARRIED_LAYOUT)
 
-#: A four-digit year standing on its own. The digit guards keep an account
-#: number like 120250 from being read as "2025" and quietly shifted.
 @dataclass(frozen=True, slots=True)
 class RolledItem:
     """One row of next year's list, and where it came from."""
@@ -295,7 +295,7 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
             ws.append(["Sent last year but never filed — check these are covered:"])
             for line in report.unfiled_last_year:
                 ws.append(["", line])
-        for column, width in zip(ws.column_dimensions, (12, 40, 22, 52, 18, 14)):
+        for column, width in zip(ws.column_dimensions, CARRIED_LAYOUT.values()):
             ws.column_dimensions[column].width = width
         ws.freeze_panes = "A2"
         wb.save(path)

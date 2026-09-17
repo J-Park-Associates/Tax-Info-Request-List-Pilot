@@ -32,9 +32,13 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
+from tracker import STANDING_RULES
 from tracker.manifest import (
-    ANY_EXTENSION,
     DEFAULT_EXTENSIONS,
+    EXPECTED_PATTERN,
+    UNSCANNED_LABEL,
+    YEAR_MAX,
+    YEAR_MIN,
     EngagementInfo,
     ManifestError,
     Override,
@@ -71,6 +75,7 @@ from tracker.rollover import (
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PBC_DIR_NAME,
+    REVIEW_DIR_NAME,
     PREPARED_DIR_NAME,
     SHARED_DIR_NAME,
     sanitize_component,
@@ -86,6 +91,7 @@ from tracker.scheduling import (
     task_scheduler_xml,
 )
 from tracker.settings import (
+    EXAMPLE_ROOT,
     SettingsError,
     clients_root,
     firm,
@@ -121,10 +127,16 @@ def _root() -> Path:
 # ----------------------------------------------------------------- commands ----
 
 
+#: The one flag the app passes: which engagement a command is about.
+ENGAGEMENT_FLAG = "--engagement"
+#: What a new client is called in the name preview before a name is typed.
+NEW_CLIENT_PLACEHOLDER = "New"
+
+
 def _engagement_dir(argv: list[str]) -> Path:
-    if "--engagement" in argv:
-        return Path(argv[argv.index("--engagement") + 1])
-    raise ManifestError("Pick an engagement first (--engagement <folder>)")
+    if ENGAGEMENT_FLAG in argv:
+        return Path(argv[argv.index(ENGAGEMENT_FLAG) + 1])
+    raise ManifestError(f"Pick an engagement first ({ENGAGEMENT_FLAG} <folder>)")
 
 
 #: How a new engagement is named when nobody types a name. The renderer
@@ -142,11 +154,20 @@ def form_label(form: str) -> str:
 
 
 def default_engagement_name(client: str, year: int, form: str) -> str:
-    return NAME_PATTERN.format(client=client or "New", year=year, form=form_label(form)).strip()
+    return NAME_PATTERN.format(client=client or NEW_CLIENT_PLACEHOLDER, year=year,
+                               form=form_label(form)).strip()
 
 
 def _slug(text: str) -> str:
     return "".join(ch if ch.isalnum() else "-" for ch in text.lower()).strip("-")
+
+
+def standing_rules() -> list[dict]:
+    """The package's standing rules with the folder names filled in."""
+    names = {"shared": SHARED_DIR_NAME, "pbc": PBC_DIR_NAME, "review": REVIEW_DIR_NAME,
+             "index": INDEX_FILENAME}
+    return [{"headline": headline, "detail": detail.format(**names)}
+            for headline, detail in STANDING_RULES]
 
 
 def _vocab() -> dict:
@@ -161,16 +182,23 @@ def _vocab() -> dict:
         "product": product_name(),
         "firm": firm(),
         "statuses": [{"value": status, "key": _slug(status)} for status in Status.ALL],
-        "unscanned_label": "Requested",
+        "unscanned_label": UNSCANNED_LABEL,
+        "unscanned_key": _slug(UNSCANNED_LABEL),
         "overrides": {"accepted": Override.ACCEPTED, "waived": Override.WAIVED},
         "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE},
         "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
-        "any_extension": ANY_EXTENSION,
-        "stale_lock_minutes": STALE_LOCK_SECONDS // 60,
+        "expected_pattern": EXPECTED_PATTERN,
         "carried_sheet": CARRIED_SHEET,
+        "pbc_dir": PBC_DIR_NAME,
         "name_pattern": NAME_PATTERN,
         "rollover_name_pattern": ROLLOVER_NAME_PATTERN,
-        "new_client_placeholder": "New",
+        "new_client_placeholder": NEW_CLIENT_PLACEHOLDER,
+        "year_min": YEAR_MIN,
+        "year_max": YEAR_MAX,
+        "example_root": EXAMPLE_ROOT,
+        "engagement_flag": ENGAGEMENT_FLAG,
+        "commands": sorted(COMMANDS),
+        "rules": standing_rules(),
         "schedule": {
             "start": DEFAULT_START,
             "every": DEFAULT_REPEAT_MINUTES,
@@ -254,20 +282,7 @@ def _state(engagement: Path) -> dict:
             "waived": summary.waived, "unscanned": summary.unscanned,
         },
         "items": [
-            {
-                "identifier": i.identifier,
-                "document": i.document,
-                "period": i.period,
-                "expected_count": i.expected_count,
-                "allowed_extensions": list(i.allowed_extensions),
-                "required_keywords": list(i.required_keywords),
-                "any_keywords": list(i.any_keywords),
-                "manual_override": i.manual_override,
-                "status": i.status,
-                "received_date": i.received_date.isoformat() if i.received_date else None,
-                "file_count": i.file_count,
-                "validation_notes": i.validation_notes,
-            }
+            asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None}
             for i in items
         ],
         "index": [asdict(e) | {"filed_as": e.filed_as} for e in read_index(engagement / INDEX_FILENAME)],

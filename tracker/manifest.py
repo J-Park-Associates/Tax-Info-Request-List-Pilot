@@ -87,10 +87,17 @@ ANY_EXTENSION = "*"
 #: in Period - typing it again as a regex was the redundancy, and not typing
 #: it was a 2024 form satisfying a TY2025 request.
 NO_DATE_CHECK = "*"
+#: The years a tax year can be. The pattern below is built from them, and
+#: the app's year inputs are bounded by them.
+YEAR_MIN = 1900
+YEAR_MAX = 2099
 #: A four-digit year standing on its own. The digit guards keep an account
 #: number like 120250 from being read as "2025". Used wherever a year is
 #: found or shifted: the derived year check, rollover, the catalog.
-YEAR_PATTERN = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+YEAR_PATTERN = re.compile(
+    r"(?<!\d)(?:" + "|".join(str(c) for c in range(YEAR_MIN // 100, YEAR_MAX // 100 + 1))
+    + r")\d{2}(?!\d)"
+)
 _PERIOD_YEAR = YEAR_PATTERN
 
 #: Characters Windows forbids in file and folder names, plus control
@@ -117,6 +124,32 @@ class Status:
     PENDING_SYNC = "Pending Sync"
 
     ALL = (MISSING, PARTIAL, FAILED, RECEIVED, PENDING_SYNC)
+    #: The client still owes us something: what the reminder asks for and
+    #: what ``summarize`` counts as outstanding, decided once.
+    OUTSTANDING = (MISSING, PARTIAL, FAILED)
+
+
+#: What a row with no status yet is called wherever a count is shown: it
+#: has been requested and nothing has been looked at. Not a Status, because
+#: the scanner never writes it.
+UNSCANNED_LABEL = "Requested"
+
+#: The Engagement sheet's yes/no cells, as written; ``_parse_yes_no`` also
+#: reads the usual spellings a person types.
+YES = "yes"
+NO = "no"
+
+#: Sidecars beside a workbook: rows waiting because Excel held it, an
+#: unreadable sidecar kept as evidence, and the temp file an atomic save
+#: lands in first.
+PENDING_SUFFIX = ".pending.json"
+CORRUPT_SUFFIX = ".corrupt.json"
+TEMP_SUFFIX = ".tmp"
+
+#: How long a locked workbook is retried before rows are deferred to the
+#: sidecar; the index uses the same policy.
+LOCK_RETRIES = 5
+LOCK_RETRY_DELAY = 0.5
 
 
 class Override:
@@ -158,6 +191,11 @@ class RequestItem:
         """``A01 - W-2 Wage Statements (TY2025)`` - how a request is named to people."""
         text = f"{self.identifier} - {self.document}"
         return f"{text} ({self.period})" if self.period else text
+
+    @property
+    def expected_text(self) -> str:
+        """``2 files expected`` when more than one file is due, else ``""``."""
+        return EXPECTED_PATTERN.format(n=self.expected_count) if self.expected_count > 1 else ""
 
 
 def shift_years(text: str, delta: int) -> str:
@@ -226,6 +264,10 @@ class EngagementInfo:
 
 
 #: Row labels on the Engagement sheet, in the order they are written.
+#: How a multi-file request says so, everywhere (the README, the reminder,
+#: the app's wizard preview).
+EXPECTED_PATTERN = "{n} files expected"
+
 ENGAGEMENT_FIELDS = (
     ("Client", "client"),
     ("Engagement Name", "name"),
@@ -237,6 +279,8 @@ ENGAGEMENT_FIELDS = (
     ("Active", "active"),
     ("Rolled From", "rolled_from"),
 )
+#: field name -> the sheet's label, for messages that name a cell.
+ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,7 +514,7 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
 
 def pending_path(manifest_path: Path) -> Path:
     """Sidecar file that holds updates deferred by an Excel lock."""
-    return manifest_path.with_name(manifest_path.stem + ".pending.json")
+    return manifest_path.with_name(manifest_path.stem + PENDING_SUFFIX)
 
 
 def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
@@ -494,7 +538,7 @@ def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
         }
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         # Preserve the evidence rather than retry-looping on garbage forever.
-        corrupt = sidecar.with_suffix(".corrupt.json")
+        corrupt = sidecar.with_suffix(CORRUPT_SUFFIX)
         sidecar.replace(corrupt)
         log.error("Unreadable pending sidecar moved to %s: %s", corrupt.name, exc)
         return {}
@@ -557,7 +601,7 @@ def save_workbook_atomically(wb: Workbook, path: Path) -> None:
     A file Excel holds open still raises ``PermissionError`` (from the
     replace rather than the save), so lock-retry callers behave as before.
     """
-    temp = path.with_name(path.name + ".tmp")
+    temp = path.with_name(path.name + TEMP_SUFFIX)
     try:
         wb.save(temp)
         os.replace(temp, path)
@@ -611,8 +655,8 @@ def write_statuses(
     path: Path | str,
     updates: Mapping[str, StatusUpdate],
     *,
-    retries: int = 5,
-    retry_delay: float = 0.5,
+    retries: int = LOCK_RETRIES,
+    retry_delay: float = LOCK_RETRY_DELAY,
 ) -> bool:
     """Write scanner columns for the given identifiers, lock-resiliently.
 
@@ -692,7 +736,7 @@ class Summary:
         """``Received: 3 · Missing: 2 · Waived: 1`` - the same everywhere."""
         parts = [f"{status}: {n}" for status, n in sorted(self.counts.items())]
         if self.unscanned:
-            parts.append(f"Requested: {self.unscanned}")
+            parts.append(f"{UNSCANNED_LABEL}: {self.unscanned}")
         if self.waived:
             parts.append(f"Waived: {self.waived}")
         return " · ".join(parts) or "no requests"
@@ -716,7 +760,7 @@ def summarize(items: Iterable[RequestItem]) -> Summary:
         counts[status] = counts.get(status, 0) + 1
         if status == Status.RECEIVED:
             received += 1
-        elif status in (Status.MISSING, Status.PARTIAL, Status.FAILED):
+        elif status in Status.OUTSTANDING:
             outstanding += 1
     return Summary(counts=counts, total=total, received=received,
                    outstanding=outstanding, waived=waived, unscanned=unscanned)
@@ -792,12 +836,12 @@ def _parse_yes_no(value: object, label: str, default: bool) -> bool:
         return default
     if isinstance(value, bool):
         return value
-    if text in ("yes", "y", "true", "1"):
+    if text in (YES, "y", "true", "1"):
         return True
-    if text in ("no", "n", "false", "0"):
+    if text in (NO, "n", "false", "0"):
         return False
     raise ManifestError(
-        f"{ENGAGEMENT_SHEET_NAME} sheet: {label} must be yes or no, got {value!r}"
+        f"{ENGAGEMENT_SHEET_NAME} sheet: {label} must be {YES} or {NO}, got {value!r}"
     )
 
 
@@ -846,16 +890,17 @@ def _write_engagement_sheet(wb: Workbook, info: EngagementInfo) -> None:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
         value = getattr(info, field_name)
         if isinstance(value, bool):
-            value = "yes" if value else "no"
+            value = YES if value else NO
         elif isinstance(value, dt.date):
             cell = ws.cell(row=row, column=2, value=value)
             cell.number_format = DATE_FORMAT
             continue
         ws.cell(row=row, column=2, value=value or None)
+    labels = ENGAGEMENT_LABELS
     note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1,
-                   value="Reminders: no = this client is not chased by email. "
-                         "Active: no = the scheduled run skips this folder. "
-                         "Rolled From is written by the rollover; the engagement it "
+                   value=f"{labels['reminders']}: {NO} = this client is not chased by email. "
+                         f"{labels['active']}: {NO} = the scheduled run skips this folder. "
+                         f"{labels['rolled_from']} is written by the rollover; the engagement it "
                          "names is no longer chased.")
     note.font = Font(italic=True, color="666666")
 

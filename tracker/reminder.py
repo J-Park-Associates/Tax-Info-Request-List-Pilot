@@ -75,8 +75,8 @@ NEW_DRAFT_FILENAME = "reminder-draft.NEW.txt"
 _FINGERPRINT_PREFIX = "Fingerprint: "
 _SEPARATOR = "=" * 60
 
-#: Statuses that mean the client still owes us something.
-OUTSTANDING = (Status.MISSING, Status.PARTIAL, Status.FAILED)
+#: Statuses that mean the client still owes us something (re-exported).
+OUTSTANDING = Status.OUTSTANDING
 
 SECTION_MISSING = "NOT YET RECEIVED"
 SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
@@ -102,10 +102,7 @@ class ReminderLine:
 
     @property
     def label(self) -> str:
-        entry = f"{self.item.identifier} - {self.item.document}"
-        if self.item.period:
-            entry += f" ({self.item.period})"
-        return entry
+        return self.item.label
 
     def render(self) -> str:
         line = f"  - {self.label}"
@@ -177,13 +174,14 @@ def client_ask(item: RequestItem) -> str:
 def _firm_side_reason(item: RequestItem) -> str:
     """Why this row is the firm's problem rather than the client's, or ""."""
     note = item.validation_notes or ""
-    if any(r.matches(note) for r in reasons.FIRM_SIDE if r is not reasons.NO_REQUEST_FOLDER):
-        return "waiting on a person here to read it, not on the client"
+    for reason in reasons.FIRM_SIDE:
+        if reason is not reasons.NO_REQUEST_FOLDER and reason.matches(note):
+            return reason.firm_side_note
     return ""
 
 
 def _missing_detail(item: RequestItem) -> str:
-    return f"{item.expected_count} files expected" if item.expected_count > 1 else ""
+    return item.expected_text
 
 
 # ---------------------------------------------------------------- sorting ----
@@ -214,10 +212,7 @@ def triage(items: Sequence[RequestItem]) -> tuple[
             continue
 
         if reasons.NO_REQUEST_FOLDER.matches(item.validation_notes or ""):
-            gaps.append(FirmSideFlag(
-                item=item,
-                reason="no request folder, so nothing could be filed here; re-run scaffold",
-            ))
+            gaps.append(FirmSideFlag(item=item, reason=reasons.NO_REQUEST_FOLDER.firm_side_note))
             continue
 
         # A Failed row we have not read is ours, not the client's. So is a
@@ -227,8 +222,7 @@ def triage(items: Sequence[RequestItem]) -> tuple[
         reason = _firm_side_reason(item)
         if reason and item.status in (Status.FAILED, Status.PARTIAL):
             if item.status == Status.PARTIAL:
-                reason = ("some of what arrived is waiting on a person here to "
-                          "read it; confirm before asking for more")
+                reason = reasons.FIRM_WAITING_PARTIAL
             attention.append(FirmSideFlag(item=item, reason=reason))
             continue
 
@@ -456,12 +450,12 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
     if draft.scaffold_gaps:
         footer += ["", "-" * 60,
                    "NOT ASKED FOR - fix these here first:"]
-        footer += [f"  {flag.item.identifier} - {flag.item.document}: {flag.reason}"
+        footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.scaffold_gaps]
     if draft.needs_attention:
         footer += ["", "-" * 60,
                    "NOT ASKED FOR - waiting on us, not the client:"]
-        footer += [f"  {flag.item.identifier} - {flag.item.document}: {flag.reason}"
+        footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.needs_attention]
     if draft.pending_statuses:
         footer += ["", "-" * 60,
@@ -535,9 +529,9 @@ if __name__ == "__main__":
     print(result.text)
 
     for flag in result.scaffold_gaps:
-        print(f"NOT ASKED: {flag.item.identifier} - {flag.item.document}: {flag.reason}")
+        print(f"NOT ASKED: {flag.item.label}: {flag.reason}")
     for flag in result.needs_attention:
-        print(f"NOT ASKED: {flag.item.identifier} - {flag.item.document}: {flag.reason}")
+        print(f"NOT ASKED: {flag.item.label}: {flag.reason}")
     if result.needs_review_files:
         print(f"\nWARNING: {result.needs_review_files} file(s) the client already sent "
               f"are still in {REVIEW_DIR_NAME}.")

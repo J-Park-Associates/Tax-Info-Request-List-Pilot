@@ -12,8 +12,21 @@ job then files what arrives: their originals are preserved untouched in
 firm's side, an index records every rename and move, and each request's
 status is validated back into the manifest.
 
-No AI ever reads a client document, and originals are never altered — only
-moved, byte for byte, under their own names.
+The standing rules, worded once in `tracker/__init__.py` and upheld by every
+module:
+
+- **No generative AI ever reads a client financial document.** Every routing
+  and status decision comes from deterministic rules in the manifest.
+- **Originals are never altered.** Files are moved byte for byte under their
+  own names into `Shared/PBC/`; all work happens on copies, and every move is
+  recorded in `_index.xlsx`.
+- **Nothing is guessed.** A document is filed only when exactly one request
+  accepts it. Ambiguous, contested and unrecognized files go to
+  `00 - Needs Review` for a person - misfiling a tax document is worse than
+  not filing it.
+- **Nothing is ever sent.** The system drafts client emails and stops. There
+  is no SMTP, no mail client and no network call in the reminder or scheduling
+  path.
 
 Works with any cloud share that syncs to a local folder: **OneDrive and
 Google Drive** are both supported — online-only placeholder files are
@@ -56,8 +69,8 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
    `Prepared/` folder, and appends a row to `_index.xlsx`
 6. `python -m tracker.scanner <engagement_dir>` — validates `Prepared/` in
    three deterministic tiers (existence → integrity → content
-   keywords/dates) and stamps each row: Missing / Partial / Failed
-   Validation / Received / Pending Sync, with plain-English notes
+   keywords/dates) and stamps each row with one of the scanner's statuses
+   (`Status.ALL` in `tracker/manifest.py`), with plain-English notes
 7. Open the manifest in Excel to see where everything stands, and the index
    to see how any given file got there
 8. `python -m tracker.reminder <engagement_dir>` — drafts the "still waiting
@@ -66,8 +79,8 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 
 Run steps 5 and 6 together on a schedule (Task Scheduler or cron).
 `--dry-run` works on both and previews without writing or moving anything.
-A `Manual Override` column (Accepted / Waived) lets accountant judgment
-beat the rules.
+A `Manual Override` column (the values in `Override.ALL`) lets accountant
+judgment beat the rules.
 
 ### Chasing what's still outstanding
 
@@ -76,13 +89,12 @@ python -m tracker.reminder "Smith Family 2025" --client "John Smith" \
     --link "https://drive.google.com/drive/folders/..." --due 2026-03-15 --write
 ```
 
-The draft asks for Missing, Partial and Failed rows and nothing else —
-`Received` is in, `Pending Sync` is in and still copying down, and a
-`Waived` or `Accepted` row was already decided by a person. Internal
-validation notes never reach the client: each one is translated into a plain
-instruction ("the file is password-protected; please send an unlocked copy")
-by deterministic rules, with a safe generic ask when the cause isn't
-recognized.
+The draft asks for the outstanding rows (`Status.OUTSTANDING`) and nothing
+else — a received row is in, a pending-sync row is still copying down, and
+an overridden row was already decided by a person. Internal validation notes
+never reach the client: each one is translated into the plain instruction
+`tracker/reasons.py` pairs it with, with a safe generic ask when the cause
+isn't recognized.
 
 Two things are deliberately held back from the client and reported to the
 accountant instead:
@@ -236,7 +248,7 @@ Optional OCR for scanned PDFs: see [requirements.txt](requirements.txt).
 ## Running the app
 
 `Start App.bat` runs the desktop app from source (Python (the floor is `requires-python` in `pyproject.toml`) and Node
-installed); `Build App.bat` packages it as `Tax Document Tracker.exe` for a
+installed); `Build App.bat` packages it as `<productName>.exe` (the name in `app/package.json`) for a
 machine with neither. On first launch the app asks where your clients live
 and writes that to `settings.json` beside itself; everything else follows
 from that one folder. Who does what, and the life of a request, is in

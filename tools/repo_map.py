@@ -55,7 +55,7 @@ SCHEMA_VERSION = 1
 #: works, not decoration around it — and an agent reading the map should know a
 #: workflow exists. Only tracked files are mapped, so gitignored runtime files
 #: (settings.json, drafts, logs) never appear.
-SOURCE_SUFFIXES = {".py", ".js", ".html", ".css", ".csv", ".md", ".bat",
+SOURCE_SUFFIXES = {".py", ".js", ".html", ".css", ".md", ".bat",
                    ".json", ".txt", ".svg", ".yml", ".yaml"}
 
 #: The map's own output. Writing the map changes these files, so mapping them
@@ -524,11 +524,10 @@ def render_markdown(graph: dict) -> str:
         lines += ["## The pipeline", "", "```", " → ".join(pipeline), "```", ""]
 
     lines += ["## Modules", ""]
-    for layer in ("core", "tooling", "ci", "desktop-app", "demo", "root"):
+    for layer in ("core", "tooling", "ci", "desktop-app", "root"):
         members = [n for n in graph["nodes"]
                    if n["layer"] == layer and n["type"] in ("module", "tool", "ui",
-                                                            "demo", "script",
-                                                            "workflow")]
+                                                            "script", "workflow")]
         if not members:
             continue
         lines += [f"### {layer}", ""]

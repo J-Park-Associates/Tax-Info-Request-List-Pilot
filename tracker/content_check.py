@@ -27,7 +27,7 @@ Caching: :class:`ContentCache` stores only *verdicts* — pass/fail + reason —
 keyed by ``(path, size, mtime, rules-fingerprint)``. Extracted client text is
 deliberately never persisted anywhere. Editing a row's rules changes the
 fingerprint and triggers one re-extraction; unchanged files on unchanged
-rules are never re-read, which keeps a 15-minute scan cadence cheap.
+rules are never re-read, which keeps the scheduled cadence cheap.
 """
 
 from __future__ import annotations

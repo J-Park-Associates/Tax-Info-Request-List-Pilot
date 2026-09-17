@@ -17,6 +17,8 @@ import pytest
 import tracker.api as api
 from tracker.manifest import ManifestError, load_manifest
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
+from tracker.locking import STALE_LOCK_SECONDS
+from tracker.scheduling import TASK_NAME
 from tracker.templates import default_tax_year
 
 
@@ -221,7 +223,7 @@ def test_a_name_of_only_illegal_characters_falls_back(capsys, demo_root):
     spec = {"name": "///:::", "form": "1040", "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == "New TY2025 Form 1040"
+    assert payload["created"] == api.default_engagement_name("", default_tax_year(), "1040")
 
 
 def test_state_shows_statuses_a_locked_excel_deferred(capsys, demo_root):
@@ -347,7 +349,7 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     lock = engagement / LOCK_FILENAME
     lock.write_text("pid=999 started=2026-03-14T07:03:00", encoding="utf-8")
     code, payload = run(capsys, "state", "--engagement", str(engagement))
-    from tracker.locking import STALE_LOCK_SECONDS
+    from tracker import STANDING_RULES
     assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False,
                                "stale_after_minutes": STALE_LOCK_SECONDS // 60}
     code, payload = run(capsys, "unlock", "--engagement", str(engagement))
@@ -478,7 +480,7 @@ def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monke
     import tracker.api as api_module
 
     calls = []
-    monkeypatch.setattr(api_module, "install_task", lambda xml, name="Tax Document Tracker": (calls.append(xml), ["schtasks", "/create", "/xml", str(xml)])[1])
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: (calls.append(xml), ["schtasks", "/create", "/xml", str(xml)])[1])
     code, payload = run(capsys, "install-schedule", stdin={"start": "06:30", "every": 60})
     assert code == 0, payload
     assert payload["root"] == str(demo_root)
@@ -492,7 +494,7 @@ def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monke
 
 def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
-    from tracker.locking import STALE_LOCK_SECONDS
+    from tracker import STANDING_RULES
     from tracker.manifest import DEFAULT_EXTENSIONS, Override, Status
     from tracker.rollover import CARRIED_SHEET
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
@@ -501,16 +503,17 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     code, payload = run(capsys, "list")
     vocab = payload["vocab"]
     assert [s["value"] for s in vocab["statuses"]] == list(Status.ALL)
-    assert {s["key"] for s in vocab["statuses"]} == {
-        "missing", "partial", "failed-validation", "received", "pending-sync"}
+    assert {s["key"] for s in vocab["statuses"]} == {api._slug(s) for s in Status.ALL}
     assert vocab["overrides"] == {"accepted": Override.ACCEPTED, "waived": Override.WAIVED}
     assert vocab["decisions"] == {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE}
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
-    assert vocab["stale_lock_minutes"] == STALE_LOCK_SECONDS // 60
     assert vocab["carried_sheet"] == CARRIED_SHEET
+    assert vocab["unscanned_key"] == api._slug(vocab["unscanned_label"])
+    assert vocab["commands"] == sorted(api.COMMANDS)
+    assert [r["headline"] for r in vocab["rules"]] == [h for h, _ in STANDING_RULES]
     assert vocab["schedule"] == {"start": DEFAULT_START, "every": DEFAULT_REPEAT_MINUTES,
                                  "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
-                                 "task_name": "Tax Document Tracker"}
+                                 "task_name": TASK_NAME}
 
 
 def test_every_chip_class_the_vocabulary_implies_exists_in_the_stylesheet(capsys, demo_root):
@@ -543,7 +546,7 @@ def test_install_schedule_defaults_come_from_scheduling(capsys, demo_root, monke
     import tracker.api as api_module
     from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START
 
-    monkeypatch.setattr(api_module, "install_task", lambda xml, name="Tax Document Tracker": ["schtasks"])
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
     code, payload = run(capsys, "install-schedule", stdin={})
     assert code == 0, payload
     assert payload["start"] == DEFAULT_START and payload["every"] == DEFAULT_REPEAT_MINUTES

@@ -247,8 +247,8 @@ def _whole_number(spec: dict, key: str, default: int, minimum: int, label: str) 
 def item_from_spec(spec: dict) -> RequestItem:
     """One catalog row (or one wizard row) as a validated :class:`RequestItem`.
 
-    A row with no file types gets the manifest's safe default (``pdf, xlsx,
-    csv``); ``*`` means any type. A row with no content rule at all gets its
+    A row with no file types gets the manifest's safe default
+    (``DEFAULT_EXTENSIONS``); ``*`` means ``ANY_EXTENSION``. A row with no content rule at all gets its
     own document name as the required keyword. Without a rule the request could never auto-file, and
     a custom request typed into the wizard in a hurry should still work;
     the manifest shows the rule, so it is a visible default, not a secret.

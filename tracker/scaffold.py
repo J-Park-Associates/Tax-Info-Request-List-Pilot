@@ -22,8 +22,8 @@ Guarantees:
   the item's identifier followed by a non-alphanumeric boundary — the same
   prefix rule the scanner uses — so a client rename like
   ``A01 - bank stuff`` never causes a duplicate ``A01`` folder.
-- **Windows-safe names.** Illegal characters (``\\ / : * ? " < > |``) are
-  replaced, trailing dots/spaces stripped, and names length-capped.
+- **Windows-safe names.** Illegal characters (``manifest.WINDOWS_ILLEGAL_CHARS``)
+  are replaced, trailing dots/spaces stripped, and names length-capped.
 
 Waived items (Manual Override = Waived) get no new folder; their existing
 folders are left alone and they are dropped from the README.
@@ -36,6 +36,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from tracker.reasons import GOOGLE_EXPORT_HINT
+from tracker.validators import google_stub_examples
 from tracker.manifest import (
     WINDOWS_ILLEGAL_CHARS,
     Override,
@@ -212,8 +214,8 @@ def _write_readme(
         "4. Original PDFs or Excel files are preferred; scans and photos",
         "   are fine as long as they are readable.",
         "5. If a document lives in Google Docs or Google Sheets, please",
-        "   download it first (File > Download > PDF or Excel) and upload",
-        "   that copy - Google shortcut files (.gdoc, .gsheet) can't be read.",
+        f"   download it first ({GOOGLE_EXPORT_HINT}) and upload",
+        f"   that copy - Google shortcut files ({google_stub_examples()}) can't be read.",
         "6. To replace something, just drop in the new copy.",
         "",
         "WHAT WE STILL NEED",
@@ -221,8 +223,8 @@ def _write_readme(
     ]
     for item in items:
         entry = item.label
-        if item.expected_count > 1:
-            entry += f"  [{item.expected_count} files expected]"
+        if item.expected_text:
+            entry += f"  [{item.expected_text}]"
         lines.append(entry)
     lines.append("")
     if contact:

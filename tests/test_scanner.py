@@ -7,6 +7,7 @@ import pytest
 from openpyxl import load_workbook
 from pypdf import PdfWriter
 
+from tracker import reasons
 from tracker.manifest import (
     Override,
     RequestItem,
@@ -202,7 +203,7 @@ def test_deleted_folder_reported_missing(engagement):
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
     assert row.status == Status.MISSING
-    assert "re-run scaffold" in row.validation_notes
+    assert reasons.NO_REQUEST_FOLDER.matches(row.validation_notes)
 
 
 # --------------------------------------------------------------- unfiled ----

@@ -24,7 +24,11 @@ import os
 import sys
 from pathlib import Path
 
+from tracker.manifest import TEMP_SUFFIX
+
 SETTINGS_FILENAME = "settings.json"
+#: The clients-root example every prompt and document shows.
+EXAMPLE_ROOT = r"D:\OneDrive\Clients"
 ENV_SETTINGS_DIR = "TRACKER_SETTINGS_DIR"
 #: The Electron shell passes package.json's productName; from source the
 #: same file is read directly. There is no second copy of the product name.
@@ -86,14 +90,18 @@ def product_name() -> str:
         return override
     try:
         return str(json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))["productName"])
-    except (OSError, json.JSONDecodeError, KeyError):
-        return "Tax Document Tracker"   # a frozen build without the shell's env
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        # A frozen build has no package.json; the shell always passes the
+        # name in. Naming the product here would be a second copy of it.
+        raise SettingsError(
+            f"{ENV_PRODUCT_NAME} is not set and {PACKAGE_JSON.name} is not readable: {exc}"
+        ) from exc
 
 
 def _write(data: dict) -> None:
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(path.name + ".tmp")
+    temp = path.with_name(path.name + TEMP_SUFFIX)
     temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
     os.replace(temp, path)
 

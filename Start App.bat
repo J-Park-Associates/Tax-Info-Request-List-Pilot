@@ -1,5 +1,5 @@
 @echo off
-rem ── Tax Document Tracker: run the app from source ─────────────────
+rem ── Run the desktop app from source ────────────────────────────────
 rem Double-click to start. First run installs Electron (needs internet
 rem once); every run after that is instant and fully offline.
 

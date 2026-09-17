@@ -23,12 +23,12 @@ let vocab = null;
 
 function statusKey(status) {
   const entry = vocab.statuses.find((s) => s.value === status);
-  return entry ? entry.key : "requested";
+  return entry ? entry.key : vocab.unscanned_key;
 }
 
 function chip(status, override) {
   if (override === vocab.overrides.waived) {
-    return `<span class="chip chip-requested">${esc(vocab.overrides.waived)}</span>`;
+    return `<span class="chip chip-${vocab.unscanned_key}">${esc(vocab.overrides.waived)}</span>`;
   }
   const label = status || vocab.unscanned_label;
   return `<span class="chip chip-${statusKey(status)}">${esc(label)}</span>`;
@@ -38,6 +38,7 @@ function fill(pattern, values) {
   return pattern.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
 }
 
+// The one button label the app owns; the docs that name it are pinned to it.
 const SCAN_LABEL = "Sort & Scan";
 
 function esc(s) {
@@ -60,7 +61,7 @@ async function call(args, payload) {
   return result;
 }
 
-const withEng = (cmd) => (active ? [cmd, "--engagement", active] : [cmd]);
+const withEng = (cmd) => (active ? [cmd, vocab.engagement_flag, active] : [cmd]);
 
 // ── rendering ───────────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ function ruleTooltip(item) {
   if (item.allowed_extensions.length) rules.push(`Types: ${item.allowed_extensions.join(", ")}`);
   if (item.required_keywords.length) rules.push(`Must contain: ${item.required_keywords.join(", ")}`);
   if (item.any_keywords.length) rules.push(`Any of: ${item.any_keywords.join(", ")}`);
-  if (item.expected_count > 1) rules.push(`${item.expected_count} files expected`);
+  if (item.expected_count > 1) rules.push(fill(vocab.expected_pattern, { n: item.expected_count }));
   return rules.join("  ·  ") || "No content rules";
 }
 
@@ -197,7 +198,7 @@ async function clearLock() {
   try {
     const result = await call(withEng("unlock"));
     render(result.state);
-    banner(`Stale lock cleared (${result.age_minutes} min old). Run Sort & Scan when ready.`, "ok");
+    banner(`Stale lock cleared (${result.age_minutes} min old). Run ${SCAN_LABEL} when ready.`, "ok");
   } catch (err) {
     toast(err.message);
   } finally {
@@ -226,13 +227,34 @@ async function checkManifest() {
 
 // ── data flows ──────────────────────────────────────────────────────────
 
+// Everything static on the page that names a Python-owned fact is filled
+// here, once, from the vocabulary: the product, the rules, the folder the
+// originals go to, the year bounds, the example root, the button label.
+function applyVocabulary() {
+  document.title = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;
+  $("brand-product").textContent = vocab.product;
+  $("scan-label").textContent = SCAN_LABEL;
+  $("root-input").placeholder = `e.g. ${vocab.example_root}`;
+  $("ro-include-note").textContent =
+    `Also add checklist rows this client has never had (otherwise they are listed as offers on the ${vocab.carried_sheet} sheet)`;
+  for (const id of ["ro-year", "ne-year"]) {
+    $(id).min = vocab.year_min;
+    $(id).max = vocab.year_max;
+  }
+  const cards = document.querySelectorAll("#assurances .assure div");
+  vocab.rules.forEach((rule, i) => {
+    if (!cards[i]) return;
+    cards[i].querySelector("strong").textContent = rule.headline;
+    cards[i].querySelector("span").textContent = rule.detail;
+  });
+}
+
 let clientsRoot = "";      // the one folder every engagement sits under
 
 async function loadEngagements(preferPath) {
   const listed = await call(["list"]);
   vocab = listed.vocab;
-  document.title = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;
-  $("brand-product").textContent = vocab.product;
+  applyVocabulary();
   engagements = listed.engagements;
   clientsRoot = listed.root || "";
   $("setup-card").classList.toggle("hidden", !listed.needs_root);
@@ -469,7 +491,7 @@ function chooseForm(formId) {
   $("cu-ext").placeholder = vocab.default_extensions;
   $("cu-kw").placeholder = vocab.keyword_default_note;
   $("ne-year").value = defaultYear || "";
-  $("ne-name").placeholder = fill(vocab.name_pattern, { client: "e.g. Smith Family", year: $("ne-year").value, form: form.label });
+  $("ne-name").placeholder = fill(vocab.name_pattern, { client: vocab.new_client_placeholder, year: $("ne-year").value, form: form.label });
   $("ne-client").value = "";
   $("ne-link").value = "";
   $("ne-due").value = "";

@@ -47,7 +47,13 @@ from pathlib import Path
 from typing import Sequence
 
 from tracker.filer import file_drops
-from tracker.manifest import ManifestError, check_manifest
+from tracker.manifest import (
+    ENGAGEMENT_LABELS,
+    ENGAGEMENT_SHEET_NAME,
+    NO,
+    ManifestError,
+    check_manifest,
+)
 from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.registry import Engagement, Registry, RegistryError, discover_engagements
 from tracker.reminder import (
@@ -201,7 +207,7 @@ def run_engagement(
         run.skipped = f"rolled forward into {engagement.superseded_by}"
         return run
     if not engagement.active:
-        run.skipped = "inactive (Engagement sheet says Active: no)"
+        run.skipped = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
         return run
     if not engagement.path.is_dir():
         run.error = f"folder not found: {engagement.path}"

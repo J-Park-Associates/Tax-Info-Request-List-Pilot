@@ -38,8 +38,8 @@ difference is the point:
 - **exercised by** — some other test imports it, usually to borrow a fixture.
   Real and worth knowing (ten test files import `manifest.py`, so its schema
   is load-bearing across the suite) but it is *not* coverage of that module.
-- **no dedicated test file** — said plainly where it is true. As of this
-  writing that is only `tracker/__init__.py`, which holds re-exports.
+- **no dedicated test file** — said plainly where it is true; the map names
+  each one.
 
 An "exercised by" edge is never evidence a module is tested.
 
@@ -72,7 +72,10 @@ fails if the committed map has drifted, so the suite catches a forgotten update.
 ## The standing rules
 
 These are not style preferences. They are why the system is trusted with
-client tax documents, and they hold across every module:
+client tax documents, and they hold across every module. They are worded
+once, in `STANDING_RULES` in `tracker/__init__.py`; the app shows them and
+`tests/test_single_source.py` keeps this copy, the README, the roadmap and
+the knowledge map quoting them exactly:
 
 - **No generative AI ever reads a client financial document.** Every routing
   and status decision comes from deterministic rules in the manifest.

@@ -332,7 +332,7 @@ def test_a_locked_index_never_orphans_files_already_moved(engagement, monkeypatc
         raise PermissionError(f"[Errno 13] locked: {path}")
 
     monkeypatch.setattr(filer_module, "save_workbook_atomically", locked)
-    monkeypatch.setattr(filer_module, "INDEX_RETRY_DELAY", 0.001)
+    monkeypatch.setattr(filer_module, "LOCK_RETRY_DELAY", 0.001)
     report = file_drops(engagement, today=DAY1)
     assert report.handled == 2
     assert report.index_deferred is True
