@@ -19,8 +19,18 @@ for /f "usebackq delims=" %%i in (`node -p "require('./app/package.json').produc
 for /f "usebackq delims=" %%i in (`node -p "require('./app/package.json').config.apiName"`) do set API=%%i
 
 echo [1/4] Freezing Python tracker API (PyInstaller, api_entry.spec)...
-python -m pip install -r requirements-build.txt --quiet
-python -m PyInstaller --noconfirm --clean --distpath %OUT%\py --workpath %OUT%\pyi-work api_entry.spec
+rem The freeze runs in its own virtual environment holding exactly
+rem requirements-build.txt. PyInstaller follows every import it can find,
+rem including a library's optional ones, so freezing from the machine's
+rem Python ships whatever else happens to be installed there (a first run
+rem from the firm's machine bundled pandas, numpy and two database drivers).
+set VENV=%OUT%\venv
+if not exist "%VENV%\Scripts\python.exe" python -m venv "%VENV%"
+if errorlevel 1 (echo Could not create the build environment & pause & exit /b 1)
+set PY="%VENV%\Scripts\python.exe"
+%PY% -m pip install -r requirements-build.txt --quiet
+if errorlevel 1 (echo Installing requirements-build.txt failed & pause & exit /b 1)
+%PY% -m PyInstaller --noconfirm --clean --distpath %OUT%\py --workpath %OUT%\pyi-work api_entry.spec
 if errorlevel 1 (echo PyInstaller failed & pause & exit /b 1)
 
 echo [2/4] Packaging Electron app (npm ci from package-lock.json)...
@@ -45,7 +55,7 @@ if not exist "%PKG%\resources\%API%\%API%.exe" (echo The package has no %API%.ex
 
 set COMMIT=(not a git checkout)
 for /f "usebackq delims=" %%i in (`git rev-parse HEAD 2^>nul`) do set COMMIT=%%i
-for /f "usebackq delims=" %%i in (`python --version`) do set PYVER=%%i
+for /f "usebackq delims=" %%i in (`%PY% --version`) do set PYVER=%%i
 for /f "usebackq delims=" %%i in (`node --version`) do set NODEVER=%%i
 for /f "usebackq delims=" %%i in (`npm --version`) do set NPMVER=%%i
 > "%PKG%\BUILD-INFO.txt" (
@@ -58,7 +68,7 @@ for /f "usebackq delims=" %%i in (`npm --version`) do set NPMVER=%%i
   echo npm:      %NPMVER%
   echo.
   echo Python packages frozen ^(pip freeze^):
-  python -m pip freeze
+  %PY% -m pip freeze
 )
 
 echo [4/4] Done.
