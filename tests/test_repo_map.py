@@ -359,7 +359,7 @@ def test_the_curated_file_is_mapped_so_editing_it_shows_as_drift(repo):
 
 def test_the_markdown_leads_with_how_to_use_and_refresh_it(repo):
     text = repo_map.render_markdown(repo_map.build(repo))
-    assert "Read this instead of re-scanning the repository" in text
+    assert repo_map.MAP_INTRO in text
     assert "repo_map.py update" in text
     assert "do not edit by hand" in text
 

@@ -68,6 +68,7 @@ from tracker.scaffold import (
 from tracker.validators import iter_candidate_files
 
 DRAFT_FILENAME = "reminder-draft.txt"
+DUE_FLAG = "--due"
 
 #: Where a fresh draft goes when the standing one has been edited by hand.
 NEW_DRAFT_FILENAME = "reminder-draft.NEW.txt"
@@ -83,6 +84,11 @@ OUTSTANDING = Status.OUTSTANDING
 SUBJECT_NEEDED = "{engagement}: {n} document(s) still needed"
 SUBJECT_COMPLETE = "{engagement}: we have everything - thank you"
 DRAFT_BANNER = "DRAFT - NOTHING HAS BEEN SENT."
+#: The sentence every draft opens its instructions with.
+DROP_ANYWHERE = "Everything goes in the same place - just drop it into the shared"
+#: The footer headings for what the draft deliberately did not ask for.
+HELD_BACK_HEADING = "NOT ASKED FOR"
+HELD_BACK_LINE = "NOT ASKED"
 #: The footer's warning about parked files, and what to do about it.
 REVIEW_WARNING = "{n} file(s) the client already sent are still in " + REVIEW_DIR_NAME + "."
 REVIEW_ADVICE = "Identify them before sending, or you may ask for something you have."
@@ -297,14 +303,14 @@ def _compose_body(
 
         if share_link:
             out += [
-                "Everything goes in the same place - just drop it into the shared",
+                DROP_ANYWHERE,
                 "folder. One folder, no sorting and no naming needed; we do that:",
                 f"  {share_link}",
                 "",
             ]
         else:
             out += [
-                "Everything goes in the same place - just drop it into the shared",
+                DROP_ANYWHERE,
                 "folder we set up. One folder, no sorting and no naming needed.",
                 "",
             ]
@@ -461,12 +467,12 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
     footer: list[str] = []
     if draft.scaffold_gaps:
         footer += ["", "-" * _RULE_WIDTH,
-                   "NOT ASKED FOR - fix these here first:"]
+                   f"{HELD_BACK_HEADING} - fix these here first:"]
         footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.scaffold_gaps]
     if draft.needs_attention:
         footer += ["", "-" * _RULE_WIDTH,
-                   "NOT ASKED FOR - waiting on us, not the client:"]
+                   f"{HELD_BACK_HEADING} - waiting on us, not the client:"]
         footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.needs_attention]
     if draft.pending_statuses:
@@ -509,7 +515,7 @@ if __name__ == "__main__":
     parser.add_argument("--client", default="", help="client's name for the greeting")
     parser.add_argument("--engagement-name", default="", help="override the folder name")
     parser.add_argument("--link", default="", help="share link to the client drop folder")
-    parser.add_argument("--due", default="", help="due date, YYYY-MM-DD")
+    parser.add_argument(DUE_FLAG, default="", help="due date, YYYY-MM-DD")
     parser.add_argument("--from-name", default="", help="who the email is from")
     parser.add_argument("--firm", default="", help="firm name for the sign-off")
     parser.add_argument("--write", action="store_true",
@@ -521,7 +527,7 @@ if __name__ == "__main__":
         try:
             due = dt.date.fromisoformat(ns.due)
         except ValueError:
-            parser.error(f"--due must be YYYY-MM-DD, got {ns.due!r}")
+            parser.error(f"{DUE_FLAG} must be YYYY-MM-DD, got {ns.due!r}")
 
     try:
         result = draft_reminder(
@@ -540,9 +546,9 @@ if __name__ == "__main__":
     print(result.text)
 
     for flag in result.scaffold_gaps:
-        print(f"NOT ASKED: {flag.item.label}: {flag.reason}")
+        print(f"{HELD_BACK_LINE}: {flag.item.label}: {flag.reason}")
     for flag in result.needs_attention:
-        print(f"NOT ASKED: {flag.item.label}: {flag.reason}")
+        print(f"{HELD_BACK_LINE}: {flag.item.label}: {flag.reason}")
     if result.needs_review_files:
         print(f"\nWARNING: {REVIEW_WARNING.format(n=result.needs_review_files)}")
         print(REVIEW_ADVICE)

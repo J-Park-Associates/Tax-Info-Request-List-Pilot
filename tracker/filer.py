@@ -150,6 +150,11 @@ class IndexEntry:
     candidates: str = ""     # identifiers the router named, for a person to choose from
 
     @property
+    def candidate_list(self) -> list[str]:
+        """The router's candidates as the list they were joined from."""
+        return [c for c in (part.strip() for part in self.candidates.split(_CANDIDATE_SEP)) if c]
+
+    @property
     def filed_as(self) -> str:
         """The working copy's file name - the basename of where it went."""
         return self.prepared_location.rsplit("/", 1)[-1] if self.prepared_location else ""

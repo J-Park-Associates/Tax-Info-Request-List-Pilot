@@ -11,7 +11,7 @@ import pytest
 
 from tracker import reasons
 from tracker.manifest import Override, RequestItem
-from tracker.router import AMBIGUOUS, CONTESTED_PREFIX, NO_REQUEST_ACCEPTS, UNMATCHED, route_file, route_files
+from tracker.router import AMBIGUOUS, CONTESTED_PREFIX, EVIDENCE_CONTENT, EVIDENCE_FILENAME, NO_REQUEST_ACCEPTS, UNMATCHED, route_file, route_files
 from tracker.scaffold import MANIFEST_FILENAME
 
 from tests.test_scanner import text_pdf
@@ -45,7 +45,7 @@ def test_content_match_routes(tmp_path):
     f = text_pdf(tmp_path / "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
     routing = route_file(f, ITEMS)
     assert routing.identifier == "A01"
-    assert routing.evidence == "content"
+    assert routing.evidence == EVIDENCE_CONTENT
     assert "content matched" in routing.reason
 
 
@@ -84,7 +84,7 @@ def test_filename_rescues_a_scan_with_no_text_layer(tmp_path):
     text_pdf(f, "")  # valid PDF, no usable text
     routing = route_file(f, ITEMS, text=None)
     assert routing.identifier == "C01"
-    assert routing.evidence == "filename"
+    assert routing.evidence == EVIDENCE_FILENAME
 
 
 def test_filename_match_respects_word_boundaries(tmp_path):
@@ -224,7 +224,7 @@ def test_filename_fallback_tolerates_the_run_together_spelling(tmp_path):
     f = text_pdf(tmp_path / "Smith W2 2025.pdf", "")
     routing = route_file(f, ITEMS)
     assert routing.identifier == "A01"
-    assert routing.evidence == "filename"
+    assert routing.evidence == EVIDENCE_FILENAME
     # ...but "W20" is still not "W-2".
     other = text_pdf(tmp_path / "Smith W20 form.pdf", "")
     assert route_file(other, ITEMS).identifier is None

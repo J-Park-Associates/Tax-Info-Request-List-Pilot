@@ -60,6 +60,8 @@ ORIGIN_PRIOR = "carried from last year"
 ORIGIN_WAIVED = "waived last year"
 ORIGIN_NEW = "new this year"
 
+#: What stands in for the target year when the prior list gave none away.
+UNKNOWN_YEAR_LABEL = "next year"
 CARRIED_SHEET = "Carried Forward"
 #: Heads the sheet's (and the CLI's) list of last year's unmatched documents.
 UNFILED_HEADING = "Sent last year but never filed — check these are covered:"
@@ -353,7 +355,7 @@ if __name__ == "__main__":
         rolled_from=str(result.prior_dir),
     ))
 
-    span = f"{result.prior_year} → {result.target_year}" if result.prior_year else "next year"
+    span = f"{result.prior_year} → {result.target_year}" if result.prior_year else UNKNOWN_YEAR_LABEL
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")
     for rolled in result.carried:
         flag = "WAIVED " if rolled.origin == ORIGIN_WAIVED else "CARRIED"
@@ -378,5 +380,5 @@ if __name__ == "__main__":
         from tracker.scaffold import scaffold_engagement
 
         scaffolded = scaffold_engagement(target)
-        print(f"  Client drop folder: {scaffolded.shared_dir}")
-        print(f"  Prepared tree:      {scaffolded.prepared_dir}")
+        for line in scaffolded.describe():
+            print(f"  {line}")

@@ -140,6 +140,10 @@ class ScaffoldResult:
     waived: list[str] = field(default_factory=list)         # skipped (Override=Waived)
     readme: Path | None = None
 
+    def describe(self) -> list[str]:
+        """The two lines every CLI prints about a laid-out engagement."""
+        return [f"Client drop folder: {self.shared_dir}", f"Prepared tree:      {self.prepared_dir}"]
+
 
 def scaffold_engagement(
     engagement_dir: Path | str,
@@ -264,8 +268,8 @@ if __name__ == "__main__":
     ns = parser.parse_args()
 
     res = scaffold_engagement(ns.engagement_dir, contact=ns.contact)
-    print(f"Client drop folder: {res.shared_dir}")
-    print(f"Prepared tree:      {res.prepared_dir}")
+    for line in res.describe():
+        print(line)
     for folder in res.created:
         print(f"  + created  {folder.name}")
     for ident in res.existing:

@@ -115,7 +115,7 @@ function renderReview(state) {
   $("review-list").innerHTML = parked.map((e) => {
     // The router's own candidates travel as data in the index; a person
     // still confirms, but the picker starts on the first one.
-    const guess = String(e.candidates || "").split(",")[0].trim();
+    const guess = (e.candidates || [])[0] || "";
     const picked = guess && ids.has(guess) ? guess : "";
     return `
     <li data-original="${esc(e.pbc_location)}">
@@ -436,7 +436,7 @@ function syncPriorDefaults() {
   $("ro-link").value = "";
   $("ro-due").value = "";
   $("ro-name").placeholder = prior
-    ? fill(vocab.rollover_name_pattern, { prior: prior.name, year: year || "next year" })
+    ? fill(vocab.rollover_name_pattern, { prior: prior.name, year: year || vocab.unknown_year_label })
     : "defaults to last year's name and the new year";
 }
 

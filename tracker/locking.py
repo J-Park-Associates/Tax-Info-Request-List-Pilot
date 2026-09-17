@@ -33,6 +33,8 @@ log = logging.getLogger("tracker.locking")
 
 #: Kept under the scanner's old name so existing engagements and habits still apply.
 LOCK_FILENAME = "_scan.lock"
+_PID_KEY = "pid"
+_STARTED_KEY = "started"
 STALE_LOCK_SECONDS = 3600
 
 
@@ -47,7 +49,7 @@ def acquire_lock(engagement_dir: Path) -> Path:
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             with os.fdopen(fd, "w") as fh:
-                fh.write(f"pid={os.getpid()} started={dt.datetime.now().isoformat()}")
+                fh.write(lock_line(os.getpid(), dt.datetime.now()))
             return lock
         except FileExistsError:
             try:
@@ -89,8 +91,13 @@ def lock_status(engagement_dir: Path | str) -> LockStatus | None:
     fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
     return LockStatus(
         path=lock, age_seconds=max(age, 0.0),
-        started=fields.get("started", ""), pid=fields.get("pid", ""),
+        started=fields.get(_STARTED_KEY, ""), pid=fields.get(_PID_KEY, ""),
     )
+
+
+def lock_line(pid: int, started: dt.datetime) -> str:
+    """What the lock file says: who took it and when, as ``lock_status`` reads it back."""
+    return f"{_PID_KEY}={pid} {_STARTED_KEY}={started.isoformat()}"
 
 
 def clear_stale_lock(engagement_dir: Path | str) -> LockStatus:

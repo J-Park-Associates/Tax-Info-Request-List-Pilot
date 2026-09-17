@@ -65,7 +65,18 @@ INSTALL_FLAG = "--install"
 ROOT_FLAG = "--root"
 OUT_FLAG = "--out"
 FORMAT_FLAG = "--format"
+START_FLAG = "--start"
+FORMAT_XML = "xml"
+FORMAT_N8N = "n8n"
+FORMATS = (FORMAT_XML, FORMAT_N8N)
 INSTALL_HINT = f"{MODULE_INVOCATION} {INSTALL_FLAG}"
+
+def is_scheduling_host() -> bool:
+    """Whether this machine can register the task (Task Scheduler is Windows only)."""
+    import platform
+
+    return platform.system() == "Windows"
+
 
 def runner_arguments(root: str | Path) -> str:
     """The one command line the scheduled job runs, whoever schedules it."""
@@ -233,7 +244,7 @@ def install_task(xml_path: Path | str, task_name: str = TASK_NAME) -> list[str]:
     import subprocess
 
     command = ["schtasks", "/create", "/xml", str(xml_path), "/tn", task_name, "/f"]
-    if platform.system() != "Windows":
+    if not is_scheduling_host():
         return command
     completed = subprocess.run(command, capture_output=True, text=True)
     if completed.returncode != 0:
@@ -259,21 +270,21 @@ if __name__ == "__main__":
                         help="the Python to run it with (default: this one)")
     parser.add_argument("--working-dir", default=str(Path.cwd()),
                         help="the folder holding the tracker package")
-    parser.add_argument("--start", default=DEFAULT_START,
+    parser.add_argument(START_FLAG, default=DEFAULT_START,
                         help=f"daily start time, HH:MM (default: {DEFAULT_START})")
     parser.add_argument("--every", type=int, default=DEFAULT_REPEAT_MINUTES, metavar="MINUTES",
                         help=f"repeat filing and scanning through the day (default: "
                              f"{DEFAULT_REPEAT_MINUTES}; 0 = once a day)")
     parser.add_argument("--author", default="", help="task author, for the XML")
     parser.add_argument("--name", default=TASK_NAME, help="task name")
-    parser.add_argument(FORMAT_FLAG, choices=("xml", "n8n"), default="xml",
+    parser.add_argument(FORMAT_FLAG, choices=FORMATS, default=FORMAT_XML,
                         help="Windows Task Scheduler XML (default) or an n8n workflow")
     parser.add_argument(OUT_FLAG, default="",
                         help="write to this file instead of standard output")
     parser.add_argument(INSTALL_FLAG, action="store_true",
                         help=f"also register the task with Task Scheduler (Windows; needs {OUT_FLAG})")
     ns = parser.parse_args()
-    if ns.install and (ns.format != "xml" or not ns.out):
+    if ns.install and (ns.format != FORMAT_XML or not ns.out):
         parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml and {OUT_FLAG}")
 
     if not ns.root:
@@ -281,15 +292,15 @@ if __name__ == "__main__":
 
         configured = clients_root()
         if configured is None:
-            parser.error(f"no --root given and none in {settings_path()}")
+            parser.error(f"no {ROOT_FLAG} given and none in {settings_path()}")
         ns.root = str(configured)
     root_arg = resolve_root(ns.root, ns.working_dir)
 
     try:
-        if ns.format == "xml":
+        if ns.format == FORMAT_XML:
             hhmm = ns.start.strip()
             if len(hhmm) != 5 or hhmm[2] != ":" or not hhmm.replace(":", "").isdigit():
-                parser.error(f"--start must be HH:MM, got {ns.start!r}")
+                parser.error(f"{START_FLAG} must be HH:MM, got {ns.start!r}")
             payload = task_scheduler_xml(
                 python=ns.python,
                 root=root_arg,
@@ -326,11 +337,11 @@ if __name__ == "__main__":
                 command = install_task(ns.out, ns.name)
             except RuntimeError as exc:
                 raise SystemExit(f"Not installed: {exc}")
-            if platform.system() == "Windows":
+            if is_scheduling_host():
                 print(f'Installed as "{ns.name}" - it runs daily from {ns.start}.')
             else:
                 print("Not Windows; run this on the scheduling machine:  " + " ".join(command))
-        elif ns.format == "xml":
+        elif ns.format == FORMAT_XML:
             print(f'Install it with:  {MODULE_INVOCATION} {ROOT_FLAG} "{ns.root}" '
                   f'{OUT_FLAG} "{ns.out}" {INSTALL_FLAG}')
     else:

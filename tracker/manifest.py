@@ -18,7 +18,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -102,14 +102,15 @@ _PERIOD_YEAR = YEAR_PATTERN
 
 #: Characters Windows forbids in file and folder names, plus control
 #: characters - the one list, for identifiers and for sanitising names.
-WINDOWS_ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
-WINDOWS_ILLEGAL_CHARS_TEXT = '\\ / : * ? " < > |'
+_ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
+WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
+WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
 DATE_FORMAT = "yyyy-mm-dd"
 
 #: Characters an identifier may not contain. The identifier becomes the
 #: prefix of a Windows folder name and is matched back by that prefix, so
-#: anything the filesystem would alter (\\ / : * ? " < > | and control
-#: characters) or strip (a trailing dot) would leave the scanner unable to
+#: anything the filesystem would alter (``WINDOWS_ILLEGAL_CHARS``) or strip
+#: (a trailing dot) would leave the scanner unable to
 #: find the folder scaffold just made — a permanent "folder not found".
 _ILLEGAL_IDENTIFIER_CHARS = WINDOWS_ILLEGAL_CHARS
 
@@ -580,16 +581,7 @@ def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
     try:
         raw = json.loads(sidecar.read_text(encoding="utf-8"))
         return {
-            ident: StatusUpdate(
-                status=u["status"],
-                file_count=int(u.get("file_count", 0)),
-                received_date=(
-                    dt.date.fromisoformat(u["received_date"])
-                    if u.get("received_date")
-                    else None
-                ),
-                validation_notes=u.get("validation_notes", ""),
-            )
+            ident: _update_from_json(u)
             for ident, u in raw.items()
         }
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
@@ -627,14 +619,23 @@ def with_pending(
     return out
 
 
+def _update_to_json(update: StatusUpdate) -> dict:
+    """A StatusUpdate as the sidecar stores it: its fields, the date as text."""
+    payload = asdict(update)
+    payload["received_date"] = update.received_date.isoformat() if update.received_date else None
+    return payload
+
+
+def _update_from_json(raw: Mapping) -> StatusUpdate:
+    values = {f.name: raw.get(f.name, f.default) for f in fields(StatusUpdate) if f.name != "status"}
+    values["received_date"] = dt.date.fromisoformat(raw["received_date"]) if raw.get("received_date") else None
+    values["file_count"] = int(values["file_count"] or 0)
+    return StatusUpdate(status=raw["status"], **values)
+
+
 def _save_pending(manifest_path: Path, updates: Mapping[str, StatusUpdate]) -> None:
     payload = {
-        ident: {
-            "status": u.status,
-            "file_count": u.file_count,
-            "received_date": u.received_date.isoformat() if u.received_date else None,
-            "validation_notes": u.validation_notes,
-        }
+        ident: _update_to_json(u)
         for ident, u in updates.items()
     }
     pending_path(manifest_path).write_text(

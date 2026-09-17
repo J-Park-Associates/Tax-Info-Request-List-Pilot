@@ -122,7 +122,7 @@
       "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command."
     },
     "app/preload.js": {
-      "role": "Context bridge exposing exactly three calls to the renderer: tracker.call(args, payload), tracker.open(path) and tracker.pickFolder(). Nothing else crosses."
+      "role": "Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path) and tracker.pickFolder(). Nothing else crosses."
     },
     "app/renderer/app.js": {
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge."

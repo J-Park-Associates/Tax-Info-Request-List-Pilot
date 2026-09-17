@@ -35,8 +35,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import MISSING, asdict, fields, dataclass
 from pathlib import Path
 
 from tracker import reasons
@@ -278,6 +279,11 @@ def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
 # ------------------------------------------------------------------- cache ----
 
 
+def _identity(stat: os.stat_result, fingerprint: str) -> dict:
+    """What makes a cached verdict still apply: the file as it was, the rules as they were."""
+    return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "fp": fingerprint}
+
+
 class ContentCache:
     """Verdict cache: ``(path, size, mtime, rules-fingerprint) -> ContentResult``.
 
@@ -310,31 +316,18 @@ class ContentCache:
             stat = file.stat()
         except OSError:
             return None
-        if (
-            entry.get("size") != stat.st_size
-            or entry.get("mtime_ns") != stat.st_mtime_ns
-            or entry.get("fp") != fingerprint
-        ):
+        if any(entry.get(key) != value for key, value in _identity(stat, fingerprint).items()):
             return None
-        return ContentResult(
-            ok=bool(entry["ok"]),
-            reason=entry.get("reason", ""),
-            extractable=bool(entry.get("extractable", True)),
-        )
+        defaults = {f.name: f.default for f in fields(ContentResult)}
+        return ContentResult(**{name: entry.get(name, default) for name, default in defaults.items()
+                                if name in entry or default is not MISSING})
 
     def put(self, file: Path, fingerprint: str, result: ContentResult) -> None:
         try:
             stat = file.stat()
         except OSError:
             return  # gone already; nothing worth remembering about it
-        self._entries[self._key(file)] = {
-            "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-            "fp": fingerprint,
-            "ok": result.ok,
-            "reason": result.reason,
-            "extractable": result.extractable,
-        }
+        self._entries[self._key(file)] = _identity(stat, fingerprint) | asdict(result)
         self._dirty = True
 
     def prune(self, existing: set[Path]) -> None:

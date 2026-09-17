@@ -64,6 +64,9 @@ from tracker.validators import (
 #: Why a file was not routed. Stored verbatim in the index's Reason column.
 UNMATCHED = "matched no request"
 AMBIGUOUS = "matched more than one request"
+#: What a routing decision rested on.
+EVIDENCE_CONTENT = "content"
+EVIDENCE_FILENAME = "filename"
 PENDING = reasons.PENDING_SYNC.format()
 #: Every request refused the file type: said once, checked by tests by name.
 NO_REQUEST_ACCEPTS = "no request accepts .{extension} files"
@@ -79,7 +82,7 @@ class Routing:
     identifier: str | None          # None → needs human review
     reason: str                     # plain English, safe to show a client
     candidates: tuple[str, ...] = ()  # identifiers that accepted the file
-    evidence: str = ""              # "content" | "filename" | ""
+    evidence: str = ""              # EVIDENCE_CONTENT | EVIDENCE_FILENAME | ""
     pending: bool = False           # still syncing; leave it where it is
 
     @property
@@ -142,7 +145,7 @@ def _contested(path: Path, near: list[tuple[str, str]]) -> Routing:
         identifier=None,
         reason=f"{CONTESTED_PREFIX} {listed} - a person should confirm",
         candidates=tuple(ident for ident, _ in near),
-        evidence="content",
+        evidence=EVIDENCE_CONTENT,
     )
 
 
@@ -206,9 +209,9 @@ def route_file(
         return _contested(path, near)
 
     for hits, strength, how in (
-        (strong, "content", "content matched this request's required keywords"),
-        (medium, "content", "content matched this request's keywords"),
-        (by_name, "filename", "file name matched this request's keywords"),
+        (strong, EVIDENCE_CONTENT, "content matched this request's required keywords"),
+        (medium, EVIDENCE_CONTENT, "content matched this request's keywords"),
+        (by_name, EVIDENCE_FILENAME, "file name matched this request's keywords"),
     ):
         if len(hits) == 1:
             return Routing(

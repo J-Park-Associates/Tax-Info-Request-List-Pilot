@@ -57,6 +57,7 @@ SCHEMA_VERSION = 1
 #: (settings.json, drafts, logs) never appear.
 #: The two test edges the map draws, and what it says when there is none.
 #: CLAUDE.md explains them by these names; tests/test_single_source.py pins it.
+MAP_INTRO = "Read this instead of re-scanning the repository."
 TESTED_BY = "tested by"
 EXERCISED_BY = "exercised by"
 NO_TEST_FILE = "no dedicated test file"
@@ -518,7 +519,7 @@ def render_markdown(graph: dict) -> str:
         f"Generated {graph['generated']} · {graph['counts']['nodes']} nodes · "
         f"{graph['counts']['edges']} edges · schema v{graph['schema']}",
         "",
-        "**Read this instead of re-scanning the repository.** Check it is current "
+        f"**{MAP_INTRO}** Check it is current "
         "with `python tools/repo_map.py check`, and refresh it after changing code "
         "with `python tools/repo_map.py update` (incremental — only re-parses what "
         "changed).",

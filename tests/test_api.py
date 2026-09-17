@@ -33,7 +33,7 @@ from tracker.manifest import (
     load_manifest,
 )
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
-from tracker.locking import STALE_LOCK_SECONDS
+from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
@@ -365,7 +365,7 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     assert run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]["lock"] is None
 
     lock = engagement / LOCK_FILENAME
-    lock.write_text("pid=999 started=2026-03-14T07:03:00", encoding="utf-8")
+    lock.write_text(lock_line(999, dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
     from tracker import STANDING_RULES
     assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False,
@@ -384,7 +384,7 @@ def test_a_new_client_engagement_is_named_from_client_year_and_form(capsys, demo
             "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == f"Smith Family TY{default_tax_year()} Form 1040"
+    assert payload["created"] == api.default_engagement_name("Smith Family", default_tax_year(), "1040")
     code, payload = run(capsys, "templates")
     assert payload["default_year"] == default_tax_year()
 
@@ -397,7 +397,7 @@ def test_create_shifts_the_checklist_to_the_engagements_year(capsys, demo_root):
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == "Smith TY2027 Form 1040"
+    assert payload["created"] == api.default_engagement_name("Smith", 2027, "1040")
     periods = {i["identifier"]: i["period"] for i in payload["state"]["items"]}
     assert periods["A01"] == "TY2027" and periods["B01"] == "TY2026"
 
@@ -443,7 +443,7 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
 
     # A lock held by another run is reported as skipped, not as an error.
     from tracker.locking import LOCK_FILENAME
-    (engagement / LOCK_FILENAME).write_text("pid=999", encoding="utf-8")
+    (engagement / LOCK_FILENAME).write_text(lock_line(999, dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0 and payload["run"]["skipped"].startswith("another run")
     (engagement / LOCK_FILENAME).unlink()
@@ -550,14 +550,14 @@ def test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label(capsys
             "items": [{"identifier": "A01", "document": "Trial Balance", "any_keywords": "trial balance"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == "Acme TY2026 Form 1120-S"
+    assert payload["created"] == api.default_engagement_name("Acme", 2026, "1120S")
 
 
 def test_priors_carry_next_year_and_the_index_carries_candidates(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
-    assert parked["candidates"] == "A01"
+    assert parked["candidates"] == ["A01"]
     assert parked["filed_as"] == f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf"
     code, payload = run(capsys, "priors")
     [prior] = payload["priors"]

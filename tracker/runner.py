@@ -91,6 +91,7 @@ LOG_FILENAME = "runs.log"
 #: The runner's own flags, named once so the scheduler builds a command
 #: line the parser below still accepts.
 LOG_FLAG = "--log"
+DATE_FLAG = "--date"
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
 
@@ -409,7 +410,7 @@ if __name__ == "__main__":
                              "never: file and scan only")
     parser.add_argument("--weekday", default="", choices=("",) + WEEKDAY_NAMES,
                         help=f"draft on this day instead of {DRAFT_DAY_NAME}")
-    parser.add_argument("--date", default="",
+    parser.add_argument(DATE_FLAG, default="",
                         help="pretend today is this YYYY-MM-DD (for testing a schedule)")
     parser.add_argument(LOG_FLAG, nargs="?", const=LOG_FILENAME, default="",
                         help=f"append the run summary to a log (default: {LOG_FILENAME})")
@@ -425,7 +426,7 @@ if __name__ == "__main__":
         try:
             when = dt.date.fromisoformat(ns.date)
         except ValueError:
-            parser.error(f"--date must be YYYY-MM-DD, got {ns.date!r}")
+            parser.error(f"{DATE_FLAG} must be YYYY-MM-DD, got {ns.date!r}")
 
     day = WEEKDAY_NAMES.index(ns.weekday) if ns.weekday else DRAFT_WEEKDAY
 

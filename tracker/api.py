@@ -55,6 +55,7 @@ from tracker.manifest import (
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
 from tracker.runner import DRAFT_WEEKDAY, REMINDERS_NEVER, WEEKDAY_NAMES, run_engagement
 from tracker.filer import (
+    _CANDIDATE_SEP,
     DUPLICATE,
     FILED,
     INDEX_FILENAME,
@@ -66,6 +67,7 @@ from tracker.filer import (
 )
 from tracker.rollover import (
     ORIGIN_PRIOR,
+    UNKNOWN_YEAR_LABEL,
     CARRIED_SHEET,
     carry_engagement_info,
     detect_year,
@@ -85,6 +87,7 @@ from tracker.scaffold import (
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.scheduling import (
     INSTALL_HINT,
+    is_scheduling_host,
     SCHEDULE_XML_ENCODING,
     DEFAULT_REPEAT_MINUTES,
     DEFAULT_START,
@@ -207,6 +210,8 @@ def _vocab() -> dict:
         "expected_pattern": EXPECTED_PATTERN,
         "period_pattern": PERIOD_PATTERN,
         "origin_prior": ORIGIN_PRIOR,
+        "unknown_year_label": UNKNOWN_YEAR_LABEL,
+        "candidate_separator": _CANDIDATE_SEP,
         "year_note": YEAR_NOTE,
         "extension_default_note": EXTENSION_DEFAULT_NOTE,
         "carried_sheet": CARRIED_SHEET,
@@ -306,7 +311,8 @@ def _state(engagement: Path) -> dict:
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None}
             for i in items
         ],
-        "index": [asdict(e) | {"filed_as": e.filed_as} for e in read_index(engagement / INDEX_FILENAME)],
+        "index": [asdict(e) | {"filed_as": e.filed_as, "candidates": e.candidate_list}
+                  for e in read_index(engagement / INDEX_FILENAME)],
         "paths": {
             "engagement": str(engagement),
             "shared": str(engagement / SHARED_DIR_NAME),
@@ -488,7 +494,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
         include_new=bool(spec.get("include_new")),
     )
 
-    default_name = ROLLOVER_NAME_PATTERN.format(prior=prior.name, year=report.target_year or "next year")
+    default_name = ROLLOVER_NAME_PATTERN.format(prior=prior.name, year=report.target_year or UNKNOWN_YEAR_LABEL)
     name = _engagement_name(str(spec.get("name", "")), default_name)
     engagement = _new_engagement_dir(name)
 
@@ -624,10 +630,8 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         command = install_task(xml_path)
     except RuntimeError as exc:
         raise ManifestError(str(exc)) from None
-    import platform
-
     return {
-        "installed": platform.system() == "Windows",
+        "installed": is_scheduling_host(),
         "xml": str(xml_path),
         "command": command,
         "root": str(root),

@@ -22,6 +22,7 @@ from tracker.manifest import (
 from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
 from tracker.reminder import (
     DRAFT_BANNER,
+    HELD_BACK_HEADING,
     PARTIAL_ASK,
     SUBJECT_NEEDED,
     DRAFT_FILENAME,
@@ -271,7 +272,7 @@ def test_written_draft_appends_firm_side_notes_below_the_email(tmp_path):
     text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(
         encoding="utf-8"
     )
-    email, _, firm_side = text.partition("NOT ASKED FOR")
+    email, _, firm_side = text.partition(HELD_BACK_HEADING)
     assert "B01" not in email and "B02" not in email
     assert "B01" in firm_side and "B02" in firm_side
     assert REVIEW_DIR_NAME in firm_side
