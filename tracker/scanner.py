@@ -156,6 +156,10 @@ def _scan_item(
 
     failures = [f"{f.path.name}: {f.reason}" for f in tier2_failed]
     failures += [f"{path.name}: {reason}" for path, reason in content_failed]
+    # What is ours to look at comes first: the note lists at most
+    # _MAX_LISTED_FAILURES and is cut at _MAX_NOTE_LEN, and a firm-side
+    # marker that fell off the end would turn the row into a client ask.
+    failures.sort(key=lambda note: not any(r.matches(note) for r in reasons.FIRM_SIDE))
 
     facts: list[str] = []
     if duplicates:
@@ -223,6 +227,10 @@ def _received_date(
     """Received Date: stamped on the first Received pass, preserved through regressions."""
     if status == Status.RECEIVED:
         return item.received_date or today
+    if status == Status.PENDING_SYNC:
+        # The file is still there, the sync client has just let go of its
+        # bytes ("free up space"). Nothing changed; the row waits, dated.
+        return item.received_date
     if item.received_date is not None:
         # A row that was Received and is not any more either lost files
         # or was asked for more. Say which; REGRESSION_FILES_CHANGED on a row

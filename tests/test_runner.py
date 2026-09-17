@@ -118,6 +118,35 @@ def test_reminders_off_beats_every_mode():
     assert should_draft(quiet, SATURDAY, REMINDERS_ALWAYS) is False
 
 
+def test_a_draft_day_the_machine_missed_is_caught_up_on_the_next_pass():
+    # Weekly, not only on the day. The machine was off on Saturday: Sunday's
+    # pass drafts, because the last draft is older than the Saturday that
+    # went by. Monday after a Saturday that did draft: nothing, until next
+    # week. Never drafted: wait for the first Saturday.
+    from tracker.runner import last_draft_day
+
+    engagement = Engagement(path=Path("/x"))
+    assert last_draft_day(SUNDAY) == SATURDAY and last_draft_day(SATURDAY) == SATURDAY
+    assert last_draft_day(FRIDAY) == SATURDAY - dt.timedelta(days=7)
+    assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, drafted=SATURDAY - dt.timedelta(days=7)) is True
+    assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, drafted=SATURDAY) is False
+    assert should_draft(engagement, FRIDAY, REMINDERS_AUTO, drafted=SATURDAY - dt.timedelta(days=7)) is False
+    assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, drafted=None) is False
+
+
+def test_a_pass_after_a_missed_saturday_writes_the_weeks_draft(tmp_path, samples):
+    import os
+
+    engagement = build_engagement(tmp_path, samples)
+    drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=7)).drafted
+    assert drafted is not None
+    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=7), dt.time(9)).timestamp()
+    os.utime(drafted, (stamp, stamp))                  # written last Saturday
+    assert run_engagement(engagement, today=FRIDAY).drafted is None      # this week not yet due
+    run = run_engagement(engagement, today=SUNDAY)     # Saturday was missed
+    assert run.drafted == engagement.path / DRAFT_FILENAME
+
+
 def test_the_draft_day_can_be_moved():
     monday = dt.date(2026, 3, 16)
     assert should_draft(Engagement(path=Path("/x")), monday, REMINDERS_AUTO, weekday=0) is True

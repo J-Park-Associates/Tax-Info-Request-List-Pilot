@@ -179,8 +179,14 @@ def client_ask(item: RequestItem) -> str:
         expected = item.expected_count
         have = item.file_count or 0
         missing = max(expected - have, 0)
-        return (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
-                if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
+        ask = (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
+               if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
+        # A count alone hides why: the client who sent both W-2s, one of
+        # them password-protected, is told what to fix, not just "1 of 2".
+        reason = reasons.find(item.validation_notes or "")
+        if reason is not None and not reason.firm_side:
+            ask = f"{ask}; {reason.client_ask}"
+        return ask
 
     if item.status != Status.FAILED:
         return ""

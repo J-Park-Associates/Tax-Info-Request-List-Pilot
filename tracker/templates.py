@@ -134,7 +134,7 @@ def _shared(identifier: str, key: str, *, core: bool) -> dict:
 FORM_TEMPLATES = {
     "1040": [
         _row("A01", "W-2 Wage Statements - All Employers", core=True, required_keywords="W-2", expected_count=2),
-        _row("A02", "1099-INT / 1099-DIV - Interest & Dividend Income", core=True, extensions="pdf, csv", any_keywords="1099, interest income, dividend", expected_count=3),
+        _row("A02", "1099-INT / 1099-DIV - Interest & Dividend Income", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-oid, interest income, dividend", expected_count=3),
         _row("B01", "Prior-Year Federal & State Tax Returns", core=True, period=TY_PRIOR, any_keywords="form 1040, tax return"),
         _row("C01", "Mortgage Interest Statement - Form 1098", core=True, required_keywords="1098"),
         _row("D01", "Charitable Contribution Receipts", core=True, extensions="pdf, xlsx", any_keywords="charitable, contribution, donation"),
@@ -200,7 +200,7 @@ FORM_TEMPLATES = {
         _row("A01", "Trust Instrument / Will & Amendments", core=True, period="Current", any_keywords="trust agreement, last will, codicil"),
         _row("A02", "IRS EIN Assignment Letter", core=False, period="Current", any_keywords="cp 575, employer identification number"),
         _row("A03", "Prior-Year Fiduciary Returns", core=True, period=TY_PRIOR, any_keywords="form 1041, tax return"),
-        _row("B01", "1099s for Trust / Estate Accounts", core=True, extensions="pdf, csv", any_keywords="1099", expected_count=3),
+        _row("B01", "1099s for Trust / Estate Accounts", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-b, 1099-oid, 1099-r, 1099-misc, 1099-nec", expected_count=3),
         _row("B02", "Brokerage Year-End Statements", core=True, any_keywords="1099-b, brokerage, realized gain"),
         _row("C01", "Distributions to Beneficiaries - Dates & Amounts", core=True, extensions="xlsx, pdf", any_keywords="beneficiary, distribution"),
         _row("C02", "Beneficiary Names, Addresses & Tax IDs", core=True, period="Current", extensions="xlsx, pdf", any_keywords="beneficiary"),

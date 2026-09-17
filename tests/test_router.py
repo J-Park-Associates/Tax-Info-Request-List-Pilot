@@ -31,7 +31,7 @@ W2 = RequestItem(
 INT_DIV = RequestItem(
     identifier="A02", document="1099-INT / 1099-DIV", period="TY2025",
     allowed_extensions=("pdf", "csv"), min_size_kb=0,
-    any_keywords=("1099", "dividend"),
+    any_keywords=("1099-int", "1099-div", "dividend"),
 )
 MORTGAGE = RequestItem(
     identifier="C01", document="Mortgage Interest Statement", period="TY2025",
@@ -87,11 +87,12 @@ def test_wrong_year_is_not_routed(tmp_path):
 
 def test_filename_rescues_a_scan_with_no_text_layer(tmp_path):
     """An image-only PDF still routes when the client named it sensibly."""
-    f = tmp_path / "Form 1098 Mortgage Interest.pdf"
-    text_pdf(f, "")  # valid PDF, no usable text
-    routing = route_file(f, ITEMS, text=None)
-    assert routing.identifier == "C01"
-    assert routing.evidence == EVIDENCE_FILENAME
+    for name in ("Form 1098 Mortgage Interest.pdf", "smith_1098.pdf", "smith-1098-2025.pdf", "W2 2025.pdf"):
+        f = tmp_path / name
+        text_pdf(f, "")  # valid PDF, no usable text
+        routing = route_file(f, ITEMS, text=None)
+        assert routing.identifier == ("A01" if name.startswith("W2") else "C01"), name
+        assert routing.evidence == EVIDENCE_FILENAME
 
 
 def test_filename_match_respects_word_boundaries(tmp_path):
@@ -164,7 +165,7 @@ def test_ambiguous_match_goes_to_review(tmp_path):
     """A combined 1099 that satisfies two rows is a person's decision."""
     both = RequestItem(
         identifier="E01", document="Brokerage Year-End",
-        allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099",),
+        allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-b",),
     )
     f = text_pdf(tmp_path / "combined.pdf", "Form 1099-INT and 1099-B combined 2025")
     routing = route_file(f, [INT_DIV, both])
@@ -232,13 +233,46 @@ def test_required_keyword_beats_a_generic_any_keyword(tmp_path):
 
 
 def test_keywords_match_on_token_boundaries(tmp_path):
-    """'EIN' must not match 'being'; '1098' must not match '10983'."""
+    """'EIN' must not match 'being'; '1098' must not match '10983' - nor '1098-T'."""
     ein = RequestItem(
         identifier="Z01", document="EIN Letter", allowed_extensions=("pdf",),
         min_size_kb=0, any_keywords=("EIN",),
     )
     f = text_pdf(tmp_path / "note.pdf", "This is being sent regarding 10983 units")
     assert route_file(f, [ein, MORTGAGE]).identifier is None
+    f = text_pdf(tmp_path / "IMG_2025_0311.pdf", "Form 1098-T Tuition Statement 2025 qualified tuition")
+    assert route_file(f, [ein, MORTGAGE]).identifier is None
+
+
+def test_a_tuition_statement_is_never_filed_as_mortgage_interest(tmp_path):
+    # The one misfiling a required keyword of "1098" allowed: Form 1098-T
+    # carries the number, and required keywords outrank the tuition row's
+    # any-keywords. A hyphen-joined variant is part of the form's name.
+    from dataclasses import replace
+
+    from tracker.templates import template_items
+
+    items = [replace(i, min_size_kb=0) for i in template_items("1040", year=2025)]   # L01 included
+    f = text_pdf(tmp_path / "IMG_2025_0311.pdf", "Form 1098-T Tuition Statement 2025 qualified tuition")
+    routing = route_file(f, items)
+    assert routing.identifier == "L01"
+    core = [i for i in items if i.identifier != "L01"]   # a manifest without the tuition row
+    assert route_file(f, core).identifier is None
+    core_only = [replace(i, min_size_kb=0) for i in template_items("1040", core_only=True, year=2025)]
+    f = text_pdf(tmp_path / "IMG_2025_0312.pdf", "Form 1099-R Distributions From Pensions 2025")
+    assert route_file(f, core_only).identifier is None   # not the 1099-INT/DIV row either
+    f = text_pdf(tmp_path / "IMG_2025_0313.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    assert route_file(f, items).identifier == "C01"
+
+
+def test_a_multi_page_scan_with_no_text_layer_still_routes_by_its_name(tmp_path):
+    # Two blank pages extract to a newline, which is text to a truthiness
+    # test and nothing to a reader. The name is the evidence, as for one page.
+    f = text_pdf(tmp_path / "Form 1098 Mortgage Interest.pdf", "", pages=2)
+    routing = route_file(f, ITEMS)
+    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME
+    f = text_pdf(tmp_path / "1098-T scan.pdf", "", pages=2)
+    assert route_file(f, ITEMS).identifier is None
 
 
 def test_google_stub_review_reason_tells_the_client_what_to_do(tmp_path):

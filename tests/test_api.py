@@ -92,6 +92,27 @@ def test_the_engagement_flag_needs_a_folder_under_the_root(capsys, demo_root, tm
     assert code == 1 and "not under the clients root" in payload["error"]
 
 
+def test_an_unplugged_clients_root_is_not_a_licence_to_read_anywhere(capsys, demo_root, tmp_path):
+    import shutil
+
+    elsewhere = tmp_path / "Elsewhere" / "Smith"
+    elsewhere.mkdir(parents=True)
+    shutil.rmtree(demo_root)                          # the drive is gone
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(elsewhere))
+    assert code == 1 and "not under the clients root" in payload["error"]
+
+
+def test_a_rollover_takes_its_prior_only_from_under_the_root(capsys, demo_root, tmp_path):
+    from tracker.manifest import create_template
+    from tracker.templates import template_items
+
+    elsewhere = tmp_path / "Elsewhere" / "Smith TY2025"
+    elsewhere.mkdir(parents=True)
+    create_template(elsewhere / MANIFEST_FILENAME, template_items("1040", year=2025))
+    code, payload = run(capsys, "rollover", stdin={"prior": str(elsewhere)})
+    assert code == 1 and "not under the clients root" in payload["error"]
+
+
 def test_templates_lists_every_form_with_its_checklist(capsys):
     code, payload = run(capsys, "templates")
     assert code == 0

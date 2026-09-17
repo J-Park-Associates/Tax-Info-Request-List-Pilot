@@ -60,18 +60,22 @@ ITEMS = [
 ]
 
 
-def text_pdf(path, text: str):
+def text_pdf(path, text: str, pages: int = 1):
+    """A valid PDF whose every page says ``text`` (nothing, for a scan)."""
     content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("ascii")
+    stream, font = 3 + pages, 4 + pages          # objects 3..2+pages are the pages
+    kids = b" ".join(b"%d 0 R" % (3 + i) for i in range(pages))
     bodies = {
         1: b"<< /Type /Catalog /Pages 2 0 R >>",
-        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        3: (
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>"
-        ),
-        4: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
-        5: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        2: b"<< /Type /Pages /Kids [%s] /Count %d >>" % (kids, pages),
+        stream: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
+        font: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     }
+    for i in range(pages):
+        bodies[3 + i] = (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Contents %d 0 R /Resources << /Font << /F1 %d 0 R >> >> >>" % (stream, font)
+        )
     out = bytearray(b"%PDF-1.4\n")
     offsets = {}
     for n in sorted(bodies):
@@ -419,3 +423,19 @@ def test_a_deferred_scan_is_what_the_next_scan_measures_from(engagement, monkeyp
     assert row.status == Status.MISSING and row.received_date == DAY1
     assert REGRESSION_NOTE.format(status=Status.RECEIVED, date=DAY1.isoformat(), why="").rstrip("; ") \
         in row.validation_notes
+
+
+def test_a_received_file_the_sync_client_dehydrated_is_not_a_regression(engagement, monkeypatch):
+    # OneDrive "free up space" turns a Received file into a placeholder.
+    # The row waits for the bytes; it did not lose the document.
+    received = folder(engagement, "A01") / "chase.pdf"
+    text_pdf(received, "Chase Bank Statement Dec 2025")
+    scan_engagement(engagement, today=DAY1)
+    assert statuses(engagement)["A01"].status == Status.RECEIVED
+
+    monkeypatch.setattr("tracker.validators.is_cloud_placeholder", lambda p: p.name == "chase.pdf")
+    scan_engagement(engagement, today=DAY2)
+    row = statuses(engagement)["A01"]
+    assert row.status == Status.PENDING_SYNC and row.received_date == DAY1
+    assert REGRESSION_FILES_CHANGED not in row.validation_notes
+    assert SYNCING_NOTE.format(n=1) in row.validation_notes

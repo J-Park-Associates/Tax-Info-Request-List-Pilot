@@ -25,7 +25,9 @@ rem including a library's optional ones, so freezing from the machine's
 rem Python ships whatever else happens to be installed there (a first run
 rem from the firm's machine bundled pandas, numpy and two database drivers).
 set VENV=%OUT%\venv
-if not exist "%VENV%\Scripts\python.exe" python -m venv "%VENV%"
+rem Made fresh every build: a package once installed into a reused venv
+rem would be frozen into every later package.
+python -m venv --clear "%VENV%"
 if errorlevel 1 (echo Could not create the build environment & pause & exit /b 1)
 set PY="%VENV%\Scripts\python.exe"
 %PY% -m pip install -r requirements-build.txt --quiet
@@ -53,7 +55,9 @@ robocopy "%OUT%\py\%API%" "%PKG%\resources\%API%" /e /nfl /ndl /njh /njs /np >nu
 if errorlevel 8 (echo Copying the frozen API into the package failed & pause & exit /b 1)
 if not exist "%PKG%\resources\%API%\%API%.exe" (echo The package has no %API%.exe & pause & exit /b 1)
 
-set COMMIT=(not a git checkout)
+rem No parentheses in this value: it is expanded inside the parenthesised
+rem block below, where a ")" would end the block early.
+set COMMIT=not a git checkout
 for /f "usebackq delims=" %%i in (`git rev-parse HEAD 2^>nul`) do set COMMIT=%%i
 for /f "usebackq delims=" %%i in (`%PY% --version`) do set PYVER=%%i
 for /f "usebackq delims=" %%i in (`node --version`) do set NODEVER=%%i

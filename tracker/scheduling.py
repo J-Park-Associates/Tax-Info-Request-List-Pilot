@@ -110,7 +110,23 @@ def runner_arguments(root: str | Path, *, frozen: bool = False) -> str:
     either way; only the way in differs.
     """
     program = RUNNER_MODE_FLAG if frozen else "-m tracker.runner"
-    return f'{program} "{root}" {LOG_FLAG}'
+    return f'{program} {quote_argument(root)} {LOG_FLAG}'
+
+
+def quote_argument(value: str | Path) -> str:
+    """``value`` as one quoted Windows command-line argument.
+
+    A drive root (``D:\\``) or a share (``\\\\server\\share\\``) ends in a
+    backslash, and ``"D:\\"`` reads to the Windows argument parser as an
+    escaped quote: the job would receive ``D:" --log`` as its one argument
+    and refuse the clients folder every run. A backslash before the closing
+    quote is doubled, which is what the parser undoes.
+    """
+    text = str(value)
+    if text.endswith("\\"):
+        trailing = len(text) - len(text.rstrip("\\"))
+        text += "\\" * trailing
+    return f'"{text}"'
 
 
 def _xml_escape(value: str) -> str:

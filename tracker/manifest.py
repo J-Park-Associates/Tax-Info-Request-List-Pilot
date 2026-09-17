@@ -914,6 +914,16 @@ class ManifestCheck:
         return not self.problems
 
 
+#: Form numbers that name a family, not a form: a keyword of just the number
+#: matches none of the family's members (``1099`` does not match ``1099-INT``;
+#: see ``tracker.content_check.contains_keyword``), so the check says so.
+FORM_FAMILIES = {"1099": "1099-INT", "1095": "1095-A"}
+BARE_FORM_NUMBER_WARNING = (
+    "Row {row} ({identifier}): the keyword '{keyword}' matches only that form, not its "
+    "variants such as {example}; list the forms this request means"
+)
+
+
 def check_manifest(path: Path | str) -> ManifestCheck:
     """Everything load-time validation would say, plus what it would let slide.
 
@@ -951,6 +961,12 @@ def check_manifest(path: Path | str) -> ManifestCheck:
                 f"Row {item.row} ({item.identifier}): {COL_ALLOWED_EXTENSIONS} is '{ANY_EXTENSION}', so any "
                 "file type counts as this document"
             )
+        for keyword in (*item.required_keywords, *item.any_keywords):
+            if keyword.strip() in FORM_FAMILIES:
+                warnings.append(BARE_FORM_NUMBER_WARNING.format(
+                    row=item.row, identifier=item.identifier, keyword=keyword.strip(),
+                    example=FORM_FAMILIES[keyword.strip()],
+                ))
     pending = pending_path(path)
     if pending.exists():
         warnings.append(

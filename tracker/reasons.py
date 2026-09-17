@@ -18,7 +18,19 @@ nothing to keep in step.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+#: How the scanner prefixes a failure with the file it is about
+#: (``"name.pdf: reason"``). A marker is looked for in the reasons, never in
+#: a file name: a client who names a file "Not allowed deductions.pdf" has
+#: not been told the file type is not allowed.
+_FILE_PREFIX = re.compile(r"(^|; )[^;]*?\.[a-z0-9]{1,5}: ", re.IGNORECASE)
+
+
+def reasons_in(note: str) -> str:
+    """``note`` with each failure's file-name prefix removed."""
+    return _FILE_PREFIX.sub(lambda m: m.group(1), note or "")
 
 #: Shown to the client when a failure has no recognised cause. Deliberately
 #: vague about our rules and specific about what the client should do.
@@ -45,7 +57,7 @@ class Reason:
         return self.template.format(**detail)
 
     def matches(self, note: str) -> bool:
-        return self.marker.lower() in (note or "").lower()
+        return self.marker.lower() in reasons_in(note).lower()
 
     @property
     def client_ask(self) -> str:

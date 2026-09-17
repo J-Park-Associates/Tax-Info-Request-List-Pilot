@@ -582,3 +582,17 @@ def test_a_derived_year_is_a_check_not_a_reason_to_route():
     keyed = RequestItem(identifier="A03", document="x", any_keywords=("w-2",))
     assert has_routing_rules(typed) and has_routing_rules(keyed)
     assert not has_routing_rules(derived)
+
+
+def test_check_manifest_warns_when_a_keyword_names_a_family_of_forms(tmp_path):
+    from tracker.manifest import BARE_FORM_NUMBER_WARNING, FORM_FAMILIES, check_manifest
+
+    path = tmp_path / "m.xlsx"
+    create_template(path, [
+        RequestItem(identifier="B01", document="1099s", allowed_extensions=("pdf",), any_keywords=("1099",)),
+        RequestItem(identifier="C01", document="Mortgage", allowed_extensions=("pdf",), required_keywords=("1098",)),
+    ])
+    check = check_manifest(path)
+    assert check.ok
+    assert check.warnings == [BARE_FORM_NUMBER_WARNING.format(
+        row=2, identifier="B01", keyword="1099", example=FORM_FAMILIES["1099"])]

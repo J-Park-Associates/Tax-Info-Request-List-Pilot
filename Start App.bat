@@ -15,6 +15,11 @@ where npm >nul 2>nul || (
   pause & exit /b 1
 )
 
+rem The Python packages requirements.txt pins, installed when they are not
+rem (a satisfied requirement costs a second and needs no network).
+python -m pip install -r requirements.txt --quiet
+if errorlevel 1 (echo. & echo pip install failed - check your internet connection. & pause & exit /b 1)
+
 if not exist "app\node_modules\electron" (
   echo First-time setup: installing Electron ^(a few minutes^)...
   pushd app

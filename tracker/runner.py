@@ -179,11 +179,30 @@ def is_draft_day(today: dt.date, weekday: int = DRAFT_WEEKDAY) -> bool:
     return today.weekday() == weekday
 
 
+def last_draft_day(today: dt.date, weekday: int = DRAFT_WEEKDAY) -> dt.date:
+    """The most recent draft day on or before ``today``."""
+    return today - dt.timedelta(days=(today.weekday() - weekday) % 7)
+
+
+def last_drafted(engagement_dir: Path) -> dt.date | None:
+    """The day this engagement's reminder was last drafted, from the draft
+    files themselves; None if it never was."""
+    stamps = []
+    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
+        try:
+            stamps.append(dt.date.fromtimestamp((engagement_dir / name).stat().st_mtime))
+        except OSError:
+            continue
+    return max(stamps) if stamps else None
+
+
 def should_draft(
     engagement: Engagement,
     today: dt.date,
     mode: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
+    *,
+    drafted: dt.date | None = None,
 ) -> bool:
     """Whether the automated run drafts a reminder for this engagement today.
 
@@ -191,12 +210,20 @@ def should_draft(
     mode. It is a standing decision that this client is not chased by email,
     and a command line flag is not the place to reverse it —
     ``python -m tracker.reminder`` still drafts one on demand for anybody.
+
+    Weekly means once a week, not only on the day: a machine that was off
+    on the draft day drafts on its next pass, when ``drafted`` (the day the
+    last draft was written) is older than the draft day that went by. An
+    engagement never drafted waits for its first draft day, so a client set
+    up mid-week is not chased the same afternoon.
     """
     if not engagement.reminders or mode == REMINDERS_NEVER:
         return False
     if mode == REMINDERS_ALWAYS:
         return True
-    return is_draft_day(today, weekday)
+    if is_draft_day(today, weekday):
+        return True
+    return drafted is not None and drafted < last_draft_day(today, weekday)
 
 
 # --------------------------------------------------------------- one pass ----
@@ -241,7 +268,7 @@ def run_engagement(
         run.warnings.extend(scanned.warnings)
         run.manifest_deferred = scanned.deferred
 
-        if should_draft(engagement, today, reminders, weekday):
+        if should_draft(engagement, today, reminders, weekday, drafted=last_drafted(engagement.path)):
             _draft_step(run, dry_run=dry_run)
         else:
             run.draft_note = _why_no_draft(engagement, today, reminders, weekday)

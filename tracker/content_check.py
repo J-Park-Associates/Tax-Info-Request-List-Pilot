@@ -89,6 +89,10 @@ class ContentResult:
     ok: bool
     reason: str = ""
     extractable: bool = True  # False: could not get text (no extractor / no OCR)
+    #: True when the verdict is about the machine, not the document: OCR is
+    #: not installed, or it failed this once. Never cached - installing OCR
+    #: or a second try must be able to change the answer.
+    transient: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +110,7 @@ class Extraction:
     reason: str = ""             # why there is no usable text, if there is none
     extractable: bool = True     # False: no extractor, no OCR, or extraction failed
     error: str = ""              # the exception, when extraction raised
+    transient: bool = False      # the machine's doing (no OCR, OCR failed), not the file's
 
 
 # ------------------------------------------------------------------ rules ----
@@ -125,20 +130,58 @@ def rules_fingerprint(item: RequestItem) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+#: A form's variant letters, hyphen-joined to its number: the ``T`` of
+#: ``1098-T``, the ``INT`` of ``1099-INT``, the ``2`` of ``W-2``. One to four
+#: characters with a letter among them; a longer or all-digit neighbour
+#: (``smith-1098-2025.pdf``) is a separator's hyphen, not a form's.
+_FORM_VARIANT = r"[a-z0-9]{1,4}"
+_VARIANT_AFTER = re.compile(rf"-(?={_FORM_VARIANT}(?![a-z0-9]))[0-9]*[a-z]")
+_VARIANT_BEFORE = re.compile(rf"(?<![a-z0-9])(?=[0-9]*[a-z]){_FORM_VARIANT}-$")
+
+
+def _joined_to_a_form(text: str, start: int, end: int) -> bool:
+    """True when the token at ``text[start:end]`` is one half of a longer
+    form name: ``1098`` in "1098-T", ``1099`` in "1099-R", ``2`` in "W-2G"."""
+    return (
+        _VARIANT_AFTER.match(text, end) is not None
+        or _VARIANT_BEFORE.search(text, 0, start) is not None
+    )
+
+
+def keyword_pattern(keyword: str) -> str | None:
+    """The regular expression one keyword is looked for with, or None if blank.
+
+    Whole tokens only, and whitespace or a hyphen between a keyword's
+    words (``interest income`` matches "interest-income" in a file name).
+    """
+    words = [re.escape(w) for w in keyword.strip().lower().split()]
+    if not words:
+        return None
+    between = r"[\s-]+"
+    return rf"(?<![a-z0-9]){between.join(words)}(?![a-z0-9])"
+
+
 def contains_keyword(text: str, keyword: str) -> bool:
     """True if ``keyword`` appears in ``text`` as a whole token.
 
     Matched on token boundaries rather than as a bare substring, so ``EIN``
     does not match "being", ``1098`` does not match "10983", and ``W-2``
-    still matches "W-2 Wage and Tax Statement". Keywords drive both status
-    and — via :mod:`tracker.router` — where a document gets filed, so a
-    coincidental substring must never count as evidence.
+    still matches "W-2 Wage and Tax Statement". A hyphen-joined variant
+    is part of the form's name, not a boundary: ``1098`` does not match
+    "1098-T" and ``1099`` does not match "1099-R", because a tuition
+    statement filed as mortgage interest is exactly the misfiling the
+    keywords exist to prevent. A row that means every 1099 lists them.
+    Keywords drive both status and — via :mod:`tracker.router` — where a
+    document gets filed, so a coincidental substring must never count as
+    evidence.
     """
-    escaped = re.escape(keyword.strip().lower())
-    if not escaped:
+    pattern = keyword_pattern(keyword)
+    if pattern is None:
         return False
-    pattern = rf"(?<![a-z0-9]){escaped}(?![a-z0-9])"
-    return re.search(pattern, text.lower()) is not None
+    text = text.lower()
+    return any(
+        not _joined_to_a_form(text, m.start(), m.end()) for m in re.finditer(pattern, text)
+    )
 
 
 def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
@@ -247,7 +290,11 @@ def _ocr_pdf(path: Path) -> str | None:
         return None  # pip packages present but the Tesseract engine is not
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
-        return ""  # stack available, this file just wouldn't OCR
+        raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
+
+
+class OcrError(RuntimeError):
+    """OCR is installed but failed on this file this time; try again later."""
 
 
 def extract(path: Path, *, ocr: bool = True) -> Extraction:
@@ -280,9 +327,17 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
 
 def extract_by_ocr(path: Path) -> Extraction:
     """Read a scan by OCR; says why when it cannot (no OCR installed, or no words)."""
-    ocr_text = _ocr_pdf(path)
+    try:
+        ocr_text = _ocr_pdf(path)
+    except OcrError as exc:
+        return Extraction(
+            None, reason=reasons.EXTRACTION_FAILED.format(error=str(exc)),
+            extractable=False, error=str(exc), transient=True,
+        )
     if ocr_text is None:
-        return Extraction(None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False)
+        # No OCR on this machine: a fact about the machine, remembered by
+        # nobody, so the day it is installed the scan reads the file.
+        return Extraction(None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False, transient=True)
     if not ocr_text.strip():
         return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
     return Extraction(ocr_text, from_ocr=True)
@@ -311,7 +366,7 @@ def check_content(
 
     result = _check_uncached(path, item)
 
-    if cache is not None:
+    if cache is not None and not result.transient:
         cache.put(path, fingerprint, result)
     return result
 
@@ -319,7 +374,9 @@ def check_content(
 def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
     reading = extract(path)
     if reading.text is None:
-        return ContentResult(ok=False, reason=reading.reason, extractable=False)
+        return ContentResult(
+            ok=False, reason=reading.reason, extractable=False, transient=reading.transient,
+        )
     return evaluate_rules(reading.text, item)
 
 
