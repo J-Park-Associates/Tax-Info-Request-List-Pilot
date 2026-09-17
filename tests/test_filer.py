@@ -261,6 +261,26 @@ def test_a_dry_run_never_quarantines_a_corrupt_index_sidecar(engagement, caplog)
     assert "ignored for this read" in caplog.text
 
 
+def test_filing_leaves_verdicts_the_scan_reuses(engagement, monkeypatch):
+    # Route once, scan once, read the document once: the router's verdicts
+    # are the scanner's, keyed by content so the working copy is a hit.
+    from tests.test_content_check import counting_extractor
+    from tracker.content_check import CACHE_FILENAME
+    from tracker.scanner import scan_engagement
+
+    calls = counting_extractor(monkeypatch)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1, dry_run=True)
+    assert not (engagement / CACHE_FILENAME).exists()      # a dry run writes nothing
+    assert file_drops(engagement, today=DAY1).handled == 1
+    assert (engagement / CACHE_FILENAME).exists()
+    assert calls["n"] == 2                                  # the preview and the run
+
+    report = scan_engagement(engagement, today=DAY1)
+    assert report.updates["A01"].file_count == 1
+    assert calls["n"] == 2                                  # the scan read nothing again
+
+
 # --------------------------------------------------------------------- index ----
 
 

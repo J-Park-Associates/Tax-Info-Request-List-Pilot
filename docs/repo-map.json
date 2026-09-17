@@ -14,8 +14,8 @@
   ],
   "counts": {
     "nodes": 82,
-    "edges": 247,
-    "reused": 0
+    "edges": 254,
+    "reused": 48
   },
   "node_types": [
     "artifact",
@@ -120,11 +120,14 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fa648ab787074fbf",
-      "lines": 351,
+      "sha256": "216eba27d9d5e68f",
+      "lines": 425,
       "exports": [
+        "CACHE_FILENAME",
+        "CACHE_VERSION",
         "ContentCache",
         "ContentResult",
+        "Extraction",
         "MAX_PAGES",
         "TEXT_EXTENSIONS",
         "XLSX_EXTENSIONS",
@@ -133,24 +136,28 @@
         "check_content",
         "contains_keyword",
         "evaluate_rules",
+        "extract",
+        "extract_by_ocr",
         "extract_text",
         "has_content_rules",
         "rules_fingerprint"
       ],
       "constants": {
+        "CACHE_FILENAME": "'_content_cache.json'",
+        "CACHE_VERSION": "2",
         "MAX_PAGES": "10",
         "XLSX_EXTENSIONS": "('xlsx', 'xlsm')",
         "TEXT_EXTENSIONS": "('csv', 'tsv', 'txt')"
       },
-      "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. Caches verdicts.",
-      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything."
+      "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache (CACHE_FILENAME) keeps the verdicts.",
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION 2; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything."
     },
     {
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fa79cdcb291cddd1",
-      "lines": 886,
+      "sha256": "edd740a9d49deeaf",
+      "lines": 900,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -192,7 +199,7 @@
         "ASSIGNED_BY_PERSON": "'assigned by a person'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
     },
     {
       "id": "tracker/locking.py",
@@ -519,14 +526,15 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5c36c3cbc99f631e",
-      "lines": 275,
+      "sha256": "8a776f5b4dbfff9c",
+      "lines": 343,
       "exports": [
         "AMBIGUOUS",
         "CONTESTED_PREFIX",
         "EVIDENCE_CONTENT",
         "EVIDENCE_FILENAME",
         "NO_REQUEST_ACCEPTS",
+        "OCR_ONLY",
         "PENDING",
         "Routing",
         "UNMATCHED",
@@ -537,13 +545,14 @@
       "constants": {
         "UNMATCHED": "'matched no request'",
         "AMBIGUOUS": "'matched more than one request'",
+        "OCR_ONLY": "'matched only by OCR text'",
         "EVIDENCE_CONTENT": "'content'",
         "EVIDENCE_FILENAME": "'filename'",
         "NO_REQUEST_ACCEPTS": "'no request accepts .{extension} files'",
         "CONTESTED_PREFIX": "'looks like'"
       },
-      "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only).",
-      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched."
+      "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only), then OCR on required keywords only.",
+      "notes": "Reads the document through content_check.extract() - the scanner's reading - and leaves its per-row verdicts in the content cache keyed by content, so the scan finds them under the working copy's name. A scan whose name routes it is not OCR'd; one whose name says nothing is, and OCR text routes only on required keywords - an any-keyword match on OCR text is OCR_ONLY, a lead for a person, because a misread word is how a document lands under the wrong request. One PdfVerdictCache per file (or the caller's) so a PDF is parsed once, not once per row. Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched."
     },
     {
       "id": "tracker/runner.py",
@@ -630,11 +639,10 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ff94dc610b6fbcf2",
-      "lines": 368,
+      "sha256": "efa722acf4378853",
+      "lines": 374,
       "cli": "python -m tracker.scanner",
       "exports": [
-        "CACHE_FILENAME",
         "DUPLICATES_NOTE",
         "FOLDERS_NOTE",
         "MORE_ISSUES_NOTE",
@@ -659,11 +667,10 @@
         "SYNCING_MORE_NOTE": "'{n} more file(s) still syncing'",
         "SYNCING_NOTE": "'{n} file(s) still syncing from the cloud'",
         "REGRESSION_NOTE": "'was {status} {date}; {why}'",
-        "REGRESSION_FILES_CHANGED": "'files changed'",
-        "CACHE_FILENAME": "'_content_cache.json'"
+        "REGRESSION_FILES_CHANGED": "'files changed'"
       },
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and writes the result back into the manifest.",
-      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the manifest only once it has it, so a sort that finished in between is never invisible to the scan. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them."
+      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the manifest only once it has it, so a sort that finished in between is never invisible to the scan. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). Reads each document through content_check.extract(), the same reading the router made of it as a drop, and usually finds the router's verdict already in the content cache; one PdfVerdictCache per scan. A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them."
     },
     {
       "id": "tracker/scheduling.py",
@@ -800,14 +807,15 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3f4941635450dfd2",
-      "lines": 364,
+      "sha256": "c94c7ddbc945e020",
+      "lines": 394,
       "cli": "python -m tracker.validators",
       "exports": [
         "FileResult",
         "FolderResult",
         "OFFICE_LOCK_PREFIX",
         "PDF_EXTENSION",
+        "PdfVerdictCache",
         "_FILE_ATTRIBUTE_OFFLINE",
         "_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS",
         "_FILE_ATTRIBUTE_RECALL_ON_OPEN",
@@ -815,7 +823,6 @@
         "_IGNORED_NAMES",
         "_IGNORED_PREFIXES",
         "_IGNORED_SUFFIXES",
-        "_PDF_VERDICTS_MAX",
         "_PLACEHOLDER_MASK",
         "_SYNC_STAGING_PREFIX",
         "check_file",
@@ -834,7 +841,7 @@
         "PDF_EXTENSION": "'pdf'"
       },
       "role": "Tiers 1-2: does the file exist, is the extension allowed, is it big enough, is the PDF readable. Pure read-only functions plus passive cloud-placeholder detection for OneDrive and Google Drive.",
-      "notes": "Never downloads a cloud-only placeholder \u2014 a stub must never be filed as if it were the document. A file that vanishes between listing and stat is reported pending_sync, never raised \u2014 a scheduled scan must not die on one replaced file."
+      "notes": "Never downloads a cloud-only placeholder \u2014 a stub must never be filed as if it were the document. A file that vanishes between listing and stat is reported pending_sync, never raised \u2014 a scheduled scan must not die on one replaced file. PdfVerdictCache is a run's memo of PDF readability (the router asks once per manifest row for one file; the scanner asks again): the filer and the scanner each make one and pass it down, so nothing is shared at module level between runs that might one day be concurrent."
     },
     {
       "id": "app/main.js",
@@ -911,16 +918,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8c1ed6031fe9744d",
-      "lines": 268,
+      "sha256": "1f7b697637bac4b0",
+      "lines": 275,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "472ee1208b731909",
-      "lines": 250,
+      "sha256": "454ff023b9e1cbd5",
+      "lines": 253,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -928,8 +935,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5f7987d09d83d7da",
-      "lines": 437,
+      "sha256": "464b95dc521de1eb",
+      "lines": 442,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1178,11 +1185,12 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eaba61e23093b4bd",
-      "lines": 286,
+      "sha256": "453f967e9577f53c",
+      "lines": 316,
       "exports": [
         "counting_extractor",
         "item",
+        "test_a_cache_in_an_older_layout_is_reset",
         "test_a_cache_save_leaves_no_temp_file_and_survives_a_crash",
         "test_any_keywords",
         "test_cache_corrupt_resets_silently",
@@ -1197,6 +1205,7 @@
         "test_ocr_text_used_when_available",
         "test_only_the_first_pages_of_a_pdf_are_read",
         "test_required_keywords",
+        "test_the_cache_is_keyed_on_content_not_path",
         "test_unsupported_extension",
         "test_xlsx_extraction_with_dates",
         "text_pdf"
@@ -1206,8 +1215,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cc5a98dbb9d8e222",
-      "lines": 787,
+      "sha256": "92b62ca9505be352",
+      "lines": 807,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1239,6 +1248,7 @@
         "test_dry_run_previews_real_numbering",
         "test_empty_client_folders_are_cleared_after_sorting",
         "test_file_is_sorted_renamed_and_indexed",
+        "test_filing_leaves_verdicts_the_scan_reuses",
         "test_index_workbook_is_readable_in_excel",
         "test_mixed_append_and_edit_survive_a_locked_index",
         "test_name_collision_in_pbc_never_overwrites",
@@ -1482,8 +1492,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "98754ff2dbcf45db",
-      "lines": 265,
+      "sha256": "0cd6c9a60050a367",
+      "lines": 323,
       "exports": [
         "DONATIONS",
         "INT_DIV",
@@ -1494,7 +1504,9 @@
         "test_a_derived_year_never_routes_on_its_own_but_still_contests",
         "test_a_file_type_nobody_accepts_is_named_as_such",
         "test_a_matching_document_the_row_refuses_says_why",
+        "test_a_sensibly_named_scan_is_not_ocrd",
         "test_ambiguous_match_goes_to_review",
+        "test_an_image_only_scan_routes_on_its_required_keywords_after_ocr",
         "test_content_match_routes",
         "test_extension_alone_is_not_evidence",
         "test_filename_fallback_tolerates_the_run_together_spelling",
@@ -1503,9 +1515,11 @@
         "test_google_stub_is_not_routed",
         "test_google_stub_review_reason_tells_the_client_what_to_do",
         "test_keywords_match_on_token_boundaries",
+        "test_ocr_text_alone_never_routes_on_any_keywords",
         "test_placeholder_is_left_alone",
         "test_required_keyword_beats_a_generic_any_keyword",
         "test_route_files_skips_sync_junk",
+        "test_the_router_and_the_scanner_reach_one_verdict_for_one_document",
         "test_waived_rows_never_receive_files",
         "test_wrong_extension_is_not_routed",
         "test_wrong_year_is_not_routed"
@@ -1743,8 +1757,8 @@
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "edc97b19a1a1b7b6",
-      "lines": 218,
+      "sha256": "066052a1036f34bc",
+      "lines": 235,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
@@ -1761,9 +1775,10 @@
         "test_missing_and_empty_folders",
         "test_no_whitelist_allows_anything",
         "test_password_protected_pdf_fails",
-        "test_pdf_readability_is_parsed_once_per_file",
+        "test_pdf_readability_is_parsed_once_per_run_not_per_process",
         "test_placeholder_skipped_not_read",
         "test_sha256_of",
+        "test_the_pdf_verdict_cache_is_bounded",
         "test_valid_pdf_passes",
         "write_pdf"
       ]
@@ -2125,6 +2140,12 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
@@ -2149,7 +2170,19 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/scanner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tests/test_content_check.py",
       "type": "imports",
       "source": "derived"
     },
@@ -2371,6 +2404,12 @@
     },
     {
       "from": "tests/test_router.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_router.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
       "source": "derived"
@@ -2379,6 +2418,12 @@
       "from": "tests/test_router.py",
       "to": "tracker/scaffold.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_router.py",
+      "to": "tests/test_content_check.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -2857,6 +2902,12 @@
     },
     {
       "from": "tracker/filer.py",
+      "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/filer.py",
       "to": "tracker/locking.py",
       "type": "imports",
       "source": "derived"
@@ -2906,6 +2957,12 @@
     {
       "from": "tracker/filer.py",
       "to": "artifact:Prepared/",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:_content_cache.json",
       "type": "writes",
       "source": "curated"
     },

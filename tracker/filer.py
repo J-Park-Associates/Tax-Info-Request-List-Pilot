@@ -66,6 +66,7 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 
+from tracker.content_check import CACHE_FILENAME, ContentCache
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     COL_IDENTIFIER,
@@ -94,6 +95,7 @@ from tracker.scaffold import (
     sanitize_component,
 )
 from tracker.validators import (
+    PdfVerdictCache,
     extension_of,
     is_cloud_placeholder,
     is_ignored,
@@ -560,6 +562,12 @@ def file_drops(
         # Existing request folders, so a Document renamed in Excel keeps
         # filing into the folder that already holds its earlier files.
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
+        # What the router learns about each document is what the scan will
+        # want to know about its working copy (same bytes): the verdicts go
+        # into the engagement's content cache, keyed by content. The PDF
+        # readability cache is this run's alone.
+        cache = ContentCache(engagement_dir / CACHE_FILENAME)
+        pdf_cache = PdfVerdictCache()
         try:
             for drop, already_in_pbc in (
                 [(d, False) for d in drops] + [(p, True) for p in strays]
@@ -603,7 +611,7 @@ def file_drops(
                     entry = _sort_one(
                         drop, pbc_target, pbc_rel, digest, size_kb, stamp,
                         items, by_id, known, prepared_dir, review_dir, reserved,
-                        assigned, dry_run, report,
+                        assigned, dry_run, report, cache, pdf_cache,
                     )
                 except Exception as exc:  # the original is safe; say so and go on
                     log.exception("Could not file %s", drop.name)
@@ -630,6 +638,7 @@ def file_drops(
             if not dry_run and (len(entries) > recorded or sidecar_waiting):
                 report.index_deferred = not write_index(index_path, entries)
         if not dry_run:
+            cache.save()
             _prune_empty_dirs(shared_dir, keep=pbc_dir)
     return report
 
@@ -650,6 +659,8 @@ def _sort_one(
     assigned: dict[str, list[Path]],
     dry_run: bool,
     report: FileReport,
+    cache: ContentCache,
+    pdf_cache: PdfVerdictCache,
 ) -> IndexEntry:
     """Decide one preserved original's fate and, unless dry-running, copy it."""
     refiled = ""
@@ -683,7 +694,10 @@ def _sort_one(
             report.duplicates.append(entry)
             return entry
 
-    routing = route_file(pbc_target if not dry_run else drop, items)
+    routing = route_file(
+        pbc_target if not dry_run else drop, items,
+        digest=digest, cache=cache, pdf_cache=pdf_cache,
+    )
     item = by_id.get(routing.identifier or "")
 
     if routing.routed and item is not None:

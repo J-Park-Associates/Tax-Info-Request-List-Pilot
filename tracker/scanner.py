@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import reasons
-from tracker.content_check import ContentCache, check_content
+from tracker.content_check import CACHE_FILENAME, ContentCache, check_content
 from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
     COL_EXPECTED_COUNT,
@@ -57,6 +57,7 @@ from tracker.scaffold import (
     assign_folders,
 )
 from tracker.validators import (
+    PdfVerdictCache,
     check_folder,
     is_ignored,
     iter_candidate_files,
@@ -79,7 +80,8 @@ REGRESSION_FILES_CHANGED = "files changed"
 
 log = logging.getLogger("tracker.scanner")
 
-CACHE_FILENAME = "_content_cache.json"
+#: CACHE_FILENAME is tracker.content_check's (the filer writes the cache too);
+#: it stays importable from here for anyone's scripts.
 _MAX_NOTE_LEN = 500
 _MAX_LISTED_FAILURES = 3
 
@@ -115,9 +117,12 @@ def _scan_item(
     folders: list[Path],
     cache: ContentCache,
     today: dt.date,
+    pdf_cache: PdfVerdictCache | None = None,
 ) -> StatusUpdate:
     """Run tiers 1-3 for one manifest row and resolve its status."""
-    results = [fr for folder in folders for fr in check_folder(folder, item).files]
+    results = [
+        fr for folder in folders for fr in check_folder(folder, item, pdf_cache=pdf_cache).files
+    ]
     pending = [f for f in results if f.pending_sync]
     tier2_failed = [f for f in results if not f.ok and not f.pending_sync]
 
@@ -283,10 +288,11 @@ def scan_engagement(
         items = load_manifest(engagement_dir / MANIFEST_FILENAME)
         prepared_dir = engagement_dir / PREPARED_DIR_NAME
         cache = ContentCache(engagement_dir / CACHE_FILENAME)
+        pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
 
         updates = {
-            item.identifier: _scan_item(item, assigned[item.identifier], cache, today)
+            item.identifier: _scan_item(item, assigned[item.identifier], cache, today, pdf_cache)
             for item in items
         }
 

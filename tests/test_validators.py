@@ -196,22 +196,39 @@ def test_a_file_that_vanishes_mid_scan_is_pending_not_a_crash(tmp_path):
     assert reasons.VANISHED.matches(result.reason)
 
 
-def test_pdf_readability_is_parsed_once_per_file(tmp_path, monkeypatch):
+def test_pdf_readability_is_parsed_once_per_run_not_per_process(tmp_path, monkeypatch):
     # The router asks check_file() once per manifest row for one file; the
-    # verdict is cached per (path, size, mtime) so the PDF is parsed once,
-    # and a rewritten file gets a fresh parse.
+    # run's PdfVerdictCache keys the verdict by (path, size, mtime) so the
+    # PDF is parsed once, a rewritten file gets a fresh parse - and a run
+    # that brings no cache shares nothing with any other.
     import tracker.validators as v
+    from tracker.validators import PdfVerdictCache
 
     calls = []
     real = v._pdf_error_uncached
     monkeypatch.setattr(v, "_pdf_error_uncached", lambda p: (calls.append(p), real(p))[1])
     pdf = write_pdf(tmp_path / "statement.pdf")
+    run = PdfVerdictCache()
     for _ in range(5):
-        assert check_file(pdf, PDF_ITEM).ok
+        assert check_file(pdf, PDF_ITEM, pdf_cache=run).ok
     assert len(calls) == 1
 
     write_pdf(pdf, pages=2)
     import os
     os.utime(pdf, ns=(1, 1))  # a different mtime, whatever the clock did
-    assert check_file(pdf, PDF_ITEM).ok
+    assert check_file(pdf, PDF_ITEM, pdf_cache=run).ok
     assert len(calls) == 2
+
+    assert check_file(pdf, PDF_ITEM, pdf_cache=PdfVerdictCache()).ok   # another run
+    assert check_file(pdf, PDF_ITEM).ok                                 # no cache at all
+    assert len(calls) == 4
+
+
+def test_the_pdf_verdict_cache_is_bounded(tmp_path):
+    from tracker.validators import PdfVerdictCache
+
+    cache = PdfVerdictCache(limit=2)
+    cache.put(("a", 1, 1), "")
+    cache.put(("b", 1, 1), "")
+    cache.put(("c", 1, 1), "")
+    assert cache.get(("a", 1, 1)) is None and cache.get(("c", 1, 1)) == ""

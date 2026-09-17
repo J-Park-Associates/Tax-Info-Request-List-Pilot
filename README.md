@@ -233,6 +233,13 @@ row's other rules — last year's W-2, say — is **not** filed anywhere else.
 Everything unclear lands in `00 - Needs Review` with the reason recorded in
 the index, because misfiling a tax document is worse than not filing it.
 
+A scan with no text layer is routed by its file name when the name says
+which request it is. When the name says nothing it is read by OCR (if OCR
+is installed), the same reading the scanner makes later — and OCR text
+routes a file only on a request's *required* keywords; a looser match on
+OCR text goes to review with the lead noted, because a misread word is how
+a document lands under the wrong request.
+
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward

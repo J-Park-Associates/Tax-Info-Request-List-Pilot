@@ -16,6 +16,7 @@ from tracker.router import (
     EVIDENCE_CONTENT,
     EVIDENCE_FILENAME,
     NO_REQUEST_ACCEPTS,
+    OCR_ONLY,
     UNMATCHED,
     route_file,
     route_files,
@@ -97,6 +98,63 @@ def test_filename_match_respects_word_boundaries(tmp_path):
     f = tmp_path / "ledger-10983.pdf"
     text_pdf(f, "")
     assert route_file(f, ITEMS).identifier is None
+
+
+def test_an_image_only_scan_routes_on_its_required_keywords_after_ocr(tmp_path, monkeypatch):
+    # No text layer, and a name that says nothing: OCR is the only evidence
+    # left, and it is read the way the scanner reads it. A required-keyword
+    # match on OCR text is a filing decision.
+    calls = []
+    monkeypatch.setattr(
+        "tracker.content_check._ocr_pdf",
+        lambda p: (calls.append(p), "Form 1098 Mortgage Interest Statement 2025")[1],
+    )
+    f = text_pdf(tmp_path / "scan0012.pdf", "")
+    routing = route_file(f, ITEMS)
+    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_CONTENT
+    assert calls == [f]
+
+
+def test_ocr_text_alone_never_routes_on_any_keywords(tmp_path, monkeypatch):
+    # OCR misreads words; the looser any-keyword tier is exactly where a
+    # misread "1099" files a document under the wrong request. A person
+    # gets it, with the lead.
+    monkeypatch.setattr(
+        "tracker.content_check._ocr_pdf", lambda p: "Consolidated 1099 dividend summary 2025"
+    )
+    f = text_pdf(tmp_path / "scan0013.pdf", "")
+    routing = route_file(f, ITEMS)
+    assert routing.identifier is None
+    assert routing.reason.startswith(OCR_ONLY) and routing.candidates == ("A02",)
+
+
+def test_a_sensibly_named_scan_is_not_ocrd(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "tracker.content_check._ocr_pdf",
+        lambda p: (_ for _ in ()).throw(AssertionError("OCR ran on a scan the name already routes")),
+    )
+    f = text_pdf(tmp_path / "Form 1098 Mortgage Interest.pdf", "")
+    routing = route_file(f, ITEMS)
+    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME
+
+
+def test_the_router_and_the_scanner_reach_one_verdict_for_one_document(tmp_path, monkeypatch):
+    # The verdicts the router reaches on a drop are the scanner's verdicts on
+    # the working copy: same bytes, same reading, read once.
+    from tests.test_content_check import counting_extractor
+    from tracker.content_check import ContentCache, check_content
+
+    calls = counting_extractor(monkeypatch)
+    cache = ContentCache(tmp_path / "cache.json")
+    dropped = text_pdf(tmp_path / "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
+    assert route_file(dropped, ITEMS, cache=cache).identifier == "A01"
+    assert calls["n"] == 1
+
+    working_copy = tmp_path / "A01 - W-2 Wage Statements - TY2025.pdf"
+    working_copy.write_bytes(dropped.read_bytes())
+    assert check_content(working_copy, W2, cache).ok
+    assert not check_content(working_copy, MORTGAGE, cache).ok
+    assert calls["n"] == 1                        # the scan never read it again
 
 
 # ---------------------------------------------------------- not routed ----

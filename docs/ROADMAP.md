@@ -106,6 +106,7 @@ The standing rules are worded once, in `tracker/__init__.py`, and quoted here:
 | 47 | The packaged schedule | **The same command line behind the same executable.** The packaged app used to refuse its Install Schedule button ("install from a Python checkout") because the job was `python -m tracker.runner` and the package has no Python. Now `api_entry.py` is both parts of the app: given `RUNNER_MODE_FLAG` first it runs the pass, dispatched *before* `tracker.api` is imported, so the job needs none of the environment the shell gives the API (Task Scheduler passes nothing); `scheduling.runner_arguments()` stays the one command line, with one way in per host. `tracker.runner.main()` is the command line as a function so both entries call it. |
 | 48 | CI | **Linux and Windows.** The firm's machine is Windows, and the things that matter most there - the held lock, `os.replace` over a file Excel may hold, path handling - behave differently from Linux; some tests only run on Windows. The matrix runs the suite, the map check and a Node syntax check of the three Electron files on both, every step always reporting. |
 | 49 | Dead code | **The linter's job.** `ruff` (pinned in `requirements.txt`, configured in `pyproject.toml`, run by CI) checks pyflakes, the pycodestyle errors, bugbear, pyupgrade at the floor above and import order. The first pass removed unused imports that had accumulated across seven modules, an unreachable branch in the yes/no parser, the `outstanding_count` field that duplicated the `outstanding` property, and gave every `raise` inside an `except` an explicit cause. Line length is deliberately not enforced: the docstrings carry reasoning, and a wrapped sentence reads worse than a long one. |
+| 50 | Reading a document | **Once, one way, and remembered by what the file is.** The router used to read a drop's text layer directly (no OCR, no cache) while the scanner read the working copy through the OCR-and-cache path, so the two could disagree about one document and every document was read at least twice. `content_check.extract()` is now the one reading; `ContentCache` keys verdicts by content digest and rules fingerprint (with a size/mtime memo per path), so the verdicts the router reaches on a drop are the verdicts the scanner finds under the working copy's name. **OCR in routing, strictly.** A scan whose name says which request it is routes by name and is not OCR'd; one whose name says nothing is read by OCR, and OCR text routes a file only on a request's *required* keywords - a looser any-keyword match on OCR text goes to review as `OCR_ONLY` with the lead, because a misread word is how a document lands under the wrong request (rule 3: nothing is guessed). **PDF readability is a run's memo, not the process's:** `PdfVerdictCache` replaces the module-level dict that blocked ever running engagements in parallel. |
 
 ## Architecture
 
@@ -185,9 +186,11 @@ with the reason — never ignored, never guessed.
    (`pypdf` load test).
 3. **Content** — extract text (`pdfplumber`; `openpyxl`/`csv` for spreadsheets;
    `pytesseract` OCR fallback for image-only PDFs); apply keyword/date-pattern rules
-   from the manifest row. **Extraction results are cached** in a sidecar JSON keyed by
-   `(path, size, mtime)` — unchanged files are never re-extracted, so steady-state
-   scans stay fast at the scheduled cadence.
+   from the manifest row. **Verdicts are cached** in a sidecar JSON keyed by the
+   file's content digest and the row's rules (with a `(path, size, mtime)` memo so
+   an unchanged file is not re-hashed) — unchanged files are never re-extracted, and
+   the verdict the router reached on a drop is the one the scanner finds on its
+   working copy, so steady-state scans stay fast at the scheduled cadence.
 
 Status resolution:
 - 0 valid files → **Missing**

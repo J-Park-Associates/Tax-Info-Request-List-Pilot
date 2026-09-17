@@ -20,14 +20,25 @@ Extractors by extension:
 - ``TEXT_EXTENSIONS``   → plain text (utf-8, then cp1252 fallback).
 - anything else       → no extractor; reported unverifiable, for a person (``reasons.UNCHECKABLE_TYPE``).
 
+**One way of reading a document.** :func:`extract` is what both the router
+(deciding where a drop goes) and the scanner (deciding a row's status) call,
+so the two can never disagree about what a file says. The router asks for
+the text layer first and OCR only when the file's name tells it nothing
+(:mod:`tracker.router` explains why); the scanner always finishes the job.
+
 Keyword matching is case-insensitive. Date Pattern is applied to the raw
 text as-is, so authors control case sensitivity with inline flags (``(?i)``).
 
 Caching: :class:`ContentCache` stores only *verdicts* — pass/fail + reason —
-keyed by ``(path, size, mtime, rules-fingerprint)``. Extracted client text is
-deliberately never persisted anywhere. Editing a row's rules changes the
-fingerprint and triggers one re-extraction; unchanged files on unchanged
-rules are never re-read, which keeps the scheduled cadence cheap.
+keyed by the file's **content digest** and the row's rules fingerprint, with
+a per-path memo of (size, mtime, digest) so an unchanged file is not
+re-hashed. Keyed on content, not path, because the same bytes are read
+twice in this system: once as a drop the router routes, once as the
+working copy the scanner checks. A verdict the router reached is the
+verdict the scanner finds. Extracted client text is deliberately never
+persisted anywhere. Editing a row's rules changes the fingerprint and
+triggers one re-extraction; unchanged files on unchanged rules are never
+re-read, which keeps the scheduled cadence cheap.
 """
 
 from __future__ import annotations
@@ -35,20 +46,24 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
 from dataclasses import MISSING, asdict, dataclass, fields
 from pathlib import Path
 
 from tracker import reasons
 from tracker.manifest import RequestItem, has_routing_rules, write_json_atomically
-from tracker.validators import PDF_EXTENSION, extension_of
+from tracker.validators import PDF_EXTENSION, extension_of, sha256_of
 
 log = logging.getLogger("tracker.content_check")
 
 # pdfplumber/pdfminer warn loudly on ugly-but-parseable PDFs; failures are
 # already surfaced through ContentResult.reason.
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
+
+#: The verdict cache beside the manifest, shared by the filer and the scanner.
+CACHE_FILENAME = "_content_cache.json"
+#: Its layout; an older layout is simply reset (the cache is disposable).
+CACHE_VERSION = 2
 
 #: A "text" PDF with fewer stripped characters than this is treated as a
 #: scan/image-only PDF and routed to the OCR fallback.
@@ -74,6 +89,23 @@ class ContentResult:
     ok: bool
     reason: str = ""
     extractable: bool = True  # False: could not get text (no extractor / no OCR)
+
+
+@dataclass(frozen=True, slots=True)
+class Extraction:
+    """What one document says, or why it could not be read.
+
+    ``text`` is None when there is nothing usable and ``reason`` then says
+    why in the words the scanner writes. ``needs_ocr`` marks a PDF whose
+    text layer is empty when the caller asked not to OCR yet.
+    """
+
+    text: str | None
+    from_ocr: bool = False       # the text came from OCR, not a text layer
+    needs_ocr: bool = False      # a scan; OCR was not attempted (ocr=False)
+    reason: str = ""             # why there is no usable text, if there is none
+    extractable: bool = True     # False: no extractor, no OCR, or extraction failed
+    error: str = ""              # the exception, when extraction raised
 
 
 # ------------------------------------------------------------------ rules ----
@@ -177,7 +209,7 @@ def _extract_textfile(path: Path) -> str:
 
 
 def extract_text(path: Path) -> str | None:
-    """Extract text from a supported file; None if no extractor exists."""
+    """Extract the text layer from a supported file; None if no extractor exists."""
     extension = extension_of(path)
     if extension == PDF_EXTENSION:
         return _extract_pdf(path)
@@ -218,6 +250,44 @@ def _ocr_pdf(path: Path) -> str | None:
         return ""  # stack available, this file just wouldn't OCR
 
 
+def extract(path: Path, *, ocr: bool = True) -> Extraction:
+    """What ``path`` says - the one reading both the router and the scanner use.
+
+    With ``ocr=False`` a scan (a PDF with no text layer) comes back with
+    ``needs_ocr`` set and whatever little text there was, so the caller can
+    decide - the router first tries the file's name - and then call
+    :func:`extract_by_ocr` if it still needs the words.
+    """
+    extension = extension_of(path)
+    try:
+        text = extract_text(path)
+    except Exception as exc:  # a corrupt file is a reason, not a crash
+        error = f"{exc.__class__.__name__}: {exc}"
+        return Extraction(
+            None, reason=reasons.EXTRACTION_FAILED.format(error=error),
+            extractable=False, error=error,
+        )
+    if text is None:
+        return Extraction(
+            None, reason=reasons.UNCHECKABLE_TYPE.format(extension=extension), extractable=False,
+        )
+    if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS:
+        if not ocr:
+            return Extraction(text, needs_ocr=True)
+        return extract_by_ocr(path)
+    return Extraction(text)
+
+
+def extract_by_ocr(path: Path) -> Extraction:
+    """Read a scan by OCR; says why when it cannot (no OCR installed, or no words)."""
+    ocr_text = _ocr_pdf(path)
+    if ocr_text is None:
+        return Extraction(None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False)
+    if not ocr_text.strip():
+        return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
+    return Extraction(ocr_text, from_ocr=True)
+
+
 # ---------------------------------------------------------------- checking ----
 
 
@@ -247,98 +317,98 @@ def check_content(
 
 
 def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
-    extension = extension_of(path)
-    try:
-        text = extract_text(path)
-    except Exception as exc:
-        return ContentResult(
-            ok=False,
-            reason=reasons.EXTRACTION_FAILED.format(error=f"{exc.__class__.__name__}: {exc}"),
-            extractable=False,
-        )
-
-    if text is None:
-        return ContentResult(
-            ok=False,
-            reason=reasons.UNCHECKABLE_TYPE.format(extension=extension),
-            extractable=False,
-        )
-
-    if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS:
-        ocr_text = _ocr_pdf(path)
-        if ocr_text is None:
-            return ContentResult(
-                ok=False, reason=reasons.NO_TEXT_LAYER.format(), extractable=False,
-            )
-        if not ocr_text.strip():
-            return ContentResult(
-                ok=False, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False,
-            )
-        text = ocr_text
-
-    return evaluate_rules(text, item)
+    reading = extract(path)
+    if reading.text is None:
+        return ContentResult(ok=False, reason=reading.reason, extractable=False)
+    return evaluate_rules(reading.text, item)
 
 
 # ------------------------------------------------------------------- cache ----
 
 
-def _identity(stat: os.stat_result, fingerprint: str) -> dict:
-    """What makes a cached verdict still apply: the file as it was, the rules as they were."""
-    return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "fp": fingerprint}
-
-
 class ContentCache:
-    """Verdict cache: ``(path, size, mtime, rules-fingerprint) -> ContentResult``.
+    """Verdict cache: ``(content digest, rules-fingerprint) -> ContentResult``.
 
     Stores only pass/fail verdicts and reasons — never extracted client
-    text. Disposable by design: a corrupt or missing cache file simply
-    means re-extraction, so it is reset silently.
+    text. A per-path memo of (size, mtime, digest) spares the hashing of a
+    file that has not changed; the verdicts themselves are keyed by what
+    the file *is*, so a working copy of a routed drop is a hit under its
+    new name. Disposable by design: a corrupt, missing or older-layout
+    cache file simply means re-extraction, so it is reset silently.
     """
 
     def __init__(self, path: Path | str):
         self.path = Path(path)
         self._dirty = False
-        self._entries: dict[str, dict] = {}
+        self._files: dict[str, dict] = {}                # path key -> size, mtime_ns, digest
+        self._verdicts: dict[str, dict[str, dict]] = {}  # digest -> fingerprint -> verdict
         if self.path.exists():
             try:
                 data = json.loads(self.path.read_text(encoding="utf-8"))
-                if isinstance(data, dict) and isinstance(data.get("files"), dict):
-                    self._entries = data["files"]
             except (json.JSONDecodeError, OSError) as exc:
                 log.warning("Content cache reset (unreadable): %s", exc)
+                return
+            if (
+                isinstance(data, dict) and data.get("version") == CACHE_VERSION
+                and isinstance(data.get("files"), dict) and isinstance(data.get("verdicts"), dict)
+            ):
+                self._files = data["files"]
+                self._verdicts = data["verdicts"]
+            else:
+                log.info("Content cache reset (older layout); verdicts are recomputed")
 
     @staticmethod
     def _key(file: Path) -> str:
         return str(file.resolve()).lower()  # Windows paths are case-insensitive
 
-    def get(self, file: Path, fingerprint: str) -> ContentResult | None:
-        entry = self._entries.get(self._key(file))
-        if entry is None:
-            return None
+    def digest_of(self, file: Path) -> str | None:
+        """The file's content digest, hashed once per (size, mtime); None if it vanished."""
         try:
             stat = file.stat()
         except OSError:
             return None
-        if any(entry.get(key) != value for key, value in _identity(stat, fingerprint).items()):
+        key = self._key(file)
+        memo = self._files.get(key)
+        if memo and memo.get("size") == stat.st_size and memo.get("mtime_ns") == stat.st_mtime_ns:
+            return str(memo["digest"])
+        try:
+            digest = sha256_of(file)
+        except OSError:
+            return None
+        self._files[key] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "digest": digest}
+        self._dirty = True
+        return digest
+
+    def get(self, file: Path, fingerprint: str) -> ContentResult | None:
+        digest = self.digest_of(file)
+        return self.get_by_digest(digest, fingerprint) if digest else None
+
+    def get_by_digest(self, digest: str, fingerprint: str) -> ContentResult | None:
+        entry = self._verdicts.get(digest, {}).get(fingerprint)
+        if entry is None:
             return None
         defaults = {f.name: f.default for f in fields(ContentResult)}
         return ContentResult(**{name: entry.get(name, default) for name, default in defaults.items()
                                 if name in entry or default is not MISSING})
 
     def put(self, file: Path, fingerprint: str, result: ContentResult) -> None:
-        try:
-            stat = file.stat()
-        except OSError:
-            return  # gone already; nothing worth remembering about it
-        self._entries[self._key(file)] = _identity(stat, fingerprint) | asdict(result)
+        digest = self.digest_of(file)
+        if digest:
+            self.put_by_digest(digest, fingerprint, result)
+
+    def put_by_digest(self, digest: str, fingerprint: str, result: ContentResult) -> None:
+        self._verdicts.setdefault(digest, {})[fingerprint] = asdict(result)
         self._dirty = True
 
     def prune(self, existing: set[Path]) -> None:
-        """Drop entries for files that no longer exist (scanner calls this)."""
+        """Forget files that are no longer there, and verdicts nothing there refers to."""
         keep = {self._key(p) for p in existing}
-        stale = [k for k in self._entries if k not in keep]
-        for key in stale:
-            del self._entries[key]
+        for key in [k for k in self._files if k not in keep]:
+            del self._files[key]
+            self._dirty = True
+        referenced = {str(memo.get("digest")) for memo in self._files.values()}
+        for digest in [d for d in self._verdicts if d not in referenced]:
+            del self._verdicts[digest]
             self._dirty = True
 
     def save(self) -> None:
@@ -346,5 +416,9 @@ class ContentCache:
             return
         # Whole or nothing: a scan killed mid-save must not leave a cache
         # the next scan reads as empty and then re-extracts everything.
-        write_json_atomically(self.path, {"version": 1, "files": self._entries}, indent=1)
+        write_json_atomically(
+            self.path,
+            {"version": CACHE_VERSION, "files": self._files, "verdicts": self._verdicts},
+            indent=1,
+        )
         self._dirty = False
