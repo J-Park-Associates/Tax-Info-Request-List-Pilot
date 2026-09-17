@@ -79,8 +79,17 @@ CASES = [
         "1 Wages, tips, other compensation",
     ], "A01"),
     ("1040", "1099-NEC.pdf", [
-        "Form 1099-NEC Nonemployee Compensation 2025 (Rev. January 2024)",
-        "See Form 1040-ES (or Form 1040-ES (NR))", "report on your income tax return",
+        "Form 1099-NEC (Rev. January 2024) Nonemployee Compensation Copy B For Recipient",
+        "PAYER'S name, street address, city or town, state or province, country, ZIP or foreign postal code, and telephone no.",
+        "PAYER'S TIN RECIPIENT'S TIN RECIPIENT'S name Street address (including apt. no.) City or town, state or province, country, and ZIP or foreign postal code",
+        "Account number (see instructions) 1 Nonemployee compensation 12,500.00 2 Payer made direct sales totaling $5,000 or more",
+        "4 Federal income tax withheld 5 State tax withheld 6 State/Payer's state no. 7 State income OMB No. 1545-0116 For calendar year 2025",
+        "This is important tax information and is being furnished to the IRS. If you are required to file a return, a negligence penalty or other sanction may be imposed on you",
+        "Instructions for Recipient Recipient's taxpayer identification number (TIN). For your protection, this form may show only the last four digits of your TIN.",
+        "Box 1. Shows nonemployee compensation. If the amount in this box is SE income, report it on Schedule C or F (Form 1040) if a sole proprietor.",
+        "If you are not an employee but the amount in this box is not SE income, report it on Schedule 1 (Form 1040), line 8. See Form 1040-ES (or Form 1040-ES (NR)).",
+        "report on your income tax return",
+        "Form 1099-NEC (Rev. 1-2024) www.irs.gov/Form1099NEC",
     ], None),
     ("1040", "1040-ES voucher.pdf", ["2025 Estimated Tax Payment Voucher 1", "Form 1040-ES"], "H01"),
     ("1120S", "1099-INT.pdf", [
@@ -122,8 +131,78 @@ CASES = [
         "Form 990 Return of Organization Exempt From Income Tax 2024",
         "Part XI Reconciliation of Net Assets", "Board of Directors",
     ], "A01"),
-    ("990", "Nov 2025 bank.pdf", ["Checking Account Statement", "Statement period 11/01/2025 - 11/30/2025"], None),
-    ("990", "Dec 2025 bank.pdf", ["Checking Account Statement", "Statement period 12/01/2025 - 12/31/2025"], "B02"),
+    ("990", "Nov 2025 bank.pdf", [
+        "Checking Account Statement", "Statement period 11/01/2025 - 11/30/2025", "Deposits and other credits 4,000.00",
+    ], None),
+    ("990", "Dec 2025 bank.pdf", [
+        "Checking Account Statement", "Statement period 12/01/2025 - 12/31/2025", "Deposits and other credits 4,000.00",
+    ], "B02"),
+    # Round six: the W-2 as the IRS lays it out (title at the foot), documents
+    # that mention forms they are not, and returns with their schedules.
+    ("1040", "W-2 IRS layout.pdf", [
+        "a Employee's social security number 123-45-6789 OMB No. 1545-0008 Safe, accurate, FAST! Use",
+        "b Employer identification number (EIN) 12-3456789 1 Wages, tips, other compensation 84,500.00 2 Federal income tax withheld 11,240.00",
+        "c Employer's name, address, and ZIP code 3 Social security wages 84,500.00 4 Social security tax withheld 5,239.00",
+        "d Control number 5 Medicare wages and tips 84,500.00 6 Medicare tax withheld 1,225.25",
+        "e Employee's first name and initial Last name Suff. 7 Social security tips 8 Allocated tips",
+        "f Employee's address and ZIP code 10 Dependent care benefits 11 Nonqualified plans 12a See instructions for box 12",
+        "13 Statutory employee Retirement plan Third-party sick pay 14 Other",
+        "15 State Employer's state ID number 16 State wages, tips, etc. 17 State income tax 18 Local wages, tips, etc. 19 Local income tax 20 Locality name",
+        "Form W-2 Wage and Tax Statement 2025 Copy B To Be Filed With Employee's FEDERAL Tax Return.",
+        "Department of the Treasury Internal Revenue Service",
+        "Notice to Employee Do you have to file? Refer to the Form 1040 instructions to determine if you are required to file a tax return.",
+        "Form W-2 Wage and Tax Statement 2025 Copy 2 To Be Filed With Employee's State, City, or Local Income Tax Return.",
+    ], "A01"),
+    ("1041", "K-1 1065 in a trust.pdf", [
+        "Schedule K-1 (Form 1065) 2025 Partner's Share of Income, Deductions, Credits, etc.",
+        "1 Ordinary business income (loss) 2 Net rental real estate income (loss) 3 Other net rental income (loss)",
+        "Schedule K-1 (Form 1065) 2025 See separate instructions. Schedule E, line 28",
+    ], None),
+    ("1120", "CP 575 in a corporation.pdf", [
+        "IRS Department of the Treasury Internal Revenue Service Cincinnati OH 45999-0023",
+        "Date of this notice: 03-14-2025 Employer Identification Number: 12-3456789 Form: SS-4 Number of this notice: CP 575 A",
+        "For assistance you may call us at: 1-800-829-4933 IF YOU WRITE, ATTACH THE STUB AT THE END OF THIS NOTICE.",
+        "SMITH HOLDINGS INC 123 MAIN ST ANYTOWN CA 90000",
+        "WE ASSIGNED YOU AN EMPLOYER IDENTIFICATION NUMBER",
+        "Thank you for applying for an Employer Identification Number (EIN). We assigned you EIN 12-3456789. This EIN will identify you,",
+        "your business accounts, tax returns, and documents, even if you have no employees. Please keep this notice in your permanent records.",
+        "When filing tax documents, payments, and related correspondence, it is very important that you use your EIN and complete name",
+        "and address exactly as shown above. Any variation may cause a delay in processing, result in incorrect information in your account,",
+        "or even cause you to be assigned more than one EIN.",
+        "Based on the information you submitted, you must file the following form(s) by the date(s) shown.",
+        "Form 941 04/30/2025", "Form 940 01/31/2026", "Form 1120 03/15/2026",
+    ], None),
+    ("1040", "CP14 notice.pdf", [
+        "Notice CP14 Tax year 2025 Amount due", "Payment options",
+        "IRS Direct Pay Electronic Federal Tax Payment System (EFTPS)",
+    ], None),
+    ("1040", "4868 extension.pdf", [
+        "Form 4868 Application for Automatic Extension of Time To File U.S. Individual Income Tax Return 2024",
+        "Your social security number",
+    ], None),
+    ("1040", "closing disclosure.pdf", [
+        "Closing Disclosure This form is a statement of final loan terms and closing costs. 2025",
+        "F. Prepaids Homeowner's Insurance Premium Property Taxes ( 6 mo.) 1,200.00", "G. Initial Escrow Payment at Closing Property Taxes",
+    ], None),
+    ("1040", "2024 1040 with schedules.pdf", [
+        "Form 1040 2024 U.S. Individual Income Tax Return Department of the Treasury Internal Revenue Service OMB No. 1545-0074",
+        "Filing Status Single Married filing jointly Married filing separately Head of household Qualifying surviving spouse",
+        "1a Total amount from Form(s) W-2, box 1 26 2025 estimated tax payments 36 Amount applied to your 2025 estimated tax",
+        "Form 1040 (2024) Page 2 Schedule A Itemized Deductions 5c State and local personal property taxes",
+        "8a Home mortgage interest and points reported to you on Form 1098 Schedule B substitute statement from a brokerage firm",
+        "Schedule E Passive income from Schedule K-1 Form 8962 Monthly enrollment premiums Form 8283 Noncash Charitable Contributions",
+        "Form 1040 (2024)",
+    ], "B01"),
+    ("1120", "2024 1120 with schedules.pdf", [
+        "Form 1120 U.S. Corporation Income Tax Return 2024 Department of the Treasury Internal Revenue Service",
+        "20 Depreciation from Form 4562 not claimed on Form 1125-A 37 Credited to 2025 estimated tax",
+        "Schedule L Balance Sheets per Books Schedule M-1 Reconciliation of Income (Loss) per Books With Income per Return",
+        "Form 1120 (2024)",
+    ], "A01"),
+    ("1120", "QuickBooks trial balance.pdf", [
+        "Trial Balance As of December 31, 2025", "Checking Account 12,000.00 Savings Account 30,000.00",
+        "Accumulated Depreciation -4,000.00 Shareholder Distributions 10,000.00",
+    ], "A02"),
 ]
 
 

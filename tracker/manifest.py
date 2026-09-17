@@ -401,6 +401,8 @@ def _parse_enum(value: object, allowed: tuple[str, ...], column: str, row: int) 
 
 
 _MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+_MONTH_NAMES = ("january", "february", "march", "april", "may", "june", "july", "august",
+                "september", "october", "november", "december")
 
 
 def derived_date_pattern(period: str) -> str:
@@ -420,9 +422,10 @@ def derived_date_pattern(period: str) -> str:
     if month is None:
         return rf"(?i)\b{year}\b"
     number = _MONTHS.index(month) + 1
+    name = rf"(?:{month}|{_MONTH_NAMES[number - 1]})\.?"          # Dec, Dec., December
     return (
-        rf"(?i)(?:\b{month}[a-z]*\b[^\n]{{0,20}}\b{year}\b|"
-        rf"\b{year}\b[^\n]{{0,20}}\b{month}[a-z]*\b|\b0?{number}/[0-3]?[0-9]/{year}\b)"
+        rf"(?i)(?:\b{name}\s[^\n]{{0,20}}\b{year}\b|"
+        rf"\b{year}\b[^\n]{{0,20}}\b{name}\b|\b0?{number}/[0-3]?[0-9]/(?:{year}|{year[2:]})\b)"
     )
 
 

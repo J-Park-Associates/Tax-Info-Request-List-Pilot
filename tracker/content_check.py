@@ -65,7 +65,8 @@ CACHE_FILENAME = "_content_cache.json"
 #: Its layout; an older layout is simply reset (the cache is disposable).
 #: 3: verdicts that were the machine's (no OCR, OCR failed) are no longer
 #: stored; a cache written before that carried them for ever.
-CACHE_VERSION = 3
+#: 4: says() changed what a keyword verdict means (a form number is title evidence).
+CACHE_VERSION = 4
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -236,39 +237,99 @@ def contains_keyword(text: str, keyword: str) -> bool:
     return any(not _joined_to_a_variant(text, keyword, m) for m in re.finditer(pattern, text))
 
 
-#: How much of a document's text is its title: where a form prints its own
-#: number. A form number a keyword names counts as content evidence only
-#: there - every 1040 says "Attach Form(s) W-2", every 1095-C's instructions
-#: name "Form 1095-A", every 1099's say "Form 1040-ES" - and those are
-#: sentences about other forms, not the form this is. A file name is read
-#: whole (it is all title).
+#: A form number a keyword names is content evidence only where a form
+#: prints its own: in the title - the first ``TITLE_CHARS`` of the text -
+#: or as the number the document prints most, on every copy and every
+#: page's footer (a W-2 prints its title at the foot of the form, below
+#: the boxes). Every 1040 says "Attach Form(s) W-2", every 1095-C's
+#: instructions name "Form 1095-A", every 1099's say "Form 1040-ES", and
+#: those are single mentions of other forms, not the form this is. A file
+#: name is read whole: it is all title.
 TITLE_CHARS = 400
-_FORM_NUMBER = re.compile(r"^(?:form\s+|schedule\s+)?([a-z]?\d{3,4}|w\d)(?:[a-z]{1,4})?$")
+_FORM_NUMBER = re.compile(r"^(?:form\s+)?([a-z]?\d{3,4}|w\d)(?:[a-z]{1,4})?$")
+_FORM_MENTION = re.compile(
+    rf"(?<![a-z0-9])(?:form\s+)?(w[{re.escape(_DASH_CHARS)}]?[23]|\d{{3,4}})"
+    rf"(?:[\s{re.escape(_DASH_CHARS)}]?([a-z]{{1,4}}))?(?![a-z0-9])"
+)
 
 
 def is_form_number(keyword: str) -> bool:
-    """True for a keyword that is a form's number (``1098``, ``form 1095-a``, ``W-2``)."""
+    """True for a keyword that is a form's number: ``1098``, ``form 1095-a``,
+    ``W-2``, ``form 940``. A bare number counts only for a known family
+    (``FORM_VARIANTS``); ``form`` in front makes any number one."""
     bare = _DASHES.sub("", keyword.strip().lower())
-    match = _FORM_NUMBER.match(bare.replace("form", "form ", 1) if bare.startswith("form") else bare)
+    if bare.startswith("form"):
+        return _FORM_NUMBER.match("form " + bare[4:]) is not None
+    match = _FORM_NUMBER.match(bare)
     return match is not None and match.group(1) in FORM_VARIANTS
 
 
-def says(text: str, keyword: str) -> bool:
-    """``contains_keyword`` as content evidence: a form number only in the title."""
-    if is_form_number(keyword):
-        return contains_keyword(text[:TITLE_CHARS], keyword)
-    return contains_keyword(text, keyword)
+def _form_key(number: str, variant: str | None) -> str:
+    return _DASHES.sub("", number) + (variant or "")
+
+
+def _title(text: str) -> str:
+    """The first ``TITLE_CHARS``, extended to the end of the word it cuts."""
+    if len(text) <= TITLE_CHARS:
+        return text
+    space = re.compile(r"\s").search(text, TITLE_CHARS)
+    return text[:space.start()] if space else text
+
+
+def dominant_forms(text: str) -> set[str]:
+    """The form number ``text`` is about, normalised (``w2``, ``1099int``),
+    as a set of at most one.
+
+    A document prints its own number on every copy and every page's
+    footer, and another form's once in passing: the number mentioned most
+    is its own, and among equals the one mentioned first. A number
+    mentioned only once is its own only when no other form is named at all
+    - an IRS notice that lists three forms to file is about none of them.
+    """
+    counts: dict[str, int] = {}
+    first: dict[str, int] = {}
+    for match in _FORM_MENTION.finditer(text.lower()):
+        number, variant = match.group(1), match.group(2)
+        base = _DASHES.sub("", number)
+        if base not in FORM_VARIANTS:
+            continue
+        if variant and variant not in FORM_VARIANTS[base]:
+            variant = None                      # "1040 line" is Form 1040, not a variant
+        key = _form_key(number, variant)
+        counts[key] = counts.get(key, 0) + 1
+        first.setdefault(key, match.start())
+    if not counts:
+        return set()
+    top = max(counts.values())
+    if top < 2 and len(counts) > 1:
+        return set()
+    return {min((key for key, n in counts.items() if n == top), key=first.get)}
+
+
+def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
+    """``contains_keyword`` as content evidence: a form number counts only in
+    the title or as the document's own (dominant) number."""
+    if not is_form_number(keyword):
+        return contains_keyword(text, keyword)
+    if contains_keyword(_title(text), keyword):
+        return True
+    if not contains_keyword(text, keyword):
+        return False
+    bare = _DASHES.sub("", keyword.strip().lower())
+    key = bare[4:] if bare.startswith("form") else bare
+    return key in (dominant_forms(text) if dominant is None else dominant)
 
 
 def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
     """Apply the manifest row's content rules to extracted text."""
-    missing = [k for k in item.required_keywords if not says(text, k)]
+    dominant = dominant_forms(text)
+    missing = [k for k in item.required_keywords if not says(text, k, dominant)]
     if missing:
         listed = ", ".join(f"'{k}'" for k in missing)
         return ContentResult(ok=False, reason=reasons.WRONG_DOCUMENT.format(listed=listed))
 
     if item.any_keywords and not any(
-        says(text, k) for k in item.any_keywords
+        says(text, k, dominant) for k in item.any_keywords
     ):
         listed = ", ".join(item.any_keywords)
         return ContentResult(ok=False, reason=reasons.NO_EXPECTED_KEYWORD.format(listed=listed))

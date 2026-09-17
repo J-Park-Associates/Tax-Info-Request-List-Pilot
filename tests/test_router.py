@@ -426,7 +426,7 @@ def _shipped_1040_rows(tmp_path):
 @pytest.mark.parametrize("name, text, expected", [
     # What other forms print about their neighbours must not file them there.
     ("2024 Tax Return.pdf",
-     "Form 1040 U.S. Individual Income Tax Return 2024\nAttach Form(s) W-2 here.\n"
+     "Form 1040 U.S. Individual Income Tax Return 2024\nFiling Status Single\nAttach Form(s) W-2 here.\n"
      "1a Total amount from Form(s) W-2\n36 Amount applied to your 2025 estimated tax", "B01"),
     ("1095-C.pdf",
      "Form 1095-C Employer-Provided Health Insurance Offer and Coverage 2025\nIf you purchased health "

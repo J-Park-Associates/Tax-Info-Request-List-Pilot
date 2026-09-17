@@ -198,19 +198,23 @@ def client_ask(item: RequestItem) -> str:
         # them password-protected, is told what to fix, not just "1 of 2".
         reason = reasons.find(item.validation_notes or "")
         if reason is not None and not reason.firm_side:
-            ask = f"{ask}; {reason.client_ask}"
+            ask = f"{ask}; {_ask_for(reason, item)}"
         return ask
 
     if item.status != Status.FAILED:
         return ""
 
     reason = reasons.find(item.validation_notes or "")
+    return _ask_for(reason, item) if reason else GENERIC_ASK
+
+
+def _ask_for(reason: reasons.Reason, item: RequestItem) -> str:
+    """The reason's client ask, in the row's own terms where it has them:
+    "a PDF or an Excel file" would send a client whose row wants a
+    spreadsheet round the loop again."""
     if reason is reasons.EXTENSION_NOT_ALLOWED and item.allowed_extensions:
-        # The ask names what this row takes; "a PDF or an Excel file" would
-        # send a client whose row wants a spreadsheet round the loop again.
-        return EXTENSION_ASK.format(accepted=" or ".join(
-            f".{ext}" for ext in item.allowed_extensions))
-    return reason.client_ask if reason else GENERIC_ASK
+        return EXTENSION_ASK.format(accepted=" or ".join(f".{ext}" for ext in item.allowed_extensions))
+    return reason.client_ask
 
 
 def _firm_side_reason(item: RequestItem) -> str:
@@ -583,5 +587,9 @@ if __name__ == "__main__":
         print(REVIEW_ADVICE)
 
     if ns.write:
-        written = write_draft(result, engagement_dir=ns.engagement_dir, preserve_edits=True)
+        try:
+            written = write_draft(result, engagement_dir=ns.engagement_dir, preserve_edits=True)
+        except DraftsEditedError as exc:
+            print(f"\n{exc}")
+            raise SystemExit(1) from None
         print(f"\nDraft written to {written}")
