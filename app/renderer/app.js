@@ -201,7 +201,7 @@ function renderLock(state) {
   const since = lock.started ? ` started at ${lock.started.replace("T", " ").slice(0, 16)}` : "";
   if (lock.stale) {
     $("lock-text").textContent =
-      `A run${since} left its lock behind (${lock.age_minutes} min old) — it has most likely died. Nothing will sort or scan this engagement until the lock is cleared.`;
+      `A run${since} left its lock behind (${lock.age_minutes} min old) — it has most likely died. The next ${SCAN_LABEL} or scheduled pass will replace it; clear it here to tidy up now.`;
     notice.className = "banner warn";
     $("btn-unlock").classList.remove("hidden");
   } else {

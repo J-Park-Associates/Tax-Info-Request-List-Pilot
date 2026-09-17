@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 82,
     "edges": 256,
-    "reused": 54
+    "reused": 59
   },
   "node_types": [
     "artifact",
@@ -880,7 +880,7 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "2f01bb09526a77e5",
+      "sha256": "2d2eb9aba0aa7bd3",
       "lines": 699,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns."
