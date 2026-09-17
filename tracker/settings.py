@@ -144,7 +144,7 @@ if __name__ == "__main__":
         try:
             print(f"clients root: {set_clients_root(ns.root)}  ({settings_path()})")
         except SettingsError as exc:
-            raise SystemExit(str(exc))
+            raise SystemExit(str(exc)) from None
     else:
         root = clients_root()
         print(f"clients root: {root or '(not set)'}  ({settings_path()})")

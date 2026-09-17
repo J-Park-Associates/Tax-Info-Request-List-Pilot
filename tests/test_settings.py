@@ -10,8 +10,8 @@ import json
 import pytest
 
 from tracker.settings import (
-    KEY_CLIENTS_ROOT,
     ENV_SETTINGS_DIR,
+    KEY_CLIENTS_ROOT,
     SETTINGS_FILENAME,
     SettingsError,
     clients_root,

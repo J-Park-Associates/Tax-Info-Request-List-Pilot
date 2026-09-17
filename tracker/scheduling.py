@@ -274,7 +274,6 @@ def install_task(xml_path: Path | str, task_name: str = TASK_NAME) -> list[str]:
     schedule is the whole upgrade path. Only meaningful on Windows; anywhere
     else the command is returned unrun so it can be shown.
     """
-    import platform
     import subprocess
 
     command = ["schtasks", "/create", "/xml", str(xml_path), "/tn", task_name, "/f"]
@@ -365,12 +364,10 @@ if __name__ == "__main__":
         write_text_atomically(Path(ns.out), payload, encoding=encoding)
         print(f"Wrote {ns.out}")
         if ns.install:
-            import platform
-
             try:
                 command = install_task(ns.out, ns.name)
             except RuntimeError as exc:
-                raise SystemExit(f"Not installed: {exc}")
+                raise SystemExit(f"Not installed: {exc}") from None
             if is_scheduling_host():
                 print(f'Installed as "{ns.name}" - it runs daily from {ns.start}.')
             else:

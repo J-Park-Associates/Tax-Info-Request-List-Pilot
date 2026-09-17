@@ -8,7 +8,7 @@ the year it is written for follows the calendar rather than a person.
 import pytest
 
 from tracker.content_check import has_content_rules
-from tracker.manifest import ManifestError, load_manifest, create_template
+from tracker.manifest import ManifestError, create_template, load_manifest
 from tracker.scaffold import MANIFEST_FILENAME
 from tracker.templates import (
     BASE_YEAR,
@@ -56,6 +56,7 @@ def test_a_request_with_no_rule_defaults_to_its_own_name():
 
 def test_the_tax_year_comes_from_the_calendar():
     import datetime as dt
+
     from tracker.templates import default_tax_year
 
     assert default_tax_year(dt.date(2027, 2, 1)) == 2026
@@ -84,7 +85,7 @@ def test_shared_requests_are_defined_once_and_agree_everywhere():
     from tracker.templates import SHARED
 
     by_document: dict[str, set[tuple]] = {}
-    for form, rows in FORM_TEMPLATES.items():
+    for rows in FORM_TEMPLATES.values():
         for row in rows:
             signature = (row["document"], row.get("any_keywords", ""), row.get("required_keywords", ""),
                          row["extensions"], row["period"])
@@ -95,6 +96,7 @@ def test_shared_requests_are_defined_once_and_agree_everywhere():
 
 def test_the_catalogs_year_is_one_constant():
     import re
+
     from tracker.templates import BASE_YEAR
 
     years = {int(y) for rows in FORM_TEMPLATES.values() for row in rows

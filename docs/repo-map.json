@@ -2,7 +2,7 @@
   "schema": 1,
   "generated": "2026-09-17",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "eec602a35951abbe",
+  "generator_sha256": "c0bf7ed1ead20dcd",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -14,8 +14,8 @@
   ],
   "counts": {
     "nodes": 82,
-    "edges": 252,
-    "reused": 59
+    "edges": 247,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -52,8 +52,8 @@
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "7fcfbbce7e677999",
-      "lines": 72,
+      "sha256": "e7961723230594a2",
+      "lines": 78,
       "role": "CI: runs the test suite, `repo_map.py check` and `node --check` on the three Electron files, on Linux and Windows, on every push to main and every pull request.",
       "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is in the matrix because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version line is pinned to pyproject's floor by a guard."
     },
@@ -93,8 +93,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "cc3df46a43115d8b",
-      "lines": 688,
+      "sha256": "c00ac125d67f31b4",
+      "lines": 684,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -120,7 +120,7 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d1a38fa01aa80f4f",
+      "sha256": "fa648ab787074fbf",
       "lines": 351,
       "exports": [
         "ContentCache",
@@ -198,7 +198,7 @@
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "262be8b8c0d77dd0",
+      "sha256": "7ed868f57cf3eaef",
       "lines": 218,
       "exports": [
         "EngagementLock",
@@ -227,8 +227,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "04210f72de94d0e9",
-      "lines": 1134,
+      "sha256": "b899fccde5227fb4",
+      "lines": 1132,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -401,8 +401,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c9686d70028fd4c4",
-      "lines": 226,
+      "sha256": "56a7e962f0258c6c",
+      "lines": 225,
       "cli": "python -m tracker.registry",
       "exports": [
         "Engagement",
@@ -426,8 +426,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "cecf24177935eec2",
-      "lines": 560,
+      "sha256": "0fb1ef98be3382e1",
+      "lines": 559,
       "cli": "python -m tracker.reminder",
       "exports": [
         "DRAFT_BANNER",
@@ -486,7 +486,7 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "67749bc0b172a8c8",
+      "sha256": "2bb7a949c021bbee",
       "lines": 385,
       "cli": "python -m tracker.rollover",
       "exports": [
@@ -549,8 +549,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "58034b20903a3704",
-      "lines": 464,
+      "sha256": "6160229c5318e59c",
+      "lines": 459,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -594,7 +594,7 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "cb13a6d4093af3fe",
+      "sha256": "8d3bc26943f8fc69",
       "lines": 280,
       "cli": "python -m tracker.scaffold",
       "exports": [
@@ -630,7 +630,7 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "067b33d4389531c7",
+      "sha256": "ff94dc610b6fbcf2",
       "lines": 368,
       "cli": "python -m tracker.scanner",
       "exports": [
@@ -669,8 +669,8 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1bce64c16839cf39",
-      "lines": 383,
+      "sha256": "66e09b8ee0be5e68",
+      "lines": 380,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "DEFAULT_REPEAT_MINUTES",
@@ -727,7 +727,7 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b3f36c875c264507",
+      "sha256": "f9cfd39afa88c3a5",
       "lines": 151,
       "cli": "python -m tracker.settings",
       "exports": [
@@ -764,7 +764,7 @@
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2dfbf4cc50a6ad9c",
+      "sha256": "5cd9ee21ad8ab384",
       "lines": 343,
       "exports": [
         "AS_OF_YEAR_END",
@@ -800,7 +800,7 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "085c0d8186c5fd4b",
+      "sha256": "3f4941635450dfd2",
       "lines": 364,
       "cli": "python -m tracker.validators",
       "exports": [
@@ -902,8 +902,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b4ae70024ff28767",
-      "lines": 119,
+      "sha256": "31661667f7c56785",
+      "lines": 120,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -919,8 +919,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5146880aacf8feac",
-      "lines": 249,
+      "sha256": "472ee1208b731909",
+      "lines": 250,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -928,7 +928,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1aa794041d804b1d",
+      "sha256": "5f7987d09d83d7da",
       "lines": 437,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -953,8 +953,8 @@
       "id": "requirements.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "174c759605799a29",
-      "lines": 15,
+      "sha256": "99568dfc4f98c38c",
+      "lines": 16,
       "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range); the optional OCR extras are documented here too.",
       "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46)."
     },
@@ -1036,9 +1036,12 @@
       "id": "conftest.py",
       "type": "module",
       "layer": "root",
-      "sha256": "c8e3529dafaf86d3",
-      "lines": 2,
-      "role": "Puts the repo root on sys.path so tests can `import tracker` without installing the package."
+      "sha256": "966d59b14a41d276",
+      "lines": 16,
+      "exports": [
+        "ROOT"
+      ],
+      "role": "Puts the repo root on sys.path so tests can `import tracker` without installing the package - explicitly now, beside pyproject's pythonpath, for editor runners and pytest's rootdir detection."
     },
     {
       "id": "artifact:Prepared/",
@@ -1092,7 +1095,7 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "59c7c6b7f64212b1",
+      "sha256": "e92ffef6724ad2ee",
       "lines": 206,
       "exports": [
         "DEMO_ITEMS",
@@ -1113,8 +1116,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "636975ba6c48743f",
-      "lines": 619,
+      "sha256": "d1805f0c00f33197",
+      "lines": 617,
       "exports": [
         "demo_root",
         "run",
@@ -1175,8 +1178,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d77f3ac5afa1697c",
-      "lines": 287,
+      "sha256": "eaba61e23093b4bd",
+      "lines": 286,
       "exports": [
         "counting_extractor",
         "item",
@@ -1203,8 +1206,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "44a8cffe59bbfddc",
-      "lines": 784,
+      "sha256": "cc5a98dbb9d8e222",
+      "lines": 787,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1258,7 +1261,7 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6684cee5fcae4096",
+      "sha256": "8443a4c25ad9ab12",
       "lines": 127,
       "exports": [
         "test_a_fresh_lock_blocks_a_second_run",
@@ -1277,8 +1280,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4ccfaf89f5a16a42",
-      "lines": 581,
+      "sha256": "0dc56a076f32ef59",
+      "lines": 585,
       "exports": [
         "SAMPLE_ITEMS",
         "manifest",
@@ -1336,8 +1339,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7dc4b3f58e9914e4",
-      "lines": 158,
+      "sha256": "9abfc6c9a96d1e9d",
+      "lines": 166,
       "exports": [
         "ITEMS",
         "make",
@@ -1360,7 +1363,7 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c7c3ebfa08172396",
+      "sha256": "958b30bfe24a11a0",
       "lines": 342,
       "exports": [
         "SCANNED",
@@ -1444,8 +1447,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "07e763b075f84549",
-      "lines": 337,
+      "sha256": "9b5a055b95f3bd03",
+      "lines": 338,
       "exports": [
         "PRIOR",
         "TEMPLATE",
@@ -1479,8 +1482,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5dd389d38e9e8b6b",
-      "lines": 259,
+      "sha256": "98754ff2dbcf45db",
+      "lines": 265,
       "exports": [
         "DONATIONS",
         "INT_DIV",
@@ -1512,8 +1515,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "47de686ba0544990",
-      "lines": 435,
+      "sha256": "e0fda8fae54e8b63",
+      "lines": 437,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -1559,7 +1562,7 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3403e5b89eea0848",
+      "sha256": "81da296ca62f5288",
       "lines": 198,
       "exports": [
         "ITEMS",
@@ -1584,8 +1587,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "61323ef229528984",
-      "lines": 390,
+      "sha256": "c4155364aca28067",
+      "lines": 388,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1619,7 +1622,7 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0f525fc87e21ed7a",
+      "sha256": "6b5c9c14ff7ad6a3",
       "lines": 229,
       "exports": [
         "ARGS",
@@ -1652,7 +1655,7 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f4275c87caf37fc4",
+      "sha256": "b3cfaf762d03fc72",
       "lines": 65,
       "exports": [
         "beside_the_app",
@@ -1667,8 +1670,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "aa433c0c787b6aeb",
-      "lines": 546,
+      "sha256": "29c5bcc672f7526a",
+      "lines": 553,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -1723,8 +1726,8 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "147118c529dd6723",
-      "lines": 103,
+      "sha256": "efe9c3c46eefc361",
+      "lines": 105,
       "exports": [
         "test_a_request_with_no_rule_defaults_to_its_own_name",
         "test_catalog_rows_shift_to_the_engagements_year",
@@ -1740,8 +1743,8 @@
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ffadf131f5a27d3b",
-      "lines": 220,
+      "sha256": "edc97b19a1a1b7b6",
+      "lines": 218,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
@@ -1769,8 +1772,8 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "eec602a35951abbe",
-      "lines": 737,
+      "sha256": "c0bf7ed1ead20dcd",
+      "lines": 736,
       "cli": "python -m tools.repo_map",
       "exports": [
         "CURATED_PATH",
@@ -2362,12 +2365,6 @@
     },
     {
       "from": "tests/test_router.py",
-      "to": "pkg:pytest",
-      "type": "depends_on",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_router.py",
       "to": "tracker/__init__.py",
       "type": "exercises",
       "source": "derived"
@@ -2470,12 +2467,6 @@
     },
     {
       "from": "tests/test_scanner.py",
-      "to": "pkg:pypdf",
-      "type": "depends_on",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_scanner.py",
       "to": "pkg:pytest",
       "type": "depends_on",
       "source": "derived"
@@ -2556,12 +2547,6 @@
       "from": "tests/test_settings.py",
       "to": "tracker/settings.py",
       "type": "tests",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_single_source.py",
-      "to": "pkg:pytest",
-      "type": "depends_on",
       "source": "derived"
     },
     {
@@ -2692,12 +2677,6 @@
     },
     {
       "from": "tests/test_validators.py",
-      "to": "pkg:pytest",
-      "type": "depends_on",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_validators.py",
       "to": "tracker/__init__.py",
       "type": "exercises",
       "source": "derived"
@@ -2730,12 +2709,6 @@
       "from": "tracker/__init__.py",
       "to": "tracker/scaffold.py",
       "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/api.py",
-      "to": "pkg:openpyxl",
-      "type": "depends_on",
       "source": "derived"
     },
     {

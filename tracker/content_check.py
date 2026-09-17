@@ -37,7 +37,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import MISSING, asdict, fields, dataclass
+from dataclasses import MISSING, asdict, dataclass, fields
 from pathlib import Path
 
 from tracker import reasons
@@ -222,7 +222,7 @@ def _ocr_pdf(path: Path) -> str | None:
 
 
 def check_content(
-    path: Path, item: RequestItem, cache: "ContentCache | None" = None
+    path: Path, item: RequestItem, cache: ContentCache | None = None
 ) -> ContentResult:
     """Tier-3 verdict for one file, using the cache when possible.
 

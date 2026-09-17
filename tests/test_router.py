@@ -5,16 +5,22 @@ unambiguous, and never guess. A misfiled tax document is worse than one
 sitting in Needs Review.
 """
 
-from pathlib import Path
 
-import pytest
-
-from tracker import reasons
-from tracker.manifest import Override, RequestItem
-from tracker.router import AMBIGUOUS, CONTESTED_PREFIX, EVIDENCE_CONTENT, EVIDENCE_FILENAME, NO_REQUEST_ACCEPTS, UNMATCHED, route_file, route_files
-from tracker.scaffold import MANIFEST_FILENAME
 
 from tests.test_scanner import text_pdf
+from tracker import reasons
+from tracker.manifest import Override, RequestItem
+from tracker.router import (
+    AMBIGUOUS,
+    CONTESTED_PREFIX,
+    EVIDENCE_CONTENT,
+    EVIDENCE_FILENAME,
+    NO_REQUEST_ACCEPTS,
+    UNMATCHED,
+    route_file,
+    route_files,
+)
+from tracker.scaffold import MANIFEST_FILENAME
 
 W2 = RequestItem(
     identifier="A01", document="W-2 Wage Statements", period="TY2025",

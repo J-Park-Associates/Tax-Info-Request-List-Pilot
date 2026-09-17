@@ -305,8 +305,8 @@ if __name__ == "__main__":
     from tracker.manifest import Override, load_manifest
     from tracker.scaffold import (
         MANIFEST_FILENAME,
-        README_NAME,
         PREPARED_DIR_NAME,
+        README_NAME,
         REVIEW_DIR_NAME,
         assign_folders,
     )

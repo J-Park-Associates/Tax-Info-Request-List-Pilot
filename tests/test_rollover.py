@@ -251,7 +251,7 @@ def test_offers_reach_the_workbook_without_becoming_requests(prior, tmp_path):
 
 def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
     """What arrived and fitted nowhere is exactly next year's gap."""
-    from tracker.filer import IndexEntry, NEEDS_REVIEW, INDEX_FILENAME, write_index
+    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry, write_index
 
     write_index(prior / INDEX_FILENAME, [
         IndexEntry(received="2026-03-01", original_name="K-1 Redwood LP.pdf",
@@ -318,6 +318,7 @@ def test_a_derived_year_check_is_not_carried_as_text(prior, tmp_path):
     # rolled manifest gets TY2026 and derives again. The Date Pattern cell
     # stays blank rather than being filled with last year's regex.
     from openpyxl import load_workbook as lw
+
     from tracker.manifest import load_manifest
 
     report = roll_forward(prior)

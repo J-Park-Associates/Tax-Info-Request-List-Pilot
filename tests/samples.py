@@ -152,24 +152,24 @@ def build_samples(samples: Path) -> None:
 
     good = text_pdf(
         samples / f"W-2 John Smith {YEAR}.pdf",
-        w2_lines(f"John A. Smith", "Acme Manufacturing Inc.", YEAR),
+        w2_lines("John A. Smith", "Acme Manufacturing Inc.", YEAR),
     )
     # Byte-identical duplicate — demonstrates content-hash de-duplication.
     shutil.copyfile(good, samples / f"W-2 John Smith {YEAR} - Copy.pdf")
 
     text_pdf(
         samples / f"W-2 Jane Smith {YEAR}.pdf",
-        w2_lines(f"Jane R. Smith", "Lakeside Medical Group", YEAR),
+        w2_lines("Jane R. Smith", "Lakeside Medical Group", YEAR),
     )
     # Wrong tax year — the content date check will flag it.
     text_pdf(
         samples / f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf",
-        w2_lines(f"Jane R. Smith", "Lakeside Medical Group", PRIOR_YEAR),
+        w2_lines("Jane R. Smith", "Lakeside Medical Group", PRIOR_YEAR),
     )
 
     text_pdf(
         samples / "1099-INT First National.pdf",
-        lines_1099_int(f"First National Bank", "John A. Smith", YEAR),
+        lines_1099_int("First National Bank", "John A. Smith", YEAR),
     )
     (samples / f"1099-DIV Vanguard {YEAR}.csv").write_text(
         f"Form 1099-DIV dividend summary - Vanguard Brokerage {YEAR}\n"
@@ -179,12 +179,12 @@ def build_samples(samples: Path) -> None:
 
     text_pdf(
         samples / f"{PRIOR_YEAR} Form 1040 Tax Return.pdf",
-        prior_return_lines(f"John A. & Jane R. Smith", PRIOR_YEAR),
+        prior_return_lines("John A. & Jane R. Smith", PRIOR_YEAR),
     )
 
     text_pdf(
         samples / "Form 1098 Mortgage Interest.pdf",
-        form_1098_lines(f"Home Lending Corp.", "John A. & Jane R. Smith", YEAR),
+        form_1098_lines("Home Lending Corp.", "John A. & Jane R. Smith", YEAR),
     )
     (samples / "Mortgage Notes.docx").write_bytes(b"not a real docx " * 800)
 

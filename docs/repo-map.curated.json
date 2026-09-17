@@ -111,7 +111,7 @@
       "notes": "test_the_committed_map_is_current fails the suite if someone changed code without running `repo_map.py update`."
     },
     "conftest.py": {
-      "role": "Puts the repo root on sys.path so tests can `import tracker` without installing the package."
+      "role": "Puts the repo root on sys.path so tests can `import tracker` without installing the package - explicitly now, beside pyproject's pythonpath, for editor runners and pytest's rootdir detection."
     },
     "tools/repo_map.py": {
       "role": "Builds and incrementally updates this map. Derives imports, exports, CLIs, test coverage and hashes from source; merges the curated layer on top.",

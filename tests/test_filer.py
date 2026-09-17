@@ -10,6 +10,8 @@ import datetime as dt
 import pytest
 from openpyxl import load_workbook
 
+from tests.samples import col
+from tests.test_scanner import text_pdf
 from tracker.filer import (
     DUPLICATE,
     FILED,
@@ -23,7 +25,6 @@ from tracker.filer import (
     prepared_name_for,
     read_index,
 )
-from tests.samples import col
 from tracker.manifest import COL_DOCUMENT, SHEET_NAME, RequestItem, create_template
 from tracker.router import UNMATCHED
 from tracker.scaffold import (
@@ -34,8 +35,6 @@ from tracker.scaffold import (
     SHARED_DIR_NAME,
     scaffold_engagement,
 )
-
-from tests.test_scanner import text_pdf
 
 DAY1 = dt.date(2026, 7, 1)
 DAY2 = dt.date(2026, 7, 9)
@@ -275,7 +274,7 @@ def test_index_workbook_is_readable_in_excel(engagement):
     headers = [c.value for c in ws[1]]
     assert headers == list(INDEX_COLUMNS)
     # Read the row by header name, the way the filer itself reads it back.
-    row = dict(zip(headers, [c.value for c in ws[2]]))
+    row = dict(zip(headers, [c.value for c in ws[2]], strict=True))
     assert row[INDEX_LAYOUT["decision"][0]] == FILED
     assert row[INDEX_LAYOUT["identifier"][0]] == "A01"
     assert row[INDEX_LAYOUT["prepared_location"][0]].endswith(".pdf")
@@ -287,6 +286,7 @@ def test_an_index_written_with_older_columns_still_reads(tmp_path):
     # Filed As and Document were stored copies and are gone; Candidates is
     # new. An index from before either change reads by header name.
     from openpyxl import Workbook
+
     from tracker.filer import read_index
 
     wb = Workbook()
@@ -416,6 +416,7 @@ def test_a_locked_index_keeps_a_persons_filing_decision(engagement, monkeypatch)
 
 def test_the_pending_index_is_a_versioned_snapshot_of_every_row(engagement, monkeypatch):
     import json
+
     from tracker.filer import INDEX_SIDECAR_VERSION
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -460,6 +461,7 @@ def test_mixed_append_and_edit_survive_a_locked_index(engagement, monkeypatch):
 def test_a_bare_list_sidecar_from_an_older_version_is_appended_once(engagement):
     import json
     from dataclasses import asdict
+
     from tracker.filer import IndexEntry
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -479,6 +481,7 @@ def test_a_bare_list_sidecar_from_an_older_version_is_appended_once(engagement):
 
 def test_a_sidecar_of_an_unknown_version_is_quarantined_not_guessed(engagement, caplog):
     import json
+
     from tracker.manifest import CORRUPT_SUFFIX
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -743,7 +746,7 @@ def test_assigning_copies_from_pbc_when_the_review_copy_is_gone(engagement):
 
 def test_assigning_refuses_what_a_person_should_not_do(engagement):
     from tracker.filer import FilingError, assign_review_file
-    from tracker.manifest import RequestItem, Override, create_template
+    from tracker.manifest import Override, RequestItem, create_template
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")

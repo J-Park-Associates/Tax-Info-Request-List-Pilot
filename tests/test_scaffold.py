@@ -4,11 +4,11 @@ import pytest
 
 from tracker.manifest import EXPECTED_PATTERN, ManifestError, Override, RequestItem, create_template
 from tracker.scaffold import (
-    README_HEADING,
     MANIFEST_FILENAME,
-    README_NAME,
     PBC_DIR_NAME,
     PREPARED_DIR_NAME,
+    README_HEADING,
+    README_NAME,
     REVIEW_DIR_NAME,
     SHARED_DIR_NAME,
     assign_folders,

@@ -44,18 +44,16 @@ import datetime as dt
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
 
 from tracker.filer import file_drops
 from tracker.manifest import (
-    ISO_DATE_HINT,
     ENGAGEMENT_LABELS,
     ENGAGEMENT_SHEET_NAME,
+    ISO_DATE_HINT,
     NO,
     ManifestError,
     check_manifest,
 )
-from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
     Engagement,
@@ -70,6 +68,7 @@ from tracker.reminder import (
     draft_reminder,
     write_draft,
 )
+from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.scanner import ScanLockedError, scan_engagement
 
 #: ``dt.date.weekday()`` counts from the start of the week as 0.
@@ -114,7 +113,7 @@ class EngagementRun:
     index_deferred: bool = False     # the index was locked; rows in the sidecar
     manifest_deferred: bool = False  # the manifest was locked; statuses in the sidecar
     statuses: dict[str, int] = field(default_factory=dict)
-    outstanding_count: int = 0       # from tracker.manifest.summarize, the one count
+    outstanding: int = 0             # from tracker.manifest.summarize, the one count
     drafted: Path | None = None
     draft_note: str = ""      # why there is no draft, when there is a reason
     skipped: str = ""         # why the whole engagement was passed over
@@ -123,10 +122,6 @@ class EngagementRun:
     @property
     def ok(self) -> bool:
         return not self.error
-
-    @property
-    def outstanding(self) -> int:
-        return self.outstanding_count
 
     def summary(self) -> str:
         if self.error:
@@ -263,7 +258,7 @@ def run_engagement(
         scanned = scan_engagement(engagement.path, today=today, dry_run=dry_run)
         summary = scanned.summary
         run.statuses = summary.counts
-        run.outstanding_count = summary.outstanding
+        run.outstanding = summary.outstanding
         run.warnings.extend(scanned.warnings)
         run.manifest_deferred = scanned.deferred
 
@@ -429,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         loaded = discover_engagements(ns.root)
     except RegistryError as exc:
-        raise SystemExit(f"Clients folder problem: {exc}")
+        raise SystemExit(f"Clients folder problem: {exc}") from None
 
     when = dt.date.today()
     if ns.date:

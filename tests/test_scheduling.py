@@ -11,11 +11,11 @@ from xml.etree import ElementTree
 import pytest
 
 from tracker.scheduling import (
+    DEFAULT_START,
     N8N_RUN_NODE,
     N8N_TRIGGER_NODE,
-    TASK_XML_NAMESPACE,
-    DEFAULT_START,
     TASK_NAME,
+    TASK_XML_NAMESPACE,
     is_absolute_path,
     n8n_workflow,
     resolve_root,

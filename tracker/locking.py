@@ -47,10 +47,10 @@ import datetime as dt
 import logging
 import os
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 log = logging.getLogger("tracker.locking")
 

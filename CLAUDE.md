@@ -100,6 +100,7 @@ seems odd; the odd choice is usually load-bearing.
 pip install -r requirements.txt
 python -m pytest -q                 # the whole suite, all green
 python tools/repo_map.py check      # map matches the tree
+python -m ruff check .              # no dead code, no unused imports (CI runs this too)
 ```
 
 Conventions worth matching:

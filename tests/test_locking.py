@@ -11,9 +11,9 @@ import os
 import pytest
 
 from tracker.locking import (
+    LOCK_FILENAME,
     RUN_TIME_LIMIT_SECONDS,
     STALE_LOCK_SECONDS,
-    LOCK_FILENAME,
     EngagementLockedError,
     acquire_lock,
     engagement_lock,

@@ -23,20 +23,27 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 import shutil
 import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from openpyxl import Workbook, load_workbook
-
-from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker import STANDING_RULES
+from tracker.filer import (
+    _CANDIDATE_SEP,
+    DUPLICATE,
+    FILED,
+    INDEX_FILENAME,
+    NEEDS_REVIEW,
+    FilingError,
+    assign_review_file,
+    read_index,
+)
+from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker.manifest import (
-    ISO_DATE_HINT,
     DEFAULT_EXTENSIONS,
     EXPECTED_PATTERN,
+    ISO_DATE_HINT,
     UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
@@ -55,46 +62,35 @@ from tracker.manifest import (
     write_text_atomically,
 )
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
-from tracker.runner import DRAFT_WEEKDAY, REMINDERS_NEVER, WEEKDAY_NAMES, run_engagement
-from tracker.filer import (
-    _CANDIDATE_SEP,
-    DUPLICATE,
-    FILED,
-    INDEX_FILENAME,
-    NEEDS_REVIEW,
-    FilingError,
-    assign_review_file,
-    file_drops,
-    read_index,
-)
 from tracker.rollover import (
+    CARRIED_SHEET,
     ORIGIN_PRIOR,
     UNKNOWN_YEAR_LABEL,
-    CARRIED_SHEET,
     carry_engagement_info,
     detect_year,
     next_tax_year,
     roll_forward,
     write_rollover_manifest,
 )
+from tracker.runner import DRAFT_WEEKDAY, REMINDERS_NEVER, WEEKDAY_NAMES, run_engagement
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PBC_DIR_NAME,
-    REVIEW_DIR_NAME,
     PREPARED_DIR_NAME,
+    REVIEW_DIR_NAME,
     SHARED_DIR_NAME,
     sanitize_component,
     scaffold_engagement,
 )
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.scheduling import (
-    is_scheduling_host,
-    SCHEDULE_XML_ENCODING,
     DEFAULT_REPEAT_MINUTES,
     DEFAULT_START,
+    SCHEDULE_XML_ENCODING,
     SCHEDULE_XML_FILENAME,
     TASK_NAME,
     install_task,
+    is_scheduling_host,
     task_scheduler_xml,
 )
 from tracker.settings import (
@@ -112,15 +108,15 @@ from tracker.settings import (
 from tracker.templates import (  # the catalog; re-exported for the wizard
     EXTENSION_DEFAULT_NOTE,
     FORM_LABEL_PATTERN,
+    FORM_TEMPLATES,
+    FORM_TYPES,
     KEYWORD_DEFAULT_NOTE,
     PERIOD_PATTERN,
     YEAR_NOTE,
-    require_form,
-    FORM_TEMPLATES,
-    FORM_TYPES,
     base_year,
     default_tax_year,
     item_from_spec,
+    require_form,
     shift_item,
     template_items,
 )
@@ -359,7 +355,7 @@ def _cmd_scan(argv: list[str]) -> dict:
     }
     try:
         payload["state"] = _state(engagement)
-    except ManifestError as exc:
+    except ManifestError:
         if run.error:
             raise ManifestError(run.error) from None
         raise

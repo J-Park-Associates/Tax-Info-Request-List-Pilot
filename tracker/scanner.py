@@ -32,8 +32,8 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from dataclasses import dataclass, field
 from contextlib import nullcontext
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import reasons
@@ -360,8 +360,8 @@ if __name__ == "__main__":
         _print_report(scan_engagement(engagement, dry_run=ns.dry_run))
     except ScanLockedError as exc:
         print(f"Scan skipped: {exc}")
-        raise SystemExit(2)
+        raise SystemExit(2) from None
     except ManifestError as exc:
         print(f"\nMANIFEST PROBLEM - nothing was scanned or written:\n  {exc}")
         print(f"  Fix {MANIFEST_FILENAME} in Excel (row numbers match Excel rows), save, and re-run.")
-        raise SystemExit(1)
+        raise SystemExit(1) from None

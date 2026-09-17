@@ -28,10 +28,10 @@ import os
 import re
 import secrets
 import time
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
@@ -227,7 +227,7 @@ def shift_years(text: str, delta: int) -> str:
     return YEAR_PATTERN.sub(lambda m: str(int(m.group(0)) + delta), text)
 
 
-def shift_item(item: "RequestItem", delta: int) -> "RequestItem":
+def shift_item(item: RequestItem, delta: int) -> RequestItem:
     """``item`` with every year in its document, period and typed date pattern moved.
 
     A derived year check is left alone: the shifted Period derives it again.
@@ -242,7 +242,7 @@ def shift_item(item: "RequestItem", delta: int) -> "RequestItem":
     )
 
 
-def detect_year(items: Iterable["RequestItem"]) -> int | None:
+def detect_year(items: Iterable[RequestItem]) -> int | None:
     """The tax year a list of rows is about, inferred from its own rows.
 
     The most common year across periods and typed date rules wins; ties go
@@ -960,8 +960,6 @@ def _parse_yes_no(value: object, label: str, default: bool) -> bool:
     text = _cell_str(value).lower()
     if not text:
         return default
-    if isinstance(value, bool):
-        return value
     if text in (YES, "y", "true", "1"):
         return True
     if text in (NO, "n", "false", "0"):

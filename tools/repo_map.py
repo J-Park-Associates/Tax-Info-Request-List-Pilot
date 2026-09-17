@@ -511,7 +511,6 @@ def _curated_label() -> str:
 
 def render_markdown(graph: dict) -> str:
     """The agent-facing rendering: what each part is, and what it talks to."""
-    nodes = {n["id"]: n for n in graph["nodes"]}
     out_edges: dict[str, list[dict]] = {}
     in_edges: dict[str, list[dict]] = {}
     for edge in graph["edges"]:

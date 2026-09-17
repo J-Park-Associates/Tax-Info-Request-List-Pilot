@@ -19,17 +19,16 @@ from tracker.manifest import (
     create_template,
     write_statuses,
 )
-from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
 from tracker.reminder import (
     DRAFT_BANNER,
-    HELD_BACK_HEADING,
-    PARTIAL_ASK,
-    SUBJECT_NEEDED,
     DRAFT_FILENAME,
     GENERIC_ASK,
+    HELD_BACK_HEADING,
+    PARTIAL_ASK,
     SECTION_FAILED,
     SECTION_MISSING,
     SECTION_PARTIAL,
+    SUBJECT_NEEDED,
     ReminderError,
     client_ask,
     count_needs_review,
@@ -38,6 +37,7 @@ from tracker.reminder import (
     write_draft,
 )
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME
+from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
 
 
 def item(identifier, document, status, **kwargs):
@@ -154,7 +154,7 @@ def test_internal_vocabulary_never_reaches_the_client(tmp_path):
 
 def test_multi_file_requests_say_how_many_are_expected(tmp_path):
     draft = draft_reminder(engagement(tmp_path))
-    line = next(l for l in draft.lines if l.item.identifier == "A01")
+    line = next(line for line in draft.lines if line.item.identifier == "A01")
     assert line.ask == EXPECTED_PATTERN.format(n=2)
 
 

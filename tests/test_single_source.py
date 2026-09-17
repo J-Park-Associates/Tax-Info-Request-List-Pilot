@@ -12,8 +12,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parent.parent
 
 
@@ -112,9 +110,7 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
 
 def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
     from tracker.api import _slug
-    from tracker.manifest import Status
-
-    from tracker.manifest import UNSCANNED_LABEL
+    from tracker.manifest import UNSCANNED_LABEL, Status
 
     css = read("app/renderer/style.css")
     chips = set(re.findall(r"\.chip-([a-z-]+)\s*\{", css))
@@ -122,14 +118,20 @@ def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
 
 
 def test_the_renderer_types_no_vocabulary_of_its_own():
-    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
-    from tracker.manifest import DEFAULT_EXTENSIONS, Override, Status
-    from tracker.scheduling import DEFAULT_START
-
     from tracker.api import _slug
-    from tracker.manifest import EXPECTED_PATTERN, UNSCANNED_LABEL, YEAR_MAX, YEAR_MIN
+    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
+    from tracker.manifest import (
+        DEFAULT_EXTENSIONS,
+        EXPECTED_PATTERN,
+        UNSCANNED_LABEL,
+        YEAR_MAX,
+        YEAR_MIN,
+        Override,
+        Status,
+    )
     from tracker.rollover import CARRIED_SHEET
     from tracker.scaffold import PBC_DIR_NAME
+    from tracker.scheduling import DEFAULT_START
     from tracker.settings import EXAMPLE_ROOT
 
     js = read("app/renderer/app.js")
@@ -138,7 +140,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
                     ", ".join(DEFAULT_EXTENSIONS), "looks like", UNSCANNED_LABEL,
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
-        assert literal not in js.replace(f"chip-${{vocab.unscanned_key}}", ""), literal
+        assert literal not in js.replace("chip-${vocab.unscanned_key}", ""), literal
     for literal in (CARRIED_SHEET, PBC_DIR_NAME, EXAMPLE_ROOT, str(YEAR_MIN), str(YEAR_MAX),
                     UNSCANNED_LABEL):
         assert literal not in html, literal
@@ -471,7 +473,7 @@ def test_documents_name_the_engagement_folders_as_the_scaffold_does():
 
 
 def test_gitignore_ignores_the_junk_the_validators_ignore():
-    from tracker.validators import OFFICE_LOCK_PREFIX, _IGNORED_NAMES
+    from tracker.validators import _IGNORED_NAMES, OFFICE_LOCK_PREFIX
 
     ignored = {line.strip().lower() for line in read(".gitignore").splitlines()
                if line.strip() and not line.startswith("#")}
@@ -522,7 +524,12 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME
     from tracker.scaffold import (
-        MANIFEST_FILENAME, PBC_DIR_NAME, PREPARED_DIR_NAME, README_NAME, REVIEW_DIR_NAME, SHARED_DIR_NAME,
+        MANIFEST_FILENAME,
+        PBC_DIR_NAME,
+        PREPARED_DIR_NAME,
+        README_NAME,
+        REVIEW_DIR_NAME,
+        SHARED_DIR_NAME,
     )
     from tracker.scanner import CACHE_FILENAME
     from tracker.settings import SETTINGS_FILENAME

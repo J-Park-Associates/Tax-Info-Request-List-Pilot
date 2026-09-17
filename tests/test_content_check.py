@@ -7,16 +7,15 @@ from openpyxl import Workbook
 from pypdf import PdfWriter
 
 from tracker import reasons
-from tracker.manifest import RequestItem
 from tracker.content_check import (
     ContentCache,
-    ContentResult,
     check_content,
     evaluate_rules,
     extract_text,
     has_content_rules,
     rules_fingerprint,
 )
+from tracker.manifest import RequestItem
 
 
 def text_pdf(path, text: str):
@@ -275,7 +274,7 @@ def _many_page_pdf(path, texts):
 
 
 def test_only_the_first_pages_of_a_pdf_are_read(tmp_path):
-    from tracker.content_check import MAX_PAGES, extract_text
+    from tracker.content_check import extract_text
 
     texts = [f"page {i + 1} filler" for i in range(15)]
     texts[2] = "Form W-2 early"

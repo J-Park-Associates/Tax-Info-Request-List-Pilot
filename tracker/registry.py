@@ -31,7 +31,6 @@ scheduled task, not an empty practice.
 
 from __future__ import annotations
 
-import datetime as dt
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -206,7 +205,7 @@ if __name__ == "__main__":
     try:
         loaded = discover_engagements(ns.root)
     except RegistryError as exc:
-        raise SystemExit(f"Registry problem: {exc}")
+        raise SystemExit(f"Registry problem: {exc}") from None
 
     print(f"{loaded.source}: {len(loaded.active)} active "
           f"of {len(loaded.engagements)} engagement(s)")

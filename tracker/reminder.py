@@ -47,10 +47,11 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Sequence
 
+from tracker import reasons
 from tracker.manifest import (
     ISO_DATE_HINT,
     RequestItem,
@@ -61,6 +62,7 @@ from tracker.manifest import (
     summarize,
     with_pending,
 )
+from tracker.reasons import GENERIC_ASK  # re-exported; the one generic sentence
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PREPARED_DIR_NAME,
@@ -102,9 +104,6 @@ SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
 SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
 
 SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL, SECTION_FAILED)
-
-from tracker import reasons
-from tracker.reasons import GENERIC_ASK  # re-exported; the one generic sentence
 
 
 class ReminderError(Exception):
@@ -541,7 +540,7 @@ if __name__ == "__main__":
             firm=ns.firm,
         )
     except ReminderError as exc:
-        raise SystemExit(f"Cannot draft a reminder: {exc}")
+        raise SystemExit(f"Cannot draft a reminder: {exc}") from None
 
     print(f"{DRAFT_BANNER}\n")
     print(result.text)

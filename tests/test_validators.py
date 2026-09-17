@@ -2,13 +2,11 @@
 
 from pathlib import Path
 
-import pytest
 from pypdf import PdfWriter
 
 from tracker import reasons
 from tracker.manifest import RequestItem
 from tracker.validators import (
-    FileResult,
     check_file,
     check_folder,
     is_cloud_placeholder,

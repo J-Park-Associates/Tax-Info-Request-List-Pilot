@@ -10,7 +10,15 @@ import datetime as dt
 
 import pytest
 
-from tracker.manifest import ENGAGEMENT_LABELS, NO, YES, ENGAGEMENT_SHEET_NAME, EngagementInfo, RequestItem, create_template
+from tracker.manifest import (
+    ENGAGEMENT_LABELS,
+    ENGAGEMENT_SHEET_NAME,
+    NO,
+    YES,
+    EngagementInfo,
+    RequestItem,
+    create_template,
+)
 from tracker.registry import (
     MAX_DEPTH,
     Engagement,
@@ -148,10 +156,10 @@ def test_an_engagement_is_its_sheet(tmp_path):
     # without being declared a second time.
     from dataclasses import fields
 
-    folder = make(tmp_path, "Smith 2025", info=EngagementInfo(client="John", sender="Jason"))
+    make(tmp_path, "Smith 2025", info=EngagementInfo(client="John", sender="Jason"))
     [engagement] = discover_engagements(tmp_path).engagements
     for field in fields(EngagementInfo):
         assert getattr(engagement, field.name) == getattr(engagement.info, field.name)
     assert engagement.client == "John" and engagement.sender == "Jason"
     with pytest.raises(AttributeError):
-        engagement.no_such_field
+        _ = engagement.no_such_field

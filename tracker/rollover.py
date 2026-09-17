@@ -33,9 +33,9 @@ Nothing here writes to the prior year's engagement — it is read-only history.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Sequence
 
 from openpyxl import load_workbook
 
@@ -300,7 +300,7 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
             ws.append([UNFILED_HEADING])
             for line in report.unfiled_last_year:
                 ws.append(["", line])
-        for column, width in zip(ws.column_dimensions, CARRIED_LAYOUT.values()):
+        for column, width in zip(ws.column_dimensions, CARRIED_LAYOUT.values(), strict=False):
             ws.column_dimensions[column].width = width
         ws.freeze_panes = "A2"
         wb.save(path)

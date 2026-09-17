@@ -11,10 +11,6 @@ from openpyxl.workbook.workbook import Workbook as WorkbookClass
 from tests.samples import col
 from tracker import reasons
 from tracker.manifest import (
-    DEFAULT_MIN_SIZE_KB,
-    YES,
-    NO,
-    ENGAGEMENT_LABELS,
     COL_ALLOWED_EXTENSIONS,
     COL_DATE_PATTERN,
     COL_DOCUMENT,
@@ -22,14 +18,18 @@ from tracker.manifest import (
     COL_IDENTIFIER,
     COL_MANUAL_OVERRIDE,
     COL_STATUS,
+    CORRUPT_SUFFIX,
+    DEFAULT_MIN_SIZE_KB,
+    ENGAGEMENT_LABELS,
     ENGAGEMENT_SHEET_NAME,
     HEADERS,
+    NO,
     SHEET_NAME,
-    CORRUPT_SUFFIX,
     SUMMARY_EMPTY,
-    TEMP_SUFFIX,
     SUMMARY_SEPARATOR,
+    TEMP_SUFFIX,
     UNSCANNED_LABEL,
+    YES,
     ManifestError,
     Override,
     RequestItem,
@@ -403,6 +403,7 @@ def test_the_engagement_sheet_round_trips(tmp_path):
 
 def test_a_manifest_without_the_sheet_loads_as_defaults(manifest):
     from openpyxl import load_workbook as lw
+
     from tracker.manifest import EngagementInfo, load_engagement_info
 
     wb = lw(manifest)
@@ -413,6 +414,7 @@ def test_a_manifest_without_the_sheet_loads_as_defaults(manifest):
 
 def test_yes_no_cells_are_forgiving_but_not_guessing(manifest):
     from openpyxl import load_workbook as lw
+
     from tracker.manifest import load_engagement_info
 
     def set_cell(label, value):
@@ -447,6 +449,7 @@ def test_add_any_keyword_appends_once_and_names_a_missing_row(manifest):
 
 def test_a_blank_allowed_extensions_means_the_safe_default_not_anything(tmp_path):
     from openpyxl import load_workbook as lw
+
     from tracker.manifest import DEFAULT_EXTENSIONS
 
     path = create_template(tmp_path / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="W-2")])
@@ -473,6 +476,7 @@ def test_accepting_any_file_type_has_to_be_said_with_a_star(tmp_path):
 
 def test_check_manifest_reports_problems_with_their_row(manifest):
     from openpyxl import load_workbook as lw
+
     from tracker.manifest import check_manifest
 
     assert check_manifest(manifest).ok

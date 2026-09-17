@@ -4,19 +4,17 @@ import datetime as dt
 import json
 
 import pytest
-
-from tracker.locking import LOCK_FILENAME, STALE_LOCK_SECONDS
 from openpyxl import load_workbook
-from pypdf import PdfWriter
 
 from tests.samples import col
 from tracker import reasons
+from tracker.locking import LOCK_FILENAME, STALE_LOCK_SECONDS
 from tracker.manifest import (
-    SUMMARY_SEPARATOR,
     COL_EXPECTED_COUNT,
     COL_MANUAL_OVERRIDE,
     ENGAGEMENT_SHEET_NAME,
     SHEET_NAME,
+    SUMMARY_SEPARATOR,
     Override,
     RequestItem,
     Status,
@@ -30,14 +28,14 @@ from tracker.scaffold import (
     scaffold_engagement,
 )
 from tracker.scanner import (
+    CACHE_FILENAME,
     DUPLICATES_NOTE,
     OVERRIDE_NOTE,
+    PARTIAL_NOTE,
     REGRESSION_COUNT_RAISED,
     REGRESSION_FILES_CHANGED,
     REGRESSION_NOTE,
     SYNCING_NOTE,
-    PARTIAL_NOTE,
-    CACHE_FILENAME,
     ScanLockedError,
     scan_engagement,
 )

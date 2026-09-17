@@ -12,3 +12,4 @@ pdfplumber==0.11.10
 
 # Dev / test
 pytest==9.1.1
+ruff==0.14.3

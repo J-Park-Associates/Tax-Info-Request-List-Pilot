@@ -56,6 +56,12 @@ jobs:
       - name: Run the test suite
         run: python -m pytest -q
 
+      # Dead code and unused imports are the linter's job, not a reviewer's
+      # (pyproject.toml says what it checks).
+      - name: Lint
+        if: always()
+        run: python -m ruff check .
+
       # always(): a stale map and a failing test are separate problems, and
       # seeing both in one run beats finding the second after fixing the first.
       - name: Check the repository map is current

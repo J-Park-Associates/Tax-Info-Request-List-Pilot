@@ -32,21 +32,21 @@ folders are left alone and they are dropped from the README.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Sequence
 
-from tracker.reasons import GOOGLE_EXPORT_HINT
-from tracker.validators import google_stub_examples
 from tracker.manifest import (
     ENGAGEMENT_SHEET_NAME,
-    label_for,
     WINDOWS_ILLEGAL_CHARS,
     Override,
     RequestItem,
+    label_for,
     load_engagement_info,
     load_manifest,
 )
+from tracker.reasons import GOOGLE_EXPORT_HINT
+from tracker.validators import google_stub_examples
 
 MANIFEST_FILENAME = "_manifest.xlsx"
 SHARED_DIR_NAME = "Shared"

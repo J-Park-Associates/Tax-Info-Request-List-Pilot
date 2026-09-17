@@ -18,6 +18,7 @@ import tracker.api as api
 from tests.samples import PRIOR_YEAR, col, row
 from tracker import reasons
 from tracker.filer import NEEDS_REVIEW
+from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
     COL_ALLOWED_EXTENSIONS,
     COL_ANY_KEYWORDS,
@@ -32,9 +33,8 @@ from tracker.manifest import (
     Status,
     load_manifest,
 )
-from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
-from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
+from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
 
@@ -42,9 +42,7 @@ from tracker.templates import BASE_YEAR, default_tax_year
 @pytest.fixture
 def demo_root(tmp_path, monkeypatch):
     """A clients root recorded the way the app records it: settings.json beside the app."""
-    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
-
-    from tracker.settings import set_firm
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root, set_firm
 
     root = tmp_path / "Clients"
     root.mkdir()
@@ -357,6 +355,7 @@ def test_check_reports_problems_and_warnings_with_rows(capsys, demo_root):
 
 def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_root):
     import os
+
     from tracker.locking import LOCK_FILENAME
 
     spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
@@ -367,7 +366,6 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     lock = engagement / LOCK_FILENAME
     lock.write_text(lock_line(999, dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
-    from tracker import STANDING_RULES
     assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False,
                                "stale_after_minutes": STALE_LOCK_SECONDS // 60}
     code, payload = run(capsys, "unlock", api.ENGAGEMENT_FLAG, str(engagement))
@@ -558,8 +556,8 @@ def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys,
 
 
 def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
-    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
     from tracker import STANDING_RULES
+    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
     from tracker.manifest import DEFAULT_EXTENSIONS, Override, Status
     from tracker.rollover import CARRIED_SHEET
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
