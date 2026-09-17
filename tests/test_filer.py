@@ -376,6 +376,138 @@ def test_a_locked_index_never_orphans_files_already_moved(engagement, monkeypatc
     assert all(e.decision == FILED for e in rows)
 
 
+def _lock_the_index(monkeypatch):
+    """Excel has _index.xlsx open: every save of it fails, quickly."""
+    import tracker.filer as filer_module
+
+    def locked(wb, path):
+        raise PermissionError(f"[Errno 13] locked: {path}")
+
+    monkeypatch.setattr(filer_module, "save_workbook_atomically", locked)
+    monkeypatch.setattr(filer_module, "LOCK_RETRY_DELAY", 0.001)
+
+
+def test_a_locked_index_keeps_a_persons_filing_decision(engagement, monkeypatch):
+    # The row a person rewrote is an edit to a row the workbook already
+    # holds. Deferring only the rows past the workbook's end lost it, while
+    # the working copy had already been moved under the canonical name.
+    from tracker.filer import ASSIGNED_BY_PERSON, assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    sidecar = engagement / INDEX_PENDING_FILENAME
+
+    _lock_the_index(monkeypatch)
+    result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    assert result.index_deferred is True
+    assert sidecar.exists()
+    assert (engagement / result.entry.prepared_location).exists()
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == FILED and row.identifier == "C01"
+    assert row.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: ")
+    assert row.prepared_location == result.entry.prepared_location
+
+    monkeypatch.undo()                            # Excel closed
+    assert file_drops(engagement, today=DAY2).index_deferred is False
+    assert not sidecar.exists()
+    [row] = read_index(engagement / INDEX_FILENAME)        # the workbook alone now
+    assert row.decision == FILED and row.identifier == "C01"
+
+
+def test_the_pending_index_is_a_versioned_snapshot_of_every_row(engagement, monkeypatch):
+    import json
+    from tracker.filer import INDEX_SIDECAR_VERSION
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)                     # one row in the workbook
+    drop(engagement, "mortgage.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    _lock_the_index(monkeypatch)
+    file_drops(engagement, today=DAY2)
+
+    payload = json.loads((engagement / INDEX_PENDING_FILENAME).read_text(encoding="utf-8"))
+    assert payload["version"] == INDEX_SIDECAR_VERSION
+    rows = read_index(engagement / INDEX_FILENAME)
+    assert [e["original_name"] for e in payload["entries"]] == [e.original_name for e in rows]
+    assert [e.original_name for e in rows] == ["w2.pdf", "mortgage.pdf"]
+
+
+def test_mixed_append_and_edit_survive_a_locked_index(engagement, monkeypatch):
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    _lock_the_index(monkeypatch)
+    assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)   # an edit
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY2)                                       # an append
+    by_name = {e.original_name: e for e in read_index(engagement / INDEX_FILENAME)}
+    assert by_name["scan0012.pdf"].decision == FILED and by_name["scan0012.pdf"].identifier == "C01"
+    assert by_name["w2.pdf"].decision == FILED and by_name["w2.pdf"].identifier == "A01"
+
+    monkeypatch.undo()
+    file_drops(engagement, today=DAY2)
+    assert not (engagement / INDEX_PENDING_FILENAME).exists()
+    from openpyxl import load_workbook
+    wb = load_workbook(engagement / INDEX_FILENAME, read_only=True)
+    written = [r for r in wb[INDEX_SHEET].iter_rows(values_only=True)][1:]
+    wb.close()
+    assert sorted((r[1], r[4], r[7]) for r in written) == [
+        ("scan0012.pdf", "C01", FILED), ("w2.pdf", "A01", FILED),
+    ]
+
+
+def test_a_bare_list_sidecar_from_an_older_version_is_appended_once(engagement):
+    import json
+    from dataclasses import asdict
+    from tracker.filer import IndexEntry
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    old_row = IndexEntry(
+        received=DAY1.isoformat(), original_name="older.pdf", size_kb=1.0, digest="abc",
+        identifier="C01", prepared_location="Prepared/C01/x.pdf",
+        pbc_location="Shared/PBC/older.pdf", decision=FILED, reason="",
+    )
+    (engagement / INDEX_PENDING_FILENAME).write_text(json.dumps([asdict(old_row)]), encoding="utf-8")
+
+    assert [e.original_name for e in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf", "older.pdf"]
+    assert file_drops(engagement, today=DAY2).index_deferred is False       # nothing to sort
+    assert not (engagement / INDEX_PENDING_FILENAME).exists()
+    assert [e.original_name for e in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf", "older.pdf"]
+
+
+def test_a_sidecar_of_an_unknown_version_is_quarantined_not_guessed(engagement, caplog):
+    import json
+    from tracker.manifest import CORRUPT_SUFFIX
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    sidecar = engagement / INDEX_PENDING_FILENAME
+    sidecar.write_text(json.dumps({"version": 99, "entries": []}), encoding="utf-8")
+
+    assert [e.original_name for e in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+    assert not sidecar.exists()
+    assert sidecar.with_suffix(CORRUPT_SUFFIX).exists()
+    assert "version 99" in caplog.text
+
+
+def test_deferred_rows_are_folded_in_even_when_the_only_drop_is_still_syncing(engagement, monkeypatch):
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    _lock_the_index(monkeypatch)
+    assert file_drops(engagement, today=DAY1).index_deferred is True
+    monkeypatch.undo()
+
+    waiting = drop(engagement, "big.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    monkeypatch.setattr("tracker.filer.is_cloud_placeholder", lambda p: True)
+    report = file_drops(engagement, today=DAY2)
+
+    assert report.waiting == [waiting] and report.index_deferred is False
+    assert not (engagement / INDEX_PENDING_FILENAME).exists()
+    assert (engagement / INDEX_FILENAME).exists()
+    assert [e.original_name for e in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+
+
 def test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed(engagement, monkeypatch):
     import shutil
 

@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 79,
     "edges": 244,
-    "reused": 43
+    "reused": 53
   },
   "node_types": [
     "artifact",
@@ -148,8 +148,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7a1566d5e39023fc",
-      "lines": 817,
+      "sha256": "37574dda2b015a21",
+      "lines": 879,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -163,10 +163,13 @@
         "INDEX_FILENAME",
         "INDEX_PENDING_FILENAME",
         "INDEX_SHEET",
+        "INDEX_SIDECAR_VERSION",
         "IndexEntry",
         "NEEDS_REVIEW",
         "_CANDIDATE_SEP",
         "_MAX_STEM",
+        "_SIDECAR_ENTRIES_KEY",
+        "_SIDECAR_VERSION_KEY",
         "assign_review_file",
         "file_drops",
         "iter_drops",
@@ -181,13 +184,14 @@
       "constants": {
         "INDEX_FILENAME": "'_index.xlsx'",
         "INDEX_SHEET": "'Index'",
+        "INDEX_SIDECAR_VERSION": "2",
         "FILED": "'Filed'",
         "NEEDS_REVIEW": "'Needs Review'",
         "DUPLICATE": "'Duplicate'",
         "ASSIGNED_BY_PERSON": "'assigned by a person'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, new rows wait in _index.pending.json and read_index() already sees them. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock. INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock. INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
     },
     {
       "id": "tracker/locking.py",
@@ -901,8 +905,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "aede9943e42ae8b7",
-      "lines": 244,
+      "sha256": "bec8ec301fc0322c",
+      "lines": 245,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -910,7 +914,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0ee8b752d5d2662c",
+      "sha256": "5d6fd37ad8aace78",
       "lines": 428,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1035,7 +1039,7 @@
       "id": "artifact:_index.pending.json",
       "type": "artifact",
       "layer": "runtime",
-      "role": "Sidecar holding index rows for originals already moved into PBC/ that could not be written because Excel had _index.xlsx open. Read alongside the workbook and folded into the next successful write."
+      "role": "A versioned snapshot of the whole _index.xlsx (INDEX_SIDECAR_VERSION) written when Excel had the workbook open: every row, including one a person rewrote. read_index() returns it in the workbook's place until the next successful write lands it. An older bare-list sidecar holds only rows to append after the workbook's and is folded in once. Written whole or not at all; an unreadable one is moved aside only by a real run, never by a reader or a dry run."
     },
     {
       "id": "artifact:_index.xlsx",
@@ -1162,8 +1166,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "dc6855a18dd72c1a",
-      "lines": 605,
+      "sha256": "43380fb4195c8f93",
+      "lines": 737,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1172,25 +1176,30 @@
         "engagement",
         "pbc",
         "prepared",
+        "test_a_bare_list_sidecar_from_an_older_version_is_appended_once",
         "test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder",
         "test_a_drop_still_held_open_is_left_for_the_next_run",
         "test_a_dry_run_never_quarantines_a_corrupt_index_sidecar",
         "test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed",
         "test_a_file_dropped_straight_into_pbc_is_filed_and_indexed",
         "test_a_hand_edited_index_cell_does_not_stop_the_next_run",
+        "test_a_locked_index_keeps_a_persons_filing_decision",
         "test_a_locked_index_never_orphans_files_already_moved",
         "test_a_resend_is_refiled_when_the_working_copy_was_deleted",
+        "test_a_sidecar_of_an_unknown_version_is_quarantined_not_guessed",
         "test_an_index_written_with_older_columns_still_reads",
         "test_assigning_a_parked_file_moves_it_under_the_canonical_name",
         "test_assigning_copies_from_pbc_when_the_review_copy_is_gone",
         "test_assigning_refuses_what_a_person_should_not_do",
         "test_assigning_still_files_when_excel_holds_the_manifest",
         "test_client_subfolders_are_flattened",
+        "test_deferred_rows_are_folded_in_even_when_the_only_drop_is_still_syncing",
         "test_dry_run_moves_nothing",
         "test_dry_run_previews_real_numbering",
         "test_empty_client_folders_are_cleared_after_sorting",
         "test_file_is_sorted_renamed_and_indexed",
         "test_index_workbook_is_readable_in_excel",
+        "test_mixed_append_and_edit_survive_a_locked_index",
         "test_name_collision_in_pbc_never_overwrites",
         "test_pbc_contents_are_never_re_sorted",
         "test_placeholders_are_left_where_they_are",
@@ -1201,6 +1210,7 @@
         "test_second_file_for_the_same_request_is_numbered",
         "test_sync_junk_is_ignored",
         "test_the_filer_holds_the_engagement_lock",
+        "test_the_pending_index_is_a_versioned_snapshot_of_every_row",
         "test_the_routers_candidates_travel_as_data_in_the_index",
         "test_unroutable_file_is_preserved_and_parked"
       ]

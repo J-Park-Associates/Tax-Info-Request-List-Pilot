@@ -41,9 +41,13 @@ Guarantees:
   own: a file the sync client still holds open is left in place for the
   next run, a file that fails *after* it was preserved is recorded as
   needing review with the error, and the index is written whatever happens
-  to the files after it. If Excel has ``INDEX_FILENAME`` open, the new rows
-  wait in ``INDEX_PENDING_FILENAME`` and are merged into the next write —
-  nothing that was moved into ``PBC_DIR_NAME/`` is ever left unrecorded.
+  to the files after it. If Excel has ``INDEX_FILENAME`` open, the whole
+  index as it should now read waits in ``INDEX_PENDING_FILENAME`` - a
+  snapshot, not just the new rows, because a row a person rewrote (a
+  parked file they filed) is as much at stake as a row that was added -
+  and ``read_index`` returns that snapshot until the workbook can be
+  rewritten from it. Nothing that was moved into ``PBC_DIR_NAME/`` is ever
+  left unrecorded, and nothing a person decided is ever forgotten.
 """
 
 from __future__ import annotations
@@ -103,6 +107,13 @@ INDEX_SHEET = "Index"
 #: Rows that could not be written because Excel had the index open; named
 #: by the manifest's one sidecar rule.
 INDEX_PENDING_FILENAME = pending_path(Path(INDEX_FILENAME)).name
+#: The sidecar's shape. Version 2 is a snapshot of the whole index (``entries``
+#: is every row, edits included) that stands in for the workbook until Excel
+#: lets go. A sidecar with no version key - a bare list, written before this
+#: - holds only rows to append after the workbook's, and is folded in once.
+INDEX_SIDECAR_VERSION = 2
+_SIDECAR_VERSION_KEY = "version"
+_SIDECAR_ENTRIES_KEY = "entries"
 _MAX_STEM = 110
 
 
@@ -267,30 +278,71 @@ def _pending_index_path(path: Path) -> Path:
     return pending_path(path)
 
 
-def _read_pending_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
+@dataclass(frozen=True, slots=True)
+class _PendingIndex:
+    """What the sidecar holds: the whole index (a snapshot) or, from an
+    older sidecar, only rows to append after the workbook's."""
+
+    entries: list[IndexEntry]
+    snapshot: bool
+
+
+def _entry_from_json(row: object) -> IndexEntry:
+    """An IndexEntry from a sidecar row, ignoring keys a later version may add:
+    a row for an original already moved must never be thrown away over a
+    field this version does not know."""
+    if not isinstance(row, dict):
+        raise TypeError(f"index sidecar row is {type(row).__name__}, not an object")
+    known = {f.name for f in fields(IndexEntry)}
+    return IndexEntry(**{key: value for key, value in row.items() if key in known})
+
+
+def _read_pending_index(path: Path, *, quarantine: bool = True) -> _PendingIndex | None:
     sidecar = _pending_index_path(path)
     if not sidecar.exists():
-        return []
+        return None
     try:
         raw = json.loads(sidecar.read_text(encoding="utf-8"))
-        return [IndexEntry(**row) for row in raw]
-    except (json.JSONDecodeError, TypeError, ValueError, OSError) as exc:
+        if isinstance(raw, list):                       # before INDEX_SIDECAR_VERSION
+            return _PendingIndex([_entry_from_json(row) for row in raw], snapshot=False)
+        if not isinstance(raw, dict):
+            raise TypeError(f"index sidecar is {type(raw).__name__}, not an object")
+        version = raw.get(_SIDECAR_VERSION_KEY)
+        if version != INDEX_SIDECAR_VERSION:
+            # Refused loudly rather than read half-right: nothing is guessed.
+            raise ValueError(f"index sidecar version {version!r}; this version reads {INDEX_SIDECAR_VERSION}")
+        rows = [_entry_from_json(row) for row in raw[_SIDECAR_ENTRIES_KEY]]
+        return _PendingIndex(rows, snapshot=True)
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError) as exc:
         quarantine_sidecar(sidecar, exc, "index", quarantine=quarantine)
-        return []
+        return None
 
 
 def _save_pending_index(path: Path, entries: list[IndexEntry]) -> None:
-    write_json_atomically(_pending_index_path(path), [asdict(e) for e in entries])
+    """The whole index, as ``write_index`` would have written it."""
+    write_json_atomically(_pending_index_path(path), {
+        _SIDECAR_VERSION_KEY: INDEX_SIDECAR_VERSION,
+        _SIDECAR_ENTRIES_KEY: [asdict(e) for e in entries],
+    })
 
 
 def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
-    """Every index row, oldest first: the workbook plus any rows a locked
-    Excel forced into the pending sidecar. Empty if there is no index yet.
+    """Every index row, oldest first. Empty if there is no index yet.
+
+    While Excel holds the workbook, ``INDEX_PENDING_FILENAME`` is the index:
+    the snapshot the last run could not write replaces what the workbook
+    says, because the workbook is the *older* of the two. A sidecar from
+    before ``INDEX_SIDECAR_VERSION`` holds only new rows, appended after
+    the workbook's.
 
     ``quarantine=False`` is for readers and dry runs: an unreadable sidecar
     is reported and skipped, never moved - looking changes nothing.
     """
-    return _read_index_workbook(path) + _read_pending_index(path, quarantine=quarantine)
+    pending = _read_pending_index(path, quarantine=quarantine)
+    if pending is not None and pending.snapshot:
+        return list(pending.entries)
+    workbook = _read_index_workbook(path)
+    return workbook + pending.entries if pending is not None else workbook
 
 
 def _as_float(value: object) -> float:
@@ -355,12 +407,20 @@ def write_index(
     """Rewrite ``INDEX_FILENAME`` from ``entries`` (oldest first), lock-resiliently.
 
     The index is the audit trail for originals that have *already been
-    moved*, so losing a row is not an option. If Excel holds the workbook
-    open, the write is retried with backoff; if it stays locked, every row
-    not yet in the workbook is saved to ``INDEX_PENDING_FILENAME`` and folded
-    into the next successful write (``read_index`` already sees them).
+    moved* and for decisions a person has *already made*, so losing a row,
+    or an edit to one, is not an option. If Excel holds the workbook open,
+    the write is retried with backoff; if it stays locked, ``entries`` -
+    all of it, exactly what the workbook should now say - is saved to
+    ``INDEX_PENDING_FILENAME``. ``read_index`` returns that snapshot in the
+    workbook's place until a later write lands it. Saving only the rows
+    past the workbook's end used to drop a row that had been rewritten
+    (a parked file a person filed) while the file itself had already moved.
 
-    Returns True if the workbook was written, False if rows were deferred.
+    A snapshot written while Excel holds the workbook wins over cells typed
+    into it during that window; that was always so, since every write
+    rebuilds the workbook from ``entries``. Nobody edits the index by hand.
+
+    Returns True if the workbook was written, False if the snapshot was deferred.
     """
     retries = LOCK_RETRIES if retries is None else retries
     delay = LOCK_RETRY_DELAY if retry_delay is None else retry_delay
@@ -375,11 +435,10 @@ def write_index(
                 time.sleep(delay)
                 delay *= 2
 
-    already = len(_read_index_workbook(path))
-    _save_pending_index(path, entries[already:])
+    _save_pending_index(path, entries)
     log.error(
-        "%s still locked after %d attempts; %d row(s) deferred to %s",
-        path.name, retries, len(entries) - already, INDEX_PENDING_FILENAME,
+        "%s still locked after %d attempts; a snapshot of all %d row(s) deferred to %s",
+        path.name, retries, len(entries), INDEX_PENDING_FILENAME,
     )
     return False
 
@@ -471,13 +530,14 @@ def file_drops(
     report = FileReport(engagement_dir=engagement_dir, dry_run=dry_run)
     entries = read_index(index_path, quarantine=not dry_run)
     known = {e.digest: e for e in entries if e.digest}
+    # Rows a locked Excel deferred last time still belong in the workbook -
+    # fold them in as soon as it is free, whether or not this run sorts anything.
+    sidecar_waiting = _pending_index_path(index_path).exists()
 
     drops = iter_drops(shared_dir)
     strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
     if not drops and not strays:
-        # Nothing new, but rows a locked Excel deferred last time still
-        # belong in the workbook - fold them in as soon as it is free.
-        if not dry_run and _pending_index_path(index_path).exists():
+        if not dry_run and sidecar_waiting:
             report.index_deferred = not write_index(index_path, entries)
         return report
 
@@ -559,8 +619,10 @@ def file_drops(
                 if entry.decision != DUPLICATE:
                     known[digest] = entry
         finally:
-            # Whatever happened above, every original that was moved is on record.
-            if not dry_run and len(entries) > recorded:
+            # Whatever happened above, every original that was moved is on
+            # record - and a snapshot waiting from last time is landed even
+            # when every drop this time was left in place.
+            if not dry_run and (len(entries) > recorded or sidecar_waiting):
                 report.index_deferred = not write_index(index_path, entries)
         if not dry_run:
             _prune_empty_dirs(shared_dir, keep=pbc_dir)
