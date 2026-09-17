@@ -345,3 +345,37 @@ def test_a_new_client_engagement_is_named_from_client_year_and_form(capsys, demo
     assert payload["created"] == "Smith Family TY2025 Form 1040"
     code, payload = run(capsys, "templates")
     assert payload["years"]["1040"] == 2025
+
+
+# ------------------------------------------------- the calendar and the prior ----
+
+
+def test_create_shifts_the_checklist_to_the_engagements_year(capsys, demo_root):
+    spec = {"form": "1040", "client": "Smith", "year": 2027,
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["created"] == "Smith TY2027 Form 1040"
+    periods = {i["identifier"]: i["period"] for i in payload["state"]["items"]}
+    assert periods["A01"] == "TY2027" and periods["B01"] == "TY2026"
+
+
+def test_templates_carries_the_calendars_default_year(capsys):
+    from tracker.templates import default_tax_year
+
+    code, payload = run(capsys, "templates")
+    assert payload["default_year"] == default_tax_year()
+    assert set(payload["years"].values()) == {default_tax_year()}
+
+
+def test_rollover_retires_the_prior_in_the_priors_list(capsys, demo_root):
+    spec = {"name": "Smith 2025", "form": "1040", "client": "John",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["rolled_from"].endswith("Smith 2025")
+    code, payload = run(capsys, "priors")
+    by_name = {p["name"]: p for p in payload["priors"]}
+    assert by_name["Smith 2025"]["superseded_by"] == "Smith 2025 - 2026"
+    assert by_name["Smith 2025 - 2026"]["superseded_by"] == ""

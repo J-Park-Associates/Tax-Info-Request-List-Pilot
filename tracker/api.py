@@ -64,7 +64,10 @@ from tracker.templates import (  # the catalog; re-exported for the wizard and d
     DEMO_FORM,
     FORM_TEMPLATES,
     FORM_TYPES,
+    base_year,
+    default_tax_year,
     item_from_spec,
+    shift_item,
     template_items,
 )
 
@@ -289,10 +292,13 @@ def _info_payload(info: EngagementInfo) -> dict:
         "client": info.client, "name": info.name, "link": info.link,
         "due": info.due.isoformat() if info.due else "", "sender": info.sender,
         "firm": info.firm, "reminders": info.reminders, "active": info.active,
+        "rolled_from": info.rolled_from,
     }
 
 
-def _info_from_spec(spec: dict, *, name: str, carry: EngagementInfo | None = None) -> EngagementInfo:
+def _info_from_spec(
+    spec: dict, *, name: str, carry: EngagementInfo | None = None, rolled_from: str = ""
+) -> EngagementInfo:
     """The Engagement sheet for a new engagement: what the wizard sent, over
     what last year's sheet said (rollover), over the firm default."""
     base = carry or EngagementInfo()
@@ -318,6 +324,7 @@ def _info_from_spec(spec: dict, *, name: str, carry: EngagementInfo | None = Non
         firm=text("firm", base.firm or CONTACT),
         reminders=bool(spec.get("reminders", base.reminders)),
         active=True,
+        rolled_from=rolled_from,
     )
 
 
@@ -468,8 +475,14 @@ def _cmd_reset(argv: list[str]) -> dict:
 
 
 def _cmd_templates(argv: list[str]) -> dict:
-    years = {form: detect_year(template_items(form)) for form in FORM_TEMPLATES}
-    return {"forms": FORM_TYPES, "templates": FORM_TEMPLATES, "years": years}
+    """The catalog, plus the tax year a new engagement is for by default."""
+    year = default_tax_year()
+    return {
+        "forms": FORM_TYPES,
+        "templates": FORM_TEMPLATES,
+        "years": {form: year for form in FORM_TEMPLATES},
+        "default_year": year,
+    }
 
 
 def _cmd_check(argv: list[str]) -> dict:
@@ -498,8 +511,9 @@ def _cmd_list(argv: list[str]) -> dict:
 
 def _cmd_create(argv: list[str]) -> dict:
     """Create a new engagement from a JSON spec on stdin:
-    {"name": "...", "form": "1040", "client": "...", "link": "...", "due": "YYYY-MM-DD",
-     "items": [{identifier, document, extensions, ...}, ...]}
+    {"name": "...", "form": "1040", "year": 2026, "client": "...", "link": "...",
+     "due": "YYYY-MM-DD", "items": [{identifier, document, extensions, ...}, ...]}
+    year defaults to the most recently ended year; catalog rows are shifted to it.
     client/link/due land on the manifest's Engagement sheet, which is all the
     scheduled run needs - there is no registry to add the engagement to.
     """
@@ -508,11 +522,15 @@ def _cmd_create(argv: list[str]) -> dict:
     if form and form not in FORM_TEMPLATES:
         raise ManifestError(f"Unknown tax form type '{form}'")
     client = str(spec.get("client", "") or "").strip()
-    year = detect_year(template_items(form)) if form else None
+    # The engagement's tax year: the calendar's default unless chosen.
+    try:
+        year = int(spec.get("year") or default_tax_year())
+    except (TypeError, ValueError):
+        raise ManifestError(f"Tax year must be a whole number, got {spec.get('year')!r}") from None
     fallback = " ".join(
         part for part in (
             client or "New",
-            f"TY{year}" if year else "",
+            f"TY{year}",
             f"Form {form}" if form else "Engagement",
         ) if part
     )
@@ -524,6 +542,11 @@ def _cmd_create(argv: list[str]) -> dict:
     items = [item_from_spec(s) for s in spec.get("items", [])]
     if not items:
         raise ManifestError("Select at least one request item")
+    # The wizard sends catalog rows as written (the base year); shift them
+    # to the engagement's year so TY2025 does not get asked for in 2027.
+    base = base_year(form) if form else None
+    if base:
+        items = [shift_item(item, year - base) for item in items]
 
     info = _info_from_spec(spec, name=name)
     engagement.mkdir(parents=True)
@@ -551,10 +574,23 @@ def _cmd_priors(argv: list[str]) -> dict:
                 "name": child.name,
                 "path": str(child),
                 "client": info.client,
+                "rolled_from": info.rolled_from,
                 "year": detect_year(items),
                 "requests": len(items),
                 "received": sum(1 for i in items if i.status == "Received"),
             })
+    # Say which priors have already been rolled forward, so the wizard can
+    # steer the person to the newest year instead of rolling the same
+    # prior twice.
+    names_by_path = {Path(p["path"]).resolve(): p["name"] for p in priors}
+    for prior in priors:
+        successor = ""
+        if prior["rolled_from"]:
+            pass
+        for other in priors:
+            if other["rolled_from"] and Path(other["rolled_from"]).resolve() == Path(prior["path"]).resolve():
+                successor = other["name"]
+        prior["superseded_by"] = successor
     return {"priors": priors}
 
 
@@ -593,7 +629,9 @@ def _cmd_rollover(argv: list[str]) -> dict:
         raise ManifestError(f"An engagement named '{name}' already exists")
 
     carried = load_engagement_info(prior / MANIFEST_FILENAME)
-    info = _info_from_spec(spec, name=name, carry=carried)
+    # Naming the prior on the new sheet is what retires it (see
+    # tracker.registry.mark_superseded); nothing is written to last year.
+    info = _info_from_spec(spec, name=name, carry=carried, rolled_from=str(prior))
     engagement.mkdir(parents=True)
     try:
         write_rollover_manifest(engagement / MANIFEST_FILENAME, report)

@@ -85,3 +85,25 @@ def test_a_request_with_no_rule_defaults_to_its_own_name():
     )
     assert explicit.required_keywords == ()
     assert explicit.any_keywords == ("schedule e",)
+
+
+def test_the_tax_year_comes_from_the_calendar():
+    import datetime as dt
+    from tracker.templates import default_tax_year
+
+    assert default_tax_year(dt.date(2027, 2, 1)) == 2026
+    assert default_tax_year(dt.date(2026, 9, 17)) == 2025
+    assert default_tax_year(dt.date(2026, 12, 31)) == 2025
+
+
+def test_catalog_rows_shift_to_the_engagements_year():
+    from tracker.templates import base_year, template_items
+
+    assert base_year("1040") == 2025
+    shifted = {i.identifier: i for i in template_items("1040", year=2027)}
+    assert shifted["A01"].period == "TY2027"
+    assert shifted["A01"].date_pattern == r"(?i)\b2027\b"
+    assert shifted["B01"].period == "TY2026"           # prior-year return stays one behind
+    assert shifted["A01"].required_keywords == ("W-2",)  # keywords never shift
+    unshifted = {i.identifier: i for i in template_items("1040")}
+    assert unshifted["A01"].period == "TY2025"

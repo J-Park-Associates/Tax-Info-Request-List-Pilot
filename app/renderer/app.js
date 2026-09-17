@@ -6,7 +6,8 @@ let engagements = [];      // [{name, path}]
 let active = null;         // path of the active engagement
 let forms = [];            // tax form catalog [{id, label, who, blurb}]
 let templatesByForm = {};  // form id -> tailored request template items
-let yearsByForm = {};      // form id -> tax year the template is written for
+let yearsByForm = {};      // form id -> tax year a new engagement is for (from the calendar)
+let defaultYear = null;    // the same, whatever the form
 let nameIsAuto = true;     // new-client name follows client + year + form until typed
 let selectedForm = null;   // form id chosen on the wizard's first page
 let templates = [];        // template items for the chosen form
@@ -24,7 +25,8 @@ const CHIP_CLASS = {
   "Pending Sync": "chip-pending",
 };
 
-function chip(status) {
+function chip(status, override) {
+  if (override === "Waived") return `<span class="chip chip-requested">Waived</span>`;
   const label = status || "Requested";
   const cls = CHIP_CLASS[status] || "chip-requested";
   return `<span class="chip ${cls}">${label}</span>`;
@@ -74,7 +76,7 @@ function render(state) {
         <div class="req-period">${esc(item.period)}${item.manual_override ? " · override: " + esc(item.manual_override) : ""}</div>
       </td>
       <td class="col-num">${item.file_count ?? "–"}${item.expected_count > 1 ? " / " + item.expected_count : ""}</td>
-      <td class="col-status">${chip(item.status)}</td>
+      <td class="col-status">${chip(item.status, item.manual_override)}</td>
       <td class="col-recv"><span class="req-recv">${esc(item.received_date || "—")}</span></td>
       <td><div class="req-notes" title="${esc(item.validation_notes)}">${esc(item.validation_notes) || "—"}</div></td>
     </tr>`);
@@ -82,7 +84,7 @@ function render(state) {
 
   const counts = {};
   for (const item of state.items) {
-    const key = item.status || "Requested";
+    const key = item.manual_override === "Waived" ? "Waived" : item.status || "Requested";
     counts[key] = (counts[key] || 0) + 1;
   }
   const summary = Object.entries(counts).map(([k, n]) => `${k}: ${n}`);
@@ -116,16 +118,23 @@ function renderReview(state) {
     .filter((i) => i.manual_override !== "Waived")
     .map((i) => `<option value="${esc(i.identifier)}">${esc(i.identifier)} — ${esc(i.document)}</option>`)
     .join("");
-  $("review-list").innerHTML = parked.map((e) => `
+  const ids = new Set(state.items.map((i) => i.identifier));
+  $("review-list").innerHTML = parked.map((e) => {
+    // "looks like A01 (...)" is the router's own reading; a person still
+    // confirms, but the picker starts on that row instead of on nothing.
+    const guess = (String(e.reason).match(/looks like ([A-Za-z0-9._-]+)/) || [])[1];
+    const picked = guess && ids.has(guess) ? guess : "";
+    return `
     <li data-original="${esc(e.pbc_location)}">
       <span class="r-name">${esc(e.original_name)}</span>
       <span class="r-why">${esc(e.reason)}</span>
       <select aria-label="Request for ${esc(e.original_name)}">
-        <option value="">Belongs to…</option>${options}
+        <option value="">Belongs to…</option>${options.replace(`value="${esc(picked)}"`, `value="${esc(picked)}" selected`)}
       </select>
       <input type="text" placeholder="keyword to learn (optional)" aria-label="Keyword to add to the request" title="A word this document contains that others like it will too. Added to the request's Any Keywords so the next one files itself." />
       <button class="btn btn-primary r-file">File it</button>
-    </li>`).join("");
+    </li>`;
+  }).join("");
 }
 
 async function assignParked(li) {
@@ -269,9 +278,7 @@ async function runScan() {
   try {
     const result = await call(withEng("scan"));
     render(result.state);
-    const counts = {};
-    for (const u of Object.values(result.updates)) counts[u.status] = (counts[u.status] || 0) + 1;
-    const summary = Object.entries(counts).map(([k, n]) => `${k}: ${n}`).join("  ·  ");
+    const summary = $("summary").textContent.replace(/\s+·\s+/g, "  ·  ");
     const sorted = result.sorted || {};
     const problems = [];
     if ((sorted.errors || []).length) {
@@ -325,6 +332,7 @@ async function openWizard() {
       forms = result.forms;
       templatesByForm = result.templates;
       yearsByForm = result.years || {};
+      defaultYear = result.default_year || null;
     }
     priors = (await call(["priors"])).priors;
   } catch (err) {
@@ -332,7 +340,8 @@ async function openWizard() {
     return;
   }
   selectedForm = null;
-  selectedPrior = priors.length ? priors[priors.length - 1].path : null;
+  const open = priors.filter((p) => !p.superseded_by);
+  selectedPrior = open.length ? open[open.length - 1].path : priors.length ? priors[priors.length - 1].path : null;
   renderPriorPage();
   renderFormGrid();
   showStep("prior");
@@ -349,6 +358,7 @@ function showStep(step) {
 
 function priorMeta(p) {
   const bits = [];
+  if (p.superseded_by) bits.push(`already rolled forward into ${p.superseded_by}`);
   if (p.year) bits.push(`TY${p.year}`);
   bits.push(`${p.requests} request${p.requests === 1 ? "" : "s"}`);
   if (p.requests) bits.push(`${p.received} received`);
@@ -437,7 +447,8 @@ function chooseForm(formId) {
   $("tmpl-head-label").textContent = `${form.label} request list — tick what applies`;
   $("ne-name").value = "";
   nameIsAuto = true;
-  $("ne-name").placeholder = `e.g. Smith Family TY${yearsByForm[formId] || ""} ${form.label}`;
+  $("ne-year").value = yearsByForm[formId] || defaultYear || "";
+  $("ne-name").placeholder = `e.g. Smith Family TY${$("ne-year").value} ${form.label}`;
   $("ne-client").value = "";
   $("ne-link").value = "";
   $("ne-due").value = "";
@@ -453,7 +464,7 @@ function syncNameDefault() {
   if (!nameIsAuto) return;
   const client = $("ne-client").value.trim();
   const form = forms.find((f) => f.id === selectedForm);
-  const year = yearsByForm[selectedForm];
+  const year = Number($("ne-year").value) || yearsByForm[selectedForm];
   $("ne-name").value = client
     ? [client, year ? `TY${year}` : "", form ? form.label : ""].filter(Boolean).join(" ")
     : "";
@@ -533,6 +544,7 @@ async function createEngagement() {
       client: $("ne-client").value.trim(),
       link: $("ne-link").value.trim(),
       due: $("ne-due").value,
+      year: Number($("ne-year").value) || null,
     });
     $("modal").classList.add("hidden");
     await refresh(result.state.paths.engagement);
@@ -580,6 +592,7 @@ $("ro-name").addEventListener("keydown", (e) => e.key === "Enter" && rollForward
 $("btn-check").addEventListener("click", checkManifest);
 $("btn-unlock").addEventListener("click", clearLock);
 $("ne-client").addEventListener("input", syncNameDefault);
+$("ne-year").addEventListener("input", syncNameDefault);
 $("ne-name").addEventListener("input", () => {
   nameIsAuto = $("ne-name").value.trim() === "";
   syncNameDefault();

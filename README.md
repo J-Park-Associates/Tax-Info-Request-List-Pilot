@@ -138,9 +138,14 @@ Generate the job itself with:
 
 ```
 python -m tracker.scheduling --root "D:\OneDrive\Clients" ^
-    --working-dir "C:\Tools\tax-tracker" --every 120 --out tax-tracker.xml
-schtasks /create /xml tax-tracker.xml /tn "Tax Document Tracker"
+    --working-dir "C:\Tools\tax-tracker" --every 120 --out tax-tracker.xml --install
 ```
+
+`--install` registers the task as it writes the XML; run the same line again
+to change the schedule. Every pass also re-scaffolds each engagement, so a
+row added in Excel has its folder and its README line by the next run, and
+an engagement that has been rolled forward is retired by its successor
+without anyone opening last year's manifest.
 
 One daily task is enough: the **runner** decides whether today is a drafting
 day, not the scheduler. So a Saturday the machine spent switched off still

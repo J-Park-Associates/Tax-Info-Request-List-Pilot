@@ -155,6 +155,7 @@ class EngagementInfo:
     firm: str = ""          # sign-off line
     reminders: bool = True  # False: this client is not chased by email
     active: bool = True     # False: the scheduled run skips this folder
+    rolled_from: str = ""   # the prior engagement this one was rolled forward from
 
 
 #: Row labels on the Engagement sheet, in the order they are written.
@@ -167,6 +168,7 @@ ENGAGEMENT_FIELDS = (
     ("Firm", "firm"),
     ("Reminders", "reminders"),
     ("Active", "active"),
+    ("Rolled From", "rolled_from"),
 )
 
 
@@ -739,7 +741,9 @@ def _write_engagement_sheet(wb: Workbook, info: EngagementInfo) -> None:
         ws.cell(row=row, column=2, value=value or None)
     note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1,
                    value="Reminders: no = this client is not chased by email. "
-                         "Active: no = the scheduled run skips this folder.")
+                         "Active: no = the scheduled run skips this folder. "
+                         "Rolled From is written by the rollover; the engagement it "
+                         "names is no longer chased.")
     note.font = Font(italic=True, color="666666")
 
 

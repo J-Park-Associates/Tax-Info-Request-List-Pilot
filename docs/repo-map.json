@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated": "2026-09-16",
+  "generated": "2026-09-17",
   "generator": "tools/repo_map.py",
   "generator_sha256": "d23f3d7ab7345fdf",
   "pipeline": [
@@ -14,8 +14,8 @@
   ],
   "counts": {
     "nodes": 82,
-    "edges": 179,
-    "reused": 45
+    "edges": 181,
+    "reused": 42
   },
   "node_types": [
     "artifact",
@@ -94,8 +94,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a5e32282651c1249",
-      "lines": 705,
+      "sha256": "41c2df4ed722a2e8",
+      "lines": 743,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -107,7 +107,7 @@
         "main"
       ],
       "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, assign, create, rollover, templates, list, priors, reset. Also the demo sample-file builder.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by."
     },
     {
       "id": "tracker/content_check.py",
@@ -189,8 +189,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3b9fcad375e9652b",
-      "lines": 851,
+      "sha256": "c930449a3a27f930",
+      "lines": 855,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -248,8 +248,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "843a24a81e0f3896",
-      "lines": 184,
+      "sha256": "09931c5f77a4935d",
+      "lines": 222,
       "cli": "python -m tracker.registry",
       "exports": [
         "Engagement",
@@ -258,10 +258,11 @@
         "RegistryError",
         "discover_engagements",
         "engagement_dirs",
-        "engagement_from"
+        "engagement_from",
+        "mark_superseded"
       ],
       "role": "Finds every engagement under the clients root: any folder holding _manifest.xlsx, without descending into one. Reads each manifest's Engagement sheet for client, link, due, sender, firm, reminders and active. There is no registry file.",
-      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, an unreadable manifest is listed with its problem rather than dropped, and a root with no manifest at all is an error - that is a typo in the scheduled task, not an empty practice."
+      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, an unreadable manifest is listed with its problem rather than dropped, and a root with no manifest at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's sheet is the record."
     },
     {
       "id": "tracker/reminder.py",
@@ -302,8 +303,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e4a72a9489681b0b",
-      "lines": 393,
+      "sha256": "46840571cfaa08c0",
+      "lines": 402,
       "cli": "python -m tracker.rollover",
       "exports": [
         "CARRIED_HEADERS",
@@ -344,8 +345,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "88644763e33a3d49",
-      "lines": 425,
+      "sha256": "dbd4f4e5ca9b1415",
+      "lines": 435,
       "cli": "python -m tracker.runner",
       "exports": [
         "DRAFT_WEEKDAY",
@@ -365,14 +366,14 @@
         "should_draft"
       ],
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on Saturdays) draft. This is the whole scheduled task.",
-      "notes": "Owns the Saturday rule in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report."
+      "notes": "Owns the Saturday rule in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From."
     },
     {
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c7a7c607045098af",
-      "lines": 247,
+      "sha256": "26b9ceb7ccc6c83e",
+      "lines": 258,
       "cli": "python -m tracker.scaffold",
       "exports": [
         "MANIFEST_FILENAME",
@@ -391,14 +392,14 @@
         "scaffold_engagement"
       ],
       "role": "Turns a manifest into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/{Identifier} - {Document}/ plus 00 - Needs Review. Writes the client's _README.txt.",
-      "notes": "Also the home of the path constants every other module imports: MANIFEST_FILENAME, SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME."
+      "notes": "Also the home of the path constants every other module imports: MANIFEST_FILENAME, SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME. Runs on every scheduled pass now; the README is rewritten only when its text changed."
     },
     {
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e317a6addd16a505",
-      "lines": 383,
+      "sha256": "f63611272d67f13e",
+      "lines": 398,
       "cli": "python -m tracker.scanner",
       "exports": [
         "CACHE_FILENAME",
@@ -408,32 +409,33 @@
         "scan_engagement"
       ],
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and writes the result back into the manifest.",
-      "notes": "Holds a stale-aware per-engagement run lock, so two scheduled runs cannot overlap. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of 'files changed'."
+      "notes": "Holds a stale-aware per-engagement run lock, so two scheduled runs cannot overlap. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of 'files changed'. An Accepted row is written Received with a date (decision 33); ScanReport.waived names rows counts should leave out."
     },
     {
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f032b3a4dacf547b",
-      "lines": 244,
+      "sha256": "85f365485fc1c91a",
+      "lines": 288,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "DEFAULT_START",
         "TASK_NAME",
+        "install_task",
         "is_absolute_path",
         "n8n_workflow",
         "resolve_root",
         "task_scheduler_xml"
       ],
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps."
     },
     {
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3d5285ecbea7a912",
-      "lines": 662,
+      "sha256": "f6d8289156066ec7",
+      "lines": 712,
       "cli": "python -m tracker.templates",
       "exports": [
         "CSV_COLUMNS",
@@ -441,16 +443,19 @@
         "FORM_TEMPLATES",
         "FORM_TYPES",
         "TEMPLATES_DIRNAME",
+        "base_year",
         "csv_name",
         "csv_rows",
+        "default_tax_year",
         "export_csvs",
         "item_from_spec",
         "render_csv",
+        "shift_item",
         "stale_csvs",
         "template_items"
       ],
       "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword/date rules that recognise each document. The ONLY source of truth for the checklists; templates/*.csv are generated from it.",
-      "notes": "Edit the Python, run `python -m tracker.templates export`, commit both. tests/test_templates.py and CI fail if the CSVs drift. item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file."
+      "notes": "Edit the Python, run `python -m tracker.templates export`, commit both. tests/test_templates.py and CI fail if the CSVs drift. item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included, so the catalog is never edited for a new year."
     },
     {
       "id": "tracker/validators.py",
@@ -576,16 +581,16 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "48fb9fca5b6f1753",
-      "lines": 616,
+      "sha256": "b547fa9cfea920e2",
+      "lines": 629,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "45b83d8957b75df2",
-      "lines": 320,
+      "sha256": "099176d6c6636826",
+      "lines": 324,
       "role": "Desktop app shell markup."
     },
     {
@@ -599,8 +604,8 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "e8e7752d273b5be2",
-      "lines": 635,
+      "sha256": "89a88eedcb96e3d4",
+      "lines": 637,
       "role": "Desktop app styling."
     },
     {
@@ -624,16 +629,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "874ad75de3bdd911",
-      "lines": 278,
+      "sha256": "fa2739a4e2687118",
+      "lines": 283,
       "role": "What the system is, how to run each stage, and the two ways to demo it."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f73936dce827ff6a",
-      "lines": 224,
+      "sha256": "f37042a41e100372",
+      "lines": 229,
       "role": "The build plan, the hard constraints and the decision log. Components 1-10, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -641,7 +646,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3ab958980289cd5f",
+      "sha256": "070a800079d3cca5",
       "lines": 259,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -799,8 +804,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "760cffcd16f78dab",
-      "lines": 348,
+      "sha256": "6269fa117f45246e",
+      "lines": 382,
       "exports": [
         "demo_root",
         "run",
@@ -815,6 +820,7 @@
         "test_create_refuses_a_duplicate_identifier",
         "test_create_refuses_a_non_numeric_count_with_a_sentence",
         "test_create_refuses_an_identifier_that_cannot_name_a_folder",
+        "test_create_shifts_the_checklist_to_the_engagements_year",
         "test_create_will_not_overwrite_an_existing_engagement",
         "test_create_writes_the_engagement_sheet_the_scheduled_run_reads",
         "test_item_from_spec_normalizes_extensions",
@@ -822,8 +828,10 @@
         "test_reset_then_scan_plays_the_demo_end_to_end",
         "test_rollover_carries_the_client_but_not_last_years_link_or_due",
         "test_rollover_refuses_a_missing_prior",
+        "test_rollover_retires_the_prior_in_the_priors_list",
         "test_state_shows_statuses_a_locked_excel_deferred",
         "test_state_shows_the_lock_and_unlock_clears_only_a_stale_one",
+        "test_templates_carries_the_calendars_default_year",
         "test_templates_lists_every_form_with_its_checklist",
         "test_unknown_command_is_a_json_error"
       ]
@@ -1127,8 +1135,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7d823013f70ff80b",
-      "lines": 331,
+      "sha256": "df2bc272983d7482",
+      "lines": 388,
       "exports": [
         "FRIDAY",
         "SATURDAY",
@@ -1139,6 +1147,8 @@
         "test_a_dry_run_writes_nothing_at_all",
         "test_a_manual_run_drafts_on_a_weekday",
         "test_a_missing_folder_is_recorded_not_raised",
+        "test_a_rolled_forward_engagement_is_retired_by_its_successor",
+        "test_a_row_added_in_excel_has_its_folder_by_the_next_run",
         "test_a_weekday_report_says_why_there_are_no_drafts",
         "test_a_weekday_run_files_and_scans_but_writes_no_draft",
         "test_always_mode_drafts_on_any_day",
@@ -1160,7 +1170,8 @@
         "test_the_log_appends_rather_than_replaces",
         "test_the_report_says_what_day_it_is_and_never_claims_a_send",
         "test_the_run_names_a_manifest_typo_with_its_row_before_touching_files",
-        "test_the_saturday_run_writes_a_draft"
+        "test_the_saturday_run_writes_a_draft",
+        "test_waived_and_accepted_rows_are_not_outstanding"
       ]
     },
     {
@@ -1191,8 +1202,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "32245b78b3571ddb",
-      "lines": 324,
+      "sha256": "36d20139c2f2a8cf",
+      "lines": 353,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1201,6 +1212,7 @@
         "folder",
         "statuses",
         "test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan",
+        "test_accepted_means_received_with_a_date",
         "test_auto_revert_preserves_date_and_notes",
         "test_content_cache_created_and_pruned",
         "test_deleted_folder_reported_missing",
@@ -1215,6 +1227,7 @@
         "test_received_date_sticky_across_scans",
         "test_stale_lock_replaced_and_released",
         "test_unfiled_sheet_written",
+        "test_waived_rows_are_named_so_counts_can_leave_them_out",
         "text_pdf"
       ]
     },
@@ -1222,8 +1235,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c846a92ae1449b18",
-      "lines": 143,
+      "sha256": "e1490c78b529d489",
+      "lines": 175,
       "exports": [
         "ARGS",
         "NS",
@@ -1234,6 +1247,7 @@
         "test_a_too_frequent_repeat_is_refused",
         "test_absolute_paths_are_recognized_in_either_flavour",
         "test_an_absolute_root_is_left_exactly_as_given",
+        "test_install_runs_schtasks_on_windows_and_only_shows_the_command_elsewhere",
         "test_overlapping_runs_are_refused_by_the_task_itself",
         "test_paths_with_xml_characters_are_escaped",
         "test_relative_paths_are_not_mistaken_for_absolute",
@@ -1250,17 +1264,19 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9e5331d37a86c5f3",
-      "lines": 88,
+      "sha256": "f02167b70cb8685e",
+      "lines": 110,
       "exports": [
         "REPO",
         "TEMPLATES_DIR",
         "test_a_request_with_no_rule_defaults_to_its_own_name",
+        "test_catalog_rows_shift_to_the_engagements_year",
         "test_csv_carries_the_manifest_columns_and_the_core_flag",
         "test_each_checklist_is_a_valid_manifest",
         "test_every_form_type_has_a_checklist_and_a_csv",
         "test_export_writes_one_csv_per_form",
         "test_the_committed_csvs_match_the_catalog",
+        "test_the_tax_year_comes_from_the_calendar",
         "test_unknown_form_is_refused"
       ]
     },
@@ -1483,6 +1499,12 @@
     {
       "from": "tests/test_api.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tracker/templates.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -2347,6 +2369,12 @@
     {
       "from": "tracker/templates.py",
       "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/templates.py",
+      "to": "tracker/rollover.py",
       "type": "imports",
       "source": "derived"
     },

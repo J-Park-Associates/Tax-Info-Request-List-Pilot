@@ -14,8 +14,10 @@ engagement:
 Guarantees:
 
 - **Idempotent.** Re-running recreates deleted folders and refreshes the
-  README, and does nothing else. Existing folders and the files inside them
-  are never touched, renamed, or deleted.
+  README (only when its text changed), and does nothing else. Existing
+  folders and the files inside them are never touched, renamed, or deleted.
+  The scheduled run scaffolds on every pass, so a row added in Excel has
+  its folder and its README line by the next run without anyone asking.
 - **Rename-tolerant.** A folder counts as existing if its name starts with
   the item's identifier followed by a non-alphanumeric boundary — the same
   prefix rule the scanner uses — so a client rename like
@@ -218,7 +220,16 @@ def _write_readme(
     lines.append("(This file is generated automatically - edits will be overwritten.)")
 
     readme = shared_dir / README_NAME
-    readme.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\r\n")
+    text = "\n".join(lines) + "\n"
+    # Scaffolding now runs on every scheduled pass; rewriting an unchanged
+    # README would make the sync client push a "new" file to the client
+    # every time.
+    try:
+        if readme.read_text(encoding="utf-8") == text:
+            return readme
+    except OSError:
+        pass
+    readme.write_text(text, encoding="utf-8", newline="\r\n")
     return readme
 
 
