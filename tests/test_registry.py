@@ -10,7 +10,7 @@ import datetime as dt
 
 import pytest
 
-from tracker.manifest import EngagementInfo, RequestItem, create_template
+from tracker.manifest import ENGAGEMENT_SHEET_NAME, EngagementInfo, RequestItem, create_template
 from tracker.registry import (
     MAX_DEPTH,
     Engagement,
@@ -18,7 +18,7 @@ from tracker.registry import (
     discover_engagements,
     engagement_dirs,
 )
-from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
+from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, scaffold_engagement
 
 ITEMS = [RequestItem(identifier="A01", document="W-2")]
 
@@ -43,7 +43,7 @@ def test_an_engagements_own_subfolders_are_never_engagements(tmp_path):
     outer = make(tmp_path, "Smith 2025", scaffold=True)
     # A stray manifest inside Prepared/ (or anywhere below) does not split
     # the engagement in two.
-    create_template(outer / "Prepared" / MANIFEST_FILENAME, ITEMS)
+    create_template(outer / PREPARED_DIR_NAME / MANIFEST_FILENAME, ITEMS)
     assert engagement_dirs(tmp_path) == [outer]
 
 
@@ -85,7 +85,7 @@ def test_a_manifest_without_the_sheet_is_still_an_engagement(tmp_path):
 
     folder = make(tmp_path, "Made Before The Sheet 2024")
     wb = load_workbook(folder / MANIFEST_FILENAME)
-    del wb["Engagement"]
+    del wb[ENGAGEMENT_SHEET_NAME]
     wb.save(folder / MANIFEST_FILENAME)
     [engagement] = discover_engagements(tmp_path).engagements
     assert engagement.active and engagement.reminders and engagement.client == ""
@@ -108,7 +108,7 @@ def test_a_bad_yes_no_on_the_sheet_is_reported_not_guessed(tmp_path):
 
     folder = make(tmp_path, "Smith 2025")
     wb = load_workbook(folder / MANIFEST_FILENAME)
-    ws = wb["Engagement"]
+    ws = wb[ENGAGEMENT_SHEET_NAME]
     for row in ws.iter_rows(min_row=1, max_col=2):
         if row[0].value == "Reminders":
             row[1].value = "maybe"

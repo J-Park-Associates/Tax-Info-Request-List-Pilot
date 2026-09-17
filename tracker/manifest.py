@@ -133,6 +133,9 @@ class Status:
 #: has been requested and nothing has been looked at. Not a Status, because
 #: the scanner never writes it.
 UNSCANNED_LABEL = "Requested"
+#: How ``Summary.line`` joins its counts, and what it says with no rows.
+SUMMARY_SEPARATOR = " · "
+SUMMARY_EMPTY = "no requests"
 
 #: The Engagement sheet's yes/no cells, as written; ``_parse_yes_no`` also
 #: reads the usual spellings a person types.
@@ -738,8 +741,8 @@ class Summary:
         if self.unscanned:
             parts.append(f"{UNSCANNED_LABEL}: {self.unscanned}")
         if self.waived:
-            parts.append(f"Waived: {self.waived}")
-        return " · ".join(parts) or "no requests"
+            parts.append(f"{Override.WAIVED}: {self.waived}")
+        return SUMMARY_SEPARATOR.join(parts) or SUMMARY_EMPTY
 
 
 def summarize(items: Iterable[RequestItem]) -> Summary:

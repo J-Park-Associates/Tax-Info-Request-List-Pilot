@@ -27,6 +27,9 @@ from pathlib import Path
 from tracker.manifest import TEMP_SUFFIX
 
 SETTINGS_FILENAME = "settings.json"
+#: The keys inside it.
+KEY_CLIENTS_ROOT = "clients_root"
+KEY_FIRM = "firm"
 #: The clients-root example every prompt and document shows.
 EXAMPLE_ROOT = r"D:\OneDrive\Clients"
 ENV_SETTINGS_DIR = "TRACKER_SETTINGS_DIR"
@@ -74,13 +77,13 @@ def _read() -> dict:
 
 def clients_root() -> Path | None:
     """The configured clients root, or None when nothing has been set yet."""
-    raw = str(_read().get("clients_root", "") or "").strip()
+    raw = str(_read().get(KEY_CLIENTS_ROOT, "") or "").strip()
     return Path(raw) if raw else None
 
 
 def firm() -> str:
     """The firm's name as typed once at setup; the wizard's default Firm."""
-    return str(_read().get("firm", "") or "").strip()
+    return str(_read().get(KEY_FIRM, "") or "").strip()
 
 
 def product_name() -> str:
@@ -109,9 +112,9 @@ def _write(data: dict) -> None:
 def set_firm(name: str) -> str:
     """Record the firm's name beside the clients root."""
     data = _read()
-    data["firm"] = str(name).strip()
+    data[KEY_FIRM] = str(name).strip()
     _write(data)
-    return data["firm"]
+    return data[KEY_FIRM]
 
 
 def set_clients_root(root: Path | str) -> Path:
@@ -124,7 +127,7 @@ def set_clients_root(root: Path | str) -> Path:
     if not root.is_dir():
         raise SettingsError(f"not a folder: {root}")
     data = _read()
-    data["clients_root"] = str(root)
+    data[KEY_CLIENTS_ROOT] = str(root)
     _write(data)
     return root
 

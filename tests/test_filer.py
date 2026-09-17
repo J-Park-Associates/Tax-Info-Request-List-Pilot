@@ -13,14 +13,18 @@ from openpyxl import load_workbook
 from tracker.filer import (
     DUPLICATE,
     FILED,
+    INDEX_COLUMNS,
     INDEX_FILENAME,
+    INDEX_LAYOUT,
     INDEX_SHEET,
     NEEDS_REVIEW,
     file_drops,
     prepared_name_for,
     read_index,
 )
-from tracker.manifest import RequestItem, create_template
+from tests.samples import col
+from tracker.manifest import COL_DOCUMENT, SHEET_NAME, RequestItem, create_template
+from tracker.router import UNMATCHED
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PBC_DIR_NAME,
@@ -139,7 +143,7 @@ def test_unroutable_file_is_preserved_and_parked(engagement):
     assert (review / "vacation.pdf").exists()
     (entry,) = report.review
     assert entry.decision == NEEDS_REVIEW
-    assert "matched no request" in entry.reason
+    assert UNMATCHED in entry.reason
     assert not report.filed
 
 
@@ -274,8 +278,8 @@ def test_an_index_written_with_older_columns_still_reads(tmp_path):
                "Filed As", "Prepared Location", "PBC Location", "Decision", "Reason"])
     ws.append(["2026-01-01", "w2.pdf", 9.4, "abc", "A01", "W-2 Wage Statements",
                "A01 - W-2 Wage Statements - TY2025.pdf",
-               "Prepared/A01 - W-2 Wage Statements/A01 - W-2 Wage Statements - TY2025.pdf",
-               "Shared/PBC/w2.pdf", FILED, "content matched"])
+               f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements/A01 - W-2 Wage Statements - TY2025.pdf",
+               f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2.pdf", FILED, "content matched"])
     path = tmp_path / INDEX_FILENAME
     wb.save(path)
     [entry] = read_index(path)
@@ -438,7 +442,7 @@ def test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder(engag
     drop(engagement, "john.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     wb = load_workbook(engagement / MANIFEST_FILENAME)
-    wb["Requests"].cell(row=2, column=2, value="W-2s (all employers)")
+    wb[SHEET_NAME].cell(row=2, column=col(COL_DOCUMENT), value="W-2s (all employers)")
     wb.save(engagement / MANIFEST_FILENAME)
     wb.close()
     drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
@@ -493,7 +497,8 @@ def test_a_hand_edited_index_cell_does_not_stop_the_next_run(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     wb = load_workbook(engagement / INDEX_FILENAME)
-    wb.active.cell(row=2, column=3, value="about 9 KB")
+    size_col = INDEX_COLUMNS.index(INDEX_LAYOUT["size_kb"][0]) + 1
+    wb.active.cell(row=2, column=size_col, value="about 9 KB")
     wb.save(engagement / INDEX_FILENAME)
     wb.close()
     drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")

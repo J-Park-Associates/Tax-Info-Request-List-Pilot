@@ -17,12 +17,30 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
+from tracker.manifest import HEADERS
 from tracker.templates import BASE_YEAR, template_items
 
 #: The rows the sample documents were written against.
 DEMO_ITEMS = template_items("1040", core_only=True)
 YEAR = BASE_YEAR          # the samples are dated for the catalog's base year
 PRIOR_YEAR = BASE_YEAR - 1
+
+
+def col(header: str) -> int:
+    """The 1-based column of ``header`` on the Requests sheet, from HEADERS."""
+    return HEADERS.index(header) + 1
+
+
+def row(**by_header: object) -> list:
+    """A full-width Requests row in HEADERS order from header-name keys.
+
+    Call it with the COL_* constants unpacked (``row(**{COL_IDENTIFIER: "Z01"})``)
+    so a test never retypes the column order the manifest owns.
+    """
+    unknown = set(by_header) - set(HEADERS)
+    if unknown:
+        raise KeyError(f"not manifest headers: {sorted(unknown)}")
+    return [by_header.get(header) for header in HEADERS]
 
 
 def text_pdf(path: Path, lines: list[str]) -> Path:

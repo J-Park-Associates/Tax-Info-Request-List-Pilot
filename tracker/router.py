@@ -65,6 +65,8 @@ from tracker.validators import (
 UNMATCHED = "matched no request"
 AMBIGUOUS = "matched more than one request"
 PENDING = reasons.PENDING_SYNC.format()
+#: Every request refused the file type: said once, checked by tests by name.
+NO_REQUEST_ACCEPTS = "no request accepts .{extension} files"
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 
@@ -243,7 +245,7 @@ def route_file(
             return Routing(
                 path=path,
                 identifier=None,
-                reason=f"{UNMATCHED}; no request accepts .{ext} files",
+                reason=f"{UNMATCHED}; {NO_REQUEST_ACCEPTS.format(extension=ext)}",
             )
 
     if extraction_error:

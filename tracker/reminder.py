@@ -78,6 +78,11 @@ _SEPARATOR = "=" * 60
 #: Statuses that mean the client still owes us something (re-exported).
 OUTSTANDING = Status.OUTSTANDING
 
+#: The subject lines and the banner every draft opens with.
+SUBJECT_NEEDED = "{engagement}: {n} document(s) still needed"
+SUBJECT_COMPLETE = "{engagement}: we have everything - thank you"
+DRAFT_BANNER = "DRAFT - NOTHING HAS BEEN SENT."
+
 SECTION_MISSING = "NOT YET RECEIVED"
 SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
 SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
@@ -373,9 +378,9 @@ def draft_reminder(
     )
 
     if lines:
-        subject = f"{engagement}: {len(lines)} document(s) still needed"
+        subject = SUBJECT_NEEDED.format(engagement=engagement, n=len(lines))
     else:
-        subject = f"{engagement}: we have everything - thank you"
+        subject = SUBJECT_COMPLETE.format(engagement=engagement)
 
     return ReminderDraft(
         engagement=engagement,
@@ -474,7 +479,7 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
         body += "\n" + "\n".join(footer) + "\n"
 
     header = [
-        "DRAFT - NOTHING HAS BEEN SENT.",
+        DRAFT_BANNER,
         "Read it, edit it, then send it yourself.",
         f"{_FINGERPRINT_PREFIX}{draft_fingerprint(body)}",
         "(That line is how the weekly job tells whether you have edited this",

@@ -193,6 +193,16 @@ def test_the_roadmap_schema_table_lists_the_status_and_override_values():
         assert f"`{value}`" in override_row, value
 
 
+def test_the_readme_names_the_carried_forward_sheet_the_rollover_writes():
+    from tracker.manifest import ENGAGEMENT_SHEET_NAME, SHEET_NAME
+    from tracker.rollover import CARRIED_SHEET
+
+    readme = read("README.md")
+    assert f"`{CARRIED_SHEET}` sheet" in readme
+    for name in re.findall(r"`([A-Z][A-Za-z ]+)` sheet", readme):
+        assert name in (CARRIED_SHEET, ENGAGEMENT_SHEET_NAME, SHEET_NAME), name
+
+
 def test_the_scan_button_label_is_typed_once():
     label = re.search(r'const SCAN_LABEL = "([^"]+)";', read("app/renderer/app.js")).group(1)
     assert label not in read("app/renderer/index.html")

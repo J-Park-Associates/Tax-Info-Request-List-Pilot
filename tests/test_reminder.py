@@ -19,7 +19,10 @@ from tracker.manifest import (
     create_template,
     write_statuses,
 )
+from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE
 from tracker.reminder import (
+    DRAFT_BANNER,
+    SUBJECT_NEEDED,
     DRAFT_FILENAME,
     GENERIC_ASK,
     SECTION_FAILED,
@@ -47,13 +50,12 @@ SCANNED = [
     item("A02", "Bank Statements", Status.PARTIAL,
          period="TY2025", expected_count=3, file_count=2),
     item("A03", "2024 Form 1040 Tax Return", Status.FAILED, period="TY2024",
-         validation_notes="prior.pdf: PDF is password-protected; please ask the "
-                          "client for an unlocked copy"),
+         validation_notes="prior.pdf: " + reasons.PASSWORD_PROTECTED.format()),
     item("A04", "Mortgage Interest Statement", Status.RECEIVED,
          period="TY2025", file_count=1, received_date=dt.date(2026, 2, 1)),
     item("A05", "Charitable Donations", Status.MISSING, manual_override=Override.WAIVED),
     item("A06", "Brokerage Statements", Status.FAILED, manual_override=Override.ACCEPTED,
-         validation_notes="[override: Accepted]; 1099.pdf: possible wrong period"),
+         validation_notes=f"{OVERRIDE_NOTE.format(override=Override.ACCEPTED)}; 1099.pdf: {reasons.WRONG_PERIOD.marker}"),
     item("A07", "K-1 Statements", Status.PENDING_SYNC, file_count=0,
          validation_notes="1 file(s) still syncing from the cloud"),
 ]
@@ -121,18 +123,13 @@ def test_partial_says_how_many_are_left():
 
 
 @pytest.mark.parametrize("note, expected_fragment", [
-    ("x.pdf: PDF is password-protected; please ask the client for an unlocked copy",
-     "unlocked copy"),
-    ("x.gdoc: .gdoc is a Google Docs shortcut, not the document itself; ask the "
-     "client to download it (File > Download > PDF or Excel) and upload that copy",
-     "File > Download"),
-    ("x.pdf: file is 0.1 KB, below the 5 KB minimum; possible placeholder or "
-     "failed upload", "upload may not have finished"),
-    ("x.zip: extension .zip not allowed (expected: pdf)", "cannot open that file type"),
-    ("x.pdf: required keyword(s) 'W-2' not found; possible wrong document",
-     "does not look like this item"),
-    ("x.pdf: expected period not found (pattern: 2025); possible wrong period",
-     "different period"),
+    ("x.pdf: " + reasons.PASSWORD_PROTECTED.format(), reasons.PASSWORD_PROTECTED.client_ask),
+    ("x.gdoc: " + reasons.GOOGLE_STUB.format(extension="gdoc"), reasons.GOOGLE_STUB.client_ask),
+    ("x.pdf: " + reasons.TOO_SMALL.format(size_kb=0.1, minimum=5), reasons.TOO_SMALL.client_ask),
+    ("x.zip: " + reasons.EXTENSION_NOT_ALLOWED.format(extension="zip", allowed="pdf"),
+     reasons.EXTENSION_NOT_ALLOWED.client_ask),
+    ("x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'W-2'"), reasons.WRONG_DOCUMENT.client_ask),
+    ("x.pdf: " + reasons.WRONG_PERIOD.format(pattern="2025"), reasons.WRONG_PERIOD.client_ask),
 ])
 def test_failures_translate_to_a_plain_instruction(note, expected_fragment):
     ask = client_ask(item("A01", "Doc", Status.FAILED, validation_notes=note))
@@ -164,12 +161,11 @@ def test_multi_file_requests_say_how_many_are_expected(tmp_path):
 
 def test_rows_we_have_not_read_go_to_the_accountant_not_the_client():
     rows = [item("B01", "Receipts", Status.FAILED,
-                 validation_notes="scan.pdf: PDF appears to be a scan with no text "
-                                  "layer and OCR is not installed; review manually")]
+                 validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())]
     lines, attention, _ = triage(rows)
     assert lines == []
     assert [f.item.identifier for f in attention] == ["B01"]
-    assert "person here" in attention[0].reason
+    assert reasons.FIRM_WAITING in attention[0].reason
 
 
 def test_a_missing_request_folder_is_our_problem_not_the_clients():
@@ -213,7 +209,7 @@ def test_draft_greets_signs_and_counts(tmp_path):
     assert "https://drive.example/abc" in draft.body
     assert "March 15, 2026" in draft.body
     assert draft.body.rstrip().endswith("J Park & Associates, CPA")
-    assert draft.subject == "Smith TY2025: 3 document(s) still needed"
+    assert draft.subject == SUBJECT_NEEDED.format(engagement="Smith TY2025", n=3)
     assert draft.total_requests == 6 and draft.received_requests == 2
 
 
@@ -255,15 +251,14 @@ def test_write_draft_marks_it_as_a_draft(tmp_path):
 
     assert path == folder / DRAFT_FILENAME
     text = path.read_text(encoding="utf-8")
-    assert text.startswith("DRAFT - NOTHING HAS BEEN SENT.")
-    assert "Subject: Smith TY2025: 3 document(s) still needed" in text
+    assert text.startswith(DRAFT_BANNER)
+    assert f"Subject: {SUBJECT_NEEDED.format(engagement='Smith TY2025', n=3)}" in text
 
 
 def test_written_draft_appends_firm_side_notes_below_the_email(tmp_path):
     rows = SCANNED + [
         item("B01", "Receipts", Status.FAILED,
-             validation_notes="scan.pdf: no readable text found in PDF, even after "
-                              "OCR; review manually"),
+             validation_notes="scan.pdf: " + reasons.NO_TEXT_AFTER_OCR.format()),
         item("B02", "Payroll Reports", Status.MISSING,
              validation_notes=reasons.NO_REQUEST_FOLDER.format()),
     ]
@@ -291,13 +286,11 @@ def test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients():
     # client may well have sent both, so "1 of 2 received" is not known yet.
     row = item("A01", "W-2 Wage Statements", Status.PARTIAL, expected_count=2,
                file_count=1,
-               validation_notes="1 of 2 expected files; scan.pdf: PDF appears to be a "
-                                "scan with no text layer and OCR is not installed; "
-                                "review manually")
+               validation_notes=f"{PARTIAL_NOTE.format(count=1, expected=2)}; scan.pdf: " + reasons.NO_TEXT_LAYER.format())
     lines, attention, _ = triage([row])
     assert lines == []
     assert [flag.item.identifier for flag in attention] == ["A01"]
-    assert "person here" in attention[0].reason
+    assert reasons.FIRM_WAITING_PARTIAL in attention[0].reason
 
 
 def test_statuses_deferred_by_a_locked_excel_still_count(tmp_path):

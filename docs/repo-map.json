@@ -14,8 +14,8 @@
   ],
   "counts": {
     "nodes": 78,
-    "edges": 220,
-    "reused": 56
+    "edges": 235,
+    "reused": 46
   },
   "node_types": [
     "artifact",
@@ -212,8 +212,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "dfbf795ccd12dd58",
-      "lines": 1018,
+      "sha256": "8a9849d3c5caa4bf",
+      "lines": 1021,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -253,6 +253,8 @@
         "RequestItem",
         "SCANNER_COLUMNS",
         "SHEET_NAME",
+        "SUMMARY_EMPTY",
+        "SUMMARY_SEPARATOR",
         "Status",
         "StatusUpdate",
         "Summary",
@@ -314,6 +316,8 @@
         "WINDOWS_ILLEGAL_CHARS_TEXT": "'\\\\ / : * ? \" < > |'",
         "DATE_FORMAT": "'yyyy-mm-dd'",
         "UNSCANNED_LABEL": "'Requested'",
+        "SUMMARY_SEPARATOR": "' \u00b7 '",
+        "SUMMARY_EMPTY": "'no requests'",
         "YES": "'yes'",
         "NO": "'no'",
         "PENDING_SUFFIX": "'.pending.json'",
@@ -392,10 +396,11 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "31c7964c76c33ab4",
-      "lines": 543,
+      "sha256": "27a6bb6868d28a1d",
+      "lines": 548,
       "cli": "python -m tracker.reminder",
       "exports": [
+        "DRAFT_BANNER",
         "DRAFT_FILENAME",
         "FirmSideFlag",
         "NEW_DRAFT_FILENAME",
@@ -407,6 +412,8 @@
         "SECTION_MISSING",
         "SECTION_ORDER",
         "SECTION_PARTIAL",
+        "SUBJECT_COMPLETE",
+        "SUBJECT_NEEDED",
         "_FINGERPRINT_PREFIX",
         "_SEPARATOR",
         "client_ask",
@@ -420,6 +427,9 @@
       "constants": {
         "DRAFT_FILENAME": "'reminder-draft.txt'",
         "NEW_DRAFT_FILENAME": "'reminder-draft.NEW.txt'",
+        "SUBJECT_NEEDED": "'{engagement}: {n} document(s) still needed'",
+        "SUBJECT_COMPLETE": "'{engagement}: we have everything - thank you'",
+        "DRAFT_BANNER": "'DRAFT - NOTHING HAS BEEN SENT.'",
         "SECTION_MISSING": "'NOT YET RECEIVED'",
         "SECTION_PARTIAL": "'STARTED, BUT NOT COMPLETE'",
         "SECTION_FAILED": "'RECEIVED, BUT WE COULD NOT USE IT'"
@@ -460,11 +470,12 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "75debc1d45a1f3c5",
-      "lines": 270,
+      "sha256": "0ed9e254fac6f938",
+      "lines": 272,
       "exports": [
         "AMBIGUOUS",
         "CONTESTED_PREFIX",
+        "NO_REQUEST_ACCEPTS",
         "PENDING",
         "Routing",
         "UNMATCHED",
@@ -475,6 +486,7 @@
       "constants": {
         "UNMATCHED": "'matched no request'",
         "AMBIGUOUS": "'matched more than one request'",
+        "NO_REQUEST_ACCEPTS": "'no request accepts .{extension} files'",
         "CONTESTED_PREFIX": "'looks like'"
       },
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only).",
@@ -553,17 +565,21 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f616ea22be2c28bf",
-      "lines": 360,
+      "sha256": "08512ac627a9276d",
+      "lines": 365,
       "cli": "python -m tracker.scanner",
       "exports": [
         "CACHE_FILENAME",
+        "OVERRIDE_NOTE",
+        "PARTIAL_NOTE",
         "ScanReport",
         "_MAX_LISTED_FAILURES",
         "_MAX_NOTE_LEN",
         "scan_engagement"
       ],
       "constants": {
+        "OVERRIDE_NOTE": "'[override: {override}]'",
+        "PARTIAL_NOTE": "'{count} of {expected} expected files'",
         "CACHE_FILENAME": "'_content_cache.json'"
       },
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and writes the result back into the manifest.",
@@ -604,13 +620,15 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ee97c9063fca0f90",
-      "lines": 148,
+      "sha256": "c926e31732e4ad52",
+      "lines": 151,
       "cli": "python -m tracker.settings",
       "exports": [
         "ENV_PRODUCT_NAME",
         "ENV_SETTINGS_DIR",
         "EXAMPLE_ROOT",
+        "KEY_CLIENTS_ROOT",
+        "KEY_FIRM",
         "PACKAGE_JSON",
         "SETTINGS_FILENAME",
         "SettingsError",
@@ -624,6 +642,8 @@
       ],
       "constants": {
         "SETTINGS_FILENAME": "'settings.json'",
+        "KEY_CLIENTS_ROOT": "'clients_root'",
+        "KEY_FIRM": "'firm'",
         "EXAMPLE_ROOT": "'D:\\\\OneDrive\\\\Clients'",
         "ENV_SETTINGS_DIR": "'TRACKER_SETTINGS_DIR'",
         "ENV_PRODUCT_NAME": "'TRACKER_PRODUCT_NAME'"
@@ -771,7 +791,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6a850485413b33fb",
+      "sha256": "04c4a2e565e7010e",
       "lines": 238,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -929,17 +949,19 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0c7f2ead23d03aac",
-      "lines": 188,
+      "sha256": "59c7c6b7f64212b1",
+      "lines": 206,
       "exports": [
         "DEMO_ITEMS",
         "PRIOR_YEAR",
         "YEAR",
         "build_samples",
+        "col",
         "donations_xlsx",
         "form_1098_lines",
         "lines_1099_int",
         "prior_return_lines",
+        "row",
         "text_pdf",
         "w2_lines"
       ]
@@ -948,8 +970,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "34a5eb9caf25e003",
-      "lines": 554,
+      "sha256": "26c25c7abf6c32d2",
+      "lines": 576,
       "exports": [
         "demo_root",
         "run",
@@ -995,8 +1017,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7001604cc5d600f9",
-      "lines": 263,
+      "sha256": "46a6bef25e4b7ecd",
+      "lines": 264,
       "exports": [
         "counting_extractor",
         "item",
@@ -1022,8 +1044,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d2892ad7ed026c18",
-      "lines": 582,
+      "sha256": "9589de24b32192c1",
+      "lines": 587,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1083,8 +1105,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6bf5e08572933840",
-      "lines": 487,
+      "sha256": "eafb5d350f470e3d",
+      "lines": 503,
       "exports": [
         "SAMPLE_ITEMS",
         "manifest",
@@ -1137,7 +1159,7 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "83acab0dca832801",
+      "sha256": "a291cd9f5ed2f8a2",
       "lines": 158,
       "exports": [
         "ITEMS",
@@ -1161,8 +1183,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "96b78434c0da8d90",
-      "lines": 347,
+      "sha256": "cd718272a348f131",
+      "lines": 340,
       "exports": [
         "SCANNED",
         "engagement",
@@ -1245,8 +1267,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e339ab6563f0e081",
-      "lines": 330,
+      "sha256": "07e763b075f84549",
+      "lines": 337,
       "exports": [
         "PRIOR",
         "TEMPLATE",
@@ -1280,8 +1302,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3e77d25e5c8e76b7",
-      "lines": 257,
+      "sha256": "f44d3d2d0430bd60",
+      "lines": 259,
       "exports": [
         "DONATIONS",
         "INT_DIV",
@@ -1313,9 +1335,10 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a4983f4f50b0ed96",
-      "lines": 400,
+      "sha256": "f580b03991231c75",
+      "lines": 423,
       "exports": [
+        "DRAFT_DAY",
         "FRIDAY",
         "SATURDAY",
         "SUNDAY",
@@ -1382,8 +1405,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6884b6e7a31c972d",
-      "lines": 359,
+      "sha256": "c3fff9cd19929bfb",
+      "lines": 368,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1416,8 +1439,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fbf11a0faac6107f",
-      "lines": 194,
+      "sha256": "3dd7cd39060a7fd1",
+      "lines": 195,
       "exports": [
         "ARGS",
         "NS",
@@ -1447,8 +1470,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d1db691ca900360b",
-      "lines": 54,
+      "sha256": "eec04ba7c1067edf",
+      "lines": 55,
       "exports": [
         "beside_the_app",
         "test_a_folder_that_does_not_exist_is_refused",
@@ -1461,8 +1484,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d8d1f301860dbfc7",
-      "lines": 246,
+      "sha256": "d337756e64f98ea7",
+      "lines": 256,
       "exports": [
         "REPO",
         "read",
@@ -1476,6 +1499,7 @@
         "test_the_package_docstring_lists_every_module",
         "test_the_product_name_has_one_home",
         "test_the_readme_engagement_sheet_table_matches_the_fields",
+        "test_the_readme_names_the_carried_forward_sheet_the_rollover_writes",
         "test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag",
         "test_the_renderer_types_no_vocabulary_of_its_own",
         "test_the_roadmap_schema_table_lists_the_status_and_override_values",
@@ -1493,8 +1517,8 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "218f1240b144e113",
-      "lines": 100,
+      "sha256": "147118c529dd6723",
+      "lines": 103,
       "exports": [
         "test_a_request_with_no_rule_defaults_to_its_own_name",
         "test_catalog_rows_shift_to_the_engagements_year",
@@ -1510,8 +1534,8 @@
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d198454c00796dd1",
-      "lines": 219,
+      "sha256": "ffadf131f5a27d3b",
+      "lines": 220,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
@@ -1704,6 +1728,12 @@
     },
     {
       "from": "tests/samples.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
       "to": "tracker/templates.py",
       "type": "exercises",
       "source": "derived"
@@ -1818,6 +1848,12 @@
     },
     {
       "from": "tests/test_content_check.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_content_check.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
       "source": "derived"
@@ -1854,8 +1890,20 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/router.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tracker/scaffold.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -1892,6 +1940,24 @@
       "from": "tests/test_manifest.py",
       "to": "pkg:pytest",
       "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_manifest.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_manifest.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_manifest.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -1974,6 +2040,12 @@
     },
     {
       "from": "tests/test_reminder.py",
+      "to": "tracker/scanner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
       "to": "tracker/reminder.py",
       "type": "tests",
       "source": "derived"
@@ -2016,8 +2088,20 @@
     },
     {
       "from": "tests/test_rollover.py",
+      "to": "tracker/router.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_rollover.py",
       "to": "tracker/scaffold.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_rollover.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -2034,7 +2118,19 @@
     },
     {
       "from": "tests/test_router.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_router.py",
       "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_router.py",
+      "to": "tracker/scaffold.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -2150,6 +2246,12 @@
       "from": "tests/test_scanner.py",
       "to": "tracker/scaffold.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scanner.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -2280,6 +2382,12 @@
     },
     {
       "from": "tests/test_templates.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_templates.py",
       "to": "tracker/templates.py",
       "type": "tests",
       "source": "derived"
@@ -2294,6 +2402,12 @@
       "from": "tests/test_validators.py",
       "to": "pkg:pytest",
       "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_validators.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
       "source": "derived"
     },
     {

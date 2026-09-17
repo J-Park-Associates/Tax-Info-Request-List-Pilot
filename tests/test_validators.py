@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from pypdf import PdfWriter
 
+from tracker import reasons
 from tracker.manifest import RequestItem
 from tracker.validators import (
     FileResult,
@@ -74,8 +75,8 @@ def test_google_native_stub_fails_with_guidance(tmp_path):
     result = check_file(stub, ANY_ITEM)
     assert result.ok is False
     assert result.pending_sync is False
-    assert "Google Docs shortcut" in result.reason
-    assert "Download" in result.reason
+    assert reasons.GOOGLE_STUB.matches(result.reason)
+    assert reasons.GOOGLE_EXPORT_HINT in result.reason
 
 
 def test_missing_and_empty_folders(tmp_path):
@@ -103,7 +104,7 @@ def test_extension_whitelist(tmp_path):
     docx.write_bytes(b"x" * 100)
     result = check_file(docx, PDF_ITEM)
     assert not result.ok
-    assert ".docx not allowed" in result.reason and "pdf" in result.reason
+    assert reasons.EXTENSION_NOT_ALLOWED.format(extension="docx", allowed="pdf") in result.reason
 
     upper = tmp_path / "STATEMENT.PDF"           # case-insensitive
     write_pdf(upper)
@@ -120,7 +121,7 @@ def test_min_size(tmp_path):
     small = tmp_path / "tiny.xlsx"
     small.write_bytes(b"x" * 2048)               # 2 KB < 10 KB
     result = check_file(small, SIZED_ITEM)
-    assert not result.ok and "below the 10 KB minimum" in result.reason
+    assert not result.ok and reasons.TOO_SMALL.format(size_kb=2048 / 1024, minimum=10) in result.reason
 
     exact = tmp_path / "exact.xlsx"
     exact.write_bytes(b"x" * 10 * 1024)          # boundary: exactly 10 KB passes
@@ -135,13 +136,13 @@ def test_corrupt_pdf_fails(tmp_path):
     fake = tmp_path / "fake.pdf"
     fake.write_bytes(b"this is not a pdf at all" * 10)
     result = check_file(fake, PDF_ITEM)
-    assert not result.ok and "not a readable PDF" in result.reason
+    assert not result.ok and reasons.UNREADABLE_PDF.matches(result.reason)
 
 
 def test_password_protected_pdf_fails(tmp_path):
     locked = write_pdf(tmp_path / "locked.pdf", password="secret123")
     result = check_file(locked, PDF_ITEM)
-    assert not result.ok and "password-protected" in result.reason
+    assert not result.ok and reasons.PASSWORD_PROTECTED.matches(result.reason)
 
 
 def test_placeholder_skipped_not_read(tmp_path, monkeypatch):
@@ -155,7 +156,7 @@ def test_placeholder_skipped_not_read(tmp_path, monkeypatch):
     result = check_file(ghost, PDF_ITEM)
     assert result.pending_sync is True
     assert result.ok is False
-    assert "OneDrive/Google Drive" in result.reason
+    assert reasons.PENDING_SYNC.format() in result.reason
 
 
 def test_check_folder_classification(tmp_path, monkeypatch):
@@ -194,7 +195,7 @@ def test_a_file_that_vanishes_mid_scan_is_pending_not_a_crash(tmp_path):
     result = check_file(ghost, PDF_ITEM)
     assert result.ok is False
     assert result.pending_sync is True
-    assert "disappeared" in result.reason
+    assert reasons.VANISHED.matches(result.reason)
 
 
 def test_pdf_readability_is_parsed_once_per_file(tmp_path, monkeypatch):

@@ -11,6 +11,7 @@ from xml.etree import ElementTree
 import pytest
 
 from tracker.scheduling import (
+    DEFAULT_START,
     TASK_NAME,
     is_absolute_path,
     n8n_workflow,
@@ -45,7 +46,7 @@ def test_the_job_runs_daily_so_saturday_is_never_missed():
     """The runner decides the day, so one daily task covers the weekly draft."""
     root = parsed()
     assert root.find(".//t:ScheduleByDay/t:DaysInterval", NS).text == "1"
-    assert root.find(".//t:CalendarTrigger/t:StartBoundary", NS).text.endswith("T07:00:00")
+    assert root.find(".//t:CalendarTrigger/t:StartBoundary", NS).text.endswith(f"T{DEFAULT_START}:00")
 
 
 def test_a_repeat_interval_is_optional_and_well_formed():
@@ -182,7 +183,7 @@ def test_the_command_line_is_built_once_for_both_schedulers():
     command = flow["nodes"][1]["parameters"]["command"]
     assert runner_arguments(ARGS["root"]) in xml
     assert runner_arguments(ARGS["root"]) in command
-    assert start_hour("07:00") == 7 and start_hour("18:30") == 18
+    assert start_hour(DEFAULT_START) == int(DEFAULT_START.split(":")[0]) and start_hour("18:30") == 18
     assert flow["nodes"][0]["parameters"]["rule"]["interval"][0]["triggerAtHour"] == start_hour()
 
 

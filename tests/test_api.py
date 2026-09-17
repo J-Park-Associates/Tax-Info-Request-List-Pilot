@@ -15,11 +15,28 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
-from tracker.manifest import ManifestError, load_manifest
+from tests.samples import PRIOR_YEAR, col, row
+from tracker import reasons
+from tracker.filer import NEEDS_REVIEW
+from tracker.manifest import (
+    COL_ALLOWED_EXTENSIONS,
+    COL_ANY_KEYWORDS,
+    COL_DATE_PATTERN,
+    COL_DOCUMENT,
+    COL_EXPECTED_COUNT,
+    COL_IDENTIFIER,
+    COL_MIN_SIZE_KB,
+    COL_PERIOD,
+    SHEET_NAME,
+    ManifestError,
+    Status,
+    load_manifest,
+)
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
 from tracker.locking import STALE_LOCK_SECONDS
+from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
 from tracker.scheduling import TASK_NAME
-from tracker.templates import default_tax_year
+from tracker.templates import BASE_YEAR, default_tax_year
 
 
 @pytest.fixture
@@ -161,17 +178,17 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
     assert run_result["file_errors"] == [] and run_result["index_deferred"] is False
     assert run_result["manifest_deferred"] is False
     statuses = {i["identifier"]: i["status"] for i in payload["state"]["items"]}
-    assert statuses["A01"] == "Received"       # both 2025 W-2s, duplicate ignored
-    assert statuses["A02"] == "Partial"        # 2 of 3
-    assert statuses["C01"] == "Received"       # the 1098
-    reviewed = {e["original_name"] for e in payload["state"]["index"] if e["decision"] == "Needs Review"}
-    assert "W-2 Jane Smith 2024 - old.pdf" in reviewed   # wrong year, never guessed
+    assert statuses["A01"] == Status.RECEIVED   # both current-year W-2s, duplicate ignored
+    assert statuses["A02"] == Status.PARTIAL    # 2 of 3
+    assert statuses["C01"] == Status.RECEIVED   # the 1098
+    reviewed = {e["original_name"] for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW}
+    assert f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf" in reviewed   # wrong year, never guessed
     assert "vacation photo.jpg" in reviewed
     assert payload["state"]["summary"]["outstanding"] == run_result["outstanding"]
-    assert "Received: 4" in payload["state"]["summary"]["line"]   # A01, B01, C01, D01
+    assert f"{Status.RECEIVED}: 4" in payload["state"]["summary"]["line"]   # A01, B01, C01, D01
     # What the scanner wrote is what the state command reads back.
     rows = {i.identifier: i for i in load_manifest(engagement / MANIFEST_FILENAME)}
-    assert rows["A01"].status == "Received"
+    assert rows["A01"].status == Status.RECEIVED
 
 
 def test_item_from_spec_normalizes_extensions():
@@ -195,14 +212,14 @@ def test_priors_then_rollover_is_the_desktop_returning_client_path(capsys, demo_
     code, payload = run(capsys, "priors")
     assert code == 0
     assert [p["name"] for p in payload["priors"]] == ["Smith Family 2025"]
-    assert payload["priors"][0]["year"] == 2025
+    assert payload["priors"][0]["year"] == BASE_YEAR
 
     code, payload = run(capsys, "rollover", stdin={
         "prior": "Smith Family 2025", "form": "1040", "year": 2026,
     })
     assert code == 0, payload
     assert payload["created"] == "Smith Family 2025 - 2026"
-    assert payload["rollover"]["prior_year"] == 2025
+    assert payload["rollover"]["prior_year"] == BASE_YEAR
     assert payload["rollover"]["target_year"] == 2026
     carried = {r["identifier"] for r in payload["rollover"]["carried"]}
     offered = {r["identifier"] for r in payload["rollover"]["offered"]}
@@ -232,11 +249,11 @@ def test_state_shows_statuses_a_locked_excel_deferred(capsys, demo_root):
     spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     _save_pending(demo_root / "Smith" / MANIFEST_FILENAME,
-                  {"A01": StatusUpdate(status="Received", file_count=1)})
+                  {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
     code, payload = run(capsys, "state", "--engagement", str(demo_root / "Smith"))
     assert code == 0
     assert payload["pending_statuses"] == 1
-    assert payload["items"][0]["status"] == "Received"
+    assert payload["items"][0]["status"] == Status.RECEIVED
 
 
 # ------------------------------------------------------------ needs review ----
@@ -247,7 +264,7 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
                                    "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
     code, payload = run(capsys, "scan", "--engagement", str(engagement))
     assert code == 0
-    parked = [e for e in payload["state"]["index"] if e["decision"] == "Needs Review"]
+    parked = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     assert [e["original_name"] for e in parked] == ["Mortgage Notes.docx"]
 
     code, payload = run(capsys, "assign", "--engagement", str(engagement),
@@ -257,14 +274,15 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
     assigned = payload["assigned"]
     assert assigned["identifier"] == "D01" and assigned["moved_review_copy"] is True
     assert assigned["keyword"] == "mortgage notes" and assigned["scan_note"] == ""
-    assert not [e for e in payload["state"]["index"] if e["decision"] == "Needs Review"]
+    assert not [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     d01 = next(i for i in payload["state"]["items"] if i["identifier"] == "D01")
     assert "mortgage notes" in d01["any_keywords"]
     # The re-scan saw it straight away. D01 accepts pdf/xlsx, so a .docx is
     # Failed Validation with the reason - the person's filing is recorded,
     # the rules still say what is wrong with it.
-    assert d01["status"] == "Failed Validation"
-    assert ".docx not allowed" in d01["validation_notes"]
+    assert d01["status"] == Status.FAILED
+    assert reasons.EXTENSION_NOT_ALLOWED.matches(d01["validation_notes"])
+    assert ".docx" in d01["validation_notes"]
 
 
 def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_path):
@@ -330,11 +348,11 @@ def test_check_reports_problems_and_warnings_with_rows(capsys, demo_root):
     assert code == 0 and payload["ok"] and payload["warnings"] == []
 
     wb = load_workbook(manifest)
-    wb["Requests"].cell(row=2, column=4, value="two")
+    wb[SHEET_NAME].cell(row=2, column=col(COL_EXPECTED_COUNT), value="two")
     wb.save(manifest)
     code, payload = run(capsys, "check", "--engagement", str(demo_root / "Smith"))
     assert code == 0 and payload["ok"] is False
-    assert payload["problems"] == ["Row 2: Expected Count must be a whole number, got 'two'"]
+    assert payload["problems"] == [f"Row 2: {COL_EXPECTED_COUNT} must be a whole number, got 'two'"]
 
 
 def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_root):
@@ -412,7 +430,11 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     assert run(capsys, "create", stdin=spec)[0] == 0
     engagement = demo_root / "Smith"
     wb = load_workbook(engagement / MANIFEST_FILENAME)
-    wb["Requests"].append(["Z01", "Rental Records", "TY2025", 1, "pdf", 5, None, "schedule e", None, None])
+    wb[SHEET_NAME].append(row(**{
+        COL_IDENTIFIER: "Z01", COL_DOCUMENT: "Rental Records", COL_PERIOD: "TY2025",
+        COL_EXPECTED_COUNT: 1, COL_ALLOWED_EXTENSIONS: "pdf", COL_MIN_SIZE_KB: 5,
+        COL_ANY_KEYWORDS: "schedule e",
+    }))
     wb.save(engagement / MANIFEST_FILENAME)
     code, payload = run(capsys, "scan", "--engagement", str(engagement))
     assert code == 0, payload
@@ -428,10 +450,10 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
 
     # A manifest typo stops the pass with its row, and is a JSON error the app can show.
     wb = load_workbook(engagement / MANIFEST_FILENAME)
-    wb["Requests"].cell(row=2, column=9, value="(unclosed")
+    wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="(unclosed")
     wb.save(engagement / MANIFEST_FILENAME)
     code, payload = run(capsys, "scan", "--engagement", str(engagement))
-    assert code == 1 and payload["error"].startswith("Row 2: Date Pattern")
+    assert code == 1 and payload["error"].startswith(f"Row 2: {COL_DATE_PATTERN}")
 
 
 # ------------------------------------------------------------------ the root ----
@@ -532,14 +554,14 @@ def test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label(capsys
 
 
 def test_priors_carry_next_year_and_the_index_carries_candidates(capsys, demo_root, tmp_path):
-    engagement = sample_engagement(capsys, demo_root, tmp_path, "W-2 Jane Smith 2024 - old.pdf")
+    engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
     code, payload = run(capsys, "scan", "--engagement", str(engagement))
-    [parked] = [e for e in payload["state"]["index"] if e["decision"] == "Needs Review"]
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     assert parked["candidates"] == "A01"
-    assert parked["filed_as"] == "W-2 Jane Smith 2024 - old.pdf"
+    assert parked["filed_as"] == f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf"
     code, payload = run(capsys, "priors")
     [prior] = payload["priors"]
-    assert prior["year"] == 2025 and prior["next_year"] == 2026
+    assert prior["year"] == BASE_YEAR and prior["next_year"] == BASE_YEAR + 1
 
 
 def test_install_schedule_defaults_come_from_scheduling(capsys, demo_root, monkeypatch):
@@ -550,4 +572,4 @@ def test_install_schedule_defaults_come_from_scheduling(capsys, demo_root, monke
     code, payload = run(capsys, "install-schedule", stdin={})
     assert code == 0, payload
     assert payload["start"] == DEFAULT_START and payload["every"] == DEFAULT_REPEAT_MINUTES
-    assert payload["draft_day"] == "saturday"
+    assert payload["draft_day"] == WEEKDAY_NAMES[DRAFT_WEEKDAY]

@@ -10,12 +10,28 @@ from pathlib import Path
 
 import pytest
 
-from tests.samples import DEMO_ITEMS, build_samples
-from tracker.manifest import Status, create_template
+from tests.samples import DEMO_ITEMS, PRIOR_YEAR, YEAR, build_samples, col, row
+from tracker.manifest import (
+    COL_ALLOWED_EXTENSIONS,
+    COL_ANY_KEYWORDS,
+    COL_DATE_PATTERN,
+    COL_DOCUMENT,
+    COL_EXPECTED_COUNT,
+    COL_IDENTIFIER,
+    COL_MANUAL_OVERRIDE,
+    COL_MIN_SIZE_KB,
+    COL_PERIOD,
+    SHEET_NAME,
+    Override,
+    Status,
+    create_template,
+)
 from tracker.manifest import EngagementInfo, write_engagement_info
 from tracker.registry import Engagement, Registry, discover_engagements
-from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
+from tracker.reminder import DRAFT_BANNER, DRAFT_FILENAME, NEW_DRAFT_FILENAME
 from tracker.runner import (
+    DRAFT_WEEKDAY,
+    LOG_FILENAME,
     REMINDERS_ALWAYS,
     REMINDERS_AUTO,
     REMINDERS_NEVER,
@@ -25,8 +41,11 @@ from tracker.runner import (
     run_engagement,
     run_registry,
     should_draft,
+    WEEKDAY_NAMES,
 )
-from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
+from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME, scaffold_engagement
+
+DRAFT_DAY = WEEKDAY_NAMES[DRAFT_WEEKDAY]
 
 SATURDAY = dt.date(2026, 3, 14)
 FRIDAY = dt.date(2026, 3, 13)
@@ -40,7 +59,7 @@ def samples(tmp_path_factory):
     return folder
 
 
-def build_engagement(tmp_path, samples, drops=("W-2 John Smith 2025.pdf",),
+def build_engagement(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",),
                      name="Smith TY2025", **kwargs):
     """A scaffolded engagement with files waiting in the client's drop folder."""
     folder = tmp_path / name
@@ -102,7 +121,7 @@ def test_a_weekday_run_files_and_scans_but_writes_no_draft(tmp_path, samples):
     assert run.ok and run.filed == 1
     assert run.statuses[Status.PARTIAL] == 1
     assert run.drafted is None
-    assert "not saturday" in run.draft_note.lower()
+    assert f"not {DRAFT_DAY}" in run.draft_note.lower()
     assert not (engagement.path / DRAFT_FILENAME).exists()
 
 
@@ -112,7 +131,7 @@ def test_the_saturday_run_writes_a_draft(tmp_path, samples):
 
     assert run.drafted == engagement.path / DRAFT_FILENAME
     text = run.drafted.read_text(encoding="utf-8")
-    assert text.startswith("DRAFT - NOTHING HAS BEEN SENT.")
+    assert text.startswith(DRAFT_BANNER)
     assert "Hi John Smith," in text
 
 
@@ -153,7 +172,7 @@ def test_nothing_outstanding_means_no_draft_file(tmp_path, samples):
     folder.mkdir()
     create_template(folder / MANIFEST_FILENAME, only_the_return)
     scaffolded = scaffold_engagement(folder)
-    name = "2024 Form 1040 Tax Return.pdf"
+    name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
     (scaffolded.shared_dir / name).write_bytes((samples / name).read_bytes())
 
     run = run_engagement(Engagement(path=folder, info=EngagementInfo(client="John Smith")), today=SATURDAY)
@@ -172,7 +191,7 @@ def test_a_dry_run_writes_nothing_at_all(tmp_path, samples):
     assert run.drafted is None
     assert "would draft" in run.draft_note
     assert not (engagement.path / DRAFT_FILENAME).exists()
-    assert (engagement.path / "Shared" / "W-2 John Smith 2025.pdf").exists(), (
+    assert (engagement.path / SHARED_DIR_NAME / f"W-2 John Smith {YEAR}.pdf").exists(), (
         "a dry run must not move the client's file"
     )
 
@@ -247,7 +266,7 @@ def test_the_report_says_what_day_it_is_and_never_claims_a_send(tmp_path, sample
         Registry(source=tmp_path, engagements=[engagement]),
         today=SATURDAY,
     ))
-    assert "saturday" in text
+    assert DRAFT_DAY in text
     assert "drafting reminders" in text
     assert "nothing has been sent to anyone" in text.lower()
     assert "1 processed, 0 failed, 1 draft(s) written" in text
@@ -266,7 +285,7 @@ def test_a_weekday_report_says_why_there_are_no_drafts(tmp_path, samples):
 def test_the_log_appends_rather_than_replaces(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
     registry = Registry(source=tmp_path, engagements=[engagement])
-    log = tmp_path / "runs.log"
+    log = tmp_path / LOG_FILENAME
 
     append_log(log, run_registry(registry, today=FRIDAY))
     append_log(log, run_registry(registry, today=SATURDAY))
@@ -312,11 +331,11 @@ def test_the_run_names_a_manifest_typo_with_its_row_before_touching_files(tmp_pa
     engagement = build_engagement(tmp_path, samples)
     manifest = engagement.path / MANIFEST_FILENAME
     wb = load_workbook(manifest)
-    wb["Requests"].cell(row=2, column=9, value="(unclosed")
+    wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="(unclosed")
     wb.save(manifest)
     run = run_engagement(engagement, today=FRIDAY)
-    assert run.error.startswith("Row 2: Date Pattern is not a valid regex")
-    assert (engagement.path / "Shared" / "W-2 John Smith 2025.pdf").exists()   # nothing moved
+    assert run.error.startswith(f"Row 2: {COL_DATE_PATTERN} is not a valid regex")
+    assert (engagement.path / SHARED_DIR_NAME / f"W-2 John Smith {YEAR}.pdf").exists()   # nothing moved
 
 
 def test_rows_the_rules_cannot_act_on_are_reported_not_buried(tmp_path, samples):
@@ -340,25 +359,29 @@ def test_waived_and_accepted_rows_are_not_outstanding(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples, drops=())
     manifest = engagement.path / MANIFEST_FILENAME
     wb = load_workbook(manifest)
-    ws = wb["Requests"]
-    ws.cell(row=2, column=10, value="Accepted")   # A01
-    ws.cell(row=3, column=10, value="Waived")     # A02
+    ws = wb[SHEET_NAME]
+    ws.cell(row=2, column=col(COL_MANUAL_OVERRIDE), value=Override.ACCEPTED)   # A01
+    ws.cell(row=3, column=col(COL_MANUAL_OVERRIDE), value=Override.WAIVED)     # A02
     wb.save(manifest)
     run = run_engagement(engagement, today=FRIDAY)
     assert run.ok
     assert run.statuses.get(Status.RECEIVED) == 1          # the accepted row
-    assert "Waived" not in run.statuses
+    assert Override.WAIVED not in run.statuses
     assert run.outstanding == len(DEMO_ITEMS) - 2
 
 
 def test_a_row_added_in_excel_has_its_folder_by_the_next_run(tmp_path, samples):
     from openpyxl import load_workbook
-    from tracker.scaffold import PREPARED_DIR_NAME, README_NAME, SHARED_DIR_NAME
+    from tracker.scaffold import README_NAME
 
     engagement = build_engagement(tmp_path, samples, drops=())
     manifest = engagement.path / MANIFEST_FILENAME
     wb = load_workbook(manifest)
-    wb["Requests"].append(["Z01", "Rental Property Records", "TY2025", 1, "pdf", 5, None, "schedule e", None, None])
+    wb[SHEET_NAME].append(row(**{
+        COL_IDENTIFIER: "Z01", COL_DOCUMENT: "Rental Property Records", COL_PERIOD: "TY2025",
+        COL_EXPECTED_COUNT: 1, COL_ALLOWED_EXTENSIONS: "pdf", COL_MIN_SIZE_KB: 5,
+        COL_ANY_KEYWORDS: "schedule e",
+    }))
     wb.save(manifest)
     run = run_engagement(engagement, today=FRIDAY)
     assert run.ok
@@ -387,13 +410,13 @@ def test_a_rolled_forward_engagement_is_retired_by_its_successor(tmp_path, sampl
     outcomes = {r.engagement.path.name: r for r in report.runs}
     assert outcomes["Smith 2025"].skipped == "rolled forward into Smith 2026"
     assert not (prior.path / DRAFT_FILENAME).exists()          # last year is not chased
-    assert (prior.path / "Shared" / "W-2 John Smith 2025.pdf").exists()   # and not touched
+    assert (prior.path / SHARED_DIR_NAME / f"W-2 John Smith {YEAR}.pdf").exists()   # and not touched
     assert outcomes["Smith 2026"].ok
 
 
 def test_strays_in_prepared_reach_the_run_report(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples, drops=())
-    (engagement.path / "Prepared" / "loose.txt").write_text("x", encoding="utf-8")
+    (engagement.path / PREPARED_DIR_NAME / "loose.txt").write_text("x", encoding="utf-8")
     run = run_engagement(engagement, today=FRIDAY)
     assert run.ok
-    assert any("loose.txt is loose in Prepared/" in w for w in run.warnings)
+    assert any(f"loose.txt is loose in {PREPARED_DIR_NAME}/" in w for w in run.warnings)

@@ -9,9 +9,12 @@ import pytest
 
 from tracker.content_check import has_content_rules
 from tracker.manifest import ManifestError, load_manifest, create_template
+from tracker.scaffold import MANIFEST_FILENAME
 from tracker.templates import (
+    BASE_YEAR,
     FORM_TEMPLATES,
     FORM_TYPES,
+    TY,
     item_from_spec,
     template_items,
 )
@@ -63,18 +66,18 @@ def test_the_tax_year_comes_from_the_calendar():
 def test_catalog_rows_shift_to_the_engagements_year():
     from tracker.templates import base_year, template_items
 
-    assert base_year("1040") == 2025
+    assert base_year("1040") == BASE_YEAR
     shifted = {i.identifier: i for i in template_items("1040", year=2027)}
     assert shifted["A01"].period == "TY2027"
     assert shifted["A01"].date_pattern == ""            # the Period implies it...
-    path = create_template(__import__("tempfile").mkdtemp() + "/_manifest.xlsx", shifted.values())
+    path = create_template(__import__("tempfile").mkdtemp() + "/" + MANIFEST_FILENAME, shifted.values())
     loaded = {i.identifier: i for i in load_manifest(path)}
     assert loaded["A01"].date_pattern == r"(?i)\b2027\b" and loaded["A01"].date_pattern_derived
     assert loaded["B01"].date_pattern == r"(?i)\b2026\b"   # ...for every row, one year behind here
     assert shifted["B01"].period == "TY2026"           # prior-year return stays one behind
     assert shifted["A01"].required_keywords == ("W-2",)  # keywords never shift
     unshifted = {i.identifier: i for i in template_items("1040")}
-    assert unshifted["A01"].period == "TY2025"
+    assert unshifted["A01"].period == TY
 
 
 def test_shared_requests_are_defined_once_and_agree_everywhere():

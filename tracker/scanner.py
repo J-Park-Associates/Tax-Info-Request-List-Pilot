@@ -66,6 +66,11 @@ from tracker.validators import (
     sha256_of,
 )
 
+#: The two notes the scanner writes that no reason owns: a person's override
+#: on the row, and how far a multi-file request has got.
+OVERRIDE_NOTE = "[override: {override}]"
+PARTIAL_NOTE = "{count} of {expected} expected files"
+
 log = logging.getLogger("tracker.scanner")
 
 CACHE_FILENAME = "_content_cache.json"
@@ -151,7 +156,7 @@ def _scan_item(
 
     # --- override rows: a person's call beats the rules --------------------
     if item.manual_override:
-        facts.insert(0, f"[override: {item.manual_override}]")
+        facts.insert(0, OVERRIDE_NOTE.format(override=item.manual_override))
         if item.manual_override == Override.ACCEPTED:
             # Accepted means "treat as Received despite the rules" (decision
             # 2), so it IS Received: status, date and every count that reads
@@ -183,7 +188,7 @@ def _scan_item(
         facts.insert(0, f"{len(pending)} file(s) still syncing from the cloud")
     elif count > 0:
         status = Status.PARTIAL
-        facts.insert(0, f"{count} of {item.expected_count} expected files")
+        facts.insert(0, PARTIAL_NOTE.format(count=count, expected=item.expected_count))
     elif failures:
         status = Status.FAILED
     else:
