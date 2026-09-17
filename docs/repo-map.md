@@ -173,9 +173,9 @@ tracker.api / create → tracker.scaffold → client drops into Shared/ → trac
 
 ### ci
 
-- **`.github/workflows/ci.yml`** — CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.
+- **`.github/workflows/ci.yml`** — CI: runs the test suite, `repo_map.py check` and `node --check` on the three Electron files, on Linux and Windows, on every push to main and every pull request.
   - reads: `requirements.txt`
-  - note: The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Both steps always report, so a stale map and a failing test surface in the same run.
+  - note: The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is in the matrix because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version line is pinned to pyproject's floor by a guard.
 
 ### desktop-app
 

@@ -95,8 +95,8 @@
       "notes": "PyInstaller needs a real script, not a -m module. Runner mode is dispatched before tracker.api is imported, because the API imports tracker.scheduling whose TASK_NAME needs the product name the Electron shell passes in the environment - and Task Scheduler passes nothing; the job needs neither of the shell's variables. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen."
     },
     ".github/workflows/ci.yml": {
-      "role": "CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.",
-      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Both steps always report, so a stale map and a failing test surface in the same run."
+      "role": "CI: runs the test suite, `repo_map.py check` and `node --check` on the three Electron files, on Linux and Windows, on every push to main and every pull request.",
+      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is in the matrix because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version line is pinned to pyproject's floor by a guard."
     },
     "CLAUDE.md": {
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",

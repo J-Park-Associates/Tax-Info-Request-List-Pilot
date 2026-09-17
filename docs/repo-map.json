@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 82,
     "edges": 252,
-    "reused": 49
+    "reused": 59
   },
   "node_types": [
     "artifact",
@@ -52,10 +52,10 @@
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "729dcf5f574a1711",
-      "lines": 50,
-      "role": "CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.",
-      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Both steps always report, so a stale map and a failing test surface in the same run."
+      "sha256": "7fcfbbce7e677999",
+      "lines": 72,
+      "role": "CI: runs the test suite, `repo_map.py check` and `node --check` on the three Electron files, on Linux and Windows, on every push to main and every pull request.",
+      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is in the matrix because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version line is pinned to pyproject's floor by a guard."
     },
     {
       "id": "rule:no-AI-on-client-documents",
@@ -919,8 +919,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fb20ea58c70d82e0",
-      "lines": 248,
+      "sha256": "5146880aacf8feac",
+      "lines": 249,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -928,7 +928,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6ae20451147cf432",
+      "sha256": "1aa794041d804b1d",
       "lines": 437,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
