@@ -32,7 +32,9 @@ from tracker.scaffold import (
 from tracker.scanner import (
     DUPLICATES_NOTE,
     OVERRIDE_NOTE,
+    REGRESSION_COUNT_RAISED,
     REGRESSION_FILES_CHANGED,
+    REGRESSION_NOTE,
     SYNCING_NOTE,
     PARTIAL_NOTE,
     CACHE_FILENAME,
@@ -155,7 +157,7 @@ def test_auto_revert_preserves_date_and_notes(engagement):
     row = statuses(engagement)["A01"]
     assert row.status == Status.MISSING            # auto-revert
     assert row.received_date == DAY1               # original date preserved
-    assert "was Received 2026-07-01" in row.validation_notes
+    assert REGRESSION_NOTE.format(status=Status.RECEIVED, date="2026-07-01", why="").rstrip("; ") in row.validation_notes
 
 
 def test_manual_override_status_untouched(tmp_path):
@@ -338,7 +340,7 @@ def test_raising_expected_count_after_received_names_the_real_change(engagement)
     update = report.updates["A01"]
     assert update.status == Status.PARTIAL
     assert update.received_date == DAY1
-    assert f"{COL_EXPECTED_COUNT} is now 2" in update.validation_notes
+    assert REGRESSION_COUNT_RAISED.format(expected=2) in update.validation_notes
     assert REGRESSION_FILES_CHANGED not in update.validation_notes
 
 

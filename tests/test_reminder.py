@@ -22,6 +22,7 @@ from tracker.manifest import (
 from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
 from tracker.reminder import (
     DRAFT_BANNER,
+    PARTIAL_ASK,
     SUBJECT_NEEDED,
     DRAFT_FILENAME,
     GENERIC_ASK,
@@ -119,7 +120,7 @@ def test_sections_are_ordered_missing_partial_failed():
 
 
 def test_partial_says_how_many_are_left():
-    assert client_ask(SCANNED[1]) == "2 of 3 received, 1 still to come"
+    assert client_ask(SCANNED[1]) == PARTIAL_ASK.format(have=2, expected=3, missing=1)
 
 
 @pytest.mark.parametrize("note, expected_fragment", [

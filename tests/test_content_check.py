@@ -253,7 +253,6 @@ def _many_page_pdf(path, texts):
 def test_only_the_first_pages_of_a_pdf_are_read(tmp_path):
     from tracker.content_check import MAX_PAGES, extract_text
 
-    assert MAX_PAGES == 10
     texts = [f"page {i + 1} filler" for i in range(15)]
     texts[2] = "Form W-2 early"
     texts[12] = "Form 1098 late"

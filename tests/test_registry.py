@@ -110,7 +110,7 @@ def test_a_bad_yes_no_on_the_sheet_is_reported_not_guessed(tmp_path):
     wb = load_workbook(folder / MANIFEST_FILENAME)
     ws = wb[ENGAGEMENT_SHEET_NAME]
     for row in ws.iter_rows(min_row=1, max_col=2):
-        if row[0].value == "Reminders":
+        if row[0].value == ENGAGEMENT_LABELS["reminders"]:
             row[1].value = "maybe"
     wb.save(folder / MANIFEST_FILENAME)
     [engagement] = discover_engagements(tmp_path).engagements

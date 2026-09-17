@@ -85,6 +85,7 @@ from tracker.scaffold import (
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.scheduling import (
     INSTALL_HINT,
+    SCHEDULE_XML_ENCODING,
     DEFAULT_REPEAT_MINUTES,
     DEFAULT_START,
     SCHEDULE_XML_FILENAME,
@@ -106,9 +107,11 @@ from tracker.settings import (
 )
 from tracker.templates import (  # the catalog; re-exported for the wizard
     EXTENSION_DEFAULT_NOTE,
+    FORM_LABEL_PATTERN,
     KEYWORD_DEFAULT_NOTE,
     PERIOD_PATTERN,
     YEAR_NOTE,
+    require_form,
     FORM_TEMPLATES,
     FORM_TYPES,
     base_year,
@@ -139,6 +142,14 @@ ENGAGEMENT_FLAG = "--engagement"
 NEW_CLIENT_PLACEHOLDER = "New"
 
 
+def _new_engagement_dir(name: str) -> Path:
+    """Where a new engagement goes, refused if the folder is already there."""
+    engagement = _root() / name
+    if engagement.exists():
+        raise ManifestError(f"An engagement named '{name}' already exists")
+    return engagement
+
+
 def _engagement_dir(argv: list[str]) -> Path:
     if ENGAGEMENT_FLAG in argv:
         return Path(argv[argv.index(ENGAGEMENT_FLAG) + 1])
@@ -156,7 +167,7 @@ def form_label(form: str) -> str:
     for entry in FORM_TYPES:
         if entry["id"] == form:
             return entry["label"]
-    return f"Form {form}" if form else "Engagement"
+    return FORM_LABEL_PATTERN.format(form=form) if form else "Engagement"
 
 
 def default_engagement_name(client: str, year: int, form: str) -> str:
@@ -385,8 +396,8 @@ def _cmd_create(argv: list[str]) -> dict:
     """
     spec = json.loads(sys.stdin.read() or "{}")
     form = str(spec.get("form", "")).strip()
-    if form and form not in FORM_TEMPLATES:
-        raise ManifestError(f"Unknown tax form type '{form}'")
+    if form:
+        require_form(form)
     client = str(spec.get("client", "") or "").strip()
     # The engagement's tax year: the calendar's default unless chosen.
     try:
@@ -394,9 +405,7 @@ def _cmd_create(argv: list[str]) -> dict:
     except (TypeError, ValueError):
         raise ManifestError(f"Tax year must be a whole number, got {spec.get('year')!r}") from None
     name = _engagement_name(str(spec.get("name", "")), default_engagement_name(client, year, form))
-    engagement = _root() / name
-    if engagement.exists():
-        raise ManifestError(f"An engagement named '{name}' already exists")
+    engagement = _new_engagement_dir(name)
 
     items = [item_from_spec(s) for s in spec.get("items", [])]
     if not items:
@@ -481,9 +490,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
 
     default_name = ROLLOVER_NAME_PATTERN.format(prior=prior.name, year=report.target_year or "next year")
     name = _engagement_name(str(spec.get("name", "")), default_name)
-    engagement = _root() / name
-    if engagement.exists():
-        raise ManifestError(f"An engagement named '{name}' already exists")
+    engagement = _new_engagement_dir(name)
 
     # Last year's sheet, carried by the one rule (tracker.rollover); the
     # wizard's fields go over it. Rolled From is what retires the prior.
@@ -611,7 +618,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     xml_path.write_text(
         task_scheduler_xml(python=sys.executable, root=root, working_dir=REPO_ROOT,
                            start_time=start, repeat_minutes=every),
-        encoding="utf-16",
+        encoding=SCHEDULE_XML_ENCODING,
     )
     try:
         command = install_task(xml_path)

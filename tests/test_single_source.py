@@ -166,9 +166,10 @@ def test_the_standing_rules_are_worded_once_and_quoted_everywhere():
 
 
 def test_the_documents_list_the_forms_the_catalog_has():
-    from tracker.templates import FORM_TYPES
+    from tracker.templates import FORM_LABEL_PATTERN, FORM_TYPES
 
-    labels = ", ".join(f["label"].removeprefix("Form ") for f in FORM_TYPES)
+    prefix = FORM_LABEL_PATTERN.split("{")[0]
+    labels = ", ".join(f["label"].removeprefix(prefix) for f in FORM_TYPES)
     for rel in ("README.md", "docs/ROADMAP.md", "tracker/templates.py"):
         text = re.sub(r"\s+", " ", read(rel))
         for listed in re.findall(r"\((\d{3,4}[^)]*\d{3,4})\)", text):
@@ -209,10 +210,11 @@ def test_the_scan_button_label_is_typed_once():
     assert label not in read("app/renderer/index.html")
     js = read("app/renderer/app.js")
     assert js.count(f'"{label}"') == 1
-    for rel in ("docs/ROADMAP.md", "docs/workflow.md", "README.md"):
+    for rel in ("docs/ROADMAP.md", "docs/workflow.md", "README.md", "docs/repo-map.curated.json"):
         text = read(rel)
         # Prose may name the button, but only by its real label.
-        assert "Sort and Scan" not in text and "Sort&Scan" not in text, rel
+        for phrase in re.findall(r"\b([A-Z][a-z]+ (?:&|and) Scan)\b", text):
+            assert phrase == label, (rel, phrase)
 
 
 def test_the_example_root_is_the_same_everywhere():
@@ -328,12 +330,16 @@ def test_documents_name_buttons_by_their_labels():
     labels |= set(re.findall(r'<button[^>]*>([^<]+)</button>', js))
     labels.add(re.search(r'const SCAN_LABEL = "([^"]+)";', js).group(1))
     labels = {label for label in labels if label and "${" not in label}
-    for rel in DOCUMENTS:
+    for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
         text = read(rel)
         mentions = (re.findall(r"\*\*([^*]+)\*\* button", text) + re.findall(r"\*([^*]+)\* button", text)
-                    + re.findall(r"the (?:app's )?([A-Z][A-Za-z &]+?) button", text))
+                    + re.findall(r"the (?:app's )?([A-Z][A-Za-z &]+?) button", text)
+                    + re.findall(r"\*\*([A-Z][A-Za-z ]+)\*\*", text) + re.findall(r"(?<!\*)\*([A-Z][A-Za-z ]+)\*(?!\*)", text))
         for name in mentions:
-            assert name in labels, (rel, name)
+            # An emphasised phrase that is almost a button label must be the label.
+            close = [label for label in labels if label.lower() == name.lower()]
+            if close or name.endswith(" button"):
+                assert name in labels, (rel, name)
 
 
 def test_the_stub_and_staging_examples_docs_give_are_the_validators():
@@ -374,11 +380,18 @@ def test_tree_diagrams_show_catalog_folders_as_the_scaffold_names_them():
 
 
 def test_every_cli_flag_a_document_names_exists_in_the_code():
+    from tracker.runner import REMINDER_MODES
+
     sources = "\n".join(read(str(p.relative_to(REPO))) for p in (REPO / "tracker").glob("*.py"))
     known = set(re.findall(r'"(--[a-z][a-z-]*)"', sources)) | set(re.findall(r"^\w+_FLAG = \"(--[a-z-]+)\"", sources, re.M))
     for rel in DOCUMENTS:
-        for flag in set(re.findall(r"(--[a-z][a-z-]*)", read(rel))):
+        text = read(rel)
+        for flag in set(re.findall(r"(--[a-z][a-z-]*)", text)):
             assert flag in known, (rel, flag)
+        for mode in re.findall(r"--reminders[ =]([a-z]+)", text):
+            assert mode in REMINDER_MODES, (rel, mode)
+        for listed in re.findall(r"--reminders ([a-z]+(?:\\?\|[a-z]+)+)", text):
+            assert listed.replace("\\", "").split("|") == list(REMINDER_MODES), (rel, listed)
 
 
 def test_documents_give_the_settings_hint_the_api_gives():
@@ -400,3 +413,45 @@ def test_claude_md_explains_the_map_edges_by_their_rendered_names():
     text = read("CLAUDE.md")
     for label in (module.TESTED_BY, module.EXERCISED_BY, module.NO_TEST_FILE):
         assert f"**{label}**" in text, label
+
+
+def test_documents_quote_the_any_value_only_as_the_constants_say_it():
+    from tracker.manifest import ANY_EXTENSION, NO_DATE_CHECK
+
+    assert ANY_EXTENSION == NO_DATE_CHECK      # one character means "any / none" in both columns
+    for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
+        text = read(rel)
+        if "`*`" in text or "'*'" in text:
+            assert ANY_EXTENSION == "*", rel   # the docs quote it; the constant had better be it
+
+
+def test_documents_state_the_naming_pattern_with_the_one_separator():
+    from tracker.manifest import LABEL_SEPARATOR
+
+    for rel in DOCUMENTS:
+        for joiner in re.findall(r"\{Identifier\}(.+?)\{Document\}", read(rel)):
+            assert joiner == LABEL_SEPARATOR, (rel, joiner)
+
+
+def test_tree_diagrams_name_only_runtime_files_the_code_owns():
+    from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME
+    from tracker.locking import LOCK_FILENAME
+    from tracker.manifest import pending_path
+    from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
+    from tracker.runner import LOG_FILENAME
+    from tracker.scaffold import MANIFEST_FILENAME, README_NAME
+    from tracker.scanner import CACHE_FILENAME
+    from tracker.scheduling import SCHEDULE_XML_FILENAME
+    from tracker.settings import SETTINGS_FILENAME
+
+    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME,
+             pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+             LOG_FILENAME, MANIFEST_FILENAME, README_NAME, SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
+    for rel in DOCUMENTS:
+        for line in read(rel).splitlines():
+            if "──" not in line:
+                continue
+            for name in re.findall(r"(_[\w.-]+\.(?:xlsx|json|txt|lock|log))", line):
+                assert name in owned, (rel, name)
+        for name in re.findall(r"--out (\S+\.xml)", read(rel)):
+            assert name == SCHEDULE_XML_FILENAME, (rel, name)

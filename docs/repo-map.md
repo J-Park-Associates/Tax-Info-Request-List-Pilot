@@ -130,7 +130,7 @@ tracker.api / create → tracker.scaffold → client drops into Shared/ → trac
   - note: Holds a stale-aware per-engagement run lock, so two scheduled runs cannot overlap. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them.
 - **`tracker/scheduling.py`** — Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.
   - CLI: `python -m tracker.scheduling`
-  - constants: `DEFAULT_START` = '07:00', `DEFAULT_REPEAT_MINUTES` = 120, `SCHEDULE_XML_FILENAME` = 'tax-tracker.xml', `EXECUTION_TIME_LIMIT` = 'PT2H', `TASK_XML_NAMESPACE` = 'http://schemas.microsoft.com/windows/2004/02/mit/task', `N8N_TRIGGER_NODE` = 'Every day', `N8N_RUN_NODE` = 'File, scan, draft', `INSTALL_FLAG` = '--install', `ROOT_FLAG` = '--root', `OUT_FLAG` = '--out', `FORMAT_FLAG` = '--format'
+  - constants: `DEFAULT_START` = '07:00', `DEFAULT_REPEAT_MINUTES` = 120, `SCHEDULE_XML_FILENAME` = 'tax-tracker.xml', `EXECUTION_TIME_LIMIT` = 'PT2H', `TASK_XML_NAMESPACE` = 'http://schemas.microsoft.com/windows/2004/02/mit/task', `N8N_TRIGGER_NODE` = 'Every day', `N8N_RUN_NODE` = 'File, scan, draft', `SCHEDULE_XML_ENCODING` = 'utf-16', `MODULE_INVOCATION` = 'python -m tracker.scheduling', `INSTALL_FLAG` = '--install', `ROOT_FLAG` = '--root', `OUT_FLAG` = '--out', `FORMAT_FLAG` = '--format'
   - imports: `tracker/runner.py`, `tracker/settings.py`
   - used by: `tracker/api.py`
   - tested by: `tests/test_scheduling.py`
@@ -145,7 +145,7 @@ tracker.api / create → tracker.scaffold → client drops into Shared/ → trac
   - exercised by (imported, not its coverage): `tests/test_api.py`, `tests/test_single_source.py`
   - note: Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever.
 - **`tracker/templates.py`** — The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword rules that recognise each document. The ONLY source of truth for the checklists; the wizard and the rollover read it directly.
-  - constants: `BASE_YEAR` = 2025, `PERIOD_PATTERN` = 'TY{year}', `YEAR_NOTE` = "Defaults to the most recently ended year; the checklist's periods follow it", `KEYWORD_DEFAULT_NOTE` = 'defaults to the document name'
+  - constants: `FORM_LABEL_PATTERN` = 'Form {form}', `BASE_YEAR` = 2025, `PERIOD_PATTERN` = 'TY{year}', `YEAR_NOTE` = "Defaults to the most recently ended year; the checklist's periods follow it", `KEYWORD_DEFAULT_NOTE` = 'defaults to the document name'
   - imports: `tracker/manifest.py`
   - used by: `tracker/api.py`, `tracker/rollover.py`
   - tested by: `tests/test_templates.py`

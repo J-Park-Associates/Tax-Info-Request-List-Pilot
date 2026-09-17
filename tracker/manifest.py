@@ -296,6 +296,12 @@ ENGAGEMENT_FIELDS = (
 #: field name -> the sheet's label, for messages that name a cell.
 ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
 #: What each cell is for, as the README tells it.
+#: What the yes/no and Rolled From cells mean, said on the sheet and in the README.
+ENGAGEMENT_NOTES = {
+    "reminders": f"{NO} = this client is not chased by email",
+    "active": f"{NO} = the scheduled run skips this folder",
+    "rolled_from": "written by the rollover; the engagement it names is no longer chased",
+}
 ENGAGEMENT_HELP = {
     "client": "greeting name in the reminder",
     "name": "label; the folder name if blank",
@@ -303,15 +309,7 @@ ENGAGEMENT_HELP = {
     "due": "the date the reminder asks the client to send things by",
     "sender": "who the reminder is from",
     "firm": "the sign-off line and the client README's contact (typed once at setup)",
-    "reminders": "no = this client is not chased by email",
-    "active": "no = the scheduled run skips this folder",
-    "rolled_from": "written by the rollover; the engagement it names is no longer chased",
-}
-#: What the yes/no and Rolled From cells mean, said on the sheet and in the README.
-ENGAGEMENT_NOTES = {
-    "reminders": f"{NO} = this client is not chased by email",
-    "active": f"{NO} = the scheduled run skips this folder",
-    "rolled_from": "written by the rollover; the engagement it names is no longer chased",
+    **ENGAGEMENT_NOTES,
 }
 
 
@@ -439,6 +437,24 @@ def _header_map(ws) -> dict[str, int]:
 # --------------------------------------------------------------- loading ----
 
 
+def _open_manifest(path: Path):
+    """The workbook, read-only (cached values), or the one sentence for why not."""
+    if not path.exists():
+        raise ManifestError(f"Manifest not found: {path}")
+    try:
+        return load_workbook(path, data_only=True)
+    except ManifestError:
+        raise
+    except Exception as exc:  # zip/corruption errors from openpyxl
+        raise ManifestError(f"Could not open {path}: {exc}") from exc
+
+
+def _requests_sheet(wb, path: Path):
+    if SHEET_NAME not in wb.sheetnames:
+        raise ManifestError(f"{path.name} has no {SHEET_NAME!r} sheet")
+    return wb[SHEET_NAME]
+
+
 def load_manifest(path: Path | str) -> list[RequestItem]:
     """Load and validate every request row from ``path``.
 
@@ -446,18 +462,9 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
     Raises :class:`ManifestError` with row context on any invalid data.
     """
     path = Path(path)
-    if not path.exists():
-        raise ManifestError(f"Manifest not found: {path}")
+    wb = _open_manifest(path)
     try:
-        wb = load_workbook(path, data_only=True)
-    except ManifestError:
-        raise
-    except Exception as exc:  # zip/corruption errors from openpyxl
-        raise ManifestError(f"Could not open {path}: {exc}") from exc
-    try:
-        if SHEET_NAME not in wb.sheetnames:
-            raise ManifestError(f"{path.name} has no {SHEET_NAME!r} sheet")
-        ws = wb[SHEET_NAME]
+        ws = _requests_sheet(wb, path)
         columns = _header_map(ws)
 
         items: list[RequestItem] = []
@@ -553,9 +560,17 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
 # ------------------------------------------------------------- write-back ----
 
 
-def pending_path(manifest_path: Path) -> Path:
-    """Sidecar file that holds updates deferred by an Excel lock."""
-    return manifest_path.with_name(manifest_path.stem + PENDING_SUFFIX)
+def pending_path(workbook_path: Path) -> Path:
+    """The sidecar beside ``workbook_path`` that holds rows an Excel lock deferred."""
+    return workbook_path.with_name(workbook_path.stem + PENDING_SUFFIX)
+
+
+def quarantine_sidecar(sidecar: Path, exc: Exception, what: str) -> Path:
+    """Move an unreadable sidecar aside (kept as evidence) so it is never retried for ever."""
+    corrupt = sidecar.with_suffix(CORRUPT_SUFFIX)
+    sidecar.replace(corrupt)
+    log.error("Unreadable %s sidecar moved to %s: %s", what, corrupt.name, exc)
+    return corrupt
 
 
 def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
@@ -578,10 +593,7 @@ def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
             for ident, u in raw.items()
         }
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-        # Preserve the evidence rather than retry-looping on garbage forever.
-        corrupt = sidecar.with_suffix(CORRUPT_SUFFIX)
-        sidecar.replace(corrupt)
-        log.error("Unreadable pending sidecar moved to %s: %s", corrupt.name, exc)
+        quarantine_sidecar(sidecar, exc, "pending")
         return {}
 
 
@@ -655,9 +667,7 @@ def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
     PermissionError if Excel holds the file locked (caller retries)."""
     wb = load_workbook(path)  # NOT data_only: preserves any formulas on save
     try:
-        if SHEET_NAME not in wb.sheetnames:
-            raise ManifestError(f"{path.name} has no {SHEET_NAME!r} sheet")
-        ws = wb[SHEET_NAME]
+        ws = _requests_sheet(wb, path)
         columns = _header_map(ws)
 
         rows_by_identifier = {
@@ -907,12 +917,7 @@ def _engagement_from_sheet(ws) -> EngagementInfo:
 def load_engagement_info(path: Path | str) -> EngagementInfo:
     """The Engagement sheet of ``path``; all defaults if the sheet is absent."""
     path = Path(path)
-    if not path.exists():
-        raise ManifestError(f"Manifest not found: {path}")
-    try:
-        wb = load_workbook(path, data_only=True)
-    except Exception as exc:
-        raise ManifestError(f"Could not open {path}: {exc}") from exc
+    wb = _open_manifest(path)
     try:
         if ENGAGEMENT_SHEET_NAME not in wb.sheetnames:
             return EngagementInfo()

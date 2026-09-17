@@ -63,15 +63,15 @@ from openpyxl.utils import get_column_letter
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     COL_IDENTIFIER,
-    label_for,
-    CORRUPT_SUFFIX,
     LOCK_RETRIES,
     LOCK_RETRY_DELAY,
-    PENDING_SUFFIX,
     Override,
     RequestItem,
     add_any_keyword,
+    label_for,
     load_manifest,
+    pending_path,
+    quarantine_sidecar,
     save_workbook_atomically,
 )
 from tracker.router import route_file
@@ -99,8 +99,9 @@ log = logging.getLogger("tracker.filer")
 
 INDEX_FILENAME = "_index.xlsx"
 INDEX_SHEET = "Index"
-#: Rows that could not be written because Excel had the index open.
-INDEX_PENDING_FILENAME = Path(INDEX_FILENAME).stem + PENDING_SUFFIX
+#: Rows that could not be written because Excel had the index open; named
+#: by the manifest's one sidecar rule.
+INDEX_PENDING_FILENAME = pending_path(Path(INDEX_FILENAME)).name
 _MAX_STEM = 110
 
 
@@ -257,7 +258,7 @@ def _unique_path(folder: Path, name: str) -> Path:
 
 
 def _pending_index_path(path: Path) -> Path:
-    return path.with_name(INDEX_PENDING_FILENAME)
+    return pending_path(path)
 
 
 def _read_pending_index(path: Path) -> list[IndexEntry]:
@@ -268,10 +269,7 @@ def _read_pending_index(path: Path) -> list[IndexEntry]:
         raw = json.loads(sidecar.read_text(encoding="utf-8"))
         return [IndexEntry(**row) for row in raw]
     except (json.JSONDecodeError, TypeError, ValueError, OSError) as exc:
-        # Keep the evidence; an unreadable sidecar must not be retried forever.
-        corrupt = sidecar.with_suffix(CORRUPT_SUFFIX)
-        sidecar.replace(corrupt)
-        log.error("Unreadable index sidecar moved to %s: %s", corrupt.name, exc)
+        quarantine_sidecar(sidecar, exc, "index")
         return []
 
 

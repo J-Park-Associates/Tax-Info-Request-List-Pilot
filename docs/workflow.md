@@ -84,6 +84,6 @@ The scanner owns the status column; people own the override column.
 
 ## Collaboration
 
-- Small team: commit directly to `main`; pull before editing the catalog.
+- Small team: commit directly to the branch CI watches; pull before editing the catalog.
 - Larger team: work on a branch and open a pull request. CI runs the suite
   and checks that the repository map is current.

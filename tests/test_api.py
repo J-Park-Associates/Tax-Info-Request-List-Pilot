@@ -35,7 +35,7 @@ from tracker.manifest import (
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
 from tracker.locking import STALE_LOCK_SECONDS
 from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
-from tracker.scheduling import TASK_NAME
+from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
 
 
@@ -506,7 +506,7 @@ def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monke
     code, payload = run(capsys, "install-schedule", stdin={"start": "06:30", "every": 60})
     assert code == 0, payload
     assert payload["root"] == str(demo_root)
-    xml = Path(payload["xml"]).read_text(encoding="utf-16")
+    xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
     assert str(demo_root) in xml and "T06:30:00" in xml and "PT60M" in xml
     assert calls == [Path(payload["xml"])]
 

@@ -56,11 +56,16 @@ TASK_XML_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 N8N_TRIGGER_NODE = "Every day"
 N8N_RUN_NODE = "File, scan, draft"
 #: How a person is told to install the schedule, wherever they are told.
+#: Task Scheduler imports XML in this encoding; the declaration and both
+#: writers (CLI and app) say so from here.
+SCHEDULE_XML_ENCODING = "utf-16"
+#: How the scheduler module is invoked, for every hint that says so.
+MODULE_INVOCATION = "python -m tracker.scheduling"
 INSTALL_FLAG = "--install"
 ROOT_FLAG = "--root"
 OUT_FLAG = "--out"
 FORMAT_FLAG = "--format"
-INSTALL_HINT = f"python -m tracker.scheduling {INSTALL_FLAG}"
+INSTALL_HINT = f"{MODULE_INVOCATION} {INSTALL_FLAG}"
 
 def runner_arguments(root: str | Path) -> str:
     """The one command line the scheduled job runs, whoever schedules it."""
@@ -123,7 +128,7 @@ def task_scheduler_xml(
             "\n      </Repetition>"
         )
 
-    return f"""<?xml version="1.0" encoding="UTF-16"?>
+    return f"""<?xml version="1.0" encoding="{SCHEDULE_XML_ENCODING.upper()}"?>
 <Task version="1.4" xmlns="{TASK_XML_NAMESPACE}">
   <RegistrationInfo>
     <Author>{_xml_escape(author)}</Author>
@@ -294,7 +299,7 @@ if __name__ == "__main__":
                 author=ns.author,
                 task_name=ns.name,
             )
-            encoding = "utf-16"
+            encoding = SCHEDULE_XML_ENCODING
         else:
             payload = json.dumps(
                 n8n_workflow(
@@ -326,7 +331,7 @@ if __name__ == "__main__":
             else:
                 print("Not Windows; run this on the scheduling machine:  " + " ".join(command))
         elif ns.format == "xml":
-            print(f'Install it with:  python -m tracker.scheduling {ROOT_FLAG} "{ns.root}" '
+            print(f'Install it with:  {MODULE_INVOCATION} {ROOT_FLAG} "{ns.root}" '
                   f'{OUT_FLAG} "{ns.out}" {INSTALL_FLAG}')
     else:
         print(payload, end="")

@@ -30,6 +30,7 @@ from tracker.manifest import EngagementInfo, write_engagement_info
 from tracker.registry import SKIP_ROLLED_FORWARD, Engagement, Registry, discover_engagements
 from tracker.reminder import DRAFT_BANNER, DRAFT_FILENAME, NEW_DRAFT_FILENAME
 from tracker.runner import (
+    NOTHING_OUTSTANDING,
     DRAFT_WEEKDAY,
     LOG_FILENAME,
     REMINDERS_ALWAYS,
@@ -182,7 +183,7 @@ def test_nothing_outstanding_means_no_draft_file(tmp_path, samples):
     assert run.statuses == {Status.RECEIVED: 1}
     assert run.outstanding == 0
     assert run.drafted is None
-    assert "nothing outstanding" in run.draft_note
+    assert run.draft_note == NOTHING_OUTSTANDING
     assert not (folder / DRAFT_FILENAME).exists()
 
 

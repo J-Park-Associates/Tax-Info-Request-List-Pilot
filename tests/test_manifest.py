@@ -11,6 +11,9 @@ from openpyxl.workbook.workbook import Workbook as WorkbookClass
 from tests.samples import col
 from tracker import reasons
 from tracker.manifest import (
+    YES,
+    NO,
+    ENGAGEMENT_LABELS,
     COL_ALLOWED_EXTENSIONS,
     COL_DATE_PATTERN,
     COL_DOCUMENT,
@@ -346,12 +349,12 @@ def test_yes_no_cells_are_forgiving_but_not_guessing(manifest):
                 row[1].value = value
         wb.save(manifest)
 
-    set_cell("Reminders", "No ")
+    set_cell(ENGAGEMENT_LABELS["reminders"], f"{NO.capitalize()} ")
     assert load_engagement_info(manifest).reminders is False
-    set_cell("Active", "TRUE")
+    set_cell(ENGAGEMENT_LABELS["active"], "TRUE")
     assert load_engagement_info(manifest).active is True
-    set_cell("Active", "later")
-    with pytest.raises(ManifestError, match="Active must be yes or no"):
+    set_cell(ENGAGEMENT_LABELS["active"], "later")
+    with pytest.raises(ManifestError, match=f"{ENGAGEMENT_LABELS['active']} must be {YES} or {NO}"):
         load_engagement_info(manifest)
 
 

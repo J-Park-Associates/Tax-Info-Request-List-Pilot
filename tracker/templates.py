@@ -37,34 +37,36 @@ from tracker.manifest import (
 
 # Tax form catalog — the wizard's first page. Selecting a form type tailors
 # the request template below to that return.
+#: How a form is labelled to people; the fallback for an unknown form uses it too.
+FORM_LABEL_PATTERN = "Form {form}"
 FORM_TYPES = [
     {
-        "id": "1040", "label": "Form 1040",
+        "id": "1040", "label": FORM_LABEL_PATTERN.format(form="1040"),
         "who": "Individual / joint return",
         "blurb": "Wages, investments, deductions, credits",
     },
     {
-        "id": "1120", "label": "Form 1120",
+        "id": "1120", "label": FORM_LABEL_PATTERN.format(form="1120"),
         "who": "C corporation",
         "blurb": "Corporate income tax return",
     },
     {
-        "id": "1120S", "label": "Form 1120-S",
+        "id": "1120S", "label": FORM_LABEL_PATTERN.format(form="1120-S"),
         "who": "S corporation",
         "blurb": "Pass-through corporate return with K-1s",
     },
     {
-        "id": "1065", "label": "Form 1065",
+        "id": "1065", "label": FORM_LABEL_PATTERN.format(form="1065"),
         "who": "Partnership / multi-member LLC",
         "blurb": "Partnership return with K-1s",
     },
     {
-        "id": "1041", "label": "Form 1041",
+        "id": "1041", "label": FORM_LABEL_PATTERN.format(form="1041"),
         "who": "Estate or trust",
         "blurb": "Fiduciary income tax return",
     },
     {
-        "id": "990", "label": "Form 990",
+        "id": "990", "label": FORM_LABEL_PATTERN.format(form="990"),
         "who": "Tax-exempt organization",
         "blurb": "Annual information return",
     },
@@ -304,6 +306,14 @@ EXTENSION_DEFAULT_NOTE = "blank means " + ", ".join(DEFAULT_EXTENSIONS)
 KEYWORD_DEFAULT_NOTE = "defaults to the document name"
 
 
+def require_form(form: str) -> None:
+    """Refuse a form the catalog does not know, with the one sentence for it."""
+    if form not in FORM_TEMPLATES:
+        raise ManifestError(
+            f"Unknown tax form type '{form}'; expected one of {', '.join(FORM_TEMPLATES)}"
+        )
+
+
 def base_year(form: str) -> int | None:
     """The tax year the catalog's rows for ``form`` are written for."""
     return detect_year(item_from_spec(spec) for spec in FORM_TEMPLATES[form])
@@ -319,10 +329,7 @@ def template_items(
     year the person chose. Relative periods shift with it, so the
     prior-year-return row stays one year behind. Unknown form → ManifestError.
     """
-    if form not in FORM_TEMPLATES:
-        raise ManifestError(
-            f"Unknown tax form type '{form}'; expected one of {', '.join(FORM_TEMPLATES)}"
-        )
+    require_form(form)
     items = [
         item_from_spec(spec)
         for spec in FORM_TEMPLATES[form]

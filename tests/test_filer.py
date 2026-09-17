@@ -385,7 +385,7 @@ def test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed(engagemen
     assert set(rows) == {"a-w2.pdf", "b-mortgage.pdf", "c-w2.pdf"}
     assert rows["b-mortgage.pdf"].decision == NEEDS_REVIEW
     assert "No space left" in rows["b-mortgage.pdf"].reason
-    assert "PBC/b-mortgage.pdf" in rows["b-mortgage.pdf"].reason
+    assert f"{PBC_DIR_NAME}/b-mortgage.pdf" in rows["b-mortgage.pdf"].reason
 
 
 def test_a_drop_still_held_open_is_left_for_the_next_run(engagement, monkeypatch):
@@ -449,7 +449,7 @@ def test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder(engag
     report = file_drops(engagement, today=DAY2)
     folders = [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir() if p.name.startswith("A01")]
     assert folders == ["A01 - W-2 Wage Statements"]
-    assert report.filed[0].prepared_location.startswith("Prepared/A01 - W-2 Wage Statements/")
+    assert report.filed[0].prepared_location.startswith(f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements/")
 
 
 def test_a_file_dropped_straight_into_pbc_is_filed_and_indexed(engagement):
@@ -460,7 +460,7 @@ def test_a_file_dropped_straight_into_pbc_is_filed_and_indexed(engagement):
     assert [e.original_name for e in report.filed] == ["w2.pdf"]
     assert original.read_bytes() == before                    # not moved, not touched
     rows = read_index(engagement / INDEX_FILENAME)
-    assert rows[0].pbc_location == "Shared/PBC/w2.pdf"
+    assert rows[0].pbc_location == f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2.pdf"
     assert (engagement / rows[0].prepared_location).exists()
     # Recorded now, so the next run leaves it alone.
     assert file_drops(engagement, today=DAY2).handled == 0

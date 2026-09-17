@@ -210,7 +210,7 @@ def _write_readme(
         "you don't need to sort anything or name anything. We sort it.",
         "",
         "1. Drag your documents anywhere in this folder.",
-        f"2. Within a few minutes each file moves into the {PBC_DIR_NAME} folder.",
+        f"2. Each file moves into the {PBC_DIR_NAME} folder on the next scheduled pass.",
         "   That is us filing it - your file is safe, unchanged, and still",
         "   yours to look at. Nothing is ever renamed or deleted.",
         "3. Keep going until the list below is covered. Send them as you",

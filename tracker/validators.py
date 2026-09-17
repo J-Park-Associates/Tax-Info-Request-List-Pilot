@@ -31,7 +31,7 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from tracker import reasons
-from tracker.manifest import RequestItem
+from tracker.manifest import TEMP_SUFFIX, RequestItem
 
 # pypdf logs its own warnings while parsing corrupt files; we already surface
 # every failure as a FileResult.reason, so keep the console clean.
@@ -49,7 +49,7 @@ PDF_EXTENSION = "pdf"
 #: the sync client's, never the client's.
 _SYNC_STAGING_PREFIX = ".tmp.drive"
 _IGNORED_PREFIXES = (OFFICE_LOCK_PREFIX, _SYNC_STAGING_PREFIX)
-_IGNORED_SUFFIXES = (".tmp", ".driveupload", ".drivedownload")
+_IGNORED_SUFFIXES = (TEMP_SUFFIX, ".driveupload", ".drivedownload")
 
 # Google-native documents sync down as tiny shortcut/stub files, not real
 # documents. Validating them is impossible locally, so tier 2 fails them with

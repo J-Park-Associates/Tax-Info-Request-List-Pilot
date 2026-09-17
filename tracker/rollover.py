@@ -43,6 +43,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     COL_DOCUMENT,
     COL_IDENTIFIER,
     EngagementInfo,
+    ManifestError,
     Override,
     RequestItem,
     Status,
@@ -311,7 +312,7 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
 if __name__ == "__main__":
     import argparse
 
-    from tracker.templates import FORM_TEMPLATES, template_items
+    from tracker.templates import require_form, template_items
 
     parser = argparse.ArgumentParser(
         description="Build next year's request list from a returning client's prior engagement"
@@ -329,8 +330,10 @@ if __name__ == "__main__":
 
     template = []
     if ns.form:
-        if ns.form not in FORM_TEMPLATES:
-            parser.error(f"unknown form {ns.form}; try one of {', '.join(FORM_TEMPLATES)}")
+        try:
+            require_form(ns.form)
+        except ManifestError as exc:
+            parser.error(str(exc))
         template = template_items(ns.form)
 
     result = roll_forward(
