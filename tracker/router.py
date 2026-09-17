@@ -50,13 +50,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from tracker.content_check import (
-    contains_keyword,
-    evaluate_rules,
-    extract_text,
-    has_content_rules,
-)
-from tracker.manifest import Override, RequestItem
+from tracker.content_check import contains_keyword, evaluate_rules, extract_text
+from tracker.manifest import Override, RequestItem, has_routing_rules
 from tracker.validators import (
     check_file,
     google_stub_reason,
@@ -127,7 +122,7 @@ def _considers(item: RequestItem) -> bool:
     Waived rows want nothing, and a row with no content rule has no way to
     recognise a document — it never auto-routes, by design.
     """
-    return item.manual_override != Override.WAIVED and has_content_rules(item)
+    return item.manual_override != Override.WAIVED and has_routing_rules(item)
 
 
 def route_file(

@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 84,
     "edges": 188,
-    "reused": 44
+    "reused": 63
   },
   "node_types": [
     "artifact",
@@ -112,8 +112,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7f1b44e44557b5f7",
-      "lines": 370,
+      "sha256": "b9f78181732c2264",
+      "lines": 371,
       "exports": [
         "ContentCache",
         "ContentResult",
@@ -188,8 +188,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5094c9025f37612c",
-      "lines": 870,
+      "sha256": "b64e29ef2dc6ced6",
+      "lines": 908,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -217,6 +217,7 @@
         "HEADERS",
         "ManifestCheck",
         "ManifestError",
+        "NO_DATE_CHECK",
         "Override",
         "RequestItem",
         "SCANNER_COLUMNS",
@@ -226,9 +227,12 @@
         "Summary",
         "_COLUMN_WIDTHS",
         "_ILLEGAL_IDENTIFIER_CHARS",
+        "_PERIOD_YEAR",
         "add_any_keyword",
         "check_manifest",
         "create_template",
+        "derived_date_pattern",
+        "has_routing_rules",
         "identifier_problem",
         "load_engagement_info",
         "load_manifest",
@@ -241,7 +245,7 @@
         "write_statuses"
       ],
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
-      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written."
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check."
     },
     {
       "id": "tracker/registry.py",
@@ -302,8 +306,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "46840571cfaa08c0",
-      "lines": 402,
+      "sha256": "a1395d0047df8df7",
+      "lines": 405,
       "cli": "python -m tracker.rollover",
       "exports": [
         "CARRIED_HEADERS",
@@ -320,14 +324,14 @@
         "write_rollover_manifest"
       ],
       "role": "Builds a returning client's next-year request list from their prior engagement. Prior-year data always wins; the template may only fill blanks.",
-      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other."
+      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other. Derived year checks are left blank in the new manifest; the shifted Period derives them again."
     },
     {
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f31dd0aaa1b757f3",
-      "lines": 270,
+      "sha256": "ee8af2fa098c6f0e",
+      "lines": 265,
       "exports": [
         "AMBIGUOUS",
         "PENDING",
@@ -338,7 +342,7 @@
         "route_files"
       ],
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only).",
-      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as 'looks like A01 (...)', and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token."
+      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as 'looks like A01 (...)', and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched."
     },
     {
       "id": "tracker/runner.py",
@@ -452,7 +456,7 @@
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f6d8289156066ec7",
+      "sha256": "e4e20305ade2f495",
       "lines": 712,
       "cli": "python -m tracker.templates",
       "exports": [
@@ -473,7 +477,7 @@
         "template_items"
       ],
       "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword/date rules that recognise each document. The ONLY source of truth for the checklists; templates/*.csv are generated from it.",
-      "notes": "Edit the Python, run `python -m tracker.templates export`, commit both. tests/test_templates.py and CI fail if the CSVs drift. item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included, so the catalog is never edited for a new year."
+      "notes": "Edit the Python, run `python -m tracker.templates export`, commit both. tests/test_templates.py and CI fail if the CSVs drift. item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included, so the catalog is never edited for a new year. No date_pattern in the catalog: each row's Period implies its year check."
     },
     {
       "id": "tracker/validators.py",
@@ -516,7 +520,7 @@
       "id": "templates/form-1040.csv",
       "type": "template",
       "layer": "data",
-      "sha256": "1be0a962e0e2d8bb",
+      "sha256": "fa2d61e51aa111f3",
       "lines": 16
     },
     {
@@ -655,8 +659,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6e3dd960dc634b2d",
-      "lines": 231,
+      "sha256": "83b9003529c04065",
+      "lines": 232,
       "role": "The build plan, the hard constraints and the decision log. Components 1-10, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -664,7 +668,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "656a69ef8ed67317",
+      "sha256": "12757e3a0e8158a2",
       "lines": 263,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -890,7 +894,7 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7ae1f9b68446493c",
+      "sha256": "e0e377654984cc8e",
       "lines": 549,
       "exports": [
         "DAY1",
@@ -949,14 +953,17 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7619f649e6b5f055",
-      "lines": 439,
+      "sha256": "6bf5e08572933840",
+      "lines": 487,
       "exports": [
         "SAMPLE_ITEMS",
         "manifest",
         "test_a_blank_allowed_extensions_means_the_safe_default_not_anything",
         "test_a_crash_mid_save_leaves_the_previous_manifest_intact",
+        "test_a_derived_year_is_a_check_not_a_reason_to_route",
         "test_a_manifest_without_the_sheet_loads_as_defaults",
+        "test_a_period_with_a_year_implies_the_year_check",
+        "test_a_star_in_date_pattern_means_no_year_check",
         "test_accepting_any_file_type_has_to_be_said_with_a_star",
         "test_add_any_keyword_appends_once_and_names_a_missing_row",
         "test_bad_expected_count_rejected",
@@ -1094,13 +1101,14 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7f67daab067dce07",
-      "lines": 308,
+      "sha256": "bee16407ace8ddf7",
+      "lines": 330,
       "exports": [
         "PRIOR",
         "TEMPLATE",
         "prior",
         "rolled_by_id",
+        "test_a_derived_year_check_is_not_carried_as_text",
         "test_accepted_does_not_carry",
         "test_counts_are_never_lowered",
         "test_counts_learn_from_what_arrived",
@@ -1128,8 +1136,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c406430667048128",
-      "lines": 229,
+      "sha256": "3e77d25e5c8e76b7",
+      "lines": 257,
       "exports": [
         "DONATIONS",
         "INT_DIV",
@@ -1137,6 +1145,7 @@
         "MORTGAGE",
         "W2",
         "test_a_corrupt_pdf_is_a_review_reason_not_a_crash",
+        "test_a_derived_year_never_routes_on_its_own_but_still_contests",
         "test_a_file_type_nobody_accepts_is_named_as_such",
         "test_a_matching_document_the_row_refuses_says_why",
         "test_ambiguous_match_goes_to_review",
@@ -1306,8 +1315,8 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f02167b70cb8685e",
-      "lines": 110,
+      "sha256": "9b10499f1fcd60f1",
+      "lines": 114,
       "exports": [
         "REPO",
         "TEMPLATES_DIR",

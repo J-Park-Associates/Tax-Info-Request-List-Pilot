@@ -102,7 +102,11 @@ def test_catalog_rows_shift_to_the_engagements_year():
     assert base_year("1040") == 2025
     shifted = {i.identifier: i for i in template_items("1040", year=2027)}
     assert shifted["A01"].period == "TY2027"
-    assert shifted["A01"].date_pattern == r"(?i)\b2027\b"
+    assert shifted["A01"].date_pattern == ""            # the Period implies it...
+    path = create_template(__import__("tempfile").mkdtemp() + "/_manifest.xlsx", shifted.values())
+    loaded = {i.identifier: i for i in load_manifest(path)}
+    assert loaded["A01"].date_pattern == r"(?i)\b2027\b" and loaded["A01"].date_pattern_derived
+    assert loaded["B01"].date_pattern == r"(?i)\b2026\b"   # ...for every row, one year behind here
     assert shifted["B01"].period == "TY2026"           # prior-year return stays one behind
     assert shifted["A01"].required_keywords == ("W-2",)  # keywords never shift
     unshifted = {i.identifier: i for i in template_items("1040")}

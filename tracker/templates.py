@@ -13,10 +13,11 @@ export``) so an accountant can read them in Excel, and
 catalog. Edit the Python, regenerate the CSVs, commit both. There is no
 second list to keep in step.
 
-Every row carries a content rule. A request with no keyword has no way to
+Every row carries a keyword rule. A request with no keyword has no way to
 recognise its document, so it never auto-files (see :mod:`tracker.router`);
 a template row like that would be a request the system can only ever park
-for a person, which defeats the point of a template.
+for a person, which defeats the point of a template. The year check is not
+written here: a Period like ``TY2025`` implies it (:func:`tracker.manifest.derived_date_pattern`).
 """
 
 from __future__ import annotations
@@ -87,8 +88,7 @@ FORM_TEMPLATES = {
         {
             "identifier": "A01", "document": "W-2 Wage Statements - All Employers",
             "period": "TY2025", "expected_count": 2, "extensions": "pdf",
-            "required_keywords": "W-2",
-            "date_pattern": r"(?i)\b2025\b", "core": True,
+            "required_keywords": "W-2", "core": True,
         },
         {
             "identifier": "A02", "document": "1099-INT / 1099-DIV - Interest & Dividend Income",

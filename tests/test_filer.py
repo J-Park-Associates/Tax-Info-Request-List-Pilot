@@ -293,7 +293,7 @@ def test_a_locked_index_never_orphans_files_already_moved(engagement, monkeypatc
     import tracker.filer as filer_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    drop(engagement, "mortgage.pdf", "Form 1098 Mortgage Interest Statement")
+    drop(engagement, "mortgage.pdf", "Form 1098 Mortgage Interest Statement 2025")
 
     def locked(wb, path):
         raise PermissionError(f"[Errno 13] locked: {path}")
@@ -325,7 +325,7 @@ def test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed(engagemen
     import shutil
 
     drop(engagement, "a-w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    drop(engagement, "b-mortgage.pdf", "Form 1098 Mortgage Interest Statement")
+    drop(engagement, "b-mortgage.pdf", "Form 1098 Mortgage Interest Statement 2025")
     drop(engagement, "c-w2.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
     real_copy = shutil.copy2
 
@@ -355,7 +355,7 @@ def test_a_drop_still_held_open_is_left_for_the_next_run(engagement, monkeypatch
     import shutil
 
     drop(engagement, "a-w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    drop(engagement, "b-mortgage.pdf", "Form 1098 Mortgage Interest Statement")
+    drop(engagement, "b-mortgage.pdf", "Form 1098 Mortgage Interest Statement 2025")
     real_move = shutil.move
 
     def held_open(src, dst, *args, **kwargs):

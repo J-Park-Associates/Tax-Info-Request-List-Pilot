@@ -82,6 +82,12 @@ DEFAULT_MIN_SIZE_KB = 5
 #: document; accepting anything now has to be said out loud with "*".
 DEFAULT_EXTENSIONS = ("pdf", "xlsx", "csv")
 ANY_EXTENSION = "*"
+#: A blank Date Pattern on a row whose Period names a year checks for that
+#: year; "*" says "no year check" out loud. The year was already typed once,
+#: in Period - typing it again as a regex was the redundancy, and not typing
+#: it was a 2024 form satisfying a TY2025 request.
+NO_DATE_CHECK = "*"
+_PERIOD_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 DATE_FORMAT = "yyyy-mm-dd"
 
 #: Characters an identifier may not contain. The identifier becomes the
@@ -130,6 +136,7 @@ class RequestItem:
     required_keywords: tuple[str, ...] = ()
     any_keywords: tuple[str, ...] = ()
     date_pattern: str = ""                     # validated to compile on load
+    date_pattern_derived: bool = False         # True: made from Period's year, not typed
     manual_override: str = ""                  # "", Override.ACCEPTED, Override.WAIVED
     status: str = ""                           # "", or a Status.ALL value
     received_date: dt.date | None = None
@@ -235,6 +242,16 @@ def _parse_enum(value: object, allowed: tuple[str, ...], column: str, row: int) 
     )
 
 
+def derived_date_pattern(period: str) -> str:
+    """The year check a Period like ``TY2025`` or ``Dec 2025`` implies, or "".
+
+    Case-insensitive, whole-token: ``\b2025\b`` matches "Tax Year 2025"
+    and "12/31/2025" but not an account number that happens to contain it.
+    """
+    match = _PERIOD_YEAR.search(period or "")
+    return rf"(?i)\b{match.group(0)}\b" if match else ""
+
+
 def _parse_extensions(value: object) -> tuple[str, ...]:
     """Blank → the safe default; ``*`` → anything (empty tuple); else the list."""
     parts = _csv_tuple(value)
@@ -338,26 +355,34 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
             if min_size_kb < 0:
                 raise ManifestError(f"Row {row}: {COL_MIN_SIZE_KB} must be >= 0")
 
+            period = _cell_str(values[COL_PERIOD])
             date_pattern = _cell_str(values[COL_DATE_PATTERN])
-            if date_pattern:
+            date_pattern_derived = False
+            if date_pattern == NO_DATE_CHECK:
+                date_pattern = ""
+            elif date_pattern:
                 try:
                     re.compile(date_pattern)
                 except re.error as exc:
                     raise ManifestError(
                         f"Row {row}: {COL_DATE_PATTERN} is not a valid regex: {exc}"
                     ) from None
+            else:
+                date_pattern, date_pattern_derived = derived_date_pattern(period), False
+                date_pattern_derived = bool(date_pattern)
 
             items.append(
                 RequestItem(
                     identifier=identifier,
                     document=document,
-                    period=_cell_str(values[COL_PERIOD]),
+                    period=period,
                     expected_count=expected_count,
                     allowed_extensions=_parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
                     min_size_kb=min_size_kb,
                     required_keywords=_csv_tuple(values[COL_REQUIRED_KEYWORDS]),
                     any_keywords=_csv_tuple(values[COL_ANY_KEYWORDS]),
                     date_pattern=date_pattern,
+                    date_pattern_derived=date_pattern_derived,
                     manual_override=_parse_enum(
                         values[COL_MANUAL_OVERRIDE], Override.ALL, COL_MANUAL_OVERRIDE, row
                     ),
@@ -567,6 +592,18 @@ def write_statuses(
     return False
 
 
+def has_routing_rules(item: RequestItem) -> bool:
+    """Can this row recognise a document - by a keyword, or a year check a
+    person typed? A year derived from Period is a *check* on a document
+    already matched by a keyword, never evidence on its own: "it says 2025"
+    describes half of what a client sends."""
+    return bool(
+        item.required_keywords
+        or item.any_keywords
+        or (item.date_pattern and not item.date_pattern_derived)
+    )
+
+
 # --------------------------------------------------------------- summary ----
 
 
@@ -666,7 +703,7 @@ def check_manifest(path: Path | str) -> ManifestCheck:
     for item in items:
         if item.manual_override == Override.WAIVED:
             continue
-        if not (item.required_keywords or item.any_keywords or item.date_pattern):
+        if not has_routing_rules(item):
             warnings.append(
                 f"Row {item.row} ({item.identifier}): no Required Keywords, Any Keywords "
                 "or Date Pattern, so its documents can never be filed automatically"
@@ -858,7 +895,8 @@ def create_template(
         ws.cell(row=row, column=6, value=item.min_size_kb)
         ws.cell(row=row, column=7, value=", ".join(item.required_keywords) or None)
         ws.cell(row=row, column=8, value=", ".join(item.any_keywords) or None)
-        ws.cell(row=row, column=9, value=item.date_pattern or None)
+        ws.cell(row=row, column=9,
+                value=None if item.date_pattern_derived else (item.date_pattern or None))
         ws.cell(row=row, column=10, value=item.manual_override or None)
 
     _write_engagement_sheet(wb, info or EngagementInfo())
