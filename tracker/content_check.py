@@ -1,4 +1,4 @@
-"""Tier-3 content validation for the Client Document Tracker (component 4).
+"""Tier-3 content validation for the tracker (component 4).
 
 Extracts text from client documents (read-only) and applies the deterministic
 rules from the manifest row: Required Keywords (ALL must appear), Any
@@ -13,12 +13,12 @@ Extractors by extension:
                         The OCR stack is entirely optional: when absent, the
                         file is reported as unverifiable with a clear note —
                         nothing breaks.
-- ``.xlsx`` / ``.xlsm`` → openpyxl (all sheets, cached formula values);
+- ``XLSX_EXTENSIONS``   → openpyxl (all sheets, cached formula values);
                         date cells are rendered in both ISO (2025-12-31)
                         and US (12/31/2025) forms so either pattern style
                         matches.
-- ``.csv/.tsv/.txt``  → plain text (utf-8, then cp1252 fallback).
-- anything else       → no extractor; reported unverifiable, review manually.
+- ``TEXT_EXTENSIONS``   → plain text (utf-8, then cp1252 fallback).
+- anything else       → no extractor; reported unverifiable, for a person (``reasons.UNCHECKABLE_TYPE``).
 
 Keyword matching is case-insensitive. Date Pattern is applied to the raw
 text as-is, so authors control case sensitivity with inline flags (``(?i)``).
@@ -61,6 +61,9 @@ _MIN_TEXT_CHARS = 20
 #: stalled a run. A keyword deep in a long document is not evidence the
 #: router should be acting on anyway.
 MAX_PAGES = 10
+#: The other file types whose text can be read (PDF_EXTENSION is the third).
+XLSX_EXTENSIONS = ("xlsx", "xlsm")
+TEXT_EXTENSIONS = ("csv", "tsv", "txt")
 _MAX_OCR_PAGES = MAX_PAGES
 
 
@@ -178,9 +181,9 @@ def extract_text(path: Path) -> str | None:
     extension = extension_of(path)
     if extension == PDF_EXTENSION:
         return _extract_pdf(path)
-    if extension in ("xlsx", "xlsm"):
+    if extension in XLSX_EXTENSIONS:
         return _extract_xlsx(path)
-    if extension in ("csv", "tsv", "txt"):
+    if extension in TEXT_EXTENSIONS:
         return _extract_textfile(path)
     return None
 

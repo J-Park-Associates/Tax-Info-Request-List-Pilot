@@ -1,4 +1,4 @@
-"""Client Document Tracker — deterministic PBC document tracking over OneDrive or Google Drive.
+"""Deterministic PBC document tracking over OneDrive or Google Drive.
 
 See docs/ROADMAP.md for the build plan. Component modules:
 

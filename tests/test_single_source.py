@@ -201,8 +201,9 @@ def test_the_readme_names_the_carried_forward_sheet_the_rollover_writes():
 
     readme = read("README.md")
     assert f"`{CARRIED_SHEET}` sheet" in readme
-    for name in re.findall(r"`([A-Z][A-Za-z ]+)` sheet", readme):
-        assert name in (CARRIED_SHEET, ENGAGEMENT_SHEET_NAME, SHEET_NAME), name
+    for rel in DOCUMENTS:
+        for name in re.findall(r"`([A-Z][A-Za-z ]+)` sheet", read(rel)):
+            assert name in (CARRIED_SHEET, ENGAGEMENT_SHEET_NAME, SHEET_NAME), (rel, name)
 
 
 def test_the_scan_button_label_is_typed_once():
@@ -425,10 +426,34 @@ def test_documents_quote_the_any_value_only_as_the_constants_say_it():
             assert ANY_EXTENSION == "*", rel   # the docs quote it; the constant had better be it
 
 
+def test_documents_name_the_engagement_folders_as_the_scaffold_does():
+    """Every `Something/` a document quotes as a folder is one the scaffold names."""
+    from tracker.scaffold import PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME, SHARED_DIR_NAME
+
+    folders = {SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME}
+    for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
+        for quoted in re.findall(r"`((?:[A-Z][A-Za-z]+/)+)`", read(rel)):
+            for part in quoted.rstrip("/").split("/"):
+                assert part in folders, (rel, quoted)
+        for word in re.findall(r"\b([A-Z][a-z]+)/", read(rel)):
+            if word in ("Shared", "Prepared", "PBC", "Prepared"):
+                assert word in folders, (rel, word)
+
+
+def test_gitignore_ignores_the_junk_the_validators_ignore():
+    from tracker.validators import OFFICE_LOCK_PREFIX, _IGNORED_NAMES
+
+    ignored = {line.strip().lower() for line in read(".gitignore").splitlines()
+               if line.strip() and not line.startswith("#")}
+    for name in _IGNORED_NAMES:
+        assert name.lower() in ignored, name
+    assert f"{OFFICE_LOCK_PREFIX}*".lower() in ignored
+
+
 def test_documents_state_the_naming_pattern_with_the_one_separator():
     from tracker.manifest import LABEL_SEPARATOR
 
-    for rel in DOCUMENTS:
+    for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
         for joiner in re.findall(r"\{Identifier\}(.+?)\{Document\}", read(rel)):
             assert joiner == LABEL_SEPARATOR, (rel, joiner)
 
@@ -466,12 +491,15 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     from tracker.manifest import Override, Status
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME
-    from tracker.scaffold import MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME
+    from tracker.scaffold import (
+        MANIFEST_FILENAME, PBC_DIR_NAME, PREPARED_DIR_NAME, README_NAME, REVIEW_DIR_NAME, SHARED_DIR_NAME,
+    )
     from tracker.scanner import CACHE_FILENAME
     from tracker.settings import SETTINGS_FILENAME
 
     values = {INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-              LOG_FILENAME, MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME, CACHE_FILENAME, SETTINGS_FILENAME}
+              LOG_FILENAME, MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME, CACHE_FILENAME, SETTINGS_FILENAME,
+              f"{SHARED_DIR_NAME}/", f"{PBC_DIR_NAME}/", f"{PREPARED_DIR_NAME}/"}
     quoted = {f"``{v}``" for v in set(Status.ALL) | set(Override.ALL)}
     for path in (REPO / "tracker").glob("*.py"):
         text = path.read_text(encoding="utf-8")

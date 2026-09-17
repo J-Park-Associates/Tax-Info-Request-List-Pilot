@@ -34,6 +34,7 @@ from openpyxl import Workbook, load_workbook
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker import STANDING_RULES
 from tracker.manifest import (
+    ISO_DATE_HINT,
     DEFAULT_EXTENSIONS,
     EXPECTED_PATTERN,
     UNSCANNED_LABEL,
@@ -272,7 +273,7 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None) -> Engag
         try:
             due = dt.date.fromisoformat(due_raw)
         except ValueError:
-            raise ManifestError(f"Due date must be YYYY-MM-DD, got {due_raw!r}") from None
+            raise ManifestError(f"Due date must be {ISO_DATE_HINT}, got {due_raw!r}") from None
     else:
         due = base.due
     return replace(
@@ -395,7 +396,7 @@ def _cmd_list(argv: list[str]) -> dict:
 def _cmd_create(argv: list[str]) -> dict:
     """Create a new engagement from a JSON spec on stdin:
     {"name": "...", "form": "1040", "year": 2026, "client": "...", "link": "...",
-     "due": "YYYY-MM-DD", "items": [{identifier, document, extensions, ...}, ...]}
+     "due": <ISO_DATE_HINT>, "items": [{identifier, document, extensions, ...}, ...]}
     year defaults to the most recently ended year; catalog rows are shifted to it.
     client/link/due land on the manifest's Engagement sheet, which is all the
     scheduled run needs - there is no registry to add the engagement to.

@@ -1,4 +1,4 @@
-"""Scan orchestrator for the Client Document Tracker (component 5).
+"""Scan orchestrator for the tracker (component 5).
 
 Ties the layers together for one engagement: walk ``PREPARED_DIR_NAME/`` — the
 working set :mod:`tracker.filer` built from the client's drop folder — match
@@ -100,7 +100,7 @@ class ScanReport:
     engagement_dir: Path
     items: list[RequestItem] = field(default_factory=list)   # the rows as loaded
     updates: dict[str, StatusUpdate] = field(default_factory=dict)
-    warnings: list[str] = field(default_factory=list)   # things in Prepared/ no row accounts for
+    warnings: list[str] = field(default_factory=list)   # things in PREPARED_DIR_NAME no row accounts for
     written: bool = False    # manifest updated on disk
     deferred: bool = False   # manifest was locked; updates went to sidecar
     dry_run: bool = False

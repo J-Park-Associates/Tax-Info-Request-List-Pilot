@@ -1,4 +1,4 @@
-"""Tier 1-2 file validation for the Client Document Tracker (component 3).
+"""Tier 1-2 file validation for the tracker (component 3).
 
 Pure, read-only functions over local paths — no dependency on any one sync
 provider (OneDrive and Google Drive for desktop both work). Cloud awareness
@@ -348,7 +348,7 @@ if __name__ == "__main__":
             n = len(result.valid)
             print(f"    => {n} valid file(s), expected {item.expected_count}\n")
 
-    # Anything loose in Prepared/ or in folders matching no identifier.
+    # Anything loose in PREPARED_DIR_NAME or in folders matching no identifier.
     claimed = {f for folders in assigned.values() for f in folders}
     if prepared.is_dir():
         loose = [

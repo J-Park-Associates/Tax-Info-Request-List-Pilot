@@ -190,7 +190,7 @@ def test_google_stub_review_reason_tells_the_client_what_to_do(tmp_path):
 
 def test_a_matching_document_the_row_refuses_says_why(tmp_path):
     # The content says "W-2", but the row's size floor rejects the file. The
-    # review reason must carry the real cause, not "matched no request".
+    # review reason must carry the real cause, not UNMATCHED.
     strict = RequestItem(
         identifier="A01", document="W-2 Wage Statements", allowed_extensions=("pdf",),
         min_size_kb=50, required_keywords=("W-2",),

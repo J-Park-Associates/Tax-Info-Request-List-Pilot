@@ -327,7 +327,7 @@ if __name__ == "__main__":
         parser.error(str(exc))
 
     if ns.out:
-        # Task Scheduler wants UTF-16 for an XML it will import.
+        # Task Scheduler wants SCHEDULE_XML_ENCODING for an XML it will import.
         Path(ns.out).write_text(payload, encoding=encoding)
         print(f"Wrote {ns.out}")
         if ns.install:

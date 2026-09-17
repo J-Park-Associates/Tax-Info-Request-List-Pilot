@@ -174,7 +174,7 @@ def _carry(
     )
 
     if prior.manual_override == Override.WAIVED:
-        return item, ORIGIN_WAIVED, "waived last year; clear the override to request it again"
+        return item, ORIGIN_WAIVED, f"{ORIGIN_WAIVED}; clear the override to request it again"
     if prior.status == Status.RECEIVED:
         note = f"received last year ({prior.file_count or 0} file(s))"
         if expected > prior.expected_count:

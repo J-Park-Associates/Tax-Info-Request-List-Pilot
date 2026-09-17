@@ -1,4 +1,4 @@
-"""Folder scaffolding for the Client Document Tracker (component 2, docs/ROADMAP.md).
+"""Folder scaffolding for the tracker (component 2, docs/ROADMAP.md).
 
 Reads an engagement's manifest (``MANIFEST_FILENAME``) and lays out both sides of one
 engagement:

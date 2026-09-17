@@ -36,7 +36,7 @@ difference is the point:
 - **tested by** — the test file that owns the module by name
   (`tests/test_filer.py` → `tracker/filer.py`). This is coverage.
 - **exercised by** — some other test imports it, usually to borrow a fixture.
-  Real and worth knowing (ten test files import `manifest.py`, so its schema
+  Real and worth knowing (many test files import `manifest.py`, so its schema
   is load-bearing across the suite) but it is *not* coverage of that module.
 - **no dedicated test file** — said plainly where it is true; the map names
   each one.

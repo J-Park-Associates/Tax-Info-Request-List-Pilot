@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from tracker.manifest import (
+    ISO_DATE_HINT,
     RequestItem,
     Status,
     load_engagement_info,
@@ -71,7 +72,7 @@ DRAFT_FILENAME = "reminder-draft.txt"
 DUE_FLAG = "--due"
 
 #: Where a fresh draft goes when the standing one has been edited by hand.
-NEW_DRAFT_FILENAME = "reminder-draft.NEW.txt"
+NEW_DRAFT_FILENAME = Path(DRAFT_FILENAME).stem + ".NEW" + Path(DRAFT_FILENAME).suffix
 
 _FINGERPRINT_PREFIX = "Fingerprint: "
 _RULE_WIDTH = 60
@@ -515,7 +516,7 @@ if __name__ == "__main__":
     parser.add_argument("--client", default="", help="client's name for the greeting")
     parser.add_argument("--engagement-name", default="", help="override the folder name")
     parser.add_argument("--link", default="", help="share link to the client drop folder")
-    parser.add_argument(DUE_FLAG, default="", help="due date, YYYY-MM-DD")
+    parser.add_argument(DUE_FLAG, default="", help=f"due date, {ISO_DATE_HINT}")
     parser.add_argument("--from-name", default="", help="who the email is from")
     parser.add_argument("--firm", default="", help="firm name for the sign-off")
     parser.add_argument("--write", action="store_true",
@@ -527,7 +528,7 @@ if __name__ == "__main__":
         try:
             due = dt.date.fromisoformat(ns.due)
         except ValueError:
-            parser.error(f"{DUE_FLAG} must be YYYY-MM-DD, got {ns.due!r}")
+            parser.error(f"{DUE_FLAG} must be {ISO_DATE_HINT}, got {ns.due!r}")
 
     try:
         result = draft_reminder(

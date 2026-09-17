@@ -2,7 +2,7 @@
   "schema": 1,
   "generated": "2026-09-17",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "5f10d4147f8a19c2",
+  "generator_sha256": "eec602a35951abbe",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 78,
     "edges": 240,
-    "reused": 45
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -84,7 +84,7 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "10293596056a443d",
+      "sha256": "fefdd6be648326f6",
       "lines": 80,
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
     },
@@ -92,8 +92,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "dffee0f4281dd314",
-      "lines": 679,
+      "sha256": "fb315fc377a11172",
+      "lines": 680,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -113,18 +113,20 @@
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=never - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes."
     },
     {
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7a2d3c09041e9581",
-      "lines": 347,
+      "sha256": "acbd2599034222dc",
+      "lines": 350,
       "exports": [
         "ContentCache",
         "ContentResult",
         "MAX_PAGES",
+        "TEXT_EXTENSIONS",
+        "XLSX_EXTENSIONS",
         "_MAX_OCR_PAGES",
         "_MIN_TEXT_CHARS",
         "check_content",
@@ -135,7 +137,9 @@
         "rules_fingerprint"
       ],
       "constants": {
-        "MAX_PAGES": "10"
+        "MAX_PAGES": "10",
+        "XLSX_EXTENSIONS": "('xlsx', 'xlsm')",
+        "TEXT_EXTENSIONS": "('csv', 'tsv', 'txt')"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. Caches verdicts.",
       "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run."
@@ -144,7 +148,7 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "59685b27faa70936",
+      "sha256": "76f3b3679c88d076",
       "lines": 814,
       "cli": "python -m tracker.filer",
       "exports": [
@@ -215,8 +219,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c139d4d472bce642",
-      "lines": 1060,
+      "sha256": "815078a80ff90f94",
+      "lines": 1062,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -247,6 +251,7 @@
         "EXPECTED_PATTERN",
         "EngagementInfo",
         "HEADERS",
+        "ISO_DATE_HINT",
         "LABEL_SEPARATOR",
         "LOCK_RETRIES",
         "LOCK_RETRY_DELAY",
@@ -324,6 +329,7 @@
         "YEAR_MIN": "1900",
         "YEAR_MAX": "2099",
         "DATE_FORMAT": "'yyyy-mm-dd'",
+        "ISO_DATE_HINT": "'YYYY-MM-DD'",
         "UNSCANNED_LABEL": "'Requested'",
         "SUMMARY_SEPARATOR": "' \u00b7 '",
         "SUMMARY_EMPTY": "'no requests'",
@@ -408,8 +414,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "4240b61c0c3d666d",
-      "lines": 559,
+      "sha256": "525455060d895ad2",
+      "lines": 560,
       "cli": "python -m tracker.reminder",
       "exports": [
         "DRAFT_BANNER",
@@ -448,7 +454,6 @@
       "constants": {
         "DRAFT_FILENAME": "'reminder-draft.txt'",
         "DUE_FLAG": "'--due'",
-        "NEW_DRAFT_FILENAME": "'reminder-draft.NEW.txt'",
         "SUBJECT_NEEDED": "'{engagement}: {n} document(s) still needed'",
         "SUBJECT_COMPLETE": "'{engagement}: we have everything - thank you'",
         "DRAFT_BANNER": "'DRAFT - NOTHING HAS BEEN SENT.'",
@@ -469,7 +474,7 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6e54aff1cdee1738",
+      "sha256": "67749bc0b172a8c8",
       "lines": 385,
       "cli": "python -m tracker.rollover",
       "exports": [
@@ -502,7 +507,7 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7f00a71983af8f0f",
+      "sha256": "5c36c3cbc99f631e",
       "lines": 275,
       "exports": [
         "AMBIGUOUS",
@@ -532,8 +537,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "492300cc89469a86",
-      "lines": 448,
+      "sha256": "968fa77aec1f291d",
+      "lines": 449,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -574,7 +579,7 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7109f52793890140",
+      "sha256": "cb13a6d4093af3fe",
       "lines": 280,
       "cli": "python -m tracker.scaffold",
       "exports": [
@@ -603,14 +608,14 @@
         "PREPARED_DIR_NAME": "'Prepared'",
         "REVIEW_DIR_NAME": "'00 - Needs Review'"
       },
-      "role": "Turns a manifest into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/{Identifier} - {Document}/ plus 00 - Needs Review. Writes the client's _README.txt.",
+      "role": "Turns a manifest into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/<folder_name_for(item)>/ plus 00 - Needs Review. Writes the client's _README.txt.",
       "notes": "Also the home of the path constants every other module imports: MANIFEST_FILENAME, SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME. Runs on every scheduled pass now; the README is rewritten only when its text changed. The README contact comes from the Engagement sheet (firm, else sender) unless given."
     },
     {
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3e185c9e86f0ed95",
+      "sha256": "8ff600a95401b78c",
       "lines": 376,
       "cli": "python -m tracker.scanner",
       "exports": [
@@ -649,7 +654,7 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9c166c8498a377c7",
+      "sha256": "f76eabd7a171f7f7",
       "lines": 349,
       "cli": "python -m tracker.scheduling",
       "exports": [
@@ -707,7 +712,7 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "dfc6d49eaf6ddfc6",
+      "sha256": "9684623c721f6804",
       "lines": 153,
       "cli": "python -m tracker.settings",
       "exports": [
@@ -780,7 +785,7 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b97ef763182fdd8b",
+      "sha256": "085c0d8186c5fd4b",
       "lines": 364,
       "cli": "python -m tracker.validators",
       "exports": [
@@ -820,7 +825,7 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "3149fb53a4b79def",
+      "sha256": "0bf90b26ce0c53a5",
       "lines": 95,
       "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC.",
       "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command."
@@ -875,7 +880,7 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "81c39d264839127e",
+      "sha256": "b4ae70024ff28767",
       "lines": 119,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
@@ -901,7 +906,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "80ea9268ec836859",
+      "sha256": "c5851cc919f14ee4",
       "lines": 418,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -918,7 +923,7 @@
       "id": "requirements.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b36f883cbcc06548",
+      "sha256": "84d7fa56ce6b1109",
       "lines": 13,
       "role": "Runtime and dev dependencies; the optional OCR extras are documented here too."
     },
@@ -1071,7 +1076,7 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "82db290890471483",
+      "sha256": "48f12eb9ce5962b1",
       "lines": 576,
       "exports": [
         "demo_root",
@@ -1206,8 +1211,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f595e5b9bb71811c",
-      "lines": 508,
+      "sha256": "1202756b1e22a0ca",
+      "lines": 509,
       "exports": [
         "SAMPLE_ITEMS",
         "manifest",
@@ -1321,7 +1326,7 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f28ae4048ae80b19",
+      "sha256": "0a9578d2c66d76a0",
       "lines": 383,
       "exports": [
         "ROOT",
@@ -1403,7 +1408,7 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "020743b284e15fd0",
+      "sha256": "5dd389d38e9e8b6b",
       "lines": 259,
       "exports": [
         "DONATIONS",
@@ -1586,8 +1591,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "87bb9dae78907bba",
-      "lines": 488,
+      "sha256": "799edb812e637950",
+      "lines": 516,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -1597,10 +1602,12 @@
         "test_documents_give_the_settings_hint_the_api_gives",
         "test_documents_name_buttons_by_their_labels",
         "test_documents_name_only_runtime_files_the_code_owns",
+        "test_documents_name_the_engagement_folders_as_the_scaffold_does",
         "test_documents_quote_the_any_value_only_as_the_constants_say_it",
         "test_documents_spell_manifest_headers_exactly",
         "test_documents_state_the_naming_pattern_with_the_one_separator",
         "test_every_cli_flag_a_document_names_exists_in_the_code",
+        "test_gitignore_ignores_the_junk_the_validators_ignore",
         "test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo",
         "test_prose_names_no_weekday_but_the_draft_day",
         "test_the_api_docstring_lists_exactly_the_commands",
@@ -1684,8 +1691,8 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "5f10d4147f8a19c2",
-      "lines": 729,
+      "sha256": "eec602a35951abbe",
+      "lines": 737,
       "cli": "python -m tools.repo_map",
       "exports": [
         "CURATED_PATH",

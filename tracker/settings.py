@@ -11,7 +11,7 @@ Now it is written once, in ``SETTINGS_FILENAME`` beside the app - next to the
 packaged executable, or in the repository root when run from source - and
 both read it. The app asks for it on first launch and never again; the
 schedule is generated from the same value (``python -m tracker.scheduling``
-without ``--root`` reads it too).
+without ``ROOT_FLAG`` reads it too).
 
 Deliberately tiny: one JSON object (the clients root and the firm's name),
 read and written whole, atomic on write. There is no second setting to drift.

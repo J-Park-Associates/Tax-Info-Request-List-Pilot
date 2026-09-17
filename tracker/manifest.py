@@ -1,4 +1,4 @@
-"""Manifest layer for the Client Document Tracker (component 1, docs/ROADMAP.md).
+"""Manifest layer for the tracker (component 1, docs/ROADMAP.md).
 
 Owns everything about the manifest workbook (``MANIFEST_FILENAME``): the schema, loading and validating
 rows into :class:`RequestItem` dataclasses, and writing scanner status back
@@ -106,6 +106,8 @@ _ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
 WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
 WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
 DATE_FORMAT = "yyyy-mm-dd"
+#: How a date is asked for on a command line or in the wizard.
+ISO_DATE_HINT = "YYYY-MM-DD"
 
 #: Characters an identifier may not contain. The identifier becomes the
 #: prefix of a Windows folder name and is matched back by that prefix, so

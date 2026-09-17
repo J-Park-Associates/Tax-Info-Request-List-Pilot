@@ -324,7 +324,7 @@ def test_rollover_carries_the_client_but_not_last_years_link_or_due(capsys, demo
     assert info["client"] == "John Smith" and info["sender"] == "Jason"
     assert info["link"] == "" and info["due"] == ""
     assert info["name"] == ""                      # the folder is the name
-    assert payload["created"] == "Smith 2025 - 2026"
+    assert payload["created"] == api.ROLLOVER_NAME_PATTERN.format(prior="Smith 2025", year=2026)
 
 
 def test_a_bad_due_date_is_a_sentence(capsys, demo_root):
@@ -417,8 +417,8 @@ def test_rollover_retires_the_prior_in_the_priors_list(capsys, demo_root):
     assert payload["state"]["engagement"]["rolled_from"].endswith("Smith 2025")
     code, payload = run(capsys, "priors")
     by_name = {p["name"]: p for p in payload["priors"]}
-    assert by_name["Smith 2025"]["superseded_by"] == "Smith 2025 - 2026"
-    assert by_name["Smith 2025 - 2026"]["superseded_by"] == ""
+    assert by_name["Smith 2025"]["superseded_by"] == api.ROLLOVER_NAME_PATTERN.format(prior="Smith 2025", year=2026)
+    assert by_name[api.ROLLOVER_NAME_PATTERN.format(prior="Smith 2025", year=2026)]["superseded_by"] == ""
 
 
 def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):

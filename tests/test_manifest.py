@@ -11,6 +11,7 @@ from openpyxl.workbook.workbook import Workbook as WorkbookClass
 from tests.samples import col
 from tracker import reasons
 from tracker.manifest import (
+    DEFAULT_MIN_SIZE_KB,
     YES,
     NO,
     ENGAGEMENT_LABELS,
@@ -85,7 +86,7 @@ def test_template_load_roundtrip(manifest):
     assert a01.document == "Dec 2025 Bank Statement"
     assert a01.period == "Dec 2025"
     assert a01.expected_count == 1          # default
-    assert a01.min_size_kb == 5             # default
+    assert a01.min_size_kb == DEFAULT_MIN_SIZE_KB
     assert a01.allowed_extensions == ("pdf",)
     assert a01.required_keywords == ("Chase",)
     assert a01.any_keywords == ()

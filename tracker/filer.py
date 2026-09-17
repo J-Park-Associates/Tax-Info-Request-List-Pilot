@@ -186,7 +186,7 @@ class FileError:
 
     name: str
     error: str
-    left_in_place: bool   # True: untouched in Shared/, retried next run
+    left_in_place: bool   # True: untouched in SHARED_DIR_NAME, retried next run
 
 
 @dataclass(slots=True)
@@ -211,7 +211,7 @@ class FileReport:
 
 
 def prepared_name_for(item: RequestItem, extension: str, taken: set[str]) -> str:
-    """Canonical working-copy name: ``{Identifier} - {Document} - {Period}.ext``.
+    """Canonical working-copy name: ``label_for(identifier, document, period)`` plus the extension.
 
     ``taken`` holds names already used in the destination folder; collisions
     get ``(2)``, ``(3)``… so a request expecting several files keeps them in
@@ -422,7 +422,7 @@ def unrecorded_in_pbc(pbc_dir: Path, engagement_dir: Path, entries: list[IndexEn
 
 def _prune_empty_dirs(shared_dir: Path, keep: Path) -> None:
     """Remove folders the client dragged in that are empty now their files
-    have moved to PBC/. Deepest first; anything that is not empty, is the
+    have moved to PBC_DIR_NAME/. Deepest first; anything that is not empty, is the
     PBC folder, or is a sync client's staging folder is left alone."""
     candidates = sorted(
         (p for p in shared_dir.rglob("*") if p.is_dir()),
@@ -592,12 +592,12 @@ def _sort_one(
             and not (engagement_dir / earlier.prepared_location).exists()
         ):
             # The same document again, and its working copy is gone from
-            # Prepared/ - deleted by hand, most likely. A re-send is the
+            # PREPARED_DIR_NAME - deleted by hand, most likely. A re-send is the
             # client answering "Missing"; calling it a duplicate would keep
             # the row Missing for ever. File it again.
             refiled = (
                 f"re-filed: the earlier copy {earlier.prepared_location} "
-                "was no longer in Prepared"
+                f"was no longer in {PREPARED_DIR_NAME}"
             )
         else:
             entry = IndexEntry(

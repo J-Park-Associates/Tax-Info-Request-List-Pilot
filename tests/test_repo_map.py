@@ -336,8 +336,8 @@ def test_the_generated_outputs_are_not_mapped(repo):
 
     graph = repo_map.build(repo)
     ids = {n["id"] for n in graph["nodes"]}
-    assert "docs/repo-map.json" not in ids
-    assert "docs/repo-map.md" not in ids
+    for excluded in repo_map.EXCLUDED:
+        assert excluded not in ids
     assert repo_map.stale_files(graph, repo) == {"changed": [], "added": [], "removed": []}
 
 

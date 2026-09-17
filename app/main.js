@@ -16,7 +16,7 @@ const API_NAME = PKG.config.apiName;
 
 // Portable build: the PyInstaller-frozen API executable (package.json's
 // config.apiName) ships inside resources/. Dev mode falls back to the system Python + repo layout.
-// settings.json (the clients root) lives beside the app either way: next
+// The settings file (the clients root) lives beside the app either way: next
 // to the packaged executable, or in the repository root from source.
 const FROZEN_API = app.isPackaged
   ? path.join(process.resourcesPath, API_NAME, `${API_NAME}.exe`)

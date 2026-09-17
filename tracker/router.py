@@ -161,7 +161,7 @@ def route_file(
         return Routing(path=path, identifier=None, reason=PENDING, pending=True)
 
     # A Google-native stub can never be filed, and the client can fix it —
-    # say so instead of the generic "matched no request".
+    # say so instead of the generic UNMATCHED.
     if stub := google_stub_reason(path):
         return Routing(path=path, identifier=None, reason=stub)
 
@@ -233,7 +233,7 @@ def route_file(
     # The content says which request this is, but the file itself was
     # refused (too small, wrong type, unreadable PDF). Say that, so the
     # person reviewing it - and the client, via the reminder - hears the
-    # real reason instead of "matched no request".
+    # real reason instead of UNMATCHED.
     if blocked:
         return _contested(path, blocked)
 
