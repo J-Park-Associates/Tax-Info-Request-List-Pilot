@@ -1,0 +1,8 @@
+[project]
+name = "tax-document-tracker"
+version = "1.1.0"
+description = "Deterministic tax-document request tracking"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

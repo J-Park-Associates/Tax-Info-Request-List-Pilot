@@ -43,8 +43,6 @@ client-files/**
 *.qbw
 *.qbb
 *.tlg
-~$*.xlsx
-~$*.docx
 
 # Scheduled-run artifacts. Drafts quote real clients' outstanding documents
 # and the run log names them. Neither belongs in the repo — they live beside
@@ -55,4 +53,3 @@ settings.json
 tax-tracker.xml
 reminder-draft.txt
 reminder-draft.NEW.txt
-tax-tracker.xml

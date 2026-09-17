@@ -53,8 +53,8 @@ SCHEMA_VERSION = 1
 #: Extensions worth a node. Everything else is noise in a code map.
 #: ``.yml``/``.yaml`` earns its place because CI config is part of how the repo
 #: works, not decoration around it — and an agent reading the map should know a
-#: workflow exists. Only tracked files are mapped, so the gitignored
-#: ``engagements.yaml`` (real client names, real share links) never appears.
+#: workflow exists. Only tracked files are mapped, so gitignored runtime files
+#: (settings.json, drafts, logs) never appear.
 SOURCE_SUFFIXES = {".py", ".js", ".html", ".css", ".csv", ".md", ".bat",
                    ".json", ".txt", ".svg", ".yml", ".yaml"}
 
@@ -70,12 +70,9 @@ LAYERS: tuple[tuple[str, str, str], ...] = (
     ("tracker/", "module", "core"),
     ("tests/", "test", "tests"),
     ("tools/", "tool", "tooling"),
-    ("templates/", "template", "data"),
     ("docs/", "doc", "docs"),
     ("app/renderer/", "ui", "desktop-app"),
     ("app/", "module", "desktop-app"),
-    ("demo/standalone/", "demo", "demo"),
-    ("demo/", "demo", "demo"),
 )
 
 _REQUIRE = re.compile(r"""require\(\s*["']([^"']+)["']\s*\)""")
@@ -94,6 +91,7 @@ class Node:
     sha256: str = ""
     lines: int = 0
     exports: list[str] = field(default_factory=list)
+    constants: dict[str, str] = field(default_factory=dict)   # UPPER_CASE = literal, derived
     cli: str = ""
     role: str = ""            # curated
     notes: str = ""           # curated
@@ -109,6 +107,8 @@ class Node:
             out["cli"] = self.cli
         if self.exports:
             out["exports"] = self.exports
+        if self.constants:
+            out["constants"] = self.constants
         if self.role:
             out["role"] = self.role
         if self.notes:
@@ -178,7 +178,7 @@ def test_edge_kind(test_path: str, target: str) -> str:
     - ``exercises`` — any other test importing it. Real and worth knowing
       (ten test files import manifest.py, so its schema is load-bearing
       across the suite) but it is not that module's coverage. A test
-      borrowing DEMO_ITEMS from tracker/api.py to build a fixture asserts
+      borrowing a fixture from tests/samples.py to build an engagement asserts
       nothing whatsoever about tracker/api.py.
     - ``imports``   — a test importing another *test* for a shared helper.
       Not coverage in any sense; a fixture builder being reused.
@@ -206,6 +206,20 @@ def _unambiguous_stems(paths: list[str]) -> dict[str, str]:
 
 def parse_python(text: str, path: str) -> tuple[list[str], list[tuple[str, str]], bool]:
     """Exported names, (module, kind) imports, and whether it has a CLI."""
+    exports, imports, has_cli, _ = parse_python_full(text, path)
+    return exports, imports, has_cli
+
+
+def parse_python_full(
+    text: str, path: str
+) -> tuple[list[str], list[tuple[str, str]], bool, dict[str, str]]:
+    """As parse_python, plus the module's literal constants.
+
+    A constant is a top-level ``UPPER_CASE = <literal>`` (strings, numbers,
+    booleans, tuples of those). They are rendered into the map so a doc can
+    cite ``MAX_PAGES`` and a reader can see its value without the source -
+    and so a value never has to be restated in prose to be findable.
+    """
     try:
         tree = ast.parse(text)
     except SyntaxError as exc:
@@ -230,6 +244,7 @@ def parse_python(text: str, path: str) -> tuple[list[str], list[tuple[str, str]]
                     and test.left.id == "__name__"):
                 has_cli = True
 
+    constants: dict[str, str] = {}
     for node in tree.body:  # top level only — nested defs are not the API
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             if not node.name.startswith("_"):
@@ -238,8 +253,23 @@ def parse_python(text: str, path: str) -> tuple[list[str], list[tuple[str, str]]
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id.isupper():
                     exports.append(target.id)
+                    literal = _literal_text(node.value)
+                    if literal is not None and not target.id.startswith("_"):
+                        constants[target.id] = literal
 
-    return exports, imports, has_cli
+    return exports, imports, has_cli, constants
+
+
+def _literal_text(value: ast.expr) -> str | None:
+    """A short rendering of a literal constant, or None if it is not one."""
+    if isinstance(value, ast.Constant):
+        return repr(value.value)
+    if isinstance(value, ast.Tuple) and all(isinstance(e, ast.Constant) for e in value.elts):
+        rendered = ", ".join(repr(e.value) for e in value.elts)
+        return f"({rendered},)" if len(value.elts) == 1 else f"({rendered})"
+    if isinstance(value, ast.JoinedStr):
+        return None
+    return None
 
 
 def parse_js(text: str) -> list[str]:
@@ -259,8 +289,9 @@ def derive_node(path: str, root: Path) -> tuple[Node, list[dict]]:
     if path.endswith(".py"):
         text = full.read_text(encoding="utf-8")
         node.lines = text.count("\n") + 1
-        exports, imports, has_cli = parse_python(text, path)
+        exports, imports, has_cli, constants = parse_python_full(text, path)
         node.exports = sorted(set(exports))
+        node.constants = constants
         if has_cli:
             node.cli = f"python -m {module_name(path)}" if "/" in path else f"python {path}"
 
@@ -375,7 +406,8 @@ def build(root: Path | None = None, previous: dict | None = None) -> dict:
             node = Node(
                 id=path, type=cached["type"], layer=cached["layer"],
                 sha256=digest, lines=cached.get("lines", 0),
-                exports=cached.get("exports", []), cli=cached.get("cli", ""),
+                exports=cached.get("exports", []), constants=cached.get("constants", {}),
+                cli=cached.get("cli", ""),
             )
             edges.extend(edges_by_source.get(path, []))
             reused += 1
@@ -505,6 +537,9 @@ def render_markdown(graph: dict) -> str:
             lines.append(f"- **`{node['id']}`**{' — ' + role if role else ''}")
             if node.get("cli"):
                 lines.append(f"  - CLI: `{node['cli']}`")
+            if node.get("constants"):
+                rendered = ", ".join(f"`{k}` = {v}" for k, v in node["constants"].items())
+                lines.append(f"  - constants: {rendered}")
             imports = sorted({e["to"] for e in out_edges.get(node["id"], [])
                               if e["type"] == "imports" and not e["to"].startswith("pkg:")})
             if imports:

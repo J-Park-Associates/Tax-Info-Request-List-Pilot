@@ -30,6 +30,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from tracker import reasons
 from tracker.manifest import RequestItem
 
 # pypdf logs its own warnings while parsing corrupt files; we already surface
@@ -38,7 +39,9 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 # Junk that never counts as a client document.
 _IGNORED_NAMES = {"desktop.ini", "thumbs.db", ".ds_store"}
-_IGNORED_PREFIXES = ("~$", ".tmp.drive")  # Office locks; Google Drive transfer temps
+#: Office lock files; Google Drive transfer temps share the staging prefix below.
+OFFICE_LOCK_PREFIX = "~$"
+_IGNORED_PREFIXES = (OFFICE_LOCK_PREFIX, ".tmp.drive")
 _IGNORED_SUFFIXES = (".tmp", ".driveupload", ".drivedownload")
 
 # Google-native documents sync down as tiny shortcut/stub files, not real
@@ -99,6 +102,23 @@ class FolderResult:
 # ----------------------------------------------------------------- tier 1 ----
 
 
+#: Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
+#: folders (.tmp.driveupload / .tmp.drivedownload); anything under one is a
+#: partial transfer, not a delivered document, and the folder itself is
+#: the sync client's, never the client's.
+_SYNC_STAGING_PREFIX = ".tmp.drive"
+
+
+def is_sync_staging(name: str) -> bool:
+    """True for a folder name the sync client uses for transfers in flight."""
+    return name.lower().startswith(_SYNC_STAGING_PREFIX)
+
+
+def extension_of(path: Path) -> str:
+    """The extension the rules see: lower-case, no dot (``"pdf"``)."""
+    return path.suffix.lower().lstrip(".")
+
+
 def is_ignored(path: Path) -> bool:
     """True for OS/Office/sync junk that never counts as a client document."""
     name = path.name.lower()
@@ -108,10 +128,7 @@ def is_ignored(path: Path) -> bool:
         or name.endswith(_IGNORED_SUFFIXES)
     ):
         return True
-    # Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
-    # directories (.tmp.driveupload / .tmp.drivedownload); anything under
-    # one is a partial transfer, not a delivered document.
-    return any(part.lower().startswith(".tmp.drive") for part in path.parts[:-1])
+    return any(is_sync_staging(part) for part in path.parts[:-1])
 
 
 def google_stub_reason(path: Path) -> str:
@@ -120,14 +137,10 @@ def google_stub_reason(path: Path) -> str:
     Empty string for anything else. Shared by tier-2 validation and the
     router so the client gets the same actionable sentence either way.
     """
-    extension = path.suffix.lower().lstrip(".")
+    extension = extension_of(path)
     if extension not in _GOOGLE_STUB_EXTENSIONS:
         return ""
-    return (
-        f".{extension} is a Google Docs shortcut, not the document itself; "
-        "ask the client to download it (File > Download > PDF or Excel) "
-        "and upload that copy"
-    )
+    return reasons.GOOGLE_STUB.format(extension=extension)
 
 
 def is_cloud_placeholder(path: Path) -> bool:
@@ -192,11 +205,11 @@ def _pdf_error_uncached(path: Path) -> str:
         reader = PdfReader(path)
         if reader.is_encrypted:
             if not reader.decrypt(""):
-                return "PDF is password-protected; please ask the client for an unlocked copy"
+                return reasons.PASSWORD_PROTECTED.format()
         if len(reader.pages) == 0:
-            return "PDF contains no pages"
+            return reasons.NO_PAGES.format()
     except Exception as exc:  # pypdf raises many types on corrupt input
-        return f"not a readable PDF ({exc.__class__.__name__}: {exc})"
+        return reasons.UNREADABLE_PDF.format(error=f"{exc.__class__.__name__}: {exc}")
     return ""
 
 
@@ -207,18 +220,19 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
             path=path,
             ok=False,
             pending_sync=True,
-            reason="cloud-only placeholder; waiting for OneDrive/Google Drive to sync",
+            reason=reasons.PENDING_SYNC.format(),
         )
 
-    extension = path.suffix.lower().lstrip(".")
+    extension = extension_of(path)
     if stub := google_stub_reason(path):
         return FileResult(path=path, ok=False, reason=stub)
     if item.allowed_extensions and extension not in item.allowed_extensions:
-        allowed = ", ".join(item.allowed_extensions)
         return FileResult(
             path=path,
             ok=False,
-            reason=f"extension .{extension} not allowed (expected: {allowed})",
+            reason=reasons.EXTENSION_NOT_ALLOWED.format(
+                extension=extension, allowed=", ".join(item.allowed_extensions)
+            ),
         )
 
     try:
@@ -231,16 +245,13 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
             path=path,
             ok=False,
             pending_sync=True,
-            reason=f"file disappeared during the scan ({exc.__class__.__name__}); will re-check next run",
+            reason=reasons.VANISHED.format(error=exc.__class__.__name__),
         )
     if size < item.min_size_kb * 1024:
         return FileResult(
             path=path,
             ok=False,
-            reason=(
-                f"file is {size / 1024:.1f} KB, below the {item.min_size_kb} KB "
-                "minimum; possible placeholder or failed upload"
-            ),
+            reason=reasons.TOO_SMALL.format(size_kb=size / 1024, minimum=item.min_size_kb),
         )
 
     if extension == "pdf":

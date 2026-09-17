@@ -5,9 +5,9 @@ Emits a Windows Task Scheduler job definition, or the n8n equivalent, for::
     python -m tracker.runner <clients root>
 
 **One task, not two.** The runner decides for itself whether today is the day
-to draft reminders, so the schedule does not need a second weekly job — a
-single daily task files, scans, and quietly drafts the chase emails when
-Saturday comes around. Keeping the day in one tested function beats keeping
+to draft reminders (``tracker.runner.DRAFT_WEEKDAY``), so the schedule does not
+need a second weekly job — a single daily task files, scans, and quietly drafts
+the chase emails when that day comes around. Keeping the day in one tested function beats keeping
 it in a calendar entry nobody can read, and it means a run that Task Scheduler
 misses (laptop closed on Saturday) still drafts when it next runs, rather than
 skipping the week.
@@ -29,8 +29,30 @@ import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from xml.sax.saxutils import escape
 
-TASK_NAME = "Tax Document Tracker"
+from tracker.settings import product_name
+
+#: The scheduled task is named after the product, wherever that is set.
+TASK_NAME = product_name()
 DEFAULT_START = "07:00"
+#: Filing and scanning repeat through the day this often (minutes); the
+#: reminder still drafts only on the drafting day. 0 = once a day.
+DEFAULT_REPEAT_MINUTES = 120
+#: The generated Task Scheduler definition, beside the app's settings.
+SCHEDULE_XML_FILENAME = "tax-tracker.xml"
+#: The job never overruns the next daily start.
+EXECUTION_TIME_LIMIT = "PT2H"
+#: Any date in the past will do for a daily trigger; it is when the series began.
+_START_BOUNDARY_DATE = "2026-01-01"
+
+
+def start_hour(start_time: str = DEFAULT_START) -> int:
+    """The hour of an ``HH:MM`` start time - the n8n form of the same default."""
+    return int(start_time.split(":")[0])
+
+
+def runner_arguments(root: str | Path) -> str:
+    """The one command line the scheduled job runs, whoever schedules it."""
+    return f'-m tracker.runner "{root}" --log'
 
 
 def _xml_escape(value: str) -> str:
@@ -78,7 +100,9 @@ def task_scheduler_xml(
     """
     if repeat_minutes and repeat_minutes < 5:
         raise ValueError("repeat_minutes below 5 would stack runs on top of each other")
+    from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
 
+    draft_day = WEEKDAY_NAMES[DRAFT_WEEKDAY].capitalize()
     repetition = ""
     if repeat_minutes:
         repetition = (
@@ -94,12 +118,12 @@ def task_scheduler_xml(
   <RegistrationInfo>
     <Author>{_xml_escape(author)}</Author>
     <Description>Files and scans every engagement found under {_xml_escape(root)}.
-On Saturdays it also drafts the client reminder emails. It never sends them.</Description>
+On {draft_day}s it also drafts the client reminder emails. It never sends them.</Description>
     <URI>\\{_xml_escape(task_name)}</URI>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
-      <StartBoundary>2026-01-01T{_xml_escape(start_time)}:00</StartBoundary>
+      <StartBoundary>{_START_BOUNDARY_DATE}T{_xml_escape(start_time)}:00</StartBoundary>
       <Enabled>true</Enabled>{repetition}
       <ScheduleByDay>
         <DaysInterval>1</DaysInterval>
@@ -118,7 +142,7 @@ On Saturdays it also drafts the client reminder emails. It never sends them.</De
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <StartWhenAvailable>true</StartWhenAvailable>
     <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
-    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>{EXECUTION_TIME_LIMIT}</ExecutionTimeLimit>
     <Enabled>true</Enabled>
     <Hidden>false</Hidden>
     <WakeToRun>false</WakeToRun>
@@ -127,7 +151,7 @@ On Saturdays it also drafts the client reminder emails. It never sends them.</De
   <Actions Context="Author">
     <Exec>
       <Command>{_xml_escape(python)}</Command>
-      <Arguments>-m tracker.runner "{_xml_escape(root)}" --log</Arguments>
+      <Arguments>{_xml_escape(runner_arguments(root))}</Arguments>
       <WorkingDirectory>{_xml_escape(working_dir)}</WorkingDirectory>
     </Exec>
   </Actions>
@@ -140,14 +164,16 @@ def n8n_workflow(
     python: str | Path,
     root: str | Path,
     working_dir: str | Path,
-    hour: int = 7,
+    hour: int | None = None,
     task_name: str = TASK_NAME,
 ) -> dict:
     """An n8n workflow: one cron trigger into one Execute Command node."""
+    if hour is None:
+        hour = start_hour()
     if not 0 <= hour <= 23:
         raise ValueError(f"hour must be 0-23, got {hour}")
 
-    command = f'cd "{working_dir}" && "{python}" -m tracker.runner "{root}" --log'
+    command = f'cd "{working_dir}" && "{python}" {runner_arguments(root)}'
     return {
         "name": task_name,
         "nodes": [
@@ -220,8 +246,9 @@ if __name__ == "__main__":
                         help="the folder holding the tracker package")
     parser.add_argument("--start", default=DEFAULT_START,
                         help=f"daily start time, HH:MM (default: {DEFAULT_START})")
-    parser.add_argument("--every", type=int, default=0, metavar="MINUTES",
-                        help="also repeat through the day, e.g. 120 for every 2 hours")
+    parser.add_argument("--every", type=int, default=DEFAULT_REPEAT_MINUTES, metavar="MINUTES",
+                        help=f"repeat filing and scanning through the day (default: "
+                             f"{DEFAULT_REPEAT_MINUTES}; 0 = once a day)")
     parser.add_argument("--author", default="", help="task author, for the XML")
     parser.add_argument("--name", default=TASK_NAME, help="task name")
     parser.add_argument("--format", choices=("xml", "n8n"), default="xml",
@@ -264,7 +291,7 @@ if __name__ == "__main__":
                     python=ns.python,
                     root=root_arg,
                     working_dir=ns.working_dir,
-                    hour=int(ns.start.split(":")[0]),
+                    hour=start_hour(ns.start),
                     task_name=ns.name,
                 ),
                 indent=2,

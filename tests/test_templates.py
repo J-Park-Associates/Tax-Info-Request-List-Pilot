@@ -75,3 +75,25 @@ def test_catalog_rows_shift_to_the_engagements_year():
     assert shifted["A01"].required_keywords == ("W-2",)  # keywords never shift
     unshifted = {i.identifier: i for i in template_items("1040")}
     assert unshifted["A01"].period == "TY2025"
+
+
+def test_shared_requests_are_defined_once_and_agree_everywhere():
+    from tracker.templates import SHARED
+
+    by_document: dict[str, set[tuple]] = {}
+    for form, rows in FORM_TEMPLATES.items():
+        for row in rows:
+            signature = (row["document"], row.get("any_keywords", ""), row.get("required_keywords", ""),
+                         row["extensions"], row["period"])
+            by_document.setdefault(row["document"], set()).add(signature)
+    for shared in SHARED.values():
+        assert len(by_document.get(shared["document"], set())) == 1, shared["document"]
+
+
+def test_the_catalogs_year_is_one_constant():
+    import re
+    from tracker.templates import BASE_YEAR
+
+    years = {int(y) for rows in FORM_TEMPLATES.values() for row in rows
+             for y in re.findall(r"(?:19|20)\d{2}", row["period"])}
+    assert years == {BASE_YEAR, BASE_YEAR - 1}

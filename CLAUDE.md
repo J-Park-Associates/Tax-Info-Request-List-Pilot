@@ -39,7 +39,7 @@ difference is the point:
   Real and worth knowing (ten test files import `manifest.py`, so its schema
   is load-bearing across the suite) but it is *not* coverage of that module.
 - **no dedicated test file** — said plainly where it is true. As of this
-  writing that is `tracker/api.py`, the desktop app's whole command layer.
+  writing that is only `tracker/__init__.py`, which holds re-exports.
 
 An "exercised by" edge is never evidence a module is tested.
 
@@ -101,7 +101,7 @@ python tools/repo_map.py check      # map matches the tree
 
 Conventions worth matching:
 
-- Python 3.11+, `pathlib.Path` throughout, standard library preferred.
+- Python at the floor `pyproject.toml` declares, `pathlib.Path` throughout, standard library preferred.
 - One component per module, each with its own CLI under
   `if __name__ == "__main__":` and its own `tests/test_<module>.py`.
 - Module docstrings carry the *reasoning*, not just the description — the

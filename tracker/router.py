@@ -50,10 +50,12 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from tracker import reasons
 from tracker.content_check import contains_keyword, evaluate_rules, extract_text
 from tracker.manifest import Override, RequestItem, has_routing_rules
 from tracker.validators import (
     check_file,
+    extension_of,
     google_stub_reason,
     is_cloud_placeholder,
     is_ignored,
@@ -62,7 +64,7 @@ from tracker.validators import (
 #: Why a file was not routed. Stored verbatim in the index's Reason column.
 UNMATCHED = "matched no request"
 AMBIGUOUS = "matched more than one request"
-PENDING = "cloud-only placeholder; waiting for OneDrive/Google Drive to sync"
+PENDING = reasons.PENDING_SYNC.format()
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 
@@ -125,6 +127,23 @@ def _considers(item: RequestItem) -> bool:
     return item.manual_override != Override.WAIVED and has_routing_rules(item)
 
 
+#: How a contested file's reason starts. The candidates travel as data
+#: (Routing.candidates, then the index's Candidates column); nothing parses
+#: this sentence to get them back.
+CONTESTED_PREFIX = "looks like"
+
+
+def _contested(path: Path, near: list[tuple[str, str]]) -> Routing:
+    listed = "; ".join(f"{ident} ({why})" for ident, why in near)
+    return Routing(
+        path=path,
+        identifier=None,
+        reason=f"{CONTESTED_PREFIX} {listed} - a person should confirm",
+        candidates=tuple(ident for ident, _ in near),
+        evidence="content",
+    )
+
+
 def route_file(
     path: Path, items: list[RequestItem], *, text: str | None = None
 ) -> Routing:
@@ -182,17 +201,10 @@ def route_file(
     # A document that announces itself as one request's paperwork but fails
     # that request's other rules is contested — never file it somewhere else.
     if near and not strong:
-        listed = "; ".join(f"{ident} ({why})" for ident, why in near)
-        return Routing(
-            path=path,
-            identifier=None,
-            reason=f"looks like {listed} — a person should confirm",
-            candidates=tuple(ident for ident, _ in near),
-            evidence="content",
-        )
+        return _contested(path, near)
 
     for hits, strength, how in (
-        (strong, "content", "content matched this request's keywords"),
+        (strong, "content", "content matched this request's required keywords"),
         (medium, "content", "content matched this request's keywords"),
         (by_name, "filename", "file name matched this request's keywords"),
     ):
@@ -218,14 +230,7 @@ def route_file(
     # person reviewing it - and the client, via the reminder - hears the
     # real reason instead of "matched no request".
     if blocked:
-        listed = "; ".join(f"{ident} ({why})" for ident, why in blocked)
-        return Routing(
-            path=path,
-            identifier=None,
-            reason=f"looks like {listed} - a person should confirm",
-            candidates=tuple(ident for ident, _ in blocked),
-            evidence="content",
-        )
+        return _contested(path, blocked)
 
     # Nothing matched and every request refused the file for the same
     # reason: that reason is the story (a corrupt PDF, a locked PDF, a
@@ -234,7 +239,7 @@ def route_file(
         if len(set(refusals)) == 1:
             return Routing(path=path, identifier=None, reason=f"{UNMATCHED}; {refusals[0]}")
         if all(r.startswith("extension .") for r in refusals):
-            ext = path.suffix.lower().lstrip(".") or "(none)"
+            ext = extension_of(path) or "(none)"
             return Routing(
                 path=path,
                 identifier=None,

@@ -33,7 +33,7 @@ into the manifest.
 | # | Decision | Choice |
 |---|----------|--------|
 | 1 | Manifest placement | **Outside shared scope.** Client's edit link points at `Shared/`; `_manifest.xlsx` sits one level up, invisible to the client. |
-| 2 | Manual Override column | **Yes.** `Accepted` / `Waived`; scanner never overwrites status on overridden rows. |
+| 2 | Manual Override column | **Yes.** `Accepted` / `Waived`. `Accepted` is written as Received (decision 33); `Waived` keeps its facts and is outside every count. |
 | 3 | Received-then-changed | **Auto-revert.** Status always reflects the current scan; original Received Date preserved with a regression note. |
 
 ## Decision Log (2026-09-16)
@@ -84,10 +84,11 @@ into the manifest.
 | 35 | After a rollover | **The prior retires itself.** The new engagement's sheet records *Rolled From*; discovery marks that prior inactive with its successor named, and the run skips it. The prior's manifest is never written to (decision 9 still holds); nobody opens last year's file to type "no". |
 | 36 | The tax year | **From the calendar.** A new engagement is for the most recently ended year (`default_tax_year`); the catalog is written for one base year and shifted to it, relative periods included. Nobody edits `TY2025` to `TY2026` across six checklists every January, or forgets to. |
 | 37 | Installing the schedule | **One step.** `python -m tracker.scheduling --root ... --out ... --install` generates the XML and registers it (`schtasks /create /f`), and re-running is how the schedule is changed. |
-| 38 | One pass, one count, one record | **The app's Sort & Scan is the runner's pass** (`run_engagement`), so the button and the job do the same thing to the same folder; `sort` and `scaffold` commands are gone. **`summarize()` is the only count** of where an engagement stands - runner log, reminder, scanner CLI and app all read it. **The index is the only record of parked files**; the Unfiled sheet is no longer written (old ones are left alone), and what it alone knew - loose files and unrecognised folders in `Prepared/` - are warnings on the pass. |
+| 38 | One pass, one count, one record | **The app's Sort & Scan is the runner's pass** (`run_engagement`), so the button and the job do the same thing to the same folder; `sort` and `scaffold` commands are gone. **`summarize()` is the only count** of where an engagement stands - runner log, reminder, scanner CLI and app all read it. **The index is the only record of parked files**; the index (decision 38) is no longer written (old ones are left alone), and what it alone knew - loose files and unrecognised folders in `Prepared/` - are warnings on the pass. |
 | 39 | One name, one firm, one root | **The folder is the engagement's name**; the wizard no longer copies it onto the sheet (a copy drifts the first time the folder is renamed; the cell is still read if present). **The sheet's Firm is the sign-off and the README contact**; the reminder and scaffold read the sheet themselves, and the wizard copies the newest engagement's firm so it is typed once. **The clients root is in `settings.json` beside the app**, set on first launch (or `python -m tracker.settings <folder>`); the app, the priors list, `tracker.scheduling` and the Install Schedule button all read that one value. |
 | 40 | The year, once | **Period implies the year check.** The year was typed twice (Period for people, Date Pattern for the rules) and, on 73 of 78 catalog rows, only once - so a 2024 form satisfied a TY2025 request. A blank Date Pattern on a row whose Period names a year now checks for that year; `*` says no check; a typed regex wins. A derived year is a *check* on a document a keyword already matched, never evidence on its own, so a row with only a Period can still never claim a document. Rollover leaves derived checks blank; the shifted Period derives them again. |
 | 41 | The demo, and the second copies | **Gone.** The presenter guide in the app, the demo buttons, the demo folder and batch file, the demo script and portable readme, and the sample builder in the API module (now `tests/samples.py`, which the suite still needs). The template CSVs and their check: the manifest is the readable copy. The scanner's per-engagement log: `runs.log` is the log. The README is setup; `docs/workflow.md` is how the work is done. |
+| 42 | Every fact, one home | **`tracker/reasons.py` is every refusal** - the note the scanner writes, the marker the reminder looks for, the client's ask and whose side it is; producers and the reminder both read it, so rewording one cannot silently change what a client is asked. **The renderer's vocabulary comes from the API** (`_vocab()`: statuses, decisions, reasons, product name, firm), so the app never retypes a Python string. **`settings.json` is the firm and the clients root; `app/package.json` is the product name and the API name** - Python, the Electron shell and the build script all read them, and the guard tests in `tests/test_single_source.py` pin the literals that have to cross the language line (env names, chip classes, the README's Engagement table, this file's schema table). **`filer.INDEX_LAYOUT` is the index**: the columns, their headers and widths, read back by header. **`Engagement` wraps `EngagementInfo`** instead of copying its fields. Constants are rendered on the knowledge map so a second copy is visible. |
 
 ## Architecture
 
@@ -99,6 +100,7 @@ OneDrive / Google Drive (synced locally on Windows)
             ├── _manifest.xlsx        ← accountant-only (NOT in the shared scope)
             ├── _index.xlsx           ← every original: where it went, what it became
             ├── _manifest.pending.json← sidecar written only if Excel had the file locked
+            ├── _content_cache.json   ← tier-3 verdict cache (never client text)
             ├── _index.pending.json   ← same, for index rows while Excel has _index.xlsx open
             ├── Prepared/             ← firm-side working set (NOT shared)
             │   ├── A01 - W-2 Wage Statements - All Employers/
@@ -144,13 +146,13 @@ document.
 | Identifier | str, unique (e.g., A01) | accountant | Join key; folder name prefix; matched by *prefix against known identifiers* (no hardcoded format regex — A100, BS01 all work) |
 | Document | str | accountant | Human-readable name |
 | Period | str | accountant | e.g., "Dec 2025" |
-| Expected Count | int, default 1 | accountant | For multi-file items; counted over content-hash-distinct valid files (duplicates like "statement (1).pdf" don't inflate the count) |
-| Allowed Extensions | csv str | accountant | Tier-2 whitelist. Blank = `pdf, xlsx, csv`; `*` = any type (say it out loud) |
-| Min Size KB | int, default 5 | accountant | Rejects 0-byte / placeholder files |
+| Expected Count | int, default `DEFAULT_EXPECTED_COUNT` | accountant | For multi-file items; counted over content-hash-distinct valid files (duplicates like "statement (1).pdf" don't inflate the count) |
+| Allowed Extensions | csv str | accountant | Tier-2 whitelist. Blank = `DEFAULT_EXTENSIONS`; `*` = any type (say it out loud) |
+| Min Size KB | int, default `DEFAULT_MIN_SIZE_KB` | accountant | Rejects 0-byte / placeholder files |
 | Required Keywords | csv str, optional | accountant | Tier-3: ALL must appear in extracted text |
 | Any Keywords | csv str, optional | accountant | Tier-3: at least ONE must appear |
 | Date Pattern | regex str, optional | accountant | Tier-3 date check. Blank + a year in Period = that year, case-insensitive, whole-token; `*` = no year check; a typed regex wins. A derived year is a check on a matched document, never a reason to route |
-| Manual Override | enum, optional | accountant | `Accepted` (treat as Received despite rules) / `Waived` (no longer needed). Scanner skips status writes on these rows. |
+| Manual Override | enum, optional | accountant | `Accepted` (written as Received) / `Waived` (no longer needed; outside every count). |
 | Status | enum | scanner | Missing / Partial / Failed Validation / Received / **Pending Sync** |
 | Received Date | date | scanner | First date all validations passed; preserved on regression |
 | File Count | int | scanner | Distinct valid files currently in folder |
@@ -168,7 +170,7 @@ with the reason — never ignored, never guessed.
    `pytesseract` OCR fallback for image-only PDFs); apply keyword/date-pattern rules
    from the manifest row. **Extraction results are cached** in a sidecar JSON keyed by
    `(path, size, mtime)` — unchanged files are never re-extracted, so steady-state
-   scans stay fast at a 15-minute cadence.
+   scans stay fast at the scheduled cadence.
 
 Status resolution:
 - 0 valid files → **Missing**
@@ -176,8 +178,8 @@ Status resolution:
 - files present but a tier fails → **Failed Validation** (+ note)
 - all checks pass → **Received** (+ date stamp on first pass)
 - cloud-only placeholders — OneDrive Files On-Demand or Google Drive streaming
-  (detected via `st_file_attributes` /
-  `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS`, never force-hydrated) → **Pending Sync**
+  (detected via the Windows cloud-placeholder attribute flags in
+  `tracker/validators.py`, never force-hydrated) → **Pending Sync**
 - previously Received, files changed/removed → auto-revert to current truth,
   Received Date kept, regression note added
 

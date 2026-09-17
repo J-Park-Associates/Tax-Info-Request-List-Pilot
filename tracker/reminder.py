@@ -84,46 +84,8 @@ SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
 
 SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL, SECTION_FAILED)
 
-#: Shown when a failure has no recognized cause. Deliberately vague about our
-#: rules and specific about what the client should do.
-GENERIC_ASK = "we could not read the file that arrived; please send it again"
-
-#: Notes that mean "a person here has not looked yet", not "the client did
-#: something wrong". These never become a client ask.
-_FIRM_SIDE_MARKERS = (
-    "review manually",
-    "no text layer",
-    "no readable text",
-)
-
-_SCAFFOLD_MARKER = "request folder not found"
-
-#: (substring found in a validation note, sentence written to the client).
-#: First match wins, so the specific causes are listed before the vague ones.
-_ASK_RULES: tuple[tuple[str, str], ...] = (
-    ("password-protected",
-     "the file is password-protected; please send an unlocked copy"),
-    ("google docs shortcut",
-     "that was a Google Docs/Sheets shortcut rather than the document itself; "
-     "please download it (File > Download > PDF or Excel) and send that copy"),
-    ("possible placeholder or failed upload",
-     "the file arrived almost empty, so the upload may not have finished; "
-     "please send it again"),
-    ("not allowed",
-     "we cannot open that file type; please send it as a PDF or an Excel file"),
-    ("possible wrong document",
-     "the document that arrived does not look like this item; "
-     "please check that the right file was sent"),
-    ("none of the expected keywords found",
-     "the document that arrived does not look like this item; "
-     "please check that the right file was sent"),
-    ("possible wrong period",
-     "the document that arrived appears to cover a different period; "
-     "please check the year"),
-    ("contains no pages", GENERIC_ASK),
-    ("not a readable pdf", GENERIC_ASK),
-    ("text extraction failed", GENERIC_ASK),
-)
+from tracker import reasons
+from tracker.reasons import GENERIC_ASK  # re-exported; the one generic sentence
 
 
 class ReminderError(Exception):
@@ -208,17 +170,14 @@ def client_ask(item: RequestItem) -> str:
     if item.status != Status.FAILED:
         return ""
 
-    note = (item.validation_notes or "").lower()
-    for marker, sentence in _ASK_RULES:
-        if marker in note:
-            return sentence
-    return GENERIC_ASK
+    reason = reasons.find(item.validation_notes or "")
+    return reason.client_ask if reason else GENERIC_ASK
 
 
 def _firm_side_reason(item: RequestItem) -> str:
     """Why this row is the firm's problem rather than the client's, or ""."""
-    note = (item.validation_notes or "").lower()
-    if any(marker in note for marker in _FIRM_SIDE_MARKERS):
+    note = item.validation_notes or ""
+    if any(r.matches(note) for r in reasons.FIRM_SIDE if r is not reasons.NO_REQUEST_FOLDER):
         return "waiting on a person here to read it, not on the client"
     return ""
 
@@ -254,8 +213,7 @@ def triage(items: Sequence[RequestItem]) -> tuple[
         if item.manual_override or item.status not in OUTSTANDING:
             continue
 
-        note = (item.validation_notes or "").lower()
-        if _SCAFFOLD_MARKER in note:
+        if reasons.NO_REQUEST_FOLDER.matches(item.validation_notes or ""):
             gaps.append(FirmSideFlag(
                 item=item,
                 reason="no request folder, so nothing could be filed here; re-run scaffold",

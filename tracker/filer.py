@@ -54,10 +54,11 @@ import logging
 import shutil
 import time
 from contextlib import nullcontext
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -80,8 +81,10 @@ from tracker.scaffold import (
     sanitize_component,
 )
 from tracker.validators import (
+    extension_of,
     is_cloud_placeholder,
     is_ignored,
+    is_sync_staging,
     iter_candidate_files,
     sha256_of,
 )
@@ -96,20 +99,6 @@ INDEX_RETRIES = 5
 INDEX_RETRY_DELAY = 0.5
 _MAX_STEM = 110
 
-INDEX_COLUMNS = (
-    "Received",
-    "Original Name",
-    "Size KB",
-    "SHA-256",
-    "Identifier",
-    "Document",
-    "Filed As",
-    "Prepared Location",
-    "PBC Location",
-    "Decision",
-    "Reason",
-)
-
 #: Decision values written to the index.
 FILED = "Filed"
 NEEDS_REVIEW = "Needs Review"
@@ -118,6 +107,9 @@ DUPLICATE = "Duplicate"
 #: Reason prefix on index rows a person filed from 00 - Needs Review.
 ASSIGNED_BY_PERSON = "assigned by a person"
 
+#: How candidate identifiers are joined in the Candidates cell.
+_CANDIDATE_SEP = ", "
+
 
 class FilingError(Exception):
     """A person's filing decision could not be carried out as asked."""
@@ -125,26 +117,52 @@ class FilingError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class IndexEntry:
-    """One row of ``_index.xlsx`` — the audit trail for one original file."""
+    """One row of ``_index.xlsx`` — the audit trail for one original file.
+
+    The fields ARE the columns: their order is the column order, the
+    ``INDEX_LAYOUT`` table below gives each its header and width, and the
+    workbook is read back by header name, so a column added here is one
+    edit and an older index (with columns since dropped) still reads.
+    Nothing stored here is a copy of something stored elsewhere: the
+    working copy's name is the basename of its location, and the request's
+    Document lives in the manifest, joined by Identifier.
+    """
 
     received: str
     original_name: str
     size_kb: float
     digest: str
     identifier: str
-    document: str
-    filed_as: str
     prepared_location: str
     pbc_location: str
     decision: str
     reason: str
+    candidates: str = ""     # identifiers the router named, for a person to choose from
+
+    @property
+    def filed_as(self) -> str:
+        """The working copy's file name - the basename of where it went."""
+        return self.prepared_location.rsplit("/", 1)[-1] if self.prepared_location else ""
 
     def as_row(self) -> list[object]:
-        return [
-            self.received, self.original_name, self.size_kb, self.digest,
-            self.identifier, self.document, self.filed_as,
-            self.prepared_location, self.pbc_location, self.decision, self.reason,
-        ]
+        return [getattr(self, f.name) for f in fields(IndexEntry)]
+
+
+#: field name -> (column header, Excel width). One table, in field order.
+INDEX_LAYOUT: dict[str, tuple[str, int]] = {
+    "received": ("Received", 12),
+    "original_name": ("Original Name", 40),
+    "size_kb": ("Size KB", 9),
+    "digest": ("SHA-256", 18),
+    "identifier": ("Identifier", 10),
+    "prepared_location": ("Prepared Location", 40),
+    "pbc_location": ("PBC Location", 26),
+    "decision": ("Decision", 14),
+    "reason": ("Reason", 60),
+    "candidates": ("Candidates", 14),
+}
+assert tuple(INDEX_LAYOUT) == tuple(f.name for f in fields(IndexEntry))
+INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +215,19 @@ def prepared_name_for(item: RequestItem, extension: str, taken: set[str]) -> str
         counter += 1
     taken.add(candidate.lower())
     return candidate
+
+
+def prepared_location(folder: Path, name: str) -> str:
+    """Where a working copy is, relative to the engagement: ``Prepared/<folder>/<name>``."""
+    return f"{PREPARED_DIR_NAME}/{folder.name}/{name}"
+
+
+def request_folder(item: RequestItem, assigned: dict[str, list[Path]], prepared_dir: Path) -> Path:
+    """The folder a request's working copies go in: the one it already has
+    (by identifier prefix, so a Document renamed in Excel changes nothing),
+    else the canonical name."""
+    existing = assigned.get(item.identifier) or []
+    return existing[0] if existing else prepared_dir / folder_name_for(item)
 
 
 def _unique_path(folder: Path, name: str) -> Path:
@@ -261,29 +292,28 @@ def _read_index_workbook(path: Path) -> list[IndexEntry]:
     wb = load_workbook(path, data_only=True)
     try:
         ws = wb[INDEX_SHEET] if INDEX_SHEET in wb.sheetnames else wb.active
-        rows = list(ws.iter_rows(min_row=2, values_only=True))
+        rows = list(ws.iter_rows(values_only=True))
     finally:
         wb.close()
+    if not rows:
+        return []
+    # By header name, so an index written with columns since dropped (Filed
+    # As, Document) or before one was added (Candidates) still reads.
+    headers = [str(h or "").strip() for h in rows[0]]
+    by_field = {
+        name: headers.index(header)
+        for name, (header, _) in INDEX_LAYOUT.items()
+        if header in headers
+    }
     entries = []
-    for row in rows:
+    for row in rows[1:]:
         if not row or row[0] is None:
             continue
-        padded = list(row) + [None] * (len(INDEX_COLUMNS) - len(row))
-        entries.append(
-            IndexEntry(
-                received=str(padded[0] or ""),
-                original_name=str(padded[1] or ""),
-                size_kb=_as_float(padded[2]),
-                digest=str(padded[3] or ""),
-                identifier=str(padded[4] or ""),
-                document=str(padded[5] or ""),
-                filed_as=str(padded[6] or ""),
-                prepared_location=str(padded[7] or ""),
-                pbc_location=str(padded[8] or ""),
-                decision=str(padded[9] or ""),
-                reason=str(padded[10] or ""),
-            )
-        )
+        values: dict[str, object] = {}
+        for name, position in by_field.items():
+            raw = row[position] if position < len(row) else None
+            values[name] = _as_float(raw) if name == "size_kb" else str(raw or "")
+        entries.append(IndexEntry(**values))
     return entries
 
 
@@ -294,10 +324,8 @@ def _save_index(path: Path, entries: list[IndexEntry]) -> None:
     ws.append(list(INDEX_COLUMNS))
     for entry in entries:
         ws.append(entry.as_row())
-
-    widths = (12, 40, 9, 18, 10, 34, 40, 34, 26, 14, 60)
-    for column, width in zip(ws.column_dimensions, widths):
-        ws.column_dimensions[column].width = width
+    for index, (_, width) in enumerate(INDEX_LAYOUT.values(), start=1):
+        ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "A2"
     save_workbook_atomically(wb, path)
 
@@ -392,7 +420,7 @@ def _prune_empty_dirs(shared_dir: Path, keep: Path) -> None:
     for folder in candidates:
         if folder == keep or keep in folder.parents:
             continue
-        if any(part.lower().startswith(".tmp.drive") for part in folder.parts):
+        if any(is_sync_staging(part) for part in folder.parts):
             continue
         try:
             folder.rmdir()  # only succeeds when empty
@@ -501,7 +529,7 @@ def file_drops(
                     log.exception("Could not file %s", drop.name)
                     entry = IndexEntry(
                         received=stamp, original_name=drop.name, size_kb=size_kb,
-                        digest=digest, identifier="", document="", filed_as="",
+                        digest=digest, identifier="",
                         prepared_location="", pbc_location=pbc_rel,
                         decision=NEEDS_REVIEW,
                         reason=(
@@ -563,7 +591,7 @@ def _sort_one(
             entry = IndexEntry(
                 received=stamp, original_name=drop.name, size_kb=size_kb,
                 digest=digest, identifier=earlier.identifier,
-                document=earlier.document, filed_as="", prepared_location="",
+                prepared_location="",
                 pbc_location=pbc_rel, decision=DUPLICATE,
                 reason=(
                     f"identical to {earlier.original_name}"
@@ -577,27 +605,24 @@ def _sort_one(
     item = by_id.get(routing.identifier or "")
 
     if routing.routed and item is not None:
-        existing = assigned.get(item.identifier) or []
-        dest_folder = existing[0] if existing else prepared_dir / folder_name_for(item)
+        dest_folder = request_folder(item, assigned, prepared_dir)
         if dest_folder not in reserved:
             reserved[dest_folder] = (
                 {p.name.lower() for p in dest_folder.iterdir()}
                 if dest_folder.is_dir()
                 else set()
             )
-        filed_as = prepared_name_for(
-            item, drop.suffix.lower().lstrip("."), reserved[dest_folder]
-        )
+        filed_as = prepared_name_for(item, extension_of(drop), reserved[dest_folder])
         if not dry_run:
             dest_folder.mkdir(parents=True, exist_ok=True)
             shutil.copy2(pbc_target, dest_folder / filed_as)
         entry = IndexEntry(
             received=stamp, original_name=drop.name, size_kb=size_kb,
-            digest=digest, identifier=item.identifier, document=item.document,
-            filed_as=filed_as,
-            prepared_location=f"{PREPARED_DIR_NAME}/{dest_folder.name}/{filed_as}",
+            digest=digest, identifier=item.identifier,
+            prepared_location=prepared_location(dest_folder, filed_as),
             pbc_location=pbc_rel, decision=FILED,
             reason=f"{routing.reason}; {refiled}" if refiled else routing.reason,
+            candidates=_CANDIDATE_SEP.join(routing.candidates),
         )
         report.filed.append(entry)
         return entry
@@ -610,9 +635,10 @@ def _sort_one(
         review_name = review_target.name
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
-        digest=digest, identifier="", document="", filed_as=review_name,
-        prepared_location=f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/{review_name}",
+        digest=digest, identifier="",
+        prepared_location=prepared_location(review_dir, review_name),
         pbc_location=pbc_rel, decision=NEEDS_REVIEW, reason=routing.reason,
+        candidates=_CANDIDATE_SEP.join(routing.candidates),
     )
     report.review.append(entry)
     return entry
@@ -680,11 +706,10 @@ def assign_review_file(
                 f"the original {entry.pbc_location} is no longer in {PBC_DIR_NAME}"
             )
 
-        existing = assign_folders(prepared_dir, list(items)).get(identifier) or []
-        dest_folder = existing[0] if existing else prepared_dir / folder_name_for(item)
+        dest_folder = request_folder(item, assign_folders(prepared_dir, list(items)), prepared_dir)
         dest_folder.mkdir(parents=True, exist_ok=True)
         taken = {p.name.lower() for p in dest_folder.iterdir()}
-        filed_as = prepared_name_for(item, source.suffix.lower().lstrip("."), taken)
+        filed_as = prepared_name_for(item, extension_of(source), taken)
         target = dest_folder / filed_as
 
         parked = engagement_dir / entry.prepared_location if entry.prepared_location else None
@@ -698,11 +723,10 @@ def assign_review_file(
         new_entry = replace(
             entry,
             identifier=item.identifier,
-            document=item.document,
-            filed_as=filed_as,
-            prepared_location=f"{PREPARED_DIR_NAME}/{dest_folder.name}/{filed_as}",
+            prepared_location=prepared_location(dest_folder, filed_as),
             decision=FILED,
             reason=f"{ASSIGNED_BY_PERSON} on {today.isoformat()}; was: {entry.reason}",
+            candidates="",
         )
         entries[position] = new_entry
         deferred = not write_index(index_path, entries)

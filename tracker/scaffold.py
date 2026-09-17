@@ -36,7 +36,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from tracker.manifest import Override, RequestItem, load_engagement_info, load_manifest
+from tracker.manifest import (
+    WINDOWS_ILLEGAL_CHARS,
+    Override,
+    RequestItem,
+    load_engagement_info,
+    load_manifest,
+)
 
 MANIFEST_FILENAME = "_manifest.xlsx"
 SHARED_DIR_NAME = "Shared"
@@ -49,8 +55,8 @@ PREPARED_DIR_NAME = "Prepared"
 #: Where anything the rules could not confidently identify waits for a human.
 REVIEW_DIR_NAME = "00 - Needs Review"
 
-#: Characters Windows forbids in file/folder names, plus control chars.
-_ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+#: The one list of characters Windows forbids lives in tracker.manifest.
+_ILLEGAL_CHARS = WINDOWS_ILLEGAL_CHARS
 _MAX_FOLDER_NAME = 100
 
 
@@ -198,7 +204,7 @@ def _write_readme(
         "you don't need to sort anything or name anything. We sort it.",
         "",
         "1. Drag your documents anywhere in this folder.",
-        "2. Within a few minutes each file moves into the PBC folder.",
+        f"2. Within a few minutes each file moves into the {PBC_DIR_NAME} folder.",
         "   That is us filing it - your file is safe, unchanged, and still",
         "   yours to look at. Nothing is ever renamed or deleted.",
         "3. Keep going until the list below is covered. Send them as you",
@@ -214,9 +220,7 @@ def _write_readme(
         "-" * 45,
     ]
     for item in items:
-        entry = f"{item.identifier} - {item.document}"
-        if item.period:
-            entry += f"  ({item.period})"
+        entry = item.label
         if item.expected_count > 1:
             entry += f"  [{item.expected_count} files expected]"
         lines.append(entry)

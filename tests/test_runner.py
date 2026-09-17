@@ -6,6 +6,7 @@ stops another client's run, and nothing is ever sent.
 """
 
 import datetime as dt
+from pathlib import Path
 
 import pytest
 
@@ -51,7 +52,7 @@ def build_engagement(tmp_path, samples, drops=("W-2 John Smith 2025.pdf",),
     result = scaffold_engagement(folder)
     for drop in drops:
         (result.shared_dir / drop).write_bytes((samples / drop).read_bytes())
-    return Engagement(path=folder, client="John Smith", firm="J Park", **kwargs)
+    return Engagement(path=folder, info=EngagementInfo(client="John Smith", firm="J Park", **kwargs))
 
 
 # ------------------------------------------------------------ the Saturday ----
@@ -66,29 +67,29 @@ def test_saturday_is_the_draft_day():
 @pytest.mark.parametrize("day, expected", [(FRIDAY, False), (SATURDAY, True),
                                            (SUNDAY, False)])
 def test_auto_mode_drafts_only_on_saturday(day, expected):
-    engagement = Engagement(path="/x")
+    engagement = Engagement(path=Path("/x"))
     assert should_draft(engagement, day, REMINDERS_AUTO) is expected
 
 
 def test_always_mode_drafts_on_any_day():
-    assert should_draft(Engagement(path="/x"), FRIDAY, REMINDERS_ALWAYS) is True
+    assert should_draft(Engagement(path=Path("/x")), FRIDAY, REMINDERS_ALWAYS) is True
 
 
 def test_never_mode_suppresses_even_on_saturday():
-    assert should_draft(Engagement(path="/x"), SATURDAY, REMINDERS_NEVER) is False
+    assert should_draft(Engagement(path=Path("/x")), SATURDAY, REMINDERS_NEVER) is False
 
 
 def test_reminders_off_beats_every_mode():
     """A standing decision not to chase this client by email is not a flag."""
-    quiet = Engagement(path="/x", reminders=False)
+    quiet = Engagement(path=Path("/x"), info=EngagementInfo(reminders=False))
     assert should_draft(quiet, SATURDAY, REMINDERS_AUTO) is False
     assert should_draft(quiet, SATURDAY, REMINDERS_ALWAYS) is False
 
 
 def test_the_draft_day_can_be_moved():
     monday = dt.date(2026, 3, 16)
-    assert should_draft(Engagement(path="/x"), monday, REMINDERS_AUTO, weekday=0) is True
-    assert should_draft(Engagement(path="/x"), SATURDAY, REMINDERS_AUTO, weekday=0) is False
+    assert should_draft(Engagement(path=Path("/x")), monday, REMINDERS_AUTO, weekday=0) is True
+    assert should_draft(Engagement(path=Path("/x")), SATURDAY, REMINDERS_AUTO, weekday=0) is False
 
 
 # ------------------------------------------------------------- the full pass ----
@@ -155,7 +156,7 @@ def test_nothing_outstanding_means_no_draft_file(tmp_path, samples):
     name = "2024 Form 1040 Tax Return.pdf"
     (scaffolded.shared_dir / name).write_bytes((samples / name).read_bytes())
 
-    run = run_engagement(Engagement(path=folder, client="John Smith"), today=SATURDAY)
+    run = run_engagement(Engagement(path=folder, info=EngagementInfo(client="John Smith")), today=SATURDAY)
 
     assert run.statuses == {Status.RECEIVED: 1}
     assert run.outstanding == 0

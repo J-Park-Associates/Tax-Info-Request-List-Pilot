@@ -172,3 +172,22 @@ def test_install_runs_schtasks_on_windows_and_only_shows_the_command_elsewhere(m
     monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: Failed())
     with pytest.raises(RuntimeError, match="Access is denied"):
         install_task(tmp_path / "t.xml")
+
+
+def test_the_command_line_is_built_once_for_both_schedulers():
+    from tracker.scheduling import runner_arguments, start_hour
+
+    xml = task_scheduler_xml(**ARGS)
+    flow = n8n_workflow(**ARGS)
+    command = flow["nodes"][1]["parameters"]["command"]
+    assert runner_arguments(ARGS["root"]) in xml
+    assert runner_arguments(ARGS["root"]) in command
+    assert start_hour("07:00") == 7 and start_hour("18:30") == 18
+    assert flow["nodes"][0]["parameters"]["rule"]["interval"][0]["triggerAtHour"] == start_hour()
+
+
+def test_the_description_names_the_drafting_day_from_the_runner():
+    from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
+
+    xml = task_scheduler_xml(**ARGS)
+    assert f"On {WEEKDAY_NAMES[DRAFT_WEEKDAY].capitalize()}s it also drafts" in xml

@@ -87,7 +87,16 @@ ANY_EXTENSION = "*"
 #: in Period - typing it again as a regex was the redundancy, and not typing
 #: it was a 2024 form satisfying a TY2025 request.
 NO_DATE_CHECK = "*"
-_PERIOD_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+#: A four-digit year standing on its own. The digit guards keep an account
+#: number like 120250 from being read as "2025". Used wherever a year is
+#: found or shifted: the derived year check, rollover, the catalog.
+YEAR_PATTERN = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+_PERIOD_YEAR = YEAR_PATTERN
+
+#: Characters Windows forbids in file and folder names, plus control
+#: characters - the one list, for identifiers and for sanitising names.
+WINDOWS_ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+WINDOWS_ILLEGAL_CHARS_TEXT = '\\ / : * ? " < > |'
 DATE_FORMAT = "yyyy-mm-dd"
 
 #: Characters an identifier may not contain. The identifier becomes the
@@ -95,7 +104,7 @@ DATE_FORMAT = "yyyy-mm-dd"
 #: anything the filesystem would alter (\\ / : * ? " < > | and control
 #: characters) or strip (a trailing dot) would leave the scanner unable to
 #: find the folder scaffold just made — a permanent "folder not found".
-_ILLEGAL_IDENTIFIER_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+_ILLEGAL_IDENTIFIER_CHARS = WINDOWS_ILLEGAL_CHARS
 
 
 class Status:
@@ -143,6 +152,58 @@ class RequestItem:
     file_count: int | None = None
     validation_notes: str = ""
     row: int = 0                               # Excel row this item came from
+
+    @property
+    def label(self) -> str:
+        """``A01 - W-2 Wage Statements (TY2025)`` - how a request is named to people."""
+        text = f"{self.identifier} - {self.document}"
+        return f"{text} ({self.period})" if self.period else text
+
+
+def shift_years(text: str, delta: int) -> str:
+    """Move every four-digit year in ``text`` by ``delta``.
+
+    Shifting rather than substituting one fixed year keeps *relative* periods
+    correct: on a 2025 -> 2026 roll, a row asking for the TY2024 prior-year
+    return correctly comes to ask for TY2025.
+    """
+    if not text or not delta:
+        return text
+    return YEAR_PATTERN.sub(lambda m: str(int(m.group(0)) + delta), text)
+
+
+def shift_item(item: "RequestItem", delta: int) -> "RequestItem":
+    """``item`` with every year in its document, period and typed date pattern moved.
+
+    A derived year check is left alone: the shifted Period derives it again.
+    """
+    if not delta:
+        return item
+    return replace(
+        item,
+        document=shift_years(item.document, delta),
+        period=shift_years(item.period, delta),
+        date_pattern="" if item.date_pattern_derived else shift_years(item.date_pattern, delta),
+    )
+
+
+def detect_year(items: Iterable["RequestItem"]) -> int | None:
+    """The tax year a list of rows is about, inferred from its own rows.
+
+    The most common year across periods and typed date rules wins; ties go
+    to the later year. None when nothing carries a year at all.
+    """
+    from collections import Counter
+
+    years: Counter[int] = Counter()
+    for item in items:
+        for text in (item.period, "" if item.date_pattern_derived else item.date_pattern):
+            for match in YEAR_PATTERN.findall(text or ""):
+                years[int(match)] += 1
+    if not years:
+        return None
+    best = max(years.values())
+    return max(year for year, count in years.items() if count == best)
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,7 +313,7 @@ def derived_date_pattern(period: str) -> str:
     return rf"(?i)\b{match.group(0)}\b" if match else ""
 
 
-def _parse_extensions(value: object) -> tuple[str, ...]:
+def parse_extensions(value: object) -> tuple[str, ...]:
     """Blank → the safe default; ``*`` → anything (empty tuple); else the list."""
     parts = _csv_tuple(value)
     if not parts:
@@ -269,7 +330,7 @@ def identifier_problem(identifier: str) -> str:
     bad identifier is refused with the same sentence wherever it is typed.
     """
     if _ILLEGAL_IDENTIFIER_CHARS.search(identifier):
-        return 'may not contain any of \\ / : * ? " < > | (it becomes a folder name)'
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it becomes a folder name)"
     if identifier != identifier.rstrip(". "):
         return "may not end with a dot or a space (Windows drops them from folder names)"
     return ""
@@ -377,7 +438,7 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
                     document=document,
                     period=period,
                     expected_count=expected_count,
-                    allowed_extensions=_parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
+                    allowed_extensions=parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
                     min_size_kb=min_size_kb,
                     required_keywords=_csv_tuple(values[COL_REQUIRED_KEYWORDS]),
                     any_keywords=_csv_tuple(values[COL_ANY_KEYWORDS]),
@@ -884,20 +945,24 @@ def create_template(
         ws.column_dimensions[get_column_letter(idx)].width = _COLUMN_WIDTHS[header]
     ws.freeze_panes = "A2"
 
+    column = {header: index for index, header in enumerate(HEADERS, start=1)}
     for row, item in enumerate(items, start=2):
-        ws.cell(row=row, column=1, value=item.identifier)
-        ws.cell(row=row, column=2, value=item.document)
-        ws.cell(row=row, column=3, value=item.period or None)
-        ws.cell(row=row, column=4, value=item.expected_count)
-        # An item built in code with no extensions means "anything"; say so,
-        # or the loader would read the blank back as the safe default.
-        ws.cell(row=row, column=5, value=", ".join(item.allowed_extensions) or ANY_EXTENSION)
-        ws.cell(row=row, column=6, value=item.min_size_kb)
-        ws.cell(row=row, column=7, value=", ".join(item.required_keywords) or None)
-        ws.cell(row=row, column=8, value=", ".join(item.any_keywords) or None)
-        ws.cell(row=row, column=9,
-                value=None if item.date_pattern_derived else (item.date_pattern or None))
-        ws.cell(row=row, column=10, value=item.manual_override or None)
+        cells = {
+            COL_IDENTIFIER: item.identifier,
+            COL_DOCUMENT: item.document,
+            COL_PERIOD: item.period or None,
+            COL_EXPECTED_COUNT: item.expected_count,
+            # An item built in code with no extensions means "anything"; say
+            # so, or the loader would read the blank back as the safe default.
+            COL_ALLOWED_EXTENSIONS: ", ".join(item.allowed_extensions) or ANY_EXTENSION,
+            COL_MIN_SIZE_KB: item.min_size_kb,
+            COL_REQUIRED_KEYWORDS: ", ".join(item.required_keywords) or None,
+            COL_ANY_KEYWORDS: ", ".join(item.any_keywords) or None,
+            COL_DATE_PATTERN: None if item.date_pattern_derived else (item.date_pattern or None),
+            COL_MANUAL_OVERRIDE: item.manual_override or None,
+        }
+        for header, value in cells.items():
+            ws.cell(row=row, column=column[header], value=value)
 
     _write_engagement_sheet(wb, info or EngagementInfo())
     wb.active = 0

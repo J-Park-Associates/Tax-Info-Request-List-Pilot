@@ -17,10 +17,12 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from tracker.templates import template_items
+from tracker.templates import BASE_YEAR, template_items
 
 #: The rows the sample documents were written against.
 DEMO_ITEMS = template_items("1040", core_only=True)
+YEAR = BASE_YEAR          # the samples are dated for the catalog's base year
+PRIOR_YEAR = BASE_YEAR - 1
 
 
 def text_pdf(path: Path, lines: list[str]) -> Path:
@@ -120,10 +122,10 @@ def donations_xlsx(path: Path) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "Donations"
-    ws.append(["Smith Family - Charitable Contributions 2025"])
+    ws.append([f"Smith Family - Charitable Contributions {YEAR}"])
     ws.append(["Date", "Organization", "Amount", "Receipt on file"])
     for i in range(1, 301):  # enough rows to clear the size minimum
-        ws.append([f"0{(i % 9) + 1}/12/2025", f"Community Charity {i:03d}", 25 + i, "Yes"])
+        ws.append([f"0{(i % 9) + 1}/12/{YEAR}", f"Community Charity {i:03d}", 25 + i, "Yes"])
     wb.save(path)
 
 
@@ -131,55 +133,55 @@ def build_samples(samples: Path) -> None:
     samples.mkdir(parents=True, exist_ok=True)
 
     good = text_pdf(
-        samples / "W-2 John Smith 2025.pdf",
-        w2_lines("John A. Smith", "Acme Manufacturing Inc.", 2025),
+        samples / f"W-2 John Smith {YEAR}.pdf",
+        w2_lines(f"John A. Smith", "Acme Manufacturing Inc.", YEAR),
     )
     # Byte-identical duplicate — demonstrates content-hash de-duplication.
-    shutil.copyfile(good, samples / "W-2 John Smith 2025 - Copy.pdf")
+    shutil.copyfile(good, samples / f"W-2 John Smith {YEAR} - Copy.pdf")
 
     text_pdf(
-        samples / "W-2 Jane Smith 2025.pdf",
-        w2_lines("Jane R. Smith", "Lakeside Medical Group", 2025),
+        samples / f"W-2 Jane Smith {YEAR}.pdf",
+        w2_lines(f"Jane R. Smith", "Lakeside Medical Group", YEAR),
     )
     # Wrong tax year — the content date check will flag it.
     text_pdf(
-        samples / "W-2 Jane Smith 2024 - old.pdf",
-        w2_lines("Jane R. Smith", "Lakeside Medical Group", 2024),
+        samples / f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf",
+        w2_lines(f"Jane R. Smith", "Lakeside Medical Group", PRIOR_YEAR),
     )
 
     text_pdf(
         samples / "1099-INT First National.pdf",
-        lines_1099_int("First National Bank", "John A. Smith", 2025),
+        lines_1099_int(f"First National Bank", "John A. Smith", YEAR),
     )
-    (samples / "1099-DIV Vanguard 2025.csv").write_text(
-        "Form 1099-DIV dividend summary - Vanguard Brokerage 2025\n"
+    (samples / f"1099-DIV Vanguard {YEAR}.csv").write_text(
+        f"Form 1099-DIV dividend summary - Vanguard Brokerage {YEAR}\n"
         + "date,fund,ordinary dividends,qualified dividends\n" * 300,
         encoding="utf-8",
     )
 
     text_pdf(
-        samples / "2024 Form 1040 Tax Return.pdf",
-        prior_return_lines("John A. & Jane R. Smith", 2024),
+        samples / f"{PRIOR_YEAR} Form 1040 Tax Return.pdf",
+        prior_return_lines(f"John A. & Jane R. Smith", PRIOR_YEAR),
     )
 
     text_pdf(
         samples / "Form 1098 Mortgage Interest.pdf",
-        form_1098_lines("Home Lending Corp.", "John A. & Jane R. Smith", 2025),
+        form_1098_lines(f"Home Lending Corp.", "John A. & Jane R. Smith", YEAR),
     )
     (samples / "Mortgage Notes.docx").write_bytes(b"not a real docx " * 800)
 
-    donations_xlsx(samples / "Donation Receipts 2025.xlsx")
+    donations_xlsx(samples / f"Donation Receipts {YEAR}.xlsx")
 
     # Google Drive realities. A client who keeps records in Google Sheets
     # shares a .gsheet shortcut, which is a link — not the spreadsheet; the
     # scanner rejects it with export instructions rather than a size error.
-    (samples / "Donation Receipts 2025.gsheet").write_text(
+    (samples / f"Donation Receipts {YEAR}.gsheet").write_text(
         '{"url": "https://docs.google.com/spreadsheets/d/1aB2cD3eF4gH5iJ6kL7mN8oP/edit",'
         ' "doc_id": "1aB2cD3eF4gH5iJ6kL7mN8oP", "email": "client@example.com"}',
         encoding="utf-8",
     )
     # A Google Drive upload caught mid-flight: ignored, never counted as a
     # delivered document, and it disappears on its own once sync finishes.
-    (samples / "W-2 Jane Smith 2025.pdf.tmp.driveupload").write_bytes(b"\x00" * 4096)
+    (samples / f"W-2 Jane Smith {YEAR}.pdf.tmp.driveupload").write_bytes(b"\x00" * 4096)
 
     (samples / "vacation photo.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"J" * 9000)

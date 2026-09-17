@@ -13,8 +13,8 @@ both read it. The app asks for it on first launch and never again; the
 schedule is generated from the same value (``python -m tracker.scheduling``
 without ``--root`` reads it too).
 
-Deliberately tiny: one JSON object, one key, read and written whole, atomic
-on write. There is no second setting to drift.
+Deliberately tiny: one JSON object (the clients root and the firm's name),
+read and written whole, atomic on write. There is no second setting to drift.
 """
 
 from __future__ import annotations
@@ -26,6 +26,10 @@ from pathlib import Path
 
 SETTINGS_FILENAME = "settings.json"
 ENV_SETTINGS_DIR = "TRACKER_SETTINGS_DIR"
+#: The Electron shell passes package.json's productName; from source the
+#: same file is read directly. There is no second copy of the product name.
+ENV_PRODUCT_NAME = "TRACKER_PRODUCT_NAME"
+PACKAGE_JSON = Path(__file__).resolve().parent.parent / "app" / "package.json"
 
 
 class SettingsError(Exception):
@@ -70,6 +74,38 @@ def clients_root() -> Path | None:
     return Path(raw) if raw else None
 
 
+def firm() -> str:
+    """The firm's name as typed once at setup; the wizard's default Firm."""
+    return str(_read().get("firm", "") or "").strip()
+
+
+def product_name() -> str:
+    """What the app is called, from app/package.json (or the shell's copy of it)."""
+    override = os.environ.get(ENV_PRODUCT_NAME)
+    if override:
+        return override
+    try:
+        return str(json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))["productName"])
+    except (OSError, json.JSONDecodeError, KeyError):
+        return "Tax Document Tracker"   # a frozen build without the shell's env
+
+
+def _write(data: dict) -> None:
+    path = settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(temp, path)
+
+
+def set_firm(name: str) -> str:
+    """Record the firm's name beside the clients root."""
+    data = _read()
+    data["firm"] = str(name).strip()
+    _write(data)
+    return data["firm"]
+
+
 def set_clients_root(root: Path | str) -> Path:
     """Record ``root`` as the clients root. It must already be a folder.
 
@@ -79,11 +115,9 @@ def set_clients_root(root: Path | str) -> Path:
     root = Path(str(root).strip())
     if not root.is_dir():
         raise SettingsError(f"not a folder: {root}")
-    path = settings_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(path.name + ".tmp")
-    temp.write_text(json.dumps({"clients_root": str(root)}, indent=2), encoding="utf-8")
-    os.replace(temp, path)
+    data = _read()
+    data["clients_root"] = str(root)
+    _write(data)
     return root
 
 

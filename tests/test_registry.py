@@ -129,7 +129,7 @@ def test_find_matches_label_or_path(tmp_path):
 def test_label_falls_back_to_the_folder_name(tmp_path):
     folder = tmp_path / "Smith 2025"
     assert Engagement(path=folder).label == "Smith 2025"
-    assert Engagement(path=folder, name="The Smiths").label == "The Smiths"
+    assert Engagement(path=folder, info=EngagementInfo(name="The Smiths")).label == "The Smiths"
 
 
 def test_a_root_that_is_not_a_folder_is_an_error(tmp_path):
@@ -141,3 +141,17 @@ def test_a_root_with_no_engagement_is_an_error_not_a_quiet_no_op(tmp_path):
     (tmp_path / "Empty").mkdir()
     with pytest.raises(RegistryError, match="no engagement found"):
         discover_engagements(tmp_path)
+
+
+def test_an_engagement_is_its_sheet(tmp_path):
+    # Every field on the Engagement sheet is reachable on the Engagement
+    # without being declared a second time.
+    from dataclasses import fields
+
+    folder = make(tmp_path, "Smith 2025", info=EngagementInfo(client="John", sender="Jason"))
+    [engagement] = discover_engagements(tmp_path).engagements
+    for field in fields(EngagementInfo):
+        assert getattr(engagement, field.name) == getattr(engagement.info, field.name)
+    assert engagement.client == "John" and engagement.sender == "Jason"
+    with pytest.raises(AttributeError):
+        engagement.no_such_field

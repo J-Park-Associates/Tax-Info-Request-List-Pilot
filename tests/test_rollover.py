@@ -249,8 +249,8 @@ def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
 
     write_index(prior / INDEX_FILENAME, [
         IndexEntry(received="2026-03-01", original_name="K-1 Redwood LP.pdf",
-                   size_kb=12.0, digest="abc", identifier="", document="",
-                   filed_as="K-1 Redwood LP.pdf", prepared_location="",
+                   size_kb=12.0, digest="abc", identifier="",
+                   prepared_location="Prepared/00 - Needs Review/K-1 Redwood LP.pdf",
                    pbc_location="", decision=NEEDS_REVIEW,
                    reason="matched no request"),
     ])

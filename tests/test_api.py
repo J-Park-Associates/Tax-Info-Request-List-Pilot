@@ -17,6 +17,7 @@ import pytest
 import tracker.api as api
 from tracker.manifest import ManifestError, load_manifest
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
+from tracker.templates import default_tax_year
 
 
 @pytest.fixture
@@ -24,10 +25,13 @@ def demo_root(tmp_path, monkeypatch):
     """A clients root recorded the way the app records it: settings.json beside the app."""
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
+    from tracker.settings import set_firm
+
     root = tmp_path / "Clients"
     root.mkdir()
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
     set_clients_root(root)
+    set_firm("J Park & Associates, CPA")
     return root
 
 
@@ -284,7 +288,8 @@ def test_create_writes_the_engagement_sheet_the_scheduled_run_reads(capsys, demo
     assert payload["state"]["engagement"]["due"] == "2026-04-15"
     [found] = discover_engagements(demo_root).engagements
     assert found.client == "John Smith" and found.link == "https://drive.example/abc"
-    assert found.firm == api.DEFAULT_FIRM and found.reminders is True
+    from tracker.settings import firm
+    assert found.firm == firm() and found.reminders is True
     assert found.name == ""          # the folder is the name; nothing to drift
 
 
@@ -342,7 +347,9 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     lock = engagement / LOCK_FILENAME
     lock.write_text("pid=999 started=2026-03-14T07:03:00", encoding="utf-8")
     code, payload = run(capsys, "state", "--engagement", str(engagement))
-    assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False}
+    from tracker.locking import STALE_LOCK_SECONDS
+    assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False,
+                               "stale_after_minutes": STALE_LOCK_SECONDS // 60}
     code, payload = run(capsys, "unlock", "--engagement", str(engagement))
     assert code == 1 and "may still be going" in payload["error"]
 
@@ -357,9 +364,9 @@ def test_a_new_client_engagement_is_named_from_client_year_and_form(capsys, demo
             "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == "Smith Family TY2025 Form 1040"
+    assert payload["created"] == f"Smith Family TY{default_tax_year()} Form 1040"
     code, payload = run(capsys, "templates")
-    assert payload["years"]["1040"] == 2025
+    assert payload["default_year"] == default_tax_year()
 
 
 # ------------------------------------------------- the calendar and the prior ----
@@ -376,11 +383,9 @@ def test_create_shifts_the_checklist_to_the_engagements_year(capsys, demo_root):
 
 
 def test_templates_carries_the_calendars_default_year(capsys):
-    from tracker.templates import default_tax_year
-
     code, payload = run(capsys, "templates")
     assert payload["default_year"] == default_tax_year()
-    assert set(payload["years"].values()) == {default_tax_year()}
+    assert "years" not in payload          # one number, not one per form
 
 
 def test_rollover_retires_the_prior_in_the_priors_list(capsys, demo_root):
@@ -455,13 +460,18 @@ def test_set_root_records_the_folder_the_job_will_walk(capsys, tmp_path, monkeyp
     assert payload["root"] == str(clients) and payload["exists"] is True
 
 
-def test_the_firm_is_typed_once_and_copied_after(capsys, demo_root):
-    first = {"name": "First", "firm": "Park & Daughters CPA",
-             "items": [{"identifier": "A01", "document": "W-2"}]}
-    assert run(capsys, "create", stdin=first)[0] == 0
-    second = {"name": "Second", "items": [{"identifier": "A01", "document": "W-2"}]}
-    code, payload = run(capsys, "create", stdin=second)
+def test_the_firm_is_typed_once_in_settings_and_signs_every_engagement(capsys, demo_root):
+    from tracker.settings import firm, set_firm
+
+    set_firm("Park & Daughters CPA")
+    assert firm() == "Park & Daughters CPA"
+    spec = {"name": "First", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
     assert code == 0 and payload["state"]["engagement"]["firm"] == "Park & Daughters CPA"
+    # set-root can set it too, once, at first launch.
+    code, payload = run(capsys, "set-root", stdin={"root": str(demo_root), "firm": "New Name LLP"})
+    assert code == 0 and payload["firm"] == "New Name LLP" == firm()
+    assert run(capsys, "list")[1]["vocab"]["firm"] == "New Name LLP"
 
 
 def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monkeypatch):
@@ -475,3 +485,66 @@ def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monke
     xml = Path(payload["xml"]).read_text(encoding="utf-16")
     assert str(demo_root) in xml and "T06:30:00" in xml and "PT60M" in xml
     assert calls == [Path(payload["xml"])]
+
+
+# ------------------------------------------------------------- vocabulary ----
+
+
+def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
+    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
+    from tracker.locking import STALE_LOCK_SECONDS
+    from tracker.manifest import DEFAULT_EXTENSIONS, Override, Status
+    from tracker.rollover import CARRIED_SHEET
+    from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
+    from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START
+
+    code, payload = run(capsys, "list")
+    vocab = payload["vocab"]
+    assert [s["value"] for s in vocab["statuses"]] == list(Status.ALL)
+    assert {s["key"] for s in vocab["statuses"]} == {
+        "missing", "partial", "failed-validation", "received", "pending-sync"}
+    assert vocab["overrides"] == {"accepted": Override.ACCEPTED, "waived": Override.WAIVED}
+    assert vocab["decisions"] == {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE}
+    assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
+    assert vocab["stale_lock_minutes"] == STALE_LOCK_SECONDS // 60
+    assert vocab["carried_sheet"] == CARRIED_SHEET
+    assert vocab["schedule"] == {"start": DEFAULT_START, "every": DEFAULT_REPEAT_MINUTES,
+                                 "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
+                                 "task_name": "Tax Document Tracker"}
+
+
+def test_every_chip_class_the_vocabulary_implies_exists_in_the_stylesheet(capsys, demo_root):
+    css = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "style.css").read_text(encoding="utf-8")
+    vocab = run(capsys, "list")[1]["vocab"]
+    for status in vocab["statuses"]:
+        assert f".chip-{status['key']} " in css or f".chip-{status['key']}{{" in css.replace(" ", ""), status
+
+
+def test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label(capsys, demo_root):
+    spec = {"form": "1120S", "client": "Acme", "year": 2026,
+            "items": [{"identifier": "A01", "document": "Trial Balance", "any_keywords": "trial balance"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["created"] == "Acme TY2026 Form 1120-S"
+
+
+def test_priors_carry_next_year_and_the_index_carries_candidates(capsys, demo_root, tmp_path):
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "W-2 Jane Smith 2024 - old.pdf")
+    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == "Needs Review"]
+    assert parked["candidates"] == "A01"
+    assert parked["filed_as"] == "W-2 Jane Smith 2024 - old.pdf"
+    code, payload = run(capsys, "priors")
+    [prior] = payload["priors"]
+    assert prior["year"] == 2025 and prior["next_year"] == 2026
+
+
+def test_install_schedule_defaults_come_from_scheduling(capsys, demo_root, monkeypatch):
+    import tracker.api as api_module
+    from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START
+
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name="Tax Document Tracker": ["schtasks"])
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert code == 0, payload
+    assert payload["start"] == DEFAULT_START and payload["every"] == DEFAULT_REPEAT_MINUTES
+    assert payload["draft_day"] == "saturday"

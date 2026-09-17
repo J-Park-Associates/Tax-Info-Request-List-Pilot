@@ -37,6 +37,7 @@ from pathlib import Path
 
 from tracker.manifest import EngagementInfo, ManifestError, load_engagement_info
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
+from tracker.validators import OFFICE_LOCK_PREFIX, is_sync_staging
 
 #: How far below the root discovery looks: Clients/{Client}/{Engagement}
 #: is two; four leaves room for a year or office level above that.
@@ -49,24 +50,31 @@ class RegistryError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class Engagement:
-    """One engagement the scheduled run should process."""
+    """One engagement the scheduled run should process.
+
+    Everything about the client is the manifest's Engagement sheet, held
+    here as ``info`` and reachable as attributes (``engagement.client``)
+    so a field added to the sheet is one edit, in one dataclass.
+    """
 
     path: Path
-    name: str = ""
-    client: str = ""
-    link: str = ""
-    due: dt.date | None = None
-    sender: str = ""
-    firm: str = ""
-    reminders: bool = True
-    active: bool = True
+    info: EngagementInfo = EngagementInfo()
     problem: str = ""        # why the manifest could not be read, if it could not
-    rolled_from: str = ""    # what this engagement was rolled forward from
     superseded_by: str = ""  # the engagement this one was rolled forward INTO
+
+    def __getattr__(self, name: str):
+        try:
+            return getattr(self.info, name)
+        except AttributeError:
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}") from None
+
+    @property
+    def active(self) -> bool:
+        return self.info.active and not self.superseded_by
 
     @property
     def label(self) -> str:
-        return self.name or self.path.name
+        return self.info.name or self.path.name
 
 
 @dataclass(slots=True)
@@ -94,7 +102,11 @@ class Registry:
 
 def _skip(folder: Path) -> bool:
     name = folder.name
-    return name.startswith((".", "_", "~$")) or name in (PREPARED_DIR_NAME, SHARED_DIR_NAME)
+    return (
+        name.startswith((".", "_", OFFICE_LOCK_PREFIX))
+        or is_sync_staging(name)
+        or name in (PREPARED_DIR_NAME, SHARED_DIR_NAME)
+    )
 
 
 def engagement_dirs(root: Path | str, *, max_depth: int = MAX_DEPTH) -> list[Path]:
@@ -127,18 +139,7 @@ def engagement_from(folder: Path) -> Engagement:
         info: EngagementInfo = load_engagement_info(folder / MANIFEST_FILENAME)
     except ManifestError as exc:
         return Engagement(path=folder, problem=str(exc))
-    return Engagement(
-        path=folder,
-        name=info.name,
-        client=info.client,
-        link=info.link,
-        due=info.due,
-        sender=info.sender,
-        firm=info.firm,
-        reminders=info.reminders,
-        active=info.active,
-        rolled_from=info.rolled_from,
-    )
+    return Engagement(path=folder, info=info)
 
 
 def _same_folder(a: str, b: Path) -> bool:
@@ -166,7 +167,7 @@ def mark_superseded(engagements: list[Engagement]) -> list[Engagement]:
             if _same_folder(candidate.rolled_from, prior.path):
                 successors[index] = candidate.label
     return [
-        replace(e, active=False, superseded_by=successors[i]) if i in successors else e
+        replace(e, superseded_by=successors[i]) if i in successors else e
         for i, e in enumerate(engagements)
     ]
 

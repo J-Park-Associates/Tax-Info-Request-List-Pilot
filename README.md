@@ -31,6 +31,7 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 ├── _index.xlsx           ← every original: where it went, what it became
 ├── _index.pending.json   ← only while Excel has the index open; merged next run
 ├── _content_cache.json   ← verdict cache (no client text is ever stored)
+├── _manifest.pending.json← statuses a locked Excel kept out of the sheet, merged next write
 ├── Prepared/             ← the firm's working set (the client never sees it)
 │   ├── A01 - W-2 Wage Statements - All Employers/
 │   │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
@@ -111,9 +112,11 @@ engagement is still active:
 | Engagement Name | label; the folder name if blank |
 | Share Link | pasted into the reminder |
 | Due Date | "if you can send these by…" |
-| Sender / Firm | sign-off |
+| Sender | who the reminder is from |
+| Firm | the sign-off line and the client README's contact (typed once at setup) |
 | Reminders | `no` = this client is chased by phone, never by draft |
 | Active | `no` = the scheduled run skips this folder |
+| Rolled From | written by the rollover; the engagement it names is retired |
 
 The app asks for that folder on first launch and writes it to
 `settings.json` beside itself (`python -m tracker.settings <folder>` does the
@@ -132,8 +135,7 @@ find and flags any manifest it cannot read.
 Generate the job itself with:
 
 ```
-python -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --every 120 ^
-    --out tax-tracker.xml --install
+python -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-tracker.xml --install
 ```
 
 `--root` defaults to the folder in `settings.json`; `--install` registers
@@ -146,8 +148,9 @@ without anyone opening last year's manifest.
 
 One daily task is enough: the **runner** decides whether today is a drafting
 day, not the scheduler. So a Saturday the machine spent switched off still
-drafts on the next run instead of skipping the week, and `--every 120` keeps
-filing and scanning running through the day without touching that.
+drafts on the next run instead of skipping the week, and the repeat interval
+(`tracker.scheduling.DEFAULT_REPEAT_MINUTES`, or `--every`) keeps filing and
+scanning running through the day without touching that.
 
 **Reminders are weekly, on Saturday, and always just drafts.** The run writes
 `reminder-draft.txt` into the engagement folder; a person opens it, edits it
@@ -225,14 +228,14 @@ copy.
 
 ```
 pip install -r requirements.txt
-python -m pytest tests/        # verify: all green
+python -m pytest -q        # verify: all green
 ```
 
 Optional OCR for scanned PDFs: see [requirements.txt](requirements.txt).
 
 ## Running the app
 
-`Start App.bat` runs the desktop app from source (Python 3.11+ and Node
+`Start App.bat` runs the desktop app from source (Python (the floor is `requires-python` in `pyproject.toml`) and Node
 installed); `Build App.bat` packages it as `Tax Document Tracker.exe` for a
 machine with neither. On first launch the app asks where your clients live
 and writes that to `settings.json` beside itself; everything else follows

@@ -32,7 +32,6 @@ rules are never re-read, which keeps a 15-minute scan cadence cheap.
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 import logging
@@ -40,7 +39,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from tracker.manifest import RequestItem
+from tracker import reasons
+from tracker.manifest import RequestItem, has_routing_rules
+from tracker.validators import extension_of
 
 log = logging.getLogger("tracker.content_check")
 
@@ -75,8 +76,9 @@ class ContentResult:
 
 
 def has_content_rules(item: RequestItem) -> bool:
-    """Whether tier 3 has anything to check on this row at all."""
-    return bool(item.required_keywords or item.any_keywords or item.date_pattern)
+    """Whether tier 3 has anything to check on this row at all: a routing
+    rule, or a year check derived from Period (which checks but never routes)."""
+    return has_routing_rules(item) or bool(item.date_pattern)
 
 
 def rules_fingerprint(item: RequestItem) -> str:
@@ -108,28 +110,16 @@ def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
     missing = [k for k in item.required_keywords if not contains_keyword(text, k)]
     if missing:
         listed = ", ".join(f"'{k}'" for k in missing)
-        return ContentResult(
-            ok=False,
-            reason=f"required keyword(s) {listed} not found; possible wrong document",
-        )
+        return ContentResult(ok=False, reason=reasons.WRONG_DOCUMENT.format(listed=listed))
 
     if item.any_keywords and not any(
         contains_keyword(text, k) for k in item.any_keywords
     ):
         listed = ", ".join(item.any_keywords)
-        return ContentResult(
-            ok=False,
-            reason=f"none of the expected keywords found ({listed})",
-        )
+        return ContentResult(ok=False, reason=reasons.NO_EXPECTED_KEYWORD.format(listed=listed))
 
     if item.date_pattern and not re.search(item.date_pattern, text):
-        return ContentResult(
-            ok=False,
-            reason=(
-                f"expected period not found (pattern: {item.date_pattern}); "
-                "possible wrong period"
-            ),
-        )
+        return ContentResult(ok=False, reason=reasons.WRONG_PERIOD.format(pattern=item.date_pattern))
 
     return ContentResult(ok=True)
 
@@ -184,7 +174,7 @@ def _extract_textfile(path: Path) -> str:
 
 def extract_text(path: Path) -> str | None:
     """Extract text from a supported file; None if no extractor exists."""
-    extension = path.suffix.lower().lstrip(".")
+    extension = extension_of(path)
     if extension == "pdf":
         return _extract_pdf(path)
     if extension in ("xlsx", "xlsm"):
@@ -253,20 +243,20 @@ def check_content(
 
 
 def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
-    extension = path.suffix.lower().lstrip(".")
+    extension = extension_of(path)
     try:
         text = extract_text(path)
     except Exception as exc:
         return ContentResult(
             ok=False,
-            reason=f"text extraction failed ({exc.__class__.__name__}: {exc})",
+            reason=reasons.EXTRACTION_FAILED.format(error=f"{exc.__class__.__name__}: {exc}"),
             extractable=False,
         )
 
     if text is None:
         return ContentResult(
             ok=False,
-            reason=f"content rules cannot be checked on .{extension} files; review manually",
+            reason=reasons.UNCHECKABLE_TYPE.format(extension=extension),
             extractable=False,
         )
 
@@ -274,18 +264,11 @@ def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
         ocr_text = _ocr_pdf(path)
         if ocr_text is None:
             return ContentResult(
-                ok=False,
-                reason=(
-                    "PDF appears to be a scan with no text layer and OCR is "
-                    "not installed; review manually"
-                ),
-                extractable=False,
+                ok=False, reason=reasons.NO_TEXT_LAYER.format(), extractable=False,
             )
         if not ocr_text.strip():
             return ContentResult(
-                ok=False,
-                reason="no readable text found in PDF, even after OCR; review manually",
-                extractable=False,
+                ok=False, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False,
             )
         text = ocr_text
 

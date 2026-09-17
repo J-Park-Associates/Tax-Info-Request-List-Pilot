@@ -1,4 +1,4 @@
-"""Client Document Tracker — deterministic PBC document tracking over OneDrive.
+"""Client Document Tracker — deterministic PBC document tracking over OneDrive or Google Drive.
 
 See docs/ROADMAP.md for the build plan. Component modules:
 
@@ -16,7 +16,9 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - scheduling    : generate the Task Scheduler / n8n job
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
-- settings      : settings.json beside the app - the clients root, written once
+- settings      : settings.json beside the app - the clients root and firm, written once
+- reasons       : every refusal said once: the note, the client's ask, whose problem it is
+- api           : the desktop app's command layer, one JSON command in, one JSON reply out
 """
 
 from tracker.manifest import (

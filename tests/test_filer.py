@@ -244,21 +244,54 @@ def test_dry_run_moves_nothing(engagement):
 
 
 def test_index_workbook_is_readable_in_excel(engagement):
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    drop(engagement, "mystery.pdf", "nothing recognizable here")
-    file_drops(engagement, today=DAY1)
+    from tracker.filer import INDEX_COLUMNS, INDEX_LAYOUT
 
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
     wb = load_workbook(engagement / INDEX_FILENAME)
     ws = wb[INDEX_SHEET]
-    header = [c.value for c in ws[1]]
-    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    headers = [c.value for c in ws[1]]
+    assert headers == list(INDEX_COLUMNS)
+    # Read the row by header name, the way the filer itself reads it back.
+    row = dict(zip(headers, [c.value for c in ws[2]]))
+    assert row[INDEX_LAYOUT["decision"][0]] == FILED
+    assert row[INDEX_LAYOUT["identifier"][0]] == "A01"
+    assert row[INDEX_LAYOUT["prepared_location"][0]].endswith(".pdf")
+    assert ws.freeze_panes == "A2"
     wb.close()
 
-    assert header[:4] == ["Received", "Original Name", "Size KB", "SHA-256"]
-    assert {r[1] for r in rows} == {"w2.pdf", "mystery.pdf"}
-    decisions = {r[1]: r[9] for r in rows}
-    assert decisions["w2.pdf"] == FILED
-    assert decisions["mystery.pdf"] == NEEDS_REVIEW
+
+def test_an_index_written_with_older_columns_still_reads(tmp_path):
+    # Filed As and Document were stored copies and are gone; Candidates is
+    # new. An index from before either change reads by header name.
+    from openpyxl import Workbook
+    from tracker.filer import read_index
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = INDEX_SHEET
+    ws.append(["Received", "Original Name", "Size KB", "SHA-256", "Identifier", "Document",
+               "Filed As", "Prepared Location", "PBC Location", "Decision", "Reason"])
+    ws.append(["2026-01-01", "w2.pdf", 9.4, "abc", "A01", "W-2 Wage Statements",
+               "A01 - W-2 Wage Statements - TY2025.pdf",
+               "Prepared/A01 - W-2 Wage Statements/A01 - W-2 Wage Statements - TY2025.pdf",
+               "Shared/PBC/w2.pdf", FILED, "content matched"])
+    path = tmp_path / INDEX_FILENAME
+    wb.save(path)
+    [entry] = read_index(path)
+    assert entry.identifier == "A01" and entry.decision == FILED
+    assert entry.filed_as == "A01 - W-2 Wage Statements - TY2025.pdf"   # derived, not stored
+    assert entry.candidates == ""
+
+
+def test_the_routers_candidates_travel_as_data_in_the_index(engagement):
+    from tracker.filer import read_index
+
+    drop(engagement, "old.pdf", "Form W-2 Wage and Tax Statement 2024")   # contested: wrong year
+    report = file_drops(engagement, today=DAY1)
+    [parked] = report.review
+    assert parked.candidates == "A01"
+    assert read_index(engagement / INDEX_FILENAME)[0].candidates == "A01"
 
 
 def test_prepared_name_for_collides_safely():

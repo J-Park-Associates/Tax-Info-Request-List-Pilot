@@ -5,6 +5,9 @@ and exit 1. All real logic lives in the tracker package; this module only
 serializes it, so the UI can never disagree with the scanner.
 
 Commands:
+  list      every engagement under the clients root, plus the vocabulary the app shows
+  templates the form catalog and the calendar's default tax year
+  create    a new engagement from the wizard's spec (JSON on stdin)
   state     current manifest rows, the index, the one summary, useful paths
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
@@ -23,14 +26,19 @@ import json
 import os
 import shutil
 import sys
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from tracker.locking import clear_stale_lock, lock_status
+from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker.manifest import (
+    ANY_EXTENSION,
+    DEFAULT_EXTENSIONS,
     EngagementInfo,
     ManifestError,
+    Override,
+    Status,
     check_manifest,
     create_template,
     load_engagement_info,
@@ -40,16 +48,26 @@ from tracker.manifest import (
     with_pending,
     write_engagement_info,
 )
-from tracker.registry import engagement_dirs, engagement_from
-from tracker.runner import REMINDERS_NEVER, run_engagement
+from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
+from tracker.runner import DRAFT_WEEKDAY, REMINDERS_NEVER, WEEKDAY_NAMES, run_engagement
 from tracker.filer import (
+    DUPLICATE,
+    FILED,
     INDEX_FILENAME,
+    NEEDS_REVIEW,
     FilingError,
     assign_review_file,
     file_drops,
     read_index,
 )
-from tracker.rollover import detect_year, roll_forward, write_rollover_manifest
+from tracker.rollover import (
+    CARRIED_SHEET,
+    carry_engagement_info,
+    detect_year,
+    next_tax_year,
+    roll_forward,
+    write_rollover_manifest,
+)
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PBC_DIR_NAME,
@@ -59,8 +77,24 @@ from tracker.scaffold import (
     scaffold_engagement,
 )
 from tracker.scanner import ScanLockedError, scan_engagement
-from tracker.scheduling import install_task, task_scheduler_xml
-from tracker.settings import SettingsError, clients_root, set_clients_root, settings_path
+from tracker.scheduling import (
+    DEFAULT_REPEAT_MINUTES,
+    DEFAULT_START,
+    SCHEDULE_XML_FILENAME,
+    TASK_NAME,
+    install_task,
+    task_scheduler_xml,
+)
+from tracker.settings import (
+    SettingsError,
+    clients_root,
+    firm,
+    product_name,
+    set_clients_root,
+    set_firm,
+    settings_dir,
+    settings_path,
+)
 from tracker.templates import (  # the catalog; re-exported for the wizard
     FORM_TEMPLATES,
     FORM_TYPES,
@@ -71,16 +105,9 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     template_items,
 )
 
-# Frozen (PyInstaller) builds live inside the portable package.
-if getattr(sys, "frozen", False):
-    REPO_ROOT = Path(sys.executable).resolve().parent
-else:
-    REPO_ROOT = Path(__file__).resolve().parent.parent
-#: The firm's name for the very first engagement; after that the wizard
-#: copies whatever the newest engagement's sheet says.
-DEFAULT_FIRM = "J Park & Associates, CPA"
-
-
+#: The folder the app runs from (the repository from source, beside the
+#: executable when frozen) - the same answer tracker.settings gives.
+REPO_ROOT = settings_dir()
 def _root() -> Path:
     """The clients root from settings.json - the one place it is kept."""
     root = clients_root()
@@ -100,6 +127,60 @@ def _engagement_dir(argv: list[str]) -> Path:
     raise ManifestError("Pick an engagement first (--engagement <folder>)")
 
 
+#: How a new engagement is named when nobody types a name. The renderer
+#: formats the same pattern, so the wizard's preview and the folder agree.
+NAME_PATTERN = "{client} TY{year} {form}"
+ROLLOVER_NAME_PATTERN = "{prior} - {year}"
+
+
+def form_label(form: str) -> str:
+    """``Form 1120-S`` for ``1120S``: the one id -> label map is FORM_TYPES."""
+    for entry in FORM_TYPES:
+        if entry["id"] == form:
+            return entry["label"]
+    return f"Form {form}" if form else "Engagement"
+
+
+def default_engagement_name(client: str, year: int, form: str) -> str:
+    return NAME_PATTERN.format(client=client or "New", year=year, form=form_label(form)).strip()
+
+
+def _slug(text: str) -> str:
+    return "".join(ch if ch.isalnum() else "-" for ch in text.lower()).strip("-")
+
+
+def _vocab() -> dict:
+    """Every word and number the renderer shows or compares, from its owner.
+
+    The app never types a status, an override, a decision, a default or a
+    sentence pattern of its own: it reads this once and derives everything
+    (chip classes from the status key, waived from the override value, the
+    parked list from the decision value, the picker from candidates).
+    """
+    return {
+        "product": product_name(),
+        "firm": firm(),
+        "statuses": [{"value": status, "key": _slug(status)} for status in Status.ALL],
+        "unscanned_label": "Requested",
+        "overrides": {"accepted": Override.ACCEPTED, "waived": Override.WAIVED},
+        "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE},
+        "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
+        "any_extension": ANY_EXTENSION,
+        "stale_lock_minutes": STALE_LOCK_SECONDS // 60,
+        "carried_sheet": CARRIED_SHEET,
+        "name_pattern": NAME_PATTERN,
+        "rollover_name_pattern": ROLLOVER_NAME_PATTERN,
+        "new_client_placeholder": "New",
+        "schedule": {
+            "start": DEFAULT_START,
+            "every": DEFAULT_REPEAT_MINUTES,
+            "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
+            "task_name": TASK_NAME,
+        },
+        "keyword_default_note": "defaults to the document name",
+    }
+
+
 def _lock_payload(engagement: Path) -> dict | None:
     status = lock_status(engagement)
     if status is None:
@@ -108,39 +189,18 @@ def _lock_payload(engagement: Path) -> dict | None:
         "started": status.started,
         "age_minutes": int(status.age_seconds // 60),
         "stale": status.stale,
+        "stale_after_minutes": STALE_LOCK_SECONDS // 60,
     }
 
 
 def _info_payload(info: EngagementInfo) -> dict:
-    return {
-        "client": info.client, "name": info.name, "link": info.link,
-        "due": info.due.isoformat() if info.due else "", "sender": info.sender,
-        "firm": info.firm, "reminders": info.reminders, "active": info.active,
-        "rolled_from": info.rolled_from,
-    }
+    """The Engagement sheet as JSON: every field, with dates as ISO text."""
+    payload = asdict(info)
+    payload["due"] = info.due.isoformat() if info.due else ""
+    return payload
 
 
-def _firm_default() -> str:
-    """The firm as the newest engagement on disk has it, else the built-in default.
-
-    So the firm's name is typed once, on the first engagement, and copied
-    from then on - no constant to keep in step with the sheets.
-    """
-    root = clients_root()
-    if root is not None and root.is_dir():
-        for folder in reversed(engagement_dirs(root)):
-            try:
-                firm = load_engagement_info(folder / MANIFEST_FILENAME).firm
-            except ManifestError:
-                continue
-            if firm:
-                return firm
-    return DEFAULT_FIRM
-
-
-def _info_from_spec(
-    spec: dict, *, carry: EngagementInfo | None = None, rolled_from: str = ""
-) -> EngagementInfo:
+def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None) -> EngagementInfo:
     """The Engagement sheet for a new engagement: what the wizard sent, over
     what last year's sheet said (rollover), over the firm default.
 
@@ -160,16 +220,15 @@ def _info_from_spec(
         except ValueError:
             raise ManifestError(f"Due date must be YYYY-MM-DD, got {due_raw!r}") from None
     else:
-        due = None   # a new year never inherits last year's deadline
-    return EngagementInfo(
+        due = base.due
+    return replace(
+        base,
         client=text("client", base.client),
-        link=text("link", ""),          # a new folder has a new share link
+        link=text("link", base.link),
         due=due,
         sender=text("sender", base.sender),
-        firm=text("firm", base.firm or _firm_default()),
+        firm=text("firm", base.firm or firm()),
         reminders=bool(spec.get("reminders", base.reminders)),
-        active=True,
-        rolled_from=rolled_from,
     )
 
 
@@ -211,19 +270,7 @@ def _state(engagement: Path) -> dict:
             }
             for i in items
         ],
-        "index": [
-            {
-                "received": e.received,
-                "original_name": e.original_name,
-                "identifier": e.identifier,
-                "filed_as": e.filed_as,
-                "prepared_location": e.prepared_location,
-                "pbc_location": e.pbc_location,
-                "decision": e.decision,
-                "reason": e.reason,
-            }
-            for e in read_index(engagement / INDEX_FILENAME)
-        ],
+        "index": [asdict(e) | {"filed_as": e.filed_as} for e in read_index(engagement / INDEX_FILENAME)],
         "paths": {
             "engagement": str(engagement),
             "shared": str(engagement / SHARED_DIR_NAME),
@@ -276,13 +323,7 @@ def _cmd_scan(argv: list[str]) -> dict:
 
 def _cmd_templates(argv: list[str]) -> dict:
     """The catalog, plus the tax year a new engagement is for by default."""
-    year = default_tax_year()
-    return {
-        "forms": FORM_TYPES,
-        "templates": FORM_TEMPLATES,
-        "years": {form: year for form in FORM_TEMPLATES},
-        "default_year": year,
-    }
+    return {"forms": FORM_TYPES, "templates": FORM_TEMPLATES, "default_year": default_tax_year()}
 
 
 def _cmd_check(argv: list[str]) -> dict:
@@ -304,9 +345,9 @@ def _cmd_list(argv: list[str]) -> dict:
     """Every engagement under the root - the same discovery the scheduled run uses."""
     root = clients_root()
     if root is None or not root.is_dir():
-        return {"engagements": [], "needs_root": True, "root": str(root or "")}
+        return {"engagements": [], "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
     engagements = [{"name": child.name, "path": str(child)} for child in engagement_dirs(root)]
-    return {"engagements": engagements, "needs_root": False, "root": str(root)}
+    return {"engagements": engagements, "needs_root": False, "root": str(root), "vocab": _vocab()}
 
 
 def _cmd_create(argv: list[str]) -> dict:
@@ -327,14 +368,7 @@ def _cmd_create(argv: list[str]) -> dict:
         year = int(spec.get("year") or default_tax_year())
     except (TypeError, ValueError):
         raise ManifestError(f"Tax year must be a whole number, got {spec.get('year')!r}") from None
-    fallback = " ".join(
-        part for part in (
-            client or "New",
-            f"TY{year}",
-            f"Form {form}" if form else "Engagement",
-        ) if part
-    )
-    name = _engagement_name(str(spec.get("name", "")), fallback)
+    name = _engagement_name(str(spec.get("name", "")), default_engagement_name(client, year, form))
     engagement = _root() / name
     if engagement.exists():
         raise ManifestError(f"An engagement named '{name}' already exists")
@@ -360,38 +394,35 @@ def _cmd_create(argv: list[str]) -> dict:
 
 
 def _cmd_priors(argv: list[str]) -> dict:
-    """Engagements already on disk that a new year could be rolled from."""
-    priors = []
+    """Engagements already on disk that a new year could be rolled from.
+
+    The same discovery the scheduled run uses, so what the wizard offers
+    and what the job walks are one list; superseded_by comes from it too.
+    """
     root = clients_root()
-    if root is not None and root.is_dir():
-        for child in engagement_dirs(root):
-            manifest = child / MANIFEST_FILENAME
-            try:
-                items = load_manifest(manifest)
-                info = load_engagement_info(manifest)
-            except ManifestError:
-                continue
-            priors.append({
-                "name": child.name,
-                "path": str(child),
-                "client": info.client,
-                "rolled_from": info.rolled_from,
-                "year": detect_year(items),
-                "requests": len(items),
-                "received": sum(1 for i in items if i.status == "Received"),
-            })
-    # Say which priors have already been rolled forward, so the wizard can
-    # steer the person to the newest year instead of rolling the same
-    # prior twice.
-    names_by_path = {Path(p["path"]).resolve(): p["name"] for p in priors}
-    for prior in priors:
-        successor = ""
-        if prior["rolled_from"]:
-            pass
-        for other in priors:
-            if other["rolled_from"] and Path(other["rolled_from"]).resolve() == Path(prior["path"]).resolve():
-                successor = other["name"]
-        prior["superseded_by"] = successor
+    if root is None or not root.is_dir():
+        return {"priors": []}
+    try:
+        registry = discover_engagements(root)
+    except RegistryError:
+        return {"priors": []}
+    priors = []
+    for engagement in registry.engagements:
+        if engagement.problem:
+            continue
+        items = load_manifest(engagement.path / MANIFEST_FILENAME)
+        year = detect_year(items)
+        priors.append({
+            "name": engagement.path.name,
+            "path": str(engagement.path),
+            "client": engagement.client,
+            "rolled_from": engagement.rolled_from,
+            "superseded_by": engagement.superseded_by,
+            "year": year,
+            "next_year": next_tax_year(year) if year else None,
+            "requests": len(items),
+            "received": summarize(items).received,
+        })
     return {"priors": priors}
 
 
@@ -423,16 +454,17 @@ def _cmd_rollover(argv: list[str]) -> dict:
         include_new=bool(spec.get("include_new")),
     )
 
-    default_name = f"{prior.name} - {report.target_year}" if report.target_year else f"{prior.name} - next year"
+    default_name = ROLLOVER_NAME_PATTERN.format(prior=prior.name, year=report.target_year or "next year")
     name = _engagement_name(str(spec.get("name", "")), default_name)
     engagement = _root() / name
     if engagement.exists():
         raise ManifestError(f"An engagement named '{name}' already exists")
 
-    carried = load_engagement_info(prior / MANIFEST_FILENAME)
-    # Naming the prior on the new sheet is what retires it (see
-    # tracker.registry.mark_superseded); nothing is written to last year.
-    info = _info_from_spec(spec, carry=carried, rolled_from=str(prior))
+    # Last year's sheet, carried by the one rule (tracker.rollover); the
+    # wizard's fields go over it. Rolled From is what retires the prior.
+    carried = carry_engagement_info(load_engagement_info(prior / MANIFEST_FILENAME),
+                                    rolled_from=str(prior))
+    info = _info_from_spec(spec, carry=carried)
     engagement.mkdir(parents=True)
     try:
         write_rollover_manifest(engagement / MANIFEST_FILENAME, report)
@@ -459,6 +491,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
                 for r in report.offered
             ],
             "unfiled_last_year": report.unfiled_last_year,
+            "carried_sheet": CARRIED_SHEET,
         },
         "state": _state(engagement),
     }
@@ -512,25 +545,30 @@ def _cmd_settings(argv: list[str]) -> dict:
     return {
         "root": str(root or ""),
         "exists": bool(root and root.is_dir()),
+        "firm": firm(),
+        "product": product_name(),
         "settings_path": str(settings_path()),
     }
 
 
 def _cmd_set_root(argv: list[str]) -> dict:
-    """Record the clients root: JSON {"root": "<folder>"} on stdin. Once."""
+    """Record the clients root and the firm: JSON {"root": "<folder>", "firm": "..."} on stdin. Once."""
     spec = json.loads(sys.stdin.read() or "{}")
     try:
         root = set_clients_root(str(spec.get("root", "")))
     except SettingsError as exc:
         raise ManifestError(str(exc)) from None
-    return {"root": str(root), "settings_path": str(settings_path()),
+    if spec.get("firm") is not None:
+        set_firm(str(spec["firm"]))
+    return {"root": str(root), "firm": firm(), "settings_path": str(settings_path()),
             "engagements": _cmd_list([])["engagements"]}
 
 
 def _cmd_install_schedule(argv: list[str]) -> dict:
     """Generate the Task Scheduler job for the configured root and register it.
 
-    JSON on stdin (all optional): {"start": "07:00", "every": 120}. The
+    JSON on stdin (all optional): {"start": "HH:MM", "every": minutes},
+    defaulting to tracker.scheduling's DEFAULT_START / DEFAULT_REPEAT_MINUTES. The
     root, the Python and the working folder are the ones this app runs
     with, so the job walks exactly the folder the app shows. A frozen build
     has no Python module tree to run the job from and says so.
@@ -542,9 +580,9 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         )
     spec = json.loads(sys.stdin.read() or "{}")
     root = _root()
-    start = str(spec.get("start") or "07:00")
-    every = int(spec.get("every") or 0)
-    xml_path = settings_path().with_name("tax-tracker.xml")
+    start = str(spec.get("start") or DEFAULT_START)
+    every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
+    xml_path = settings_path().with_name(SCHEDULE_XML_FILENAME)
     xml_path.write_text(
         task_scheduler_xml(python=sys.executable, root=root, working_dir=REPO_ROOT,
                            start_time=start, repeat_minutes=every),
@@ -561,6 +599,9 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         "xml": str(xml_path),
         "command": command,
         "root": str(root),
+        "start": start,
+        "every": every,
+        "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
     }
 
 

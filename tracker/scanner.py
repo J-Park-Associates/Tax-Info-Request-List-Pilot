@@ -35,6 +35,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tracker import reasons
 from tracker.content_check import ContentCache, check_content
 from tracker.locking import (
     LOCK_FILENAME,
@@ -172,7 +173,7 @@ def _scan_item(
     # --- deterministic status resolution -----------------------------------
     if not folders:
         status = Status.MISSING
-        facts.insert(0, "request folder not found; re-run scaffold")
+        facts.insert(0, reasons.NO_REQUEST_FOLDER.format())
     elif count >= item.expected_count:
         status = Status.RECEIVED
         if pending:

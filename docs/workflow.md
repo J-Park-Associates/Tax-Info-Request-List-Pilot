@@ -25,8 +25,8 @@ the manifest an engagement is created with is the readable copy of it.
   on the command line it is `python -m tracker.rollover <last year> <new
   folder> --form 1040`. Last year's rows win on every field; the form
   template only fills blanks and *offers* rows the client has never had.
-- **New client:** pick the return type (1040, 1120, 1120-S, 1065, 1041,
-  990), tick what applies, add anything unusual. Every request needs a
+- **New client:** pick the return type (`tracker.templates.FORM_TYPES`),
+  tick what applies, add anything unusual. Every request needs a
   keyword the document itself contains; the wizard defaults it to the
   document name so a custom request can still auto-file.
 
@@ -71,15 +71,16 @@ The scanner owns the status column; people own the override column.
 - **Check Manifest** runs the same validation the scheduled job runs before
   it touches a file: a bad regex or a non-number typed in Excel is named
   with its row, and rows the rules cannot act on are listed as warnings.
-  Allowed Extensions left blank means `pdf, xlsx, csv`; `*` means any type.
-  A Period that names a year is the year check; `*` in Date Pattern turns
-  it off. Only the first 10 pages of a PDF are read.
+  Allowed Extensions left blank means the manifest's default
+  (`tracker.manifest.DEFAULT_EXTENSIONS`); `*` means any type. A Period
+  that names a year is the year check; `*` in Date Pattern turns it off.
+  Only the first `tracker.content_check.MAX_PAGES` pages of a PDF are read.
 - **File it**, on anything in Needs Review: pick the request (the picker
   starts on the router's own guess), optionally give a keyword, and the
   filer moves the copy under the canonical name, rewrites the index row as
   assigned by a person, learns the keyword and re-scans. If a run has
   died, its lock is shown with its start time and can be cleared once it
-  is an hour old.
+  is older than `tracker.locking.STALE_LOCK_SECONDS`.
 
 ## Collaboration
 
