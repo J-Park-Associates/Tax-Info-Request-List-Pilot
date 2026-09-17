@@ -47,8 +47,9 @@ from tracker.manifest import (
     RequestItem,
     Status,
     StatusUpdate,
-    UnfiledEntry,
     load_manifest,
+    summarize,
+    with_pending,
     write_statuses,
 )
 from tracker.scaffold import (
@@ -81,12 +82,17 @@ class ScanReport:
     """Everything one scan found and did."""
 
     engagement_dir: Path
+    items: list[RequestItem] = field(default_factory=list)   # the rows as loaded
     updates: dict[str, StatusUpdate] = field(default_factory=dict)
-    unfiled: list[UnfiledEntry] = field(default_factory=list)
-    waived: set[str] = field(default_factory=set)   # rows nobody is waiting on
+    warnings: list[str] = field(default_factory=list)   # things in Prepared/ no row accounts for
     written: bool = False    # manifest updated on disk
     deferred: bool = False   # manifest was locked; updates went to sidecar
     dry_run: bool = False
+
+    @property
+    def summary(self):
+        """The one count, over the rows as this scan leaves them."""
+        return summarize(with_pending(self.items, self.updates))
 
 
 # ------------------------------------------------------------- per-item ----
@@ -212,61 +218,33 @@ def _join(facts: list[str]) -> str:
     return note if len(note) <= _MAX_NOTE_LEN else note[: _MAX_NOTE_LEN - 3] + "..."
 
 
-# -------------------------------------------------------------- unfiled ----
+# ------------------------------------------------------------- warnings ----
 
 
-def _find_unfiled(
-    prepared_dir: Path, claimed: set[Path], today: dt.date
-) -> list[UnfiledEntry]:
-    """Everything in ``Prepared/`` that no manifest row accounts for.
+def _prepared_warnings(prepared_dir: Path, claimed: set[Path]) -> list[str]:
+    """Things in ``Prepared/`` that no manifest row accounts for.
 
-    Chiefly the contents of ``00 - Needs Review``: documents the filer
-    preserved but could not confidently route. ``_index.xlsx`` records why
-    each one landed there; this sheet is the at-a-glance version.
+    Loose files in the root and folders matching no identifier - somebody
+    dragged something in by hand. Parked documents are NOT listed here:
+    ``_index.xlsx`` is their record, with the reason each was parked, and
+    the app works from it. Reporting them twice was how the two disagreed.
     """
-    entries: list[UnfiledEntry] = []
+    warnings: list[str] = []
     if not prepared_dir.is_dir():
-        return entries
+        return warnings
     for child in sorted(prepared_dir.iterdir()):
         if child.is_file():
-            if is_ignored(child):
-                continue
-            entries.append(
-                UnfiledEntry(
-                    name=child.name,
-                    kind="loose file in Prepared root",
-                    size_kb=_size_kb(child),
-                    seen=today.isoformat(),
+            if not is_ignored(child):
+                warnings.append(
+                    f"{child.name} is loose in {PREPARED_DIR_NAME}/; it belongs in a request folder"
                 )
-            )
-        elif child.is_dir() and child.name == REVIEW_DIR_NAME:
-            for path in iter_candidate_files(child):
-                entries.append(
-                    UnfiledEntry(
-                        name=path.name,
-                        kind="needs review - could not be matched to a request",
-                        size_kb=_size_kb(path),
-                        seen=today.isoformat(),
-                    )
-                )
-        elif child.is_dir() and child not in claimed:
+        elif child.is_dir() and child.name != REVIEW_DIR_NAME and child not in claimed:
             n = len(iter_candidate_files(child))
-            entries.append(
-                UnfiledEntry(
-                    name=child.name,
-                    kind=f"unrecognized folder ({n} file(s))",
-                    seen=today.isoformat(),
-                )
+            warnings.append(
+                f"folder {child.name!r} in {PREPARED_DIR_NAME}/ matches no request "
+                f"({n} file(s) inside)"
             )
-    return entries
-
-
-def _size_kb(path: Path) -> float | None:
-    """Size for the Unfiled sheet; None if the file vanished mid-scan."""
-    try:
-        return round(path.stat().st_size / 1024, 1)
-    except OSError:
-        return None
+    return warnings
 
 
 # ----------------------------------------------------------------- scan ----
@@ -301,13 +279,12 @@ def scan_engagement(
         }
 
         claimed = {folder for folders in assigned.values() for folder in folders}
-        unfiled = _find_unfiled(prepared_dir, claimed, today)
 
         report = ScanReport(
             engagement_dir=engagement_dir,
+            items=items,
             updates=updates,
-            unfiled=unfiled,
-            waived={i.identifier for i in items if i.manual_override == Override.WAIVED},
+            warnings=_prepared_warnings(prepared_dir, claimed),
             dry_run=dry_run,
         )
         if dry_run:
@@ -318,9 +295,7 @@ def scan_engagement(
                 path for folder in claimed for path in iter_candidate_files(folder)
             }
         )
-        report.written = write_statuses(
-            engagement_dir / MANIFEST_FILENAME, updates, unfiled=unfiled
-        )
+        report.written = write_statuses(engagement_dir / MANIFEST_FILENAME, updates)
         report.deferred = not report.written
         cache.save()
         return report
@@ -332,22 +307,17 @@ def scan_engagement(
 # ------------------------------------------------------------------- CLI ----
 
 def _print_report(report: ScanReport) -> None:
-    counts: dict[str, int] = {}
     print(f"\nScan of {report.engagement_dir / PREPARED_DIR_NAME}")
     print(f"  {'ID':<8} {'Status':<18} {'Files':<6} Notes")
     print(f"  {'-'*8} {'-'*18} {'-'*6} {'-'*40}")
     for identifier, update in report.updates.items():
-        counts[update.status or "(none)"] = counts.get(update.status or "(none)", 0) + 1
         note = update.validation_notes
         if len(note) > 70:
             note = note[:67] + "..."
         print(f"  {identifier:<8} {update.status or '-':<18} {update.file_count:<6} {note}")
-    if report.unfiled:
-        print("\n  Needs review (originals preserved in Shared/PBC; see _index.xlsx):")
-        for entry in report.unfiled:
-            print(f"    ? {entry.name}  ({entry.kind})")
-    summary = " | ".join(f"{status}: {n}" for status, n in sorted(counts.items()))
-    print(f"\n  {summary}")
+    for warning in report.warnings:
+        print(f"    ! {warning}")
+    print(f"\n  {report.summary.line}")
     if report.dry_run:
         print("  DRY RUN - nothing was written")
     elif report.written:

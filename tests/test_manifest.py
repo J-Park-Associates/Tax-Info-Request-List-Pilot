@@ -409,3 +409,30 @@ def test_check_manifest_warns_about_rows_the_rules_cannot_act_on(tmp_path):
     assert "never be filed automatically" in result.warnings[0]
     assert "any file type counts" in result.warnings[1]
     assert "close Excel and re-scan" in result.warnings[2]
+
+
+# --------------------------------------------------------------- summary ----
+
+
+def test_summarize_is_the_one_count():
+    from tracker.manifest import summarize
+
+    items = [
+        RequestItem(identifier="A01", document="a", status=Status.RECEIVED),
+        RequestItem(identifier="A02", document="b", status=Status.MISSING),
+        RequestItem(identifier="A03", document="c", status=Status.PARTIAL),
+        RequestItem(identifier="A04", document="d", status=Status.FAILED,
+                    manual_override=Override.ACCEPTED),          # signed off: counts as in
+        RequestItem(identifier="A05", document="e", status=Status.MISSING,
+                    manual_override=Override.WAIVED),            # nobody is waiting
+        RequestItem(identifier="A06", document="f"),             # never scanned
+        RequestItem(identifier="A07", document="g", status=Status.PENDING_SYNC),
+    ]
+    summary = summarize(items)
+    assert summary.total == 6 and summary.waived == 1
+    assert summary.received == 2
+    assert summary.outstanding == 2
+    assert summary.unscanned == 1
+    assert summary.counts == {"Received": 2, "Missing": 1, "Partial": 1, "Pending Sync": 1}
+    assert summary.line == "Missing: 1 · Partial: 1 · Pending Sync: 1 · Received: 2 · Requested: 1 · Waived: 1"
+    assert summarize([]).line == "no requests"

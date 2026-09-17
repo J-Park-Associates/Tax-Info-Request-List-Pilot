@@ -136,16 +136,19 @@ def test_reset_then_scan_plays_the_demo_end_to_end(capsys, demo_root):
 
     code, payload = run(capsys, "scan", "--engagement", str(engagement))
     assert code == 0, payload
-    assert payload["written"] is True
-    assert payload["sorted"]["errors"] == []
-    assert payload["sorted"]["index_deferred"] is False
-    statuses = {ident: u["status"] for ident, u in payload["updates"].items()}
+    run_result = payload["run"]
+    assert run_result["ok"] and not run_result["skipped"]
+    assert run_result["file_errors"] == [] and run_result["index_deferred"] is False
+    assert run_result["manifest_deferred"] is False
+    statuses = {i["identifier"]: i["status"] for i in payload["state"]["items"]}
     assert statuses["A01"] == "Received"       # both 2025 W-2s, duplicate ignored
     assert statuses["A02"] == "Partial"        # 2 of 3
     assert statuses["C01"] == "Received"       # the 1098
-    reviewed = {e["name"] for e in payload["unfiled"]}
+    reviewed = {e["original_name"] for e in payload["state"]["index"] if e["decision"] == "Needs Review"}
     assert "W-2 Jane Smith 2024 - old.pdf" in reviewed   # wrong year, never guessed
     assert "vacation photo.jpg" in reviewed
+    assert payload["state"]["summary"]["outstanding"] == run_result["outstanding"]
+    assert "Received: 4" in payload["state"]["summary"]["line"]   # A01, B01, C01, D01
     # What the scanner wrote is what the state command reads back.
     rows = {i.identifier: i for i in load_manifest(engagement / MANIFEST_FILENAME)}
     assert rows["A01"].status == "Received"
@@ -379,3 +382,34 @@ def test_rollover_retires_the_prior_in_the_priors_list(capsys, demo_root):
     by_name = {p["name"]: p for p in payload["priors"]}
     assert by_name["Smith 2025"]["superseded_by"] == "Smith 2025 - 2026"
     assert by_name["Smith 2025 - 2026"]["superseded_by"] == ""
+
+
+def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
+    # A row added in Excel gets its folder from Sort & Scan, exactly as the
+    # scheduled run would give it: one definition of a pass.
+    from openpyxl import load_workbook
+
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    wb = load_workbook(engagement / MANIFEST_FILENAME)
+    wb["Requests"].append(["Z01", "Rental Records", "TY2025", 1, "pdf", 5, None, "schedule e", None, None])
+    wb.save(engagement / MANIFEST_FILENAME)
+    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    assert code == 0, payload
+    assert any(p.name.startswith("Z01") for p in (engagement / PREPARED_DIR_NAME).iterdir())
+    assert payload["run"]["warnings"] == []
+
+    # A lock held by another run is reported as skipped, not as an error.
+    from tracker.locking import LOCK_FILENAME
+    (engagement / LOCK_FILENAME).write_text("pid=999", encoding="utf-8")
+    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    assert code == 0 and payload["run"]["skipped"].startswith("another run")
+    (engagement / LOCK_FILENAME).unlink()
+
+    # A manifest typo stops the pass with its row, and is a JSON error the app can show.
+    wb = load_workbook(engagement / MANIFEST_FILENAME)
+    wb["Requests"].cell(row=2, column=9, value="(unclosed")
+    wb.save(engagement / MANIFEST_FILENAME)
+    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    assert code == 1 and payload["error"].startswith("Row 2: Date Pattern")

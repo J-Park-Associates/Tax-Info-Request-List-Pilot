@@ -11,7 +11,6 @@ from tracker.manifest import (
     Override,
     RequestItem,
     Status,
-    UNFILED_SHEET_NAME,
     create_template,
     load_manifest,
 )
@@ -209,7 +208,10 @@ def test_deleted_folder_reported_missing(engagement):
 # --------------------------------------------------------------- unfiled ----
 
 
-def test_unfiled_sheet_written(engagement):
+def test_strays_in_prepared_are_warnings_and_parked_files_are_not(engagement):
+    # Parked documents are the index's record (with why they were parked);
+    # the scan only warns about what nothing else knows: loose files in
+    # Prepared/ and folders matching no request.
     prepared = engagement / PREPARED_DIR_NAME
     review = prepared / REVIEW_DIR_NAME
     (review / "scan0012.pdf").write_bytes(b"x" * 100)
@@ -218,25 +220,27 @@ def test_unfiled_sheet_written(engagement):
     rogue.mkdir()
     (rogue / "something.pdf").write_bytes(b"x")
 
-    scan_engagement(engagement, today=DAY1)
+    report = scan_engagement(engagement, today=DAY1)
+    assert report.warnings == [
+        "loose_notes.txt is loose in Prepared/; it belongs in a request folder",
+        "folder 'misc uploads' in Prepared/ matches no request (1 file(s) inside)",
+    ]
     wb = load_workbook(engagement / MANIFEST_FILENAME)
-    assert UNFILED_SHEET_NAME in wb.sheetnames
-    rows = list(wb[UNFILED_SHEET_NAME].iter_rows(min_row=2, values_only=True))
+    assert wb.sheetnames == ["Requests", "Engagement"]     # no second record
     wb.close()
-    names = {r[0]: r[1] for r in rows}
-    assert names["scan0012.pdf"] == "needs review - could not be matched to a request"
-    assert names["loose_notes.txt"] == "loose file in Prepared root"
-    assert names["misc uploads"] == "unrecognized folder (1 file(s))"
 
-    # resolved next scan -> sheet snapshot empties
-    (review / "scan0012.pdf").unlink()
     (prepared / "loose_notes.txt").unlink()
     (rogue / "something.pdf").unlink()
     rogue.rmdir()
-    scan_engagement(engagement, today=DAY2)
-    wb = load_workbook(engagement / MANIFEST_FILENAME)
-    assert list(wb[UNFILED_SHEET_NAME].iter_rows(min_row=2, values_only=True)) == []
-    wb.close()
+    assert scan_engagement(engagement, today=DAY2).warnings == []
+
+
+def test_the_scan_report_carries_the_one_summary(engagement):
+    text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
+    report = scan_engagement(engagement, today=DAY1)
+    assert report.summary.received == 1
+    assert report.summary.outstanding == 2
+    assert report.summary.line == "Missing: 2 · Received: 1"
 
 
 # ------------------------------------------------------- lock and dry-run ----
@@ -349,4 +353,5 @@ def test_waived_rows_are_named_so_counts_can_leave_them_out(engagement):
     wb["Requests"].cell(row=4, column=10, value="Waived")   # B01
     wb.save(engagement / MANIFEST_FILENAME)
     report = scan_engagement(engagement, today=DAY1)
-    assert report.waived == {"B01"}
+    assert report.summary.waived == 1
+    assert report.summary.total == 2

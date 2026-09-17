@@ -385,3 +385,11 @@ def test_a_rolled_forward_engagement_is_retired_by_its_successor(tmp_path, sampl
     assert not (prior.path / DRAFT_FILENAME).exists()          # last year is not chased
     assert (prior.path / "Shared" / "W-2 John Smith 2025.pdf").exists()   # and not touched
     assert outcomes["Smith 2026"].ok
+
+
+def test_strays_in_prepared_reach_the_run_report(tmp_path, samples):
+    engagement = build_engagement(tmp_path, samples, drops=())
+    (engagement.path / "Prepared" / "loose.txt").write_text("x", encoding="utf-8")
+    run = run_engagement(engagement, today=FRIDAY)
+    assert run.ok
+    assert any("loose.txt is loose in Prepared/" in w for w in run.warnings)

@@ -85,6 +85,7 @@ into the manifest.
 | 35 | After a rollover | **The prior retires itself.** The new engagement's sheet records *Rolled From*; discovery marks that prior inactive with its successor named, and the run skips it. The prior's manifest is never written to (decision 9 still holds); nobody opens last year's file to type "no". |
 | 36 | The tax year | **From the calendar.** A new engagement is for the most recently ended year (`default_tax_year`); the catalog is written for one base year and shifted to it, relative periods included. Nobody edits `TY2025` to `TY2026` across six checklists every January, or forgets to. |
 | 37 | Installing the schedule | **One step.** `python -m tracker.scheduling --root ... --out ... --install` generates the XML and registers it (`schtasks /create /f`), and re-running is how the schedule is changed. |
+| 38 | One pass, one count, one record | **The app's Sort & Scan is the runner's pass** (`run_engagement`), so the button and the job do the same thing to the same folder; `sort` and `scaffold` commands are gone. **`summarize()` is the only count** of where an engagement stands - runner log, reminder, scanner CLI and app all read it. **The index is the only record of parked files**; the Unfiled sheet is no longer written (old ones are left alone), and what it alone knew - loose files and unrecognised folders in `Prepared/` - are warnings on the pass. |
 
 ## Architecture
 
@@ -154,8 +155,8 @@ document.
 | File Count | int | scanner | Distinct valid files currently in folder |
 | Validation Notes | str | scanner | Which tier failed and why; regression notes |
 
-Unmatched files dropped in `Shared/` root go on a separate **"Unfiled" sheet**
-(path, size, first seen) — never ignored, never moved.
+Unmatched files are parked in `00 - Needs Review` and recorded in `_index.xlsx`
+with the reason — never ignored, never guessed.
 
 ## Validation Tiers (deterministic, gate status)
 
