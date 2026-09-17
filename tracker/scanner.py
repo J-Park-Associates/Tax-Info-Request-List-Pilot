@@ -33,16 +33,12 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from dataclasses import dataclass, field
+from contextlib import nullcontext
 from pathlib import Path
 
 from tracker import reasons
 from tracker.content_check import ContentCache, check_content
-from tracker.locking import (
-    LOCK_FILENAME,
-    STALE_LOCK_SECONDS,
-    EngagementLockedError,
-    acquire_lock,
-)
+from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
     COL_EXPECTED_COUNT,
     Override,
@@ -280,12 +276,11 @@ def scan_engagement(
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
-    items = load_manifest(engagement_dir / MANIFEST_FILENAME)
 
-    lock: Path | None = None
-    if not dry_run:
-        lock = acquire_lock(engagement_dir)
-    try:
+    # The lock comes before the manifest is read (see tracker.locking): a
+    # sort that finished in between would otherwise be invisible to this scan.
+    with engagement_lock(engagement_dir) if not dry_run else nullcontext():
+        items = load_manifest(engagement_dir / MANIFEST_FILENAME)
         prepared_dir = engagement_dir / PREPARED_DIR_NAME
         cache = ContentCache(engagement_dir / CACHE_FILENAME)
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
@@ -316,9 +311,6 @@ def scan_engagement(
         report.deferred = not report.written
         cache.save()
         return report
-    finally:
-        if lock is not None:
-            lock.unlink(missing_ok=True)
 
 
 # ------------------------------------------------------------------- CLI ----

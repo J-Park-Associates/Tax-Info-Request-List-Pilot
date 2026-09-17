@@ -158,6 +158,11 @@ row added in Excel has its folder and its README line by the next run, and
 an engagement that has been rolled forward is retired by its successor
 without anyone opening last year's manifest.
 
+One machine per clients root: the per-engagement lock (`tracker/locking.py`)
+that keeps a scheduled pass and a click in the app from working the same
+folder at once is a file, and a file a cloud client syncs between two
+machines is not a lock. Schedule the job, and press Scan, on one machine.
+
 One daily task is enough: the **runner** decides whether today is a drafting
 day, not the scheduler. So a Saturday the machine spent switched off still
 drafts on the next run instead of skipping the week, and the repeat interval

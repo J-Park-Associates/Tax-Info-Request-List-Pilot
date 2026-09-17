@@ -14,8 +14,8 @@
   ],
   "counts": {
     "nodes": 79,
-    "edges": 244,
-    "reused": 53
+    "edges": 246,
+    "reused": 45
   },
   "node_types": [
     "artifact",
@@ -92,8 +92,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "598b150e9f5b0193",
-      "lines": 684,
+      "sha256": "b0cd91db2695648d",
+      "lines": 689,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -148,8 +148,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "37574dda2b015a21",
-      "lines": 879,
+      "sha256": "fa79cdcb291cddd1",
+      "lines": 886,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -191,18 +191,21 @@
         "ASSIGNED_BY_PERSON": "'assigned by a person'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock. INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
     },
     {
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fb0aac11faab040a",
-      "lines": 132,
+      "sha256": "262be8b8c0d77dd0",
+      "lines": 218,
       "exports": [
+        "EngagementLock",
         "EngagementLockedError",
         "LOCK_FILENAME",
         "LockStatus",
+        "RUN_TIME_LIMIT_SECONDS",
+        "STALE_LOCK_GRACE_SECONDS",
         "STALE_LOCK_SECONDS",
         "_PID_KEY",
         "_STARTED_KEY",
@@ -210,14 +213,14 @@
         "clear_stale_lock",
         "engagement_lock",
         "lock_line",
-        "lock_status"
+        "lock_status",
+        "release_lock"
       ],
       "constants": {
-        "LOCK_FILENAME": "'_scan.lock'",
-        "STALE_LOCK_SECONDS": "3600"
+        "LOCK_FILENAME": "'_scan.lock'"
       },
-      "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by the filer while sorting and by the scanner while scanning. EngagementLockedError; engagement_lock() context manager.",
-      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's index rows were overwritten. Dry runs never take it. lock_status()/clear_stale_lock() back the app's lock notice: a stale lock can be cleared from the app, a fresh one is refused with how long to wait."
+      "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by the filer while sorting and by the scanner while scanning. EngagementLock (the open handle and its token), EngagementLockedError; engagement_lock() context manager, taken before the manifest, index or drop folder is read.",
+      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's index rows were overwritten. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it, so a lock is presumed dead only after Task Scheduler must have killed its owner (they were typed apart before, 3600 s against a two-hour limit). One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice: a stale lock can be cleared from the app, a fresh one is refused with how long to wait."
     },
     {
       "id": "tracker/manifest.py",
@@ -623,8 +626,8 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "8ff600a95401b78c",
-      "lines": 376,
+      "sha256": "067b33d4389531c7",
+      "lines": 368,
       "cli": "python -m tracker.scanner",
       "exports": [
         "CACHE_FILENAME",
@@ -656,14 +659,14 @@
         "CACHE_FILENAME": "'_content_cache.json'"
       },
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and writes the result back into the manifest.",
-      "notes": "Holds a stale-aware per-engagement run lock, so two scheduled runs cannot overlap. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them."
+      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the manifest only once it has it, so a sort that finished in between is never invisible to the scan. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them."
     },
     {
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f8ca63859d79d1c5",
-      "lines": 350,
+      "sha256": "8f61174a7d43cc24",
+      "lines": 365,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "DEFAULT_REPEAT_MINUTES",
@@ -689,6 +692,7 @@
         "install_task",
         "is_absolute_path",
         "is_scheduling_host",
+        "iso_duration",
         "n8n_workflow",
         "resolve_root",
         "runner_arguments",
@@ -699,7 +703,6 @@
         "DEFAULT_START": "'07:00'",
         "DEFAULT_REPEAT_MINUTES": "120",
         "SCHEDULE_XML_FILENAME": "'tax-tracker.xml'",
-        "EXECUTION_TIME_LIMIT": "'PT2H'",
         "TASK_XML_NAMESPACE": "'http://schemas.microsoft.com/windows/2004/02/mit/task'",
         "N8N_TRIGGER_NODE": "'Every day'",
         "N8N_RUN_NODE": "'File, scan, draft'",
@@ -714,7 +717,7 @@
         "FORMAT_N8N": "'n8n'"
       },
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings file's root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name, time limit) are module constants the API's install-schedule reports back so the app shows what was actually installed."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings file's root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit."
     },
     {
       "id": "tracker/settings.py",
@@ -897,16 +900,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "75fbd17c11fe878c",
-      "lines": 257,
+      "sha256": "7c1024aeb2b7f129",
+      "lines": 262,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "bec8ec301fc0322c",
-      "lines": 245,
+      "sha256": "3a89a15b389f939c",
+      "lines": 246,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -914,7 +917,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5d6fd37ad8aace78",
+      "sha256": "5983d1f2d8cfee1e",
       "lines": 428,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1166,8 +1169,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "43380fb4195c8f93",
-      "lines": 737,
+      "sha256": "44a8cffe59bbfddc",
+      "lines": 784,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1185,6 +1188,7 @@
         "test_a_hand_edited_index_cell_does_not_stop_the_next_run",
         "test_a_locked_index_keeps_a_persons_filing_decision",
         "test_a_locked_index_never_orphans_files_already_moved",
+        "test_a_persons_keyword_is_learned_under_the_lock",
         "test_a_resend_is_refiled_when_the_working_copy_was_deleted",
         "test_a_sidecar_of_an_unknown_version_is_quarantined_not_guessed",
         "test_an_index_written_with_older_columns_still_reads",
@@ -1210,6 +1214,7 @@
         "test_second_file_for_the_same_request_is_numbered",
         "test_sync_junk_is_ignored",
         "test_the_filer_holds_the_engagement_lock",
+        "test_the_filer_reads_nothing_before_it_holds_the_lock",
         "test_the_pending_index_is_a_versioned_snapshot_of_every_row",
         "test_the_routers_candidates_travel_as_data_in_the_index",
         "test_unroutable_file_is_preserved_and_parked"
@@ -1219,15 +1224,19 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "109f176553c8b5ec",
-      "lines": 77,
+      "sha256": "6684cee5fcae4096",
+      "lines": 127,
       "exports": [
         "test_a_fresh_lock_blocks_a_second_run",
         "test_a_fresh_lock_is_refused_and_a_stale_one_cleared",
+        "test_a_held_lock_cannot_be_deleted_from_outside",
+        "test_a_lock_replaced_while_held_is_not_released_by_its_old_owner",
         "test_a_stale_lock_is_replaced",
+        "test_clearing_a_stale_lock_that_is_still_held_is_refused",
         "test_lock_is_released_when_the_body_raises",
         "test_lock_is_taken_and_released",
-        "test_lock_status_reads_what_the_lock_says"
+        "test_lock_status_reads_what_the_lock_says",
+        "test_the_stale_threshold_outlives_the_scheduled_jobs_time_limit"
       ]
     },
     {
@@ -1540,8 +1549,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f349eba0b749305b",
-      "lines": 375,
+      "sha256": "61323ef229528984",
+      "lines": 390,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1566,6 +1575,7 @@
         "test_stale_lock_replaced_and_released",
         "test_strays_in_prepared_are_warnings_and_parked_files_are_not",
         "test_the_scan_report_carries_the_one_summary",
+        "test_the_scanner_reads_the_manifest_only_under_the_lock",
         "test_waived_rows_are_named_so_counts_can_leave_them_out",
         "text_pdf"
       ]
@@ -1574,8 +1584,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ba4c1a93da65d4a0",
-      "lines": 198,
+      "sha256": "e13a59c0b036bfc9",
+      "lines": 209,
       "exports": [
         "ARGS",
         "NS",
@@ -1598,6 +1608,7 @@
         "test_the_n8n_hour_is_validated",
         "test_the_n8n_workflow_is_valid_json_with_one_wired_connection",
         "test_the_start_time_can_be_moved",
+        "test_the_time_limit_is_the_locks_run_limit_rendered",
         "test_the_xml_is_well_formed_and_runs_the_runner"
       ]
     },
@@ -2445,6 +2456,12 @@
     },
     {
       "from": "tests/test_scheduling.py",
+      "to": "tracker/locking.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scheduling.py",
       "to": "tracker/runner.py",
       "type": "exercises",
       "source": "derived"
@@ -3174,6 +3191,12 @@
       "to": "rule:nothing-is-ever-sent",
       "type": "enforces",
       "source": "curated"
+    },
+    {
+      "from": "tracker/scheduling.py",
+      "to": "tracker/locking.py",
+      "type": "imports",
+      "source": "derived"
     },
     {
       "from": "tracker/scheduling.py",

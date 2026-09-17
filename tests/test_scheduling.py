@@ -190,6 +190,17 @@ def test_the_command_line_is_built_once_for_both_schedulers():
     assert flow["nodes"][0]["parameters"]["rule"]["interval"][0]["triggerAtHour"] == start_hour()
 
 
+def test_the_time_limit_is_the_locks_run_limit_rendered():
+    from tracker.locking import RUN_TIME_LIMIT_SECONDS
+    from tracker.scheduling import EXECUTION_TIME_LIMIT, iso_duration
+
+    limit = parsed().find(".//t:Settings/t:ExecutionTimeLimit", NS).text
+    assert limit == EXECUTION_TIME_LIMIT == iso_duration(RUN_TIME_LIMIT_SECONDS)
+    assert iso_duration(2 * 3600) == "PT2H" and iso_duration(90 * 60) == "PT90M"
+    with pytest.raises(ValueError):
+        iso_duration(61)
+
+
 def test_the_description_names_the_drafting_day_from_the_runner():
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
 

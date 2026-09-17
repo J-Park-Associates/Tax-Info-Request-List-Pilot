@@ -29,6 +29,7 @@ import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from xml.sax.saxutils import escape
 
+from tracker.locking import RUN_TIME_LIMIT_SECONDS
 from tracker.manifest import write_text_atomically
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG
 from tracker.settings import SETTINGS_FILENAME, product_name
@@ -41,10 +42,24 @@ DEFAULT_START = "07:00"
 DEFAULT_REPEAT_MINUTES = 120
 #: The generated Task Scheduler definition, beside the app's settings.
 SCHEDULE_XML_FILENAME = "tax-tracker.xml"
-#: The job never overruns the next daily start.
-EXECUTION_TIME_LIMIT = "PT2H"
 #: Any date in the past will do for a daily trigger; it is when the series began.
 _START_BOUNDARY_DATE = "2026-01-01"
+
+
+def iso_duration(seconds: int) -> str:
+    """The ISO-8601 duration Task Scheduler's schema reads: ``PT2H``, or ``PT90M``
+    when the seconds are not whole hours."""
+    minutes, remainder = divmod(int(seconds), 60)
+    if remainder:
+        raise ValueError(f"a task limit is whole minutes, not {seconds}s")
+    hours, minutes = divmod(minutes, 60)
+    return f"PT{hours}H" if hours and not minutes else f"PT{hours * 60 + minutes}M"
+
+
+#: The job never overruns the next daily start - and a lock is presumed dead
+#: only after this (tracker.locking derives STALE_LOCK_SECONDS from the same
+#: number), so the limit is the lock's, rendered here rather than typed twice.
+EXECUTION_TIME_LIMIT = iso_duration(RUN_TIME_LIMIT_SECONDS)
 
 
 def start_hour(start_time: str = DEFAULT_START) -> int:

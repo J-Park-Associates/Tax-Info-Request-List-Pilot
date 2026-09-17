@@ -548,6 +548,11 @@ def _cmd_assign(argv: list[str]) -> dict:
     rewritten as Filed (attributed to a person), the keyword - if given - is
     added to the request so the next such file routes itself, and the
     engagement is re-scanned so the status reflects it straight away.
+
+    The filing and the re-scan each take the engagement lock on their own.
+    A scheduled pass that slips in between only files and scans the same
+    folder under the same lock, so nothing is lost; one lock held across
+    both would be a second locking rule for no gain.
     """
     engagement = _engagement_dir(argv)
     spec = json.loads(sys.stdin.read() or "{}")

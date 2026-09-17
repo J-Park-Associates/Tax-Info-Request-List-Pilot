@@ -29,7 +29,9 @@ Guarantees:
 - **One run at a time.** The filer holds the engagement lock
   (:mod:`tracker.locking`, the same one the scanner takes) while it works,
   so a scheduled run and a click in the desktop app cannot both move the
-  same originals and overwrite each other's index rows.
+  same originals and overwrite each other's index rows. The lock is taken
+  before the manifest, the index or the drop folder is read, so what a run
+  decides from cannot change under it.
 - **Wherever the client put it counts.** ``PBC_DIR_NAME/`` is visible to the client
   and the README says "drop it anywhere", so a file that lands straight in
   ``PBC_DIR_NAME/`` is treated as a drop that has already been preserved: it is
@@ -518,8 +520,6 @@ def file_drops(
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
-    items = load_manifest(engagement_dir / MANIFEST_FILENAME)
-    by_id = {i.identifier: i for i in items}
 
     shared_dir = engagement_dir / SHARED_DIR_NAME
     pbc_dir = shared_dir / PBC_DIR_NAME
@@ -528,27 +528,32 @@ def file_drops(
     index_path = engagement_dir / INDEX_FILENAME
 
     report = FileReport(engagement_dir=engagement_dir, dry_run=dry_run)
-    entries = read_index(index_path, quarantine=not dry_run)
-    known = {e.digest: e for e in entries if e.digest}
-    # Rows a locked Excel deferred last time still belong in the workbook -
-    # fold them in as soon as it is free, whether or not this run sorts anything.
-    sidecar_waiting = _pending_index_path(index_path).exists()
-
-    drops = iter_drops(shared_dir)
-    strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
-    if not drops and not strays:
-        if not dry_run and sidecar_waiting:
-            report.index_deferred = not write_index(index_path, entries)
-        return report
-
-    stamp = today.isoformat()
-    # Names claimed during this run, so a dry run previews the same numbering
-    # a real run would produce (nothing is on disk to collide with yet).
-    reserved: dict[Path, set[str]] = {}
-    recorded = len(entries)
-    # A sort and a scan must never overlap (see tracker.locking). A dry run
-    # writes nothing, so it needs no lock and never blocks a real run.
+    # A sort and a scan must never overlap (see tracker.locking), and the
+    # lock comes before anything is read: the manifest, the index and the
+    # drop folder are what this run decides from, and a run that finished
+    # in between must not be invisible to it. A dry run writes nothing, so
+    # it needs no lock and never blocks a real run.
     with engagement_lock(engagement_dir) if not dry_run else nullcontext():
+        items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+        by_id = {i.identifier: i for i in items}
+        entries = read_index(index_path, quarantine=not dry_run)
+        known = {e.digest: e for e in entries if e.digest}
+        # Rows a locked Excel deferred last time still belong in the workbook -
+        # fold them in as soon as it is free, whether or not this run sorts anything.
+        sidecar_waiting = _pending_index_path(index_path).exists()
+
+        drops = iter_drops(shared_dir)
+        strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
+        if not drops and not strays:
+            if not dry_run and sidecar_waiting:
+                report.index_deferred = not write_index(index_path, entries)
+            return report
+
+        stamp = today.isoformat()
+        # Names claimed during this run, so a dry run previews the same numbering
+        # a real run would produce (nothing is on disk to collide with yet).
+        reserved: dict[Path, set[str]] = {}
+        recorded = len(entries)
         if not dry_run:
             pbc_dir.mkdir(parents=True, exist_ok=True)
             prepared_dir.mkdir(parents=True, exist_ok=True)
@@ -762,17 +767,19 @@ def assign_review_file(
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
-    items = {i.identifier: i for i in load_manifest(engagement_dir / MANIFEST_FILENAME)}
-    item = items.get(identifier)
-    if item is None:
-        raise FilingError(f"no request {identifier!r} in the manifest")
-    if item.manual_override == Override.WAIVED:
-        raise FilingError(f"{identifier} is waived; clear the override first")
-
     index_path = engagement_dir / INDEX_FILENAME
     prepared_dir = engagement_dir / PREPARED_DIR_NAME
 
+    # Everything - the manifest, the index, the keyword written back - under
+    # the one lock, so a scheduled pass cannot slip in between.
     with engagement_lock(engagement_dir):
+        items = {i.identifier: i for i in load_manifest(engagement_dir / MANIFEST_FILENAME)}
+        item = items.get(identifier)
+        if item is None:
+            raise FilingError(f"no request {identifier!r} in the manifest")
+        if item.manual_override == Override.WAIVED:
+            raise FilingError(f"{identifier} is waived; clear the override first")
+
         entries = read_index(index_path)
         position = _find_parked(entries, original)
         entry = entries[position]
@@ -807,17 +814,17 @@ def assign_review_file(
         entries[position] = new_entry
         deferred = not write_index(index_path, entries)
 
-    keyword = keyword.strip()
-    note = ""
-    if keyword:
-        try:
-            if not add_any_keyword(engagement_dir / MANIFEST_FILENAME, identifier, keyword):
-                note = f"{identifier} already had the keyword {keyword!r}"
-        except PermissionError:
-            note = (
-                f"keyword {keyword!r} not saved: the manifest is open in Excel; "
-                f"add it to {identifier}'s Any Keywords by hand or close Excel and try again"
-            )
+        keyword = keyword.strip()
+        note = ""
+        if keyword:
+            try:
+                if not add_any_keyword(engagement_dir / MANIFEST_FILENAME, identifier, keyword):
+                    note = f"{identifier} already had the keyword {keyword!r}"
+            except PermissionError:
+                note = (
+                    f"keyword {keyword!r} not saved: the manifest is open in Excel; "
+                    f"add it to {identifier}'s Any Keywords by hand or close Excel and try again"
+                )
     return AssignResult(
         entry=new_entry, moved_review_copy=moved, keyword=keyword if not note else "",
         keyword_note=note, index_deferred=deferred,

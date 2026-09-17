@@ -571,6 +571,53 @@ def test_a_drop_still_held_open_is_left_for_the_next_run(engagement, monkeypatch
 # ------------------------------------------------------------ one run at a time ----
 
 
+def test_the_filer_reads_nothing_before_it_holds_the_lock(engagement, monkeypatch):
+    # What a run decides from - the manifest, the index, the drop folder -
+    # must be read after the lock, or a run that finished in between is
+    # invisible and its rows get rewritten from a stale picture.
+    import tracker.filer as filer_module
+    from tracker.locking import LOCK_FILENAME
+
+    lock = engagement / LOCK_FILENAME
+    seen = []
+    for name in ("load_manifest", "read_index", "iter_drops"):
+        real = getattr(filer_module, name)
+
+        def under_the_lock(*args, _real=real, _name=name, **kwargs):
+            seen.append((_name, lock.exists()))
+            return _real(*args, **kwargs)
+
+        monkeypatch.setattr(filer_module, name, under_the_lock)
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    assert file_drops(engagement, today=DAY1).handled == 1
+    assert seen and all(held for _, held in seen), seen
+    assert not lock.exists()
+
+    seen.clear()                                  # a dry run reads without a lock
+    file_drops(engagement, today=DAY1, dry_run=True)
+    assert seen and not any(held for _, held in seen)
+
+
+def test_a_persons_keyword_is_learned_under_the_lock(engagement, monkeypatch):
+    import tracker.filer as filer_module
+    from tracker.filer import assign_review_file
+    from tracker.locking import LOCK_FILENAME
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    real = filer_module.add_any_keyword
+
+    def under_the_lock(*args, **kwargs):
+        assert (engagement / LOCK_FILENAME).exists(), "keyword written outside the lock"
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(filer_module, "add_any_keyword", under_the_lock)
+    result = assign_review_file(engagement, parked.pbc_location, "C01", keyword="lender")
+    assert result.keyword == "lender"
+    assert not (engagement / LOCK_FILENAME).exists()
+
+
 def test_the_filer_holds_the_engagement_lock(engagement):
     # A second run mid-way used to move the remaining files and overwrite
     # the first run's index rows. Same lock as the scanner, same answer.
