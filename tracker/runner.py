@@ -218,29 +218,8 @@ def run_engagement(
     """
     today = today or dt.date.today()
     run = EngagementRun(engagement=engagement)
-
-    if engagement.superseded_by:
-        run.skipped = SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)
+    if not _worth_a_pass(run):
         return run
-    if not engagement.active:
-        run.skipped = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
-        return run
-    if not engagement.path.is_dir():
-        run.error = f"folder not found: {engagement.path}"
-        return run
-    if engagement.problem:
-        run.error = f"manifest could not be read: {engagement.problem}"
-        return run
-
-    # The same check the app's button runs: a typo made in Excel is named
-    # with its row before a single file is touched, and rows the rules
-    # cannot act on are carried into the report rather than left to be
-    # noticed at a deadline.
-    checked = check_manifest(engagement.path / MANIFEST_FILENAME)
-    if not checked.ok:
-        run.error = "; ".join(checked.problems)
-        return run
-    run.warnings = checked.warnings
 
     try:
         # A row added or un-waived in Excel gets its folder and its README
@@ -262,33 +241,10 @@ def run_engagement(
         run.warnings.extend(scanned.warnings)
         run.manifest_deferred = scanned.deferred
 
-        if not should_draft(engagement, today, reminders, weekday):
+        if should_draft(engagement, today, reminders, weekday):
+            _draft_step(run, dry_run=dry_run)
+        else:
             run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
-            return run
-
-        # A dry run left the manifest unwritten, so there is nothing on disk
-        # for the drafter to read. Report from the scan we just did in memory
-        # rather than reading back statuses that were deliberately not saved.
-        if dry_run:
-            run.draft_note = (
-                f"would draft {run.outstanding} item(s)" if run.outstanding
-                else NOTHING_OUTSTANDING
-            )
-            return run
-
-        draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
-        if not draft.has_outstanding:
-            run.draft_note = NOTHING_OUTSTANDING
-            return run
-
-        written = write_draft(draft, engagement_dir=engagement.path,
-                              preserve_edits=True)
-        run.drafted = written
-        if written.name == NEW_DRAFT_FILENAME:
-            run.draft_note = (
-                f"{DRAFT_FILENAME} has been edited, so this week's draft was "
-                f"written to {NEW_DRAFT_FILENAME} instead"
-            )
 
     except ScanLockedError as exc:
         run.skipped = f"another run is still going ({exc})"
@@ -307,6 +263,62 @@ def run_engagement(
             + "; ".join(run.file_errors[:3])
         )
     return run
+
+
+def _worth_a_pass(run: EngagementRun) -> bool:
+    """Whether this engagement gets a pass at all; if not, ``run`` says why.
+
+    Skips (rolled forward, inactive) are not failures; a missing folder, an
+    unreadable manifest or a manifest with problems are - named with the
+    row, before a single file is touched, the same check the app's button
+    runs. Warnings ride the report rather than being noticed at a deadline.
+    """
+    engagement = run.engagement
+    if engagement.superseded_by:
+        run.skipped = SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)
+        return False
+    if not engagement.active:
+        run.skipped = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
+        return False
+    if not engagement.path.is_dir():
+        run.error = f"folder not found: {engagement.path}"
+        return False
+    if engagement.problem:
+        run.error = f"manifest could not be read: {engagement.problem}"
+        return False
+    checked = check_manifest(engagement.path / MANIFEST_FILENAME)
+    if not checked.ok:
+        run.error = "; ".join(checked.problems)
+        return False
+    run.warnings = checked.warnings
+    return True
+
+
+def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
+    """Draft the reminder for a pass that has decided today is the day. Never sends."""
+    # A dry run left the manifest unwritten, so there is nothing on disk
+    # for the drafter to read. Report from the scan we just did in memory
+    # rather than reading back statuses that were deliberately not saved.
+    if dry_run:
+        run.draft_note = (
+            f"would draft {run.outstanding} item(s)" if run.outstanding
+            else NOTHING_OUTSTANDING
+        )
+        return
+
+    engagement = run.engagement
+    draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
+    if not draft.has_outstanding:
+        run.draft_note = NOTHING_OUTSTANDING
+        return
+
+    written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True)
+    run.drafted = written
+    if written.name == NEW_DRAFT_FILENAME:
+        run.draft_note = (
+            f"{DRAFT_FILENAME} has been edited, so this week's draft was "
+            f"written to {NEW_DRAFT_FILENAME} instead"
+        )
 
 
 def _why_no_draft(engagement: Engagement, today: dt.date,

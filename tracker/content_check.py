@@ -422,3 +422,34 @@ class ContentCache:
             indent=1,
         )
         self._dirty = False
+
+
+# ------------------------------------------------------------------- CLI ----
+
+if __name__ == "__main__":
+    import argparse
+
+    from tracker.manifest import load_manifest
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    parser = argparse.ArgumentParser(
+        description="What does this document say, and which rows accept it? "
+                    "Read-only: no cache is written, nothing moves."
+    )
+    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
+    parser.add_argument("file", help="the document to read")
+    ns = parser.parse_args()
+
+    document = Path(ns.file)
+    reading = extract(document)
+    if reading.text is None:
+        print(f"{document.name}: {reading.reason}")
+        raise SystemExit(1)
+    how = "OCR" if reading.from_ocr else "text layer"
+    print(f"{document.name}: {len(reading.text)} characters from the {how}\n")
+    for row in load_manifest(Path(ns.engagement_dir) / MANIFEST_FILENAME):
+        if not has_content_rules(row):
+            continue
+        verdict = evaluate_rules(reading.text, row)
+        mark = "ok" if verdict.ok else f"no - {verdict.reason}"
+        print(f"[{row.identifier}] {row.document}: {mark}")

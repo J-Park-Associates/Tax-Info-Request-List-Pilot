@@ -151,9 +151,28 @@ def _new_engagement_dir(name: str) -> Path:
 
 
 def _engagement_dir(argv: list[str]) -> Path:
-    if ENGAGEMENT_FLAG in argv:
-        return Path(argv[argv.index(ENGAGEMENT_FLAG) + 1])
-    raise ManifestError(f"Pick an engagement first ({ENGAGEMENT_FLAG} <folder>)")
+    """The engagement a command is about: ``ENGAGEMENT_FLAG <folder>``.
+
+    A flag with nothing after it, or an empty folder, gets the same sentence
+    as no flag at all (it used to be a bare IndexError). Once a clients root
+    is set, the folder must lie under it: the app only ever names folders
+    the root listed, so anything else is a mistake, not a request.
+    """
+    hint = f"Pick an engagement first ({ENGAGEMENT_FLAG} <folder>)"
+    if ENGAGEMENT_FLAG not in argv:
+        raise ManifestError(hint)
+    position = argv.index(ENGAGEMENT_FLAG) + 1
+    given = argv[position].strip() if position < len(argv) else ""
+    if not given:
+        raise ManifestError(hint)
+    engagement = Path(given)
+    root = clients_root()
+    if root is not None and root.is_dir():
+        try:
+            engagement.resolve().relative_to(root.resolve())
+        except ValueError:
+            raise ManifestError(f"{engagement} is not under the clients root {root}") from None
+    return engagement
 
 
 #: How a new engagement is named when nobody types a name. The renderer

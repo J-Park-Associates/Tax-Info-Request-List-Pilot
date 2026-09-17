@@ -186,49 +186,55 @@ def _scan_item(
             validation_notes=_join(facts),
         )
 
-    # --- deterministic status resolution -----------------------------------
-    if not folders:
-        status = Status.MISSING
-        facts.insert(0, reasons.NO_REQUEST_FOLDER.format())
-    elif count >= item.expected_count:
-        status = Status.RECEIVED
-        if pending:
-            facts.append(SYNCING_MORE_NOTE.format(n=len(pending)))
-    elif pending:
-        status = Status.PENDING_SYNC
-        facts.insert(0, SYNCING_NOTE.format(n=len(pending)))
-    elif count > 0:
-        status = Status.PARTIAL
-        facts.insert(0, PARTIAL_NOTE.format(count=count, expected=item.expected_count))
-    elif failures:
-        status = Status.FAILED
-    else:
-        status = Status.MISSING
-
-    # --- Received Date: first-pass stamp, preserved through regressions ----
-    if status == Status.RECEIVED:
-        received = item.received_date or today
-    else:
-        received = item.received_date
-        if item.received_date is not None:
-            # A row that was Received and is not any more either lost files
-            # or was asked for more. Say which; REGRESSION_FILES_CHANGED on a row
-            # whose Expected Count somebody raised sends a person hunting
-            # for a file that never went anywhere.
-            had = item.file_count if item.file_count is not None else 0
-            if count >= had and item.expected_count > count and not failures:
-                why = REGRESSION_COUNT_RAISED.format(expected=item.expected_count)
-            else:
-                why = REGRESSION_FILES_CHANGED
-            facts.insert(0, REGRESSION_NOTE.format(
-                status=Status.RECEIVED, date=item.received_date.isoformat(), why=why))
-
+    status = _resolve_status(item, folders, count, len(pending), bool(failures), facts)
+    received = _received_date(item, status, count, bool(failures), facts, today)
     return StatusUpdate(
         status=status,
         file_count=count,
         received_date=received,
         validation_notes=_join(facts),
     )
+
+
+def _resolve_status(
+    item: RequestItem, folders: list[Path], count: int, pending: int, failed: bool, facts: list[str],
+) -> str:
+    """The deterministic status for what tiers 1-3 found; adds the note that says why."""
+    if not folders:
+        facts.insert(0, reasons.NO_REQUEST_FOLDER.format())
+        return Status.MISSING
+    if count >= item.expected_count:
+        if pending:
+            facts.append(SYNCING_MORE_NOTE.format(n=pending))
+        return Status.RECEIVED
+    if pending:
+        facts.insert(0, SYNCING_NOTE.format(n=pending))
+        return Status.PENDING_SYNC
+    if count > 0:
+        facts.insert(0, PARTIAL_NOTE.format(count=count, expected=item.expected_count))
+        return Status.PARTIAL
+    return Status.FAILED if failed else Status.MISSING
+
+
+def _received_date(
+    item: RequestItem, status: str, count: int, failed: bool, facts: list[str], today: dt.date,
+) -> dt.date | None:
+    """Received Date: stamped on the first Received pass, preserved through regressions."""
+    if status == Status.RECEIVED:
+        return item.received_date or today
+    if item.received_date is not None:
+        # A row that was Received and is not any more either lost files
+        # or was asked for more. Say which; REGRESSION_FILES_CHANGED on a row
+        # whose Expected Count somebody raised sends a person hunting
+        # for a file that never went anywhere.
+        had = item.file_count if item.file_count is not None else 0
+        if count >= had and item.expected_count > count and not failed:
+            why = REGRESSION_COUNT_RAISED.format(expected=item.expected_count)
+        else:
+            why = REGRESSION_FILES_CHANGED
+        facts.insert(0, REGRESSION_NOTE.format(
+            status=Status.RECEIVED, date=item.received_date.isoformat(), why=why))
+    return item.received_date
 
 
 def _join(facts: list[str]) -> str:

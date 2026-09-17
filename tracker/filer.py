@@ -566,8 +566,12 @@ def file_drops(
         # want to know about its working copy (same bytes): the verdicts go
         # into the engagement's content cache, keyed by content. The PDF
         # readability cache is this run's alone.
-        cache = ContentCache(engagement_dir / CACHE_FILENAME)
-        pdf_cache = PdfVerdictCache()
+        run = _SortContext(
+            items=items, by_id=by_id, known=known, prepared_dir=prepared_dir,
+            review_dir=review_dir, reserved=reserved, assigned=assigned,
+            dry_run=dry_run, report=report,
+            cache=ContentCache(engagement_dir / CACHE_FILENAME), pdf_cache=PdfVerdictCache(),
+        )
         try:
             for drop, already_in_pbc in (
                 [(d, False) for d in drops] + [(p, True) for p in strays]
@@ -608,11 +612,7 @@ def file_drops(
                 pbc_rel = pbc_target.relative_to(engagement_dir).as_posix()
 
                 try:
-                    entry = _sort_one(
-                        drop, pbc_target, pbc_rel, digest, size_kb, stamp,
-                        items, by_id, known, prepared_dir, review_dir, reserved,
-                        assigned, dry_run, report, cache, pdf_cache,
-                    )
+                    entry = _sort_one(drop, pbc_target, pbc_rel, digest, size_kb, stamp, run)
                 except Exception as exc:  # the original is safe; say so and go on
                     log.exception("Could not file %s", drop.name)
                     entry = IndexEntry(
@@ -638,9 +638,30 @@ def file_drops(
             if not dry_run and (len(entries) > recorded or sidecar_waiting):
                 report.index_deferred = not write_index(index_path, entries)
         if not dry_run:
-            cache.save()
+            run.cache.save()
             _prune_empty_dirs(shared_dir, keep=pbc_dir)
     return report
+
+
+@dataclass(frozen=True, slots=True)
+class _SortContext:
+    """What every drop in one run is sorted against: the manifest, the index
+    so far, the folders, the names claimed, and the run's caches. Built once
+    in :func:`file_drops`; :func:`_sort_one` reads it. Sixteen positional
+    arguments - three of them strings, two of them dicts - was how an
+    argument-order slip could stay silent."""
+
+    items: list[RequestItem]
+    by_id: dict[str, RequestItem]
+    known: dict[str, IndexEntry]           # digest -> the row that already holds it
+    prepared_dir: Path
+    review_dir: Path
+    reserved: dict[Path, set[str]]         # names claimed this run, per folder
+    assigned: dict[str, list[Path]]        # identifier -> its existing folders
+    dry_run: bool
+    report: FileReport
+    cache: ContentCache
+    pdf_cache: PdfVerdictCache
 
 
 def _sort_one(
@@ -650,23 +671,14 @@ def _sort_one(
     digest: str,
     size_kb: float,
     stamp: str,
-    items: list[RequestItem],
-    by_id: dict[str, RequestItem],
-    known: dict[str, IndexEntry],
-    prepared_dir: Path,
-    review_dir: Path,
-    reserved: dict[Path, set[str]],
-    assigned: dict[str, list[Path]],
-    dry_run: bool,
-    report: FileReport,
-    cache: ContentCache,
-    pdf_cache: PdfVerdictCache,
+    run: _SortContext,
 ) -> IndexEntry:
     """Decide one preserved original's fate and, unless dry-running, copy it."""
+    known, report, dry_run = run.known, run.report, run.dry_run
     refiled = ""
     if digest in known:
         earlier = known[digest]
-        engagement_dir = prepared_dir.parent
+        engagement_dir = run.prepared_dir.parent
         if (
             earlier.decision == FILED
             and earlier.prepared_location
@@ -695,20 +707,20 @@ def _sort_one(
             return entry
 
     routing = route_file(
-        pbc_target if not dry_run else drop, items,
-        digest=digest, cache=cache, pdf_cache=pdf_cache,
+        pbc_target if not dry_run else drop, run.items,
+        digest=digest, cache=run.cache, pdf_cache=run.pdf_cache,
     )
-    item = by_id.get(routing.identifier or "")
+    item = run.by_id.get(routing.identifier or "")
 
     if routing.routed and item is not None:
-        dest_folder = request_folder(item, assigned, prepared_dir)
-        if dest_folder not in reserved:
-            reserved[dest_folder] = (
+        dest_folder = request_folder(item, run.assigned, run.prepared_dir)
+        if dest_folder not in run.reserved:
+            run.reserved[dest_folder] = (
                 {p.name.lower() for p in dest_folder.iterdir()}
                 if dest_folder.is_dir()
                 else set()
             )
-        filed_as = prepared_name_for(item, extension_of(drop), reserved[dest_folder])
+        filed_as = prepared_name_for(item, extension_of(drop), run.reserved[dest_folder])
         if not dry_run:
             dest_folder.mkdir(parents=True, exist_ok=True)
             shutil.copy2(pbc_target, dest_folder / filed_as)
@@ -725,14 +737,14 @@ def _sort_one(
 
     review_name = drop.name
     if not dry_run:
-        review_dir.mkdir(parents=True, exist_ok=True)
-        review_target = _unique_path(review_dir, drop.name)
+        run.review_dir.mkdir(parents=True, exist_ok=True)
+        review_target = _unique_path(run.review_dir, drop.name)
         shutil.copy2(pbc_target, review_target)
         review_name = review_target.name
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
         digest=digest, identifier="",
-        prepared_location=prepared_location(review_dir, review_name),
+        prepared_location=prepared_location(run.review_dir, review_name),
         pbc_location=pbc_rel, decision=NEEDS_REVIEW, reason=routing.reason,
         candidates=_CANDIDATE_SEP.join(routing.candidates),
     )

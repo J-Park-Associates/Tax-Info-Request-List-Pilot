@@ -80,6 +80,17 @@ def test_a_manifest_problem_is_a_json_error_not_a_traceback(capsys, demo_root):
     assert "Manifest not found" in payload["error"]
 
 
+def test_the_engagement_flag_needs_a_folder_under_the_root(capsys, demo_root, tmp_path):
+    hint = f"Pick an engagement first ({api.ENGAGEMENT_FLAG} <folder>)"
+    assert run(capsys, "state")[1]["error"] == hint
+    assert run(capsys, "state", api.ENGAGEMENT_FLAG)[1]["error"] == hint        # was an IndexError
+    assert run(capsys, "state", api.ENGAGEMENT_FLAG, "  ")[1]["error"] == hint
+    elsewhere = tmp_path / "Elsewhere" / "Smith"
+    elsewhere.mkdir(parents=True)
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(elsewhere))
+    assert code == 1 and "not under the clients root" in payload["error"]
+
+
 def test_templates_lists_every_form_with_its_checklist(capsys):
     code, payload = run(capsys, "templates")
     assert code == 0
