@@ -48,7 +48,7 @@ from typing import Sequence
 
 from tracker.filer import file_drops
 from tracker.manifest import ManifestError, Status, check_manifest
-from tracker.scaffold import MANIFEST_FILENAME
+from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.registry import Engagement, Registry, RegistryError, discover_engagements
 from tracker.reminder import (
     DRAFT_FILENAME,
@@ -196,6 +196,9 @@ def run_engagement(
     today = today or dt.date.today()
     run = EngagementRun(engagement=engagement)
 
+    if engagement.superseded_by:
+        run.skipped = f"rolled forward into {engagement.superseded_by}"
+        return run
     if not engagement.active:
         run.skipped = "inactive (Engagement sheet says Active: no)"
         return run
@@ -217,6 +220,11 @@ def run_engagement(
     run.warnings = checked.warnings
 
     try:
+        # A row added or un-waived in Excel gets its folder and its README
+        # line here, on the next pass, rather than when somebody remembers
+        # to re-run scaffold. Idempotent: nothing existing is touched.
+        if not dry_run:
+            scaffold_engagement(engagement.path, contact=engagement.firm or engagement.sender)
         filed = file_drops(engagement.path, today=today, dry_run=dry_run)
         run.filed = len(filed.filed)
         run.review = len(filed.review)
@@ -226,7 +234,9 @@ def run_engagement(
 
         scanned = scan_engagement(engagement.path, today=today, dry_run=dry_run)
         counts: dict[str, int] = {}
-        for update in scanned.updates.values():
+        for identifier, update in scanned.updates.items():
+            if identifier in scanned.waived:
+                continue   # nobody is waiting on a waived row
             if update.status:
                 counts[update.status] = counts.get(update.status, 0) + 1
         run.statuses = counts

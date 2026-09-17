@@ -11,9 +11,10 @@ Status policy (docs/ROADMAP.md decision log):
 - **Auto-revert** — status always reflects the current scan. A previously
   Received item whose files changed or vanished regresses, keeping its
   original Received Date plus a note.
-- **Manual Override wins** — rows marked Accepted/Waived keep whatever
-  Status they have; the scanner still refreshes File Count and records
-  what the rules saw in the notes, prefixed ``[override: ...]``.
+- **Manual Override wins** — an Accepted row is Received (date stamped
+  once, as for any other), a Waived row keeps whatever status it has; the
+  scanner still refreshes File Count and records what the rules saw in the
+  notes, prefixed ``[override: ...]``.
 - **Pending Sync** — cloud-only placeholders are never read; if they are
   the reason a row is short of files, the row waits instead of failing.
 - Duplicate uploads ("statement (1).pdf") are de-duplicated by content
@@ -42,6 +43,7 @@ from tracker.locking import (
     acquire_lock,
 )
 from tracker.manifest import (
+    Override,
     RequestItem,
     Status,
     StatusUpdate,
@@ -81,6 +83,7 @@ class ScanReport:
     engagement_dir: Path
     updates: dict[str, StatusUpdate] = field(default_factory=dict)
     unfiled: list[UnfiledEntry] = field(default_factory=list)
+    waived: set[str] = field(default_factory=set)   # rows nobody is waiting on
     written: bool = False    # manifest updated on disk
     deferred: bool = False   # manifest was locked; updates went to sidecar
     dry_run: bool = False
@@ -139,9 +142,20 @@ def _scan_item(
     if len(failures) > _MAX_LISTED_FAILURES:
         facts.append(f"(+{len(failures) - _MAX_LISTED_FAILURES} more issues)")
 
-    # --- override rows: facts only, status untouched -----------------------
+    # --- override rows: a person's call beats the rules --------------------
     if item.manual_override:
         facts.insert(0, f"[override: {item.manual_override}]")
+        if item.manual_override == Override.ACCEPTED:
+            # Accepted means "treat as Received despite the rules" (decision
+            # 2), so it IS Received: status, date and every count that reads
+            # the status column agree, instead of a row a person signed off
+            # on still reading Missing or Failed in the sheet and the run.
+            return StatusUpdate(
+                status=Status.RECEIVED,
+                file_count=count,
+                received_date=item.received_date or today,
+                validation_notes=_join(facts),
+            )
         return StatusUpdate(
             status=item.status,
             file_count=count,
@@ -293,6 +307,7 @@ def scan_engagement(
             engagement_dir=engagement_dir,
             updates=updates,
             unfiled=unfiled,
+            waived={i.identifier for i in items if i.manual_override == Override.WAIVED},
             dry_run=dry_run,
         )
         if dry_run:

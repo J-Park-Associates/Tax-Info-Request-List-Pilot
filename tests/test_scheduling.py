@@ -140,3 +140,35 @@ def test_the_n8n_hour_is_validated():
         "interval"][0]["triggerAtHour"] == 18
     with pytest.raises(ValueError, match="hour must be 0-23"):
         n8n_workflow(**ARGS, hour=25)
+
+
+def test_install_runs_schtasks_on_windows_and_only_shows_the_command_elsewhere(monkeypatch, tmp_path):
+    import platform
+    import subprocess
+
+    from tracker.scheduling import install_task
+
+    calls = []
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    assert install_task(tmp_path / "t.xml", "Tax Tracker")[:3] == ["schtasks", "/create", "/xml"]
+    assert calls == []
+
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+
+    class Done:
+        returncode = 0
+        stdout = "SUCCESS"
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: (calls.append(cmd), Done())[1])
+    command = install_task(tmp_path / "t.xml", "Tax Tracker")
+    assert calls == [command]
+    assert command[-3:] == ["/tn", "Tax Tracker", "/f"]
+
+    class Failed(Done):
+        returncode = 1
+        stderr = "ERROR: Access is denied."
+
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: Failed())
+    with pytest.raises(RuntimeError, match="Access is denied"):
+        install_task(tmp_path / "t.xml")

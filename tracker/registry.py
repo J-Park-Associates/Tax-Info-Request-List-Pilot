@@ -32,7 +32,7 @@ scheduled task, not an empty practice.
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker.manifest import EngagementInfo, ManifestError, load_engagement_info
@@ -60,7 +60,9 @@ class Engagement:
     firm: str = ""
     reminders: bool = True
     active: bool = True
-    problem: str = ""   # why the manifest could not be read, if it could not
+    problem: str = ""        # why the manifest could not be read, if it could not
+    rolled_from: str = ""    # what this engagement was rolled forward from
+    superseded_by: str = ""  # the engagement this one was rolled forward INTO
 
     @property
     def label(self) -> str:
@@ -135,7 +137,38 @@ def engagement_from(folder: Path) -> Engagement:
         firm=info.firm,
         reminders=info.reminders,
         active=info.active,
+        rolled_from=info.rolled_from,
     )
+
+
+def _same_folder(a: str, b: Path) -> bool:
+    try:
+        return Path(a).resolve() == b.resolve()
+    except OSError:
+        return False
+
+
+def mark_superseded(engagements: list[Engagement]) -> list[Engagement]:
+    """An engagement another one was rolled forward from is finished.
+
+    The rollover never writes to the prior year (it is read-only history),
+    so the prior cannot mark itself done. The new engagement's sheet says
+    what it was rolled from, and that is enough: nobody should be chasing
+    last year's list once this year's exists. Marked inactive here, with
+    the successor named, rather than by a person remembering to open last
+    year's manifest and type "no".
+    """
+    successors: dict[int, str] = {}
+    for candidate in engagements:
+        if not candidate.rolled_from:
+            continue
+        for index, prior in enumerate(engagements):
+            if _same_folder(candidate.rolled_from, prior.path):
+                successors[index] = candidate.label
+    return [
+        replace(e, active=False, superseded_by=successors[i]) if i in successors else e
+        for i, e in enumerate(engagements)
+    ]
 
 
 def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Registry:
@@ -149,7 +182,10 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
             f"no engagement found under {root} (no folder holding {MANIFEST_FILENAME} "
             f"within {max_depth} levels) - is this the right folder?"
         )
-    return Registry(source=root, engagements=[engagement_from(f) for f in folders])
+    return Registry(
+        source=root,
+        engagements=mark_superseded([engagement_from(f) for f in folders]),
+    )
 
 
 # -------------------------------------------------------------------- CLI ----
@@ -172,7 +208,9 @@ if __name__ == "__main__":
           f"of {len(loaded.engagements)} engagement(s)")
     for engagement in loaded.engagements:
         flags = []
-        if not engagement.active:
+        if engagement.superseded_by:
+            flags.append(f"rolled forward into {engagement.superseded_by}")
+        elif not engagement.active:
             flags.append("inactive")
         if not engagement.reminders:
             flags.append("no reminders")

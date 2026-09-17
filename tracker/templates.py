@@ -22,6 +22,7 @@ for a person, which defeats the point of a template.
 from __future__ import annotations
 
 import csv
+import datetime as dt
 from pathlib import Path
 
 from tracker.manifest import (
@@ -559,17 +560,66 @@ def item_from_spec(spec: dict) -> RequestItem:
     )
 
 
-def template_items(form: str, *, core_only: bool = False) -> list[RequestItem]:
-    """The checklist for ``form`` as request items. Unknown form → ManifestError."""
+def default_tax_year(today: dt.date | None = None) -> int:
+    """The tax year a new engagement is for: the most recently ended year.
+
+    A return prepared at any point in 2027 is for tax year 2026. The
+    catalog is written for one base year and shifted to this, so nobody
+    edits TY2025 into TY2026 across six checklists every January - or
+    forgets to, and creates a year of engagements asking for last year's
+    forms.
+    """
+    today = today or dt.date.today()
+    return today.year - 1
+
+
+def base_year(form: str) -> int | None:
+    """The tax year the catalog's rows for ``form`` are written for."""
+    from tracker.rollover import detect_year
+
+    return detect_year([item_from_spec(spec) for spec in FORM_TEMPLATES[form]])
+
+
+def shift_item(item: RequestItem, delta: int) -> RequestItem:
+    """``item`` with every four-digit year in its text fields moved by ``delta``."""
+    from dataclasses import replace
+
+    from tracker.rollover import shift_years
+
+    if not delta:
+        return item
+    return replace(
+        item,
+        document=shift_years(item.document, delta),
+        period=shift_years(item.period, delta),
+        date_pattern=shift_years(item.date_pattern, delta),
+    )
+
+
+def template_items(
+    form: str, *, core_only: bool = False, year: int | None = None
+) -> list[RequestItem]:
+    """The checklist for ``form`` as request items, for tax year ``year``.
+
+    ``year=None`` returns the catalog as written (its base year); the
+    wizard and the create command pass :func:`default_tax_year` or the
+    year the person chose. Relative periods shift with it, so the
+    prior-year-return row stays one year behind. Unknown form → ManifestError.
+    """
     if form not in FORM_TEMPLATES:
         raise ManifestError(
             f"Unknown tax form type '{form}'; expected one of {', '.join(FORM_TEMPLATES)}"
         )
-    return [
+    items = [
         item_from_spec(spec)
         for spec in FORM_TEMPLATES[form]
         if spec["core"] or not core_only
     ]
+    if year is None:
+        return items
+    base = base_year(form)
+    delta = (year - base) if base else 0
+    return [shift_item(item, delta) for item in items]
 
 
 # -------------------------------------------------------------------- csv ----

@@ -14,7 +14,9 @@ skipping the week.
 
 Paths differ on every machine, so the definition is generated rather than
 committed: point it at the Python you use and the folder you keep your
-clients in, and import the XML with ``schtasks /create /xml``.
+clients in, and ``--install`` registers it with Task Scheduler in the same
+step (``schtasks /create /xml ... /f``, so re-running is also how you change
+the schedule).
 
 Nothing generated here sends email. The scheduled command files documents,
 updates the manifest and writes draft text files; a person still sends them.
@@ -175,6 +177,32 @@ def n8n_workflow(
     }
 
 
+# ---------------------------------------------------------------- install ----
+
+
+def install_task(xml_path: Path | str, task_name: str = TASK_NAME) -> list[str]:
+    """Register the generated XML with Task Scheduler. Returns the command run.
+
+    ``schtasks /create /xml <file> /tn <name> /f`` - the ``/f`` replaces an
+    existing task of the same name, so re-running after changing the
+    schedule is the whole upgrade path. Only meaningful on Windows; anywhere
+    else the command is returned unrun so it can be shown.
+    """
+    import platform
+    import subprocess
+
+    command = ["schtasks", "/create", "/xml", str(xml_path), "/tn", task_name, "/f"]
+    if platform.system() != "Windows":
+        return command
+    completed = subprocess.run(command, capture_output=True, text=True)
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"schtasks failed ({completed.returncode}): "
+            f"{(completed.stderr or completed.stdout).strip()}"
+        )
+    return command
+
+
 # -------------------------------------------------------------------- CLI ----
 
 if __name__ == "__main__":
@@ -199,7 +227,11 @@ if __name__ == "__main__":
                         help="Windows Task Scheduler XML (default) or an n8n workflow")
     parser.add_argument("--out", default="",
                         help="write to this file instead of standard output")
+    parser.add_argument("--install", action="store_true",
+                        help="also register the task with Task Scheduler (Windows; needs --out)")
     ns = parser.parse_args()
+    if ns.install and (ns.format != "xml" or not ns.out):
+        parser.error("--install needs --format xml and --out")
 
     root_arg = resolve_root(ns.root, ns.working_dir)
 
@@ -237,7 +269,19 @@ if __name__ == "__main__":
         # Task Scheduler wants UTF-16 for an XML it will import.
         Path(ns.out).write_text(payload, encoding=encoding)
         print(f"Wrote {ns.out}")
-        if ns.format == "xml":
-            print(f'Import it with:  schtasks /create /xml "{ns.out}" /tn "{ns.name}"')
+        if ns.install:
+            import platform
+
+            try:
+                command = install_task(ns.out, ns.name)
+            except RuntimeError as exc:
+                raise SystemExit(f"Not installed: {exc}")
+            if platform.system() == "Windows":
+                print(f'Installed as "{ns.name}" - it runs daily from {ns.start}.')
+            else:
+                print("Not Windows; run this on the scheduling machine:  " + " ".join(command))
+        elif ns.format == "xml":
+            print(f'Install it with:  python -m tracker.scheduling --root "{ns.root}" '
+                  f'--out "{ns.out}" --install')
     else:
         print(payload, end="")

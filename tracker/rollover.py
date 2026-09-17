@@ -362,6 +362,15 @@ if __name__ == "__main__":
     target = Path(ns.new_engagement_dir)
     target.mkdir(parents=True, exist_ok=True)
     manifest = write_rollover_manifest(target / MANIFEST_FILENAME, result)
+    # The Engagement sheet comes along (client, sender, firm, reminders); the
+    # link and due date are this year's to set. Rolled From retires the prior.
+    from dataclasses import replace as _replace
+    from tracker.manifest import load_engagement_info, write_engagement_info
+
+    write_engagement_info(manifest, _replace(
+        load_engagement_info(result.prior_dir / MANIFEST_FILENAME),
+        name=target.name, link="", due=None, active=True, rolled_from=str(result.prior_dir),
+    ))
 
     span = f"{result.prior_year} → {result.target_year}" if result.prior_year else "next year"
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")

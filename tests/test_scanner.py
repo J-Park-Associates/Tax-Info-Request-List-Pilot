@@ -321,3 +321,32 @@ def test_raising_expected_count_after_received_names_the_real_change(engagement)
     assert update.received_date == DAY1
     assert "Expected Count is now 2" in update.validation_notes
     assert "files changed" not in update.validation_notes
+
+
+def test_accepted_means_received_with_a_date(engagement):
+    # Decision 2: Accepted = treat as Received despite the rules. The status
+    # column, the date and every count that reads the column agree.
+    from openpyxl import load_workbook as lw
+
+    scan_engagement(engagement, today=DAY1)          # A01 Missing: no file at all
+    wb = lw(engagement / MANIFEST_FILENAME)
+    wb["Requests"].cell(row=2, column=10, value="Accepted")
+    wb.save(engagement / MANIFEST_FILENAME)
+    report = scan_engagement(engagement, today=DAY2)
+    update = report.updates["A01"]
+    assert update.status == Status.RECEIVED
+    assert update.received_date == DAY2
+    assert update.validation_notes.startswith("[override: Accepted]")
+    assert statuses(engagement)["A01"].status == Status.RECEIVED
+    # Stamped once: a later scan keeps the first date.
+    assert scan_engagement(engagement, today=DAY2 + dt.timedelta(days=3)).updates["A01"].received_date == DAY2
+
+
+def test_waived_rows_are_named_so_counts_can_leave_them_out(engagement):
+    from openpyxl import load_workbook as lw
+
+    wb = lw(engagement / MANIFEST_FILENAME)
+    wb["Requests"].cell(row=4, column=10, value="Waived")   # B01
+    wb.save(engagement / MANIFEST_FILENAME)
+    report = scan_engagement(engagement, today=DAY1)
+    assert report.waived == {"B01"}

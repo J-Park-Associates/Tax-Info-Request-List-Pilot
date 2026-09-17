@@ -328,3 +328,60 @@ def test_rows_the_rules_cannot_act_on_are_reported_not_buried(tmp_path, samples)
     assert any("never be filed automatically" in w for w in run.warnings)
     text = format_report(run_registry(Registry(source=tmp_path, engagements=[engagement]), today=FRIDAY))
     assert "! Row 2 (A01)" in text
+
+
+def test_waived_and_accepted_rows_are_not_outstanding(tmp_path, samples):
+    from openpyxl import load_workbook
+
+    engagement = build_engagement(tmp_path, samples, drops=())
+    manifest = engagement.path / MANIFEST_FILENAME
+    wb = load_workbook(manifest)
+    ws = wb["Requests"]
+    ws.cell(row=2, column=10, value="Accepted")   # A01
+    ws.cell(row=3, column=10, value="Waived")     # A02
+    wb.save(manifest)
+    run = run_engagement(engagement, today=FRIDAY)
+    assert run.ok
+    assert run.statuses.get(Status.RECEIVED) == 1          # the accepted row
+    assert "Waived" not in run.statuses
+    assert run.outstanding == len(DEMO_ITEMS) - 2
+
+
+def test_a_row_added_in_excel_has_its_folder_by_the_next_run(tmp_path, samples):
+    from openpyxl import load_workbook
+    from tracker.scaffold import PREPARED_DIR_NAME, README_NAME, SHARED_DIR_NAME
+
+    engagement = build_engagement(tmp_path, samples, drops=())
+    manifest = engagement.path / MANIFEST_FILENAME
+    wb = load_workbook(manifest)
+    wb["Requests"].append(["Z01", "Rental Property Records", "TY2025", 1, "pdf", 5, None, "schedule e", None, None])
+    wb.save(manifest)
+    run = run_engagement(engagement, today=FRIDAY)
+    assert run.ok
+    assert any(p.name.startswith("Z01") for p in (engagement.path / PREPARED_DIR_NAME).iterdir())
+    assert "Z01 - Rental Property Records" in (engagement.path / SHARED_DIR_NAME / README_NAME).read_text(encoding="utf-8")
+    assert run.statuses.get(Status.MISSING, 0) >= 1 and "folder not found" not in str(run.statuses)
+
+
+def test_a_rolled_forward_engagement_is_retired_by_its_successor(tmp_path, samples):
+    from tracker.manifest import EngagementInfo, write_engagement_info
+    from tracker.registry import discover_engagements
+
+    prior = build_engagement(tmp_path / "Clients", samples, name="Smith 2025")
+    write_engagement_info(prior.path / MANIFEST_FILENAME, EngagementInfo(client="John"))
+    new = build_engagement(tmp_path / "Clients", samples, name="Smith 2026", drops=())
+    write_engagement_info(new.path / MANIFEST_FILENAME,
+                          EngagementInfo(client="John", rolled_from=str(prior.path)))
+
+    registry = discover_engagements(tmp_path / "Clients")
+    by_name = {e.path.name: e for e in registry.engagements}
+    assert by_name["Smith 2025"].active is False
+    assert by_name["Smith 2025"].superseded_by == "Smith 2026"
+    assert by_name["Smith 2026"].active is True
+
+    report = run_registry(registry, today=SATURDAY)
+    outcomes = {r.engagement.path.name: r for r in report.runs}
+    assert outcomes["Smith 2025"].skipped == "rolled forward into Smith 2026"
+    assert not (prior.path / DRAFT_FILENAME).exists()          # last year is not chased
+    assert (prior.path / "Shared" / "W-2 John Smith 2025.pdf").exists()   # and not touched
+    assert outcomes["Smith 2026"].ok

@@ -632,3 +632,5 @@ body {
 .btn-small { padding: 5px 10px; font-size: 12.5px; }
 .banner.err { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
 .banner.multi { white-space: pre-line; }
+
+.roll-grid.four { grid-template-columns: 1.2fr 0.6fr 1.6fr 1fr; margin-top: 0; }
