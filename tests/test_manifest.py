@@ -596,3 +596,26 @@ def test_check_manifest_warns_when_a_keyword_names_a_family_of_forms(tmp_path):
     assert check.ok
     assert check.warnings == [BARE_FORM_NUMBER_WARNING.format(
         row=2, identifier="B01", keyword="1099", example=FORM_FAMILIES["1099"])]
+
+
+def test_a_failed_save_reports_its_own_error_not_a_locked_temp_file(tmp_path, monkeypatch):
+    # openpyxl leaves the half-written zip open when save() raises; on
+    # Windows the temp then cannot be deleted. That must not turn a full
+    # disk into "open in Excel" retried five times.
+    import tracker.manifest as manifest_module
+    from tracker.manifest import atomic_replacement
+
+    target = tmp_path / "x.xlsx"
+    target.write_bytes(b"before")
+    real_unlink = manifest_module.Path.unlink
+
+    def held(self, *args, **kwargs):
+        if self.name.endswith(manifest_module.TEMP_SUFFIX):
+            raise PermissionError("[WinError 32] still open")
+        return real_unlink(self, *args, **kwargs)
+    monkeypatch.setattr(manifest_module.Path, "unlink", held)
+    with pytest.raises(OSError, match="No space left"):
+        with atomic_replacement(target) as temp:
+            temp.write_bytes(b"half")
+            raise OSError(28, "No space left on device")
+    assert target.read_bytes() == b"before"

@@ -1072,3 +1072,16 @@ def test_a_file_named_like_a_formula_is_recorded_as_its_name(engagement):
     file_drops(engagement, today=DAY1)
     [row] = read_index(engagement / INDEX_FILENAME)
     assert row.original_name == "=SUM scan.pdf"
+
+
+def test_assigning_a_replaced_original_is_refused_not_recorded_under_the_old_bytes(engagement):
+    from tracker.filer import FilingError, assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    (engagement / parked.prepared_location).unlink()             # the parked copy is gone
+    text_pdf(pbc(engagement) / "scan0012.pdf", "the client replaced it with something else")
+    with pytest.raises(FilingError, match="replaced after it arrived"):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NEEDS_REVIEW and row.digest == parked.digest

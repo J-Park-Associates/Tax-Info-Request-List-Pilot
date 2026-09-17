@@ -51,6 +51,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     detect_year,
     load_manifest,
     pending_updates,
+    save_workbook_atomically,
     shift_item,
     shift_years,
     with_pending,
@@ -311,7 +312,7 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
         for column, width in zip(ws.column_dimensions, CARRIED_LAYOUT.values(), strict=False):
             ws.column_dimensions[column].width = width
         ws.freeze_panes = "A2"
-        wb.save(path)
+        save_workbook_atomically(wb, path)
     finally:
         wb.close()
     return path

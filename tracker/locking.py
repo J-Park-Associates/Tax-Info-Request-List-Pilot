@@ -67,6 +67,10 @@ LOCK_FILENAME = "_scan.lock"
 _PID_KEY = "pid"
 _STARTED_KEY = "started"
 _HOST_KEY = "host"
+#: What a lock file says when its owner let go but could not delete it.
+RELEASED_LINE = "released=1"
+_RELEASE_RETRIES = 10
+_RELEASE_RETRY_DELAY = 0.2
 #: How long Task Scheduler lets one pass run before killing it. It lives
 #: here, not in tracker.scheduling, because the stale threshold below is
 #: derived from it and this module imports nothing from the package.
@@ -140,6 +144,8 @@ def _owner_gone(lock: Path) -> bool:
     except OSError:
         return False
     fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
+    if text.strip() == RELEASED_LINE:
+        return True
     if fields.get(_HOST_KEY, "") != _this_host():
         # Another machine's process (a synced clients root): whether it is
         # running cannot be known from here, so the age rule decides.
@@ -199,7 +205,7 @@ def release_lock(lock: EngagementLock) -> None:
     except OSError:
         pass  # already closed; the file is what matters
     try:
-        current = lock.path.read_text(encoding="utf-8")
+        current = lock.path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return  # already gone
     if current != lock.token:
@@ -208,13 +214,21 @@ def release_lock(lock: EngagementLock) -> None:
             lock.path.name,
         )
         return
+    for _attempt in range(_RELEASE_RETRIES):
+        try:
+            lock.path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            # A sync client reading the file for upload: brief, so wait it out.
+            time.sleep(_RELEASE_RETRY_DELAY)
+    # Still held. This process may take the next lock itself (a sort, then
+    # a scan) and would find its own live pid in the file; so the file is
+    # marked released, which every reader takes as an owner that is gone.
     try:
-        lock.path.unlink(missing_ok=True)
-    except PermissionError as exc:
-        # A sync client uploading the file at this moment. The run is done
-        # and its handle closed; the file names a process that will read
-        # as gone the next time anyone looks, so it is inert, not a failure.
-        log.warning("%s could not be removed on release (%s); it will read as stale", lock.path.name, exc)
+        lock.path.write_text(RELEASED_LINE, encoding="utf-8")
+        log.warning("%s could not be removed on release; marked released instead", lock.path.name)
+    except OSError as exc:
+        log.warning("%s could not be removed or marked on release (%s)", lock.path.name, exc)
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,12 +240,13 @@ class LockStatus:
     started: str        # ISO time the run began, if the file said
     pid: str            # process id, if the file said
     host: str = ""      # the machine that took it, if the file said
+    released: bool = False   # its owner let go but could not delete it
 
     @property
     def owner_gone(self) -> bool:
         """The process the lock names is no longer running (False if unknowable,
         including a process on another machine)."""
-        return self.host == _this_host() and pid_alive(self.pid) is False
+        return self.released or (self.host == _this_host() and pid_alive(self.pid) is False)
 
     @property
     def stale(self) -> bool:
@@ -250,7 +265,7 @@ def lock_status(engagement_dir: Path | str) -> LockStatus | None:
     return LockStatus(
         path=lock, age_seconds=max(age, 0.0),
         started=fields.get(_STARTED_KEY, ""), pid=fields.get(_PID_KEY, ""),
-        host=fields.get(_HOST_KEY, ""),
+        host=fields.get(_HOST_KEY, ""), released=text.strip() == RELEASED_LINE,
     )
 
 

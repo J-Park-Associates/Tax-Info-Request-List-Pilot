@@ -1021,6 +1021,17 @@ def assign_review_file(
             raise FilingError(
                 f"the original {entry.pbc_location} is no longer in {PBC_DIR_NAME}"
             )
+        if is_cloud_placeholder(source):
+            raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
+        if entry.digest and sha256_of(source) != entry.digest:
+            # The client replaced the original after it was parked (the pass
+            # reports it as REPLACED_IN_PBC). Filing the new bytes under the
+            # old row's record would be a lie in the audit trail; a person
+            # decides which document this is now.
+            raise FilingError(
+                f"the original {entry.pbc_location} no longer holds the bytes this row "
+                "recorded - it was replaced after it arrived; look at the file first"
+            )
 
         dest_folder = request_folder(item, assign_folders(prepared_dir, list(items)), prepared_dir)
         dest_folder.mkdir(parents=True, exist_ok=True)
@@ -1029,7 +1040,7 @@ def assign_review_file(
         target = dest_folder / filed_as
 
         parked = engagement_dir / entry.prepared_location if entry.prepared_location else None
-        moved = False
+        moved = reused = False
         if parked is not None and parked.is_file():
             shutil.move(str(parked), target)   # keeps any notes a person made on it
             moved = True
@@ -1040,6 +1051,7 @@ def assign_review_file(
             existing = _existing_copy(dest_folder, source, entry.digest) if entry.digest else None
             if existing is not None:
                 filed_as, target = existing.name, existing
+                reused = True
             else:
                 _copy_whole(source, target)
 
@@ -1064,7 +1076,7 @@ def assign_review_file(
             if not _index_records(index_path, new_entry):
                 if moved:
                     shutil.move(str(target), parked)
-                else:
+                elif not reused:          # a copy that was already there stays
                     target.unlink(missing_ok=True)
             raise
 
@@ -1102,6 +1114,8 @@ def _find_parked(entries: list[IndexEntry], original: str) -> int:
         if entry.pbc_location == wanted or entry.original_name == wanted:
             if entry.decision == NEEDS_REVIEW:
                 return position
+            if entry.decision == DUPLICATE and entry.original_name == wanted:
+                continue          # a re-send under the same name; the parked row is older
             raise FilingError(
                 f"{entry.original_name} is not waiting for review (it is {entry.decision}"
                 + (f" as {entry.prepared_location}" if entry.prepared_location else "")

@@ -709,7 +709,14 @@ def atomic_replacement(path: Path) -> Iterator[Path]:
         yield temp
         os.replace(temp, path)
     finally:
-        temp.unlink(missing_ok=True)
+        # The temp's removal must never replace the error that stopped the
+        # write: openpyxl leaves the half-written zip open when save()
+        # raises, Windows then refuses the delete, and a full disk would
+        # read as "open in Excel" and be retried five times.
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("Temporary file %s could not be removed (%s)", temp.name, exc)
 
 
 def write_text_atomically(
@@ -1097,6 +1104,7 @@ def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
             if keyword.lower() in (k.lower() for k in existing):
                 return False
             cell.value = ", ".join((*existing, keyword))
+            as_text(cell)              # a keyword starting with "=" is a keyword, not a formula
             save_workbook_atomically(wb, path)
             return True
         raise ManifestError(f"No request {identifier!r} in {path.name}")
@@ -1171,6 +1179,6 @@ def create_template(
     _write_engagement_sheet(wb, info or EngagementInfo())
     wb.active = 0
     path.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(path)
+    save_workbook_atomically(wb, path)
     wb.close()
     return path

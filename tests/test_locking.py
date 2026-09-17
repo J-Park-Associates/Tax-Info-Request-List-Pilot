@@ -180,3 +180,27 @@ def test_a_lock_from_another_machine_is_judged_by_its_age_alone(tmp_path):
     with pytest.raises(EngagementLockedError):
         with engagement_lock(tmp_path):
             pass
+
+
+def test_a_lock_that_cannot_be_deleted_on_release_does_not_block_its_own_process(tmp_path, monkeypatch):
+    # A sync client held the file while the sort let go; the scan that
+    # follows in the same process must not find its own live pid and wait.
+    import tracker.locking as locking_module
+    from tracker.locking import lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    real_unlink = locking_module.Path.unlink
+
+    def held(self, *args, **kwargs):
+        if self == lock:
+            raise PermissionError("[WinError 32] being uploaded")
+        return real_unlink(self, *args, **kwargs)
+    monkeypatch.setattr(locking_module, "_RELEASE_RETRY_DELAY", 0)
+    monkeypatch.setattr(locking_module.Path, "unlink", held)
+    with engagement_lock(tmp_path):
+        pass
+    assert lock.exists() and lock_status(tmp_path).released and lock_status(tmp_path).stale
+    monkeypatch.undo()
+    with engagement_lock(tmp_path):                          # the next step, same process
+        assert str(os.getpid()) in lock.read_text(encoding="utf-8")
+    assert not lock.exists()
