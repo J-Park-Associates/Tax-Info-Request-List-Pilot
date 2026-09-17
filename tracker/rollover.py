@@ -50,8 +50,10 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     create_template,
     detect_year,
     load_manifest,
+    pending_updates,
     shift_item,
     shift_years,
+    with_pending,
 )
 from tracker.scaffold import MANIFEST_FILENAME
 
@@ -207,7 +209,13 @@ def roll_forward(
     added, unless ``include_new`` is set.
     """
     prior_dir = Path(prior_engagement_dir)
-    prior_items = load_manifest(prior_dir / MANIFEST_FILENAME)
+    # The prior year's last scan may have been deferred (Excel held the
+    # manifest) and never landed - the usual end of an engagement. What
+    # it saw is in the sidecar; read it, move nothing.
+    prior_manifest = prior_dir / MANIFEST_FILENAME
+    prior_items = with_pending(
+        load_manifest(prior_manifest), pending_updates(prior_manifest, quarantine=False)
+    )
 
     prior_year = detect_year(prior_items)
     if target_year is None and prior_year is not None:

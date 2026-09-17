@@ -50,7 +50,10 @@ PDF_EXTENSION = "pdf"
 #: the sync client's, never the client's.
 _SYNC_STAGING_PREFIX = ".tmp.drive"
 _IGNORED_PREFIXES = (OFFICE_LOCK_PREFIX, _SYNC_STAGING_PREFIX)
-_IGNORED_SUFFIXES = (TEMP_SUFFIX, ".driveupload", ".drivedownload")
+#: A transfer still in progress, by its name: a sync client's or a browser's
+#: partial file. Never sorted, and named in the report as waiting.
+UNFINISHED_SUFFIXES = (TEMP_SUFFIX, ".driveupload", ".drivedownload")
+_IGNORED_SUFFIXES = UNFINISHED_SUFFIXES
 
 # Google-native documents sync down as tiny shortcut/stub files, not real
 # documents. Validating them is impossible locally, so tier 2 fails them with

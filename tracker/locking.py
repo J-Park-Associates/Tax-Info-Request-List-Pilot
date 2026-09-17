@@ -53,6 +53,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import socket
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -65,6 +66,7 @@ log = logging.getLogger("tracker.locking")
 LOCK_FILENAME = "_scan.lock"
 _PID_KEY = "pid"
 _STARTED_KEY = "started"
+_HOST_KEY = "host"
 #: How long Task Scheduler lets one pass run before killing it. It lives
 #: here, not in tracker.scheduling, because the stale threshold below is
 #: derived from it and this module imports nothing from the package.
@@ -136,6 +138,10 @@ def _owner_gone(lock: Path) -> bool:
     try:
         fields = dict(part.split("=", 1) for part in lock.read_text(encoding="utf-8").split() if "=" in part)
     except OSError:
+        return False
+    if fields.get(_HOST_KEY, "") != _this_host():
+        # Another machine's process (a synced clients root): whether it is
+        # running cannot be known from here, so the age rule decides.
         return False
     return pid_alive(fields.get(_PID_KEY, "")) is False
 
@@ -212,11 +218,13 @@ class LockStatus:
     age_seconds: float
     started: str        # ISO time the run began, if the file said
     pid: str            # process id, if the file said
+    host: str = ""      # the machine that took it, if the file said
 
     @property
     def owner_gone(self) -> bool:
-        """The process the lock names is no longer running (False if unknowable)."""
-        return pid_alive(self.pid) is False
+        """The process the lock names is no longer running (False if unknowable,
+        including a process on another machine)."""
+        return self.host == _this_host() and pid_alive(self.pid) is False
 
     @property
     def stale(self) -> bool:
@@ -235,12 +243,17 @@ def lock_status(engagement_dir: Path | str) -> LockStatus | None:
     return LockStatus(
         path=lock, age_seconds=max(age, 0.0),
         started=fields.get(_STARTED_KEY, ""), pid=fields.get(_PID_KEY, ""),
+        host=fields.get(_HOST_KEY, ""),
     )
+
+
+def _this_host() -> str:
+    return socket.gethostname().lower()
 
 
 def lock_line(pid: int, started: dt.datetime) -> str:
     """What the lock file says: who took it and when, as ``lock_status`` reads it back."""
-    return f"{_PID_KEY}={pid} {_STARTED_KEY}={started.isoformat()}"
+    return f"{_PID_KEY}={pid} {_STARTED_KEY}={started.isoformat()} {_HOST_KEY}={_this_host()}"
 
 
 def clear_stale_lock(engagement_dir: Path | str) -> LockStatus:

@@ -950,3 +950,81 @@ def test_a_file_still_being_written_is_reported_as_waiting_not_passed_over(engag
     report = file_drops(engagement, today=DAY1)
     assert report.waiting == [half] and report.handled == 0
     assert half.exists()
+
+
+# ------------------------------------------- the second reading (decision 56) ----
+
+
+def test_a_same_size_replacement_with_an_old_date_is_still_noticed(engagement):
+    # One number changed in a CSV, copied in with its original timestamp:
+    # same size, older mtime. Only the bytes can tell.
+    from tracker.filer import REPLACED_IN_PBC
+
+    (engagement / SHARED_DIR_NAME / "ledger.csv").write_text("a,1\nb,2\n", encoding="utf-8")
+    first = file_drops(engagement, today=DAY1).review[0]
+    original = pbc(engagement) / "ledger.csv"
+    stamp = original.stat().st_mtime - 30 * 86400
+    original.write_text("a,1\nb,3\n", encoding="utf-8")          # same length
+    os.utime(original, (stamp, stamp))                            # older than its row
+    [error] = file_drops(engagement, today=DAY2).errors
+    assert error.error == REPLACED_IN_PBC.format(
+        location=first.pbc_location, received=DAY1.isoformat(), prepared=first.prepared_location)
+
+
+def test_an_original_the_sync_client_dehydrated_is_not_downloaded_to_be_checked(engagement, monkeypatch):
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p.name == "w2.pdf")
+
+    def never(path):
+        raise AssertionError(f"hashed {path.name}")
+    monkeypatch.setattr(filer_module, "sha256_of", never)
+    assert file_drops(engagement, today=DAY2).errors == []
+
+
+def test_a_copy_that_fails_half_way_leaves_no_truncated_working_copy(engagement, monkeypatch):
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    def half(src, dst):
+        filer_module.Path(dst).write_bytes(b"%PDF-1.4 half")
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(filer_module.shutil, "copy2", half)
+    report = file_drops(engagement, today=DAY1)
+    monkeypatch.undo()
+    assert len(report.review) == 1 and "No space left" in report.review[0].reason
+    assert not any(prepared(engagement, "A01").iterdir())          # nothing half-written
+    assert (pbc(engagement) / "w2.pdf").exists()                    # the record is safe
+
+
+def test_an_interrupt_after_the_index_landed_does_not_undo_the_filing(engagement, monkeypatch):
+    # write_index wrote the workbook; the interrupt hit while the sidecar
+    # was being removed. The index says Filed at the request folder, so
+    # the copy stays there - moving it back would leave the index lying.
+    import tracker.filer as filer_module
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    def interrupted(path):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(filer_module, "_discard_pending_index", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    monkeypatch.undo()
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == FILED and (engagement / row.prepared_location).exists()
+    assert not (engagement / parked.prepared_location).exists()
+
+
+def test_every_unfinished_transfer_name_is_reported_as_waiting(engagement):
+    from tracker.validators import UNFINISHED_SUFFIXES
+
+    for suffix in UNFINISHED_SUFFIXES:
+        (engagement / SHARED_DIR_NAME / f"upload{suffix}").write_bytes(b"partial")
+    report = file_drops(engagement, today=DAY1)
+    assert sorted(p.name for p in report.waiting) == sorted(f"upload{s}" for s in UNFINISHED_SUFFIXES)

@@ -348,3 +348,20 @@ def test_a_rollover_reads_the_prior_year_without_moving_anything_in_it(prior):
     before = sorted(p.name for p in prior.iterdir())
     roll_forward(prior)
     assert sidecar.exists() and sorted(p.name for p in prior.iterdir()) == before
+
+
+def test_a_rollover_learns_from_the_prior_years_deferred_scan_too(prior, monkeypatch):
+    """The last scan of the prior year was deferred and never landed - the
+    usual end of an engagement. What it saw is in the sidecar."""
+    import datetime as dt
+
+    from tracker.manifest import Status, StatusUpdate, _save_pending
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    manifest = prior / MANIFEST_FILENAME
+    _save_pending(manifest, {"A01": StatusUpdate(
+        status=Status.RECEIVED, file_count=3, received_date=dt.date(2026, 3, 1))})
+    report = roll_forward(prior)
+    a01 = rolled_by_id(report)["A01"]
+    assert a01.prior_status == Status.RECEIVED
+    assert a01.item.expected_count >= 3

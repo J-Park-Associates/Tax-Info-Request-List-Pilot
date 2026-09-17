@@ -72,7 +72,6 @@ from tracker.manifest import (
     COL_IDENTIFIER,
     LOCK_RETRIES,
     LOCK_RETRY_DELAY,
-    TEMP_SUFFIX,
     Override,
     RequestItem,
     add_any_keyword,
@@ -96,6 +95,7 @@ from tracker.scaffold import (
     sanitize_component,
 )
 from tracker.validators import (
+    UNFINISHED_SUFFIXES,
     PdfVerdictCache,
     extension_of,
     is_cloud_placeholder,
@@ -279,6 +279,8 @@ def _existing_copy(folder: Path, original: Path, digest: str) -> Path | None:
     except OSError:
         return None
     for candidate in sorted(folder.iterdir()):
+        if is_cloud_placeholder(candidate):
+            continue
         try:
             if candidate.is_file() and candidate.stat().st_size == size and sha256_of(candidate) == digest:
                 log.warning("Reusing %s: a working copy with these bytes was already there", candidate.name)
@@ -286,6 +288,21 @@ def _existing_copy(folder: Path, original: Path, digest: str) -> Path | None:
         except OSError:
             continue
     return None
+
+
+def _copy_whole(source: Path, target: Path) -> None:
+    """``copy2``, with nothing left behind when it fails half-way.
+
+    A copy that stops part-way (disk full, a virus scanner holding the new
+    file) would leave a truncated working copy that the next scan reads as
+    a corrupt document and the reminder then asks the client for. The
+    original in ``PBC_DIR_NAME/`` is the record; a copy is disposable.
+    """
+    try:
+        shutil.copy2(source, target)
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
 
 
 def _unique_path(folder: Path, name: str) -> Path:
@@ -575,15 +592,16 @@ def iter_drops(shared_dir: Path) -> list[Path]:
 
 
 def unfinished_drops(shared_dir: Path) -> list[Path]:
-    """Files under ``SHARED_DIR_NAME/`` that end in ``TEMP_SUFFIX``: a
-    transfer still in progress, left alone until it finishes - and named
-    in the report, so one that never finishes is not a silence."""
+    """Files under ``SHARED_DIR_NAME/`` named as a transfer still in
+    progress (``UNFINISHED_SUFFIXES``): left alone until it finishes, and
+    named in the report, so one that never finishes is not a silence."""
     if not shared_dir.is_dir():
         return []
     pbc = shared_dir / PBC_DIR_NAME
     return sorted(
-        path for path in shared_dir.rglob(f"*{TEMP_SUFFIX}")
-        if path.is_file() and pbc not in path.parents
+        path for path in shared_dir.rglob("*")
+        if path.is_file() and path.name.lower().endswith(UNFINISHED_SUFFIXES)
+        and pbc not in path.parents
         and not any(is_sync_staging(part) for part in path.parts)
     )
 
@@ -620,9 +638,10 @@ def replaced_in_pbc(
     corrected document can land over the one already filed. Matching on
     the path alone would call that file recorded and never look at it
     again, while the working copy under ``PREPARED_DIR_NAME`` stayed the
-    old one. The size is compared first; a file the same size is hashed
-    only when it was modified after its row was received, so a run does
-    not re-read every original.
+    old one. A same-size edit (one number in a CSV) with a preserved
+    modification time is the common shape of it, so nothing but the bytes
+    decides: the size first, then the digest. A cloud placeholder is not
+    read - hashing it would download it - and is looked at when it is back.
     """
     by_location: dict[str, IndexEntry] = {}
     for entry in entries:            # the newest row for a location wins
@@ -633,13 +652,10 @@ def replaced_in_pbc(
         entry = by_location.get(path.relative_to(engagement_dir).as_posix())
         if entry is None:
             continue
+        if is_cloud_placeholder(path):
+            continue
         try:
-            stat = path.stat()
-            if round(stat.st_size / 1024, 1) == entry.size_kb:
-                modified = dt.date.fromtimestamp(stat.st_mtime).isoformat()
-                if entry.received and modified <= entry.received:
-                    continue
-            if sha256_of(path) == entry.digest:
+            if round(path.stat().st_size / 1024, 1) == entry.size_kb and sha256_of(path) == entry.digest:
                 continue
         except OSError:
             continue                 # unreadable now; the next run looks again
@@ -899,7 +915,7 @@ def _sort_one(
             if existing is not None:
                 filed_as = existing.name
             else:
-                shutil.copy2(pbc_target, dest_folder / filed_as)
+                _copy_whole(pbc_target, dest_folder / filed_as)
         entry = IndexEntry(
             received=stamp, original_name=drop.name, size_kb=size_kb,
             digest=digest, identifier=item.identifier,
@@ -917,7 +933,7 @@ def _sort_one(
         review_target = _existing_copy(run.review_dir, pbc_target, digest)
         if review_target is None:
             review_target = _unique_path(run.review_dir, drop.name)
-            shutil.copy2(pbc_target, review_target)
+            _copy_whole(pbc_target, review_target)
         review_name = review_target.name
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
@@ -1020,13 +1036,16 @@ def assign_review_file(
             deferred = not write_index(index_path, entries)
         except BaseException:
             # Excel holding the index is handled inside write_index (the
-            # snapshot). Anything else - disk full, a held sidecar, an
-            # interrupt - leaves the copy where the index still says it is,
-            # so a retry files it once rather than copying it twice.
-            if moved:
-                shutil.move(str(target), parked)
-            else:
-                target.unlink(missing_ok=True)
+            # snapshot). Anything else - disk full, an interrupt - leaves
+            # the copy where the index says it is, so a retry files it once
+            # rather than copying it twice: back in Review if the index was
+            # not written, where it is if the write landed and only the
+            # sidecar's removal was interrupted.
+            if not _index_records(index_path, new_entry):
+                if moved:
+                    shutil.move(str(target), parked)
+                else:
+                    target.unlink(missing_ok=True)
             raise
 
         keyword = keyword.strip()
@@ -1043,6 +1062,18 @@ def assign_review_file(
     return AssignResult(
         entry=new_entry, moved_review_copy=moved, keyword=keyword if not note else "",
         keyword_note=note, index_deferred=deferred,
+    )
+
+
+def _index_records(index_path: Path, entry: IndexEntry) -> bool:
+    """True when the index on disk already carries ``entry`` as written."""
+    try:
+        rows = read_index(index_path, quarantine=False)
+    except Exception:
+        return False
+    return any(
+        r.pbc_location == entry.pbc_location and r.decision == entry.decision
+        and r.prepared_location == entry.prepared_location for r in rows
     )
 
 
