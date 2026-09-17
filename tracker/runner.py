@@ -225,7 +225,7 @@ def run_engagement(
         # line here, on the next pass, rather than when somebody remembers
         # to re-run scaffold. Idempotent: nothing existing is touched.
         if not dry_run:
-            scaffold_engagement(engagement.path, contact=engagement.firm or engagement.sender)
+            scaffold_engagement(engagement.path)   # contact line from the Engagement sheet
         filed = file_drops(engagement.path, today=today, dry_run=dry_run)
         run.filed = len(filed.filed)
         run.review = len(filed.review)
@@ -254,15 +254,7 @@ def run_engagement(
             )
             return run
 
-        draft = draft_reminder(
-            engagement.path,
-            client_name=engagement.client,
-            engagement_name=engagement.name,
-            share_link=engagement.link,
-            due_date=engagement.due,
-            sender=engagement.sender,
-            firm=engagement.firm,
-        )
+        draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
         if not draft.has_outstanding:
             run.draft_note = "nothing outstanding; no reminder needed"
             return run

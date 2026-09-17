@@ -58,6 +58,9 @@ client-files/**
 # and the run log names them. Neither belongs in the repo — they live beside
 # the client folders.
 runs.log
+# The clients root, written once by the app (or python -m tracker.settings).
+settings.json
+tax-tracker.xml
 reminder-draft.txt
 reminder-draft.NEW.txt
 tax-tracker.xml

@@ -11,6 +11,8 @@ Commands:
   scan      one pass, exactly as the scheduled run makes it (no draft)
   assign    file one Needs Review document under a request (a person's call)
   check     validate the manifest now, with row numbers, instead of at the next scan
+  settings / set-root      where the clients live (settings.json beside the app)
+  install-schedule         register the daily job for that same folder
   unlock    clear a stale engagement lock (a fresh one is refused)
   reset     rebuild the entire marketing demo from scratch:
             engagement folder, manifest, folder tree, sample client docs
@@ -59,6 +61,8 @@ from tracker.scaffold import (
     scaffold_engagement,
 )
 from tracker.scanner import ScanLockedError, scan_engagement
+from tracker.scheduling import install_task, task_scheduler_xml
+from tracker.settings import SettingsError, clients_root, set_clients_root, settings_path
 from tracker.templates import (  # the catalog; re-exported for the wizard and demo
     DEMO_FORM,
     FORM_TEMPLATES,
@@ -70,17 +74,27 @@ from tracker.templates import (  # the catalog; re-exported for the wizard and d
     template_items,
 )
 
-# Frozen (PyInstaller) builds live inside the portable package; the demo data
-# root is then supplied by the Electron shell via TRACKER_DEMO_ROOT so it sits
-# next to the packaged exe rather than inside the bundle.
+# Frozen (PyInstaller) builds live inside the portable package.
 if getattr(sys, "frozen", False):
     REPO_ROOT = Path(sys.executable).resolve().parent
 else:
     REPO_ROOT = Path(__file__).resolve().parent.parent
-DEMO_ROOT = Path(os.environ.get("TRACKER_DEMO_ROOT", REPO_ROOT / "demo-marketing"))
 ENGAGEMENT_DIRNAME = "Engagement - Smith Family 2025 Form 1040"
 SAMPLES_DIRNAME = "Sample Client Documents"
-CONTACT = "J Park & Associates, CPA"
+#: The firm's name for the very first engagement; after that the wizard
+#: copies whatever the newest engagement's sheet says.
+DEFAULT_FIRM = "J Park & Associates, CPA"
+
+
+def _root() -> Path:
+    """The clients root from settings.json - the one place it is kept."""
+    root = clients_root()
+    if root is None:
+        raise ManifestError(
+            "Tell the app where your clients live first (Settings, or "
+            "`python -m tracker.settings <folder>`)"
+        )
+    return root
 
 DEMO_ITEMS = template_items(DEMO_FORM, core_only=True)
 
@@ -256,7 +270,7 @@ def _build_samples(samples: Path) -> None:
 def _engagement_dir(argv: list[str]) -> Path:
     if "--engagement" in argv:
         return Path(argv[argv.index("--engagement") + 1])
-    return DEMO_ROOT / ENGAGEMENT_DIRNAME
+    return _root() / ENGAGEMENT_DIRNAME
 
 
 def _lock_payload(engagement: Path) -> dict | None:
@@ -279,11 +293,33 @@ def _info_payload(info: EngagementInfo) -> dict:
     }
 
 
+def _firm_default() -> str:
+    """The firm as the newest engagement on disk has it, else the built-in default.
+
+    So the firm's name is typed once, on the first engagement, and copied
+    from then on - no constant to keep in step with the sheets.
+    """
+    root = clients_root()
+    if root is not None and root.is_dir():
+        for folder in reversed(engagement_dirs(root)):
+            try:
+                firm = load_engagement_info(folder / MANIFEST_FILENAME).firm
+            except ManifestError:
+                continue
+            if firm:
+                return firm
+    return DEFAULT_FIRM
+
+
 def _info_from_spec(
-    spec: dict, *, name: str, carry: EngagementInfo | None = None, rolled_from: str = ""
+    spec: dict, *, carry: EngagementInfo | None = None, rolled_from: str = ""
 ) -> EngagementInfo:
     """The Engagement sheet for a new engagement: what the wizard sent, over
-    what last year's sheet said (rollover), over the firm default."""
+    what last year's sheet said (rollover), over the firm default.
+
+    The engagement's name is not written: the folder is the name, and a
+    copy on the sheet would drift the first time the folder was renamed.
+    """
     base = carry or EngagementInfo()
 
     def text(key: str, fallback: str) -> str:
@@ -300,11 +336,10 @@ def _info_from_spec(
         due = None   # a new year never inherits last year's deadline
     return EngagementInfo(
         client=text("client", base.client),
-        name=name,
         link=text("link", ""),          # a new folder has a new share link
         due=due,
         sender=text("sender", base.sender),
-        firm=text("firm", base.firm or CONTACT),
+        firm=text("firm", base.firm or _firm_default()),
         reminders=bool(spec.get("reminders", base.reminders)),
         active=True,
         rolled_from=rolled_from,
@@ -369,7 +404,7 @@ def _state(engagement: Path) -> dict:
             "prepared": str(engagement / PREPARED_DIR_NAME),
             "index": str(engagement / INDEX_FILENAME),
             "manifest": str(manifest_path),
-            "samples": str(DEMO_ROOT / SAMPLES_DIRNAME),
+            "samples": str((clients_root() or REPO_ROOT) / SAMPLES_DIRNAME),
         },
     }
 
@@ -414,13 +449,15 @@ def _cmd_scan(argv: list[str]) -> dict:
 
 
 def _cmd_reset(argv: list[str]) -> dict:
-    if DEMO_ROOT.exists():
-        shutil.rmtree(DEMO_ROOT)
-    engagement = DEMO_ROOT / ENGAGEMENT_DIRNAME
+    root = _root()
+    for child in list(root.iterdir()):
+        shutil.rmtree(child) if child.is_dir() else child.unlink()
+    engagement = root / ENGAGEMENT_DIRNAME
     engagement.mkdir(parents=True)
-    create_template(engagement / MANIFEST_FILENAME, DEMO_ITEMS)
-    scaffold_engagement(engagement, contact=CONTACT)
-    _build_samples(DEMO_ROOT / SAMPLES_DIRNAME)
+    create_template(engagement / MANIFEST_FILENAME, DEMO_ITEMS,
+                    EngagementInfo(client="John Smith", firm=DEFAULT_FIRM))
+    scaffold_engagement(engagement)
+    _build_samples(root / SAMPLES_DIRNAME)
     return {"reset": True, "state": _state(engagement)}
 
 
@@ -452,11 +489,11 @@ def _cmd_unlock(argv: list[str]) -> dict:
 
 def _cmd_list(argv: list[str]) -> dict:
     """Every engagement under the root - the same discovery the scheduled run uses."""
-    engagements = []
-    if DEMO_ROOT.is_dir():
-        for child in engagement_dirs(DEMO_ROOT):
-            engagements.append({"name": child.name, "path": str(child)})
-    return {"engagements": engagements}
+    root = clients_root()
+    if root is None or not root.is_dir():
+        return {"engagements": [], "needs_root": True, "root": str(root or "")}
+    engagements = [{"name": child.name, "path": str(child)} for child in engagement_dirs(root)]
+    return {"engagements": engagements, "needs_root": False, "root": str(root)}
 
 
 def _cmd_create(argv: list[str]) -> dict:
@@ -485,7 +522,7 @@ def _cmd_create(argv: list[str]) -> dict:
         ) if part
     )
     name = _engagement_name(str(spec.get("name", "")), fallback)
-    engagement = DEMO_ROOT / name
+    engagement = _root() / name
     if engagement.exists():
         raise ManifestError(f"An engagement named '{name}' already exists")
 
@@ -498,11 +535,11 @@ def _cmd_create(argv: list[str]) -> dict:
     if base:
         items = [shift_item(item, year - base) for item in items]
 
-    info = _info_from_spec(spec, name=name)
+    info = _info_from_spec(spec)
     engagement.mkdir(parents=True)
     try:
         create_template(engagement / MANIFEST_FILENAME, items, info)
-        scaffold_engagement(engagement, contact=CONTACT)  # validates the manifest too
+        scaffold_engagement(engagement)  # validates the manifest too
     except Exception:
         shutil.rmtree(engagement, ignore_errors=True)  # never leave a half-built one
         raise
@@ -512,8 +549,9 @@ def _cmd_create(argv: list[str]) -> dict:
 def _cmd_priors(argv: list[str]) -> dict:
     """Engagements already on disk that a new year could be rolled from."""
     priors = []
-    if DEMO_ROOT.is_dir():
-        for child in engagement_dirs(DEMO_ROOT):
+    root = clients_root()
+    if root is not None and root.is_dir():
+        for child in engagement_dirs(root):
             manifest = child / MANIFEST_FILENAME
             try:
                 items = load_manifest(manifest)
@@ -558,7 +596,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
         raise ManifestError("Pick the engagement to roll forward")
     prior = Path(prior_raw)
     if not prior.is_absolute():
-        prior = DEMO_ROOT / prior_raw
+        prior = _root() / prior_raw
     if not (prior / MANIFEST_FILENAME).is_file():
         raise ManifestError(f"No manifest found in '{prior_raw}'")
 
@@ -574,19 +612,19 @@ def _cmd_rollover(argv: list[str]) -> dict:
 
     default_name = f"{prior.name} - {report.target_year}" if report.target_year else f"{prior.name} - next year"
     name = _engagement_name(str(spec.get("name", "")), default_name)
-    engagement = DEMO_ROOT / name
+    engagement = _root() / name
     if engagement.exists():
         raise ManifestError(f"An engagement named '{name}' already exists")
 
     carried = load_engagement_info(prior / MANIFEST_FILENAME)
     # Naming the prior on the new sheet is what retires it (see
     # tracker.registry.mark_superseded); nothing is written to last year.
-    info = _info_from_spec(spec, name=name, carry=carried, rolled_from=str(prior))
+    info = _info_from_spec(spec, carry=carried, rolled_from=str(prior))
     engagement.mkdir(parents=True)
     try:
         write_rollover_manifest(engagement / MANIFEST_FILENAME, report)
         write_engagement_info(engagement / MANIFEST_FILENAME, info)
-        scaffold_engagement(engagement, contact=CONTACT)
+        scaffold_engagement(engagement)
     except Exception:
         shutil.rmtree(engagement, ignore_errors=True)
         raise
@@ -655,6 +693,64 @@ def _cmd_assign(argv: list[str]) -> dict:
     }
 
 
+def _cmd_settings(argv: list[str]) -> dict:
+    """Where the clients live, and where that is written down."""
+    root = clients_root()
+    return {
+        "root": str(root or ""),
+        "exists": bool(root and root.is_dir()),
+        "settings_path": str(settings_path()),
+    }
+
+
+def _cmd_set_root(argv: list[str]) -> dict:
+    """Record the clients root: JSON {"root": "<folder>"} on stdin. Once."""
+    spec = json.loads(sys.stdin.read() or "{}")
+    try:
+        root = set_clients_root(str(spec.get("root", "")))
+    except SettingsError as exc:
+        raise ManifestError(str(exc)) from None
+    return {"root": str(root), "settings_path": str(settings_path()),
+            "engagements": _cmd_list([])["engagements"]}
+
+
+def _cmd_install_schedule(argv: list[str]) -> dict:
+    """Generate the Task Scheduler job for the configured root and register it.
+
+    JSON on stdin (all optional): {"start": "07:00", "every": 120}. The
+    root, the Python and the working folder are the ones this app runs
+    with, so the job walks exactly the folder the app shows. A frozen build
+    has no Python module tree to run the job from and says so.
+    """
+    if getattr(sys, "frozen", False):
+        raise ManifestError(
+            "Install the schedule from a Python checkout of the tracker "
+            "(python -m tracker.scheduling --install); the packaged app cannot run the job"
+        )
+    spec = json.loads(sys.stdin.read() or "{}")
+    root = _root()
+    start = str(spec.get("start") or "07:00")
+    every = int(spec.get("every") or 0)
+    xml_path = settings_path().with_name("tax-tracker.xml")
+    xml_path.write_text(
+        task_scheduler_xml(python=sys.executable, root=root, working_dir=REPO_ROOT,
+                           start_time=start, repeat_minutes=every),
+        encoding="utf-16",
+    )
+    try:
+        command = install_task(xml_path)
+    except RuntimeError as exc:
+        raise ManifestError(str(exc)) from None
+    import platform
+
+    return {
+        "installed": platform.system() == "Windows",
+        "xml": str(xml_path),
+        "command": command,
+        "root": str(root),
+    }
+
+
 COMMANDS = {
     "state": _cmd_state,
     "priors": _cmd_priors,
@@ -667,6 +763,9 @@ COMMANDS = {
     "assign": _cmd_assign,
     "check": _cmd_check,
     "unlock": _cmd_unlock,
+    "settings": _cmd_settings,
+    "set-root": _cmd_set_root,
+    "install-schedule": _cmd_install_schedule,
 }
 
 

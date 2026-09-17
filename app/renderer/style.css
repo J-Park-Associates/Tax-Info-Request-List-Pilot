@@ -619,3 +619,18 @@ body {
 .banner.multi { white-space: pre-line; }
 
 .roll-grid.four { grid-template-columns: 1.2fr 0.6fr 1.6fr 1fr; margin-top: 0; }
+
+/* ── First-launch setup ──────────────────────────────────────────────── */
+
+.setup-row { display: flex; gap: 8px; padding: 0 18px 10px; }
+.setup-row input {
+  flex: 1;
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: var(--text);
+}
+#setup-note { padding: 0 18px 14px; }

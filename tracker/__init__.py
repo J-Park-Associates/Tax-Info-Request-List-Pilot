@@ -16,6 +16,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - scheduling    : generate the Task Scheduler / n8n job
 - templates     : the per-form request catalog; templates/*.csv are generated from it
 - locking       : the one lock per engagement that sort and scan both hold
+- settings      : settings.json beside the app - the clients root, written once
 """
 
 from tracker.manifest import (

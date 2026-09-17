@@ -124,8 +124,12 @@ engagement is still active:
 | Reminders | `no` = this client is chased by phone, never by draft |
 | Active | `no` = the scheduled run skips this folder |
 
+The app asks for that folder on first launch and writes it to
+`settings.json` beside itself (`python -m tracker.settings <folder>` does the
+same from a terminal). Everything else reads that one value:
+
 ```
-python -m tracker.runner "D:\OneDrive\Clients" --log
+python -m tracker.runner "D:\OneDrive\Clients" --log     # or the app's Install Schedule button
 ```
 
 That single command is the whole scheduled task. Per engagement it files the
@@ -137,12 +141,14 @@ find and flags any manifest it cannot read.
 Generate the job itself with:
 
 ```
-python -m tracker.scheduling --root "D:\OneDrive\Clients" ^
-    --working-dir "C:\Tools\tax-tracker" --every 120 --out tax-tracker.xml --install
+python -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --every 120 ^
+    --out tax-tracker.xml --install
 ```
 
-`--install` registers the task as it writes the XML; run the same line again
-to change the schedule. Every pass also re-scaffolds each engagement, so a
+`--root` defaults to the folder in `settings.json`; `--install` registers
+the task as it writes the XML, and running the same line again changes the
+schedule. The app's **Install Schedule** button does exactly this for the
+folder it is showing. Every pass also re-scaffolds each engagement, so a
 row added in Excel has its folder and its README line by the next run, and
 an engagement that has been rolled forward is retired by its successor
 without anyone opening last year's manifest.

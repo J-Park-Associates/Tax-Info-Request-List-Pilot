@@ -1,0 +1,105 @@
+"""The one place the app is told where the clients live (component 13).
+
+The desktop app and the scheduled run both need the clients root - the
+folder every engagement sits under. It used to exist twice: an environment
+variable the Electron shell set for the app (defaulting to a demo folder),
+and a path typed on the runner's command line for the job. Nothing tied
+them together, so the app could be showing one folder while the schedule
+walked another.
+
+Now it is written once, in ``settings.json`` beside the app - next to the
+packaged executable, or in the repository root when run from source - and
+both read it. The app asks for it on first launch and never again; the
+schedule is generated from the same value (``python -m tracker.scheduling``
+without ``--root`` reads it too).
+
+Deliberately tiny: one JSON object, one key, read and written whole, atomic
+on write. There is no second setting to drift.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+SETTINGS_FILENAME = "settings.json"
+ENV_SETTINGS_DIR = "TRACKER_SETTINGS_DIR"
+
+
+class SettingsError(Exception):
+    """The settings file could not be read, or names a folder that is not there."""
+
+
+def settings_dir() -> Path:
+    """Where ``settings.json`` lives: beside the app.
+
+    The Electron shell passes the folder in ``TRACKER_SETTINGS_DIR`` (next to
+    the packaged executable). A frozen API without it uses its own folder;
+    source checkouts use the repository root.
+    """
+    override = os.environ.get(ENV_SETTINGS_DIR)
+    if override:
+        return Path(override)
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def settings_path() -> Path:
+    return settings_dir() / SETTINGS_FILENAME
+
+
+def _read() -> dict:
+    path = settings_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SettingsError(f"{path} could not be read: {exc}") from None
+    if not isinstance(data, dict):
+        raise SettingsError(f"{path} should hold one JSON object")
+    return data
+
+
+def clients_root() -> Path | None:
+    """The configured clients root, or None when nothing has been set yet."""
+    raw = str(_read().get("clients_root", "") or "").strip()
+    return Path(raw) if raw else None
+
+
+def set_clients_root(root: Path | str) -> Path:
+    """Record ``root`` as the clients root. It must already be a folder.
+
+    Creating it here would turn a typo into an empty "clients" folder that
+    the run walks for ever and finds nothing in.
+    """
+    root = Path(str(root).strip())
+    if not root.is_dir():
+        raise SettingsError(f"not a folder: {root}")
+    path = settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(json.dumps({"clients_root": str(root)}, indent=2), encoding="utf-8")
+    os.replace(temp, path)
+    return root
+
+
+# -------------------------------------------------------------------- CLI ----
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Show or set the clients root")
+    parser.add_argument("root", nargs="?", help="the folder the firm keeps its clients in")
+    ns = parser.parse_args()
+    if ns.root:
+        try:
+            print(f"clients root: {set_clients_root(ns.root)}  ({settings_path()})")
+        except SettingsError as exc:
+            raise SystemExit(str(exc))
+    else:
+        root = clients_root()
+        print(f"clients root: {root or '(not set)'}  ({settings_path()})")

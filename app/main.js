@@ -9,25 +9,23 @@ const path = require("path");
 const REPO_ROOT = path.resolve(__dirname, "..");
 
 // Portable build: a PyInstaller-frozen tracker-api.exe ships inside
-// resources/, and demo data lives next to the packaged exe. Dev mode
-// falls back to the system Python + repo layout.
+// resources/. Dev mode falls back to the system Python + repo layout.
+// settings.json (the clients root) lives beside the app either way: next
+// to the packaged executable, or in the repository root from source.
 const FROZEN_API = app.isPackaged
   ? path.join(process.resourcesPath, "tracker-api", "tracker-api.exe")
   : null;
-const DEMO_ROOT = app.isPackaged
-  ? path.join(path.dirname(process.execPath), "demo-marketing")
-  : null;
+const SETTINGS_DIR = app.isPackaged ? path.dirname(process.execPath) : REPO_ROOT;
 
 function runTracker(args, payload) {
   return new Promise((resolve) => {
+    const env = { ...process.env, TRACKER_SETTINGS_DIR: SETTINGS_DIR };
     const proc = FROZEN_API
-      ? spawn(FROZEN_API, args, {
-          windowsHide: true,
-          env: { ...process.env, TRACKER_DEMO_ROOT: DEMO_ROOT },
-        })
+      ? spawn(FROZEN_API, args, { windowsHide: true, env })
       : spawn("python", ["-m", "tracker.api", ...args], {
           cwd: REPO_ROOT,
           windowsHide: true,
+          env,
         });
     let stdout = "";
     let stderr = "";
@@ -52,6 +50,13 @@ function runTracker(args, payload) {
 
 ipcMain.handle("tracker-cmd", (_event, args, payload) => runTracker(args, payload));
 ipcMain.handle("open-path", (_event, p) => shell.openPath(p));
+ipcMain.handle("pick-folder", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Where do you keep your clients?",
+    properties: ["openDirectory"],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
 
 function createWindow() {
   const win = new BrowserWindow({

@@ -206,12 +206,13 @@ def test_draft_greets_signs_and_counts(tmp_path):
         firm="J Park & Associates, CPA",
     )
     assert draft.body.startswith("Hi Dana Smith,")
-    assert "1 of 5 items are in" in draft.body
+    # A06 is Accepted: signed off, so it is in (the one count, decision 38).
+    assert "2 of 6 items are in" in draft.body
     assert "https://drive.example/abc" in draft.body
     assert "March 15, 2026" in draft.body
     assert draft.body.rstrip().endswith("J Park & Associates, CPA")
     assert draft.subject == "Smith TY2025: 3 document(s) still needed"
-    assert draft.total_requests == 5 and draft.received_requests == 1
+    assert draft.total_requests == 6 and draft.received_requests == 2
 
 
 def test_draft_with_nothing_outstanding_says_so(tmp_path):
@@ -324,3 +325,20 @@ def test_needs_review_count_ignores_junk_and_sees_nested_files(tmp_path):
     (review / "top.pdf").write_bytes(b"x" * 10)
     (review / "sub" / "nested.pdf").write_bytes(b"x" * 10)
     assert count_needs_review(tmp_path) == 2
+
+
+def test_the_draft_reads_the_engagement_sheet_itself(tmp_path):
+    from tracker.manifest import EngagementInfo, write_engagement_info
+
+    folder = engagement(tmp_path)
+    write_engagement_info(folder / MANIFEST_FILENAME, EngagementInfo(
+        client="Dana Lee", link="https://drive.example/abc", due=dt.date(2026, 4, 15),
+        sender="Jason Park", firm="J Park & Associates, CPA",
+    ))
+    draft = draft_reminder(folder)          # nothing passed in
+    assert "Hi Dana Lee," in draft.body
+    assert "https://drive.example/abc" in draft.body
+    assert "April 15, 2026" in draft.body
+    assert draft.body.rstrip().endswith("Jason Park\nJ Park & Associates, CPA")
+    # A one-off override still wins, for the CLI's flags.
+    assert "Hi Sam," in draft_reminder(folder, client_name="Sam").body
