@@ -364,7 +364,7 @@ def draft_reminder(
     # Statuses the last scan could not write because Excel had the manifest
     # open are still the truth about what arrived; a draft that ignored
     # them would ask for documents already in hand.
-    deferred = pending_updates(manifest)
+    deferred = pending_updates(manifest, quarantine=False)  # a draft only reads
     items = with_pending(load_manifest(manifest), deferred)
     if not items:
         raise ReminderError(f"{manifest} has no request rows")

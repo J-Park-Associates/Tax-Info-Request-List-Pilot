@@ -73,6 +73,7 @@ from tracker.manifest import (
     pending_path,
     quarantine_sidecar,
     save_workbook_atomically,
+    write_json_atomically,
 )
 from tracker.router import route_file
 from tracker.scaffold import (
@@ -266,7 +267,7 @@ def _pending_index_path(path: Path) -> Path:
     return pending_path(path)
 
 
-def _read_pending_index(path: Path) -> list[IndexEntry]:
+def _read_pending_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     sidecar = _pending_index_path(path)
     if not sidecar.exists():
         return []
@@ -274,20 +275,22 @@ def _read_pending_index(path: Path) -> list[IndexEntry]:
         raw = json.loads(sidecar.read_text(encoding="utf-8"))
         return [IndexEntry(**row) for row in raw]
     except (json.JSONDecodeError, TypeError, ValueError, OSError) as exc:
-        quarantine_sidecar(sidecar, exc, "index")
+        quarantine_sidecar(sidecar, exc, "index", quarantine=quarantine)
         return []
 
 
 def _save_pending_index(path: Path, entries: list[IndexEntry]) -> None:
-    _pending_index_path(path).write_text(
-        json.dumps([asdict(e) for e in entries], indent=2), encoding="utf-8"
-    )
+    write_json_atomically(_pending_index_path(path), [asdict(e) for e in entries])
 
 
-def read_index(path: Path) -> list[IndexEntry]:
+def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     """Every index row, oldest first: the workbook plus any rows a locked
-    Excel forced into the pending sidecar. Empty if there is no index yet."""
-    return _read_index_workbook(path) + _read_pending_index(path)
+    Excel forced into the pending sidecar. Empty if there is no index yet.
+
+    ``quarantine=False`` is for readers and dry runs: an unreadable sidecar
+    is reported and skipped, never moved - looking changes nothing.
+    """
+    return _read_index_workbook(path) + _read_pending_index(path, quarantine=quarantine)
 
 
 def _as_float(value: object) -> float:
@@ -466,7 +469,7 @@ def file_drops(
     index_path = engagement_dir / INDEX_FILENAME
 
     report = FileReport(engagement_dir=engagement_dir, dry_run=dry_run)
-    entries = read_index(index_path)
+    entries = read_index(index_path, quarantine=not dry_run)
     known = {e.digest: e for e in entries if e.digest}
 
     drops = iter_drops(shared_dir)

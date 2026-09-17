@@ -29,6 +29,7 @@ import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from xml.sax.saxutils import escape
 
+from tracker.manifest import write_text_atomically
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG
 from tracker.settings import SETTINGS_FILENAME, product_name
 
@@ -328,7 +329,7 @@ if __name__ == "__main__":
 
     if ns.out:
         # Task Scheduler wants SCHEDULE_XML_ENCODING for an XML it will import.
-        Path(ns.out).write_text(payload, encoding=encoding)
+        write_text_atomically(Path(ns.out), payload, encoding=encoding)
         print(f"Wrote {ns.out}")
         if ns.install:
             import platform

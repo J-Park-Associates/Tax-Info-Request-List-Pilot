@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 78,
-    "edges": 240,
-    "reused": 0
+    "nodes": 79,
+    "edges": 244,
+    "reused": 43
   },
   "node_types": [
     "artifact",
@@ -92,8 +92,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fb315fc377a11172",
-      "lines": 680,
+      "sha256": "598b150e9f5b0193",
+      "lines": 684,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -119,8 +119,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "acbd2599034222dc",
-      "lines": 350,
+      "sha256": "d1a38fa01aa80f4f",
+      "lines": 351,
       "exports": [
         "ContentCache",
         "ContentResult",
@@ -142,14 +142,14 @@
         "TEXT_EXTENSIONS": "('csv', 'tsv', 'txt')"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. Caches verdicts.",
-      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run."
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything."
     },
     {
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "76f3b3679c88d076",
-      "lines": 814,
+      "sha256": "7a1566d5e39023fc",
+      "lines": 817,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -219,8 +219,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "815078a80ff90f94",
-      "lines": 1062,
+      "sha256": "04210f72de94d0e9",
+      "lines": 1134,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -282,6 +282,7 @@
         "_ILLEGAL_PUNCTUATION",
         "_PERIOD_YEAR",
         "add_any_keyword",
+        "atomic_replacement",
         "check_manifest",
         "create_template",
         "derived_date_pattern",
@@ -300,9 +301,12 @@
         "shift_item",
         "shift_years",
         "summarize",
+        "temp_path_for",
         "with_pending",
         "write_engagement_info",
-        "write_statuses"
+        "write_json_atomically",
+        "write_statuses",
+        "write_text_atomically"
       ],
       "constants": {
         "SHEET_NAME": "'Requests'",
@@ -344,7 +348,7 @@
         "EXPECTED_PATTERN": "'{n} files expected'"
       },
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
-      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check."
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check."
     },
     {
       "id": "tracker/reasons.py",
@@ -414,7 +418,7 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "525455060d895ad2",
+      "sha256": "cecf24177935eec2",
       "lines": 560,
       "cli": "python -m tracker.reminder",
       "exports": [
@@ -654,8 +658,8 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f76eabd7a171f7f7",
-      "lines": 349,
+      "sha256": "f8ca63859d79d1c5",
+      "lines": 350,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "DEFAULT_REPEAT_MINUTES",
@@ -712,8 +716,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9684623c721f6804",
-      "lines": 153,
+      "sha256": "b3f36c875c264507",
+      "lines": 151,
       "cli": "python -m tracker.settings",
       "exports": [
         "ENV_PRODUCT_NAME",
@@ -743,7 +747,7 @@
         "ENV_PRODUCT_NAME": "'TRACKER_PRODUCT_NAME'"
       },
       "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root and the firm are kept. clients_root()/set_clients_root(), firm()/set_firm(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is.",
-      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever."
+      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through manifest.write_json_atomically(): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place."
     },
     {
       "id": "tracker/templates.py",
@@ -897,8 +901,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6b6e1a3d7691a4f3",
-      "lines": 238,
+      "sha256": "aede9943e42ae8b7",
+      "lines": 244,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -906,8 +910,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c5851cc919f14ee4",
-      "lines": 418,
+      "sha256": "0ee8b752d5d2662c",
+      "lines": 428,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1022,6 +1026,12 @@
       "role": "The client's one drop folder \u2014 the only thing they see and the only thing they touch. Their originals end up in Shared/PBC/, still visible to them, untouched."
     },
     {
+      "id": "artifact:_content_cache.json",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Tier-3 verdict cache beside the manifest: pass/fail and reason per file, never extracted client text. Disposable - an unreadable one is reset - and written whole or not at all."
+    },
+    {
       "id": "artifact:_index.pending.json",
       "type": "artifact",
       "layer": "runtime",
@@ -1037,7 +1047,7 @@
       "id": "artifact:_manifest.pending.json",
       "type": "artifact",
       "layer": "runtime",
-      "role": "Sidecar holding status updates that could not be written because Excel had the manifest locked. Merged into the next successful write."
+      "role": "Sidecar holding status updates that could not be written because Excel had the manifest locked. Merged into the next successful write. Written whole or not at all (atomic_replacement); an unreadable one is moved aside only by the write that would retry it, never by a reader or a dry run."
     },
     {
       "id": "artifact:_manifest.xlsx",
@@ -1076,8 +1086,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "48f12eb9ce5962b1",
-      "lines": 576,
+      "sha256": "ada2a6c8a2d1a980",
+      "lines": 597,
       "exports": [
         "demo_root",
         "run",
@@ -1107,6 +1117,7 @@
         "test_rollover_refuses_a_missing_prior",
         "test_rollover_retires_the_prior_in_the_priors_list",
         "test_set_root_records_the_folder_the_job_will_walk",
+        "test_state_reads_a_corrupt_sidecar_without_moving_it",
         "test_state_shows_statuses_a_locked_excel_deferred",
         "test_state_shows_the_lock_and_unlock_clears_only_a_stale_one",
         "test_templates_carries_the_calendars_default_year",
@@ -1123,11 +1134,12 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8a84a03b39f306df",
-      "lines": 263,
+      "sha256": "d77f3ac5afa1697c",
+      "lines": 287,
       "exports": [
         "counting_extractor",
         "item",
+        "test_a_cache_save_leaves_no_temp_file_and_survives_a_crash",
         "test_any_keywords",
         "test_cache_corrupt_resets_silently",
         "test_cache_hit_and_invalidation",
@@ -1150,8 +1162,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6b931ffa16526592",
-      "lines": 587,
+      "sha256": "dc6855a18dd72c1a",
+      "lines": 605,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1162,6 +1174,7 @@
         "prepared",
         "test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder",
         "test_a_drop_still_held_open_is_left_for_the_next_run",
+        "test_a_dry_run_never_quarantines_a_corrupt_index_sidecar",
         "test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed",
         "test_a_file_dropped_straight_into_pbc_is_filed_and_indexed",
         "test_a_hand_edited_index_cell_does_not_stop_the_next_run",
@@ -1211,8 +1224,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1202756b1e22a0ca",
-      "lines": 509,
+      "sha256": "4ccfaf89f5a16a42",
+      "lines": 581,
       "exports": [
         "SAMPLE_ITEMS",
         "manifest",
@@ -1221,6 +1234,7 @@
         "test_a_derived_year_is_a_check_not_a_reason_to_route",
         "test_a_manifest_without_the_sheet_loads_as_defaults",
         "test_a_period_with_a_year_implies_the_year_check",
+        "test_a_second_corrupt_sidecar_never_overwrites_the_first",
         "test_a_star_in_date_pattern_means_no_year_check",
         "test_accepting_any_file_type_has_to_be_said_with_a_star",
         "test_add_any_keyword_appends_once_and_names_a_missing_row",
@@ -1236,11 +1250,15 @@
         "test_locked_write_defers_to_sidecar",
         "test_missing_column_rejected",
         "test_missing_manifest",
+        "test_no_temp_file_is_left_beside_the_workbook_under_any_name",
         "test_pending_sidecar_merged_and_cleared",
+        "test_reading_pending_updates_leaves_a_corrupt_sidecar_where_it_is",
         "test_summarize_is_the_one_count",
         "test_template_load_roundtrip",
         "test_template_refuses_overwrite",
         "test_the_engagement_sheet_round_trips",
+        "test_the_pending_sidecar_is_written_whole_or_not_at_all",
+        "test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it",
         "test_unknown_override_rejected",
         "test_unknown_status_rejected",
         "test_write_statuses_roundtrip",
@@ -1577,14 +1595,15 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eec04ba7c1067edf",
-      "lines": 55,
+      "sha256": "f4275c87caf37fc4",
+      "lines": 65,
       "exports": [
         "beside_the_app",
         "test_a_folder_that_does_not_exist_is_refused",
         "test_an_unreadable_settings_file_is_an_error_not_a_default",
         "test_nothing_set_means_none_not_a_guess",
-        "test_the_root_is_written_once_and_read_back"
+        "test_the_root_is_written_once_and_read_back",
+        "test_the_settings_file_is_swapped_in_whole"
       ]
     },
     {
@@ -2092,6 +2111,12 @@
     },
     {
       "from": "tests/test_manifest.py",
+      "to": "tracker/validators.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_manifest.py",
       "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
@@ -2428,6 +2453,12 @@
     },
     {
       "from": "tests/test_settings.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_settings.py",
       "to": "tracker/settings.py",
       "type": "tests",
       "source": "derived"
@@ -2731,6 +2762,12 @@
       "to": "tracker/validators.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/content_check.py",
+      "to": "artifact:_content_cache.json",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tracker/filer.py",
@@ -3127,6 +3164,12 @@
       "to": "rule:nothing-is-ever-sent",
       "type": "enforces",
       "source": "curated"
+    },
+    {
+      "from": "tracker/scheduling.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
     },
     {
       "from": "tracker/scheduling.py",

@@ -206,6 +206,30 @@ def test_cache_corrupt_resets_silently(tmp_path):
     assert ContentCache(cache_file).get(pdf, rules_fingerprint(item(required_keywords=("Chase",))))
 
 
+def test_a_cache_save_leaves_no_temp_file_and_survives_a_crash(tmp_path, monkeypatch):
+    from tracker.manifest import TEMP_SUFFIX
+
+    cache_file = tmp_path / "cache.json"
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page")
+    rule = item(required_keywords=("Chase",))
+    cache = ContentCache(cache_file)
+    check_content(pdf, rule, cache)
+    cache.save()
+    before = cache_file.read_text(encoding="utf-8")
+
+    def refuse_replace(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("tracker.manifest.os.replace", refuse_replace)
+    text_pdf(pdf, "Chase Bank Statement page v2")
+    check_content(pdf, rule, cache)
+    with pytest.raises(OSError, match="disk full"):
+        cache.save()
+
+    assert cache_file.read_text(encoding="utf-8") == before   # the old cache survived
+    assert list(tmp_path.glob(f"*{TEMP_SUFFIX}")) == []
+
+
 def test_cache_prune(tmp_path):
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page")
     rule = item(required_keywords=("Chase",))

@@ -41,7 +41,7 @@ from dataclasses import MISSING, asdict, fields, dataclass
 from pathlib import Path
 
 from tracker import reasons
-from tracker.manifest import RequestItem, has_routing_rules
+from tracker.manifest import RequestItem, has_routing_rules, write_json_atomically
 from tracker.validators import PDF_EXTENSION, extension_of
 
 log = logging.getLogger("tracker.content_check")
@@ -344,6 +344,7 @@ class ContentCache:
     def save(self) -> None:
         if not self._dirty:
             return
-        payload = json.dumps({"version": 1, "files": self._entries}, indent=1)
-        self.path.write_text(payload, encoding="utf-8")
+        # Whole or nothing: a scan killed mid-save must not leave a cache
+        # the next scan reads as empty and then re-extracts everything.
+        write_json_atomically(self.path, {"version": 1, "files": self._entries}, indent=1)
         self._dirty = False

@@ -379,6 +379,27 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     assert code == 0 and payload["cleared"] and payload["state"]["lock"] is None
 
 
+def test_state_reads_a_corrupt_sidecar_without_moving_it(capsys, demo_root):
+    # Showing an engagement is a read. A sidecar the app cannot parse stays
+    # where it is for the next real run to move aside as evidence.
+    from tracker.filer import INDEX_PENDING_FILENAME
+    from tracker.manifest import CORRUPT_SUFFIX, pending_path
+
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    manifest_sidecar = pending_path(engagement / MANIFEST_FILENAME)
+    index_sidecar = engagement / INDEX_PENDING_FILENAME
+    manifest_sidecar.write_text("{not json", encoding="utf-8")
+    index_sidecar.write_text("{not json", encoding="utf-8")
+
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
+
+    assert code == 0 and payload["pending_statuses"] == 0 and payload["index"] == []
+    assert manifest_sidecar.exists() and index_sidecar.exists()
+    assert list(engagement.glob(f"*{CORRUPT_SUFFIX}")) == []
+
+
 def test_a_new_client_engagement_is_named_from_client_year_and_form(capsys, demo_root):
     spec = {"form": "1040", "client": "Smith Family",
             "items": [{"identifier": "A01", "document": "W-2"}]}

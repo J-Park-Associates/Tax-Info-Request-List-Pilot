@@ -5,6 +5,15 @@ rows into :class:`RequestItem` dataclasses, and writing scanner status back
 with Excel-lock resilience (retry with backoff, then defer updates to a
 ``PENDING_SUFFIX`` sidecar that is merged on the next write).
 
+It also owns *how* anything beside a workbook is written. Every sidecar, the
+content cache and the app's settings file go through
+:func:`atomic_replacement` - a uniquely named temp file ending in
+``TEMP_SUFFIX``, swapped in whole with ``os.replace`` - so a killed run never
+leaves a half-written file where a reader will trust it. And only the
+function that is about to rewrite a workbook moves an unreadable sidecar
+aside (:func:`quarantine_sidecar`); a reader, and any dry run, leaves the
+disk exactly as it found it.
+
 This module never touches client files — only the manifest workbook and its
 sidecar. All values are validated on load and fail loudly with row context so
 a malformed manifest can never silently produce wrong statuses.
@@ -17,10 +26,12 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Iterable, Iterator, Mapping
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
@@ -568,15 +579,37 @@ def pending_path(workbook_path: Path) -> Path:
     return workbook_path.with_name(workbook_path.stem + PENDING_SUFFIX)
 
 
-def quarantine_sidecar(sidecar: Path, exc: Exception, what: str) -> Path:
-    """Move an unreadable sidecar aside (kept as evidence) so it is never retried for ever."""
+def quarantine_sidecar(
+    sidecar: Path, exc: Exception, what: str, *, quarantine: bool = True
+) -> Path | None:
+    """Move an unreadable sidecar aside (kept as evidence) so it is never retried for ever.
+
+    Each quarantine gets its own name (``CORRUPT_SUFFIX``, then ``.2``, ``.3``
+    ...): a second unreadable sidecar must never overwrite the first, because
+    the first is the only record of rows that were once deferred.
+
+    With ``quarantine=False`` nothing on disk is touched and ``None`` is
+    returned: that is the reader's and the dry run's contract. Only the call
+    that is about to rewrite the workbook - the one that would otherwise
+    retry the same unreadable file for ever - moves it aside.
+    """
+    if not quarantine:
+        log.error(
+            "Unreadable %s sidecar %s ignored for this read (%s); "
+            "the next real run moves it aside", what, sidecar.name, exc,
+        )
+        return None
     corrupt = sidecar.with_suffix(CORRUPT_SUFFIX)
+    counter = 1
+    while corrupt.exists():
+        counter += 1
+        corrupt = sidecar.with_suffix(f".{counter}{CORRUPT_SUFFIX}")
     sidecar.replace(corrupt)
     log.error("Unreadable %s sidecar moved to %s: %s", what, corrupt.name, exc)
     return corrupt
 
 
-def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
+def _load_pending(manifest_path: Path, *, quarantine: bool = True) -> dict[str, StatusUpdate]:
     sidecar = pending_path(manifest_path)
     if not sidecar.exists():
         return {}
@@ -586,19 +619,22 @@ def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
             ident: _update_from_json(u)
             for ident, u in raw.items()
         }
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-        quarantine_sidecar(sidecar, exc, "pending")
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError) as exc:
+        quarantine_sidecar(sidecar, exc, "pending", quarantine=quarantine)
         return {}
 
 
-def pending_updates(manifest_path: Path | str) -> dict[str, StatusUpdate]:
+def pending_updates(
+    manifest_path: Path | str, *, quarantine: bool = True
+) -> dict[str, StatusUpdate]:
     """Status updates a locked Excel kept out of the workbook, if any.
 
     Readers that must not act on stale statuses - the reminder above all,
     which would otherwise ask a client for a document the last scan saw
-    arrive - overlay these on what :func:`load_manifest` returned.
+    arrive - overlay these on what :func:`load_manifest` returned. Such
+    readers pass ``quarantine=False`` so that looking never moves a file.
     """
-    return _load_pending(Path(manifest_path))
+    return _load_pending(Path(manifest_path), quarantine=quarantine)
 
 
 def with_pending(
@@ -640,29 +676,65 @@ def _save_pending(manifest_path: Path, updates: Mapping[str, StatusUpdate]) -> N
         ident: _update_to_json(u)
         for ident, u in updates.items()
     }
-    pending_path(manifest_path).write_text(
-        json.dumps(payload, indent=2), encoding="utf-8"
-    )
+    write_json_atomically(pending_path(manifest_path), payload)
+
+
+def temp_path_for(path: Path) -> Path:
+    """A temp name beside ``path`` that no other writer can be using.
+
+    It carries this process id and a random tag, so two runs writing the
+    same file at once (the app saving settings while the scheduling CLI
+    does, say) cannot swap each other's half-written temp into place - and
+    a temp a crashed run left behind is never mistaken for a live one. It
+    still ends in ``TEMP_SUFFIX``: the validators and the drop walk ignore
+    that suffix, so a stranded temp is never read as a document.
+    """
+    return path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}{TEMP_SUFFIX}")
+
+
+@contextmanager
+def atomic_replacement(path: Path) -> Iterator[Path]:
+    """Yield a temp path beside ``path``; swap it in whole when the block ends cleanly.
+
+    Writing beside the file and swapping it in with ``os.replace`` makes an
+    update all-or-nothing; the swap is atomic on NTFS and on every POSIX
+    filesystem. A crash, a full disk or a killed scheduled task mid-write
+    leaves the previous file, never half of the new one. The temp is
+    removed whatever happens. A file Excel holds open raises
+    ``PermissionError`` from the replace, so lock-retry callers see the
+    same exception they always did.
+    """
+    temp = temp_path_for(path)
+    try:
+        yield temp
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def write_text_atomically(
+    path: Path, text: str, *, encoding: str = "utf-8", newline: str | None = None
+) -> None:
+    """Write ``text`` to ``path`` all-or-nothing (see :func:`atomic_replacement`)."""
+    with atomic_replacement(path) as temp:
+        with temp.open("w", encoding=encoding, newline=newline) as handle:
+            handle.write(text)
+
+
+def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
+    """Write ``payload`` as JSON to ``path`` all-or-nothing; every sidecar uses this."""
+    write_text_atomically(path, json.dumps(payload, indent=indent))
 
 
 def save_workbook_atomically(wb: Workbook, path: Path) -> None:
     """Save ``wb`` to ``path`` without ever leaving a half-written file there.
 
-    openpyxl streams the zip straight into the target, so a crash, a full
-    disk or a killed scheduled task mid-save would leave a manifest that
-    Excel cannot open and ``load_manifest`` rejects. Writing beside the file
-    and swapping it in with ``os.replace`` makes the update all-or-nothing;
-    the swap is atomic on NTFS and on every POSIX filesystem.
-
-    A file Excel holds open still raises ``PermissionError`` (from the
-    replace rather than the save), so lock-retry callers behave as before.
+    openpyxl streams the zip straight into the target, so a crash mid-save
+    would leave a manifest that Excel cannot open and ``load_manifest``
+    rejects; :func:`atomic_replacement` is what makes it whole or nothing.
     """
-    temp = path.with_name(path.name + TEMP_SUFFIX)
-    try:
+    with atomic_replacement(path) as temp:
         wb.save(temp)
-        os.replace(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
 
 
 def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:

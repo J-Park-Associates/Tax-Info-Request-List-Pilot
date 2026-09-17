@@ -52,6 +52,7 @@ from tracker.manifest import (
     summarize,
     with_pending,
     write_engagement_info,
+    write_text_atomically,
 )
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
 from tracker.runner import DRAFT_WEEKDAY, REMINDERS_NEVER, WEEKDAY_NAMES, run_engagement
@@ -295,7 +296,9 @@ def _engagement_name(requested: str, fallback: str) -> str:
 
 def _state(engagement: Path) -> dict:
     manifest_path = engagement / MANIFEST_FILENAME
-    deferred = pending_updates(manifest_path)
+    # Showing the engagement is a read: nothing is moved, not even a sidecar
+    # that cannot be parsed - the next real run is what moves it aside.
+    deferred = pending_updates(manifest_path, quarantine=False)
     items = with_pending(load_manifest(manifest_path), deferred)
     info = load_engagement_info(manifest_path)
     summary = summarize(items)
@@ -313,7 +316,7 @@ def _state(engagement: Path) -> dict:
             for i in items
         ],
         "index": [asdict(e) | {"filed_as": e.filed_as, "candidates": e.candidate_list}
-                  for e in read_index(engagement / INDEX_FILENAME)],
+                  for e in read_index(engagement / INDEX_FILENAME, quarantine=False)],
         "paths": {
             "engagement": str(engagement),
             "shared": str(engagement / SHARED_DIR_NAME),
@@ -622,7 +625,8 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     start = str(spec.get("start") or DEFAULT_START)
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
     xml_path = settings_path().with_name(SCHEDULE_XML_FILENAME)
-    xml_path.write_text(
+    write_text_atomically(
+        xml_path,
         task_scheduler_xml(python=sys.executable, root=root, working_dir=REPO_ROOT,
                            start_time=start, repeat_minutes=every),
         encoding=SCHEDULE_XML_ENCODING,

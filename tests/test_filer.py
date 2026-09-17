@@ -16,6 +16,7 @@ from tracker.filer import (
     INDEX_COLUMNS,
     INDEX_FILENAME,
     INDEX_LAYOUT,
+    INDEX_PENDING_FILENAME,
     INDEX_SHEET,
     NEEDS_REVIEW,
     file_drops,
@@ -242,6 +243,23 @@ def test_dry_run_moves_nothing(engagement):
     assert original.exists()
     assert not any(pbc(engagement).iterdir())
     assert not (engagement / INDEX_FILENAME).exists()
+
+
+def test_a_dry_run_never_quarantines_a_corrupt_index_sidecar(engagement, caplog):
+    # "Moves nothing" includes the sidecar: a preview must not rename a file
+    # a real run would have moved aside as evidence.
+    from tracker.manifest import CORRUPT_SUFFIX
+
+    sidecar = engagement / INDEX_PENDING_FILENAME
+    sidecar.write_text("{not json", encoding="utf-8")
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    report = file_drops(engagement, today=DAY1, dry_run=True)
+
+    assert len(report.filed) == 1
+    assert sidecar.read_text(encoding="utf-8") == "{not json"
+    assert list(engagement.glob(f"*{CORRUPT_SUFFIX}")) == []
+    assert "ignored for this read" in caplog.text
 
 
 # --------------------------------------------------------------------- index ----

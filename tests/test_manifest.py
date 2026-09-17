@@ -38,6 +38,8 @@ from tracker.manifest import (
     create_template,
     load_manifest,
     pending_path,
+    pending_updates,
+    temp_path_for,
     write_statuses,
 )
 from tracker.scaffold import MANIFEST_FILENAME
@@ -309,6 +311,76 @@ def test_a_crash_mid_save_leaves_the_previous_manifest_intact(manifest, monkeypa
 
     assert not manifest.with_name(manifest.name + TEMP_SUFFIX).exists()
     assert [i.identifier for i in load_manifest(manifest)] == ["A01", "A02", "B01"]
+
+
+def test_no_temp_file_is_left_beside_the_workbook_under_any_name(manifest, monkeypatch):
+    # The temp name is unique per write, so the claim above has to hold for
+    # every name ending in TEMP_SUFFIX, not just one fixed spelling.
+    def crash(self, filename):
+        Path(str(filename)).write_bytes(b"PK\x03\x04 half a zip")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(WorkbookClass, "save", crash)
+    with pytest.raises(KeyboardInterrupt):
+        write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}, retries=1)
+    assert list(manifest.parent.glob(f"*{TEMP_SUFFIX}")) == []
+
+
+def test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it(manifest):
+    from tracker.validators import is_ignored
+
+    first, second = temp_path_for(manifest), temp_path_for(manifest)
+    assert first != second
+    assert first.parent == manifest.parent
+    for temp in (first, second):
+        assert temp.name.endswith(TEMP_SUFFIX)
+        assert is_ignored(temp)                   # a stranded temp is never a document
+
+
+def test_the_pending_sidecar_is_written_whole_or_not_at_all(manifest, monkeypatch):
+    sidecar = pending_path(manifest)
+    before = json.dumps({"B01": {"status": Status.MISSING, "file_count": 0,
+                                 "received_date": None, "validation_notes": ""}})
+    sidecar.write_text(before, encoding="utf-8")
+
+    def locked_save(self, filename):
+        raise PermissionError(f"[Errno 13] locked: {filename}")
+
+    def refuse_replace(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(WorkbookClass, "save", locked_save)
+    monkeypatch.setattr("tracker.manifest.os.replace", refuse_replace)
+    with pytest.raises(OSError, match="disk full"):
+        write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)},
+                       retries=1, retry_delay=0.01)
+
+    assert sidecar.read_text(encoding="utf-8") == before   # the old sidecar survived
+    assert list(manifest.parent.glob(f"*{TEMP_SUFFIX}")) == []
+
+
+def test_a_second_corrupt_sidecar_never_overwrites_the_first(manifest, caplog):
+    first_evidence = "{not json, the first time"
+    pending_path(manifest).write_text(first_evidence, encoding="utf-8")
+    assert write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}) is True
+    pending_path(manifest).write_text("{not json, the second time", encoding="utf-8")
+    assert write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}) is True
+
+    corrupt = sorted(p.name for p in manifest.parent.glob(f"*{CORRUPT_SUFFIX}"))
+    assert len(corrupt) == 2
+    kept = pending_path(manifest).with_suffix(CORRUPT_SUFFIX)
+    assert kept.read_text(encoding="utf-8") == first_evidence
+
+
+def test_reading_pending_updates_leaves_a_corrupt_sidecar_where_it_is(manifest, caplog):
+    # A reader - the reminder, the app's state - must never move a file:
+    # looking changes nothing. Only the write that will retry it moves it aside.
+    sidecar = pending_path(manifest)
+    sidecar.write_text("{not json", encoding="utf-8")
+    assert pending_updates(manifest, quarantine=False) == {}
+    assert sidecar.exists()
+    assert list(manifest.parent.glob(f"*{CORRUPT_SUFFIX}")) == []
+    assert "ignored for this read" in caplog.text
 
 
 # --------------------------------------------------------- engagement sheet ----
