@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 77,
     "edges": 208,
-    "reused": 48
+    "reused": 55
   },
   "node_types": [
     "artifact",
@@ -109,7 +109,7 @@
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to: state, scan, assign, create, rollover, templates, list, priors, check, unlock, settings, set-root, install-schedule.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=never - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and copies the newest engagement's firm."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=never - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and copies the newest engagement's firm. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes."
     },
     {
       "id": "tracker/content_check.py",
@@ -183,7 +183,7 @@
         "ASSIGNED_BY_PERSON": "'assigned by a person'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, new rows wait in _index.pending.json and read_index() already sees them. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed 'assigned by a person', learns a keyword onto the request, all under the engagement lock."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, new rows wait in _index.pending.json and read_index() already sees them. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed 'assigned by a person', learns a keyword onto the request, all under the engagement lock. INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
     },
     {
       "id": "tracker/locking.py",
@@ -357,7 +357,7 @@
         "MAX_DEPTH": "4"
       },
       "role": "Finds every engagement under the clients root: any folder holding _manifest.xlsx, without descending into one. Reads each manifest's Engagement sheet for client, link, due, sender, firm, reminders and active. There is no registry file.",
-      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, an unreadable manifest is listed with its problem rather than dropped, and a root with no manifest at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's sheet is the record."
+      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, an unreadable manifest is listed with its problem rather than dropped, and a root with no manifest at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's sheet is the record. Engagement wraps EngagementInfo (the sheet as loaded) and delegates its fields rather than copying them, so a field added to the sheet reaches discovery without a second edit."
     },
     {
       "id": "tracker/reminder.py",
@@ -569,7 +569,7 @@
         "EXECUTION_TIME_LIMIT": "'PT2H'"
       },
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings.json root."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings.json root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name, time limit) are module constants the API's install-schedule reports back so the app shows what was actually installed."
     },
     {
       "id": "tracker/settings.py",
@@ -597,7 +597,7 @@
         "ENV_SETTINGS_DIR": "'TRACKER_SETTINGS_DIR'",
         "ENV_PRODUCT_NAME": "'TRACKER_PRODUCT_NAME'"
       },
-      "role": "settings.json beside the app: the one place the clients root is kept. clients_root()/set_clients_root(); TRACKER_SETTINGS_DIR from the Electron shell says where beside-the-app is.",
+      "role": "settings.json beside the app: the one place the clients root and the firm are kept. clients_root()/set_clients_root(), firm()/set_firm(); product_name() reads app/package.json productName (or TRACKER_PRODUCT_NAME from the shell). TRACKER_SETTINGS_DIR from the Electron shell says where beside-the-app is.",
       "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever."
     },
     {
@@ -739,8 +739,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "de527d614a46f06b",
-      "lines": 232,
+      "sha256": "8dbf7af9192a94f8",
+      "lines": 233,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -748,8 +748,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "bcbaf63dfc07249e",
-      "lines": 256,
+      "sha256": "c720f52dff78ccf7",
+      "lines": 418,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
