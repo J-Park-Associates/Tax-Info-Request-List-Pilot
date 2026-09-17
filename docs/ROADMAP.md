@@ -87,6 +87,7 @@ into the manifest.
 | 37 | Installing the schedule | **One step.** `python -m tracker.scheduling --root ... --out ... --install` generates the XML and registers it (`schtasks /create /f`), and re-running is how the schedule is changed. |
 | 38 | One pass, one count, one record | **The app's Sort & Scan is the runner's pass** (`run_engagement`), so the button and the job do the same thing to the same folder; `sort` and `scaffold` commands are gone. **`summarize()` is the only count** of where an engagement stands - runner log, reminder, scanner CLI and app all read it. **The index is the only record of parked files**; the Unfiled sheet is no longer written (old ones are left alone), and what it alone knew - loose files and unrecognised folders in `Prepared/` - are warnings on the pass. |
 | 39 | One name, one firm, one root | **The folder is the engagement's name**; the wizard no longer copies it onto the sheet (a copy drifts the first time the folder is renamed; the cell is still read if present). **The sheet's Firm is the sign-off and the README contact**; the reminder and scaffold read the sheet themselves, and the wizard copies the newest engagement's firm so it is typed once. **The clients root is in `settings.json` beside the app**, set on first launch (or `python -m tracker.settings <folder>`); the app, the priors list, `tracker.scheduling` and the Install Schedule button all read that one value. |
+| 40 | The year, once | **Period implies the year check.** The year was typed twice (Period for people, Date Pattern for the rules) and, on 73 of 78 catalog rows, only once - so a 2024 form satisfied a TY2025 request. A blank Date Pattern on a row whose Period names a year now checks for that year; `*` says no check; a typed regex wins. A derived year is a *check* on a document a keyword already matched, never evidence on its own, so a row with only a Period can still never claim a document. Rollover leaves derived checks blank; the shifted Period derives them again. |
 
 ## Architecture
 
@@ -149,7 +150,7 @@ document.
 | Min Size KB | int, default 5 | accountant | Rejects 0-byte / placeholder files |
 | Required Keywords | csv str, optional | accountant | Tier-3: ALL must appear in extracted text |
 | Any Keywords | csv str, optional | accountant | Tier-3: at least ONE must appear |
-| Date Pattern | regex str, optional | accountant | Tier-3 date check |
+| Date Pattern | regex str, optional | accountant | Tier-3 date check. Blank + a year in Period = that year, case-insensitive, whole-token; `*` = no year check; a typed regex wins. A derived year is a check on a matched document, never a reason to route |
 | Manual Override | enum, optional | accountant | `Accepted` (treat as Received despite rules) / `Waived` (no longer needed). Scanner skips status writes on these rows. |
 | Status | enum | scanner | Missing / Partial / Failed Validation / Received / **Pending Sync** |
 | Received Date | date | scanner | First date all validations passed; preserved on regression |

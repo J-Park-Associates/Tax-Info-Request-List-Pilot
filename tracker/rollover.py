@@ -153,8 +153,11 @@ def _carry(
     def fill(mine, theirs):
         return mine if mine else (theirs or ())
 
-    date_pattern = shift_years(prior.date_pattern, delta)
-    if not date_pattern and template:
+    # A year check derived from Period is not carried as text: the shifted
+    # Period derives it again on load, so the new manifest stays as sparse
+    # as the old one was.
+    date_pattern = "" if prior.date_pattern_derived else shift_years(prior.date_pattern, delta)
+    if not date_pattern and template and not template.date_pattern_derived:
         date_pattern = shift_years(template.date_pattern, tmpl_delta)
 
     item = RequestItem(

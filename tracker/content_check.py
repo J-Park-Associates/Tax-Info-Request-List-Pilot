@@ -75,6 +75,7 @@ class ContentResult:
 
 
 def has_content_rules(item: RequestItem) -> bool:
+    """Whether tier 3 has anything to check on this row at all."""
     return bool(item.required_keywords or item.any_keywords or item.date_pattern)
 
 

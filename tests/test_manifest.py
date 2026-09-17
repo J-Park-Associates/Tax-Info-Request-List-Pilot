@@ -436,3 +436,51 @@ def test_summarize_is_the_one_count():
     assert summary.counts == {"Received": 2, "Missing": 1, "Partial": 1, "Pending Sync": 1}
     assert summary.line == "Missing: 1 · Partial: 1 · Pending Sync: 1 · Received: 2 · Requested: 1 · Waived: 1"
     assert summarize([]).line == "no requests"
+
+
+# ------------------------------------------------------- the derived year ----
+
+
+def test_a_period_with_a_year_implies_the_year_check(tmp_path):
+    from tracker.manifest import derived_date_pattern
+
+    assert derived_date_pattern("TY2025") == r"(?i)\b2025\b"
+    assert derived_date_pattern("Dec 2025") == r"(?i)\b2025\b"
+    assert derived_date_pattern("As of 12/31/2025") == r"(?i)\b2025\b"
+    assert derived_date_pattern("Current") == ""
+    assert derived_date_pattern("Acct 120250") == ""      # not a year
+
+    path = create_template(tmp_path / "_manifest.xlsx", [
+        RequestItem(identifier="A01", document="W-2", period="TY2025", required_keywords=("W-2",)),
+        RequestItem(identifier="A02", document="Trust deed", period="Current", required_keywords=("trust",)),
+        RequestItem(identifier="A03", document="Typed", period="TY2025", required_keywords=("x",),
+                    date_pattern=r"2025|2026"),
+    ])
+    rows = {i.identifier: i for i in load_manifest(path)}
+    assert rows["A01"].date_pattern == r"(?i)\b2025\b" and rows["A01"].date_pattern_derived
+    assert rows["A02"].date_pattern == "" and not rows["A02"].date_pattern_derived
+    assert rows["A03"].date_pattern == r"2025|2026" and not rows["A03"].date_pattern_derived
+
+
+def test_a_star_in_date_pattern_means_no_year_check(tmp_path):
+    from openpyxl import load_workbook as lw
+
+    path = create_template(tmp_path / "_manifest.xlsx", [
+        RequestItem(identifier="A01", document="W-2", period="TY2025", required_keywords=("W-2",)),
+    ])
+    wb = lw(path)
+    wb["Requests"].cell(row=2, column=9, value="*")
+    wb.save(path)
+    [row] = load_manifest(path)
+    assert row.date_pattern == "" and not row.date_pattern_derived
+
+
+def test_a_derived_year_is_a_check_not_a_reason_to_route():
+    from tracker.manifest import has_routing_rules
+
+    typed = RequestItem(identifier="A01", document="x", date_pattern=r"\b2025\b")
+    derived = RequestItem(identifier="A02", document="x", date_pattern=r"\b2025\b",
+                          date_pattern_derived=True)
+    keyed = RequestItem(identifier="A03", document="x", any_keywords=("w-2",))
+    assert has_routing_rules(typed) and has_routing_rules(keyed)
+    assert not has_routing_rules(derived)

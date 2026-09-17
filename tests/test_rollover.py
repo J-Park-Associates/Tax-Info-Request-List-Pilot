@@ -305,3 +305,25 @@ def test_shift_years_leaves_digits_inside_longer_numbers_alone():
     # like one.
     assert shift_years("Account 120250 statement TY2025", 1) == "Account 120250 statement TY2026"
     assert shift_years("Policy 2025-1234 for 2025", 1) == "Policy 2026-1234 for 2026"
+
+
+def test_a_derived_year_check_is_not_carried_as_text(prior, tmp_path):
+    # The prior's TY2025 rows had their year check derived from Period; the
+    # rolled manifest gets TY2026 and derives again. The Date Pattern cell
+    # stays blank rather than being filled with last year's regex.
+    from openpyxl import load_workbook as lw
+    from tracker.manifest import load_manifest
+
+    report = roll_forward(prior)
+    target = tmp_path / "next"
+    target.mkdir()
+    path = write_rollover_manifest(target / MANIFEST_FILENAME, report)
+    wb = lw(path)
+    ws = wb["Requests"]
+    cells = {ws.cell(row=r, column=1).value: ws.cell(row=r, column=9).value for r in range(2, ws.max_row + 1)}
+    wb.close()
+    rows = {i.identifier: i for i in load_manifest(path)}
+    assert rows["C01"].period == "TY2026"
+    assert cells["C01"] is None and rows["C01"].date_pattern == r"(?i)\b2026\b"
+    assert rows["C01"].date_pattern_derived
+    assert cells["A01"] == r"(?i)\b2026\b"        # A01 typed its own pattern; it shifts and stays

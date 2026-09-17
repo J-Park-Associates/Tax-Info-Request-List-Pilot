@@ -1,5 +1,5 @@
 Identifier,Document,Period,Expected Count,Allowed Extensions,Min Size KB,Required Keywords,Any Keywords,Date Pattern,Core
-A01,W-2 Wage Statements - All Employers,TY2025,2,pdf,5,W-2,,(?i)\b2025\b,yes
+A01,W-2 Wage Statements - All Employers,TY2025,2,pdf,5,W-2,,,yes
 A02,1099-INT / 1099-DIV - Interest & Dividend Income,TY2025,3,"pdf, csv",5,,"1099, interest income, dividend",,yes
 B01,Prior-Year Federal & State Tax Returns,TY2024,1,pdf,5,,"form 1040, tax return",,yes
 C01,Mortgage Interest Statement - Form 1098,TY2025,1,pdf,5,1098,,,yes

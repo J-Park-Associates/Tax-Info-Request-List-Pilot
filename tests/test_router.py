@@ -226,3 +226,31 @@ def test_filename_fallback_tolerates_the_run_together_spelling(tmp_path):
     # ...but "W20" is still not "W-2".
     other = text_pdf(tmp_path / "Smith W20 form.pdf", "")
     assert route_file(other, ITEMS).identifier is None
+
+
+def test_a_derived_year_never_routes_on_its_own_but_still_contests(tmp_path):
+    # Loaded from a manifest, C01's Period TY2025 implies a year check. A
+    # 2024 mortgage statement says "1098", so it looks like C01 - and is
+    # contested, not filed. A row with ONLY a derived year never claims a
+    # document just because the document mentions the year.
+    from tracker.manifest import create_template, load_manifest
+
+    path = create_template(tmp_path / "_manifest.xlsx", [
+        RequestItem(identifier="C01", document="Mortgage Interest Statement", period="TY2025",
+                    allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("1098",)),
+        RequestItem(identifier="Z01", document="Anything from 2025", period="TY2025",
+                    allowed_extensions=("pdf",), min_size_kb=0),
+    ])
+    items = load_manifest(path)
+    old = text_pdf(tmp_path / "old.pdf", "Form 1098 Mortgage Interest Statement 2024")
+    routing = route_file(old, items)
+    assert routing.identifier is None
+    assert "looks like C01" in routing.reason and "wrong period" in routing.reason
+
+    current = text_pdf(tmp_path / "new.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    assert route_file(current, items).identifier == "C01"
+
+    only_year = text_pdf(tmp_path / "letter.pdf", "A letter dated March 2025 about nothing")
+    routing = route_file(only_year, items)
+    assert routing.identifier is None                      # Z01 must not claim it
+    assert "add a keyword to Z01" in routing.reason
