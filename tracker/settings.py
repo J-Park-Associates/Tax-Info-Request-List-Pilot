@@ -30,6 +30,8 @@ SETTINGS_FILENAME = "settings.json"
 #: The keys inside it.
 KEY_CLIENTS_ROOT = "clients_root"
 KEY_FIRM = "firm"
+#: How a person is told to set the root without the app.
+SET_ROOT_HINT = "python -m tracker.settings <folder>"
 #: The clients-root example every prompt and document shows.
 EXAMPLE_ROOT = r"D:\OneDrive\Clients"
 ENV_SETTINGS_DIR = "TRACKER_SETTINGS_DIR"

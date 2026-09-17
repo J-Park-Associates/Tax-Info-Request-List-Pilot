@@ -56,9 +56,9 @@ function runTracker(args, payload) {
 
 ipcMain.handle("tracker-cmd", (_event, args, payload) => runTracker(args, payload));
 ipcMain.handle("open-path", (_event, p) => shell.openPath(p));
-ipcMain.handle("pick-folder", async () => {
+ipcMain.handle("pick-folder", async (_event, title) => {
   const result = await dialog.showOpenDialog({
-    title: "Where do you keep your clients?",
+    title,
     properties: ["openDirectory"],
   });
   return result.canceled ? null : result.filePaths[0];

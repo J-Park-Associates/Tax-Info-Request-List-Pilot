@@ -141,7 +141,7 @@ def test_image_only_pdf_without_ocr(tmp_path, monkeypatch):
 
     result = check_content(scan, item(required_keywords=("Chase",)))
     assert not result.ok and not result.extractable
-    assert "OCR is not installed" in result.reason
+    assert reasons.NO_TEXT_LAYER.matches(result.reason)
 
 
 def test_ocr_text_used_when_available(tmp_path, monkeypatch):

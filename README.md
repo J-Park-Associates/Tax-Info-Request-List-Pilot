@@ -126,9 +126,9 @@ engagement is still active:
 | Due Date | "if you can send these by…" |
 | Sender | who the reminder is from |
 | Firm | the sign-off line and the client README's contact (typed once at setup) |
-| Reminders | `no` = this client is chased by phone, never by draft |
+| Reminders | `no` = this client is not chased by email |
 | Active | `no` = the scheduled run skips this folder |
-| Rolled From | written by the rollover; the engagement it names is retired |
+| Rolled From | written by the rollover; the engagement it names is no longer chased |
 
 The app asks for that folder on first launch and writes it to
 `settings.json` beside itself (`python -m tracker.settings <folder>` does the
@@ -230,8 +230,8 @@ the index, because misfiling a tax document is worse than not filing it.
 
 For a returning client the request list is last year's, rolled forward
 (the desktop wizard's first page, or `python -m tracker.rollover`). For a
-new client you choose the return type - 1040, 1120, 1120-S, 1065, 1041 or
-990 - and every form carries its own checklist in `tracker/templates.py`,
+new client you choose the return type (1040, 1120, 1120-S, 1065, 1041, 990)
+and every form carries its own checklist in `tracker/templates.py`,
 the only place it lives. The wizard shows it to tick, trim and extend, for
 the tax year the calendar says, and the manifest it creates is the readable
 copy.

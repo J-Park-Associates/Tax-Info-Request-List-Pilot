@@ -240,7 +240,11 @@ function applyVocabulary() {
   for (const id of ["ro-year", "ne-year"]) {
     $(id).min = vocab.year_min;
     $(id).max = vocab.year_max;
+    $(id).title = vocab.year_note;
   }
+  $("ro-client").placeholder = vocab.origin_prior;
+  $("cu-ext").title = vocab.extension_default_note;
+  $("cu-kw").title = `A word the document itself contains, e.g. 'Schedule E'. Keyword ${vocab.keyword_default_note}; shorten it to something the file really says.`;
   const cards = document.querySelectorAll("#assurances .assure div");
   vocab.rules.forEach((rule, i) => {
     if (!cards[i]) return;
@@ -400,7 +404,7 @@ function showStep(step) {
 function priorMeta(p) {
   const bits = [];
   if (p.superseded_by) bits.push(`already rolled forward into ${p.superseded_by}`);
-  if (p.year) bits.push(`TY${p.year}`);
+  if (p.year) bits.push(fill(vocab.period_pattern, { year: p.year }));
   bits.push(`${p.requests} request${p.requests === 1 ? "" : "s"}`);
   if (p.requests) bits.push(`${p.received} received`);
   return bits.join(" · ");
@@ -518,7 +522,7 @@ function templateSummary(t) {
   if (t.extensions) bits.push(t.extensions);
   if (t.required_keywords) bits.push(`must contain "${t.required_keywords}"`);
   if (t.any_keywords) bits.push(`any of: ${t.any_keywords}`);
-  if (t.expected_count > 1) bits.push(`${t.expected_count} files`);
+  if (t.expected_count > 1) bits.push(fill(vocab.expected_pattern, { n: t.expected_count }));
   return bits.join(" · ");
 }
 
@@ -537,7 +541,7 @@ function renderCustomList() {
   $("cu-list").innerHTML = customItems.map((c, i) => `
     <li>
       <span class="tmpl-id">${esc(c.identifier)}</span>
-      <span>${esc(c.document)} <span class="tmpl-rules">${esc(c.extensions || vocab.default_extensions)} · must contain "${esc(c.required_keywords || c.document)}"</span></span>
+      <span>${esc(c.document)} <span class="tmpl-rules">${esc(c.extensions || vocab.extension_default_note)} · ${c.required_keywords ? `must contain "${esc(c.required_keywords)}"` : `keyword ${esc(vocab.keyword_default_note)}`}</span></span>
       <button class="cu-remove" data-index="${i}" aria-label="Remove ${esc(c.document)}">✕</button>
     </li>`).join("");
 }
@@ -632,7 +636,7 @@ $("btn-schedule").addEventListener("click", installSchedule);
 $("btn-save-root").addEventListener("click", saveRoot);
 $("root-input").addEventListener("keydown", (e) => e.key === "Enter" && saveRoot());
 $("btn-browse").addEventListener("click", async () => {
-  const picked = await window.tracker.pickFolder();
+  const picked = await window.tracker.pickFolder($("setup-title").textContent);
   if (picked) $("root-input").value = picked;
 });
 $("btn-unlock").addEventListener("click", clearLock);

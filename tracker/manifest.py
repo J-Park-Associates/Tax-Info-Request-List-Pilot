@@ -284,6 +284,21 @@ ENGAGEMENT_FIELDS = (
 )
 #: field name -> the sheet's label, for messages that name a cell.
 ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
+#: What the yes/no and Rolled From cells mean, said on the sheet and in the README.
+ENGAGEMENT_NOTES = {
+    "reminders": f"{NO} = this client is not chased by email",
+    "active": f"{NO} = the scheduled run skips this folder",
+    "rolled_from": "written by the rollover; the engagement it names is no longer chased",
+}
+
+
+def engagement_sheet_note() -> str:
+    """The italic line under the Engagement sheet, built from the notes."""
+    return ". ".join(
+        f"{ENGAGEMENT_LABELS[field]}: {note}" if field != "rolled_from"
+        else f"{ENGAGEMENT_LABELS[field]} is {note}"
+        for field, note in ENGAGEMENT_NOTES.items()
+    ) + "."
 
 
 @dataclass(frozen=True, slots=True)
@@ -813,12 +828,12 @@ def check_manifest(path: Path | str) -> ManifestCheck:
             continue
         if not has_routing_rules(item):
             warnings.append(
-                f"Row {item.row} ({item.identifier}): no Required Keywords, Any Keywords "
-                "or Date Pattern, so its documents can never be filed automatically"
+                f"Row {item.row} ({item.identifier}): no {COL_REQUIRED_KEYWORDS}, {COL_ANY_KEYWORDS} "
+                f"or {COL_DATE_PATTERN}, so its documents can never be filed automatically"
             )
         if not item.allowed_extensions:
             warnings.append(
-                f"Row {item.row} ({item.identifier}): Allowed Extensions is '*', so any "
+                f"Row {item.row} ({item.identifier}): {COL_ALLOWED_EXTENSIONS} is '{ANY_EXTENSION}', so any "
                 "file type counts as this document"
             )
     pending = pending_path(path)
@@ -899,12 +914,7 @@ def _write_engagement_sheet(wb: Workbook, info: EngagementInfo) -> None:
             cell.number_format = DATE_FORMAT
             continue
         ws.cell(row=row, column=2, value=value or None)
-    labels = ENGAGEMENT_LABELS
-    note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1,
-                   value=f"{labels['reminders']}: {NO} = this client is not chased by email. "
-                         f"{labels['active']}: {NO} = the scheduled run skips this folder. "
-                         f"{labels['rolled_from']} is written by the rollover; the engagement it "
-                         "names is no longer chased.")
+    note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1, value=engagement_sheet_note())
     note.font = Font(italic=True, color="666666")
 
 

@@ -39,6 +39,7 @@ from typing import Iterable, Sequence
 from tracker.reasons import GOOGLE_EXPORT_HINT
 from tracker.validators import google_stub_examples
 from tracker.manifest import (
+    ENGAGEMENT_SHEET_NAME,
     WINDOWS_ILLEGAL_CHARS,
     Override,
     RequestItem,
@@ -49,6 +50,8 @@ from tracker.manifest import (
 MANIFEST_FILENAME = "_manifest.xlsx"
 SHARED_DIR_NAME = "Shared"
 README_NAME = "_README.txt"
+#: Heads the client README's request list.
+README_HEADING = "WHAT WE STILL NEED"
 
 #: The client's untouched originals, inside the folder they can see.
 PBC_DIR_NAME = "PBC"
@@ -218,7 +221,7 @@ def _write_readme(
         f"   that copy - Google shortcut files ({google_stub_examples()}) can't be read.",
         "6. To replace something, just drop in the new copy.",
         "",
-        "WHAT WE STILL NEED",
+        README_HEADING,
         "-" * 45,
     ]
     for item in items:
@@ -252,11 +255,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Lay out Shared/ (client drop folder) and Prepared/ from _manifest.xlsx"
+        description=f"Lay out {SHARED_DIR_NAME}/ (client drop folder) and {PREPARED_DIR_NAME}/ from {MANIFEST_FILENAME}"
     )
-    parser.add_argument("engagement_dir", help="folder containing _manifest.xlsx")
+    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
     parser.add_argument("--contact", default=None,
-                        help="contact line for _README.txt (default: the Engagement sheet's firm)")
+                        help=f"contact line for {README_NAME} (default: the {ENGAGEMENT_SHEET_NAME} sheet's firm)")
     ns = parser.parse_args()
 
     res = scaffold_engagement(ns.engagement_dir, contact=ns.contact)

@@ -21,7 +21,9 @@ from tracker.manifest import (
     ENGAGEMENT_SHEET_NAME,
     HEADERS,
     SHEET_NAME,
+    CORRUPT_SUFFIX,
     SUMMARY_EMPTY,
+    TEMP_SUFFIX,
     SUMMARY_SEPARATOR,
     UNSCANNED_LABEL,
     ManifestError,
@@ -254,7 +256,7 @@ def test_corrupt_sidecar_quarantined(manifest, caplog):
     pending_path(manifest).write_text("{not json", encoding="utf-8")
     assert write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}) is True
     assert not pending_path(manifest).exists()
-    assert pending_path(manifest).with_suffix(".corrupt.json").exists()
+    assert pending_path(manifest).with_suffix(CORRUPT_SUFFIX).exists()
     assert "Unreadable pending sidecar" in caplog.text
 
 
@@ -301,7 +303,7 @@ def test_a_crash_mid_save_leaves_the_previous_manifest_intact(manifest, monkeypa
     with pytest.raises(KeyboardInterrupt):
         write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}, retries=1)
 
-    assert not manifest.with_name(manifest.name + ".tmp").exists()
+    assert not manifest.with_name(manifest.name + TEMP_SUFFIX).exists()
     assert [i.identifier for i in load_manifest(manifest)] == ["A01", "A02", "B01"]
 
 

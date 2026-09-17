@@ -26,8 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 3.11 is the documented minimum and what the firm's Windows box runs,
-      # so it is the version worth the signal.
+      # The floor pyproject.toml declares is what the firm's Windows box runs,
+      # so it is the version worth the signal (tests/test_single_source.py pins it).
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

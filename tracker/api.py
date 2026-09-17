@@ -65,6 +65,7 @@ from tracker.filer import (
     read_index,
 )
 from tracker.rollover import (
+    ORIGIN_PRIOR,
     CARRIED_SHEET,
     carry_engagement_info,
     detect_year,
@@ -83,6 +84,7 @@ from tracker.scaffold import (
 )
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.scheduling import (
+    INSTALL_HINT,
     DEFAULT_REPEAT_MINUTES,
     DEFAULT_START,
     SCHEDULE_XML_FILENAME,
@@ -92,6 +94,7 @@ from tracker.scheduling import (
 )
 from tracker.settings import (
     EXAMPLE_ROOT,
+    SET_ROOT_HINT,
     SettingsError,
     clients_root,
     firm,
@@ -102,6 +105,10 @@ from tracker.settings import (
     settings_path,
 )
 from tracker.templates import (  # the catalog; re-exported for the wizard
+    EXTENSION_DEFAULT_NOTE,
+    KEYWORD_DEFAULT_NOTE,
+    PERIOD_PATTERN,
+    YEAR_NOTE,
     FORM_TEMPLATES,
     FORM_TYPES,
     base_year,
@@ -119,8 +126,7 @@ def _root() -> Path:
     root = clients_root()
     if root is None:
         raise ManifestError(
-            "Tell the app where your clients live first (Settings, or "
-            "`python -m tracker.settings <folder>`)"
+            f"Tell the app where your clients live first (Settings, or `{SET_ROOT_HINT}`)"
         )
     return root
 
@@ -141,7 +147,7 @@ def _engagement_dir(argv: list[str]) -> Path:
 
 #: How a new engagement is named when nobody types a name. The renderer
 #: formats the same pattern, so the wizard's preview and the folder agree.
-NAME_PATTERN = "{client} TY{year} {form}"
+NAME_PATTERN = "{client} " + PERIOD_PATTERN + " {form}"
 ROLLOVER_NAME_PATTERN = "{prior} - {year}"
 
 
@@ -188,6 +194,10 @@ def _vocab() -> dict:
         "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE},
         "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
         "expected_pattern": EXPECTED_PATTERN,
+        "period_pattern": PERIOD_PATTERN,
+        "origin_prior": ORIGIN_PRIOR,
+        "year_note": YEAR_NOTE,
+        "extension_default_note": EXTENSION_DEFAULT_NOTE,
         "carried_sheet": CARRIED_SHEET,
         "pbc_dir": PBC_DIR_NAME,
         "name_pattern": NAME_PATTERN,
@@ -205,7 +215,7 @@ def _vocab() -> dict:
             "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
             "task_name": TASK_NAME,
         },
-        "keyword_default_note": "defaults to the document name",
+        "keyword_default_note": KEYWORD_DEFAULT_NOTE,
     }
 
 
@@ -305,7 +315,7 @@ def _cmd_scan(argv: list[str]) -> dict:
     """One pass over this engagement - the same pass the scheduled job makes.
 
     Scaffold, check, file, scan, in that order, with the same lock, the same
-    error isolation and the same warnings; only the Saturday draft is left
+    error isolation and the same warnings; only the weekly draft is left
     to the scheduled run (or `python -m tracker.reminder`). There is one
     definition of a pass, in tracker.runner, and this is it.
     """
@@ -591,7 +601,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     if getattr(sys, "frozen", False):
         raise ManifestError(
             "Install the schedule from a Python checkout of the tracker "
-            "(python -m tracker.scheduling --install); the packaged app cannot run the job"
+            f"({INSTALL_HINT}); the packaged app cannot run the job"
         )
     spec = json.loads(sys.stdin.read() or "{}")
     root = _root()

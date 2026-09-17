@@ -22,6 +22,9 @@ from __future__ import annotations
 import datetime as dt
 
 from tracker.manifest import (
+    COL_EXPECTED_COUNT,
+    COL_MIN_SIZE_KB,
+    DEFAULT_EXTENSIONS,
     DEFAULT_EXPECTED_COUNT,
     DEFAULT_MIN_SIZE_KB,
     ManifestError,
@@ -70,8 +73,10 @@ FORM_TYPES = [
 #: The tax year the catalog is written for. Every dated row derives from it;
 #: template_items(form, year=...) shifts the whole catalog to another year.
 BASE_YEAR = 2025
-TY = f"TY{BASE_YEAR}"
-TY_PRIOR = f"TY{BASE_YEAR - 1}"
+#: How a tax year is written in a Period and in an engagement's name.
+PERIOD_PATTERN = "TY{year}"
+TY = PERIOD_PATTERN.format(year=BASE_YEAR)
+TY_PRIOR = PERIOD_PATTERN.format(year=BASE_YEAR - 1)
 DEC = f"Dec {BASE_YEAR}"
 AS_OF_YEAR_END = f"As of 12/31/{BASE_YEAR}"
 
@@ -269,11 +274,11 @@ def item_from_spec(spec: dict) -> RequestItem:
         identifier=identifier,
         document=document,
         period=str(spec.get("period", "") or ""),
-        expected_count=_whole_number(spec, "expected_count", DEFAULT_EXPECTED_COUNT, 1, "Expected count"),
+        expected_count=_whole_number(spec, "expected_count", DEFAULT_EXPECTED_COUNT, 1, COL_EXPECTED_COUNT),
         allowed_extensions=parse_extensions(
             spec.get("extensions") or spec.get("allowed_extensions")
         ),
-        min_size_kb=_whole_number(spec, "min_size_kb", DEFAULT_MIN_SIZE_KB, 0, "Minimum size"),
+        min_size_kb=_whole_number(spec, "min_size_kb", DEFAULT_MIN_SIZE_KB, 0, COL_MIN_SIZE_KB),
         required_keywords=required,
         any_keywords=any_keywords,
         date_pattern=date_pattern,
@@ -291,6 +296,12 @@ def default_tax_year(today: dt.date | None = None) -> int:
     """
     today = today or dt.date.today()
     return today.year - 1
+
+
+#: What the wizard says about the year field and the two blank-able rules.
+YEAR_NOTE = "Defaults to the most recently ended year; the checklist's periods follow it"
+EXTENSION_DEFAULT_NOTE = "blank means " + ", ".join(DEFAULT_EXTENSIONS)
+KEYWORD_DEFAULT_NOTE = "defaults to the document name"
 
 
 def base_year(form: str) -> int | None:

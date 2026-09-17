@@ -305,13 +305,14 @@ if __name__ == "__main__":
         MANIFEST_FILENAME,
         README_NAME,
         PREPARED_DIR_NAME,
+        REVIEW_DIR_NAME,
         assign_folders,
     )
 
     parser = argparse.ArgumentParser(
         description="Dry-run validation preview (read-only; writes nothing)"
     )
-    parser.add_argument("engagement_dir", help="folder containing _manifest.xlsx")
+    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
     ns = parser.parse_args()
 
     engagement = Path(ns.engagement_dir)
@@ -355,6 +356,6 @@ if __name__ == "__main__":
             or (p.is_dir() and p not in claimed)
         ]
         if loose:
-            print("Not matched to a request (see 00 - Needs Review):")
+            print(f"Not matched to a request (see {REVIEW_DIR_NAME}):")
             for name in loose:
                 print(f"    ? {name}")

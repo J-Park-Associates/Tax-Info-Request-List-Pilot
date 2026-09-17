@@ -44,6 +44,7 @@ from tracker.locking import (
     acquire_lock,
 )
 from tracker.manifest import (
+    COL_EXPECTED_COUNT,
     Override,
     RequestItem,
     Status,
@@ -66,10 +67,19 @@ from tracker.validators import (
     sha256_of,
 )
 
-#: The two notes the scanner writes that no reason owns: a person's override
-#: on the row, and how far a multi-file request has got.
+#: The notes the scanner writes that no reason owns: a person's override on
+#: the row, how far a multi-file request has got, what was ignored, what is
+#: still syncing, and why a Received row is not any more.
 OVERRIDE_NOTE = "[override: {override}]"
 PARTIAL_NOTE = "{count} of {expected} expected files"
+DUPLICATES_NOTE = "{n} duplicate file(s) ignored"
+FOLDERS_NOTE = "{n} folders match this identifier"
+MORE_ISSUES_NOTE = "(+{n} more issues)"
+SYNCING_MORE_NOTE = "{n} more file(s) still syncing"
+SYNCING_NOTE = "{n} file(s) still syncing from the cloud"
+REGRESSION_NOTE = "was {status} {date}; {why}"
+REGRESSION_COUNT_RAISED = COL_EXPECTED_COUNT + " is now {expected}"
+REGRESSION_FILES_CHANGED = "files changed"
 
 log = logging.getLogger("tracker.scanner")
 
@@ -147,12 +157,12 @@ def _scan_item(
 
     facts: list[str] = []
     if duplicates:
-        facts.append(f"{duplicates} duplicate file(s) ignored")
+        facts.append(DUPLICATES_NOTE.format(n=duplicates))
     if len(folders) > 1:
-        facts.append(f"{len(folders)} folders match this identifier")
+        facts.append(FOLDERS_NOTE.format(n=len(folders)))
     facts.extend(failures[:_MAX_LISTED_FAILURES])
     if len(failures) > _MAX_LISTED_FAILURES:
-        facts.append(f"(+{len(failures) - _MAX_LISTED_FAILURES} more issues)")
+        facts.append(MORE_ISSUES_NOTE.format(n=len(failures) - _MAX_LISTED_FAILURES))
 
     # --- override rows: a person's call beats the rules --------------------
     if item.manual_override:
@@ -182,10 +192,10 @@ def _scan_item(
     elif count >= item.expected_count:
         status = Status.RECEIVED
         if pending:
-            facts.append(f"{len(pending)} more file(s) still syncing")
+            facts.append(SYNCING_MORE_NOTE.format(n=len(pending)))
     elif pending:
         status = Status.PENDING_SYNC
-        facts.insert(0, f"{len(pending)} file(s) still syncing from the cloud")
+        facts.insert(0, SYNCING_NOTE.format(n=len(pending)))
     elif count > 0:
         status = Status.PARTIAL
         facts.insert(0, PARTIAL_NOTE.format(count=count, expected=item.expected_count))
@@ -206,10 +216,11 @@ def _scan_item(
             # for a file that never went anywhere.
             had = item.file_count if item.file_count is not None else 0
             if count >= had and item.expected_count > count and not failures:
-                why = f"Expected Count is now {item.expected_count}"
+                why = REGRESSION_COUNT_RAISED.format(expected=item.expected_count)
             else:
-                why = "files changed"
-            facts.insert(0, f"was Received {item.received_date.isoformat()}; {why}")
+                why = REGRESSION_FILES_CHANGED
+            facts.insert(0, REGRESSION_NOTE.format(
+                status=Status.RECEIVED, date=item.received_date.isoformat(), why=why))
 
     return StatusUpdate(
         status=status,
@@ -336,9 +347,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Scan an engagement's Prepared/ tree and update _manifest.xlsx"
+        description=f"Scan an engagement's {PREPARED_DIR_NAME}/ tree and update {MANIFEST_FILENAME}"
     )
-    parser.add_argument("engagement_dir", help="folder containing _manifest.xlsx")
+    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
     parser.add_argument(
         "--dry-run", action="store_true", help="report only; write nothing"
     )

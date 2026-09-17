@@ -62,6 +62,7 @@ from openpyxl.utils import get_column_letter
 
 from tracker.locking import engagement_lock
 from tracker.manifest import (
+    COL_IDENTIFIER,
     CORRUPT_SUFFIX,
     LOCK_RETRIES,
     LOCK_RETRY_DELAY,
@@ -156,7 +157,7 @@ INDEX_LAYOUT: dict[str, tuple[str, int]] = {
     "original_name": ("Original Name", 40),
     "size_kb": ("Size KB", 9),
     "digest": ("SHA-256", 18),
-    "identifier": ("Identifier", 10),
+    "identifier": (COL_IDENTIFIER, 10),
     "prepared_location": ("Prepared Location", 40),
     "pbc_location": ("PBC Location", 26),
     "decision": ("Decision", 14),
@@ -772,9 +773,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Sort the client's drop folder into PBC/ and Prepared/"
+        description=f"Sort the client's drop folder into {PBC_DIR_NAME}/ and {PREPARED_DIR_NAME}/"
     )
-    parser.add_argument("engagement_dir", help="folder containing _manifest.xlsx")
+    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
     parser.add_argument(
         "--dry-run", action="store_true", help="decide everything, move nothing"
     )

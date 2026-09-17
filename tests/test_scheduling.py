@@ -11,6 +11,7 @@ from xml.etree import ElementTree
 import pytest
 
 from tracker.scheduling import (
+    TASK_XML_NAMESPACE,
     DEFAULT_START,
     TASK_NAME,
     is_absolute_path,
@@ -19,7 +20,7 @@ from tracker.scheduling import (
     task_scheduler_xml,
 )
 
-NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+NS = {"t": TASK_XML_NAMESPACE}
 
 ARGS = dict(
     python=r"C:\Python311\python.exe",

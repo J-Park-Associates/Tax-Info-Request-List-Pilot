@@ -39,6 +39,9 @@ from tracker.manifest import EngagementInfo, ManifestError, load_engagement_info
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
 from tracker.validators import OFFICE_LOCK_PREFIX, is_sync_staging
 
+#: How a superseded engagement is described, by the run and the app alike.
+SKIP_ROLLED_FORWARD = "rolled forward into {successor}"
+
 #: How far below the root discovery looks: Clients/{Client}/{Engagement}
 #: is two; four leaves room for a year or office level above that.
 MAX_DEPTH = 4
@@ -210,7 +213,7 @@ if __name__ == "__main__":
     for engagement in loaded.engagements:
         flags = []
         if engagement.superseded_by:
-            flags.append(f"rolled forward into {engagement.superseded_by}")
+            flags.append(SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by))
         elif not engagement.active:
             flags.append("inactive")
         if not engagement.reminders:

@@ -82,6 +82,12 @@ OUTSTANDING = Status.OUTSTANDING
 SUBJECT_NEEDED = "{engagement}: {n} document(s) still needed"
 SUBJECT_COMPLETE = "{engagement}: we have everything - thank you"
 DRAFT_BANNER = "DRAFT - NOTHING HAS BEEN SENT."
+#: The footer's warning about parked files, and what to do about it.
+REVIEW_WARNING = "{n} file(s) the client already sent are still in " + REVIEW_DIR_NAME + "."
+REVIEW_ADVICE = "Identify them before sending, or you may ask for something you have."
+#: What a Partial row is asked with.
+PARTIAL_ASK = "{have} of {expected} received, {missing} still to come"
+PARTIAL_ASK_COMPLETE = "{have} of {expected} received"
 
 SECTION_MISSING = "NOT YET RECEIVED"
 SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
@@ -166,8 +172,8 @@ def client_ask(item: RequestItem) -> str:
         expected = item.expected_count
         have = item.file_count or 0
         missing = max(expected - have, 0)
-        return (f"{have} of {expected} received, {missing} still to come"
-                if missing else f"{have} of {expected} received")
+        return (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
+                if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
 
     if item.status != Status.FAILED:
         return ""
@@ -470,9 +476,8 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
                    "to see them in the sheet."]
     if draft.needs_review_files:
         footer += ["", "-" * 60,
-                   f"{draft.needs_review_files} file(s) the client already sent are "
-                   f"still in {REVIEW_DIR_NAME}.",
-                   "Identify them before sending, or you may ask for something you have."]
+                   REVIEW_WARNING.format(n=draft.needs_review_files),
+                   REVIEW_ADVICE]
 
     body = draft.text
     if footer:
@@ -530,7 +535,7 @@ if __name__ == "__main__":
     except ReminderError as exc:
         raise SystemExit(f"Cannot draft a reminder: {exc}")
 
-    print("DRAFT - nothing has been sent.\n")
+    print(f"{DRAFT_BANNER}\n")
     print(result.text)
 
     for flag in result.scaffold_gaps:
@@ -538,9 +543,8 @@ if __name__ == "__main__":
     for flag in result.needs_attention:
         print(f"NOT ASKED: {flag.item.label}: {flag.reason}")
     if result.needs_review_files:
-        print(f"\nWARNING: {result.needs_review_files} file(s) the client already sent "
-              f"are still in {REVIEW_DIR_NAME}.")
-        print("Identify them before sending this, or you may ask for something you have.")
+        print(f"\nWARNING: {REVIEW_WARNING.format(n=result.needs_review_files)}")
+        print(REVIEW_ADVICE)
 
     if ns.write:
         written = write_draft(result, engagement_dir=ns.engagement_dir)

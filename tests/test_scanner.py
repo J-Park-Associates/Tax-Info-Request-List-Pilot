@@ -4,6 +4,8 @@ import datetime as dt
 import json
 
 import pytest
+
+from tracker.locking import STALE_LOCK_SECONDS
 from openpyxl import load_workbook
 from pypdf import PdfWriter
 
@@ -131,7 +133,7 @@ def test_failed_validation_with_reasons(engagement):
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
     assert row.status == Status.FAILED
-    assert "'Chase' not found" in row.validation_notes
+    assert reasons.WRONG_DOCUMENT.matches(row.validation_notes) and "'Chase'" in row.validation_notes
 
 
 def test_received_date_sticky_across_scans(engagement):
@@ -179,7 +181,7 @@ def test_manual_override_status_untouched(tmp_path):
     assert row.status == Status.RECEIVED           # override kept it
     assert row.received_date == DAY1
     assert row.validation_notes.startswith(OVERRIDE_NOTE.format(override=Override.ACCEPTED))
-    assert "'Chase' not found" in row.validation_notes  # facts still recorded
+    assert reasons.WRONG_DOCUMENT.matches(row.validation_notes) and "'Chase'" in row.validation_notes  # facts still recorded
 
 
 def test_duplicates_do_not_inflate_count(engagement):
@@ -277,7 +279,7 @@ def test_stale_lock_replaced_and_released(engagement):
 
     lock = engagement / LOCK_FILENAME
     lock.write_text("pid=999", encoding="utf-8")
-    old = (dt.datetime.now() - dt.timedelta(hours=2)).timestamp()
+    old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
     os.utime(lock, (old, old))
 
     report = scan_engagement(engagement, today=DAY1)   # takes over stale lock

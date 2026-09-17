@@ -60,6 +60,8 @@ ORIGIN_WAIVED = "waived last year"
 ORIGIN_NEW = "new this year"
 
 CARRIED_SHEET = "Carried Forward"
+#: Heads the sheet's (and the CLI's) list of last year's unmatched documents.
+UNFILED_HEADING = "Sent last year but never filed — check these are covered:"
 #: The Carried Forward sheet, described once: header -> column width.
 CARRIED_LAYOUT: dict[str, int] = {
     COL_IDENTIFIER: 12, COL_DOCUMENT: 40, "Origin": 22, "Why it is on the list": 52,
@@ -292,7 +294,7 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
                            ORIGIN_NEW, offer.note])
         if report.unfiled_last_year:
             ws.append([])
-            ws.append(["Sent last year but never filed — check these are covered:"])
+            ws.append([UNFILED_HEADING])
             for line in report.unfiled_last_year:
                 ws.append(["", line])
         for column, width in zip(ws.column_dimensions, CARRIED_LAYOUT.values()):
@@ -364,7 +366,7 @@ if __name__ == "__main__":
         for offer in result.offered:
             print(f"    + {offer.item.label}")
     if result.unfiled_last_year:
-        print("\n  Sent last year but never filed — check these are covered:")
+        print(f"\n  {UNFILED_HEADING}")
         for line in result.unfiled_last_year:
             print(f"    ? {line}")
     print(f"\n  Manifest: {manifest}")

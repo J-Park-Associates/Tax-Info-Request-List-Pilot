@@ -97,7 +97,7 @@ def test_ci_tests_the_python_floor_pyproject_declares():
         assert not re.search(r"Python 3\.\d+\+?", read(rel)), rel
 
 
-def test_gitignore_knows_every_runtime_file_python_writes_beside_the_app():
+def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
@@ -253,3 +253,88 @@ def test_the_roadmap_schema_table_matches_the_manifest_headers():
     roadmap = read("docs/ROADMAP.md")
     for header in HEADERS:
         assert f"| {header} |" in roadmap, header
+
+
+DOCUMENTS = ("README.md", "docs/ROADMAP.md", "docs/workflow.md", "CLAUDE.md")
+
+
+def test_prose_names_no_weekday_but_the_draft_day():
+    """Docs may say which day the draft is made, but only the runner's day."""
+    from tracker.runner import DRAFT_DAY_NAME, WEEKDAY_NAMES
+
+    sources = [*DOCUMENTS, "docs/repo-map.curated.json", "tracker/__init__.py",
+               *(str(p.relative_to(REPO)) for p in (REPO / "tracker").glob("*.py"))]
+    quoted_day = "|".join(WEEKDAY_NAMES)
+    for rel in sources:
+        text = read(rel).lower()
+        text = re.sub(rf'"(?:{quoted_day})"', "", text)          # the tuple that defines them
+        text = re.sub(rf"--weekday (?:{quoted_day})", "", text)  # a CLI example takes any day
+        for day in WEEKDAY_NAMES:
+            if day != DRAFT_DAY_NAME:
+                assert day not in text, (rel, day)
+
+
+def test_documents_name_only_runtime_files_the_code_owns():
+    """Every `something.ext` a document quotes is a file the code names, or a repo file."""
+    import subprocess
+
+    from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME
+    from tracker.locking import LOCK_FILENAME
+    from tracker.manifest import pending_path
+    from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
+    from tracker.runner import LOG_FILENAME
+    from tracker.scaffold import MANIFEST_FILENAME, README_NAME
+    from tracker.scanner import CACHE_FILENAME
+    from tracker.scheduling import SCHEDULE_XML_FILENAME
+    from tracker.settings import SETTINGS_FILENAME
+
+    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME,
+             pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+             LOG_FILENAME, MANIFEST_FILENAME, README_NAME, SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
+    tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
+    repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
+    for rel in DOCUMENTS:
+        for quoted in re.findall(r"`([^`\s]+\.(?:txt|xml|json|lock|xlsx|log|bat|py|md|js|toml|yml))`", read(rel)):
+            name = quoted.split("/")[-1].split("\\")[-1]
+            if "<" in quoted or "*" in quoted:
+                continue                                  # a pattern, not a file
+            assert quoted in repo_files or name in repo_files or name in owned, (rel, quoted)
+
+
+def test_the_build_output_folder_is_the_one_gitignore_knows():
+    out = re.search(r"^set OUT=(\S+)", read("Build App.bat"), re.M).group(1)
+    assert f"{out}/" in read(".gitignore")
+
+
+def test_the_roadmap_names_every_status_in_bold():
+    from tracker.manifest import Status
+
+    roadmap = read("docs/ROADMAP.md")
+    for value in Status.ALL:
+        assert f"**{value}**" in roadmap, value
+
+
+def test_documents_name_buttons_by_their_labels():
+    """A doc may say 'the X button' only for a button the page actually has."""
+    html = read("app/renderer/index.html")
+    labels = {re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m)).strip()
+              for m in re.findall(r"<button[^>]*>(.*?)</button>", html, re.S)}
+    js = read("app/renderer/app.js")
+    labels |= set(re.findall(r'<button[^>]*>([^<]+)</button>', js))
+    labels.add(re.search(r'const SCAN_LABEL = "([^"]+)";', js).group(1))
+    labels = {label for label in labels if label and "${" not in label}
+    for rel in DOCUMENTS:
+        text = read(rel)
+        for name in re.findall(r"\*\*([^*]+)\*\* button", text) + re.findall(r"the (?:app's )?([A-Z][A-Za-z &]+?) button", text):
+            assert name in labels, (rel, name)
+
+
+def test_the_stub_and_staging_examples_docs_give_are_the_validators():
+    from tracker.validators import _GOOGLE_STUB_EXTENSIONS, _SYNC_STAGING_PREFIX
+
+    for rel in DOCUMENTS:
+        text = read(rel)
+        for ext in re.findall(r"`\.(g[a-z]+)`", text):
+            assert ext in _GOOGLE_STUB_EXTENSIONS, (rel, ext)
+        for prefix in re.findall(r"`(\.tmp\.[a-z]+)\*?`", text):
+            assert prefix == _SYNC_STAGING_PREFIX, (rel, prefix)

@@ -47,9 +47,11 @@ from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NA
 
 DRAFT_DAY = WEEKDAY_NAMES[DRAFT_WEEKDAY]
 
-SATURDAY = dt.date(2026, 3, 14)
-FRIDAY = dt.date(2026, 3, 13)
-SUNDAY = dt.date(2026, 3, 15)
+# The draft day is whatever the runner says it is; the dates follow it.
+_WEEK_START = dt.date(2026, 3, 9)                      # a Monday
+SATURDAY = _WEEK_START + dt.timedelta(days=DRAFT_WEEKDAY)  # the draft day
+FRIDAY = SATURDAY - dt.timedelta(days=1)                # the day before
+SUNDAY = SATURDAY + dt.timedelta(days=1)                # the day after
 
 
 @pytest.fixture(scope="session")

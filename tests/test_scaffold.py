@@ -4,6 +4,7 @@ import pytest
 
 from tracker.manifest import EXPECTED_PATTERN, ManifestError, Override, RequestItem, create_template
 from tracker.scaffold import (
+    README_HEADING,
     MANIFEST_FILENAME,
     README_NAME,
     PBC_DIR_NAME,
@@ -166,7 +167,7 @@ def test_readme_refreshed_on_rerun(engagement):
     readme.write_text("client scribbled over this", encoding="utf-8")
 
     scaffold_engagement(engagement)
-    assert "WHAT WE STILL NEED" in readme.read_text(encoding="utf-8")
+    assert README_HEADING in readme.read_text(encoding="utf-8")
 
 
 def test_missing_manifest_raises(tmp_path):

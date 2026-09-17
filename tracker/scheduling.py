@@ -9,7 +9,7 @@ to draft reminders (``tracker.runner.DRAFT_WEEKDAY``), so the schedule does not
 need a second weekly job — a single daily task files, scans, and quietly drafts
 the chase emails when that day comes around. Keeping the day in one tested function beats keeping
 it in a calendar entry nobody can read, and it means a run that Task Scheduler
-misses (laptop closed on Saturday) still drafts when it next runs, rather than
+misses (laptop closed on the draft day) still drafts when it next runs, rather than
 skipping the week.
 
 Paths differ on every machine, so the definition is generated rather than
@@ -29,7 +29,8 @@ import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from xml.sax.saxutils import escape
 
-from tracker.settings import product_name
+from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG
+from tracker.settings import SETTINGS_FILENAME, product_name
 
 #: The scheduled task is named after the product, wherever that is set.
 TASK_NAME = product_name()
@@ -50,9 +51,16 @@ def start_hour(start_time: str = DEFAULT_START) -> int:
     return int(start_time.split(":")[0])
 
 
+#: The two n8n nodes the workflow is made of; the connection names them again.
+TASK_XML_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
+N8N_TRIGGER_NODE = "Every day"
+N8N_RUN_NODE = "File, scan, draft"
+#: How a person is told to install the schedule, wherever they are told.
+INSTALL_HINT = "python -m tracker.scheduling --install"
+
 def runner_arguments(root: str | Path) -> str:
     """The one command line the scheduled job runs, whoever schedules it."""
-    return f'-m tracker.runner "{root}" --log'
+    return f'-m tracker.runner "{root}" {LOG_FLAG}'
 
 
 def _xml_escape(value: str) -> str:
@@ -96,13 +104,11 @@ def task_scheduler_xml(
     """A Windows Task Scheduler definition, ready for ``schtasks /create /xml``.
 
     ``repeat_minutes`` adds an intra-day repetition so filing and scanning can
-    run through the day; the reminder step still only drafts on Saturday.
+    run through the day; the reminder step still only drafts on ``DRAFT_WEEKDAY``.
     """
     if repeat_minutes and repeat_minutes < 5:
         raise ValueError("repeat_minutes below 5 would stack runs on top of each other")
-    from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
-
-    draft_day = WEEKDAY_NAMES[DRAFT_WEEKDAY].capitalize()
+    draft_day = DRAFT_DAY_NAME.capitalize()
     repetition = ""
     if repeat_minutes:
         repetition = (
@@ -114,7 +120,7 @@ def task_scheduler_xml(
         )
 
     return f"""<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+<Task version="1.4" xmlns="{TASK_XML_NAMESPACE}">
   <RegistrationInfo>
     <Author>{_xml_escape(author)}</Author>
     <Description>Files and scans every engagement found under {_xml_escape(root)}.
@@ -181,22 +187,22 @@ def n8n_workflow(
                 "parameters": {
                     "rule": {"interval": [{"field": "days", "triggerAtHour": hour}]}
                 },
-                "name": "Every day",
+                "name": N8N_TRIGGER_NODE,
                 "type": "n8n-nodes-base.scheduleTrigger",
                 "typeVersion": 1.1,
                 "position": [260, 300],
             },
             {
                 "parameters": {"command": command},
-                "name": "File, scan, draft",
+                "name": N8N_RUN_NODE,
                 "type": "n8n-nodes-base.executeCommand",
                 "typeVersion": 1,
                 "position": [500, 300],
             },
         ],
         "connections": {
-            "Every day": {
-                "main": [[{"node": "File, scan, draft", "type": "main", "index": 0}]]
+            N8N_TRIGGER_NODE: {
+                "main": [[{"node": N8N_RUN_NODE, "type": "main", "index": 0}]]
             }
         },
         "settings": {"executionOrder": "v1"},
@@ -239,7 +245,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--root", default="",
                         help="the folder the firm keeps its clients in "
-                             "(default: the one in settings.json)")
+                             f"(default: the one in {SETTINGS_FILENAME})")
     parser.add_argument("--python", default=sys.executable,
                         help="the Python to run it with (default: this one)")
     parser.add_argument("--working-dir", default=str(Path.cwd()),

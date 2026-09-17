@@ -59,7 +59,7 @@
            app and the scheduled job alike. -->
       <section id="setup-card" class="card hidden">
         <div class="card-head">
-          <h3>Where do you keep your clients?</h3>
+          <h3 id="setup-title">Where do you keep your clients?</h3>
           <span class="summary">one folder; every engagement is a folder under it holding a manifest</span>
         </div>
         <div class="setup-row">
@@ -156,7 +156,7 @@
         <div class="roll-grid three">
           <label class="field">
             <span>Client (greeting name)</span>
-            <input id="ro-client" type="text" placeholder="carried from last year" />
+            <input id="ro-client" type="text" />
           </label>
           <label class="field">
             <span>Share link (optional)</span>
@@ -211,7 +211,7 @@
           </label>
           <label class="field">
             <span>Tax year</span>
-            <input id="ne-year" type="number" title="Defaults to the most recently ended year; the checklist's periods follow it" />
+            <input id="ne-year" type="number" />
           </label>
           <label class="field">
             <span>Share link (optional)</span>
@@ -229,8 +229,8 @@
         <div class="tmpl-head">Add a custom request</div>
         <div class="custom-row">
           <input id="cu-doc" type="text" placeholder="Document (e.g. Rental Property Records)" aria-label="Custom document name" />
-          <input id="cu-ext" type="text" placeholder="File types" aria-label="Allowed file types" title="Blank means the manifest's default types" />
-          <input id="cu-kw" type="text" placeholder="Must contain" aria-label="Required keyword" title="A word the document itself contains, e.g. 'Schedule E'. Blank means the document name; shorten it to something the file really says." />
+          <input id="cu-ext" type="text" placeholder="File types" aria-label="Allowed file types" />
+          <input id="cu-kw" type="text" placeholder="Must contain" aria-label="Required keyword" />
           <button id="cu-add" class="btn">Add</button>
         </div>
         <ul id="cu-list" class="cu-list"></ul>

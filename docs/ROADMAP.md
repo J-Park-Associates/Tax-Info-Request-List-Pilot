@@ -1,4 +1,4 @@
-# Tax Document Tracker — Build Plan (v1.2)
+# Tax Document Tracker — Build Plan
 
 A Windows-compatible system for income tax information requests: each engagement
 starts by picking the return type (1040, 1120, 1120-S, 1065, 1041, 990), which
@@ -57,8 +57,8 @@ The standing rules are worded once, in `tracker/__init__.py`, and quoted here:
 
 | # | Decision | Choice |
 |---|----------|--------|
-| 11 | Reminder cadence | **Weekly, Saturday.** A nightly reminder is noise that gets ignored; one a week, waiting on Saturday for a Monday send, gets read. Filing and scanning still run on whatever cadence the task is set to. |
-| 12 | Who decides the day | **The runner, not the scheduler.** One daily task, with `is_draft_day()` as the only place Saturday is written down. A run the scheduler misses still drafts when it next runs, instead of skipping the week. |
+| 11 | Reminder cadence | **Weekly, Saturday.** A nightly reminder is noise that gets ignored; one a week, waiting over the weekend for a start-of-week send, gets read. Filing and scanning still run on whatever cadence the task is set to. |
+| 12 | Who decides the day | **The runner, not the scheduler.** One daily task, with `DRAFT_WEEKDAY` as the only place the day is written down. A run the scheduler misses still drafts when it next runs, instead of skipping the week. |
 | 13 | Manual drafting | **Always available.** `python -m tracker.reminder <dir>` is unconditional, and `--reminders always` forces the batch on any day. The schedule is a default, not a cage. |
 | 14 | `reminders: false` | **A standing decision, not a flag.** It means this client is not chased by email; neither the schedule nor `--reminders always` overrides it. The manual CLI still drafts one on demand. |
 | 15 | Regenerating a draft | **Never overwrite an edit.** The header carries a fingerprint of the generated text; anything that no longer matches is somebody's work, so the new draft goes to `reminder-draft.NEW.txt` beside it. |
@@ -90,7 +90,7 @@ The standing rules are worded once, in `tracker/__init__.py`, and quoted here:
 | 36 | The tax year | **From the calendar.** A new engagement is for the most recently ended year (`default_tax_year`); the catalog is written for one base year and shifted to it, relative periods included. Nobody edits `TY2025` to `TY2026` across six checklists every January, or forgets to. |
 | 37 | Installing the schedule | **One step.** `python -m tracker.scheduling --root ... --out ... --install` generates the XML and registers it (`schtasks /create /f`), and re-running is how the schedule is changed. |
 | 38 | One pass, one count, one record | **The app's Sort & Scan is the runner's pass** (`run_engagement`), so the button and the job do the same thing to the same folder; `sort` and `scaffold` commands are gone. **`summarize()` is the only count** of where an engagement stands - runner log, reminder, scanner CLI and app all read it. **The index is the only record of parked files**; the scanner's Unfiled sheet is no longer written (old ones are left alone), and what it alone knew - loose files and unrecognised folders in `Prepared/` - are warnings on the pass. |
-| 39 | One name, one firm, one root | **The folder is the engagement's name**; the wizard no longer copies it onto the sheet (a copy drifts the first time the folder is renamed; the cell is still read if present). **The sheet's Firm is the sign-off and the README contact**; the reminder and scaffold read the sheet themselves, and the wizard copies the newest engagement's firm so it is typed once. **The clients root is in `settings.json` beside the app**, set on first launch (or `python -m tracker.settings <folder>`); the app, the priors list, `tracker.scheduling` and the Install Schedule button all read that one value. |
+| 39 | One name, one firm, one root | **The folder is the engagement's name**; the wizard no longer copies it onto the sheet (a copy drifts the first time the folder is renamed; the cell is still read if present). **The sheet's Firm is the sign-off and the README contact**; the reminder and scaffold read the sheet themselves, and the wizard reads the firm from `settings.firm()` so it is typed once. **The clients root is in `settings.json` beside the app**, set on first launch (or `python -m tracker.settings <folder>`); the app, the priors list, `tracker.scheduling` and the Install Schedule button all read that one value. |
 | 40 | The year, once | **Period implies the year check.** The year was typed twice (Period for people, Date Pattern for the rules) and, on 73 of 78 catalog rows, only once - so a 2024 form satisfied a TY2025 request. A blank Date Pattern on a row whose Period names a year now checks for that year; `*` says no check; a typed regex wins. A derived year is a *check* on a document a keyword already matched, never evidence on its own, so a row with only a Period can still never claim a document. Rollover leaves derived checks blank; the shifted Period derives them again. |
 | 41 | The demo, and the second copies | **Gone.** The presenter guide in the app, the demo buttons, the demo folder and batch file, the demo script and portable readme, and the sample builder in the API module (now `tests/samples.py`, which the suite still needs). The template CSVs and their check: the manifest is the readable copy. The scanner's per-engagement log: `runs.log` is the log. The README is setup; `docs/workflow.md` is how the work is done. |
 | 42 | Every fact, one home | **`tracker/reasons.py` is every refusal** - the note the scanner writes, the marker the reminder looks for, the client's ask and whose side it is; producers and the reminder both read it, so rewording one cannot silently change what a client is asked. **The renderer's vocabulary comes from the API** (`_vocab()`: statuses, decisions, reasons, product name, firm), so the app never retypes a Python string. **`settings.json` is the firm and the clients root; `app/package.json` is the product name and the API name** - Python, the Electron shell and the build script all read them, and the guard tests in `tests/test_single_source.py` pin the literals that have to cross the language line (env names, chip classes, the README's Engagement table, this file's schema table). **`filer.INDEX_LAYOUT` is the index**: the columns, their headers and widths, read back by header. **`Engagement` wraps `EngagementInfo`** instead of copying its fields. **The four standing rules are worded once** (`STANDING_RULES`); the app renders them and the documents are pinned to them. **The manifest owns the outstanding set, the sidecar suffixes, the lock-retry policy, the yes/no spellings and the year range** its pattern is built from; the Carried Forward sheet, like the index, is one layout. Documents name a constant rather than quoting its value, and `tests/test_single_source.py` pins every literal that has to cross the language line - the version, the IPC channels, the Python floor, the form list, the status vocabulary, the button label. Constants are rendered on the knowledge map so a second copy is visible. |
@@ -168,7 +168,7 @@ with the reason — never ignored, never guessed.
 
 ## Validation Tiers (deterministic, gate status)
 
-1. **Existence** — folder contains ≥1 file (ignore `desktop.ini`, `Thumbs.db`, `~$*`).
+1. **Existence** — folder contains ≥1 file (ignoring the junk `tracker/validators.py` lists).
 2. **Integrity** — extension whitelisted; size ≥ Min Size KB; PDFs open without error
    (`pypdf` load test).
 3. **Content** — extract text (`pdfplumber`; `openpyxl`/`csv` for spreadsheets;
@@ -233,5 +233,5 @@ no-genAI-on-financial-docs rule.)*
 ## Stack
 
 Python at the floor `pyproject.toml` declares · the packages `requirements.txt`
-pins · pathlib · logging to the one `runs.log` beside the app.
+pins · pathlib · logging to the one `runs.log` in the clients root.
 No database — the manifest is the source of truth.

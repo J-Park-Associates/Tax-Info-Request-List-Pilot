@@ -12,7 +12,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - rollover      : build a returning client's list from their prior year
 - reminder      : draft (never send) the client reminder email
 - registry      : finds every engagement under the clients root (no registry file)
-- runner        : the unattended pass (file -> scan -> Saturday draft)
+- runner        : the unattended pass (file -> scan -> weekly draft)
 - scheduling    : generate the Task Scheduler / n8n job
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold

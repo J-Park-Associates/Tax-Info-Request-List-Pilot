@@ -10,7 +10,7 @@ import datetime as dt
 
 import pytest
 
-from tracker.manifest import ENGAGEMENT_SHEET_NAME, EngagementInfo, RequestItem, create_template
+from tracker.manifest import ENGAGEMENT_LABELS, NO, YES, ENGAGEMENT_SHEET_NAME, EngagementInfo, RequestItem, create_template
 from tracker.registry import (
     MAX_DEPTH,
     Engagement,
@@ -114,7 +114,7 @@ def test_a_bad_yes_no_on_the_sheet_is_reported_not_guessed(tmp_path):
             row[1].value = "maybe"
     wb.save(folder / MANIFEST_FILENAME)
     [engagement] = discover_engagements(tmp_path).engagements
-    assert "Reminders must be yes or no" in engagement.problem
+    assert f"{ENGAGEMENT_LABELS['reminders']} must be {YES} or {NO}" in engagement.problem
 
 
 def test_find_matches_label_or_path(tmp_path):

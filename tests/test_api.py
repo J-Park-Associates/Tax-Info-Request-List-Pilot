@@ -77,7 +77,7 @@ def test_unknown_command_is_a_json_error(capsys):
 
 
 def test_a_manifest_problem_is_a_json_error_not_a_traceback(capsys, demo_root):
-    code, payload = run(capsys, "state", "--engagement", str(demo_root / "nowhere"))
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(demo_root / "nowhere"))
     assert code == 1
     assert "Manifest not found" in payload["error"]
 
@@ -126,7 +126,7 @@ def test_create_refuses_a_non_numeric_count_with_a_sentence(capsys, demo_root):
     ]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
-    assert payload["error"] == "Expected count for A01 must be a whole number, got 'two'"
+    assert payload["error"] == f"{COL_EXPECTED_COUNT} for A01 must be a whole number, got 'two'"
 
 
 def test_create_refuses_a_duplicate_identifier(capsys, demo_root):
@@ -171,7 +171,7 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
     # The client drags every sample into the one folder.
     engagement = sample_engagement(capsys, demo_root, tmp_path)
 
-    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, payload
     run_result = payload["run"]
     assert run_result["ok"] and not run_result["skipped"]
@@ -250,7 +250,7 @@ def test_state_shows_statuses_a_locked_excel_deferred(capsys, demo_root):
     assert run(capsys, "create", stdin=spec)[0] == 0
     _save_pending(demo_root / "Smith" / MANIFEST_FILENAME,
                   {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
-    code, payload = run(capsys, "state", "--engagement", str(demo_root / "Smith"))
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))
     assert code == 0
     assert payload["pending_statuses"] == 1
     assert payload["items"][0]["status"] == Status.RECEIVED
@@ -262,12 +262,12 @@ def test_state_shows_statuses_a_locked_excel_deferred(capsys, demo_root):
 def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path,
                                    "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
-    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0
     parked = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     assert [e["original_name"] for e in parked] == ["Mortgage Notes.docx"]
 
-    code, payload = run(capsys, "assign", "--engagement", str(engagement),
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"original": parked[0]["pbc_location"], "identifier": "D01",
                                "keyword": "mortgage notes"})
     assert code == 0, payload
@@ -287,7 +287,7 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
 
 def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
-    code, payload = run(capsys, "assign", "--engagement", str(engagement),
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"original": "ghost.pdf", "identifier": "A01"})
     assert code == 1
     assert "nothing in the index is called 'ghost.pdf'" in payload["error"]
@@ -344,13 +344,13 @@ def test_check_reports_problems_and_warnings_with_rows(capsys, demo_root):
     spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     manifest = demo_root / "Smith" / MANIFEST_FILENAME
-    code, payload = run(capsys, "check", "--engagement", str(demo_root / "Smith"))
+    code, payload = run(capsys, "check", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))
     assert code == 0 and payload["ok"] and payload["warnings"] == []
 
     wb = load_workbook(manifest)
     wb[SHEET_NAME].cell(row=2, column=col(COL_EXPECTED_COUNT), value="two")
     wb.save(manifest)
-    code, payload = run(capsys, "check", "--engagement", str(demo_root / "Smith"))
+    code, payload = run(capsys, "check", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))
     assert code == 0 and payload["ok"] is False
     assert payload["problems"] == [f"Row 2: {COL_EXPECTED_COUNT} must be a whole number, got 'two'"]
 
@@ -362,20 +362,20 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     engagement = demo_root / "Smith"
-    assert run(capsys, "state", "--engagement", str(engagement))[1]["lock"] is None
+    assert run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]["lock"] is None
 
     lock = engagement / LOCK_FILENAME
     lock.write_text("pid=999 started=2026-03-14T07:03:00", encoding="utf-8")
-    code, payload = run(capsys, "state", "--engagement", str(engagement))
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
     from tracker import STANDING_RULES
     assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False,
                                "stale_after_minutes": STALE_LOCK_SECONDS // 60}
-    code, payload = run(capsys, "unlock", "--engagement", str(engagement))
+    code, payload = run(capsys, "unlock", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 1 and "may still be going" in payload["error"]
 
-    old = (dt.datetime.now() - dt.timedelta(hours=2)).timestamp()
+    old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
     os.utime(lock, (old, old))
-    code, payload = run(capsys, "unlock", "--engagement", str(engagement))
+    code, payload = run(capsys, "unlock", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0 and payload["cleared"] and payload["state"]["lock"] is None
 
 
@@ -436,7 +436,7 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
         COL_ANY_KEYWORDS: "schedule e",
     }))
     wb.save(engagement / MANIFEST_FILENAME)
-    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, payload
     assert any(p.name.startswith("Z01") for p in (engagement / PREPARED_DIR_NAME).iterdir())
     assert payload["run"]["warnings"] == []
@@ -444,7 +444,7 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     # A lock held by another run is reported as skipped, not as an error.
     from tracker.locking import LOCK_FILENAME
     (engagement / LOCK_FILENAME).write_text("pid=999", encoding="utf-8")
-    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0 and payload["run"]["skipped"].startswith("another run")
     (engagement / LOCK_FILENAME).unlink()
 
@@ -452,7 +452,7 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     wb = load_workbook(engagement / MANIFEST_FILENAME)
     wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="(unclosed")
     wb.save(engagement / MANIFEST_FILENAME)
-    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 1 and payload["error"].startswith(f"Row 2: {COL_DATE_PATTERN}")
 
 
@@ -555,7 +555,7 @@ def test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label(capsys
 
 def test_priors_carry_next_year_and_the_index_carries_candidates(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
-    code, payload = run(capsys, "scan", "--engagement", str(engagement))
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     assert parked["candidates"] == "A01"
     assert parked["filed_as"] == f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf"
