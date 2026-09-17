@@ -97,6 +97,8 @@ REVIEW_WARNING = "{n} file(s) the client already sent are still in " + REVIEW_DI
 REVIEW_ADVICE = "Identify them before sending, or you may ask for something you have."
 #: What a Partial row is asked with.
 PARTIAL_ASK = "{have} of {expected} received, {missing} still to come"
+#: The file-type ask, in the row's own terms (the reason's generic ask is for rows that take anything).
+EXTENSION_ASK = "we cannot open that file type; please send it as {accepted}"
 PARTIAL_ASK_COMPLETE = "{have} of {expected} received"
 
 SECTION_MISSING = "NOT YET RECEIVED"
@@ -203,6 +205,11 @@ def client_ask(item: RequestItem) -> str:
         return ""
 
     reason = reasons.find(item.validation_notes or "")
+    if reason is reasons.EXTENSION_NOT_ALLOWED and item.allowed_extensions:
+        # The ask names what this row takes; "a PDF or an Excel file" would
+        # send a client whose row wants a spreadsheet round the loop again.
+        return EXTENSION_ASK.format(accepted=" or ".join(
+            f".{ext}" for ext in item.allowed_extensions))
     return reason.client_ask if reason else GENERIC_ASK
 
 
@@ -576,5 +583,5 @@ if __name__ == "__main__":
         print(REVIEW_ADVICE)
 
     if ns.write:
-        written = write_draft(result, engagement_dir=ns.engagement_dir)
+        written = write_draft(result, engagement_dir=ns.engagement_dir, preserve_edits=True)
         print(f"\nDraft written to {written}")

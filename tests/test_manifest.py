@@ -540,11 +540,19 @@ def test_summarize_is_the_one_count():
 
 
 def test_a_period_with_a_year_implies_the_year_check(tmp_path):
+    import re
+
     from tracker.manifest import derived_date_pattern
 
     assert derived_date_pattern("TY2025") == r"(?i)\b2025\b"
-    assert derived_date_pattern("Dec 2025") == r"(?i)\b2025\b"
     assert derived_date_pattern("As of 12/31/2025") == r"(?i)\b2025\b"
+    # A Period that names a month asks for that month: a November statement
+    # is not the December one, and "12/31/2025" or "December 2025" both are.
+    december = derived_date_pattern("Dec 2025")
+    for text in ("Statement period 12/01/2025 - 12/31/2025", "December 2025 statement", "as of 12/31/2025"):
+        assert re.search(december, text), text
+    for text in ("Statement period 11/01/2025 - 11/30/2025", "Nov 2025", "Tax Year 2025"):
+        assert not re.search(december, text), text
     assert derived_date_pattern("Current") == ""
     assert derived_date_pattern("Acct 120250") == ""      # not a year
 

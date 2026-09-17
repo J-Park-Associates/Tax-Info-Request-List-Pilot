@@ -62,7 +62,11 @@ ITEMS = [
 
 def text_pdf(path, text: str, pages: int = 1):
     """A valid PDF whose every page says ``text`` (nothing, for a scan)."""
-    content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("ascii")
+    def _pdf_string(line: str) -> str:
+        return "(" + line.replace(chr(92), chr(92) * 2).replace("(", chr(92) + "(").replace(")", chr(92) + ")") + ")"
+    lines = text.split(chr(10)) if text else [""]
+    body = " ".join(f"{_pdf_string(line)} Tj T*" for line in lines)
+    content = f"BT /F1 12 Tf 14 TL 72 720 Td {body} ET".encode("latin-1", "replace")
     stream, font = 3 + pages, 4 + pages          # objects 3..2+pages are the pages
     kids = b" ".join(b"%d 0 R" % (3 + i) for i in range(pages))
     bodies = {

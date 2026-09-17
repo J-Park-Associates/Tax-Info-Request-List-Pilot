@@ -71,6 +71,7 @@ from tracker.content_check import (
     extract,
     extract_by_ocr,
     rules_fingerprint,
+    says,
 )
 from tracker.manifest import Override, RequestItem, has_routing_rules
 from tracker.validators import (
@@ -142,7 +143,7 @@ def _required_matched(text: str, item: RequestItem) -> bool:
     """
     if not item.required_keywords:
         return False
-    return all(contains_keyword(text, k) for k in item.required_keywords)
+    return all(says(text, k) for k in item.required_keywords)
 
 
 def _considers(item: RequestItem) -> bool:

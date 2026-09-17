@@ -17,7 +17,6 @@ import pytest
 
 import tracker.api as api
 from tests.samples import PRIOR_YEAR, col, row
-from tracker import reasons
 from tracker.filer import NEEDS_REVIEW
 from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
@@ -308,12 +307,13 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
     assert not [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     d01 = next(i for i in payload["state"]["items"] if i["identifier"] == "D01")
     assert "mortgage notes" in d01["any_keywords"]
-    # The re-scan saw it straight away. D01 accepts pdf/xlsx, so a .docx is
-    # Failed Validation with the reason - the person's filing is recorded,
-    # the rules still say what is wrong with it.
-    assert d01["status"] == Status.FAILED
-    assert reasons.EXTENSION_NOT_ALLOWED.matches(d01["validation_notes"])
-    assert ".docx" in d01["validation_notes"]
+    # The re-scan saw it straight away. D01 accepts pdf/xlsx and this is a
+    # .docx, but a person looked at it and filed it: their decision stands,
+    # the row is Received, and the note says the rules were not applied.
+    from tracker.scanner import ACCEPTED_NOTE
+
+    assert d01["status"] == Status.RECEIVED
+    assert ACCEPTED_NOTE.format(n=1) in d01["validation_notes"]
 
 
 def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_path):

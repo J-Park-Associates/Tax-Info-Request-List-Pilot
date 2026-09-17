@@ -161,6 +161,8 @@ FORM_VARIANTS: dict[str, tuple[str, ...]] = {
 #: What may sit between a number and its variant, or between a keyword's
 #: words: nothing ("1098T"), spaces, or any dash a PDF or a keyboard yields.
 _DASH_CHARS = "".join(("-", chr(0x2010), chr(0x2011), chr(0x2012), chr(0x2013), chr(0x2014), chr(0x2212), chr(0xAD)))   # hyphen, the Unicode dashes, minus, soft hyphen
+#: An apostrophe as a keyboard types it, as a PDF prints it, and as OCR reads it.
+_APOSTROPHES = "".join(("'", chr(0x2019), chr(0x2018), chr(0x02BC), chr(0x60)))
 _JOINER = rf"[\s{re.escape(_DASH_CHARS)}]*"
 _DASHES = re.compile(rf"[\s{re.escape(_DASH_CHARS)}]")
 
@@ -195,10 +197,22 @@ def keyword_pattern(keyword: str) -> str | None:
 
 
 def _seams(part: str) -> str:
-    """``part`` escaped, with a dash allowed where letters meet digits: a
-    keyword typed ``w2`` finds "W-2" as ``w-2`` finds "W2"."""
+    """``part`` escaped, with a dash allowed where letters meet digits (a
+    keyword typed ``w2`` finds "W-2" as ``w-2`` finds "W2"), a plural
+    allowed on a word (``fixed asset`` finds "Fixed Assets"), and a number
+    kept out of a larger amount (``704`` is not in "20,704" or "704.50")."""
     pieces = re.findall(r"[a-z]+|[0-9]+|[^a-z0-9]+", part)
-    return _JOINER.join(re.escape(piece) for piece in pieces)
+    out = []
+    for piece in pieces:
+        if piece.isalpha() and len(piece) >= 3:
+            out.append(re.escape(piece) + "(?:e?s)?")
+        elif piece.isdigit():
+            out.append(rf"(?<![0-9][,.]){re.escape(piece)}(?![,.][0-9])")
+        elif all(ch in _APOSTROPHES for ch in piece):
+            out.append(f"[{re.escape(_APOSTROPHES)}]?")   # typed straight, printed curly, or dropped
+        else:
+            out.append(re.escape(piece))
+    return _JOINER.join(out)
 
 
 def contains_keyword(text: str, keyword: str) -> bool:
@@ -222,15 +236,39 @@ def contains_keyword(text: str, keyword: str) -> bool:
     return any(not _joined_to_a_variant(text, keyword, m) for m in re.finditer(pattern, text))
 
 
+#: How much of a document's text is its title: where a form prints its own
+#: number. A form number a keyword names counts as content evidence only
+#: there - every 1040 says "Attach Form(s) W-2", every 1095-C's instructions
+#: name "Form 1095-A", every 1099's say "Form 1040-ES" - and those are
+#: sentences about other forms, not the form this is. A file name is read
+#: whole (it is all title).
+TITLE_CHARS = 400
+_FORM_NUMBER = re.compile(r"^(?:form\s+|schedule\s+)?([a-z]?\d{3,4}|w\d)(?:[a-z]{1,4})?$")
+
+
+def is_form_number(keyword: str) -> bool:
+    """True for a keyword that is a form's number (``1098``, ``form 1095-a``, ``W-2``)."""
+    bare = _DASHES.sub("", keyword.strip().lower())
+    match = _FORM_NUMBER.match(bare.replace("form", "form ", 1) if bare.startswith("form") else bare)
+    return match is not None and match.group(1) in FORM_VARIANTS
+
+
+def says(text: str, keyword: str) -> bool:
+    """``contains_keyword`` as content evidence: a form number only in the title."""
+    if is_form_number(keyword):
+        return contains_keyword(text[:TITLE_CHARS], keyword)
+    return contains_keyword(text, keyword)
+
+
 def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
     """Apply the manifest row's content rules to extracted text."""
-    missing = [k for k in item.required_keywords if not contains_keyword(text, k)]
+    missing = [k for k in item.required_keywords if not says(text, k)]
     if missing:
         listed = ", ".join(f"'{k}'" for k in missing)
         return ContentResult(ok=False, reason=reasons.WRONG_DOCUMENT.format(listed=listed))
 
     if item.any_keywords and not any(
-        contains_keyword(text, k) for k in item.any_keywords
+        says(text, k) for k in item.any_keywords
     ):
         listed = ", ".join(item.any_keywords)
         return ContentResult(ok=False, reason=reasons.NO_EXPECTED_KEYWORD.format(listed=listed))

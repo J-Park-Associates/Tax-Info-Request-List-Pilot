@@ -405,17 +405,22 @@ def test_a_keyword_with_nothing_in_it_matches_nothing(tmp_path):
     assert route_file(f, [dash, MORTGAGE]).identifier is None
 
 
-def _shipped_1040_rows(tmp_path):
-    """The 1040 catalog as an engagement loads it: the Period-derived year
-    check is live, which template_items() alone does not give."""
+def _shipped_rows(tmp_path, form="1040"):
+    """A catalog as an engagement loads it: the Period-derived date check
+    is live, which template_items() alone does not give."""
     from dataclasses import replace
 
     from tracker.manifest import create_template, load_manifest
     from tracker.templates import template_items
 
     manifest = tmp_path / MANIFEST_FILENAME
-    create_template(manifest, template_items("1040", year=2025))
+    manifest.unlink(missing_ok=True)
+    create_template(manifest, template_items(form, year=2025))
     return [replace(i, min_size_kb=0) for i in load_manifest(manifest)]
+
+
+def _shipped_1040_rows(tmp_path):
+    return _shipped_rows(tmp_path, "1040")
 
 
 @pytest.mark.parametrize("name, text, expected", [
@@ -434,7 +439,7 @@ def _shipped_1040_rows(tmp_path):
     ("5498-SA.pdf",
      "Form 5498-SA HSA, Archer MSA, or Medicare Advantage MSA Information 2025\n"
      "Box 2 Total HSA or Archer MSA contributions made in 2025", "K01"),
-    ("W-2.pdf", "Form W-2 Wage and Tax Statement 2025\nCopy B To Be Filed With Employee's FEDERAL Tax Return", "A01"),
+    ("W-2.pdf", "Form W-2 Wage and Tax Statement 2025\na Employee's social security number\nCopy B To Be Filed With Employee's FEDERAL Tax Return", "A01"),
     ("1095-A.pdf", "Form 1095-A Health Insurance Marketplace Statement 2025", "I01"),
     ("church.pdf", "Annual Contribution Statement 2025\nNo goods or services were provided in exchange for these contributions", "D01"),
     ("K-1.pdf", "Schedule K-1 (Form 1065) 2025 Partner's Share of Income\n5 Interest income 120", "F01"),

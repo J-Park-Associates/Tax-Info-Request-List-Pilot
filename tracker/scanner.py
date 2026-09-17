@@ -60,6 +60,7 @@ from tracker.scaffold import (
 from tracker.validators import (
     PdfVerdictCache,
     check_folder,
+    is_cloud_placeholder,
     is_ignored,
     iter_candidate_files,
     sha256_of,
@@ -135,6 +136,8 @@ def _filed_by_a_person(engagement_dir: Path) -> frozenset[Path]:
         if row.decision != FILED or not row.reason.startswith(ASSIGNED_BY_PERSON):
             continue
         path = engagement_dir / location
+        if is_cloud_placeholder(path):
+            continue              # not read: reading would download it; it waits as Pending Sync
         try:
             if row.digest and sha256_of(path) == row.digest:
                 accepted.add(path)
@@ -164,12 +167,14 @@ def _scan_item(
         fr for folder in folders for fr in check_folder(folder, item, pdf_cache=pdf_cache).files
     ]
     pending = [f for f in results if f.pending_sync]
-    tier2_failed = [f for f in results if not f.ok and not f.pending_sync]
+    # A person's decision waives tier 2 as well as tier 3: they looked at
+    # the file, whatever its size or type says.
+    tier2_failed = [f for f in results if not f.ok and not f.pending_sync and f.path not in accepted]
 
     valid: list[Path] = []
     content_failed: list[tuple[Path, str]] = []
     by_person = 0
-    for f in (f for f in results if f.ok):
+    for f in (f for f in results if f.ok or f.path in accepted):
         if f.path in accepted:
             valid.append(f.path)
             by_person += 1

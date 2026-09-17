@@ -82,6 +82,7 @@ def text_pdf(path: Path, lines: list[str]) -> Path:
 def w2_lines(employee: str, employer: str, year: int) -> list[str]:
     return [
         f"Form W-2 Wage and Tax Statement - Tax Year {year}",
+        "a Employee's social security number  XXX-XX-1234",
         f"Employer: {employer}",
         f"Employee: {employee}",
         "",

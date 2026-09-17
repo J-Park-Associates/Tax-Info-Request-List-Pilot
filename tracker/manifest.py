@@ -400,14 +400,30 @@ def _parse_enum(value: object, allowed: tuple[str, ...], column: str, row: int) 
     )
 
 
+_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+
 def derived_date_pattern(period: str) -> str:
-    """The year check a Period like ``TY2025`` or ``Dec 2025`` implies, or "".
+    """The date check a Period like ``TY2025`` or ``Dec 2025`` implies, or "".
 
     Case-insensitive, whole-token: ``\b2025\b`` matches "Tax Year 2025"
     and "12/31/2025" but not an account number that happens to contain it.
+    A Period that names a month asks for that month too - "December 2025",
+    "Dec 2025" or a "12/dd/2025" date - so a November statement is not the
+    December one a row asks for.
     """
     match = _PERIOD_YEAR.search(period or "")
-    return rf"(?i)\b{match.group(0)}\b" if match else ""
+    if not match:
+        return ""
+    year = match.group(0)
+    month = next((m for m in _MONTHS if (period or "").lower().lstrip().startswith(m)), None)
+    if month is None:
+        return rf"(?i)\b{year}\b"
+    number = _MONTHS.index(month) + 1
+    return (
+        rf"(?i)(?:\b{month}[a-z]*\b[^\n]{{0,20}}\b{year}\b|"
+        rf"\b{year}\b[^\n]{{0,20}}\b{month}[a-z]*\b|\b0?{number}/[0-3]?[0-9]/{year}\b)"
+    )
 
 
 def parse_extensions(value: object) -> tuple[str, ...]:
