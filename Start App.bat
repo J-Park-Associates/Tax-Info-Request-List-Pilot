@@ -23,6 +23,9 @@ if not exist "app\node_modules\electron" (
   popd
 )
 
+rem Electron is started through its own entry script, not the npx shim:
+rem the shim breaks when the folder's path contains an ampersand (as a
+rem firm's name often does). The script downloads the binary on first run.
 pushd app
-call npx electron .
+node node_modules\electron\cli.js .
 popd

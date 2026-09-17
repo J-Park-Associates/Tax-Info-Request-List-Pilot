@@ -200,8 +200,10 @@ tracker.api / create → tracker.scaffold → client drops into Shared/ → trac
 
 ### root
 
-- **`Build App.bat`**
-- **`Start App.bat`**
+- **`Build App.bat`** — Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.
+  - note: Reproducible from the commit (decision 46). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js.
+- **`Start App.bat`** — Runs the desktop app from source: checks for Python and Node, installs the Electron packages app/package-lock.json pins (`npm ci`, first run only) and starts Electron.
+  - note: Electron is started through its own entry script under `node`, never the `npx` shim: the shim breaks when the folder's path contains an ampersand, which the firm's own checkout does (decision 53). Electron downloads its binary on the first start, so the install step needs the network once.
 - **`api_entry.py`** — PyInstaller entry point: the portable app's one executable, which is the tracker API by default and the scheduled job (tracker.runner.main) when RUNNER_MODE_FLAG comes first.
   - CLI: `python api_entry.py`
   - imports: `tracker/api.py`, `tracker/runner.py`

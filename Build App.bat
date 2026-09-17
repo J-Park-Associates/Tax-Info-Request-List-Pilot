@@ -27,14 +27,21 @@ echo [2/4] Packaging Electron app (npm ci from package-lock.json)...
 pushd app
 call npm ci --no-audit --no-fund
 if errorlevel 1 (popd & echo npm ci failed - check your internet connection. & pause & exit /b 1)
-call npx electron-packager . "%NAME%" --platform=%PLATFORM% --arch=%ARCH% --out="..\%OUT%\dist" --overwrite
+rem The packager is run through its entry script, not the npx shim: the
+rem shim breaks when the folder's path contains an ampersand.
+node node_modules\@electron\packager\bin\electron-packager.mjs . "%NAME%" --platform=%PLATFORM% --arch=%ARCH% --out="..\%OUT%\dist" --overwrite
 if errorlevel 1 (popd & echo electron-packager failed & pause & exit /b 1)
 popd
 
 echo [3/4] Assembling portable folder...
 set PKG=%OUT%\dist\%NAME%-%PLATFORM%-%ARCH%
 if exist "%PKG%\resources\%API%" rmdir /s /q "%PKG%\resources\%API%"
-xcopy /e /i /q %OUT%\py\%API% "%PKG%\resources\%API%" >nul
+rem robocopy, not xcopy: xcopy gives up on long paths (a deep checkout plus
+rem the package's own depth is enough) and the copy would be silently
+rem incomplete. robocopy's exit codes below 8 all mean "copied".
+robocopy "%OUT%\py\%API%" "%PKG%\resources\%API%" /e /nfl /ndl /njh /njs /np >nul
+if errorlevel 8 (echo Copying the frozen API into the package failed & pause & exit /b 1)
+if not exist "%PKG%\resources\%API%\%API%.exe" (echo The package has no %API%.exe & pause & exit /b 1)
 
 set COMMIT=(not a git checkout)
 for /f "usebackq delims=" %%i in (`git rev-parse HEAD 2^>nul`) do set COMMIT=%%i
@@ -56,7 +63,7 @@ for /f "usebackq delims=" %%i in (`npm --version`) do set NPMVER=%%i
 
 echo [4/4] Done.
 echo.
-echo Portable app: %CD%\%PKG%
+echo Portable app: "%CD%\%PKG%"
 echo Copy that entire folder to a USB drive or laptop and double-click
 echo "%NAME%.exe".
 pause

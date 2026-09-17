@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 82,
     "edges": 256,
-    "reused": 59
+    "reused": 58
   },
   "node_types": [
     "artifact",
@@ -929,8 +929,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "538cf52c5412863f",
-      "lines": 255,
+      "sha256": "076df88e4bb3d80e",
+      "lines": 256,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -938,8 +938,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "560ed6a10ae40247",
-      "lines": 443,
+      "sha256": "aae2b61faa39b66e",
+      "lines": 451,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1022,15 +1022,19 @@
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "dff61d6c979b0cd4",
-      "lines": 63
+      "sha256": "cd82d2bafb075c5b",
+      "lines": 70,
+      "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
+      "notes": "Reproducible from the commit (decision 46). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js."
     },
     {
       "id": "Start App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "f34b0043b7df67e7",
-      "lines": 29
+      "sha256": "3cad81f88a5ada5a",
+      "lines": 32,
+      "role": "Runs the desktop app from source: checks for Python and Node, installs the Electron packages app/package-lock.json pins (`npm ci`, first run only) and starts Electron.",
+      "notes": "Electron is started through its own entry script under `node`, never the `npx` shim: the shim breaks when the folder's path contains an ampersand, which the firm's own checkout does (decision 53). Electron downloads its binary on the first start, so the install step needs the network once."
     },
     {
       "id": "api_entry.py",
