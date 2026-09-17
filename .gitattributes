@@ -1,0 +1,9 @@
+# Every checkout gets the bytes that were committed: LF, on every OS.
+#
+# The knowledge map (docs/repo-map.json) records a SHA-256 of every tracked
+# file, and tests/test_repo_map.py fails when a file no longer matches. A
+# clone whose Git rewrote line endings on checkout (core.autocrlf=true, the
+# default on a Windows runner) would make every file "changed" and the map
+# stale on one OS while current on another. Pinning LF here keeps the hash
+# the same everywhere, which is what lets CI run the same check on Windows.
+* text=auto eol=lf
