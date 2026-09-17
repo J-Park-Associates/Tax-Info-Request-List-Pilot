@@ -29,7 +29,6 @@ from openpyxl.utils import get_column_letter
 log = logging.getLogger("tracker.manifest")
 
 SHEET_NAME = "Requests"
-UNFILED_SHEET_NAME = "Unfiled"
 #: Who the engagement is for and how it is chased. Lives in the manifest so
 #: the folder carries everything the scheduled run needs to know about it -
 #: there is no separate registry file for a person to keep in step.
@@ -180,17 +179,6 @@ class StatusUpdate:
     file_count: int = 0
     received_date: dt.date | None = None
     validation_notes: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class UnfiledEntry:
-    """Something in Shared/ that belongs to no request row — never ignored,
-    never moved; reported on the Unfiled sheet for the accountant to triage."""
-
-    name: str
-    kind: str                 # e.g. "loose file in Shared root"
-    size_kb: float | None = None
-    seen: str = ""            # ISO date of the scan that noted it
 
 
 # --------------------------------------------------------------- parsing ----
@@ -491,30 +479,7 @@ def save_workbook_atomically(wb: Workbook, path: Path) -> None:
         temp.unlink(missing_ok=True)
 
 
-def _write_unfiled_sheet(wb: Workbook, entries: list[UnfiledEntry]) -> None:
-    """Replace the Unfiled sheet with a fresh snapshot (it is scanner-owned)."""
-    if UNFILED_SHEET_NAME in wb.sheetnames:
-        del wb[UNFILED_SHEET_NAME]
-    ws = wb.create_sheet(UNFILED_SHEET_NAME)
-    for idx, (header, width) in enumerate(
-        [("Item", 50), ("Type", 34), ("Size KB", 10), ("Noted On", 12)], start=1
-    ):
-        cell = ws.cell(row=1, column=idx, value=header)
-        cell.font = Font(bold=True)
-        ws.column_dimensions[get_column_letter(idx)].width = width
-    ws.freeze_panes = "A2"
-    for row, entry in enumerate(entries, start=2):
-        ws.cell(row=row, column=1, value=entry.name)
-        ws.cell(row=row, column=2, value=entry.kind)
-        ws.cell(row=row, column=3, value=entry.size_kb)
-        ws.cell(row=row, column=4, value=entry.seen or None)
-
-
-def _apply_updates(
-    path: Path,
-    updates: Mapping[str, StatusUpdate],
-    unfiled: list[UnfiledEntry] | None = None,
-) -> None:
+def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
     """Open the workbook for writing and set scanner columns. May raise
     PermissionError if Excel holds the file locked (caller retries)."""
     wb = load_workbook(path)  # NOT data_only: preserves any formulas on save
@@ -551,8 +516,6 @@ def _apply_updates(
                 column=columns[COL_VALIDATION_NOTES],
                 value=update.validation_notes or None,
             )
-        if unfiled is not None:
-            _write_unfiled_sheet(wb, unfiled)
         save_workbook_atomically(wb, path)
     finally:
         wb.close()
@@ -562,7 +525,6 @@ def write_statuses(
     path: Path | str,
     updates: Mapping[str, StatusUpdate],
     *,
-    unfiled: list[UnfiledEntry] | None = None,
     retries: int = 5,
     retry_delay: float = 0.5,
 ) -> bool:
@@ -573,22 +535,18 @@ def write_statuses(
     still locked after ``retries`` attempts with exponential backoff, the
     merged updates are saved to the sidecar and applied on the next call.
 
-    ``unfiled`` (when not None) replaces the Unfiled sheet in the same save.
-    It is a per-scan snapshot, so it is not sidecar-deferred — a locked write
-    simply drops it and the next successful scan rewrites it.
-
     Returns True if the workbook was written, False if deferred to sidecar.
     """
     path = Path(path)
     merged: dict[str, StatusUpdate] = _load_pending(path)
     merged.update(updates)
-    if not merged and unfiled is None:
+    if not merged:
         return True
 
     delay = retry_delay
     for attempt in range(1, retries + 1):
         try:
-            _apply_updates(path, merged, unfiled)
+            _apply_updates(path, merged)
             pending_path(path).unlink(missing_ok=True)
             return True
         except PermissionError as exc:
@@ -607,6 +565,63 @@ def write_statuses(
         pending_path(path).name,
     )
     return False
+
+
+# --------------------------------------------------------------- summary ----
+
+
+@dataclass(frozen=True, slots=True)
+class Summary:
+    """Where an engagement stands, counted one way for everyone.
+
+    The runner's log line, the reminder's "N of M are in", the scanner CLI
+    and the desktop summary all used to count for themselves, each with a
+    slightly different idea of what an override meant. This is the count.
+    Waived rows are nobody's to wait on and are outside every figure except
+    ``waived``; an Accepted row is Received whatever its status cell says,
+    so a signed-off row counts as in even before the next scan writes it.
+    """
+
+    counts: dict[str, int]   # status -> rows with it (waived rows excluded)
+    total: int               # rows anybody is waiting on (waived excluded)
+    received: int
+    outstanding: int         # Missing + Partial + Failed Validation
+    waived: int
+    unscanned: int           # rows with no status yet
+
+    @property
+    def line(self) -> str:
+        """``Received: 3 · Missing: 2 · Waived: 1`` - the same everywhere."""
+        parts = [f"{status}: {n}" for status, n in sorted(self.counts.items())]
+        if self.unscanned:
+            parts.append(f"Requested: {self.unscanned}")
+        if self.waived:
+            parts.append(f"Waived: {self.waived}")
+        return " · ".join(parts) or "no requests"
+
+
+def summarize(items: Iterable[RequestItem]) -> Summary:
+    """Count ``items`` the one agreed way (see :class:`Summary`)."""
+    counts: dict[str, int] = {}
+    total = received = outstanding = waived = unscanned = 0
+    for item in items:
+        if item.manual_override == Override.WAIVED:
+            waived += 1
+            continue
+        total += 1
+        status = item.status
+        if item.manual_override == Override.ACCEPTED:
+            status = Status.RECEIVED
+        if not status:
+            unscanned += 1
+            continue
+        counts[status] = counts.get(status, 0) + 1
+        if status == Status.RECEIVED:
+            received += 1
+        elif status in (Status.MISSING, Status.PARTIAL, Status.FAILED):
+            outstanding += 1
+    return Summary(counts=counts, total=total, received=received,
+                   outstanding=outstanding, waived=waived, unscanned=unscanned)
 
 
 # ----------------------------------------------------------------- check ----

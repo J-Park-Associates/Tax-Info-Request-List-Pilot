@@ -47,7 +47,7 @@ from pathlib import Path
 from typing import Sequence
 
 from tracker.filer import file_drops
-from tracker.manifest import ManifestError, Status, check_manifest
+from tracker.manifest import ManifestError, check_manifest
 from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.registry import Engagement, Registry, RegistryError, discover_engagements
 from tracker.reminder import (
@@ -83,9 +83,11 @@ class EngagementRun:
     review: int = 0
     waiting: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
-    warnings: list[str] = field(default_factory=list)     # manifest rows the rules cannot act on
-    index_deferred: bool = False   # _index.xlsx was locked; rows in the sidecar
+    warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
+    index_deferred: bool = False     # _index.xlsx was locked; rows in the sidecar
+    manifest_deferred: bool = False  # _manifest.xlsx was locked; statuses in the sidecar
     statuses: dict[str, int] = field(default_factory=dict)
+    outstanding_count: int = 0       # from tracker.manifest.summarize, the one count
     drafted: Path | None = None
     draft_note: str = ""      # why there is no draft, when there is a reason
     skipped: str = ""         # why the whole engagement was passed over
@@ -97,10 +99,7 @@ class EngagementRun:
 
     @property
     def outstanding(self) -> int:
-        return sum(
-            count for status, count in self.statuses.items()
-            if status in (Status.MISSING, Status.PARTIAL, Status.FAILED)
-        )
+        return self.outstanding_count
 
     def summary(self) -> str:
         if self.error:
@@ -116,6 +115,8 @@ class EngagementRun:
             parts.append(f"could not sort {len(self.file_errors)}")
         if self.index_deferred:
             parts.append("index locked (rows deferred)")
+        if self.manifest_deferred:
+            parts.append("manifest locked (statuses deferred)")
         parts.append(f"outstanding {self.outstanding}")
         if self.drafted:
             parts.append(f"drafted {self.drafted.name}")
@@ -233,13 +234,11 @@ def run_engagement(
         run.index_deferred = filed.index_deferred
 
         scanned = scan_engagement(engagement.path, today=today, dry_run=dry_run)
-        counts: dict[str, int] = {}
-        for identifier, update in scanned.updates.items():
-            if identifier in scanned.waived:
-                continue   # nobody is waiting on a waived row
-            if update.status:
-                counts[update.status] = counts.get(update.status, 0) + 1
-        run.statuses = counts
+        summary = scanned.summary
+        run.statuses = summary.counts
+        run.outstanding_count = summary.outstanding
+        run.warnings.extend(scanned.warnings)
+        run.manifest_deferred = scanned.deferred
 
         if not should_draft(engagement, today, reminders, weekday):
             run.draft_note = _why_no_draft(engagement, today, reminders, weekday)

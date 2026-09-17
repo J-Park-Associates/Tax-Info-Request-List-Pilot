@@ -5,12 +5,10 @@ and exit 1. All real logic lives in the tracker package; this module only
 serializes it, so the UI can never disagree with the scanner.
 
 Commands:
-  state     current manifest rows + unfiled sheet + useful paths
-  scaffold  build/refresh the Shared/ drop folder and Prepared/ tree
-  sort      file the client's drops into PBC/ and Prepared/
+  state     current manifest rows, the index, the one summary, useful paths
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
-  scan      run a full scan and write the manifest back
+  scan      one pass, exactly as the scheduled run makes it (no draft)
   assign    file one Needs Review document under a request (a person's call)
   check     validate the manifest now, with row numbers, instead of at the next scan
   unlock    clear a stale engagement lock (a fresh one is refused)
@@ -33,16 +31,17 @@ from tracker.locking import clear_stale_lock, lock_status
 from tracker.manifest import (
     EngagementInfo,
     ManifestError,
-    UNFILED_SHEET_NAME,
     check_manifest,
     create_template,
     load_engagement_info,
     load_manifest,
     pending_updates,
+    summarize,
     with_pending,
     write_engagement_info,
 )
-from tracker.registry import engagement_dirs
+from tracker.registry import engagement_dirs, engagement_from
+from tracker.runner import REMINDERS_NEVER, run_engagement
 from tracker.filer import (
     INDEX_FILENAME,
     FilingError,
@@ -260,22 +259,6 @@ def _engagement_dir(argv: list[str]) -> Path:
     return DEMO_ROOT / ENGAGEMENT_DIRNAME
 
 
-def _read_unfiled(manifest_path: Path) -> list[dict]:
-    if not manifest_path.exists():
-        return []
-    wb = load_workbook(manifest_path, data_only=True)
-    try:
-        if UNFILED_SHEET_NAME not in wb.sheetnames:
-            return []
-        return [
-            {"name": r[0], "kind": r[1], "size_kb": r[2], "seen": str(r[3] or "")}
-            for r in wb[UNFILED_SHEET_NAME].iter_rows(min_row=2, values_only=True)
-            if r and r[0]
-        ]
-    finally:
-        wb.close()
-
-
 def _lock_payload(engagement: Path) -> dict | None:
     status = lock_status(engagement)
     if status is None:
@@ -339,10 +322,16 @@ def _state(engagement: Path) -> dict:
     deferred = pending_updates(manifest_path)
     items = with_pending(load_manifest(manifest_path), deferred)
     info = load_engagement_info(manifest_path)
+    summary = summarize(items)
     return {
         "pending_statuses": len(deferred),
         "engagement": _info_payload(info),
         "lock": _lock_payload(engagement),
+        "summary": {
+            "line": summary.line, "counts": summary.counts, "total": summary.total,
+            "received": summary.received, "outstanding": summary.outstanding,
+            "waived": summary.waived, "unscanned": summary.unscanned,
+        },
         "items": [
             {
                 "identifier": i.identifier,
@@ -360,7 +349,6 @@ def _state(engagement: Path) -> dict:
             }
             for i in items
         ],
-        "unfiled": _read_unfiled(manifest_path),
         "index": [
             {
                 "received": e.received,
@@ -390,77 +378,39 @@ def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
 
-def _cmd_scaffold(argv: list[str]) -> dict:
-    engagement = _engagement_dir(argv)
-    result = scaffold_engagement(engagement, contact=CONTACT)
-    return {
-        "created": [p.name for p in result.created],
-        "existing": result.existing,
-        "waived": result.waived,
-        "state": _state(engagement),
-    }
-
-
-def _cmd_sort(argv: list[str]) -> dict:
-    """Sort the drop folder without validating — the filer on its own."""
-    engagement = _engagement_dir(argv)
-    filed = file_drops(engagement)
-    return {"sorted": _sorted_payload(filed), "state": _state(engagement)}
-
-
-def _sorted_payload(filed) -> dict:
-    return {
-        "filed": [
-            {
-                "original_name": e.original_name,
-                "identifier": e.identifier,
-                "filed_as": e.filed_as,
-                "prepared_location": e.prepared_location,
-                "reason": e.reason,
-            }
-            for e in filed.filed
-        ],
-        "review": [
-            {"original_name": e.original_name, "reason": e.reason}
-            for e in filed.review
-        ],
-        "duplicates": [
-            {"original_name": e.original_name, "reason": e.reason}
-            for e in filed.duplicates
-        ],
-        "waiting": [p.name for p in filed.waiting],
-        "errors": [
-            {"name": e.name, "error": e.error, "left_in_place": e.left_in_place}
-            for e in filed.errors
-        ],
-        "index_deferred": filed.index_deferred,
-    }
-
-
 def _cmd_scan(argv: list[str]) -> dict:
-    """What the scheduled job does: sort the drop folder, then validate."""
+    """One pass over this engagement - the same pass the scheduled job makes.
+
+    Scaffold, check, file, scan, in that order, with the same lock, the same
+    error isolation and the same warnings; only the Saturday draft is left
+    to the scheduled run (or `python -m tracker.reminder`). There is one
+    definition of a pass, in tracker.runner, and this is it.
+    """
     engagement = _engagement_dir(argv)
-    filed = file_drops(engagement)
-    report = scan_engagement(engagement)
-    return {
-        "sorted": _sorted_payload(filed),
-        "written": report.written,
-        "deferred": report.deferred,
-        "updates": {
-            ident: {
-                "status": u.status,
-                "file_count": u.file_count,
-                "received_date": u.received_date.isoformat() if u.received_date else None,
-                "validation_notes": u.validation_notes,
-            }
-            for ident, u in report.updates.items()
+    run = run_engagement(engagement_from(engagement), reminders=REMINDERS_NEVER)
+    payload = {
+        "run": {
+            "ok": run.ok,
+            "error": run.error,
+            "skipped": run.skipped,
+            "filed": run.filed,
+            "review": run.review,
+            "waiting": run.waiting,
+            "file_errors": run.file_errors,
+            "warnings": run.warnings,
+            "index_deferred": run.index_deferred,
+            "manifest_deferred": run.manifest_deferred,
+            "statuses": run.statuses,
+            "outstanding": run.outstanding,
         },
-        "unfiled": [
-            {"name": e.name, "kind": e.kind, "size_kb": e.size_kb, "seen": e.seen}
-            for e in report.unfiled
-        ],
-        "state": _state(engagement),
     }
+    try:
+        payload["state"] = _state(engagement)
+    except ManifestError as exc:
+        if run.error:
+            raise ManifestError(run.error) from None
+        raise
+    return payload
 
 
 def _cmd_reset(argv: list[str]) -> dict:
@@ -707,8 +657,6 @@ def _cmd_assign(argv: list[str]) -> dict:
 
 COMMANDS = {
     "state": _cmd_state,
-    "scaffold": _cmd_scaffold,
-    "sort": _cmd_sort,
     "priors": _cmd_priors,
     "rollover": _cmd_rollover,
     "scan": _cmd_scan,

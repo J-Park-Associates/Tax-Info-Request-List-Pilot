@@ -264,21 +264,6 @@ body {
 .chip-requested { background: #f8fafc; border-color: #e2e8f0; color: #64748b; }
 .chip-requested::before { background: #cbd5e1; }
 
-/* ── Unfiled ─────────────────────────────────────────────────────────── */
-
-.unfiled { list-style: none; padding: 0 18px 14px; }
-.unfiled li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  font-size: 13.5px;
-  border-top: 1px solid #eef2f7;
-}
-.unfiled li:first-child { border-top: none; }
-.unfiled .u-name { font-weight: 600; color: #b45309; }
-.unfiled .u-kind { color: var(--subtle); font-size: 12.5px; }
-
 /* ── Assurance bar ───────────────────────────────────────────────────── */
 
 .assurances {

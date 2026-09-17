@@ -82,31 +82,15 @@ function render(state) {
     </tr>`);
   $("rows").innerHTML = rows.join("");
 
-  const counts = {};
-  for (const item of state.items) {
-    const key = item.manual_override === "Waived" ? "Waived" : item.status || "Requested";
-    counts[key] = (counts[key] || 0) + 1;
-  }
-  const summary = Object.entries(counts).map(([k, n]) => `${k}: ${n}`);
+  // The one count, from the same summarize() the run log and the reminder use.
+  const summary = [state.summary ? state.summary.line : ""];
   if (state.pending_statuses) {
     summary.push(`${state.pending_statuses} update(s) waiting for Excel to close`);
   }
-  $("summary").textContent = summary.join("   ·   ");
+  $("summary").textContent = summary.filter(Boolean).join("   ·   ");
 
   renderReview(state);
   renderLock(state);
-
-  // Folders and loose files the scanner found that belong to no request.
-  // Parked documents are handled above, from the index, where the person
-  // can act on them.
-  const unfiled = (state.unfiled || []).filter((e) => !String(e.kind).startsWith("needs review"));
-  $("unfiled-card").classList.toggle("hidden", unfiled.length === 0);
-  $("unfiled-list").innerHTML = unfiled.map((e) => `
-    <li>
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-      <span class="u-name">${esc(e.name)}</span>
-      <span class="u-kind">${esc(e.kind)}</span>
-    </li>`).join("");
 }
 
 // ── Needs review: a person's decision, carried out by the filer ──────────
@@ -278,23 +262,27 @@ async function runScan() {
   try {
     const result = await call(withEng("scan"));
     render(result.state);
-    const summary = $("summary").textContent.replace(/\s+·\s+/g, "  ·  ");
-    const sorted = result.sorted || {};
+    const run = result.run;
+    const summary = result.state.summary ? result.state.summary.line : "";
+    if (run.skipped) {
+      banner(`Nothing done: ${run.skipped}.`, "warn");
+      return;
+    }
+    if (run.error) {
+      banner(`The pass stopped: ${run.error}`, "err");
+      return;
+    }
+    const did = [`filed ${run.filed}`];
+    if (run.review) did.push(`${run.review} to review`);
+    if (run.waiting) did.push(`${run.waiting} still syncing`);
     const problems = [];
-    if ((sorted.errors || []).length) {
-      problems.push(`${sorted.errors.length} file(s) could not be sorted: ${sorted.errors.map((e) => e.name).join(", ")}`);
-    }
-    if (sorted.index_deferred) {
-      problems.push("the index is open in Excel — new rows are saved beside it and will merge on the next scan");
-    }
-    if (!result.written) {
-      problems.push("the manifest is open in Excel — updates saved to a sidecar and will merge on the next scan");
-    }
-    if (problems.length) {
-      banner(`Scan complete, but ${problems.join("; ")}.   ${summary}`, "warn");
-    } else {
-      banner(`Scan complete — manifest updated.   ${summary}`, "ok");
-    }
+    if (run.file_errors.length) problems.push(`${run.file_errors.length} file(s) could not be sorted`);
+    if (run.index_deferred) problems.push("the index is open in Excel — new rows wait beside it");
+    if (run.manifest_deferred) problems.push("the manifest is open in Excel — statuses wait in the sidecar");
+    const lines = [`Pass complete — ${did.join(", ")}.   ${summary}`];
+    if (problems.length) lines.push(`But ${problems.join("; ")}.`);
+    for (const w of run.warnings) lines.push(`• ${w}`);
+    banner(lines.join("\n"), problems.length ? "warn" : run.warnings.length ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
   } finally {
