@@ -27,11 +27,10 @@ venv/
 ~$*
 
 app/node_modules/
-app/package-lock.json
 
-# Portable package build output (rebuild with "Build App.bat")
+# Portable package build output (rebuild with "Build App.bat"). The
+# lockfile and api_entry.spec are tracked: they are what makes it reproducible.
 build-portable/
-*.spec
 
 # Client-provided files are sensitive — never commit actual documents.
 # Track only the manifest/metadata, not the files themselves.

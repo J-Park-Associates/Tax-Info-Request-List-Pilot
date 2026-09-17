@@ -7,16 +7,15 @@ from openpyxl import Workbook
 from pypdf import PdfWriter
 
 from tracker import reasons
-from tracker.manifest import RequestItem
 from tracker.content_check import (
     ContentCache,
-    ContentResult,
     check_content,
     evaluate_rules,
     extract_text,
     has_content_rules,
     rules_fingerprint,
 )
+from tracker.manifest import RequestItem
 
 
 def text_pdf(path, text: str):
@@ -196,6 +195,36 @@ def test_cache_hit_and_invalidation(tmp_path, monkeypatch):
     assert rules_fingerprint(rule) != rules_fingerprint(stricter)
 
 
+def test_the_cache_is_keyed_on_content_not_path(tmp_path, monkeypatch):
+    # A routed drop and its working copy are the same bytes under two
+    # names; the second name must be a hit, not a second read.
+    calls = counting_extractor(monkeypatch)
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    rule = item(required_keywords=("Chase",))
+    cache = ContentCache(tmp_path / "cache.json")
+    assert check_content(pdf, rule, cache).ok
+    copy = tmp_path / "A01 - Bank Statement.pdf"
+    copy.write_bytes(pdf.read_bytes())
+    assert check_content(copy, rule, cache).ok
+    assert calls["n"] == 1
+    assert cache.digest_of(copy) == cache.digest_of(pdf)
+
+
+def test_a_cache_in_an_older_layout_is_reset(tmp_path):
+    import json
+
+    from tracker.content_check import CACHE_VERSION
+
+    cache_file = tmp_path / "cache.json"
+    cache_file.write_text(json.dumps({"version": 1, "files": {"old": {"ok": True}}}), encoding="utf-8")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page")
+    cache = ContentCache(cache_file)
+    assert cache.get(pdf, rules_fingerprint(item(required_keywords=("Chase",)))) is None
+    check_content(pdf, item(required_keywords=("Chase",)), cache)
+    cache.save()
+    assert json.loads(cache_file.read_text(encoding="utf-8"))["version"] == CACHE_VERSION
+
+
 def test_cache_corrupt_resets_silently(tmp_path):
     cache_file = tmp_path / "cache.json"
     cache_file.write_text("{broken", encoding="utf-8")
@@ -204,6 +233,30 @@ def test_cache_corrupt_resets_silently(tmp_path):
     assert check_content(pdf, item(required_keywords=("Chase",)), cache).ok
     cache.save()
     assert ContentCache(cache_file).get(pdf, rules_fingerprint(item(required_keywords=("Chase",))))
+
+
+def test_a_cache_save_leaves_no_temp_file_and_survives_a_crash(tmp_path, monkeypatch):
+    from tracker.manifest import TEMP_SUFFIX
+
+    cache_file = tmp_path / "cache.json"
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page")
+    rule = item(required_keywords=("Chase",))
+    cache = ContentCache(cache_file)
+    check_content(pdf, rule, cache)
+    cache.save()
+    before = cache_file.read_text(encoding="utf-8")
+
+    def refuse_replace(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("tracker.manifest.os.replace", refuse_replace)
+    text_pdf(pdf, "Chase Bank Statement page v2")
+    check_content(pdf, rule, cache)
+    with pytest.raises(OSError, match="disk full"):
+        cache.save()
+
+    assert cache_file.read_text(encoding="utf-8") == before   # the old cache survived
+    assert list(tmp_path.glob(f"*{TEMP_SUFFIX}")) == []
 
 
 def test_cache_prune(tmp_path):
@@ -251,7 +304,7 @@ def _many_page_pdf(path, texts):
 
 
 def test_only_the_first_pages_of_a_pdf_are_read(tmp_path):
-    from tracker.content_check import MAX_PAGES, extract_text
+    from tracker.content_check import extract_text
 
     texts = [f"page {i + 1} filler" for i in range(15)]
     texts[2] = "Form W-2 early"

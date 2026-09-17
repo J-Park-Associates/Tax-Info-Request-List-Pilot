@@ -26,12 +26,35 @@ function statusKey(status) {
   return entry ? entry.key : vocab.unscanned_key;
 }
 
+// Every piece of the page is built from API data as DOM nodes, never as an
+// HTML string: a client's file name, a note typed in Excel or a folder name
+// is text, whatever characters it contains. `el` is the one builder.
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (key === "className") node.className = value;
+    else if (key === "dataset") Object.assign(node.dataset, value);
+    else if (typeof value === "boolean") node[key] = value;   // checked, selected, disabled
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : String(child));
+  }
+  return node;
+}
+
+function show(id, nodes) {
+  $(id).replaceChildren(...nodes);
+}
+
 function chip(status, override) {
   if (override === vocab.overrides.waived) {
-    return `<span class="chip chip-${vocab.unscanned_key}">${esc(vocab.overrides.waived)}</span>`;
+    return el("span", { className: `chip chip-${vocab.unscanned_key}` }, vocab.overrides.waived);
   }
   const label = status || vocab.unscanned_label;
-  return `<span class="chip chip-${statusKey(status)}">${esc(label)}</span>`;
+  return el("span", { className: `chip chip-${statusKey(status)}` }, label);
 }
 
 function fill(pattern, values) {
@@ -40,12 +63,6 @@ function fill(pattern, values) {
 
 // The one button label the app owns; the docs that name it are pinned to it.
 const SCAN_LABEL = "Sort & Scan";
-
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"]/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
-  );
-}
 
 function toast(msg) {
   const el = $("toast");
@@ -77,19 +94,21 @@ function ruleTooltip(item) {
 function render(state) {
   paths = state.paths;
 
-  const rows = state.items.map((item) => `
-    <tr title="${esc(ruleTooltip(item))}">
-      <td class="col-id"><span class="req-id">${esc(item.identifier)}</span></td>
-      <td>
-        <div class="req-doc">${esc(item.document)}</div>
-        <div class="req-period">${esc(item.period)}${item.manual_override ? " · override: " + esc(item.manual_override) : ""}</div>
-      </td>
-      <td class="col-num">${item.file_count ?? "–"}${item.expected_count > 1 ? " / " + item.expected_count : ""}</td>
-      <td class="col-status">${chip(item.status, item.manual_override)}</td>
-      <td class="col-recv"><span class="req-recv">${esc(item.received_date || "—")}</span></td>
-      <td><div class="req-notes" title="${esc(item.validation_notes)}">${esc(item.validation_notes) || "—"}</div></td>
-    </tr>`);
-  $("rows").innerHTML = rows.join("");
+  show("rows", state.items.map((item) =>
+    el("tr", { title: ruleTooltip(item) },
+      el("td", { className: "col-id" }, el("span", { className: "req-id" }, item.identifier)),
+      el("td", {},
+        el("div", { className: "req-doc" }, item.document),
+        el("div", { className: "req-period" },
+          item.period, item.manual_override ? ` · override: ${item.manual_override}` : ""),
+      ),
+      el("td", { className: "col-num" },
+        `${item.file_count ?? "–"}${item.expected_count > 1 ? ` / ${item.expected_count}` : ""}`),
+      el("td", { className: "col-status" }, chip(item.status, item.manual_override)),
+      el("td", { className: "col-recv" }, el("span", { className: "req-recv" }, item.received_date || "—")),
+      el("td", {}, el("div", { className: "req-notes", title: item.validation_notes || "" },
+        item.validation_notes || "—")),
+    )));
 
   // The one count, from the same summarize() the run log and the reminder use.
   const summary = [state.summary ? state.summary.line : ""];
@@ -107,27 +126,30 @@ function render(state) {
 function renderReview(state) {
   const parked = (state.index || []).filter((e) => e.decision === vocab.decisions.needs_review);
   $("review-card").classList.toggle("hidden", parked.length === 0);
-  const options = state.items
-    .filter((i) => i.manual_override !== vocab.overrides.waived)
-    .map((i) => `<option value="${esc(i.identifier)}">${esc(i.identifier)} — ${esc(i.document)}</option>`)
-    .join("");
+  const choices = state.items.filter((i) => i.manual_override !== vocab.overrides.waived);
   const ids = new Set(state.items.map((i) => i.identifier));
-  $("review-list").innerHTML = parked.map((e) => {
+  show("review-list", parked.map((e) => {
     // The router's own candidates travel as data in the index; a person
     // still confirms, but the picker starts on the first one.
     const guess = (e.candidates || [])[0] || "";
     const picked = guess && ids.has(guess) ? guess : "";
-    return `
-    <li data-original="${esc(e.pbc_location)}">
-      <span class="r-name">${esc(e.original_name)}</span>
-      <span class="r-why">${esc(e.reason)}</span>
-      <select aria-label="Request for ${esc(e.original_name)}">
-        <option value="">Belongs to…</option>${options.replace(`value="${esc(picked)}"`, `value="${esc(picked)}" selected`)}
-      </select>
-      <input type="text" placeholder="keyword to learn (optional)" aria-label="Keyword to add to the request" title="A word this document contains that others like it will too. Added to the request's Any Keywords so the next one files itself." />
-      <button class="btn btn-primary r-file">File it</button>
-    </li>`;
-  }).join("");
+    return el("li", { dataset: { original: e.pbc_location } },
+      el("span", { className: "r-name" }, e.original_name),
+      el("span", { className: "r-why" }, e.reason),
+      el("select", { "aria-label": `Request for ${e.original_name}` },
+        el("option", { value: "" }, "Belongs to…"),
+        choices.map((i) =>
+          el("option", { value: i.identifier, selected: i.identifier === picked },
+            `${i.identifier} — ${i.document}`)),
+      ),
+      el("input", {
+        type: "text", placeholder: "keyword to learn (optional)",
+        "aria-label": "Keyword to add to the request",
+        title: "A word this document contains that others like it will too. Added to the request's Any Keywords so the next one files itself.",
+      }),
+      el("button", { className: "btn btn-primary r-file" }, "File it"),
+    );
+  }));
 }
 
 async function assignParked(li) {
@@ -159,10 +181,8 @@ async function assignParked(li) {
 }
 
 function renderEngagements() {
-  const select = $("eng-select");
-  select.innerHTML = engagements
-    .map((e) => `<option value="${esc(e.path)}"${e.path === active ? " selected" : ""}>${esc(e.name)}</option>`)
-    .join("");
+  show("eng-select", engagements.map((e) =>
+    el("option", { value: e.path, selected: e.path === active }, e.name)));
 }
 
 function banner(text, cls) {
@@ -181,7 +201,7 @@ function renderLock(state) {
   const since = lock.started ? ` started at ${lock.started.replace("T", " ").slice(0, 16)}` : "";
   if (lock.stale) {
     $("lock-text").textContent =
-      `A run${since} left its lock behind (${lock.age_minutes} min old) — it has most likely died. Nothing will sort or scan this engagement until the lock is cleared.`;
+      `A run${since} left its lock behind (${lock.age_minutes} min old) — it has most likely died. The next ${SCAN_LABEL} or scheduled pass will replace it; clear it here to tidy up now.`;
     notice.className = "banner warn";
     $("btn-unlock").classList.remove("hidden");
   } else {
@@ -284,7 +304,7 @@ async function refresh(preferPath) {
     if (!(await loadEngagements(preferPath))) {
       if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
       banner(`No engagements under ${clientsRoot} yet — click ${$("btn-new").textContent.trim()} to create the first.`, "ok");
-      $("rows").innerHTML = "";
+      show("rows", []);
       return;
     }
     render(await call(withEng("state")));
@@ -411,19 +431,20 @@ function priorMeta(p) {
 }
 
 function renderPriorPage() {
-  $("prior-list").innerHTML = priors.map((p) => `
-    <label class="prior-item">
-      <input type="radio" name="prior" value="${esc(p.path)}"${p.path === selectedPrior ? " checked" : ""} />
-      <span class="prior-name">${esc(p.name)}</span>
-      <span class="prior-meta">${esc(priorMeta(p))}</span>
-    </label>`).join("");
+  show("prior-list", priors.map((p) =>
+    el("label", { className: "prior-item" },
+      el("input", { type: "radio", name: "prior", value: p.path, checked: p.path === selectedPrior }),
+      el("span", { className: "prior-name" }, p.name),
+      el("span", { className: "prior-meta" }, priorMeta(p)),
+    )));
   $("prior-list").classList.toggle("hidden", priors.length === 0);
   $("prior-empty").classList.toggle("hidden", priors.length > 0);
   $("ro-create").disabled = priors.length === 0;
 
-  $("ro-form").innerHTML =
-    `<option value="">No template — carry last year's list as it is</option>` +
-    forms.map((f) => `<option value="${esc(f.id)}">${esc(f.label)} · ${esc(f.who)}</option>`).join("");
+  show("ro-form", [
+    el("option", { value: "" }, "No template — carry last year's list as it is"),
+    forms.map((f) => el("option", { value: f.id }, `${f.label} · ${f.who}`)),
+  ]);
   syncPriorDefaults();
 }
 
@@ -473,12 +494,12 @@ async function rollForward() {
 }
 
 function renderFormGrid() {
-  $("form-grid").innerHTML = forms.map((f) => `
-    <button class="form-card" data-form="${esc(f.id)}">
-      <span class="form-num">${esc(f.label)}</span>
-      <span class="form-who">${esc(f.who)}</span>
-      <span class="form-blurb">${esc(f.blurb)}</span>
-    </button>`).join("");
+  show("form-grid", forms.map((f) =>
+    el("button", { className: "form-card", dataset: { form: f.id } },
+      el("span", { className: "form-num" }, f.label),
+      el("span", { className: "form-who" }, f.who),
+      el("span", { className: "form-blurb" }, f.blurb),
+    )));
 }
 
 function chooseForm(formId) {
@@ -527,23 +548,25 @@ function templateSummary(t) {
 }
 
 function renderTemplateList() {
-  $("tmpl-list").innerHTML = templates.map((t, i) => `
-    <label class="tmpl-item">
-      <input type="checkbox" data-index="${i}" ${t.core ? "checked" : ""} />
-      <span class="tmpl-id">${esc(t.identifier)}</span>
-      <span class="tmpl-doc">${esc(t.document)}
-        <span class="tmpl-rules">${esc(templateSummary(t))}</span>
-      </span>
-    </label>`).join("");
+  show("tmpl-list", templates.map((t, i) =>
+    el("label", { className: "tmpl-item" },
+      el("input", { type: "checkbox", dataset: { index: String(i) }, checked: Boolean(t.core) }),
+      el("span", { className: "tmpl-id" }, t.identifier),
+      el("span", { className: "tmpl-doc" }, t.document, " ",
+        el("span", { className: "tmpl-rules" }, templateSummary(t))),
+    )));
 }
 
 function renderCustomList() {
-  $("cu-list").innerHTML = customItems.map((c, i) => `
-    <li>
-      <span class="tmpl-id">${esc(c.identifier)}</span>
-      <span>${esc(c.document)} <span class="tmpl-rules">${esc(c.extensions || vocab.extension_default_note)} · ${c.required_keywords ? `must contain "${esc(c.required_keywords)}"` : `keyword ${esc(vocab.keyword_default_note)}`}</span></span>
-      <button class="cu-remove" data-index="${i}" aria-label="Remove ${esc(c.document)}">✕</button>
-    </li>`).join("");
+  show("cu-list", customItems.map((c, i) =>
+    el("li", {},
+      el("span", { className: "tmpl-id" }, c.identifier),
+      el("span", {}, c.document, " ",
+        el("span", { className: "tmpl-rules" },
+          `${c.extensions || vocab.extension_default_note} · `,
+          c.required_keywords ? `must contain "${c.required_keywords}"` : `keyword ${vocab.keyword_default_note}`)),
+      el("button", { className: "cu-remove", dataset: { index: String(i) }, "aria-label": `Remove ${c.document}` }, "✕"),
+    )));
 }
 
 // Blank fields are sent blank: the catalog's item_from_spec() fills the

@@ -23,20 +23,27 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 import shutil
 import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from openpyxl import Workbook, load_workbook
-
-from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker import STANDING_RULES
+from tracker.filer import (
+    _CANDIDATE_SEP,
+    DUPLICATE,
+    FILED,
+    INDEX_FILENAME,
+    NEEDS_REVIEW,
+    FilingError,
+    assign_review_file,
+    read_index,
+)
+from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker.manifest import (
-    ISO_DATE_HINT,
     DEFAULT_EXTENSIONS,
     EXPECTED_PATTERN,
+    ISO_DATE_HINT,
     UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
@@ -52,49 +59,38 @@ from tracker.manifest import (
     summarize,
     with_pending,
     write_engagement_info,
+    write_text_atomically,
 )
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
-from tracker.runner import DRAFT_WEEKDAY, REMINDERS_NEVER, WEEKDAY_NAMES, run_engagement
-from tracker.filer import (
-    _CANDIDATE_SEP,
-    DUPLICATE,
-    FILED,
-    INDEX_FILENAME,
-    NEEDS_REVIEW,
-    FilingError,
-    assign_review_file,
-    file_drops,
-    read_index,
-)
 from tracker.rollover import (
+    CARRIED_SHEET,
     ORIGIN_PRIOR,
     UNKNOWN_YEAR_LABEL,
-    CARRIED_SHEET,
     carry_engagement_info,
     detect_year,
     next_tax_year,
     roll_forward,
     write_rollover_manifest,
 )
+from tracker.runner import DRAFT_WEEKDAY, REMINDERS_NEVER, WEEKDAY_NAMES, run_engagement
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PBC_DIR_NAME,
-    REVIEW_DIR_NAME,
     PREPARED_DIR_NAME,
+    REVIEW_DIR_NAME,
     SHARED_DIR_NAME,
     sanitize_component,
     scaffold_engagement,
 )
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.scheduling import (
-    INSTALL_HINT,
-    is_scheduling_host,
-    SCHEDULE_XML_ENCODING,
     DEFAULT_REPEAT_MINUTES,
     DEFAULT_START,
+    SCHEDULE_XML_ENCODING,
     SCHEDULE_XML_FILENAME,
     TASK_NAME,
     install_task,
+    is_scheduling_host,
     task_scheduler_xml,
 )
 from tracker.settings import (
@@ -112,15 +108,15 @@ from tracker.settings import (
 from tracker.templates import (  # the catalog; re-exported for the wizard
     EXTENSION_DEFAULT_NOTE,
     FORM_LABEL_PATTERN,
+    FORM_TEMPLATES,
+    FORM_TYPES,
     KEYWORD_DEFAULT_NOTE,
     PERIOD_PATTERN,
     YEAR_NOTE,
-    require_form,
-    FORM_TEMPLATES,
-    FORM_TYPES,
     base_year,
     default_tax_year,
     item_from_spec,
+    require_form,
     shift_item,
     template_items,
 )
@@ -155,9 +151,28 @@ def _new_engagement_dir(name: str) -> Path:
 
 
 def _engagement_dir(argv: list[str]) -> Path:
-    if ENGAGEMENT_FLAG in argv:
-        return Path(argv[argv.index(ENGAGEMENT_FLAG) + 1])
-    raise ManifestError(f"Pick an engagement first ({ENGAGEMENT_FLAG} <folder>)")
+    """The engagement a command is about: ``ENGAGEMENT_FLAG <folder>``.
+
+    A flag with nothing after it, or an empty folder, gets the same sentence
+    as no flag at all (it used to be a bare IndexError). Once a clients root
+    is set, the folder must lie under it: the app only ever names folders
+    the root listed, so anything else is a mistake, not a request.
+    """
+    hint = f"Pick an engagement first ({ENGAGEMENT_FLAG} <folder>)"
+    if ENGAGEMENT_FLAG not in argv:
+        raise ManifestError(hint)
+    position = argv.index(ENGAGEMENT_FLAG) + 1
+    given = argv[position].strip() if position < len(argv) else ""
+    if not given:
+        raise ManifestError(hint)
+    engagement = Path(given)
+    root = clients_root()
+    if root is not None and root.is_dir():
+        try:
+            engagement.resolve().relative_to(root.resolve())
+        except ValueError:
+            raise ManifestError(f"{engagement} is not under the clients root {root}") from None
+    return engagement
 
 
 #: How a new engagement is named when nobody types a name. The renderer
@@ -295,7 +310,9 @@ def _engagement_name(requested: str, fallback: str) -> str:
 
 def _state(engagement: Path) -> dict:
     manifest_path = engagement / MANIFEST_FILENAME
-    deferred = pending_updates(manifest_path)
+    # Showing the engagement is a read: nothing is moved, not even a sidecar
+    # that cannot be parsed - the next real run is what moves it aside.
+    deferred = pending_updates(manifest_path, quarantine=False)
     items = with_pending(load_manifest(manifest_path), deferred)
     info = load_engagement_info(manifest_path)
     summary = summarize(items)
@@ -313,7 +330,7 @@ def _state(engagement: Path) -> dict:
             for i in items
         ],
         "index": [asdict(e) | {"filed_as": e.filed_as, "candidates": e.candidate_list}
-                  for e in read_index(engagement / INDEX_FILENAME)],
+                  for e in read_index(engagement / INDEX_FILENAME, quarantine=False)],
         "paths": {
             "engagement": str(engagement),
             "shared": str(engagement / SHARED_DIR_NAME),
@@ -357,7 +374,7 @@ def _cmd_scan(argv: list[str]) -> dict:
     }
     try:
         payload["state"] = _state(engagement)
-    except ManifestError as exc:
+    except ManifestError:
         if run.error:
             raise ManifestError(run.error) from None
         raise
@@ -545,6 +562,11 @@ def _cmd_assign(argv: list[str]) -> dict:
     rewritten as Filed (attributed to a person), the keyword - if given - is
     added to the request so the next such file routes itself, and the
     engagement is re-scanned so the status reflects it straight away.
+
+    The filing and the re-scan each take the engagement lock on their own.
+    A scheduled pass that slips in between only files and scans the same
+    folder under the same lock, so nothing is lost; one lock held across
+    both would be a second locking rule for no gain.
     """
     engagement = _engagement_dir(argv)
     spec = json.loads(sys.stdin.read() or "{}")
@@ -608,23 +630,23 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
 
     JSON on stdin (all optional): {"start": "HH:MM", "every": minutes},
     defaulting to tracker.scheduling's DEFAULT_START / DEFAULT_REPEAT_MINUTES. The
-    root, the Python and the working folder are the ones this app runs
-    with, so the job walks exactly the folder the app shows. A frozen build
-    has no Python module tree to run the job from and says so.
+    root and the working folder are the ones this app runs with, so the job
+    walks exactly the folder the app shows. From a source checkout the job
+    is the Python this API runs under; in the packaged app it is this same
+    executable in runner mode (api_entry.py, RUNNER_MODE_FLAG), which needs
+    none of the environment the shell gives the API.
     """
-    if getattr(sys, "frozen", False):
-        raise ManifestError(
-            "Install the schedule from a Python checkout of the tracker "
-            f"({INSTALL_HINT}); the packaged app cannot run the job"
-        )
     spec = json.loads(sys.stdin.read() or "{}")
     root = _root()
     start = str(spec.get("start") or DEFAULT_START)
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
+    frozen = bool(getattr(sys, "frozen", False))
+    working_dir = Path(sys.executable).resolve().parent if frozen else REPO_ROOT
     xml_path = settings_path().with_name(SCHEDULE_XML_FILENAME)
-    xml_path.write_text(
-        task_scheduler_xml(python=sys.executable, root=root, working_dir=REPO_ROOT,
-                           start_time=start, repeat_minutes=every),
+    write_text_atomically(
+        xml_path,
+        task_scheduler_xml(python=sys.executable, root=root, working_dir=working_dir,
+                           start_time=start, repeat_minutes=every, frozen=frozen),
         encoding=SCHEDULE_XML_ENCODING,
     )
     try:
@@ -639,6 +661,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         "start": start,
         "every": every,
         "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
+        "frozen": frozen,
     }
 
 

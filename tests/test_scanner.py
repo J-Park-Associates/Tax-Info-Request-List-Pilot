@@ -4,19 +4,17 @@ import datetime as dt
 import json
 
 import pytest
-
-from tracker.locking import STALE_LOCK_SECONDS
 from openpyxl import load_workbook
-from pypdf import PdfWriter
 
 from tests.samples import col
 from tracker import reasons
+from tracker.locking import LOCK_FILENAME, STALE_LOCK_SECONDS
 from tracker.manifest import (
-    SUMMARY_SEPARATOR,
     COL_EXPECTED_COUNT,
     COL_MANUAL_OVERRIDE,
     ENGAGEMENT_SHEET_NAME,
     SHEET_NAME,
+    SUMMARY_SEPARATOR,
     Override,
     RequestItem,
     Status,
@@ -30,15 +28,14 @@ from tracker.scaffold import (
     scaffold_engagement,
 )
 from tracker.scanner import (
+    CACHE_FILENAME,
     DUPLICATES_NOTE,
     OVERRIDE_NOTE,
+    PARTIAL_NOTE,
     REGRESSION_COUNT_RAISED,
     REGRESSION_FILES_CHANGED,
     REGRESSION_NOTE,
     SYNCING_NOTE,
-    PARTIAL_NOTE,
-    CACHE_FILENAME,
-    LOCK_FILENAME,
     ScanLockedError,
     scan_engagement,
 )
@@ -290,6 +287,22 @@ def test_stale_lock_replaced_and_released(engagement):
     report = scan_engagement(engagement, today=DAY1)   # takes over stale lock
     assert report.written
     assert not lock.exists()                           # released afterwards
+
+
+def test_the_scanner_reads_the_manifest_only_under_the_lock(engagement, monkeypatch):
+    # A sort that finished between an early read and the lock would be
+    # invisible to the scan, so the manifest is read after the lock is held.
+    import tracker.scanner as scanner_module
+
+    real = scanner_module.load_manifest
+
+    def under_the_lock(path):
+        assert (engagement / LOCK_FILENAME).exists(), "manifest read before the lock was taken"
+        return real(path)
+
+    monkeypatch.setattr(scanner_module, "load_manifest", under_the_lock)
+    assert scan_engagement(engagement, today=DAY1).written
+    assert not (engagement / LOCK_FILENAME).exists()
 
 
 def test_content_cache_created_and_pruned(engagement):

@@ -11,11 +11,11 @@ from xml.etree import ElementTree
 import pytest
 
 from tracker.scheduling import (
+    DEFAULT_START,
     N8N_RUN_NODE,
     N8N_TRIGGER_NODE,
-    TASK_XML_NAMESPACE,
-    DEFAULT_START,
     TASK_NAME,
+    TASK_XML_NAMESPACE,
     is_absolute_path,
     n8n_workflow,
     resolve_root,
@@ -188,6 +188,37 @@ def test_the_command_line_is_built_once_for_both_schedulers():
     assert runner_arguments(ARGS["root"]) in command
     assert start_hour(DEFAULT_START) == int(DEFAULT_START.split(":")[0]) and start_hour("18:30") == 18
     assert flow["nodes"][0]["parameters"]["rule"]["interval"][0]["triggerAtHour"] == start_hour()
+
+
+def test_the_packaged_job_is_the_same_command_line_behind_the_api_executable():
+    # The packaged app has no Python: its schedule runs its own executable
+    # in runner mode. Same arguments after the program, one way in per host.
+    from tracker.runner import LOG_FLAG, RUNNER_MODE_FLAG
+    from tracker.scheduling import runner_arguments
+
+    exe = r"C:\Apps\Tracker\resources\api\api.exe"
+    root = parsed(python=exe, frozen=True)
+    arguments = root.find(".//t:Exec/t:Arguments", NS).text
+    assert root.find(".//t:Exec/t:Command", NS).text == exe
+    assert arguments.startswith(RUNNER_MODE_FLAG) and "-m tracker.runner" not in arguments
+    assert arguments == runner_arguments(ARGS["root"], frozen=True)
+    flow = n8n_workflow(**{**ARGS, "python": exe}, frozen=True)
+    assert runner_arguments(ARGS["root"], frozen=True) in flow["nodes"][1]["parameters"]["command"]
+
+    tail = f'"{ARGS["root"]}" {LOG_FLAG}'
+    assert runner_arguments(ARGS["root"]).endswith(tail)
+    assert runner_arguments(ARGS["root"], frozen=True).endswith(tail)
+
+
+def test_the_time_limit_is_the_locks_run_limit_rendered():
+    from tracker.locking import RUN_TIME_LIMIT_SECONDS
+    from tracker.scheduling import EXECUTION_TIME_LIMIT, iso_duration
+
+    limit = parsed().find(".//t:Settings/t:ExecutionTimeLimit", NS).text
+    assert limit == EXECUTION_TIME_LIMIT == iso_duration(RUN_TIME_LIMIT_SECONDS)
+    assert iso_duration(2 * 3600) == "PT2H" and iso_duration(90 * 60) == "PT90M"
+    with pytest.raises(ValueError):
+        iso_duration(61)
 
 
 def test_the_description_names_the_drafting_day_from_the_runner():

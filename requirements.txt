@@ -1,7 +1,9 @@
-# Runtime
-openpyxl>=3.1
-pypdf>=6
-pdfplumber>=0.11
+# Runtime. Pinned exactly: the suite passes against these, and a build made
+# next month must freeze the same code as one made today. Bump deliberately,
+# run the suite, commit the new pin. (Build-time tools: requirements-build.txt.)
+openpyxl==3.1.5
+pypdf==6.7.4
+pdfplumber==0.11.10
 
 # Optional OCR fallback for scanned/image-only PDFs. Without these,
 # such PDFs are flagged for a person (reasons.NO_TEXT_LAYER) — nothing breaks.
@@ -9,4 +11,5 @@ pdfplumber>=0.11
 #   plus the Tesseract engine: https://github.com/UB-Mannheim/tesseract/wiki
 
 # Dev / test
-pytest>=8
+pytest==9.1.1
+ruff==0.14.3

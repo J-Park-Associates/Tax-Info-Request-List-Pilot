@@ -1,9 +1,15 @@
-# Runs the test suite and verifies the repository map still matches the tree.
+# Runs the test suite and verifies the repository map still matches the tree,
+# on Linux and on Windows.
 #
 # The map check is here because docs/repo-map.md is what agents read instead of
 # re-scanning the repo (see CLAUDE.md). Its freshness is guarded by a test, but
 # a guard nothing runs is a convention rather than a rule — this is what makes
 # it enforced on every push and pull request.
+#
+# Windows is in the matrix because the firm's machine is Windows: the held
+# engagement lock, the atomic os.replace over a file Excel may hold, and the
+# path handling all behave differently there, and the suite has tests that
+# only run on Windows.
 name: CI
 
 on:
@@ -21,8 +27,12 @@ permissions:
 
 jobs:
   test:
-    name: Tests and repository map
-    runs-on: ubuntu-latest
+    name: Tests and repository map (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +44,10 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -42,8 +56,22 @@ jobs:
       - name: Run the test suite
         run: python -m pytest -q
 
+      # Dead code and unused imports are the linter's job, not a reviewer's
+      # (pyproject.toml says what it checks).
+      - name: Lint
+        if: always()
+        run: python -m ruff check .
+
       # always(): a stale map and a failing test are separate problems, and
       # seeing both in one run beats finding the second after fixing the first.
       - name: Check the repository map is current
         if: always()
         run: python tools/repo_map.py check
+
+      # The Electron shell has no test suite of its own; at least it must parse.
+      - name: Check the Electron shell parses
+        if: always()
+        run: |
+          node --check app/main.js
+          node --check app/preload.js
+          node --check app/renderer/app.js

@@ -10,8 +10,8 @@ import json
 import pytest
 
 from tracker.settings import (
-    KEY_CLIENTS_ROOT,
     ENV_SETTINGS_DIR,
+    KEY_CLIENTS_ROOT,
     SETTINGS_FILENAME,
     SettingsError,
     clients_root,
@@ -45,6 +45,16 @@ def test_a_folder_that_does_not_exist_is_refused(beside_the_app):
     with pytest.raises(SettingsError, match="not a folder"):
         set_clients_root(beside_the_app / "Clientz")
     assert clients_root() is None
+
+
+def test_the_settings_file_is_swapped_in_whole(beside_the_app):
+    from tracker.manifest import TEMP_SUFFIX
+
+    clients = beside_the_app / "Clients"
+    clients.mkdir()
+    set_clients_root(clients)
+    assert list(settings_path().parent.glob(f"*{TEMP_SUFFIX}")) == []
+    assert clients_root() == clients
 
 
 def test_an_unreadable_settings_file_is_an_error_not_a_default(beside_the_app):

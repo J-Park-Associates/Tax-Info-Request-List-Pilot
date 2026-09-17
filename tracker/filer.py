@@ -29,7 +29,9 @@ Guarantees:
 - **One run at a time.** The filer holds the engagement lock
   (:mod:`tracker.locking`, the same one the scanner takes) while it works,
   so a scheduled run and a click in the desktop app cannot both move the
-  same originals and overwrite each other's index rows.
+  same originals and overwrite each other's index rows. The lock is taken
+  before the manifest, the index or the drop folder is read, so what a run
+  decides from cannot change under it.
 - **Wherever the client put it counts.** ``PBC_DIR_NAME/`` is visible to the client
   and the README says "drop it anywhere", so a file that lands straight in
   ``PBC_DIR_NAME/`` is treated as a drop that has already been preserved: it is
@@ -41,9 +43,13 @@ Guarantees:
   own: a file the sync client still holds open is left in place for the
   next run, a file that fails *after* it was preserved is recorded as
   needing review with the error, and the index is written whatever happens
-  to the files after it. If Excel has ``INDEX_FILENAME`` open, the new rows
-  wait in ``INDEX_PENDING_FILENAME`` and are merged into the next write —
-  nothing that was moved into ``PBC_DIR_NAME/`` is ever left unrecorded.
+  to the files after it. If Excel has ``INDEX_FILENAME`` open, the whole
+  index as it should now read waits in ``INDEX_PENDING_FILENAME`` - a
+  snapshot, not just the new rows, because a row a person rewrote (a
+  parked file they filed) is as much at stake as a row that was added -
+  and ``read_index`` returns that snapshot until the workbook can be
+  rewritten from it. Nothing that was moved into ``PBC_DIR_NAME/`` is ever
+  left unrecorded, and nothing a person decided is ever forgotten.
 """
 
 from __future__ import annotations
@@ -60,6 +66,7 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 
+from tracker.content_check import CACHE_FILENAME, ContentCache
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     COL_IDENTIFIER,
@@ -73,6 +80,7 @@ from tracker.manifest import (
     pending_path,
     quarantine_sidecar,
     save_workbook_atomically,
+    write_json_atomically,
 )
 from tracker.router import route_file
 from tracker.scaffold import (
@@ -87,6 +95,7 @@ from tracker.scaffold import (
     sanitize_component,
 )
 from tracker.validators import (
+    PdfVerdictCache,
     extension_of,
     is_cloud_placeholder,
     is_ignored,
@@ -102,6 +111,13 @@ INDEX_SHEET = "Index"
 #: Rows that could not be written because Excel had the index open; named
 #: by the manifest's one sidecar rule.
 INDEX_PENDING_FILENAME = pending_path(Path(INDEX_FILENAME)).name
+#: The sidecar's shape. Version 2 is a snapshot of the whole index (``entries``
+#: is every row, edits included) that stands in for the workbook until Excel
+#: lets go. A sidecar with no version key - a bare list, written before this
+#: - holds only rows to append after the workbook's, and is folded in once.
+INDEX_SIDECAR_VERSION = 2
+_SIDECAR_VERSION_KEY = "version"
+_SIDECAR_ENTRIES_KEY = "entries"
 _MAX_STEM = 110
 
 
@@ -266,28 +282,71 @@ def _pending_index_path(path: Path) -> Path:
     return pending_path(path)
 
 
-def _read_pending_index(path: Path) -> list[IndexEntry]:
+@dataclass(frozen=True, slots=True)
+class _PendingIndex:
+    """What the sidecar holds: the whole index (a snapshot) or, from an
+    older sidecar, only rows to append after the workbook's."""
+
+    entries: list[IndexEntry]
+    snapshot: bool
+
+
+def _entry_from_json(row: object) -> IndexEntry:
+    """An IndexEntry from a sidecar row, ignoring keys a later version may add:
+    a row for an original already moved must never be thrown away over a
+    field this version does not know."""
+    if not isinstance(row, dict):
+        raise TypeError(f"index sidecar row is {type(row).__name__}, not an object")
+    known = {f.name for f in fields(IndexEntry)}
+    return IndexEntry(**{key: value for key, value in row.items() if key in known})
+
+
+def _read_pending_index(path: Path, *, quarantine: bool = True) -> _PendingIndex | None:
     sidecar = _pending_index_path(path)
     if not sidecar.exists():
-        return []
+        return None
     try:
         raw = json.loads(sidecar.read_text(encoding="utf-8"))
-        return [IndexEntry(**row) for row in raw]
-    except (json.JSONDecodeError, TypeError, ValueError, OSError) as exc:
-        quarantine_sidecar(sidecar, exc, "index")
-        return []
+        if isinstance(raw, list):                       # before INDEX_SIDECAR_VERSION
+            return _PendingIndex([_entry_from_json(row) for row in raw], snapshot=False)
+        if not isinstance(raw, dict):
+            raise TypeError(f"index sidecar is {type(raw).__name__}, not an object")
+        version = raw.get(_SIDECAR_VERSION_KEY)
+        if version != INDEX_SIDECAR_VERSION:
+            # Refused loudly rather than read half-right: nothing is guessed.
+            raise ValueError(f"index sidecar version {version!r}; this version reads {INDEX_SIDECAR_VERSION}")
+        rows = [_entry_from_json(row) for row in raw[_SIDECAR_ENTRIES_KEY]]
+        return _PendingIndex(rows, snapshot=True)
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError) as exc:
+        quarantine_sidecar(sidecar, exc, "index", quarantine=quarantine)
+        return None
 
 
 def _save_pending_index(path: Path, entries: list[IndexEntry]) -> None:
-    _pending_index_path(path).write_text(
-        json.dumps([asdict(e) for e in entries], indent=2), encoding="utf-8"
-    )
+    """The whole index, as ``write_index`` would have written it."""
+    write_json_atomically(_pending_index_path(path), {
+        _SIDECAR_VERSION_KEY: INDEX_SIDECAR_VERSION,
+        _SIDECAR_ENTRIES_KEY: [asdict(e) for e in entries],
+    })
 
 
-def read_index(path: Path) -> list[IndexEntry]:
-    """Every index row, oldest first: the workbook plus any rows a locked
-    Excel forced into the pending sidecar. Empty if there is no index yet."""
-    return _read_index_workbook(path) + _read_pending_index(path)
+def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
+    """Every index row, oldest first. Empty if there is no index yet.
+
+    While Excel holds the workbook, ``INDEX_PENDING_FILENAME`` is the index:
+    the snapshot the last run could not write replaces what the workbook
+    says, because the workbook is the *older* of the two. A sidecar from
+    before ``INDEX_SIDECAR_VERSION`` holds only new rows, appended after
+    the workbook's.
+
+    ``quarantine=False`` is for readers and dry runs: an unreadable sidecar
+    is reported and skipped, never moved - looking changes nothing.
+    """
+    pending = _read_pending_index(path, quarantine=quarantine)
+    if pending is not None and pending.snapshot:
+        return list(pending.entries)
+    workbook = _read_index_workbook(path)
+    return workbook + pending.entries if pending is not None else workbook
 
 
 def _as_float(value: object) -> float:
@@ -352,12 +411,20 @@ def write_index(
     """Rewrite ``INDEX_FILENAME`` from ``entries`` (oldest first), lock-resiliently.
 
     The index is the audit trail for originals that have *already been
-    moved*, so losing a row is not an option. If Excel holds the workbook
-    open, the write is retried with backoff; if it stays locked, every row
-    not yet in the workbook is saved to ``INDEX_PENDING_FILENAME`` and folded
-    into the next successful write (``read_index`` already sees them).
+    moved* and for decisions a person has *already made*, so losing a row,
+    or an edit to one, is not an option. If Excel holds the workbook open,
+    the write is retried with backoff; if it stays locked, ``entries`` -
+    all of it, exactly what the workbook should now say - is saved to
+    ``INDEX_PENDING_FILENAME``. ``read_index`` returns that snapshot in the
+    workbook's place until a later write lands it. Saving only the rows
+    past the workbook's end used to drop a row that had been rewritten
+    (a parked file a person filed) while the file itself had already moved.
 
-    Returns True if the workbook was written, False if rows were deferred.
+    A snapshot written while Excel holds the workbook wins over cells typed
+    into it during that window; that was always so, since every write
+    rebuilds the workbook from ``entries``. Nobody edits the index by hand.
+
+    Returns True if the workbook was written, False if the snapshot was deferred.
     """
     retries = LOCK_RETRIES if retries is None else retries
     delay = LOCK_RETRY_DELAY if retry_delay is None else retry_delay
@@ -372,11 +439,10 @@ def write_index(
                 time.sleep(delay)
                 delay *= 2
 
-    already = len(_read_index_workbook(path))
-    _save_pending_index(path, entries[already:])
+    _save_pending_index(path, entries)
     log.error(
-        "%s still locked after %d attempts; %d row(s) deferred to %s",
-        path.name, retries, len(entries) - already, INDEX_PENDING_FILENAME,
+        "%s still locked after %d attempts; a snapshot of all %d row(s) deferred to %s",
+        path.name, retries, len(entries), INDEX_PENDING_FILENAME,
     )
     return False
 
@@ -456,8 +522,6 @@ def file_drops(
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
-    items = load_manifest(engagement_dir / MANIFEST_FILENAME)
-    by_id = {i.identifier: i for i in items}
 
     shared_dir = engagement_dir / SHARED_DIR_NAME
     pbc_dir = shared_dir / PBC_DIR_NAME
@@ -466,32 +530,48 @@ def file_drops(
     index_path = engagement_dir / INDEX_FILENAME
 
     report = FileReport(engagement_dir=engagement_dir, dry_run=dry_run)
-    entries = read_index(index_path)
-    known = {e.digest: e for e in entries if e.digest}
-
-    drops = iter_drops(shared_dir)
-    strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
-    if not drops and not strays:
-        # Nothing new, but rows a locked Excel deferred last time still
-        # belong in the workbook - fold them in as soon as it is free.
-        if not dry_run and _pending_index_path(index_path).exists():
-            report.index_deferred = not write_index(index_path, entries)
-        return report
-
-    stamp = today.isoformat()
-    # Names claimed during this run, so a dry run previews the same numbering
-    # a real run would produce (nothing is on disk to collide with yet).
-    reserved: dict[Path, set[str]] = {}
-    recorded = len(entries)
-    # A sort and a scan must never overlap (see tracker.locking). A dry run
-    # writes nothing, so it needs no lock and never blocks a real run.
+    # A sort and a scan must never overlap (see tracker.locking), and the
+    # lock comes before anything is read: the manifest, the index and the
+    # drop folder are what this run decides from, and a run that finished
+    # in between must not be invisible to it. A dry run writes nothing, so
+    # it needs no lock and never blocks a real run.
     with engagement_lock(engagement_dir) if not dry_run else nullcontext():
+        items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+        by_id = {i.identifier: i for i in items}
+        entries = read_index(index_path, quarantine=not dry_run)
+        known = {e.digest: e for e in entries if e.digest}
+        # Rows a locked Excel deferred last time still belong in the workbook -
+        # fold them in as soon as it is free, whether or not this run sorts anything.
+        sidecar_waiting = _pending_index_path(index_path).exists()
+
+        drops = iter_drops(shared_dir)
+        strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
+        if not drops and not strays:
+            if not dry_run and sidecar_waiting:
+                report.index_deferred = not write_index(index_path, entries)
+            return report
+
+        stamp = today.isoformat()
+        # Names claimed during this run, so a dry run previews the same numbering
+        # a real run would produce (nothing is on disk to collide with yet).
+        reserved: dict[Path, set[str]] = {}
+        recorded = len(entries)
         if not dry_run:
             pbc_dir.mkdir(parents=True, exist_ok=True)
             prepared_dir.mkdir(parents=True, exist_ok=True)
         # Existing request folders, so a Document renamed in Excel keeps
         # filing into the folder that already holds its earlier files.
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
+        # What the router learns about each document is what the scan will
+        # want to know about its working copy (same bytes): the verdicts go
+        # into the engagement's content cache, keyed by content. The PDF
+        # readability cache is this run's alone.
+        run = _SortContext(
+            items=items, by_id=by_id, known=known, prepared_dir=prepared_dir,
+            review_dir=review_dir, reserved=reserved, assigned=assigned,
+            dry_run=dry_run, report=report,
+            cache=ContentCache(engagement_dir / CACHE_FILENAME), pdf_cache=PdfVerdictCache(),
+        )
         try:
             for drop, already_in_pbc in (
                 [(d, False) for d in drops] + [(p, True) for p in strays]
@@ -532,11 +612,7 @@ def file_drops(
                 pbc_rel = pbc_target.relative_to(engagement_dir).as_posix()
 
                 try:
-                    entry = _sort_one(
-                        drop, pbc_target, pbc_rel, digest, size_kb, stamp,
-                        items, by_id, known, prepared_dir, review_dir, reserved,
-                        assigned, dry_run, report,
-                    )
+                    entry = _sort_one(drop, pbc_target, pbc_rel, digest, size_kb, stamp, run)
                 except Exception as exc:  # the original is safe; say so and go on
                     log.exception("Could not file %s", drop.name)
                     entry = IndexEntry(
@@ -556,12 +632,36 @@ def file_drops(
                 if entry.decision != DUPLICATE:
                     known[digest] = entry
         finally:
-            # Whatever happened above, every original that was moved is on record.
-            if not dry_run and len(entries) > recorded:
+            # Whatever happened above, every original that was moved is on
+            # record - and a snapshot waiting from last time is landed even
+            # when every drop this time was left in place.
+            if not dry_run and (len(entries) > recorded or sidecar_waiting):
                 report.index_deferred = not write_index(index_path, entries)
         if not dry_run:
+            run.cache.save()
             _prune_empty_dirs(shared_dir, keep=pbc_dir)
     return report
+
+
+@dataclass(frozen=True, slots=True)
+class _SortContext:
+    """What every drop in one run is sorted against: the manifest, the index
+    so far, the folders, the names claimed, and the run's caches. Built once
+    in :func:`file_drops`; :func:`_sort_one` reads it. Sixteen positional
+    arguments - three of them strings, two of them dicts - was how an
+    argument-order slip could stay silent."""
+
+    items: list[RequestItem]
+    by_id: dict[str, RequestItem]
+    known: dict[str, IndexEntry]           # digest -> the row that already holds it
+    prepared_dir: Path
+    review_dir: Path
+    reserved: dict[Path, set[str]]         # names claimed this run, per folder
+    assigned: dict[str, list[Path]]        # identifier -> its existing folders
+    dry_run: bool
+    report: FileReport
+    cache: ContentCache
+    pdf_cache: PdfVerdictCache
 
 
 def _sort_one(
@@ -571,21 +671,14 @@ def _sort_one(
     digest: str,
     size_kb: float,
     stamp: str,
-    items: list[RequestItem],
-    by_id: dict[str, RequestItem],
-    known: dict[str, IndexEntry],
-    prepared_dir: Path,
-    review_dir: Path,
-    reserved: dict[Path, set[str]],
-    assigned: dict[str, list[Path]],
-    dry_run: bool,
-    report: FileReport,
+    run: _SortContext,
 ) -> IndexEntry:
     """Decide one preserved original's fate and, unless dry-running, copy it."""
+    known, report, dry_run = run.known, run.report, run.dry_run
     refiled = ""
     if digest in known:
         earlier = known[digest]
-        engagement_dir = prepared_dir.parent
+        engagement_dir = run.prepared_dir.parent
         if (
             earlier.decision == FILED
             and earlier.prepared_location
@@ -613,18 +706,21 @@ def _sort_one(
             report.duplicates.append(entry)
             return entry
 
-    routing = route_file(pbc_target if not dry_run else drop, items)
-    item = by_id.get(routing.identifier or "")
+    routing = route_file(
+        pbc_target if not dry_run else drop, run.items,
+        digest=digest, cache=run.cache, pdf_cache=run.pdf_cache,
+    )
+    item = run.by_id.get(routing.identifier or "")
 
     if routing.routed and item is not None:
-        dest_folder = request_folder(item, assigned, prepared_dir)
-        if dest_folder not in reserved:
-            reserved[dest_folder] = (
+        dest_folder = request_folder(item, run.assigned, run.prepared_dir)
+        if dest_folder not in run.reserved:
+            run.reserved[dest_folder] = (
                 {p.name.lower() for p in dest_folder.iterdir()}
                 if dest_folder.is_dir()
                 else set()
             )
-        filed_as = prepared_name_for(item, extension_of(drop), reserved[dest_folder])
+        filed_as = prepared_name_for(item, extension_of(drop), run.reserved[dest_folder])
         if not dry_run:
             dest_folder.mkdir(parents=True, exist_ok=True)
             shutil.copy2(pbc_target, dest_folder / filed_as)
@@ -641,14 +737,14 @@ def _sort_one(
 
     review_name = drop.name
     if not dry_run:
-        review_dir.mkdir(parents=True, exist_ok=True)
-        review_target = _unique_path(review_dir, drop.name)
+        run.review_dir.mkdir(parents=True, exist_ok=True)
+        review_target = _unique_path(run.review_dir, drop.name)
         shutil.copy2(pbc_target, review_target)
         review_name = review_target.name
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
         digest=digest, identifier="",
-        prepared_location=prepared_location(review_dir, review_name),
+        prepared_location=prepared_location(run.review_dir, review_name),
         pbc_location=pbc_rel, decision=NEEDS_REVIEW, reason=routing.reason,
         candidates=_CANDIDATE_SEP.join(routing.candidates),
     )
@@ -697,17 +793,19 @@ def assign_review_file(
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
-    items = {i.identifier: i for i in load_manifest(engagement_dir / MANIFEST_FILENAME)}
-    item = items.get(identifier)
-    if item is None:
-        raise FilingError(f"no request {identifier!r} in the manifest")
-    if item.manual_override == Override.WAIVED:
-        raise FilingError(f"{identifier} is waived; clear the override first")
-
     index_path = engagement_dir / INDEX_FILENAME
     prepared_dir = engagement_dir / PREPARED_DIR_NAME
 
+    # Everything - the manifest, the index, the keyword written back - under
+    # the one lock, so a scheduled pass cannot slip in between.
     with engagement_lock(engagement_dir):
+        items = {i.identifier: i for i in load_manifest(engagement_dir / MANIFEST_FILENAME)}
+        item = items.get(identifier)
+        if item is None:
+            raise FilingError(f"no request {identifier!r} in the manifest")
+        if item.manual_override == Override.WAIVED:
+            raise FilingError(f"{identifier} is waived; clear the override first")
+
         entries = read_index(index_path)
         position = _find_parked(entries, original)
         entry = entries[position]
@@ -742,17 +840,17 @@ def assign_review_file(
         entries[position] = new_entry
         deferred = not write_index(index_path, entries)
 
-    keyword = keyword.strip()
-    note = ""
-    if keyword:
-        try:
-            if not add_any_keyword(engagement_dir / MANIFEST_FILENAME, identifier, keyword):
-                note = f"{identifier} already had the keyword {keyword!r}"
-        except PermissionError:
-            note = (
-                f"keyword {keyword!r} not saved: the manifest is open in Excel; "
-                f"add it to {identifier}'s Any Keywords by hand or close Excel and try again"
-            )
+        keyword = keyword.strip()
+        note = ""
+        if keyword:
+            try:
+                if not add_any_keyword(engagement_dir / MANIFEST_FILENAME, identifier, keyword):
+                    note = f"{identifier} already had the keyword {keyword!r}"
+            except PermissionError:
+                note = (
+                    f"keyword {keyword!r} not saved: the manifest is open in Excel; "
+                    f"add it to {identifier}'s Any Keywords by hand or close Excel and try again"
+                )
     return AssignResult(
         entry=new_entry, moved_review_copy=moved, keyword=keyword if not note else "",
         keyword_note=note, index_deferred=deferred,

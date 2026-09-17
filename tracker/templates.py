@@ -24,8 +24,8 @@ import datetime as dt
 from tracker.manifest import (
     COL_EXPECTED_COUNT,
     COL_MIN_SIZE_KB,
-    DEFAULT_EXTENSIONS,
     DEFAULT_EXPECTED_COUNT,
+    DEFAULT_EXTENSIONS,
     DEFAULT_MIN_SIZE_KB,
     ManifestError,
     RequestItem,

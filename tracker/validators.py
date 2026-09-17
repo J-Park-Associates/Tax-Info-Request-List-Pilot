@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -181,31 +182,52 @@ def iter_candidate_files(folder: Path) -> list[Path]:
 # ----------------------------------------------------------------- tier 2 ----
 
 
-#: Readability verdicts keyed by (path, size, mtime_ns). The router asks
-#: check_file() once per manifest row for the same file, and the scanner
-#: asks again; parsing a PDF fifteen times to learn the same thing is the
-#: cost this saves. Bounded, and a changed file gets a fresh key.
-_PDF_VERDICTS: dict[tuple[str, int, int], str] = {}
-_PDF_VERDICTS_MAX = 512
+class PdfVerdictCache:
+    """Readability verdicts for one run, keyed by (path, size, mtime_ns).
+
+    The router asks :func:`check_file` once per manifest row for the same
+    file, and the scanner asks again; parsing a PDF fifteen times to learn
+    the same thing is the cost this saves. It belongs to a run - the filer
+    and the scanner each make one and pass it down - rather than to the
+    process, so nothing is shared between runs that might one day be
+    concurrent, and a test can never see another test's verdict. Bounded;
+    a changed file gets a fresh key.
+    """
+
+    def __init__(self, limit: int = 512):
+        self._limit = limit
+        self._verdicts: OrderedDict[tuple[str, int, int], str] = OrderedDict()
+
+    def get(self, key: tuple[str, int, int]) -> str | None:
+        if key not in self._verdicts:
+            return None
+        self._verdicts.move_to_end(key)
+        return self._verdicts[key]
+
+    def put(self, key: tuple[str, int, int], verdict: str) -> None:
+        self._verdicts[key] = verdict
+        self._verdicts.move_to_end(key)
+        while len(self._verdicts) > self._limit:
+            self._verdicts.popitem(last=False)
 
 
-def _pdf_error(path: Path) -> str:
+def _pdf_error(path: Path, cache: PdfVerdictCache | None) -> str:
     """Empty string if the PDF opens cleanly, else a failure reason.
 
-    Cached per file identity (path, size, mtime), so the same file checked
-    against every manifest row is parsed once.
+    With a cache, keyed by file identity (path, size, mtime), so the same
+    file checked against every manifest row is parsed once.
     """
+    if cache is None:
+        return _pdf_error_uncached(path)
     try:
         stat = path.stat()
         key = (str(path), stat.st_size, stat.st_mtime_ns)
     except OSError:
         return _pdf_error_uncached(path)
-    if key in _PDF_VERDICTS:
-        return _PDF_VERDICTS[key]
-    verdict = _pdf_error_uncached(path)
-    if len(_PDF_VERDICTS) >= _PDF_VERDICTS_MAX:
-        _PDF_VERDICTS.clear()
-    _PDF_VERDICTS[key] = verdict
+    verdict = cache.get(key)
+    if verdict is None:
+        verdict = _pdf_error_uncached(path)
+        cache.put(key, verdict)
     return verdict
 
 
@@ -222,8 +244,14 @@ def _pdf_error_uncached(path: Path) -> str:
     return ""
 
 
-def check_file(path: Path, item: RequestItem) -> FileResult:
-    """Tier-2 validation of a single file against one manifest row."""
+def check_file(
+    path: Path, item: RequestItem, *, pdf_cache: PdfVerdictCache | None = None
+) -> FileResult:
+    """Tier-2 validation of a single file against one manifest row.
+
+    ``pdf_cache`` is the run's :class:`PdfVerdictCache`; without one every
+    call parses the PDF afresh.
+    """
     if is_cloud_placeholder(path):
         return FileResult(
             path=path,
@@ -264,17 +292,19 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
         )
 
     if extension == PDF_EXTENSION:
-        error = _pdf_error(path)
+        error = _pdf_error(path, pdf_cache)
         if error:
             return FileResult(path=path, ok=False, reason=error)
 
     return FileResult(path=path, ok=True)
 
 
-def check_folder(folder: Path, item: RequestItem) -> FolderResult:
+def check_folder(
+    folder: Path, item: RequestItem, *, pdf_cache: PdfVerdictCache | None = None
+) -> FolderResult:
     """Tier 1 + 2 for one request folder. Read-only; policy-free."""
     exists = folder.is_dir()
-    files = [check_file(p, item) for p in iter_candidate_files(folder)]
+    files = [check_file(p, item, pdf_cache=pdf_cache) for p in iter_candidate_files(folder)]
     return FolderResult(folder=folder, exists=exists, files=files)
 
 
@@ -305,8 +335,8 @@ if __name__ == "__main__":
     from tracker.manifest import Override, load_manifest
     from tracker.scaffold import (
         MANIFEST_FILENAME,
-        README_NAME,
         PREPARED_DIR_NAME,
+        README_NAME,
         REVIEW_DIR_NAME,
         assign_folders,
     )

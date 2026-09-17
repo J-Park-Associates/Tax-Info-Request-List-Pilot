@@ -2,7 +2,7 @@
   "schema": 1,
   "generated": "2026-09-17",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "eec602a35951abbe",
+  "generator_sha256": "c0bf7ed1ead20dcd",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 78,
-    "edges": 240,
-    "reused": 0
+    "nodes": 82,
+    "edges": 256,
+    "reused": 57
   },
   "node_types": [
     "artifact",
@@ -42,6 +42,7 @@
     "precedes",
     "reads",
     "runs",
+    "schedules",
     "spawns",
     "tests",
     "writes"
@@ -51,10 +52,10 @@
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "729dcf5f574a1711",
-      "lines": 50,
-      "role": "CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.",
-      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Both steps always report, so a stale map and a failing test surface in the same run."
+      "sha256": "e7961723230594a2",
+      "lines": 78,
+      "role": "CI: runs the test suite, `repo_map.py check` and `node --check` on the three Electron files, on Linux and Windows, on every push to main and every pull request.",
+      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is in the matrix because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version line is pinned to pyproject's floor by a guard."
     },
     {
       "id": "rule:no-AI-on-client-documents",
@@ -92,8 +93,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fb315fc377a11172",
-      "lines": 680,
+      "sha256": "780193b84b715ade",
+      "lines": 703,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -113,17 +114,21 @@
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes."
     },
     {
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "acbd2599034222dc",
-      "lines": 350,
+      "sha256": "9d4762d3b21a786a",
+      "lines": 456,
+      "cli": "python -m tracker.content_check",
       "exports": [
+        "CACHE_FILENAME",
+        "CACHE_VERSION",
         "ContentCache",
         "ContentResult",
+        "Extraction",
         "MAX_PAGES",
         "TEXT_EXTENSIONS",
         "XLSX_EXTENSIONS",
@@ -132,24 +137,28 @@
         "check_content",
         "contains_keyword",
         "evaluate_rules",
+        "extract",
+        "extract_by_ocr",
         "extract_text",
         "has_content_rules",
         "rules_fingerprint"
       ],
       "constants": {
+        "CACHE_FILENAME": "'_content_cache.json'",
+        "CACHE_VERSION": "2",
         "MAX_PAGES": "10",
         "XLSX_EXTENSIONS": "('xlsx', 'xlsm')",
         "TEXT_EXTENSIONS": "('csv', 'tsv', 'txt')"
       },
-      "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. Caches verdicts.",
-      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run."
+      "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache (CACHE_FILENAME) keeps the verdicts.",
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION 2; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything."
     },
     {
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "76f3b3679c88d076",
-      "lines": 814,
+      "sha256": "23986191123060d3",
+      "lines": 912,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -163,10 +172,13 @@
         "INDEX_FILENAME",
         "INDEX_PENDING_FILENAME",
         "INDEX_SHEET",
+        "INDEX_SIDECAR_VERSION",
         "IndexEntry",
         "NEEDS_REVIEW",
         "_CANDIDATE_SEP",
         "_MAX_STEM",
+        "_SIDECAR_ENTRIES_KEY",
+        "_SIDECAR_VERSION_KEY",
         "assign_review_file",
         "file_drops",
         "iter_drops",
@@ -181,24 +193,28 @@
       "constants": {
         "INDEX_FILENAME": "'_index.xlsx'",
         "INDEX_SHEET": "'Index'",
+        "INDEX_SIDECAR_VERSION": "2",
         "FILED": "'Filed'",
         "NEEDS_REVIEW": "'Needs Review'",
         "DUPLICATE": "'Duplicate'",
         "ASSIGNED_BY_PERSON": "'assigned by a person'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, new rows wait in _index.pending.json and read_index() already sees them. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock. INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
     },
     {
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fb0aac11faab040a",
-      "lines": 132,
+      "sha256": "7ed868f57cf3eaef",
+      "lines": 218,
       "exports": [
+        "EngagementLock",
         "EngagementLockedError",
         "LOCK_FILENAME",
         "LockStatus",
+        "RUN_TIME_LIMIT_SECONDS",
+        "STALE_LOCK_GRACE_SECONDS",
         "STALE_LOCK_SECONDS",
         "_PID_KEY",
         "_STARTED_KEY",
@@ -206,21 +222,21 @@
         "clear_stale_lock",
         "engagement_lock",
         "lock_line",
-        "lock_status"
+        "lock_status",
+        "release_lock"
       ],
       "constants": {
-        "LOCK_FILENAME": "'_scan.lock'",
-        "STALE_LOCK_SECONDS": "3600"
+        "LOCK_FILENAME": "'_scan.lock'"
       },
-      "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by the filer while sorting and by the scanner while scanning. EngagementLockedError; engagement_lock() context manager.",
-      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's index rows were overwritten. Dry runs never take it. lock_status()/clear_stale_lock() back the app's lock notice: a stale lock can be cleared from the app, a fresh one is refused with how long to wait."
+      "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by the filer while sorting and by the scanner while scanning. EngagementLock (the open handle and its token), EngagementLockedError; engagement_lock() context manager, taken before the manifest, index or drop folder is read.",
+      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's index rows were overwritten. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it, so a lock is presumed dead only after Task Scheduler must have killed its owner (they were typed apart before, 3600 s against a two-hour limit). One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice: a stale lock can be cleared from the app, a fresh one is refused with how long to wait."
     },
     {
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "815078a80ff90f94",
-      "lines": 1062,
+      "sha256": "b899fccde5227fb4",
+      "lines": 1132,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -282,6 +298,7 @@
         "_ILLEGAL_PUNCTUATION",
         "_PERIOD_YEAR",
         "add_any_keyword",
+        "atomic_replacement",
         "check_manifest",
         "create_template",
         "derived_date_pattern",
@@ -300,9 +317,12 @@
         "shift_item",
         "shift_years",
         "summarize",
+        "temp_path_for",
         "with_pending",
         "write_engagement_info",
-        "write_statuses"
+        "write_json_atomically",
+        "write_statuses",
+        "write_text_atomically"
       ],
       "constants": {
         "SHEET_NAME": "'Requests'",
@@ -344,7 +364,7 @@
         "EXPECTED_PATTERN": "'{n} files expected'"
       },
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
-      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check."
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check."
     },
     {
       "id": "tracker/reasons.py",
@@ -389,8 +409,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c9686d70028fd4c4",
-      "lines": 226,
+      "sha256": "56a7e962f0258c6c",
+      "lines": 225,
       "cli": "python -m tracker.registry",
       "exports": [
         "Engagement",
@@ -414,8 +434,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "525455060d895ad2",
-      "lines": 560,
+      "sha256": "0fb1ef98be3382e1",
+      "lines": 559,
       "cli": "python -m tracker.reminder",
       "exports": [
         "DRAFT_BANNER",
@@ -474,7 +494,7 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "67749bc0b172a8c8",
+      "sha256": "2bb7a949c021bbee",
       "lines": 385,
       "cli": "python -m tracker.rollover",
       "exports": [
@@ -507,14 +527,16 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5c36c3cbc99f631e",
-      "lines": 275,
+      "sha256": "fe3b3853e6c803ea",
+      "lines": 368,
+      "cli": "python -m tracker.router",
       "exports": [
         "AMBIGUOUS",
         "CONTESTED_PREFIX",
         "EVIDENCE_CONTENT",
         "EVIDENCE_FILENAME",
         "NO_REQUEST_ACCEPTS",
+        "OCR_ONLY",
         "PENDING",
         "Routing",
         "UNMATCHED",
@@ -525,20 +547,21 @@
       "constants": {
         "UNMATCHED": "'matched no request'",
         "AMBIGUOUS": "'matched more than one request'",
+        "OCR_ONLY": "'matched only by OCR text'",
         "EVIDENCE_CONTENT": "'content'",
         "EVIDENCE_FILENAME": "'filename'",
         "NO_REQUEST_ACCEPTS": "'no request accepts .{extension} files'",
         "CONTESTED_PREFIX": "'looks like'"
       },
-      "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only).",
-      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched."
+      "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only), then OCR on required keywords only.",
+      "notes": "Reads the document through content_check.extract() - the scanner's reading - and leaves its per-row verdicts in the content cache keyed by content, so the scan finds them under the working copy's name. A scan whose name routes it is not OCR'd; one whose name says nothing is, and OCR text routes only on required keywords - an any-keyword match on OCR text is OCR_ONLY, a lead for a person, because a misread word is how a document lands under the wrong request. One PdfVerdictCache per file (or the caller's) so a PDF is parsed once, not once per row. The CLI (python -m tracker.router <engagement> <files>) says where each file would go and why, moving nothing. Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched."
     },
     {
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "968fa77aec1f291d",
-      "lines": 449,
+      "sha256": "eee68bac6e70f049",
+      "lines": 471,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -552,11 +575,13 @@
         "REMINDERS_AUTO",
         "REMINDERS_NEVER",
         "REMINDER_MODES",
+        "RUNNER_MODE_FLAG",
         "RunReport",
         "WEEKDAY_NAMES",
         "append_log",
         "format_report",
         "is_draft_day",
+        "main",
         "run_engagement",
         "run_registry",
         "should_draft"
@@ -570,16 +595,17 @@
         "LOG_FILENAME": "'runs.log'",
         "LOG_FLAG": "'--log'",
         "DATE_FLAG": "'--date'",
+        "RUNNER_MODE_FLAG": "'--run'",
         "NOTHING_OUTSTANDING": "'nothing outstanding; no reminder needed'"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it."
     },
     {
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "cb13a6d4093af3fe",
+      "sha256": "8d3bc26943f8fc69",
       "lines": 280,
       "cli": "python -m tracker.scaffold",
       "exports": [
@@ -615,11 +641,10 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "8ff600a95401b78c",
-      "lines": 376,
+      "sha256": "c594bc394a5a4a2c",
+      "lines": 380,
       "cli": "python -m tracker.scanner",
       "exports": [
-        "CACHE_FILENAME",
         "DUPLICATES_NOTE",
         "FOLDERS_NOTE",
         "MORE_ISSUES_NOTE",
@@ -644,18 +669,17 @@
         "SYNCING_MORE_NOTE": "'{n} more file(s) still syncing'",
         "SYNCING_NOTE": "'{n} file(s) still syncing from the cloud'",
         "REGRESSION_NOTE": "'was {status} {date}; {why}'",
-        "REGRESSION_FILES_CHANGED": "'files changed'",
-        "CACHE_FILENAME": "'_content_cache.json'"
+        "REGRESSION_FILES_CHANGED": "'files changed'"
       },
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and writes the result back into the manifest.",
-      "notes": "Holds a stale-aware per-engagement run lock, so two scheduled runs cannot overlap. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them."
+      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the manifest only once it has it, so a sort that finished in between is never invisible to the scan. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). Reads each document through content_check.extract(), the same reading the router made of it as a drop, and usually finds the router's verdict already in the content cache; one PdfVerdictCache per scan. _resolve_status() is the status rule and _received_date() the Received-Date rule, named so _scan_item() reads as the three tiers and then the two decisions. A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them."
     },
     {
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f76eabd7a171f7f7",
-      "lines": 349,
+      "sha256": "66e09b8ee0be5e68",
+      "lines": 380,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "DEFAULT_REPEAT_MINUTES",
@@ -681,6 +705,7 @@
         "install_task",
         "is_absolute_path",
         "is_scheduling_host",
+        "iso_duration",
         "n8n_workflow",
         "resolve_root",
         "runner_arguments",
@@ -691,7 +716,6 @@
         "DEFAULT_START": "'07:00'",
         "DEFAULT_REPEAT_MINUTES": "120",
         "SCHEDULE_XML_FILENAME": "'tax-tracker.xml'",
-        "EXECUTION_TIME_LIMIT": "'PT2H'",
         "TASK_XML_NAMESPACE": "'http://schemas.microsoft.com/windows/2004/02/mit/task'",
         "N8N_TRIGGER_NODE": "'Every day'",
         "N8N_RUN_NODE": "'File, scan, draft'",
@@ -706,14 +730,14 @@
         "FORMAT_N8N": "'n8n'"
       },
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings file's root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name, time limit) are module constants the API's install-schedule reports back so the app shows what was actually installed."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings file's root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit. runner_arguments(frozen=True) is the packaged form of the one command line: the app's executable in runner mode (runner.RUNNER_MODE_FLAG) instead of -m tracker.runner, same arguments after it. TASK_NAME at import is safe because only the shell-launched API (or a source checkout) imports this module; the frozen job never does."
     },
     {
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9684623c721f6804",
-      "lines": 153,
+      "sha256": "f9cfd39afa88c3a5",
+      "lines": 151,
       "cli": "python -m tracker.settings",
       "exports": [
         "ENV_PRODUCT_NAME",
@@ -743,13 +767,13 @@
         "ENV_PRODUCT_NAME": "'TRACKER_PRODUCT_NAME'"
       },
       "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root and the firm are kept. clients_root()/set_clients_root(), firm()/set_firm(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is.",
-      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever."
+      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through manifest.write_json_atomically(): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place."
     },
     {
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2dfbf4cc50a6ad9c",
+      "sha256": "5cd9ee21ad8ab384",
       "lines": 343,
       "exports": [
         "AS_OF_YEAR_END",
@@ -785,14 +809,15 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "085c0d8186c5fd4b",
-      "lines": 364,
+      "sha256": "c94c7ddbc945e020",
+      "lines": 394,
       "cli": "python -m tracker.validators",
       "exports": [
         "FileResult",
         "FolderResult",
         "OFFICE_LOCK_PREFIX",
         "PDF_EXTENSION",
+        "PdfVerdictCache",
         "_FILE_ATTRIBUTE_OFFLINE",
         "_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS",
         "_FILE_ATTRIBUTE_RECALL_ON_OPEN",
@@ -800,7 +825,6 @@
         "_IGNORED_NAMES",
         "_IGNORED_PREFIXES",
         "_IGNORED_SUFFIXES",
-        "_PDF_VERDICTS_MAX",
         "_PLACEHOLDER_MASK",
         "_SYNC_STAGING_PREFIX",
         "check_file",
@@ -819,22 +843,29 @@
         "PDF_EXTENSION": "'pdf'"
       },
       "role": "Tiers 1-2: does the file exist, is the extension allowed, is it big enough, is the PDF readable. Pure read-only functions plus passive cloud-placeholder detection for OneDrive and Google Drive.",
-      "notes": "Never downloads a cloud-only placeholder \u2014 a stub must never be filed as if it were the document. A file that vanishes between listing and stat is reported pending_sync, never raised \u2014 a scheduled scan must not die on one replaced file."
+      "notes": "Never downloads a cloud-only placeholder \u2014 a stub must never be filed as if it were the document. A file that vanishes between listing and stat is reported pending_sync, never raised \u2014 a scheduled scan must not die on one replaced file. PdfVerdictCache is a run's memo of PDF readability (the router asks once per manifest row for one file; the scanner asks again): the filer and the scanner each make one and pass it down, so nothing is shared at module level between runs that might one day be concurrent."
     },
     {
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "0bf90b26ce0c53a5",
-      "lines": 95,
+      "sha256": "a2063fbfccc203b4",
+      "lines": 169,
       "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC.",
-      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command."
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a tracker that outlives TRACKER_TIMEOUT_MS is killed and reported. The window is sandboxed, cannot navigate and cannot open windows."
+    },
+    {
+      "id": "app/package-lock.json",
+      "type": "module",
+      "layer": "desktop-app",
+      "sha256": "8c9f7672a74c479c",
+      "lines": 721
     },
     {
       "id": "app/package.json",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "ab875b9f50b1d53d",
+      "sha256": "79f33233d09bfb40",
       "lines": 19
     },
     {
@@ -849,17 +880,18 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "590c5e89ff2df146",
-      "lines": 676,
-      "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge."
+      "sha256": "2d2eb9aba0aa7bd3",
+      "lines": 699,
+      "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.",
+      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "49049d27973f5baa",
-      "lines": 251,
-      "role": "Desktop app shell markup."
+      "sha256": "52aca3086f299045",
+      "lines": 256,
+      "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files."
     },
     {
       "id": "app/renderer/logo.svg",
@@ -880,8 +912,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b4ae70024ff28767",
-      "lines": 119,
+      "sha256": "31661667f7c56785",
+      "lines": 120,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -889,16 +921,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "75fbd17c11fe878c",
-      "lines": 257,
+      "sha256": "1f7b697637bac4b0",
+      "lines": 275,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6b6e1a3d7691a4f3",
-      "lines": 238,
+      "sha256": "867fb676273e9356",
+      "lines": 256,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -906,8 +938,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c5851cc919f14ee4",
-      "lines": 418,
+      "sha256": "ded307841eff9282",
+      "lines": 451,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -920,12 +952,21 @@
       "role": "How the day-to-day workflow runs."
     },
     {
+      "id": "requirements-build.txt",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "6a4e17ac7d5c15ed",
+      "lines": 5,
+      "role": "What Build App.bat installs: requirements.txt plus the pinned PyInstaller."
+    },
+    {
       "id": "requirements.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "84d7fa56ce6b1109",
-      "lines": 13,
-      "role": "Runtime and dev dependencies; the optional OCR extras are documented here too."
+      "sha256": "99568dfc4f98c38c",
+      "lines": 16,
+      "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range); the optional OCR extras are documented here too.",
+      "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46)."
     },
     {
       "id": "pkg:child_process",
@@ -981,33 +1022,40 @@
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "f2e77667a492f1d8",
-      "lines": 45
+      "sha256": "4a9ef7fba4db6b82",
+      "lines": 80,
+      "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements-build.txt, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
+      "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js."
     },
     {
       "id": "Start App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "0150817fa26471bf",
-      "lines": 28
+      "sha256": "3cad81f88a5ada5a",
+      "lines": 32,
+      "role": "Runs the desktop app from source: checks for Python and Node, installs the Electron packages app/package-lock.json pins (`npm ci`, first run only) and starts Electron.",
+      "notes": "Electron is started through its own entry script under `node`, never the `npx` shim: the shim breaks when the folder's path contains an ampersand, which the firm's own checkout does (decision 53). Electron downloads its binary on the first start, so the install step needs the network once."
     },
     {
       "id": "api_entry.py",
       "type": "module",
       "layer": "root",
-      "sha256": "faef8963c9b13d11",
-      "lines": 7,
+      "sha256": "90895c955a635efc",
+      "lines": 24,
       "cli": "python api_entry.py",
-      "role": "PyInstaller entry point. Freezes tracker.api into the executable app/package.json's config.apiName names, for the portable Windows app.",
-      "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module."
+      "role": "PyInstaller entry point: the portable app's one executable, which is the tracker API by default and the scheduled job (tracker.runner.main) when RUNNER_MODE_FLAG comes first.",
+      "notes": "PyInstaller needs a real script, not a -m module. Runner mode is dispatched before tracker.api is imported, because the API imports tracker.scheduling whose TASK_NAME needs the product name the Electron shell passes in the environment - and Task Scheduler passes nothing; the job needs neither of the shell's variables. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen."
     },
     {
       "id": "conftest.py",
       "type": "module",
       "layer": "root",
-      "sha256": "c8e3529dafaf86d3",
-      "lines": 2,
-      "role": "Puts the repo root on sys.path so tests can `import tracker` without installing the package."
+      "sha256": "966d59b14a41d276",
+      "lines": 16,
+      "exports": [
+        "ROOT"
+      ],
+      "role": "Puts the repo root on sys.path so tests can `import tracker` without installing the package - explicitly now, beside pyproject's pythonpath, for editor runners and pytest's rootdir detection."
     },
     {
       "id": "artifact:Prepared/",
@@ -1022,10 +1070,16 @@
       "role": "The client's one drop folder \u2014 the only thing they see and the only thing they touch. Their originals end up in Shared/PBC/, still visible to them, untouched."
     },
     {
+      "id": "artifact:_content_cache.json",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Tier-3 verdict cache beside the manifest: pass/fail and reason per file, never extracted client text. Disposable - an unreadable one is reset - and written whole or not at all."
+    },
+    {
       "id": "artifact:_index.pending.json",
       "type": "artifact",
       "layer": "runtime",
-      "role": "Sidecar holding index rows for originals already moved into PBC/ that could not be written because Excel had _index.xlsx open. Read alongside the workbook and folded into the next successful write."
+      "role": "A versioned snapshot of the whole _index.xlsx (INDEX_SIDECAR_VERSION) written when Excel had the workbook open: every row, including one a person rewrote. read_index() returns it in the workbook's place until the next successful write lands it. An older bare-list sidecar holds only rows to append after the workbook's and is folded in once. Written whole or not at all; an unreadable one is moved aside only by a real run, never by a reader or a dry run."
     },
     {
       "id": "artifact:_index.xlsx",
@@ -1037,7 +1091,7 @@
       "id": "artifact:_manifest.pending.json",
       "type": "artifact",
       "layer": "runtime",
-      "role": "Sidecar holding status updates that could not be written because Excel had the manifest locked. Merged into the next successful write."
+      "role": "Sidecar holding status updates that could not be written because Excel had the manifest locked. Merged into the next successful write. Written whole or not at all (atomic_replacement); an unreadable one is moved aside only by the write that would retry it, never by a reader or a dry run."
     },
     {
       "id": "artifact:_manifest.xlsx",
@@ -1055,7 +1109,7 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "59c7c6b7f64212b1",
+      "sha256": "e92ffef6724ad2ee",
       "lines": 206,
       "exports": [
         "DEMO_ITEMS",
@@ -1076,8 +1130,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "48f12eb9ce5962b1",
-      "lines": 576,
+      "sha256": "3406d635bc398548",
+      "lines": 628,
       "exports": [
         "demo_root",
         "run",
@@ -1107,27 +1161,45 @@
         "test_rollover_refuses_a_missing_prior",
         "test_rollover_retires_the_prior_in_the_priors_list",
         "test_set_root_records_the_folder_the_job_will_walk",
+        "test_state_reads_a_corrupt_sidecar_without_moving_it",
         "test_state_shows_statuses_a_locked_excel_deferred",
         "test_state_shows_the_lock_and_unlock_clears_only_a_stale_one",
         "test_templates_carries_the_calendars_default_year",
         "test_templates_lists_every_form_with_its_checklist",
         "test_the_apps_pass_is_the_runners_pass",
+        "test_the_engagement_flag_needs_a_folder_under_the_root",
         "test_the_firm_is_typed_once_in_settings_and_signs_every_engagement",
         "test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label",
+        "test_the_packaged_app_installs_a_schedule_against_its_own_executable",
         "test_the_renderer_gets_its_vocabulary_from_the_api",
         "test_unknown_command_is_a_json_error",
         "test_without_a_root_the_app_is_told_to_set_one"
       ]
     },
     {
+      "id": "tests/test_api_entry.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "2aa730c63f4e4d30",
+      "lines": 63,
+      "exports": [
+        "REPO",
+        "run_entry",
+        "test_runner_mode_runs_a_pass_without_importing_the_api_layer",
+        "test_without_the_flag_the_entry_is_the_api"
+      ]
+    },
+    {
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8a84a03b39f306df",
-      "lines": 263,
+      "sha256": "453f967e9577f53c",
+      "lines": 316,
       "exports": [
         "counting_extractor",
         "item",
+        "test_a_cache_in_an_older_layout_is_reset",
+        "test_a_cache_save_leaves_no_temp_file_and_survives_a_crash",
         "test_any_keywords",
         "test_cache_corrupt_resets_silently",
         "test_cache_hit_and_invalidation",
@@ -1141,6 +1213,7 @@
         "test_ocr_text_used_when_available",
         "test_only_the_first_pages_of_a_pdf_are_read",
         "test_required_keywords",
+        "test_the_cache_is_keyed_on_content_not_path",
         "test_unsupported_extension",
         "test_xlsx_extraction_with_dates",
         "text_pdf"
@@ -1150,8 +1223,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6b931ffa16526592",
-      "lines": 587,
+      "sha256": "92b62ca9505be352",
+      "lines": 807,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1160,24 +1233,32 @@
         "engagement",
         "pbc",
         "prepared",
+        "test_a_bare_list_sidecar_from_an_older_version_is_appended_once",
         "test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder",
         "test_a_drop_still_held_open_is_left_for_the_next_run",
+        "test_a_dry_run_never_quarantines_a_corrupt_index_sidecar",
         "test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed",
         "test_a_file_dropped_straight_into_pbc_is_filed_and_indexed",
         "test_a_hand_edited_index_cell_does_not_stop_the_next_run",
+        "test_a_locked_index_keeps_a_persons_filing_decision",
         "test_a_locked_index_never_orphans_files_already_moved",
+        "test_a_persons_keyword_is_learned_under_the_lock",
         "test_a_resend_is_refiled_when_the_working_copy_was_deleted",
+        "test_a_sidecar_of_an_unknown_version_is_quarantined_not_guessed",
         "test_an_index_written_with_older_columns_still_reads",
         "test_assigning_a_parked_file_moves_it_under_the_canonical_name",
         "test_assigning_copies_from_pbc_when_the_review_copy_is_gone",
         "test_assigning_refuses_what_a_person_should_not_do",
         "test_assigning_still_files_when_excel_holds_the_manifest",
         "test_client_subfolders_are_flattened",
+        "test_deferred_rows_are_folded_in_even_when_the_only_drop_is_still_syncing",
         "test_dry_run_moves_nothing",
         "test_dry_run_previews_real_numbering",
         "test_empty_client_folders_are_cleared_after_sorting",
         "test_file_is_sorted_renamed_and_indexed",
+        "test_filing_leaves_verdicts_the_scan_reuses",
         "test_index_workbook_is_readable_in_excel",
+        "test_mixed_append_and_edit_survive_a_locked_index",
         "test_name_collision_in_pbc_never_overwrites",
         "test_pbc_contents_are_never_re_sorted",
         "test_placeholders_are_left_where_they_are",
@@ -1188,6 +1269,8 @@
         "test_second_file_for_the_same_request_is_numbered",
         "test_sync_junk_is_ignored",
         "test_the_filer_holds_the_engagement_lock",
+        "test_the_filer_reads_nothing_before_it_holds_the_lock",
+        "test_the_pending_index_is_a_versioned_snapshot_of_every_row",
         "test_the_routers_candidates_travel_as_data_in_the_index",
         "test_unroutable_file_is_preserved_and_parked"
       ]
@@ -1196,23 +1279,27 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "109f176553c8b5ec",
-      "lines": 77,
+      "sha256": "8443a4c25ad9ab12",
+      "lines": 127,
       "exports": [
         "test_a_fresh_lock_blocks_a_second_run",
         "test_a_fresh_lock_is_refused_and_a_stale_one_cleared",
+        "test_a_held_lock_cannot_be_deleted_from_outside",
+        "test_a_lock_replaced_while_held_is_not_released_by_its_old_owner",
         "test_a_stale_lock_is_replaced",
+        "test_clearing_a_stale_lock_that_is_still_held_is_refused",
         "test_lock_is_released_when_the_body_raises",
         "test_lock_is_taken_and_released",
-        "test_lock_status_reads_what_the_lock_says"
+        "test_lock_status_reads_what_the_lock_says",
+        "test_the_stale_threshold_outlives_the_scheduled_jobs_time_limit"
       ]
     },
     {
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1202756b1e22a0ca",
-      "lines": 509,
+      "sha256": "0dc56a076f32ef59",
+      "lines": 585,
       "exports": [
         "SAMPLE_ITEMS",
         "manifest",
@@ -1221,6 +1308,7 @@
         "test_a_derived_year_is_a_check_not_a_reason_to_route",
         "test_a_manifest_without_the_sheet_loads_as_defaults",
         "test_a_period_with_a_year_implies_the_year_check",
+        "test_a_second_corrupt_sidecar_never_overwrites_the_first",
         "test_a_star_in_date_pattern_means_no_year_check",
         "test_accepting_any_file_type_has_to_be_said_with_a_star",
         "test_add_any_keyword_appends_once_and_names_a_missing_row",
@@ -1236,11 +1324,15 @@
         "test_locked_write_defers_to_sidecar",
         "test_missing_column_rejected",
         "test_missing_manifest",
+        "test_no_temp_file_is_left_beside_the_workbook_under_any_name",
         "test_pending_sidecar_merged_and_cleared",
+        "test_reading_pending_updates_leaves_a_corrupt_sidecar_where_it_is",
         "test_summarize_is_the_one_count",
         "test_template_load_roundtrip",
         "test_template_refuses_overwrite",
         "test_the_engagement_sheet_round_trips",
+        "test_the_pending_sidecar_is_written_whole_or_not_at_all",
+        "test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it",
         "test_unknown_override_rejected",
         "test_unknown_status_rejected",
         "test_write_statuses_roundtrip",
@@ -1265,8 +1357,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7dc4b3f58e9914e4",
-      "lines": 158,
+      "sha256": "9abfc6c9a96d1e9d",
+      "lines": 166,
       "exports": [
         "ITEMS",
         "make",
@@ -1289,7 +1381,7 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c7c3ebfa08172396",
+      "sha256": "958b30bfe24a11a0",
       "lines": 342,
       "exports": [
         "SCANNED",
@@ -1373,8 +1465,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "07e763b075f84549",
-      "lines": 337,
+      "sha256": "9b5a055b95f3bd03",
+      "lines": 338,
       "exports": [
         "PRIOR",
         "TEMPLATE",
@@ -1408,8 +1500,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5dd389d38e9e8b6b",
-      "lines": 259,
+      "sha256": "0cd6c9a60050a367",
+      "lines": 323,
       "exports": [
         "DONATIONS",
         "INT_DIV",
@@ -1420,7 +1512,9 @@
         "test_a_derived_year_never_routes_on_its_own_but_still_contests",
         "test_a_file_type_nobody_accepts_is_named_as_such",
         "test_a_matching_document_the_row_refuses_says_why",
+        "test_a_sensibly_named_scan_is_not_ocrd",
         "test_ambiguous_match_goes_to_review",
+        "test_an_image_only_scan_routes_on_its_required_keywords_after_ocr",
         "test_content_match_routes",
         "test_extension_alone_is_not_evidence",
         "test_filename_fallback_tolerates_the_run_together_spelling",
@@ -1429,9 +1523,11 @@
         "test_google_stub_is_not_routed",
         "test_google_stub_review_reason_tells_the_client_what_to_do",
         "test_keywords_match_on_token_boundaries",
+        "test_ocr_text_alone_never_routes_on_any_keywords",
         "test_placeholder_is_left_alone",
         "test_required_keyword_beats_a_generic_any_keyword",
         "test_route_files_skips_sync_junk",
+        "test_the_router_and_the_scanner_reach_one_verdict_for_one_document",
         "test_waived_rows_never_receive_files",
         "test_wrong_extension_is_not_routed",
         "test_wrong_year_is_not_routed"
@@ -1441,8 +1537,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c332f224cb72caa1",
-      "lines": 426,
+      "sha256": "e0fda8fae54e8b63",
+      "lines": 437,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -1479,6 +1575,7 @@
         "test_the_log_appends_rather_than_replaces",
         "test_the_report_says_what_day_it_is_and_never_claims_a_send",
         "test_the_run_names_a_manifest_typo_with_its_row_before_touching_files",
+        "test_the_runner_has_a_main_the_frozen_entry_can_call",
         "test_the_saturday_run_writes_a_draft",
         "test_waived_and_accepted_rows_are_not_outstanding"
       ]
@@ -1487,7 +1584,7 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3403e5b89eea0848",
+      "sha256": "81da296ca62f5288",
       "lines": 198,
       "exports": [
         "ITEMS",
@@ -1512,8 +1609,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f349eba0b749305b",
-      "lines": 375,
+      "sha256": "c4155364aca28067",
+      "lines": 388,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1538,6 +1635,7 @@
         "test_stale_lock_replaced_and_released",
         "test_strays_in_prepared_are_warnings_and_parked_files_are_not",
         "test_the_scan_report_carries_the_one_summary",
+        "test_the_scanner_reads_the_manifest_only_under_the_lock",
         "test_waived_rows_are_named_so_counts_can_leave_them_out",
         "text_pdf"
       ]
@@ -1546,8 +1644,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ba4c1a93da65d4a0",
-      "lines": 198,
+      "sha256": "6b5c9c14ff7ad6a3",
+      "lines": 229,
       "exports": [
         "ARGS",
         "NS",
@@ -1569,7 +1667,9 @@
         "test_the_n8n_command_runs_the_runner_from_the_working_directory",
         "test_the_n8n_hour_is_validated",
         "test_the_n8n_workflow_is_valid_json_with_one_wired_connection",
+        "test_the_packaged_job_is_the_same_command_line_behind_the_api_executable",
         "test_the_start_time_can_be_moved",
+        "test_the_time_limit_is_the_locks_run_limit_rendered",
         "test_the_xml_is_well_formed_and_runs_the_runner"
       ]
     },
@@ -1577,22 +1677,23 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eec04ba7c1067edf",
-      "lines": 55,
+      "sha256": "b3cfaf762d03fc72",
+      "lines": 65,
       "exports": [
         "beside_the_app",
         "test_a_folder_that_does_not_exist_is_refused",
         "test_an_unreadable_settings_file_is_an_error_not_a_default",
         "test_nothing_set_means_none_not_a_guess",
-        "test_the_root_is_written_once_and_read_back"
+        "test_the_root_is_written_once_and_read_back",
+        "test_the_settings_file_is_swapped_in_whole"
       ]
     },
     {
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "799edb812e637950",
-      "lines": 516,
+      "sha256": "4909e058fab37c6d",
+      "lines": 582,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -1607,10 +1708,12 @@
         "test_documents_spell_manifest_headers_exactly",
         "test_documents_state_the_naming_pattern_with_the_one_separator",
         "test_every_cli_flag_a_document_names_exists_in_the_code",
+        "test_every_dependency_is_pinned_exactly",
         "test_gitignore_ignores_the_junk_the_validators_ignore",
         "test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo",
         "test_prose_names_no_weekday_but_the_draft_day",
         "test_the_api_docstring_lists_exactly_the_commands",
+        "test_the_build_is_made_from_what_is_committed",
         "test_the_build_output_folder_is_the_one_gitignore_knows",
         "test_the_documents_list_the_forms_the_catalog_has",
         "test_the_electron_shell_uses_the_settings_env_names_python_defines",
@@ -1621,6 +1724,7 @@
         "test_the_product_name_has_one_home",
         "test_the_readme_engagement_sheet_table_matches_the_fields",
         "test_the_readme_names_the_carried_forward_sheet_the_rollover_writes",
+        "test_the_renderer_builds_the_page_from_data_not_html",
         "test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag",
         "test_the_renderer_types_no_vocabulary_of_its_own",
         "test_the_roadmap_names_every_status_in_bold",
@@ -1628,6 +1732,7 @@
         "test_the_roadmap_schema_table_matches_the_manifest_headers",
         "test_the_scan_button_label_is_typed_once",
         "test_the_shell_and_the_preload_agree_on_every_ipc_channel",
+        "test_the_shell_runs_only_commands_the_api_has",
         "test_the_standing_rules_are_worded_once_and_quoted_everywhere",
         "test_the_stub_and_staging_examples_docs_give_are_the_validators",
         "test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else",
@@ -1645,8 +1750,8 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "147118c529dd6723",
-      "lines": 103,
+      "sha256": "efe9c3c46eefc361",
+      "lines": 105,
       "exports": [
         "test_a_request_with_no_rule_defaults_to_its_own_name",
         "test_catalog_rows_shift_to_the_engagements_year",
@@ -1662,8 +1767,8 @@
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ffadf131f5a27d3b",
-      "lines": 220,
+      "sha256": "066052a1036f34bc",
+      "lines": 235,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
@@ -1680,9 +1785,10 @@
         "test_missing_and_empty_folders",
         "test_no_whitelist_allows_anything",
         "test_password_protected_pdf_fails",
-        "test_pdf_readability_is_parsed_once_per_file",
+        "test_pdf_readability_is_parsed_once_per_run_not_per_process",
         "test_placeholder_skipped_not_read",
         "test_sha256_of",
+        "test_the_pdf_verdict_cache_is_bounded",
         "test_valid_pdf_passes",
         "write_pdf"
       ]
@@ -1691,8 +1797,8 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "eec602a35951abbe",
-      "lines": 737,
+      "sha256": "c0bf7ed1ead20dcd",
+      "lines": 736,
       "cli": "python -m tools.repo_map",
       "exports": [
         "CURATED_PATH",
@@ -1781,6 +1887,12 @@
     {
       "from": "api_entry.py",
       "to": "tracker/api.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "api_entry.py",
+      "to": "tracker/runner.py",
       "type": "imports",
       "source": "derived"
     },
@@ -1965,6 +2077,30 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_api_entry.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_entry.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_entry.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_entry.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_content_check.py",
       "to": "pkg:openpyxl",
       "type": "depends_on",
@@ -2014,6 +2150,12 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
@@ -2038,7 +2180,19 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/scanner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tests/test_content_check.py",
       "type": "imports",
       "source": "derived"
     },
@@ -2087,6 +2241,12 @@
     {
       "from": "tests/test_manifest.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_manifest.py",
+      "to": "tracker/validators.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -2248,13 +2408,13 @@
     },
     {
       "from": "tests/test_router.py",
-      "to": "pkg:pytest",
-      "type": "depends_on",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_router.py",
-      "to": "tracker/__init__.py",
+      "to": "tracker/content_check.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -2268,6 +2428,12 @@
       "from": "tests/test_router.py",
       "to": "tracker/scaffold.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_router.py",
+      "to": "tests/test_content_check.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -2356,12 +2522,6 @@
     },
     {
       "from": "tests/test_scanner.py",
-      "to": "pkg:pypdf",
-      "type": "depends_on",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_scanner.py",
       "to": "pkg:pytest",
       "type": "depends_on",
       "source": "derived"
@@ -2410,6 +2570,12 @@
     },
     {
       "from": "tests/test_scheduling.py",
+      "to": "tracker/locking.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scheduling.py",
       "to": "tracker/runner.py",
       "type": "exercises",
       "source": "derived"
@@ -2428,14 +2594,14 @@
     },
     {
       "from": "tests/test_settings.py",
-      "to": "tracker/settings.py",
-      "type": "tests",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
       "source": "derived"
     },
     {
-      "from": "tests/test_single_source.py",
-      "to": "pkg:pytest",
-      "type": "depends_on",
+      "from": "tests/test_settings.py",
+      "to": "tracker/settings.py",
+      "type": "tests",
       "source": "derived"
     },
     {
@@ -2566,12 +2732,6 @@
     },
     {
       "from": "tests/test_validators.py",
-      "to": "pkg:pytest",
-      "type": "depends_on",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_validators.py",
       "to": "tracker/__init__.py",
       "type": "exercises",
       "source": "derived"
@@ -2604,12 +2764,6 @@
       "from": "tracker/__init__.py",
       "to": "tracker/scaffold.py",
       "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/api.py",
-      "to": "pkg:openpyxl",
-      "type": "depends_on",
       "source": "derived"
     },
     {
@@ -2728,9 +2882,21 @@
     },
     {
       "from": "tracker/content_check.py",
+      "to": "tracker/scaffold.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/content_check.py",
       "to": "tracker/validators.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/content_check.py",
+      "to": "artifact:_content_cache.json",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tracker/filer.py",
@@ -2749,6 +2915,12 @@
       "to": "rule:originals-are-never-altered",
       "type": "enforces",
       "source": "curated"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
     },
     {
       "from": "tracker/filer.py",
@@ -2801,6 +2973,12 @@
     {
       "from": "tracker/filer.py",
       "to": "artifact:Prepared/",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:_content_cache.json",
       "type": "writes",
       "source": "curated"
     },
@@ -2974,6 +3152,12 @@
     },
     {
       "from": "tracker/router.py",
+      "to": "tracker/scaffold.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/router.py",
       "to": "tracker/validators.py",
       "type": "imports",
       "source": "derived"
@@ -3130,6 +3314,18 @@
     },
     {
       "from": "tracker/scheduling.py",
+      "to": "tracker/locking.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scheduling.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scheduling.py",
       "to": "tracker/runner.py",
       "type": "imports",
       "source": "derived"
@@ -3139,6 +3335,12 @@
       "to": "tracker/settings.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/scheduling.py",
+      "to": "api_entry.py",
+      "type": "schedules",
+      "source": "curated"
     },
     {
       "from": "tracker/settings.py",

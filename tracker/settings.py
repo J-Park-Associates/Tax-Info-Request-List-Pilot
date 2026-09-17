@@ -24,7 +24,7 @@ import os
 import sys
 from pathlib import Path
 
-from tracker.manifest import TEMP_SUFFIX
+from tracker.manifest import write_json_atomically
 
 SETTINGS_FILENAME = "settings.json"
 #: The keys inside it.
@@ -106,9 +106,7 @@ def product_name() -> str:
 def _write(data: dict) -> None:
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(path.name + TEMP_SUFFIX)
-    temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(temp, path)
+    write_json_atomically(path, data)
 
 
 def set_firm(name: str) -> str:
@@ -146,7 +144,7 @@ if __name__ == "__main__":
         try:
             print(f"clients root: {set_clients_root(ns.root)}  ({settings_path()})")
         except SettingsError as exc:
-            raise SystemExit(str(exc))
+            raise SystemExit(str(exc)) from None
     else:
         root = clients_root()
         print(f"clients root: {root or '(not set)'}  ({settings_path()})")

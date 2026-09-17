@@ -153,10 +153,17 @@ python -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-trac
 `--root` defaults to the folder in `settings.json`; `--install` registers
 the task as it writes the XML, and running the same line again changes the
 schedule. The app's **Install Schedule** button does exactly this for the
-folder it is showing. Every pass also re-scaffolds each engagement, so a
+folder it is showing - from source with the Python it runs under, and in
+the packaged app with its own executable, which runs the job when given
+`--run` first (there is no Python on that machine). Every pass also re-scaffolds each engagement, so a
 row added in Excel has its folder and its README line by the next run, and
 an engagement that has been rolled forward is retired by its successor
 without anyone opening last year's manifest.
+
+One machine per clients root: the per-engagement lock (`tracker/locking.py`)
+that keeps a scheduled pass and a click in the app from working the same
+folder at once is a file, and a file a cloud client syncs between two
+machines is not a lock. Schedule the job, and press Scan, on one machine.
 
 One daily task is enough: the **runner** decides whether today is a drafting
 day, not the scheduler. So a Saturday the machine spent switched off still
@@ -226,6 +233,13 @@ row's other rules — last year's W-2, say — is **not** filed anywhere else.
 Everything unclear lands in `00 - Needs Review` with the reason recorded in
 the index, because misfiling a tax document is worse than not filing it.
 
+A scan with no text layer is routed by its file name when the name says
+which request it is. When the name says nothing it is read by OCR (if OCR
+is installed), the same reading the scanner makes later — and OCR text
+routes a file only on a request's *required* keywords; a looser match on
+OCR text goes to review with the lead noted, because a misread word is how
+a document lands under the wrong request.
+
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward
@@ -249,7 +263,11 @@ Optional OCR for scanned PDFs: see [requirements.txt](requirements.txt).
 
 `Start App.bat` runs the desktop app from source (Python (the floor is `requires-python` in `pyproject.toml`) and Node
 installed); `Build App.bat` packages it as `<productName>.exe` (the name in `app/package.json`) for a
-machine with neither. On first launch the app asks where your clients live
+machine with neither. Both are reproducible from the commit: the Python
+packages are pinned in `requirements.txt` and `requirements-build.txt`, the
+Electron packages in `app/package-lock.json` (installed with `npm ci`), and
+the freeze is the committed `api_entry.spec`; a build-info text file in the
+package records the commit and the tool versions that made it. On first launch the app asks where your clients live
 and writes that to `settings.json` beside itself; everything else follows
 from that one folder. Who does what, and the life of a request, is in
 [docs/workflow.md](docs/workflow.md); the decision log is

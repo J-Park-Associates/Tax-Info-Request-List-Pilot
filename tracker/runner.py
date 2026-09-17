@@ -44,18 +44,16 @@ import datetime as dt
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
 
 from tracker.filer import file_drops
 from tracker.manifest import (
-    ISO_DATE_HINT,
     ENGAGEMENT_LABELS,
     ENGAGEMENT_SHEET_NAME,
+    ISO_DATE_HINT,
     NO,
     ManifestError,
     check_manifest,
 )
-from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
     Engagement,
@@ -70,6 +68,7 @@ from tracker.reminder import (
     draft_reminder,
     write_draft,
 )
+from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.scanner import ScanLockedError, scan_engagement
 
 #: ``dt.date.weekday()`` counts from the start of the week as 0.
@@ -93,6 +92,10 @@ LOG_FILENAME = "runs.log"
 #: line the parser below still accepts.
 LOG_FLAG = "--log"
 DATE_FLAG = "--date"
+#: How the packaged app's one executable (api_entry.py) is told to be the
+#: scheduled job rather than the API: this flag first, then the runner's own
+#: arguments. tracker.scheduling builds the packaged command line from it.
+RUNNER_MODE_FLAG = "--run"
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
 
@@ -110,7 +113,7 @@ class EngagementRun:
     index_deferred: bool = False     # the index was locked; rows in the sidecar
     manifest_deferred: bool = False  # the manifest was locked; statuses in the sidecar
     statuses: dict[str, int] = field(default_factory=dict)
-    outstanding_count: int = 0       # from tracker.manifest.summarize, the one count
+    outstanding: int = 0             # from tracker.manifest.summarize, the one count
     drafted: Path | None = None
     draft_note: str = ""      # why there is no draft, when there is a reason
     skipped: str = ""         # why the whole engagement was passed over
@@ -119,10 +122,6 @@ class EngagementRun:
     @property
     def ok(self) -> bool:
         return not self.error
-
-    @property
-    def outstanding(self) -> int:
-        return self.outstanding_count
 
     def summary(self) -> str:
         if self.error:
@@ -219,29 +218,8 @@ def run_engagement(
     """
     today = today or dt.date.today()
     run = EngagementRun(engagement=engagement)
-
-    if engagement.superseded_by:
-        run.skipped = SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)
+    if not _worth_a_pass(run):
         return run
-    if not engagement.active:
-        run.skipped = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
-        return run
-    if not engagement.path.is_dir():
-        run.error = f"folder not found: {engagement.path}"
-        return run
-    if engagement.problem:
-        run.error = f"manifest could not be read: {engagement.problem}"
-        return run
-
-    # The same check the app's button runs: a typo made in Excel is named
-    # with its row before a single file is touched, and rows the rules
-    # cannot act on are carried into the report rather than left to be
-    # noticed at a deadline.
-    checked = check_manifest(engagement.path / MANIFEST_FILENAME)
-    if not checked.ok:
-        run.error = "; ".join(checked.problems)
-        return run
-    run.warnings = checked.warnings
 
     try:
         # A row added or un-waived in Excel gets its folder and its README
@@ -259,37 +237,14 @@ def run_engagement(
         scanned = scan_engagement(engagement.path, today=today, dry_run=dry_run)
         summary = scanned.summary
         run.statuses = summary.counts
-        run.outstanding_count = summary.outstanding
+        run.outstanding = summary.outstanding
         run.warnings.extend(scanned.warnings)
         run.manifest_deferred = scanned.deferred
 
-        if not should_draft(engagement, today, reminders, weekday):
+        if should_draft(engagement, today, reminders, weekday):
+            _draft_step(run, dry_run=dry_run)
+        else:
             run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
-            return run
-
-        # A dry run left the manifest unwritten, so there is nothing on disk
-        # for the drafter to read. Report from the scan we just did in memory
-        # rather than reading back statuses that were deliberately not saved.
-        if dry_run:
-            run.draft_note = (
-                f"would draft {run.outstanding} item(s)" if run.outstanding
-                else NOTHING_OUTSTANDING
-            )
-            return run
-
-        draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
-        if not draft.has_outstanding:
-            run.draft_note = NOTHING_OUTSTANDING
-            return run
-
-        written = write_draft(draft, engagement_dir=engagement.path,
-                              preserve_edits=True)
-        run.drafted = written
-        if written.name == NEW_DRAFT_FILENAME:
-            run.draft_note = (
-                f"{DRAFT_FILENAME} has been edited, so this week's draft was "
-                f"written to {NEW_DRAFT_FILENAME} instead"
-            )
 
     except ScanLockedError as exc:
         run.skipped = f"another run is still going ({exc})"
@@ -308,6 +263,62 @@ def run_engagement(
             + "; ".join(run.file_errors[:3])
         )
     return run
+
+
+def _worth_a_pass(run: EngagementRun) -> bool:
+    """Whether this engagement gets a pass at all; if not, ``run`` says why.
+
+    Skips (rolled forward, inactive) are not failures; a missing folder, an
+    unreadable manifest or a manifest with problems are - named with the
+    row, before a single file is touched, the same check the app's button
+    runs. Warnings ride the report rather than being noticed at a deadline.
+    """
+    engagement = run.engagement
+    if engagement.superseded_by:
+        run.skipped = SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)
+        return False
+    if not engagement.active:
+        run.skipped = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
+        return False
+    if not engagement.path.is_dir():
+        run.error = f"folder not found: {engagement.path}"
+        return False
+    if engagement.problem:
+        run.error = f"manifest could not be read: {engagement.problem}"
+        return False
+    checked = check_manifest(engagement.path / MANIFEST_FILENAME)
+    if not checked.ok:
+        run.error = "; ".join(checked.problems)
+        return False
+    run.warnings = checked.warnings
+    return True
+
+
+def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
+    """Draft the reminder for a pass that has decided today is the day. Never sends."""
+    # A dry run left the manifest unwritten, so there is nothing on disk
+    # for the drafter to read. Report from the scan we just did in memory
+    # rather than reading back statuses that were deliberately not saved.
+    if dry_run:
+        run.draft_note = (
+            f"would draft {run.outstanding} item(s)" if run.outstanding
+            else NOTHING_OUTSTANDING
+        )
+        return
+
+    engagement = run.engagement
+    draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
+    if not draft.has_outstanding:
+        run.draft_note = NOTHING_OUTSTANDING
+        return
+
+    written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True)
+    run.drafted = written
+    if written.name == NEW_DRAFT_FILENAME:
+        run.draft_note = (
+            f"{DRAFT_FILENAME} has been edited, so this week's draft was "
+            f"written to {NEW_DRAFT_FILENAME} instead"
+        )
 
 
 def _why_no_draft(engagement: Engagement, today: dt.date,
@@ -394,10 +405,15 @@ def append_log(path: Path | str, report: RunReport) -> Path:
 
 # --------------------------------------------------------------------- CLI ----
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """The command line, as a function: ``python -m tracker.runner`` and the
+    packaged executable in runner mode (``api_entry.py``) both call this.
+    Returns the exit code - non-zero if any engagement failed, so the
+    scheduler shows a red run."""
     import argparse
 
     parser = argparse.ArgumentParser(
+        prog="python -m tracker.runner",
         description=f"File, scan and (on {DRAFT_DAY_NAME}s) draft reminders for every "
                     "engagement found under the clients folder. Never sends anything."
     )
@@ -415,12 +431,12 @@ if __name__ == "__main__":
                         help=f"pretend today is this {ISO_DATE_HINT} (for testing a schedule)")
     parser.add_argument(LOG_FLAG, nargs="?", const=LOG_FILENAME, default="",
                         help=f"append the run summary to a log (default: {LOG_FILENAME})")
-    ns = parser.parse_args()
+    ns = parser.parse_args(argv)
 
     try:
         loaded = discover_engagements(ns.root)
     except RegistryError as exc:
-        raise SystemExit(f"Clients folder problem: {exc}")
+        raise SystemExit(f"Clients folder problem: {exc}") from None
 
     when = dt.date.today()
     if ns.date:
@@ -445,4 +461,10 @@ if __name__ == "__main__":
         append_log(log_path, result)
         print(f"\n  Logged to {log_path}")
 
-    raise SystemExit(1 if result.errors else 0)
+    return 1 if result.errors else 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    raise SystemExit(main(sys.argv[1:]))

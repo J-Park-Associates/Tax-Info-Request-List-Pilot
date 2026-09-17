@@ -6,3 +6,20 @@ requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
+
+# ruff is the linter (CI runs `ruff check .`): pyflakes for dead code, the
+# pycodestyle errors, bugbear, pyupgrade at the floor above, and import
+# order. Line length is a courtesy, not a rule - the docstrings carry
+# reasoning and a wrapped sentence reads worse than a long one.
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = ["build-portable", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "UP", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tracker", "tests", "tools"]

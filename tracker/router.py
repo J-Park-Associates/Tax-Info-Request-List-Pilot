@@ -21,6 +21,15 @@ Evidence, strongest first:
    when the file has no readable text, which rescues the common case of a
    scanned PDF with no text layer.
 
+A scan with no text layer and a name that says nothing is read by OCR, if
+OCR is installed - the same reading the scanner would make of it later
+(:func:`tracker.content_check.extract`), so the two never disagree about
+what the file says. But OCR text is read *more strictly* than a text layer:
+it routes a file only on a request's **required** keywords. OCR misreads
+words, and the looser any-keyword tier is exactly where a misread "1099"
+would file a document under the wrong request; those matches go to a
+person instead (``OCR_ONLY``).
+
 Two things deliberately do *not* route a file:
 
 - **A matching extension.** A row that accepts ``pdf`` would otherwise
@@ -41,7 +50,10 @@ for the same reason carries that reason — ``UNMATCHED`` alone is the
 last resort, not the default.
 
 Routing is read-only. Moving, renaming and indexing happen in
-:mod:`tracker.filer`, which uses the decisions made here.
+:mod:`tracker.filer`, which uses the decisions made here. The verdicts the
+router reaches on the way are left in the engagement's content cache,
+keyed by the file's content, so the scan that follows finds them under the
+working copy's new name instead of reading the document a second time.
 """
 
 from __future__ import annotations
@@ -51,9 +63,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tracker import reasons
-from tracker.content_check import contains_keyword, evaluate_rules, extract_text
+from tracker.content_check import (
+    ContentCache,
+    Extraction,
+    contains_keyword,
+    evaluate_rules,
+    extract,
+    extract_by_ocr,
+    rules_fingerprint,
+)
 from tracker.manifest import Override, RequestItem, has_routing_rules
 from tracker.validators import (
+    PdfVerdictCache,
     check_file,
     extension_of,
     google_stub_reason,
@@ -64,6 +85,8 @@ from tracker.validators import (
 #: Why a file was not routed. Stored verbatim in the index's Reason column.
 UNMATCHED = "matched no request"
 AMBIGUOUS = "matched more than one request"
+#: OCR text matched a request's looser keywords only; not enough to file on.
+OCR_ONLY = "matched only by OCR text"
 #: What a routing decision rested on.
 EVIDENCE_CONTENT = "content"
 EVIDENCE_FILENAME = "filename"
@@ -149,13 +172,38 @@ def _contested(path: Path, near: list[tuple[str, str]]) -> Routing:
     )
 
 
+def _read(path: Path, items: list[RequestItem], text: str | None) -> Extraction:
+    """The document's words, the way the scanner will read them.
+
+    The text layer first. A scan whose name already says which request it
+    is (``_filename_hit``) is not OCR'd - the name routes it, cheaply and
+    exactly as before OCR was part of routing; one whose name says nothing
+    is OCR'd, because that is the only evidence left.
+    """
+    if text is not None:
+        return Extraction(text)
+    reading = extract(path, ocr=False)
+    if reading.needs_ocr and not any(_filename_hit(path, i) for i in items if _considers(i)):
+        return extract_by_ocr(path)
+    return reading
+
+
 def route_file(
-    path: Path, items: list[RequestItem], *, text: str | None = None
+    path: Path,
+    items: list[RequestItem],
+    *,
+    text: str | None = None,
+    digest: str | None = None,
+    cache: ContentCache | None = None,
+    pdf_cache: PdfVerdictCache | None = None,
 ) -> Routing:
     """Decide which request ``path`` belongs to.
 
     ``text`` may be supplied by a caller that has already extracted it;
-    otherwise it is extracted here (once, and reused across every request).
+    otherwise it is read here (once, and reused across every request).
+    With a ``cache`` (and the file's ``digest``, if the caller has it), the
+    per-request verdicts are kept for the scan that follows. ``pdf_cache``
+    spares parsing the same PDF once per manifest row.
     """
     if is_cloud_placeholder(path):
         return Routing(path=path, identifier=None, reason=PENDING, pending=True)
@@ -165,19 +213,24 @@ def route_file(
     if stub := google_stub_reason(path):
         return Routing(path=path, identifier=None, reason=stub)
 
-    if text is None:
-        try:
-            text = extract_text(path)
-        except Exception as exc:  # a corrupt file is a review reason, not a crash
-            text = None
-            extraction_error = f"{exc.__class__.__name__}: {exc}"
-        else:
-            extraction_error = ""
-    else:
-        extraction_error = ""
+    pdf_cache = pdf_cache or PdfVerdictCache()
+    reading = _read(path, items, text)
+    words = reading.text or ""
+    # The scanner's verdict is the verdict on the *whole* reading; a scan
+    # rescued by its name was never fully read, so nothing is remembered.
+    remember = cache is not None and reading.text is not None and not reading.needs_ocr
+    if remember and digest is None:
+        digest = cache.digest_of(path)
+
+    def verdict_for(item: RequestItem):
+        verdict = evaluate_rules(words, item)
+        if remember and digest:
+            cache.put_by_digest(digest, rules_fingerprint(item), verdict)
+        return verdict
 
     strong: list[str] = []      # required keywords matched and every rule passed
     medium: list[str] = []      # passed on any_keywords / date alone
+    ocr_only: list[str] = []    # passed on any_keywords, but the text is OCR's word for it
     near: list[tuple[str, str]] = []   # looks like this request but fails a rule
     by_name: list[str] = []     # no readable text; the filename is all we have
     blocked: list[tuple[str, str]] = []  # content fits, but tier 2 refused the file
@@ -186,19 +239,22 @@ def route_file(
     for item in items:
         if not _considers(item):
             continue
-        tier2 = check_file(path, item)
+        tier2 = check_file(path, item, pdf_cache=pdf_cache)
         if not tier2.ok:
             refusals.append(tier2.reason)
-            if text and evaluate_rules(text, item).ok:
+            if words and verdict_for(item).ok:
                 blocked.append((item.identifier, tier2.reason))
             continue
-        if text:
-            verdict = evaluate_rules(text, item)
+        if words:
+            verdict = verdict_for(item)
             if verdict.ok:
-                (strong if _required_matched(text, item) else medium).append(
-                    item.identifier
-                )
-            elif _required_matched(text, item):
+                if _required_matched(words, item):
+                    strong.append(item.identifier)
+                elif reading.from_ocr:
+                    ocr_only.append(item.identifier)
+                else:
+                    medium.append(item.identifier)
+            elif _required_matched(words, item):
                 near.append((item.identifier, verdict.reason))
         elif _filename_hit(path, item):
             by_name.append(item.identifier)
@@ -230,6 +286,18 @@ def route_file(
                 evidence=strength,
             )
 
+    # OCR's reading of the looser keywords is a lead for a person, not a
+    # filing decision: a misread word is how a document lands under the
+    # wrong request.
+    if ocr_only:
+        return Routing(
+            path=path,
+            identifier=None,
+            reason=f"{OCR_ONLY} ({', '.join(ocr_only)}); a person should confirm",
+            candidates=tuple(ocr_only),
+            evidence=EVIDENCE_CONTENT,
+        )
+
     # The content says which request this is, but the file itself was
     # refused (too small, wrong type, unreadable PDF). Say that, so the
     # person reviewing it - and the client, via the reminder - hears the
@@ -251,11 +319,11 @@ def route_file(
                 reason=f"{UNMATCHED}; {NO_REQUEST_ACCEPTS.format(extension=ext)}",
             )
 
-    if extraction_error:
+    if reading.error:
         return Routing(
             path=path,
             identifier=None,
-            reason=f"{UNMATCHED}; could not read it ({extraction_error})",
+            reason=f"{UNMATCHED}; could not read it ({reading.error})",
         )
 
     rule_less = [i.identifier for i in items if not _considers(i)
@@ -272,3 +340,28 @@ def route_file(
 def route_files(paths: list[Path], items: list[RequestItem]) -> list[Routing]:
     """Route many files, skipping OS/sync junk entirely."""
     return [route_file(p, items) for p in paths if not is_ignored(p)]
+
+
+# ------------------------------------------------------------------- CLI ----
+
+if __name__ == "__main__":
+    import argparse
+
+    from tracker.manifest import load_manifest
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    parser = argparse.ArgumentParser(
+        description="Where would these files go, and why? Read-only: routes, moves nothing."
+    )
+    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
+    parser.add_argument("files", nargs="+", help="the dropped file(s) to route")
+    ns = parser.parse_args()
+
+    manifest_items = load_manifest(Path(ns.engagement_dir) / MANIFEST_FILENAME)
+    for decision in route_files([Path(f) for f in ns.files], manifest_items):
+        where = decision.identifier or "Needs Review"
+        print(f"{decision.path.name}\n    -> {where}: {decision.reason}")
+        if decision.evidence:
+            print(f"       evidence: {decision.evidence}")
+        if decision.candidates:
+            print(f"       candidates: {', '.join(decision.candidates)}")

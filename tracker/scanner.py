@@ -32,17 +32,13 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import reasons
-from tracker.content_check import ContentCache, check_content
-from tracker.locking import (
-    LOCK_FILENAME,
-    STALE_LOCK_SECONDS,
-    EngagementLockedError,
-    acquire_lock,
-)
+from tracker.content_check import CACHE_FILENAME, ContentCache, check_content
+from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
     COL_EXPECTED_COUNT,
     Override,
@@ -61,6 +57,7 @@ from tracker.scaffold import (
     assign_folders,
 )
 from tracker.validators import (
+    PdfVerdictCache,
     check_folder,
     is_ignored,
     iter_candidate_files,
@@ -83,7 +80,8 @@ REGRESSION_FILES_CHANGED = "files changed"
 
 log = logging.getLogger("tracker.scanner")
 
-CACHE_FILENAME = "_content_cache.json"
+#: CACHE_FILENAME is tracker.content_check's (the filer writes the cache too);
+#: it stays importable from here for anyone's scripts.
 _MAX_NOTE_LEN = 500
 _MAX_LISTED_FAILURES = 3
 
@@ -119,9 +117,12 @@ def _scan_item(
     folders: list[Path],
     cache: ContentCache,
     today: dt.date,
+    pdf_cache: PdfVerdictCache | None = None,
 ) -> StatusUpdate:
     """Run tiers 1-3 for one manifest row and resolve its status."""
-    results = [fr for folder in folders for fr in check_folder(folder, item).files]
+    results = [
+        fr for folder in folders for fr in check_folder(folder, item, pdf_cache=pdf_cache).files
+    ]
     pending = [f for f in results if f.pending_sync]
     tier2_failed = [f for f in results if not f.ok and not f.pending_sync]
 
@@ -185,49 +186,55 @@ def _scan_item(
             validation_notes=_join(facts),
         )
 
-    # --- deterministic status resolution -----------------------------------
-    if not folders:
-        status = Status.MISSING
-        facts.insert(0, reasons.NO_REQUEST_FOLDER.format())
-    elif count >= item.expected_count:
-        status = Status.RECEIVED
-        if pending:
-            facts.append(SYNCING_MORE_NOTE.format(n=len(pending)))
-    elif pending:
-        status = Status.PENDING_SYNC
-        facts.insert(0, SYNCING_NOTE.format(n=len(pending)))
-    elif count > 0:
-        status = Status.PARTIAL
-        facts.insert(0, PARTIAL_NOTE.format(count=count, expected=item.expected_count))
-    elif failures:
-        status = Status.FAILED
-    else:
-        status = Status.MISSING
-
-    # --- Received Date: first-pass stamp, preserved through regressions ----
-    if status == Status.RECEIVED:
-        received = item.received_date or today
-    else:
-        received = item.received_date
-        if item.received_date is not None:
-            # A row that was Received and is not any more either lost files
-            # or was asked for more. Say which; REGRESSION_FILES_CHANGED on a row
-            # whose Expected Count somebody raised sends a person hunting
-            # for a file that never went anywhere.
-            had = item.file_count if item.file_count is not None else 0
-            if count >= had and item.expected_count > count and not failures:
-                why = REGRESSION_COUNT_RAISED.format(expected=item.expected_count)
-            else:
-                why = REGRESSION_FILES_CHANGED
-            facts.insert(0, REGRESSION_NOTE.format(
-                status=Status.RECEIVED, date=item.received_date.isoformat(), why=why))
-
+    status = _resolve_status(item, folders, count, len(pending), bool(failures), facts)
+    received = _received_date(item, status, count, bool(failures), facts, today)
     return StatusUpdate(
         status=status,
         file_count=count,
         received_date=received,
         validation_notes=_join(facts),
     )
+
+
+def _resolve_status(
+    item: RequestItem, folders: list[Path], count: int, pending: int, failed: bool, facts: list[str],
+) -> str:
+    """The deterministic status for what tiers 1-3 found; adds the note that says why."""
+    if not folders:
+        facts.insert(0, reasons.NO_REQUEST_FOLDER.format())
+        return Status.MISSING
+    if count >= item.expected_count:
+        if pending:
+            facts.append(SYNCING_MORE_NOTE.format(n=pending))
+        return Status.RECEIVED
+    if pending:
+        facts.insert(0, SYNCING_NOTE.format(n=pending))
+        return Status.PENDING_SYNC
+    if count > 0:
+        facts.insert(0, PARTIAL_NOTE.format(count=count, expected=item.expected_count))
+        return Status.PARTIAL
+    return Status.FAILED if failed else Status.MISSING
+
+
+def _received_date(
+    item: RequestItem, status: str, count: int, failed: bool, facts: list[str], today: dt.date,
+) -> dt.date | None:
+    """Received Date: stamped on the first Received pass, preserved through regressions."""
+    if status == Status.RECEIVED:
+        return item.received_date or today
+    if item.received_date is not None:
+        # A row that was Received and is not any more either lost files
+        # or was asked for more. Say which; REGRESSION_FILES_CHANGED on a row
+        # whose Expected Count somebody raised sends a person hunting
+        # for a file that never went anywhere.
+        had = item.file_count if item.file_count is not None else 0
+        if count >= had and item.expected_count > count and not failed:
+            why = REGRESSION_COUNT_RAISED.format(expected=item.expected_count)
+        else:
+            why = REGRESSION_FILES_CHANGED
+        facts.insert(0, REGRESSION_NOTE.format(
+            status=Status.RECEIVED, date=item.received_date.isoformat(), why=why))
+    return item.received_date
 
 
 def _join(facts: list[str]) -> str:
@@ -280,18 +287,18 @@ def scan_engagement(
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
-    items = load_manifest(engagement_dir / MANIFEST_FILENAME)
 
-    lock: Path | None = None
-    if not dry_run:
-        lock = acquire_lock(engagement_dir)
-    try:
+    # The lock comes before the manifest is read (see tracker.locking): a
+    # sort that finished in between would otherwise be invisible to this scan.
+    with engagement_lock(engagement_dir) if not dry_run else nullcontext():
+        items = load_manifest(engagement_dir / MANIFEST_FILENAME)
         prepared_dir = engagement_dir / PREPARED_DIR_NAME
         cache = ContentCache(engagement_dir / CACHE_FILENAME)
+        pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
 
         updates = {
-            item.identifier: _scan_item(item, assigned[item.identifier], cache, today)
+            item.identifier: _scan_item(item, assigned[item.identifier], cache, today, pdf_cache)
             for item in items
         }
 
@@ -316,9 +323,6 @@ def scan_engagement(
         report.deferred = not report.written
         cache.save()
         return report
-    finally:
-        if lock is not None:
-            lock.unlink(missing_ok=True)
 
 
 # ------------------------------------------------------------------- CLI ----
@@ -368,8 +372,8 @@ if __name__ == "__main__":
         _print_report(scan_engagement(engagement, dry_run=ns.dry_run))
     except ScanLockedError as exc:
         print(f"Scan skipped: {exc}")
-        raise SystemExit(2)
+        raise SystemExit(2) from None
     except ManifestError as exc:
         print(f"\nMANIFEST PROBLEM - nothing was scanned or written:\n  {exc}")
         print(f"  Fix {MANIFEST_FILENAME} in Excel (row numbers match Excel rows), save, and re-run.")
-        raise SystemExit(1)
+        raise SystemExit(1) from None

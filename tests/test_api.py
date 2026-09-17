@@ -18,6 +18,7 @@ import tracker.api as api
 from tests.samples import PRIOR_YEAR, col, row
 from tracker import reasons
 from tracker.filer import NEEDS_REVIEW
+from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
     COL_ALLOWED_EXTENSIONS,
     COL_ANY_KEYWORDS,
@@ -32,9 +33,8 @@ from tracker.manifest import (
     Status,
     load_manifest,
 )
-from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
-from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
+from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
 
@@ -42,9 +42,7 @@ from tracker.templates import BASE_YEAR, default_tax_year
 @pytest.fixture
 def demo_root(tmp_path, monkeypatch):
     """A clients root recorded the way the app records it: settings.json beside the app."""
-    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
-
-    from tracker.settings import set_firm
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root, set_firm
 
     root = tmp_path / "Clients"
     root.mkdir()
@@ -80,6 +78,17 @@ def test_a_manifest_problem_is_a_json_error_not_a_traceback(capsys, demo_root):
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(demo_root / "nowhere"))
     assert code == 1
     assert "Manifest not found" in payload["error"]
+
+
+def test_the_engagement_flag_needs_a_folder_under_the_root(capsys, demo_root, tmp_path):
+    hint = f"Pick an engagement first ({api.ENGAGEMENT_FLAG} <folder>)"
+    assert run(capsys, "state")[1]["error"] == hint
+    assert run(capsys, "state", api.ENGAGEMENT_FLAG)[1]["error"] == hint        # was an IndexError
+    assert run(capsys, "state", api.ENGAGEMENT_FLAG, "  ")[1]["error"] == hint
+    elsewhere = tmp_path / "Elsewhere" / "Smith"
+    elsewhere.mkdir(parents=True)
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(elsewhere))
+    assert code == 1 and "not under the clients root" in payload["error"]
 
 
 def test_templates_lists_every_form_with_its_checklist(capsys):
@@ -357,6 +366,7 @@ def test_check_reports_problems_and_warnings_with_rows(capsys, demo_root):
 
 def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_root):
     import os
+
     from tracker.locking import LOCK_FILENAME
 
     spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
@@ -367,7 +377,6 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     lock = engagement / LOCK_FILENAME
     lock.write_text(lock_line(999, dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
-    from tracker import STANDING_RULES
     assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False,
                                "stale_after_minutes": STALE_LOCK_SECONDS // 60}
     code, payload = run(capsys, "unlock", api.ENGAGEMENT_FLAG, str(engagement))
@@ -377,6 +386,27 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     os.utime(lock, (old, old))
     code, payload = run(capsys, "unlock", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0 and payload["cleared"] and payload["state"]["lock"] is None
+
+
+def test_state_reads_a_corrupt_sidecar_without_moving_it(capsys, demo_root):
+    # Showing an engagement is a read. A sidecar the app cannot parse stays
+    # where it is for the next real run to move aside as evidence.
+    from tracker.filer import INDEX_PENDING_FILENAME
+    from tracker.manifest import CORRUPT_SUFFIX, pending_path
+
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    manifest_sidecar = pending_path(engagement / MANIFEST_FILENAME)
+    index_sidecar = engagement / INDEX_PENDING_FILENAME
+    manifest_sidecar.write_text("{not json", encoding="utf-8")
+    index_sidecar.write_text("{not json", encoding="utf-8")
+
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
+
+    assert code == 0 and payload["pending_statuses"] == 0 and payload["index"] == []
+    assert manifest_sidecar.exists() and index_sidecar.exists()
+    assert list(engagement.glob(f"*{CORRUPT_SUFFIX}")) == []
 
 
 def test_a_new_client_engagement_is_named_from_client_year_and_form(capsys, demo_root):
@@ -511,12 +541,34 @@ def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monke
     assert calls == [Path(payload["xml"])]
 
 
+def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys, demo_root, monkeypatch, tmp_path):
+    import sys
+
+    import tracker.api as api_module
+    from tracker.runner import LOG_FLAG, RUNNER_MODE_FLAG
+
+    exe = tmp_path / "package" / "resources" / "api" / "api.exe"
+    exe.parent.mkdir(parents=True)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert code == 0, payload
+    assert payload["frozen"] is True
+    xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
+    assert f"<Command>{exe}</Command>" in xml
+    assert f"<Arguments>{RUNNER_MODE_FLAG} " in xml and LOG_FLAG in xml and str(demo_root) in xml
+    assert f"<WorkingDirectory>{exe.parent}</WorkingDirectory>" in xml
+    assert "-m tracker.runner" not in xml
+
+
 # ------------------------------------------------------------- vocabulary ----
 
 
 def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
-    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
     from tracker import STANDING_RULES
+    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
     from tracker.manifest import DEFAULT_EXTENSIONS, Override, Status
     from tracker.rollover import CARRIED_SHEET
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES

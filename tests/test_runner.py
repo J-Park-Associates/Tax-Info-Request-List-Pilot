@@ -22,27 +22,29 @@ from tracker.manifest import (
     COL_MIN_SIZE_KB,
     COL_PERIOD,
     SHEET_NAME,
+    EngagementInfo,
     Override,
     Status,
     create_template,
+    write_engagement_info,
 )
-from tracker.manifest import EngagementInfo, write_engagement_info
 from tracker.registry import SKIP_ROLLED_FORWARD, Engagement, Registry, discover_engagements
 from tracker.reminder import DRAFT_BANNER, DRAFT_FILENAME, NEW_DRAFT_FILENAME
 from tracker.runner import (
-    NOTHING_OUTSTANDING,
     DRAFT_WEEKDAY,
     LOG_FILENAME,
+    NOTHING_OUTSTANDING,
     REMINDERS_ALWAYS,
     REMINDERS_AUTO,
     REMINDERS_NEVER,
+    WEEKDAY_NAMES,
     append_log,
     format_report,
     is_draft_day,
+    main,
     run_engagement,
     run_registry,
     should_draft,
-    WEEKDAY_NAMES,
 )
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME, scaffold_engagement
 
@@ -60,6 +62,14 @@ def samples(tmp_path_factory):
     folder = tmp_path_factory.mktemp("samples")
     build_samples(folder)
     return folder
+
+
+def test_the_runner_has_a_main_the_frozen_entry_can_call(tmp_path, samples, capsys):
+    # api_entry.py runs the scheduled job through this function, so the
+    # command line has to be one, not code under __main__.
+    build_engagement(tmp_path, samples)
+    assert main([str(tmp_path), "--dry-run", "--reminders", REMINDERS_NEVER]) == 0
+    assert "Smith TY2025" in capsys.readouterr().out
 
 
 def build_engagement(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",),
@@ -317,7 +327,7 @@ def test_a_clients_folder_drives_a_real_run_with_nothing_registered(tmp_path, sa
 
 
 def test_an_engagement_whose_manifest_cannot_be_read_fails_alone(tmp_path, samples):
-    good = build_engagement(tmp_path / "Clients", samples, name="Good")
+    build_engagement(tmp_path / "Clients", samples, name="Good")
     bad = tmp_path / "Clients" / "Bad 2025"
     bad.mkdir()
     (bad / MANIFEST_FILENAME).write_bytes(b"not a workbook")
@@ -375,6 +385,7 @@ def test_waived_and_accepted_rows_are_not_outstanding(tmp_path, samples):
 
 def test_a_row_added_in_excel_has_its_folder_by_the_next_run(tmp_path, samples):
     from openpyxl import load_workbook
+
     from tracker.scaffold import README_NAME
 
     engagement = build_engagement(tmp_path, samples, drops=())

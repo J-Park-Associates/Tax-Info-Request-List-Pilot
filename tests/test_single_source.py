@@ -12,8 +12,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parent.parent
 
 
@@ -82,6 +80,35 @@ def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
     assert "vocab.engagement_flag" in js
 
 
+def test_the_shell_runs_only_commands_the_api_has():
+    # main.js learns the allowlist from the API's vocabulary; before that it
+    # runs exactly one command, the one the renderer calls first, and that
+    # command must exist in Python.
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+    bootstrap = re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1)
+    assert bootstrap in api.COMMANDS
+    first_call = re.search(r'call\(\["([a-z-]+)"\]', read("app/renderer/app.js")).group(1)
+    assert first_call == bootstrap
+    assert "vocab.commands" in main_js and "vocab.engagement_flag" in main_js
+    assert "openable.has(" in main_js                       # opens only paths the API reported
+    assert 'proc.on("close", (code)' in main_js             # the exit code is not discarded
+    assert "TRACKER_TIMEOUT_MS" in main_js and "proc.kill()" in main_js
+    assert "sandbox: true" in main_js and "setWindowOpenHandler" in main_js
+
+
+def test_the_renderer_builds_the_page_from_data_not_html():
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert sink not in js, sink
+    assert 'http-equiv="Content-Security-Policy"' in html
+    assert "'unsafe-inline'" not in html and "'unsafe-eval'" not in html
+    assert not re.search(r"<script[^>]*>[^<]", html)        # no inline script
+    assert not re.search(r' on[a-z]+="', html)              # no inline handlers
+
+
 def test_the_window_colour_is_read_from_the_stylesheet():
     assert re.search(r"--bg:\s*#", read("app/renderer/style.css"))
     main_js = read("app/main.js")
@@ -112,9 +139,7 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
 
 def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
     from tracker.api import _slug
-    from tracker.manifest import Status
-
-    from tracker.manifest import UNSCANNED_LABEL
+    from tracker.manifest import UNSCANNED_LABEL, Status
 
     css = read("app/renderer/style.css")
     chips = set(re.findall(r"\.chip-([a-z-]+)\s*\{", css))
@@ -122,14 +147,20 @@ def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
 
 
 def test_the_renderer_types_no_vocabulary_of_its_own():
-    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
-    from tracker.manifest import DEFAULT_EXTENSIONS, Override, Status
-    from tracker.scheduling import DEFAULT_START
-
     from tracker.api import _slug
-    from tracker.manifest import EXPECTED_PATTERN, UNSCANNED_LABEL, YEAR_MAX, YEAR_MIN
+    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
+    from tracker.manifest import (
+        DEFAULT_EXTENSIONS,
+        EXPECTED_PATTERN,
+        UNSCANNED_LABEL,
+        YEAR_MAX,
+        YEAR_MIN,
+        Override,
+        Status,
+    )
     from tracker.rollover import CARRIED_SHEET
     from tracker.scaffold import PBC_DIR_NAME
+    from tracker.scheduling import DEFAULT_START
     from tracker.settings import EXAMPLE_ROOT
 
     js = read("app/renderer/app.js")
@@ -138,7 +169,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
                     ", ".join(DEFAULT_EXTENSIONS), "looks like", UNSCANNED_LABEL,
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
-        assert literal not in js.replace(f"chip-${{vocab.unscanned_key}}", ""), literal
+        assert literal not in js.replace("chip-${vocab.unscanned_key}", ""), literal
     for literal in (CARRIED_SHEET, PBC_DIR_NAME, EXAMPLE_ROOT, str(YEAR_MIN), str(YEAR_MAX),
                     UNSCANNED_LABEL):
         assert literal not in html, literal
@@ -314,6 +345,36 @@ def test_the_build_output_folder_is_the_one_gitignore_knows():
     assert f"{out}/" in read(".gitignore")
 
 
+def test_every_dependency_is_pinned_exactly():
+    # A build made next month must freeze the same code as one made today.
+    for rel in ("requirements.txt", "requirements-build.txt"):
+        for line in read(rel).splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-r "):
+                continue
+            assert re.fullmatch(r"[A-Za-z0-9_.-]+==[0-9][A-Za-z0-9.]*", line), (rel, line)
+    package = json.loads(read("app/package.json"))
+    for name, version in package["devDependencies"].items():
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version), (name, version)
+    lock = json.loads(read("app/package-lock.json"))
+    for name, version in package["devDependencies"].items():
+        assert lock["packages"][f"node_modules/{name}"]["version"] == version, name
+
+
+def test_the_build_is_made_from_what_is_committed():
+    ignored = [line.strip() for line in read(".gitignore").splitlines()]
+    assert "*.spec" not in ignored and "app/package-lock.json" not in ignored
+    assert "npm ci" in read("Build App.bat") and "npm ci" in read("Start App.bat")
+    assert "npm install" not in read("Build App.bat") and "npm install" not in read("Start App.bat")
+    build = read("Build App.bat")
+    assert "requirements-build.txt" in build and "api_entry.spec" in build
+    assert "pip install pyinstaller" not in build            # pinned in requirements-build.txt
+    spec = read("api_entry.spec")
+    api_name = json.loads(read("app/package.json"))["config"]["apiName"]
+    assert api_name not in spec and "config" in spec and "apiName" in spec
+    assert "git rev-parse HEAD" in build and "pip freeze" in build   # BUILD-INFO.txt provenance
+
+
 def test_the_roadmap_names_every_status_in_bold():
     from tracker.manifest import Status
 
@@ -441,7 +502,7 @@ def test_documents_name_the_engagement_folders_as_the_scaffold_does():
 
 
 def test_gitignore_ignores_the_junk_the_validators_ignore():
-    from tracker.validators import OFFICE_LOCK_PREFIX, _IGNORED_NAMES
+    from tracker.validators import _IGNORED_NAMES, OFFICE_LOCK_PREFIX
 
     ignored = {line.strip().lower() for line in read(".gitignore").splitlines()
                if line.strip() and not line.startswith("#")}
@@ -492,7 +553,12 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME
     from tracker.scaffold import (
-        MANIFEST_FILENAME, PBC_DIR_NAME, PREPARED_DIR_NAME, README_NAME, REVIEW_DIR_NAME, SHARED_DIR_NAME,
+        MANIFEST_FILENAME,
+        PBC_DIR_NAME,
+        PREPARED_DIR_NAME,
+        README_NAME,
+        REVIEW_DIR_NAME,
+        SHARED_DIR_NAME,
     )
     from tracker.scanner import CACHE_FILENAME
     from tracker.settings import SETTINGS_FILENAME
