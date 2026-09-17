@@ -467,3 +467,22 @@ def test_a_document_a_person_filed_is_not_second_guessed_by_the_rules(engagement
     row = statuses(engagement)["A01"]
     assert row.status == Status.RECEIVED and row.file_count == 1
     assert ACCEPTED_NOTE.format(n=1) in row.validation_notes
+
+
+def test_a_persons_acceptance_covers_only_the_bytes_they_filed(engagement):
+    # A person filed one document; they deleted it; a later drop the filer
+    # routed by name took the same canonical name. The acceptance was for
+    # the person's bytes, not the name: the new file faces the rules.
+    from tracker.filer import assign_review_file, file_drops
+    from tracker.scaffold import SHARED_DIR_NAME
+
+    text_pdf(engagement / SHARED_DIR_NAME / "statement.pdf", "Annual account statement 2025 interest paid")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    filed = assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1).entry
+    (engagement / filed.prepared_location).unlink()
+    text_pdf(engagement / SHARED_DIR_NAME / "Chase scan.pdf", "")     # routes by name, same canonical name
+    report = file_drops(engagement, today=DAY2)
+    assert report.filed[0].prepared_location == filed.prepared_location
+    scan_engagement(engagement, today=DAY2)
+    row = statuses(engagement)["A01"]
+    assert row.status != Status.RECEIVED and "filed here by a person" not in row.validation_notes

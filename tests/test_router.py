@@ -7,6 +7,8 @@ sitting in Needs Review.
 
 
 
+import pytest
+
 from tests.test_scanner import text_pdf
 from tracker import reasons
 from tracker.manifest import Override, RequestItem
@@ -388,7 +390,7 @@ def test_a_run_together_form_number_is_still_its_own_variant(tmp_path):
     items = [replace(i, min_size_kb=0) for i in template_items("1040", core_only=True, year=2025)]
     for name in ("Form1040-ES.pdf", "Form1040 V.pdf", "Form1040_V.pdf", "Form 1040-V.pdf"):
         assert route_file(text_pdf(tmp_path / name, ""), items).identifier is None, name
-    assert route_file(text_pdf(tmp_path / "Form1040 2024.pdf", ""), items).identifier == "B01"
+    assert route_file(text_pdf(tmp_path / "W2 2025.pdf", ""), items).identifier == "A01"
 
 
 def test_a_keyword_with_nothing_in_it_matches_nothing(tmp_path):
@@ -401,3 +403,42 @@ def test_a_keyword_with_nothing_in_it_matches_nothing(tmp_path):
     f = text_pdf(tmp_path / "IMG_2025_0312.pdf", "Form 1099-R Distributions From Pensions 2025")
     assert route_file(f, [dash]).identifier is None
     assert route_file(f, [dash, MORTGAGE]).identifier is None
+
+
+def _shipped_1040_rows(tmp_path):
+    """The 1040 catalog as an engagement loads it: the Period-derived year
+    check is live, which template_items() alone does not give."""
+    from dataclasses import replace
+
+    from tracker.manifest import create_template, load_manifest
+    from tracker.templates import template_items
+
+    manifest = tmp_path / MANIFEST_FILENAME
+    create_template(manifest, template_items("1040", year=2025))
+    return [replace(i, min_size_kb=0) for i in load_manifest(manifest)]
+
+
+@pytest.mark.parametrize("name, text, expected", [
+    # What other forms print about their neighbours must not file them there.
+    ("2024 Tax Return.pdf",
+     "Form 1040 U.S. Individual Income Tax Return 2024\nAttach Form(s) W-2 here.\n"
+     "1a Total amount from Form(s) W-2\n36 Amount applied to your 2025 estimated tax", "B01"),
+    ("1095-C.pdf",
+     "Form 1095-C Employer-Provided Health Insurance Offer and Coverage 2025\nIf you purchased health "
+     "insurance coverage for 2025 through the Health Insurance Marketplace and wish to claim the premium tax credit", None),
+    ("1095-B.pdf",
+     "Form 1095-B Health Coverage 2025\nPart III Issuer or Other Coverage Provider", None),
+    ("1099-SA.pdf",
+     "Form 1099-SA Distributions From an HSA 2025\nBox 1 The amount may have been a direct payment to the "
+     "medical service provider or distributed to you.", None),
+    ("5498-SA.pdf",
+     "Form 5498-SA HSA, Archer MSA, or Medicare Advantage MSA Information 2025\n"
+     "Box 2 Total HSA or Archer MSA contributions made in 2025", "K01"),
+    ("W-2.pdf", "Form W-2 Wage and Tax Statement 2025\nCopy B To Be Filed With Employee's FEDERAL Tax Return", "A01"),
+    ("1095-A.pdf", "Form 1095-A Health Insurance Marketplace Statement 2025", "I01"),
+    ("church.pdf", "Annual Contribution Statement 2025\nNo goods or services were provided in exchange for these contributions", "D01"),
+    ("K-1.pdf", "Schedule K-1 (Form 1065) 2025 Partner's Share of Income\n5 Interest income 120", "F01"),
+])
+def test_the_shipped_1040_catalog_files_real_forms_where_they_belong(tmp_path, name, text, expected):
+    items = _shipped_1040_rows(tmp_path)
+    assert route_file(text_pdf(tmp_path / name, text), items).identifier == expected, name

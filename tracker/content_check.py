@@ -184,14 +184,21 @@ def keyword_pattern(keyword: str) -> str | None:
     matches "interest-income" in a file name, ``w-2`` matches "W2" and
     "W–2", ``1099-int`` matches "1099INT".
     """
-    # Only the letters and digits are the keyword; a "-" or "n/a" typed into
+    # Only the letters and digits are the keyword; a "-" or "$" typed into
     # a keyword cell is nothing to look for, and must not match everything.
-    words = [_JOINER.join(re.escape(part) for part in _DASHES.split(w) if part)
-             for w in keyword.strip().lower().split()]
-    words = [w for w in words if w]
-    if not words:
+    keyword = keyword.strip().lower()
+    if not any(ch.isalnum() for ch in keyword):
         return None
+    words = [_JOINER.join(_seams(part) for part in _DASHES.split(w) if part) for w in keyword.split()]
+    words = [w for w in words if w]
     return rf"(?<![a-z0-9]){_JOINER.join(words)}(?![a-z0-9])"
+
+
+def _seams(part: str) -> str:
+    """``part`` escaped, with a dash allowed where letters meet digits: a
+    keyword typed ``w2`` finds "W-2" as ``w-2`` finds "W2"."""
+    pieces = re.findall(r"[a-z]+|[0-9]+|[^a-z0-9]+", part)
+    return _JOINER.join(re.escape(piece) for piece in pieces)
 
 
 def contains_keyword(text: str, keyword: str) -> bool:

@@ -115,7 +115,13 @@ class ScanReport:
 
 
 def _filed_by_a_person(engagement_dir: Path) -> frozenset[Path]:
-    """Working copies the index records as a person's filing decision."""
+    """Working copies the index records as a person's filing decision.
+
+    The newest row for a location is the one that counts (a person's copy
+    that was deleted and whose canonical name a later machine-filed drop
+    took is not theirs), and the file must still hold the bytes that row
+    recorded - the decision was about those bytes, not the name.
+    """
     from tracker.filer import ASSIGNED_BY_PERSON, FILED, INDEX_FILENAME, read_index
 
     try:
@@ -123,10 +129,18 @@ def _filed_by_a_person(engagement_dir: Path) -> frozenset[Path]:
     except Exception as exc:   # an unreadable index is the filer's problem, not the scan's
         log.warning("Could not read the index for a person's decisions: %s", exc)
         return frozenset()
-    return frozenset(
-        engagement_dir / row.prepared_location for row in rows
-        if row.decision == FILED and row.prepared_location and row.reason.startswith(ASSIGNED_BY_PERSON)
-    )
+    newest = {row.prepared_location: row for row in rows if row.prepared_location}
+    accepted = set()
+    for location, row in newest.items():
+        if row.decision != FILED or not row.reason.startswith(ASSIGNED_BY_PERSON):
+            continue
+        path = engagement_dir / location
+        try:
+            if row.digest and sha256_of(path) == row.digest:
+                accepted.add(path)
+        except OSError:
+            continue
+    return frozenset(accepted)
 
 
 

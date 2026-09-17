@@ -41,6 +41,7 @@ if anything failed, so the scheduler shows a red run instead of a silent one.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -72,6 +73,8 @@ from tracker.reminder import (
 )
 from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.scanner import ScanLockedError, scan_engagement
+
+log = logging.getLogger("tracker.runner")
 
 #: ``dt.date.weekday()`` counts from the start of the week as 0.
 DRAFT_WEEKDAY = 5
@@ -339,7 +342,7 @@ def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
     draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
     if not draft.has_outstanding:
         run.draft_note = NOTHING_OUTSTANDING
-        _retire_stale_drafts(engagement.path)
+        _refresh_stale_draft(draft, engagement.path)
         return
 
     try:
@@ -355,17 +358,23 @@ def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
         )
 
 
-def _retire_stale_drafts(engagement_dir: Path) -> None:
-    """Nothing is outstanding: last week's draft, still asking for documents
-    that have since arrived, is not something to send. The run's own
-    unedited draft is removed; one a person has edited is theirs and is
-    left exactly as it is, date included. With no draft file left,
-    ``last_drafted`` reads "never", and the engagement waits for its next
-    draft day rather than catching up a week that had nothing to chase."""
+def _refresh_stale_draft(draft, engagement_dir: Path) -> None:
+    """Nothing is outstanding, and a draft from a week that had something to
+    chase is still there. The run's own unedited draft is rewritten as what
+    the run would say today - the same text ``python -m tracker.reminder``
+    writes - so it is neither stale nor dated as if untouched; one a person
+    has edited is theirs and is left exactly as it is. With the file
+    current, ``last_drafted`` reads this draft day and no weekday pass
+    mistakes the quiet week for a missed one.
+    """
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
         path = engagement_dir / name
-        if path.is_file() and is_unedited(path):
-            path.unlink()
+        if not path.is_file() or not is_unedited(path):
+            continue
+        try:
+            write_draft(draft, path=path)
+        except OSError as exc:    # open in Word, or a sync client mid-upload: next time
+            log.warning("Could not refresh %s (%s)", path.name, exc)
 
 
 def _why_no_draft(engagement: Engagement, today: dt.date,

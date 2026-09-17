@@ -14,7 +14,7 @@
   ],
   "counts": {
     "nodes": 82,
-    "edges": 260,
+    "edges": 261,
     "reused": 50
   },
   "node_types": [
@@ -120,8 +120,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "123335142ae4749f",
-      "lines": 546,
+      "sha256": "87fc2ed391450dc4",
+      "lines": 553,
       "cli": "python -m tracker.content_check",
       "exports": [
         "CACHE_FILENAME",
@@ -157,7 +157,7 @@
         "TEXT_EXTENSIONS": "('csv', 'tsv', 'txt')"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache (CACHE_FILENAME) keeps the verdicts.",
-      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION 2; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3."
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION 2; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword."
     },
     {
       "id": "tracker/filer.py",
@@ -588,8 +588,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ae8a011ace7fa770",
-      "lines": 518,
+      "sha256": "d9189f646920d9b2",
+      "lines": 527,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -629,7 +629,7 @@
         "NOTHING_OUTSTANDING": "'nothing outstanding; no reminder needed'"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57: _mark_drafted() dates the draft files whenever the draft step ran, so a quiet draft day is not a missed one. Decision 58: a draft day with nothing to chase retires the run's own unedited draft (_retire_stale_drafts()); an edited one is left as it is."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57: _mark_drafted() dates the draft files whenever the draft step ran, so a quiet draft day is not a missed one. Decision 58: a draft day with nothing to chase retires the run's own unedited draft (_retire_stale_drafts()); an edited one is left as it is. Decision 60: _refresh_stale_draft() rewrites the run's own unedited draft on a quiet draft day."
     },
     {
       "id": "tracker/scaffold.py",
@@ -671,8 +671,8 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e22d1014e00b7df1",
-      "lines": 431,
+      "sha256": "14560c5b9786d8ac",
+      "lines": 445,
       "cli": "python -m tracker.scanner",
       "exports": [
         "ACCEPTED_NOTE",
@@ -704,7 +704,7 @@
         "REGRESSION_FILES_CHANGED": "'files changed'"
       },
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and writes the result back into the manifest.",
-      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the manifest only once it has it, so a sort that finished in between is never invisible to the scan. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). Reads each document through content_check.extract(), the same reading the router made of it as a drop, and usually finds the router's verdict already in the content cache; one PdfVerdictCache per scan. _resolve_status() is the status rule and _received_date() the Received-Date rule, named so _scan_item() reads as the three tiers and then the two decisions. A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them. Decision 54: the scan reads the manifest with_pending(), so a Received Date the last deferred scan stamped is carried, not re-stamped, and a regression is measured from the status the sidecar holds. Decision 58: a working copy the index says a person filed (ASSIGNED_BY_PERSON) is counted without the content rules (ACCEPTED_NOTE); the scan reads the index for that, and writes only the manifest."
+      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the manifest only once it has it, so a sort that finished in between is never invisible to the scan. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). Reads each document through content_check.extract(), the same reading the router made of it as a drop, and usually finds the router's verdict already in the content cache; one PdfVerdictCache per scan. _resolve_status() is the status rule and _received_date() the Received-Date rule, named so _scan_item() reads as the three tiers and then the two decisions. A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them. Decision 54: the scan reads the manifest with_pending(), so a Received Date the last deferred scan stamped is carried, not re-stamped, and a regression is measured from the status the sidecar holds. Decision 58: a working copy the index says a person filed (ASSIGNED_BY_PERSON) is counted without the content rules (ACCEPTED_NOTE); the scan reads the index for that, and writes only the manifest. Decision 60: a person's acceptance is the newest row for the location and its recorded bytes."
     },
     {
       "id": "tracker/scheduling.py",
@@ -806,7 +806,7 @@
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1f75b2b6e300d67f",
+      "sha256": "0cc0972f827658f1",
       "lines": 343,
       "exports": [
         "AS_OF_YEAR_END",
@@ -836,7 +836,7 @@
         "KEYWORD_DEFAULT_NOTE": "'defaults to the document name'"
       },
       "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword rules that recognise each document. The ONLY source of truth for the checklists; the wizard and the rollover read it directly.",
-      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check."
+      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check. Decision 60: a catalog keyword is the form's own title or a phrase only it carries, never a word other forms print about it (a 1040 says W-2; a 1095-C says Marketplace)."
     },
     {
       "id": "tracker/validators.py",
@@ -963,8 +963,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3870b5185451bb54",
-      "lines": 262,
+      "sha256": "57490d553b745dd0",
+      "lines": 263,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -972,7 +972,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "10203a4daa631ce4",
+      "sha256": "3b6e7ef809a6d4e3",
       "lines": 451,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1561,8 +1561,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "774864b9baa491da",
-      "lines": 404,
+      "sha256": "dbc43a05587ac410",
+      "lines": 445,
       "exports": [
         "DONATIONS",
         "INT_DIV",
@@ -1595,6 +1595,7 @@
         "test_required_keyword_beats_a_generic_any_keyword",
         "test_route_files_skips_sync_junk",
         "test_the_router_and_the_scanner_reach_one_verdict_for_one_document",
+        "test_the_shipped_1040_catalog_files_real_forms_where_they_belong",
         "test_waived_rows_never_receive_files",
         "test_wrong_extension_is_not_routed",
         "test_wrong_year_is_not_routed"
@@ -1604,8 +1605,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f1f1a02a4cfffdfa",
-      "lines": 518,
+      "sha256": "a285f8adde224acc",
+      "lines": 520,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -1616,7 +1617,7 @@
         "samples",
         "test_a_clients_folder_drives_a_real_run_with_nothing_registered",
         "test_a_draft_day_the_machine_missed_is_caught_up_on_the_next_pass",
-        "test_a_draft_day_with_nothing_to_chase_retires_the_runs_own_stale_draft",
+        "test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft",
         "test_a_dry_run_writes_nothing_at_all",
         "test_a_manual_run_drafts_on_a_weekday",
         "test_a_missing_folder_is_recorded_not_raised",
@@ -1680,8 +1681,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "827935fba74757d9",
-      "lines": 470,
+      "sha256": "a3ff6840615d340f",
+      "lines": 489,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1692,6 +1693,7 @@
         "test_a_deferred_scan_is_what_the_next_scan_measures_from",
         "test_a_document_a_person_filed_is_not_second_guessed_by_the_rules",
         "test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan",
+        "test_a_persons_acceptance_covers_only_the_bytes_they_filed",
         "test_a_received_file_the_sync_client_dehydrated_is_not_a_regression",
         "test_accepted_means_received_with_a_date",
         "test_an_empty_note_replaces_the_old_one",
@@ -1826,8 +1828,8 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "efe9c3c46eefc361",
-      "lines": 105,
+      "sha256": "21464c236978b329",
+      "lines": 106,
       "exports": [
         "test_a_request_with_no_rule_defaults_to_its_own_name",
         "test_catalog_rows_shift_to_the_engagements_year",
@@ -2486,6 +2488,12 @@
       "from": "tests/test_rollover.py",
       "to": "tracker/rollover.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_router.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
       "source": "derived"
     },
     {

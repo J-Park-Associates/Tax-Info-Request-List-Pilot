@@ -217,10 +217,11 @@ def test_an_edited_second_draft_is_never_clobbered_by_the_next_repeat(tmp_path, 
     assert second.read_bytes() == edited_new
 
 
-def test_a_draft_day_with_nothing_to_chase_retires_the_runs_own_stale_draft(tmp_path, samples):
+def test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft(tmp_path, samples):
     # Last week's draft asked for a document that has since arrived. The
-    # run's own unedited draft is removed rather than left (or re-dated) as
-    # something to send; a draft a person edited is theirs and stays put.
+    # run's own unedited draft is rewritten as today's (nothing to chase),
+    # so it is neither stale text nor an old date; a draft a person edited
+    # is theirs and stays exactly as it is.
     import os
 
     from tracker.runner import last_drafted
@@ -232,21 +233,22 @@ def test_a_draft_day_with_nothing_to_chase_retires_the_runs_own_stale_draft(tmp_
     scaffolded = scaffold_engagement(folder)
     engagement = Engagement(path=folder, info=EngagementInfo(client="John Smith"))
     drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=7)).drafted
-    assert drafted is not None                                  # last week: still missing
+    stale = drafted.read_bytes()
+    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=7), dt.time(9)).timestamp()
+    os.utime(drafted, (stamp, stamp))
 
     name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
     (scaffolded.shared_dir / name).write_bytes((samples / name).read_bytes())
     run = run_engagement(engagement, today=SATURDAY)
-    assert run.draft_note == NOTHING_OUTSTANDING and not drafted.exists()
-    assert last_drafted(folder) is None
+    assert run.draft_note == NOTHING_OUTSTANDING and run.drafted is None
+    assert drafted.exists() and drafted.read_bytes() != stale          # today's words
+    assert last_drafted(folder) == dt.date.today()
     assert run_engagement(engagement, today=SATURDAY + dt.timedelta(days=3)).drafted is None
 
-    edited = folder / DRAFT_FILENAME
-    edited.write_bytes(b"a person's own words")
-    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=7), dt.time(9)).timestamp()
-    os.utime(edited, (stamp, stamp))
+    drafted.write_bytes(b"a person's own words")
+    os.utime(drafted, (stamp, stamp))
     run_engagement(engagement, today=SATURDAY)
-    assert edited.read_bytes() == b"a person's own words"
+    assert drafted.read_bytes() == b"a person's own words"
     assert last_drafted(folder) == SATURDAY - dt.timedelta(days=7)
 
 
