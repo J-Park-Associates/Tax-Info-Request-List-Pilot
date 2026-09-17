@@ -1,7 +1,8 @@
 @echo off
 rem ── Run the desktop app from source ────────────────────────────────
 rem Double-click to start. First run installs Electron (needs internet
-rem once); every run after that is instant and fully offline.
+rem once), the exact version app\package-lock.json pins; every run after
+rem that is instant and fully offline.
 
 cd /d "%~dp0"
 
@@ -17,8 +18,8 @@ where npm >nul 2>nul || (
 if not exist "app\node_modules\electron" (
   echo First-time setup: installing Electron ^(a few minutes^)...
   pushd app
-  call npm install --save-dev electron
-  if errorlevel 1 (echo. & echo npm install failed - check your internet connection. & pause & exit /b 1)
+  call npm ci --no-audit --no-fund
+  if errorlevel 1 (echo. & echo npm ci failed - check your internet connection. & pause & exit /b 1)
   popd
 )
 

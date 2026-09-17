@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 79,
+    "nodes": 81,
     "edges": 246,
-    "reused": 45
+    "reused": 58
   },
   "node_types": [
     "artifact",
@@ -842,10 +842,17 @@
       "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command."
     },
     {
+      "id": "app/package-lock.json",
+      "type": "module",
+      "layer": "desktop-app",
+      "sha256": "8c9f7672a74c479c",
+      "lines": 721
+    },
+    {
       "id": "app/package.json",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "ab875b9f50b1d53d",
+      "sha256": "79f33233d09bfb40",
       "lines": 19
     },
     {
@@ -900,16 +907,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7c1024aeb2b7f129",
-      "lines": 262,
+      "sha256": "31f907a271354a92",
+      "lines": 266,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3a89a15b389f939c",
-      "lines": 246,
+      "sha256": "6bcf67baebbef53c",
+      "lines": 247,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -917,8 +924,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5983d1f2d8cfee1e",
-      "lines": 428,
+      "sha256": "fe55bf0ccccf7d03",
+      "lines": 432,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -931,12 +938,21 @@
       "role": "How the day-to-day workflow runs."
     },
     {
+      "id": "requirements-build.txt",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "6a4e17ac7d5c15ed",
+      "lines": 5,
+      "role": "What Build App.bat installs: requirements.txt plus the pinned PyInstaller."
+    },
+    {
       "id": "requirements.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "84d7fa56ce6b1109",
-      "lines": 13,
-      "role": "Runtime and dev dependencies; the optional OCR extras are documented here too."
+      "sha256": "174c759605799a29",
+      "lines": 15,
+      "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range); the optional OCR extras are documented here too.",
+      "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46)."
     },
     {
       "id": "pkg:child_process",
@@ -992,15 +1008,15 @@
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "f2e77667a492f1d8",
-      "lines": 45
+      "sha256": "dff61d6c979b0cd4",
+      "lines": 63
     },
     {
       "id": "Start App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "0150817fa26471bf",
-      "lines": 28
+      "sha256": "f34b0043b7df67e7",
+      "lines": 29
     },
     {
       "id": "api_entry.py",
@@ -1010,7 +1026,7 @@
       "lines": 7,
       "cli": "python api_entry.py",
       "role": "PyInstaller entry point. Freezes tracker.api into the executable app/package.json's config.apiName names, for the portable Windows app.",
-      "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module."
+      "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen."
     },
     {
       "id": "conftest.py",
@@ -1631,8 +1647,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "799edb812e637950",
-      "lines": 516,
+      "sha256": "aa433c0c787b6aeb",
+      "lines": 546,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -1647,10 +1663,12 @@
         "test_documents_spell_manifest_headers_exactly",
         "test_documents_state_the_naming_pattern_with_the_one_separator",
         "test_every_cli_flag_a_document_names_exists_in_the_code",
+        "test_every_dependency_is_pinned_exactly",
         "test_gitignore_ignores_the_junk_the_validators_ignore",
         "test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo",
         "test_prose_names_no_weekday_but_the_draft_day",
         "test_the_api_docstring_lists_exactly_the_commands",
+        "test_the_build_is_made_from_what_is_committed",
         "test_the_build_output_folder_is_the_one_gitignore_knows",
         "test_the_documents_list_the_forms_the_catalog_has",
         "test_the_electron_shell_uses_the_settings_env_names_python_defines",

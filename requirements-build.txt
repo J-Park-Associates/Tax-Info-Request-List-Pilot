@@ -1,0 +1,4 @@
+# What "Build App.bat" needs on top of the runtime: the freezer, pinned like
+# everything else so two builds of one commit are the same build.
+-r requirements.txt
+pyinstaller==6.20.0

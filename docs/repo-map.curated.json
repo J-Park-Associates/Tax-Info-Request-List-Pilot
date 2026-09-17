@@ -92,7 +92,7 @@
     },
     "api_entry.py": {
       "role": "PyInstaller entry point. Freezes tracker.api into the executable app/package.json's config.apiName names, for the portable Windows app.",
-      "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module."
+      "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen."
     },
     ".github/workflows/ci.yml": {
       "role": "CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.",
@@ -144,7 +144,11 @@
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     "requirements.txt": {
-      "role": "Runtime and dev dependencies; the optional OCR extras are documented here too."
+      "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range); the optional OCR extras are documented here too.",
+      "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46)."
+    },
+    "requirements-build.txt": {
+      "role": "What Build App.bat installs: requirements.txt plus the pinned PyInstaller."
     },
     "artifact:_manifest.xlsx": {
       "type": "artifact",

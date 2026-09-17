@@ -254,7 +254,11 @@ Optional OCR for scanned PDFs: see [requirements.txt](requirements.txt).
 
 `Start App.bat` runs the desktop app from source (Python (the floor is `requires-python` in `pyproject.toml`) and Node
 installed); `Build App.bat` packages it as `<productName>.exe` (the name in `app/package.json`) for a
-machine with neither. On first launch the app asks where your clients live
+machine with neither. Both are reproducible from the commit: the Python
+packages are pinned in `requirements.txt` and `requirements-build.txt`, the
+Electron packages in `app/package-lock.json` (installed with `npm ci`), and
+the freeze is the committed `api_entry.spec`; a build-info text file in the
+package records the commit and the tool versions that made it. On first launch the app asks where your clients live
 and writes that to `settings.json` beside itself; everything else follows
 from that one folder. Who does what, and the life of a request, is in
 [docs/workflow.md](docs/workflow.md); the decision log is

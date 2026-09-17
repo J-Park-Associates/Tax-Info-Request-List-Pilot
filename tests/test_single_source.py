@@ -314,6 +314,36 @@ def test_the_build_output_folder_is_the_one_gitignore_knows():
     assert f"{out}/" in read(".gitignore")
 
 
+def test_every_dependency_is_pinned_exactly():
+    # A build made next month must freeze the same code as one made today.
+    for rel in ("requirements.txt", "requirements-build.txt"):
+        for line in read(rel).splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-r "):
+                continue
+            assert re.fullmatch(r"[A-Za-z0-9_.-]+==[0-9][A-Za-z0-9.]*", line), (rel, line)
+    package = json.loads(read("app/package.json"))
+    for name, version in package["devDependencies"].items():
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version), (name, version)
+    lock = json.loads(read("app/package-lock.json"))
+    for name, version in package["devDependencies"].items():
+        assert lock["packages"][f"node_modules/{name}"]["version"] == version, name
+
+
+def test_the_build_is_made_from_what_is_committed():
+    ignored = [line.strip() for line in read(".gitignore").splitlines()]
+    assert "*.spec" not in ignored and "app/package-lock.json" not in ignored
+    assert "npm ci" in read("Build App.bat") and "npm ci" in read("Start App.bat")
+    assert "npm install" not in read("Build App.bat") and "npm install" not in read("Start App.bat")
+    build = read("Build App.bat")
+    assert "requirements-build.txt" in build and "api_entry.spec" in build
+    assert "pip install pyinstaller" not in build            # pinned in requirements-build.txt
+    spec = read("api_entry.spec")
+    api_name = json.loads(read("app/package.json"))["config"]["apiName"]
+    assert api_name not in spec and "config" in spec and "apiName" in spec
+    assert "git rev-parse HEAD" in build and "pip freeze" in build   # BUILD-INFO.txt provenance
+
+
 def test_the_roadmap_names_every_status_in_bold():
     from tracker.manifest import Status
 
