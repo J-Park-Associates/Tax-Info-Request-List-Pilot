@@ -56,7 +56,11 @@ TASK_XML_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 N8N_TRIGGER_NODE = "Every day"
 N8N_RUN_NODE = "File, scan, draft"
 #: How a person is told to install the schedule, wherever they are told.
-INSTALL_HINT = "python -m tracker.scheduling --install"
+INSTALL_FLAG = "--install"
+ROOT_FLAG = "--root"
+OUT_FLAG = "--out"
+FORMAT_FLAG = "--format"
+INSTALL_HINT = f"python -m tracker.scheduling {INSTALL_FLAG}"
 
 def runner_arguments(root: str | Path) -> str:
     """The one command line the scheduled job runs, whoever schedules it."""
@@ -243,7 +247,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate the scheduled job that runs the tracker unattended"
     )
-    parser.add_argument("--root", default="",
+    parser.add_argument(ROOT_FLAG, default="",
                         help="the folder the firm keeps its clients in "
                              f"(default: the one in {SETTINGS_FILENAME})")
     parser.add_argument("--python", default=sys.executable,
@@ -257,15 +261,15 @@ if __name__ == "__main__":
                              f"{DEFAULT_REPEAT_MINUTES}; 0 = once a day)")
     parser.add_argument("--author", default="", help="task author, for the XML")
     parser.add_argument("--name", default=TASK_NAME, help="task name")
-    parser.add_argument("--format", choices=("xml", "n8n"), default="xml",
+    parser.add_argument(FORMAT_FLAG, choices=("xml", "n8n"), default="xml",
                         help="Windows Task Scheduler XML (default) or an n8n workflow")
-    parser.add_argument("--out", default="",
+    parser.add_argument(OUT_FLAG, default="",
                         help="write to this file instead of standard output")
-    parser.add_argument("--install", action="store_true",
-                        help="also register the task with Task Scheduler (Windows; needs --out)")
+    parser.add_argument(INSTALL_FLAG, action="store_true",
+                        help=f"also register the task with Task Scheduler (Windows; needs {OUT_FLAG})")
     ns = parser.parse_args()
     if ns.install and (ns.format != "xml" or not ns.out):
-        parser.error("--install needs --format xml and --out")
+        parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml and {OUT_FLAG}")
 
     if not ns.root:
         from tracker.settings import clients_root, settings_path
@@ -322,7 +326,7 @@ if __name__ == "__main__":
             else:
                 print("Not Windows; run this on the scheduling machine:  " + " ".join(command))
         elif ns.format == "xml":
-            print(f'Install it with:  python -m tracker.scheduling --root "{ns.root}" '
-                  f'--out "{ns.out}" --install')
+            print(f'Install it with:  python -m tracker.scheduling {ROOT_FLAG} "{ns.root}" '
+                  f'{OUT_FLAG} "{ns.out}" {INSTALL_FLAG}')
     else:
         print(payload, end="")

@@ -71,7 +71,7 @@ The standing rules are worded once, in `tracker/__init__.py`, and quoted here:
 | 17 | One drop fails | **Isolate it, record it, keep sorting.** Originals are moved into `PBC/` before anything else, so a failure after the move (disk full, a copy error) is indexed as *Needs Review* with the error and the rest of the pile is still sorted. A file the sync client still holds open is left in place for the next run. The index is written in a `finally`, and if Excel has it open the rows wait in `_index.pending.json` — nothing moved into `PBC/` is ever unrecorded. The engagement still counts as failed so the scheduler shows it. |
 | 18 | Workbook saves | **Atomic.** Every `_manifest.xlsx` / `_index.xlsx` save lands beside the file and is swapped in with `os.replace`. A killed task mid-save used to leave a workbook Excel could not open; now it leaves the previous one. |
 | 19 | Identifiers | **Must survive as a folder-name prefix.** `A:01` or `A01.` scaffolds a folder the scanner can never match back (permanent "folder not found"), so the loader refuses them, and `A01`/`a01` are one identifier because Windows folders are case-insensitive. |
-| 20 | Why a file was not filed | **The most useful reason available.** A document whose content fits a request that refused the file (below the size floor, wrong type, unreadable) is parked as *looks like A01 (…)*; a file every request refused for one reason carries that reason. "Matched no request" is the last resort, not the default. |
+| 20 | Why a file was not filed | **The most useful reason available.** A document whose content fits a request that refused the file (below the size floor, wrong type, unreadable) is parked with `CONTESTED_PREFIX` and the request; a file every request refused for one reason carries that reason. `UNMATCHED` is the last resort, not the default. |
 | 21 | Partial rows we have not read | **Ours, not the client's.** If the file that would complete a `Partial` row is an un-OCR'd scan, "1 of 2 received" is not something we know yet; the row goes to the accountant with the other firm-side flags. |
 | 22 | Overlapping runs | **One engagement lock for sort and scan.** `tracker/locking.py`; the filer holds it too. A second run that started mid-sort used to move the remaining originals and overwrite the first run's index rows. |
 | 23 | Files dropped into `PBC/` | **They count.** The client can see `PBC/` and was told to drop things anywhere, so a file that lands there is filed and indexed in place instead of ignored for ever. |
@@ -79,8 +79,8 @@ The standing rules are worded once, in `tracker/__init__.py`, and quoted here:
 | 25 | Document renamed in Excel | **Same folder.** New files go into the folder that already holds the request's earlier files (prefix rule), not a second folder built from the new name. |
 | 26 | Excel open during the Saturday scan | **The draft still knows.** Deferred statuses in `_manifest.pending.json` are overlaid before triage, so the reminder never asks for a document the last scan saw arrive; the draft's footer says how many are waiting. |
 | 27 | The registry | **Gone. An engagement is a folder with a manifest in it.** `engagements.yaml` was a second list a person kept in step with the folders on disk; a mistyped path was a client silently skipped. The run walks the clients root, and each manifest's Engagement sheet (client, link, due, sender, firm, reminders, active) carries what the registry used to. The wizard writes the sheet, so creating an engagement is the only step. |
-| 28 | Needs Review triage | **A click, not a file move.** The person picks the request; the filer moves the parked copy under the canonical name, rewrites the index row as *Filed — assigned by a person*, optionally learns a keyword onto the request, and re-scans. Dragging a copy into a folder by hand can land it under the wrong name or in the wrong folder, and the index never learned the decision. |
-| 29 | Manifest typos | **Named with their row before anything moves.** `check_manifest()` runs behind the app's *Check Manifest* button and at the top of every scheduled pass; a bad regex or a non-number typed in Excel fails that engagement's run immediately with the row, and rows the rules cannot act on (no keyword, `*` types, statuses waiting in the sidecar) are warnings in the report instead of surprises at a deadline. |
+| 28 | Needs Review triage | **A click, not a file move.** The person picks the request; the filer moves the parked copy under the canonical name, rewrites the index row as Filed with the `ASSIGNED_BY_PERSON` reason, optionally learns a keyword onto the request, and re-scans. Dragging a copy into a folder by hand can land it under the wrong name or in the wrong folder, and the index never learned the decision. |
+| 29 | Manifest typos | **Named with their row before anything moves.** `check_manifest()` runs behind the app's **Check Manifest** button and at the top of every scheduled pass; a bad regex or a non-number typed in Excel fails that engagement's run immediately with the row, and rows the rules cannot act on (no keyword, `*` types, statuses waiting in the sidecar) are warnings in the report instead of surprises at a deadline. |
 | 30 | Blank Allowed Extensions | **The safe default, not "anything".** Blank means `DEFAULT_EXTENSIONS`; accepting any file type has to be written as `ANY_EXTENSION`. A blank left by accident used to let an `.exe` count as a document. Items built in code with no extensions are written as `*` so a round trip keeps their meaning. |
 | 31 | Long PDFs | **The first `MAX_PAGES` only, text and OCR alike.** The words that identify a document are on its first pages; a 500-page ledger was being read cover to cover on every route and scan, and that is what stalled a run. A keyword deep in a long document is not evidence the router should act on. |
 | 32 | The lock, and the name | **Shown, not left as a mystery file.** The app shows a running lock with its start time, and offers to clear one older than `STALE_LOCK_SECONDS`; a fresh lock is refused with how long to wait, because clearing a live one is the race the lock exists to prevent. A new-client engagement is named from the client, the template's tax year and the form unless a name is typed. |
@@ -144,7 +144,7 @@ the interval. Cloud-only placeholders are left in the drop folder until the sync
 client has actually downloaded them, so a stub is never filed as if it were the
 document.
 
-## Manifest Schema (`_manifest.xlsx`, sheet "Requests")
+## Manifest Schema (`_manifest.xlsx`, sheet `SHEET_NAME`)
 
 | Column | Type | Owner | Purpose |
 |---|---|---|---|
@@ -185,7 +185,7 @@ Status resolution:
 - cloud-only placeholders — OneDrive Files On-Demand or Google Drive streaming
   (detected via the Windows cloud-placeholder attribute flags in
   `tracker/validators.py`, never force-hydrated) → **Pending Sync**
-- previously Received, files changed/removed → auto-revert to current truth,
+- previously Received, files changed or removed → auto-revert to current truth,
   Received Date kept, regression note added
 
 *(Optional future tier: local LLM as read-only advisory classifier — suggestion

@@ -123,7 +123,7 @@ engagement is still active:
 | Client | greeting name in the reminder |
 | Engagement Name | label; the folder name if blank |
 | Share Link | pasted into the reminder |
-| Due Date | "if you can send these by…" |
+| Due Date | the date the reminder asks the client to send things by |
 | Sender | who the reminder is from |
 | Firm | the sign-off line and the client README's contact (typed once at setup) |
 | Reminders | `no` = this client is not chased by email |

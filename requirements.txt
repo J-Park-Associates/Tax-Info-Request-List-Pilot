@@ -4,7 +4,7 @@ pypdf>=6
 pdfplumber>=0.11
 
 # Optional OCR fallback for scanned/image-only PDFs. Without these,
-# such PDFs are flagged "review manually" — nothing breaks.
+# such PDFs are flagged for a person (reasons.NO_TEXT_LAYER) — nothing breaks.
 #   pip install pytesseract pypdfium2 pillow
 #   plus the Tesseract engine: https://github.com/UB-Mannheim/tesseract/wiki
 

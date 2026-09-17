@@ -7,7 +7,7 @@ and a path typed on the runner's command line for the job. Nothing tied
 them together, so the app could be showing one folder while the schedule
 walked another.
 
-Now it is written once, in ``settings.json`` beside the app - next to the
+Now it is written once, in ``SETTINGS_FILENAME`` beside the app - next to the
 packaged executable, or in the repository root when run from source - and
 both read it. The app asks for it on first launch and never again; the
 schedule is generated from the same value (``python -m tracker.scheduling``
@@ -46,9 +46,9 @@ class SettingsError(Exception):
 
 
 def settings_dir() -> Path:
-    """Where ``settings.json`` lives: beside the app.
+    """Where ``SETTINGS_FILENAME`` lives: beside the app.
 
-    The Electron shell passes the folder in ``TRACKER_SETTINGS_DIR`` (next to
+    The Electron shell passes the folder in ``ENV_SETTINGS_DIR`` (next to
     the packaged executable). A frozen API without it uses its own folder;
     source checkouts use the repository root.
     """

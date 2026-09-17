@@ -27,7 +27,7 @@ from tracker.manifest import (
     create_template,
 )
 from tracker.manifest import EngagementInfo, write_engagement_info
-from tracker.registry import Engagement, Registry, discover_engagements
+from tracker.registry import SKIP_ROLLED_FORWARD, Engagement, Registry, discover_engagements
 from tracker.reminder import DRAFT_BANNER, DRAFT_FILENAME, NEW_DRAFT_FILENAME
 from tracker.runner import (
     DRAFT_WEEKDAY,
@@ -410,7 +410,7 @@ def test_a_rolled_forward_engagement_is_retired_by_its_successor(tmp_path, sampl
 
     report = run_registry(registry, today=SATURDAY)
     outcomes = {r.engagement.path.name: r for r in report.runs}
-    assert outcomes["Smith 2025"].skipped == "rolled forward into Smith 2026"
+    assert outcomes["Smith 2025"].skipped == SKIP_ROLLED_FORWARD.format(successor="Smith 2026")
     assert not (prior.path / DRAFT_FILENAME).exists()          # last year is not chased
     assert (prior.path / SHARED_DIR_NAME / f"W-2 John Smith {YEAR}.pdf").exists()   # and not touched
     assert outcomes["Smith 2026"].ok

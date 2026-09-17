@@ -37,7 +37,7 @@ anything unrecognized falls back to the safe generic ask. No generative AI
 touches any of this, and no client document is read here at all — only the
 manifest the scanner already wrote.
 
-One more guard: files sitting in ``00 - Needs Review`` are things the client
+One more guard: files sitting in ``REVIEW_DIR_NAME`` are things the client
 *has* already sent that nobody has identified yet. Sending a reminder over
 the top of those risks asking for a document already in hand, so their count
 is reported and the CLI says so plainly before you send.
@@ -73,7 +73,8 @@ DRAFT_FILENAME = "reminder-draft.txt"
 NEW_DRAFT_FILENAME = "reminder-draft.NEW.txt"
 
 _FINGERPRINT_PREFIX = "Fingerprint: "
-_SEPARATOR = "=" * 60
+_RULE_WIDTH = 60
+_SEPARATOR = "=" * _RULE_WIDTH
 
 #: Statuses that mean the client still owes us something (re-exported).
 OUTSTANDING = Status.OUTSTANDING
@@ -247,7 +248,7 @@ def triage(items: Sequence[RequestItem]) -> tuple[
 
 
 def count_needs_review(engagement_dir: Path) -> int:
-    """Files parked in ``00 - Needs Review`` — already sent, not yet identified."""
+    """Files parked in ``REVIEW_DIR_NAME`` — already sent, not yet identified."""
     review = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
     return len(iter_candidate_files(review))
 
@@ -445,7 +446,7 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
 
     With ``preserve_edits`` (what the weekly job uses), a draft somebody has
     already edited is never overwritten — the new one is written alongside it
-    as ``reminder-draft.NEW.txt`` and that path is returned instead. An hour
+    as ``NEW_DRAFT_FILENAME`` and that path is returned instead. An hour
     of someone's editing is worth more than this week's regenerated text.
     """
     if path is None:
@@ -459,23 +460,23 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
 
     footer: list[str] = []
     if draft.scaffold_gaps:
-        footer += ["", "-" * 60,
+        footer += ["", "-" * _RULE_WIDTH,
                    "NOT ASKED FOR - fix these here first:"]
         footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.scaffold_gaps]
     if draft.needs_attention:
-        footer += ["", "-" * 60,
+        footer += ["", "-" * _RULE_WIDTH,
                    "NOT ASKED FOR - waiting on us, not the client:"]
         footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.needs_attention]
     if draft.pending_statuses:
-        footer += ["", "-" * 60,
+        footer += ["", "-" * _RULE_WIDTH,
                    f"{draft.pending_statuses} status update(s) are still waiting to be "
                    "written into the manifest (it was open in Excel during the last",
                    "scan). This draft already reflects them; close Excel and re-scan",
                    "to see them in the sheet."]
     if draft.needs_review_files:
-        footer += ["", "-" * 60,
+        footer += ["", "-" * _RULE_WIDTH,
                    REVIEW_WARNING.format(n=draft.needs_review_files),
                    REVIEW_ADVICE]
 

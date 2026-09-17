@@ -1,9 +1,9 @@
 """Manifest layer for the Client Document Tracker (component 1, docs/ROADMAP.md).
 
-Owns everything about ``_manifest.xlsx``: the schema, loading and validating
+Owns everything about the manifest workbook (``MANIFEST_FILENAME``): the schema, loading and validating
 rows into :class:`RequestItem` dataclasses, and writing scanner status back
 with Excel-lock resilience (retry with backoff, then defer updates to a
-``_manifest.pending.json`` sidecar that is merged on the next write).
+``PENDING_SUFFIX`` sidecar that is merged on the next write).
 
 This module never touches client files — only the manifest workbook and its
 sidecar. All values are validated on load and fail loudly with row context so
@@ -192,7 +192,7 @@ class RequestItem:
     @property
     def label(self) -> str:
         """``A01 - W-2 Wage Statements (TY2025)`` - how a request is named to people."""
-        text = f"{self.identifier} - {self.document}"
+        text = label_for(self.identifier, self.document)
         return f"{text} ({self.period})" if self.period else text
 
     @property
@@ -255,18 +255,29 @@ class EngagementInfo:
     it existed) loads as all defaults and is still processed.
     """
 
-    client: str = ""        # greeting name in the reminder
-    name: str = ""          # engagement label; the folder name if blank
-    link: str = ""          # share link to the client's drop folder
+    # What each field is for is said once, in ENGAGEMENT_HELP below.
+    client: str = ""
+    name: str = ""
+    link: str = ""
     due: dt.date | None = None
-    sender: str = ""        # who the reminder is from
-    firm: str = ""          # sign-off line
-    reminders: bool = True  # False: this client is not chased by email
-    active: bool = True     # False: the scheduled run skips this folder
-    rolled_from: str = ""   # the prior engagement this one was rolled forward from
+    sender: str = ""
+    firm: str = ""
+    reminders: bool = True
+    active: bool = True
+    rolled_from: str = ""
 
 
 #: Row labels on the Engagement sheet, in the order they are written.
+#: How a request's parts are joined into one name: the README line, the
+#: request folder and the working copy all use it.
+LABEL_SEPARATOR = " - "
+
+
+def label_for(*parts: str) -> str:
+    """``A01 - W-2 Wage Statements`` from its parts, blanks dropped."""
+    return LABEL_SEPARATOR.join(part for part in parts if part)
+
+
 #: How a multi-file request says so, everywhere (the README, the reminder,
 #: the app's wizard preview).
 EXPECTED_PATTERN = "{n} files expected"
@@ -284,6 +295,18 @@ ENGAGEMENT_FIELDS = (
 )
 #: field name -> the sheet's label, for messages that name a cell.
 ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
+#: What each cell is for, as the README tells it.
+ENGAGEMENT_HELP = {
+    "client": "greeting name in the reminder",
+    "name": "label; the folder name if blank",
+    "link": "pasted into the reminder",
+    "due": "the date the reminder asks the client to send things by",
+    "sender": "who the reminder is from",
+    "firm": "the sign-off line and the client README's contact (typed once at setup)",
+    "reminders": "no = this client is not chased by email",
+    "active": "no = the scheduled run skips this folder",
+    "rolled_from": "written by the rollover; the engagement it names is no longer chased",
+}
 #: What the yes/no and Rolled From cells mean, said on the sheet and in the README.
 ENGAGEMENT_NOTES = {
     "reminders": f"{NO} = this client is not chased by email",

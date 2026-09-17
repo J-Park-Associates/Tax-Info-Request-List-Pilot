@@ -35,9 +35,9 @@ Two things deliberately do *not* route a file:
 
 When a file is not routed, the reason says why in the most useful terms
 available: a document whose content fits a request but which that request
-refused (too small, wrong type, unreadable) is reported as *looks like A01
-(file is 3.1 KB, below the 5 KB minimum)*, and a file every request refused
-for the same reason carries that reason — "matched no request" alone is the
+refused (too small, wrong type, unreadable) is reported as ``CONTESTED_PREFIX``
+plus the request and its refusal, and a file every request refused
+for the same reason carries that reason — ``UNMATCHED`` alone is the
 last resort, not the default.
 
 Routing is read-only. Moving, renaming and indexing happen in

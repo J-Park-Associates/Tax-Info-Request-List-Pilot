@@ -50,6 +50,7 @@ def test_the_version_and_package_name_have_one_home():
     pyproject = read("pyproject.toml")
     assert re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.M).group(1) == package["version"]
     assert re.search(r'^name\s*=\s*"([^"]+)"', pyproject, re.M).group(1) == package["name"]
+    assert re.search(r'^description\s*=\s*"([^"]+)"', pyproject, re.M).group(1) == package["description"]
 
 
 def test_the_frozen_api_name_has_one_home():
@@ -240,11 +241,15 @@ def test_the_package_docstring_lists_every_module():
 
 
 def test_the_readme_engagement_sheet_table_matches_the_fields():
-    from tracker.manifest import ENGAGEMENT_FIELDS
+    from tracker.manifest import ENGAGEMENT_FIELDS, ENGAGEMENT_HELP, ENGAGEMENT_NOTES, NO
 
     readme = read("README.md")
-    for label, _ in ENGAGEMENT_FIELDS:
-        assert f"| {label} |" in readme, label
+    for label, field in ENGAGEMENT_FIELDS:
+        row = next((line for line in readme.splitlines() if line.startswith(f"| {label} |")), None)
+        assert row is not None, label
+        assert ENGAGEMENT_HELP[field].replace(f"{NO} =", f"`{NO}` =") in row, (label, row)
+    for field, note in ENGAGEMENT_NOTES.items():
+        assert ENGAGEMENT_HELP[field] == note, field
 
 
 def test_the_roadmap_schema_table_matches_the_manifest_headers():
@@ -325,7 +330,9 @@ def test_documents_name_buttons_by_their_labels():
     labels = {label for label in labels if label and "${" not in label}
     for rel in DOCUMENTS:
         text = read(rel)
-        for name in re.findall(r"\*\*([^*]+)\*\* button", text) + re.findall(r"the (?:app's )?([A-Z][A-Za-z &]+?) button", text):
+        mentions = (re.findall(r"\*\*([^*]+)\*\* button", text) + re.findall(r"\*([^*]+)\* button", text)
+                    + re.findall(r"the (?:app's )?([A-Z][A-Za-z &]+?) button", text))
+        for name in mentions:
             assert name in labels, (rel, name)
 
 
@@ -338,3 +345,58 @@ def test_the_stub_and_staging_examples_docs_give_are_the_validators():
             assert ext in _GOOGLE_STUB_EXTENSIONS, (rel, ext)
         for prefix in re.findall(r"`(\.tmp\.[a-z]+)\*?`", text):
             assert prefix == _SYNC_STAGING_PREFIX, (rel, prefix)
+
+
+def test_documents_spell_manifest_headers_exactly():
+    from tracker.manifest import HEADERS
+
+    for rel in DOCUMENTS:
+        text = read(rel)
+        for quoted in re.findall(r"`([A-Z][A-Za-z ]+)`", text):
+            for header in HEADERS:
+                if quoted.lower() == header.lower():
+                    assert quoted == header, (rel, quoted)
+
+
+def test_tree_diagrams_show_catalog_folders_as_the_scaffold_names_them():
+    from tracker.scaffold import folder_name_for
+    from tracker.templates import FORM_TEMPLATES, TY, item_from_spec
+
+    folders = {folder_name_for(item_from_spec(spec)) for rows in FORM_TEMPLATES.values() for spec in rows}
+    for rel in DOCUMENTS:
+        for line in re.findall(r"([A-Z]\d{2} - [^/\n]+?)/", read(rel)):
+            assert line in folders, (rel, line)
+        for line in read(rel).splitlines():
+            if "──" not in line:
+                continue                                  # only the tree diagrams
+            for period in re.findall(r"\bTY\d{4}\b", line):
+                assert period == TY, (rel, period)
+
+
+def test_every_cli_flag_a_document_names_exists_in_the_code():
+    sources = "\n".join(read(str(p.relative_to(REPO))) for p in (REPO / "tracker").glob("*.py"))
+    known = set(re.findall(r'"(--[a-z][a-z-]*)"', sources)) | set(re.findall(r"^\w+_FLAG = \"(--[a-z-]+)\"", sources, re.M))
+    for rel in DOCUMENTS:
+        for flag in set(re.findall(r"(--[a-z][a-z-]*)", read(rel))):
+            assert flag in known, (rel, flag)
+
+
+def test_documents_give_the_settings_hint_the_api_gives():
+    from tracker.settings import SET_ROOT_HINT
+
+    for rel in DOCUMENTS:
+        for hint in re.findall(r"`(python -m tracker\.settings[^`]*)`", read(rel)):
+            assert hint == SET_ROOT_HINT, (rel, hint)
+
+
+def test_claude_md_explains_the_map_edges_by_their_rendered_names():
+    import sys
+
+    sys.path.insert(0, str(REPO / "tools"))
+    try:
+        import repo_map as module
+    finally:
+        sys.path.pop(0)
+    text = read("CLAUDE.md")
+    for label in (module.TESTED_BY, module.EXERCISED_BY, module.NO_TEST_FILE):
+        assert f"**{label}**" in text, label

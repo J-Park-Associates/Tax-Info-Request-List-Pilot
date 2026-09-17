@@ -41,7 +41,7 @@ from pathlib import Path
 
 from tracker import reasons
 from tracker.manifest import RequestItem, has_routing_rules
-from tracker.validators import extension_of
+from tracker.validators import PDF_EXTENSION, extension_of
 
 log = logging.getLogger("tracker.content_check")
 
@@ -175,7 +175,7 @@ def _extract_textfile(path: Path) -> str:
 def extract_text(path: Path) -> str | None:
     """Extract text from a supported file; None if no extractor exists."""
     extension = extension_of(path)
-    if extension == "pdf":
+    if extension == PDF_EXTENSION:
         return _extract_pdf(path)
     if extension in ("xlsx", "xlsm"):
         return _extract_xlsx(path)
@@ -260,7 +260,7 @@ def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
             extractable=False,
         )
 
-    if extension == "pdf" and len(text.strip()) < _MIN_TEXT_CHARS:
+    if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS:
         ocr_text = _ocr_pdf(path)
         if ocr_text is None:
             return ContentResult(

@@ -4,7 +4,7 @@ One command does a full pass — file the drop folder, scan, and on the draft da
 draft the week's chase email — for every engagement found under the firm's
 clients folder:
 
-    python -m tracker.runner "D:\\OneDrive\\Clients"
+    python -m tracker.runner <clients root>
 
 That is the whole scheduled task. There is nothing to register: a folder
 holding ``_manifest.xlsx`` is an engagement, and the manifest's Engagement
@@ -29,7 +29,7 @@ anybody, any time, is still just:
 
 **A draft you have edited is never overwritten.** The weekly run recognizes
 its own unedited output by the fingerprint in the header; anything else it
-leaves alone and writes ``reminder-draft.NEW.txt`` beside it instead.
+leaves alone and writes ``NEW_DRAFT_FILENAME`` beside it instead.
 
 One engagement's failure never stops the others. An unreadable manifest, a
 scan already running, a drop that would not sort — each is recorded against

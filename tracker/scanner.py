@@ -14,7 +14,7 @@ Status policy (docs/ROADMAP.md decision log):
 - **Manual Override wins** — an Accepted row is Received (date stamped
   once, as for any other), a Waived row keeps whatever status it has; the
   scanner still refreshes File Count and records what the rules saw in the
-  notes, prefixed ``[override: ...]``.
+  notes, prefixed ``OVERRIDE_NOTE``.
 - **Pending Sync** — cloud-only placeholders are never read; if they are
   the reason a row is short of files, the row waits instead of failing.
 - Duplicate uploads ("statement (1).pdf") are de-duplicated by content
@@ -211,7 +211,7 @@ def _scan_item(
         received = item.received_date
         if item.received_date is not None:
             # A row that was Received and is not any more either lost files
-            # or was asked for more. Say which; "files changed" on a row
+            # or was asked for more. Say which; REGRESSION_FILES_CHANGED on a row
             # whose Expected Count somebody raised sends a person hunting
             # for a file that never went anywhere.
             had = item.file_count if item.file_count is not None else 0

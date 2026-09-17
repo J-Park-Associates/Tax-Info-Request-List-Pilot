@@ -21,7 +21,7 @@ Guarantees:
 - **Originals are never altered.** Files are moved into ``PBC/`` and copied
   from there; nothing is renamed in place, edited, or deleted. Ever.
 - **Nothing is guessed.** Routing is :mod:`tracker.router`'s deterministic
-  decision; anything ambiguous lands in ``00 - Needs Review`` for a person.
+  decision; anything ambiguous lands in ``REVIEW_DIR_NAME`` for a person.
 - **Re-running is safe.** Every original is recorded by content hash, so a
   file the client drops twice is preserved but filed once.
 - **Cloud-only files are left alone** until the sync client has them, so a
@@ -63,6 +63,7 @@ from openpyxl.utils import get_column_letter
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     COL_IDENTIFIER,
+    label_for,
     CORRUPT_SUFFIX,
     LOCK_RETRIES,
     LOCK_RETRY_DELAY,
@@ -101,6 +102,11 @@ INDEX_SHEET = "Index"
 #: Rows that could not be written because Excel had the index open.
 INDEX_PENDING_FILENAME = Path(INDEX_FILENAME).stem + PENDING_SUFFIX
 _MAX_STEM = 110
+
+
+def numbered(stem: str, counter: int, suffix: str) -> str:
+    """``name (2).pdf`` - the one shape a colliding name takes."""
+    return f"{stem} ({counter}){suffix}"
 
 #: Decision values written to the index.
 FILED = "Filed"
@@ -208,13 +214,13 @@ def prepared_name_for(item: RequestItem, extension: str, taken: set[str]) -> str
     parts = [sanitize_component(item.identifier), sanitize_component(item.document)]
     if item.period:
         parts.append(sanitize_component(item.period))
-    stem = " - ".join(p for p in parts if p)[:_MAX_STEM].rstrip(". ")
+    stem = label_for(*parts)[:_MAX_STEM].rstrip(". ")
     suffix = f".{extension}" if extension else ""
 
     candidate = f"{stem}{suffix}"
     counter = 2
     while candidate.lower() in taken:
-        candidate = f"{stem} ({counter}){suffix}"
+        candidate = numbered(stem, counter, suffix)
         counter += 1
     taken.add(candidate.lower())
     return candidate
@@ -241,7 +247,7 @@ def _unique_path(folder: Path, name: str) -> Path:
     stem, suffix = Path(name).stem, Path(name).suffix
     counter = 2
     while True:
-        target = folder / f"{stem} ({counter}){suffix}"
+        target = folder / numbered(stem, counter, suffix)
         if not target.exists():
             return target
         counter += 1

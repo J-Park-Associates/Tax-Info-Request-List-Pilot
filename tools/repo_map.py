@@ -55,6 +55,12 @@ SCHEMA_VERSION = 1
 #: works, not decoration around it — and an agent reading the map should know a
 #: workflow exists. Only tracked files are mapped, so gitignored runtime files
 #: (settings.json, drafts, logs) never appear.
+#: The two test edges the map draws, and what it says when there is none.
+#: CLAUDE.md explains them by these names; tests/test_single_source.py pins it.
+TESTED_BY = "tested by"
+EXERCISED_BY = "exercised by"
+NO_TEST_FILE = "no dedicated test file"
+
 SOURCE_SUFFIXES = {".py", ".js", ".html", ".css", ".md", ".bat",
                    ".json", ".txt", ".svg", ".yml", ".yaml"}
 
@@ -550,13 +556,13 @@ def render_markdown(graph: dict) -> str:
             covered_by = sorted({e["from"] for e in in_edges.get(node["id"], [])
                                  if e["type"] == "tests"})
             if covered_by:
-                lines.append(f"  - tested by: {', '.join(f'`{c}`' for c in covered_by)}")
+                lines.append(f"  - {TESTED_BY}: {', '.join(f'`{c}`' for c in covered_by)}")
             elif node["type"] in ("module", "tool"):
-                lines.append("  - tested by: **no dedicated test file**")
+                lines.append(f"  - {TESTED_BY}: **{NO_TEST_FILE}**")
             exercised_by = sorted({e["from"] for e in in_edges.get(node["id"], [])
                                    if e["type"] == "exercises"})
             if exercised_by:
-                lines.append("  - exercised by (imported, not its coverage): "
+                lines.append(f"  - {EXERCISED_BY} (imported, not its coverage): "
                              + ", ".join(f"`{x}`" for x in exercised_by))
             writes = sorted({e["to"] for e in out_edges.get(node["id"], [])
                              if e["type"] == "writes"})

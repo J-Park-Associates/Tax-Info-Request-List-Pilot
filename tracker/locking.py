@@ -7,7 +7,7 @@ or Task Scheduler's repeat firing while an OCR-heavy pass is still going -
 would race on the same files, and the loser's index rows would be
 overwritten by the winner's. That is the one way an original can end up in
 ``PBC/`` with no record of how it got there, so the lock is not optional
-and it is not per step: whoever holds ``_scan.lock`` owns the engagement
+and it is not per step: whoever holds ``LOCK_FILENAME`` owns the engagement
 until they let go.
 
 The lock is a file created with ``O_EXCL`` (atomic on NTFS and POSIX) that
@@ -31,7 +31,7 @@ from typing import Iterator
 
 log = logging.getLogger("tracker.locking")
 
-#: Kept as ``_scan.lock`` so existing engagements, docs and habits still apply.
+#: Kept under the scanner's old name so existing engagements and habits still apply.
 LOCK_FILENAME = "_scan.lock"
 STALE_LOCK_SECONDS = 3600
 

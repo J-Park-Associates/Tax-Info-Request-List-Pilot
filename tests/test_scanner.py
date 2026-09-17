@@ -30,7 +30,10 @@ from tracker.scaffold import (
     scaffold_engagement,
 )
 from tracker.scanner import (
+    DUPLICATES_NOTE,
     OVERRIDE_NOTE,
+    REGRESSION_FILES_CHANGED,
+    SYNCING_NOTE,
     PARTIAL_NOTE,
     CACHE_FILENAME,
     LOCK_FILENAME,
@@ -194,7 +197,7 @@ def test_duplicates_do_not_inflate_count(engagement):
     row = statuses(engagement)["A02"]
     assert row.file_count == 2                     # 3 files, 2 distinct
     assert row.status == Status.PARTIAL
-    assert "1 duplicate file(s) ignored" in row.validation_notes
+    assert DUPLICATES_NOTE.format(n=1) in row.validation_notes
 
 
 def test_pending_sync_status(engagement, monkeypatch):
@@ -206,7 +209,7 @@ def test_pending_sync_status(engagement, monkeypatch):
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
     assert row.status == Status.PENDING_SYNC
-    assert "still syncing" in row.validation_notes
+    assert SYNCING_NOTE.format(n=1) in row.validation_notes
 
 
 def test_deleted_folder_reported_missing(engagement):
@@ -336,7 +339,7 @@ def test_raising_expected_count_after_received_names_the_real_change(engagement)
     assert update.status == Status.PARTIAL
     assert update.received_date == DAY1
     assert f"{COL_EXPECTED_COUNT} is now 2" in update.validation_notes
-    assert "files changed" not in update.validation_notes
+    assert REGRESSION_FILES_CHANGED not in update.validation_notes
 
 
 def test_accepted_means_received_with_a_date(engagement):

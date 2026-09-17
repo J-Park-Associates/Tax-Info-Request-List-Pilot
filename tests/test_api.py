@@ -422,7 +422,7 @@ def test_rollover_retires_the_prior_in_the_priors_list(capsys, demo_root):
 
 
 def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
-    # A row added in Excel gets its folder from Sort & Scan, exactly as the
+    # A row added in Excel gets its folder from the scan button, exactly as the
     # scheduled run would give it: one definition of a pass.
     from openpyxl import load_workbook
 

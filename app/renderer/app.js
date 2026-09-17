@@ -283,7 +283,7 @@ async function refresh(preferPath) {
   try {
     if (!(await loadEngagements(preferPath))) {
       if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
-      banner(`No engagements under ${clientsRoot} yet — click New Engagement to create the first.`, "ok");
+      banner(`No engagements under ${clientsRoot} yet — click ${$("btn-new").textContent.trim()} to create the first.`, "ok");
       $("rows").innerHTML = "";
       return;
     }

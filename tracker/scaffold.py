@@ -1,14 +1,14 @@
 """Folder scaffolding for the Client Document Tracker (component 2, docs/ROADMAP.md).
 
-Reads an engagement's ``_manifest.xlsx`` and lays out both sides of one
+Reads an engagement's manifest (``MANIFEST_FILENAME``) and lays out both sides of one
 engagement:
 
-- **Client side** — ``Shared/``, a single folder the client drops everything
-  into, with ``Shared/PBC/`` holding the originals once
+- **Client side** — ``SHARED_DIR_NAME``, a single folder the client drops
+  everything into, with ``PBC_DIR_NAME`` inside it holding the originals once
   :mod:`tracker.filer` has sorted them, and an auto-generated
-  ``_README.txt`` telling the client they need not sort anything.
-- **Firm side** — ``Prepared/``, one ``{Identifier} - {Document}`` folder per
-  request row for the renamed working copies, plus ``00 - Needs Review``
+  ``README_NAME`` telling the client they need not sort anything.
+- **Firm side** — ``PREPARED_DIR_NAME``, one folder per request row (named by
+  ``folder_name_for``) for the renamed working copies, plus ``REVIEW_DIR_NAME``
   for anything the rules could not confidently identify.
 
 Guarantees:
@@ -40,6 +40,7 @@ from tracker.reasons import GOOGLE_EXPORT_HINT
 from tracker.validators import google_stub_examples
 from tracker.manifest import (
     ENGAGEMENT_SHEET_NAME,
+    label_for,
     WINDOWS_ILLEGAL_CHARS,
     Override,
     RequestItem,
@@ -76,8 +77,8 @@ def sanitize_component(text: str) -> str:
 
 
 def folder_name_for(item: RequestItem) -> str:
-    """Canonical folder name for a request item: ``{Identifier} - {Document}``."""
-    name = f"{sanitize_component(item.identifier)} - {sanitize_component(item.document)}"
+    """Canonical folder name for a request item: identifier and document, joined."""
+    name = label_for(sanitize_component(item.identifier), sanitize_component(item.document))
     return name[:_MAX_FOLDER_NAME].rstrip(". ")
 
 

@@ -19,7 +19,7 @@ from tracker.manifest import (
     create_template,
     write_statuses,
 )
-from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE
+from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
 from tracker.reminder import (
     DRAFT_BANNER,
     SUBJECT_NEEDED,
@@ -57,7 +57,7 @@ SCANNED = [
     item("A06", "Brokerage Statements", Status.FAILED, manual_override=Override.ACCEPTED,
          validation_notes=f"{OVERRIDE_NOTE.format(override=Override.ACCEPTED)}; 1099.pdf: {reasons.WRONG_PERIOD.marker}"),
     item("A07", "K-1 Statements", Status.PENDING_SYNC, file_count=0,
-         validation_notes="1 file(s) still syncing from the cloud"),
+         validation_notes=SYNCING_NOTE.format(n=1)),
 ]
 
 

@@ -11,6 +11,8 @@ from xml.etree import ElementTree
 import pytest
 
 from tracker.scheduling import (
+    N8N_RUN_NODE,
+    N8N_TRIGGER_NODE,
     TASK_XML_NAMESPACE,
     DEFAULT_START,
     TASK_NAME,
@@ -125,9 +127,9 @@ def test_the_n8n_workflow_is_valid_json_with_one_wired_connection():
     workflow = json.loads(json.dumps(n8n_workflow(**ARGS)))
 
     assert workflow["name"] == TASK_NAME
-    assert [node["name"] for node in workflow["nodes"]] == ["Every day", "File, scan, draft"]
-    wired = workflow["connections"]["Every day"]["main"][0][0]["node"]
-    assert wired == "File, scan, draft"
+    assert [node["name"] for node in workflow["nodes"]] == [N8N_TRIGGER_NODE, N8N_RUN_NODE]
+    wired = workflow["connections"][N8N_TRIGGER_NODE]["main"][0][0]["node"]
+    assert wired == N8N_RUN_NODE
 
 
 def test_the_n8n_command_runs_the_runner_from_the_working_directory():

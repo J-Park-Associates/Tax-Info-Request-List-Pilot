@@ -13,8 +13,8 @@ Commands:
   rollover  build next year's list from a returning client's prior year
   scan      one pass, exactly as the scheduled run makes it (no draft)
   assign    file one Needs Review document under a request (a person's call)
-  check     validate the manifest now, with row numbers, instead of at the next scan
-  settings / set-root      where the clients live (settings.json beside the app)
+  check     check_manifest() on demand, problems named by row
+  settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
   unlock    clear a stale engagement lock (a fresh one is refused)
 """

@@ -41,6 +41,8 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 _IGNORED_NAMES = {"desktop.ini", "thumbs.db", ".ds_store"}
 #: Office lock files.
 OFFICE_LOCK_PREFIX = "~$"
+#: The one file type whose integrity (and text) can be checked in depth.
+PDF_EXTENSION = "pdf"
 #: Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
 #: folders (.tmp.driveupload / .tmp.drivedownload); anything under one is a
 #: partial transfer, not a delivered document, and the folder itself is
@@ -261,7 +263,7 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
             reason=reasons.TOO_SMALL.format(size_kb=size / 1024, minimum=item.min_size_kb),
         )
 
-    if extension == "pdf":
+    if extension == PDF_EXTENSION:
         error = _pdf_error(path)
         if error:
             return FileResult(path=path, ok=False, reason=error)
