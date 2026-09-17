@@ -532,6 +532,28 @@ def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monke
     assert calls == [Path(payload["xml"])]
 
 
+def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys, demo_root, monkeypatch, tmp_path):
+    import sys
+
+    import tracker.api as api_module
+    from tracker.runner import LOG_FLAG, RUNNER_MODE_FLAG
+
+    exe = tmp_path / "package" / "resources" / "api" / "api.exe"
+    exe.parent.mkdir(parents=True)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert code == 0, payload
+    assert payload["frozen"] is True
+    xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
+    assert f"<Command>{exe}</Command>" in xml
+    assert f"<Arguments>{RUNNER_MODE_FLAG} " in xml and LOG_FLAG in xml and str(demo_root) in xml
+    assert f"<WorkingDirectory>{exe.parent}</WorkingDirectory>" in xml
+    assert "-m tracker.runner" not in xml
+
+
 # ------------------------------------------------------------- vocabulary ----
 
 

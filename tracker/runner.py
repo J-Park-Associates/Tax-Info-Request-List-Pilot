@@ -93,6 +93,10 @@ LOG_FILENAME = "runs.log"
 #: line the parser below still accepts.
 LOG_FLAG = "--log"
 DATE_FLAG = "--date"
+#: How the packaged app's one executable (api_entry.py) is told to be the
+#: scheduled job rather than the API: this flag first, then the runner's own
+#: arguments. tracker.scheduling builds the packaged command line from it.
+RUNNER_MODE_FLAG = "--run"
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
 
@@ -394,10 +398,15 @@ def append_log(path: Path | str, report: RunReport) -> Path:
 
 # --------------------------------------------------------------------- CLI ----
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """The command line, as a function: ``python -m tracker.runner`` and the
+    packaged executable in runner mode (``api_entry.py``) both call this.
+    Returns the exit code - non-zero if any engagement failed, so the
+    scheduler shows a red run."""
     import argparse
 
     parser = argparse.ArgumentParser(
+        prog="python -m tracker.runner",
         description=f"File, scan and (on {DRAFT_DAY_NAME}s) draft reminders for every "
                     "engagement found under the clients folder. Never sends anything."
     )
@@ -415,7 +424,7 @@ if __name__ == "__main__":
                         help=f"pretend today is this {ISO_DATE_HINT} (for testing a schedule)")
     parser.add_argument(LOG_FLAG, nargs="?", const=LOG_FILENAME, default="",
                         help=f"append the run summary to a log (default: {LOG_FILENAME})")
-    ns = parser.parse_args()
+    ns = parser.parse_args(argv)
 
     try:
         loaded = discover_engagements(ns.root)
@@ -445,4 +454,10 @@ if __name__ == "__main__":
         append_log(log_path, result)
         print(f"\n  Logged to {log_path}")
 
-    raise SystemExit(1 if result.errors else 0)
+    return 1 if result.errors else 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    raise SystemExit(main(sys.argv[1:]))

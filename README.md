@@ -153,7 +153,9 @@ python -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-trac
 `--root` defaults to the folder in `settings.json`; `--install` registers
 the task as it writes the XML, and running the same line again changes the
 schedule. The app's **Install Schedule** button does exactly this for the
-folder it is showing. Every pass also re-scaffolds each engagement, so a
+folder it is showing - from source with the Python it runs under, and in
+the packaged app with its own executable, which runs the job when given
+`--run` first (there is no Python on that machine). Every pass also re-scaffolds each engagement, so a
 row added in Excel has its folder and its README line by the next run, and
 an engagement that has been rolled forward is retired by its successor
 without anyone opening last year's manifest.

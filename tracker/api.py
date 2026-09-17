@@ -88,7 +88,6 @@ from tracker.scaffold import (
 )
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.scheduling import (
-    INSTALL_HINT,
     is_scheduling_host,
     SCHEDULE_XML_ENCODING,
     DEFAULT_REPEAT_MINUTES,
@@ -616,24 +615,23 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
 
     JSON on stdin (all optional): {"start": "HH:MM", "every": minutes},
     defaulting to tracker.scheduling's DEFAULT_START / DEFAULT_REPEAT_MINUTES. The
-    root, the Python and the working folder are the ones this app runs
-    with, so the job walks exactly the folder the app shows. A frozen build
-    has no Python module tree to run the job from and says so.
+    root and the working folder are the ones this app runs with, so the job
+    walks exactly the folder the app shows. From a source checkout the job
+    is the Python this API runs under; in the packaged app it is this same
+    executable in runner mode (api_entry.py, RUNNER_MODE_FLAG), which needs
+    none of the environment the shell gives the API.
     """
-    if getattr(sys, "frozen", False):
-        raise ManifestError(
-            "Install the schedule from a Python checkout of the tracker "
-            f"({INSTALL_HINT}); the packaged app cannot run the job"
-        )
     spec = json.loads(sys.stdin.read() or "{}")
     root = _root()
     start = str(spec.get("start") or DEFAULT_START)
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
+    frozen = bool(getattr(sys, "frozen", False))
+    working_dir = Path(sys.executable).resolve().parent if frozen else REPO_ROOT
     xml_path = settings_path().with_name(SCHEDULE_XML_FILENAME)
     write_text_atomically(
         xml_path,
-        task_scheduler_xml(python=sys.executable, root=root, working_dir=REPO_ROOT,
-                           start_time=start, repeat_minutes=every),
+        task_scheduler_xml(python=sys.executable, root=root, working_dir=working_dir,
+                           start_time=start, repeat_minutes=every, frozen=frozen),
         encoding=SCHEDULE_XML_ENCODING,
     )
     try:
@@ -648,6 +646,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         "start": start,
         "every": every,
         "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
+        "frozen": frozen,
     }
 
 

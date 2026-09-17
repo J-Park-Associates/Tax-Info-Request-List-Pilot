@@ -39,6 +39,7 @@ from tracker.runner import (
     append_log,
     format_report,
     is_draft_day,
+    main,
     run_engagement,
     run_registry,
     should_draft,
@@ -60,6 +61,14 @@ def samples(tmp_path_factory):
     folder = tmp_path_factory.mktemp("samples")
     build_samples(folder)
     return folder
+
+
+def test_the_runner_has_a_main_the_frozen_entry_can_call(tmp_path, samples, capsys):
+    # api_entry.py runs the scheduled job through this function, so the
+    # command line has to be one, not code under __main__.
+    build_engagement(tmp_path, samples)
+    assert main([str(tmp_path), "--dry-run", "--reminders", REMINDERS_NEVER]) == 0
+    assert "Smith TY2025" in capsys.readouterr().out
 
 
 def build_engagement(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",),

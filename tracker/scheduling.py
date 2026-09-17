@@ -16,7 +16,14 @@ Paths differ on every machine, so the definition is generated rather than
 committed: point it at the Python you use and the folder you keep your
 clients in, and ``--install`` registers it with Task Scheduler in the same
 step (``schtasks /create /xml ... /f``, so re-running is also how you change
-the schedule).
+the schedule). The packaged app has no Python: its Install Schedule button
+registers the app's own API executable in runner mode
+(``tracker.runner.RUNNER_MODE_FLAG``, dispatched by ``api_entry.py`` before
+the API - and this module - is imported, so the job needs none of the
+environment the Electron shell gives the API). ``TASK_NAME`` is read at
+import from ``settings.product_name()``; that is safe because the only
+process that imports this module is the API the shell launched with the
+product name in its environment, or a source checkout beside ``app/package.json``.
 
 Nothing generated here sends email. The scheduled command files documents,
 updates the manifest and writes draft text files; a person still sends them.
@@ -31,7 +38,7 @@ from xml.sax.saxutils import escape
 
 from tracker.locking import RUN_TIME_LIMIT_SECONDS
 from tracker.manifest import write_text_atomically
-from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG
+from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG
 from tracker.settings import SETTINGS_FILENAME, product_name
 
 #: The scheduled task is named after the product, wherever that is set.
@@ -94,9 +101,16 @@ def is_scheduling_host() -> bool:
     return platform.system() == "Windows"
 
 
-def runner_arguments(root: str | Path) -> str:
-    """The one command line the scheduled job runs, whoever schedules it."""
-    return f'-m tracker.runner "{root}" {LOG_FLAG}'
+def runner_arguments(root: str | Path, *, frozen: bool = False) -> str:
+    """The one command line the scheduled job runs, whoever schedules it.
+
+    After the program that runs it: ``-m tracker.runner`` for a Python
+    checkout, ``RUNNER_MODE_FLAG`` for the packaged app's own executable
+    (``api_entry.py`` in runner mode). The runner's arguments are the same
+    either way; only the way in differs.
+    """
+    program = RUNNER_MODE_FLAG if frozen else "-m tracker.runner"
+    return f'{program} "{root}" {LOG_FLAG}'
 
 
 def _xml_escape(value: str) -> str:
@@ -136,11 +150,14 @@ def task_scheduler_xml(
     repeat_minutes: int = 0,
     author: str = "",
     task_name: str = TASK_NAME,
+    frozen: bool = False,
 ) -> str:
     """A Windows Task Scheduler definition, ready for ``schtasks /create /xml``.
 
     ``repeat_minutes`` adds an intra-day repetition so filing and scanning can
     run through the day; the reminder step still only drafts on ``DRAFT_WEEKDAY``.
+    ``frozen`` means ``python`` is the packaged app's executable, run in
+    runner mode (see :func:`runner_arguments`).
     """
     if repeat_minutes and repeat_minutes < 5:
         raise ValueError("repeat_minutes below 5 would stack runs on top of each other")
@@ -193,7 +210,7 @@ On {draft_day}s it also drafts the client reminder emails. It never sends them.<
   <Actions Context="Author">
     <Exec>
       <Command>{_xml_escape(python)}</Command>
-      <Arguments>{_xml_escape(runner_arguments(root))}</Arguments>
+      <Arguments>{_xml_escape(runner_arguments(root, frozen=frozen))}</Arguments>
       <WorkingDirectory>{_xml_escape(working_dir)}</WorkingDirectory>
     </Exec>
   </Actions>
@@ -208,6 +225,7 @@ def n8n_workflow(
     working_dir: str | Path,
     hour: int | None = None,
     task_name: str = TASK_NAME,
+    frozen: bool = False,
 ) -> dict:
     """An n8n workflow: one cron trigger into one Execute Command node."""
     if hour is None:
@@ -215,7 +233,7 @@ def n8n_workflow(
     if not 0 <= hour <= 23:
         raise ValueError(f"hour must be 0-23, got {hour}")
 
-    command = f'cd "{working_dir}" && "{python}" {runner_arguments(root)}'
+    command = f'cd "{working_dir}" && "{python}" {runner_arguments(root, frozen=frozen)}'
     return {
         "name": task_name,
         "nodes": [

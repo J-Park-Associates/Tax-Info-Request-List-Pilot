@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 81,
-    "edges": 246,
-    "reused": 58
+    "nodes": 82,
+    "edges": 252,
+    "reused": 49
   },
   "node_types": [
     "artifact",
@@ -42,6 +42,7 @@
     "precedes",
     "reads",
     "runs",
+    "schedules",
     "spawns",
     "tests",
     "writes"
@@ -92,8 +93,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b0cd91db2695648d",
-      "lines": 689,
+      "sha256": "cc3df46a43115d8b",
+      "lines": 688,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -113,7 +114,7 @@
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes."
     },
     {
       "id": "tracker/content_check.py",
@@ -548,8 +549,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "968fa77aec1f291d",
-      "lines": 449,
+      "sha256": "58034b20903a3704",
+      "lines": 464,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -563,11 +564,13 @@
         "REMINDERS_AUTO",
         "REMINDERS_NEVER",
         "REMINDER_MODES",
+        "RUNNER_MODE_FLAG",
         "RunReport",
         "WEEKDAY_NAMES",
         "append_log",
         "format_report",
         "is_draft_day",
+        "main",
         "run_engagement",
         "run_registry",
         "should_draft"
@@ -581,10 +584,11 @@
         "LOG_FILENAME": "'runs.log'",
         "LOG_FLAG": "'--log'",
         "DATE_FLAG": "'--date'",
+        "RUNNER_MODE_FLAG": "'--run'",
         "NOTHING_OUTSTANDING": "'nothing outstanding; no reminder needed'"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too. main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it."
     },
     {
       "id": "tracker/scaffold.py",
@@ -665,8 +669,8 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "8f61174a7d43cc24",
-      "lines": 365,
+      "sha256": "1bce64c16839cf39",
+      "lines": 383,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "DEFAULT_REPEAT_MINUTES",
@@ -717,7 +721,7 @@
         "FORMAT_N8N": "'n8n'"
       },
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings file's root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings file's root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit. runner_arguments(frozen=True) is the packaged form of the one command line: the app's executable in runner mode (runner.RUNNER_MODE_FLAG) instead of -m tracker.runner, same arguments after it. TASK_NAME at import is safe because only the shell-launched API (or a source checkout) imports this module; the frozen job never does."
     },
     {
       "id": "tracker/settings.py",
@@ -907,16 +911,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "31f907a271354a92",
-      "lines": 266,
+      "sha256": "8c1ed6031fe9744d",
+      "lines": 268,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6bcf67baebbef53c",
-      "lines": 247,
+      "sha256": "fb20ea58c70d82e0",
+      "lines": 248,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -924,8 +928,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fe55bf0ccccf7d03",
-      "lines": 432,
+      "sha256": "6ae20451147cf432",
+      "lines": 437,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1022,11 +1026,11 @@
       "id": "api_entry.py",
       "type": "module",
       "layer": "root",
-      "sha256": "faef8963c9b13d11",
-      "lines": 7,
+      "sha256": "90895c955a635efc",
+      "lines": 24,
       "cli": "python api_entry.py",
-      "role": "PyInstaller entry point. Freezes tracker.api into the executable app/package.json's config.apiName names, for the portable Windows app.",
-      "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen."
+      "role": "PyInstaller entry point: the portable app's one executable, which is the tracker API by default and the scheduled job (tracker.runner.main) when RUNNER_MODE_FLAG comes first.",
+      "notes": "PyInstaller needs a real script, not a -m module. Runner mode is dispatched before tracker.api is imported, because the API imports tracker.scheduling whose TASK_NAME needs the product name the Electron shell passes in the environment - and Task Scheduler passes nothing; the job needs neither of the shell's variables. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen."
     },
     {
       "id": "conftest.py",
@@ -1109,8 +1113,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ada2a6c8a2d1a980",
-      "lines": 597,
+      "sha256": "636975ba6c48743f",
+      "lines": 619,
       "exports": [
         "demo_root",
         "run",
@@ -1148,9 +1152,23 @@
         "test_the_apps_pass_is_the_runners_pass",
         "test_the_firm_is_typed_once_in_settings_and_signs_every_engagement",
         "test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label",
+        "test_the_packaged_app_installs_a_schedule_against_its_own_executable",
         "test_the_renderer_gets_its_vocabulary_from_the_api",
         "test_unknown_command_is_a_json_error",
         "test_without_a_root_the_app_is_told_to_set_one"
+      ]
+    },
+    {
+      "id": "tests/test_api_entry.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "2aa730c63f4e4d30",
+      "lines": 63,
+      "exports": [
+        "REPO",
+        "run_entry",
+        "test_runner_mode_runs_a_pass_without_importing_the_api_layer",
+        "test_without_the_flag_the_entry_is_the_api"
       ]
     },
     {
@@ -1494,8 +1512,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c332f224cb72caa1",
-      "lines": 426,
+      "sha256": "47de686ba0544990",
+      "lines": 435,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -1532,6 +1550,7 @@
         "test_the_log_appends_rather_than_replaces",
         "test_the_report_says_what_day_it_is_and_never_claims_a_send",
         "test_the_run_names_a_manifest_typo_with_its_row_before_touching_files",
+        "test_the_runner_has_a_main_the_frozen_entry_can_call",
         "test_the_saturday_run_writes_a_draft",
         "test_waived_and_accepted_rows_are_not_outstanding"
       ]
@@ -1600,8 +1619,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e13a59c0b036bfc9",
-      "lines": 209,
+      "sha256": "0f525fc87e21ed7a",
+      "lines": 229,
       "exports": [
         "ARGS",
         "NS",
@@ -1623,6 +1642,7 @@
         "test_the_n8n_command_runs_the_runner_from_the_working_directory",
         "test_the_n8n_hour_is_validated",
         "test_the_n8n_workflow_is_valid_json_with_one_wired_connection",
+        "test_the_packaged_job_is_the_same_command_line_behind_the_api_executable",
         "test_the_start_time_can_be_moved",
         "test_the_time_limit_is_the_locks_run_limit_rendered",
         "test_the_xml_is_well_formed_and_runs_the_runner"
@@ -1843,6 +1863,12 @@
       "source": "derived"
     },
     {
+      "from": "api_entry.py",
+      "to": "tracker/runner.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
       "from": "app/main.js",
       "to": "pkg:child_process",
       "type": "depends_on",
@@ -2020,6 +2046,30 @@
       "from": "tests/test_api.py",
       "to": "tracker/api.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_entry.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_entry.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_entry.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api_entry.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
       "source": "derived"
     },
     {
@@ -3233,6 +3283,12 @@
       "to": "tracker/settings.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/scheduling.py",
+      "to": "api_entry.py",
+      "type": "schedules",
+      "source": "curated"
     },
     {
       "from": "tracker/settings.py",
