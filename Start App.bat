@@ -1,5 +1,5 @@
 @echo off
-rem ── Tax Document Tracker: marketing demo launcher ──────────────────
+rem ── Tax Document Tracker: run the app from source ─────────────────
 rem Double-click to start. First run installs Electron (needs internet
 rem once); every run after that is instant and fully offline.
 
@@ -20,11 +20,6 @@ if not exist "app\node_modules\electron" (
   call npm install --save-dev electron
   if errorlevel 1 (echo. & echo npm install failed - check your internet connection. & pause & exit /b 1)
   popd
-)
-
-if not exist "demo-marketing" (
-  echo Building demo data...
-  python -m tracker.api reset >nul
 )
 
 pushd app

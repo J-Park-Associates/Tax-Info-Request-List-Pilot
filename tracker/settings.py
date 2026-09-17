@@ -2,7 +2,7 @@
 
 The desktop app and the scheduled run both need the clients root - the
 folder every engagement sits under. It used to exist twice: an environment
-variable the Electron shell set for the app (defaulting to a demo folder),
+variable the Electron shell set for the app (with a stand-in default),
 and a path typed on the runner's command line for the job. Nothing tied
 them together, so the app could be showing one folder while the schedule
 walked another.

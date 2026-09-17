@@ -1,4 +1,4 @@
-"""JSON bridge for the demo UI (Electron) — python -m tracker.api <command>.
+"""JSON bridge for the desktop app (Electron) — python -m tracker.api <command>.
 
 Commands print a single JSON object to stdout and exit 0, or {"error": ...}
 and exit 1. All real logic lives in the tracker package; this module only
@@ -14,8 +14,6 @@ Commands:
   settings / set-root      where the clients live (settings.json beside the app)
   install-schedule         register the daily job for that same folder
   unlock    clear a stale engagement lock (a fresh one is refused)
-  reset     rebuild the entire marketing demo from scratch:
-            engagement folder, manifest, folder tree, sample client docs
 """
 
 from __future__ import annotations
@@ -63,8 +61,7 @@ from tracker.scaffold import (
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.scheduling import install_task, task_scheduler_xml
 from tracker.settings import SettingsError, clients_root, set_clients_root, settings_path
-from tracker.templates import (  # the catalog; re-exported for the wizard and demo
-    DEMO_FORM,
+from tracker.templates import (  # the catalog; re-exported for the wizard
     FORM_TEMPLATES,
     FORM_TYPES,
     base_year,
@@ -79,8 +76,6 @@ if getattr(sys, "frozen", False):
     REPO_ROOT = Path(sys.executable).resolve().parent
 else:
     REPO_ROOT = Path(__file__).resolve().parent.parent
-ENGAGEMENT_DIRNAME = "Engagement - Smith Family 2025 Form 1040"
-SAMPLES_DIRNAME = "Sample Client Documents"
 #: The firm's name for the very first engagement; after that the wizard
 #: copies whatever the newest engagement's sheet says.
 DEFAULT_FIRM = "J Park & Associates, CPA"
@@ -96,181 +91,13 @@ def _root() -> Path:
         )
     return root
 
-DEMO_ITEMS = template_items(DEMO_FORM, core_only=True)
-
-
-# --------------------------------------------------------- sample documents ----
-
-
-def _text_pdf(path: Path, lines: list[str]) -> Path:
-    """Minimal but valid PDF with a real text layer (no extra deps)."""
-    body = "\n".join(
-        f"BT /F1 11 Tf 60 {740 - 14 * i} Td ({line}) Tj ET"
-        for i, line in enumerate(lines[:48])
-    )
-    content = body.encode("ascii", "replace")
-    padding = b" " * 8192  # unreferenced object: realistic file size, renders clean
-    bodies = {
-        1: b"<< /Type /Catalog /Pages 2 0 R >>",
-        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        3: (
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>"
-        ),
-        4: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
-        5: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        6: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(padding), padding),
-    }
-    out = bytearray(b"%PDF-1.4\n")
-    offsets = {}
-    for n in sorted(bodies):
-        offsets[n] = len(out)
-        out += b"%d 0 obj\n" % n + bodies[n] + b"\nendobj\n"
-    xref_at = len(out)
-    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(bodies) + 1)
-    for n in sorted(bodies):
-        out += b"%010d 00000 n \n" % offsets[n]
-    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF" % (
-        len(bodies) + 1,
-        xref_at,
-    )
-    path.write_bytes(bytes(out))
-    return path
-
-
-def _w2_lines(employee: str, employer: str, year: int) -> list[str]:
-    return [
-        f"Form W-2 Wage and Tax Statement - Tax Year {year}",
-        f"Employer: {employer}",
-        f"Employee: {employee}",
-        "",
-        "Box 1  Wages, tips, other compensation       $84,500.00",
-        "Box 2  Federal income tax withheld           $11,240.00",
-        "Box 3  Social security wages                 $84,500.00",
-        "Box 4  Social security tax withheld           $5,239.00",
-        "Box 5  Medicare wages and tips               $84,500.00",
-        "Box 6  Medicare tax withheld                  $1,225.25",
-        "",
-        f"Copy B - To Be Filed With Employee's Federal Tax Return, {year}",
-    ]
-
-
-def _1099_int_lines(payer: str, recipient: str, year: int) -> list[str]:
-    return [
-        f"Form 1099-INT Interest Income - {year}",
-        f"Payer: {payer}",
-        f"Recipient: {recipient}",
-        "",
-        "Box 1  Interest income                        $1,842.17",
-        "Box 4  Federal income tax withheld                $0.00",
-        "",
-        "This is important tax information and is being furnished to the IRS.",
-    ]
-
-
-def _prior_return_lines(taxpayer: str, year: int) -> list[str]:
-    return [
-        f"Form 1040 - U.S. Individual Income Tax Return - Tax Year {year}",
-        f"Taxpayer: {taxpayer}",
-        "Filing status: Married filing jointly",
-        "",
-        "Line 1   Wages, salaries, tips                $161,300.00",
-        "Line 11  Adjusted gross income                $168,455.00",
-        "Line 24  Total tax                             $24,918.00",
-        "Line 33  Total payments                        $26,102.00",
-        "Line 34  Overpayment refunded                   $1,184.00",
-    ]
-
-
-def _form_1098_lines(lender: str, borrower: str, year: int) -> list[str]:
-    return [
-        f"Form 1098 Mortgage Interest Statement - {year}",
-        f"Recipient/Lender: {lender}",
-        f"Payer/Borrower: {borrower}",
-        "",
-        "Box 1  Mortgage interest received            $12,411.08",
-        "Box 2  Outstanding mortgage principal       $342,900.00",
-        "Box 5  Mortgage insurance premiums                $0.00",
-        "Box 10 Real property taxes paid               $6,240.00",
-    ]
-
-
-def _donations_xlsx(path: Path) -> None:
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Donations"
-    ws.append(["Smith Family - Charitable Contributions 2025"])
-    ws.append(["Date", "Organization", "Amount", "Receipt on file"])
-    for i in range(1, 301):  # enough rows to clear the size minimum
-        ws.append([f"0{(i % 9) + 1}/12/2025", f"Community Charity {i:03d}", 25 + i, "Yes"])
-    wb.save(path)
-
-
-def _build_samples(samples: Path) -> None:
-    samples.mkdir(parents=True, exist_ok=True)
-
-    good = _text_pdf(
-        samples / "W-2 John Smith 2025.pdf",
-        _w2_lines("John A. Smith", "Acme Manufacturing Inc.", 2025),
-    )
-    # Byte-identical duplicate — demonstrates content-hash de-duplication.
-    shutil.copyfile(good, samples / "W-2 John Smith 2025 - Copy.pdf")
-
-    _text_pdf(
-        samples / "W-2 Jane Smith 2025.pdf",
-        _w2_lines("Jane R. Smith", "Lakeside Medical Group", 2025),
-    )
-    # Wrong tax year — the content date check will flag it.
-    _text_pdf(
-        samples / "W-2 Jane Smith 2024 - old.pdf",
-        _w2_lines("Jane R. Smith", "Lakeside Medical Group", 2024),
-    )
-
-    _text_pdf(
-        samples / "1099-INT First National.pdf",
-        _1099_int_lines("First National Bank", "John A. Smith", 2025),
-    )
-    (samples / "1099-DIV Vanguard 2025.csv").write_text(
-        "Form 1099-DIV dividend summary - Vanguard Brokerage 2025\n"
-        + "date,fund,ordinary dividends,qualified dividends\n" * 300,
-        encoding="utf-8",
-    )
-
-    _text_pdf(
-        samples / "2024 Form 1040 Tax Return.pdf",
-        _prior_return_lines("John A. & Jane R. Smith", 2024),
-    )
-
-    _text_pdf(
-        samples / "Form 1098 Mortgage Interest.pdf",
-        _form_1098_lines("Home Lending Corp.", "John A. & Jane R. Smith", 2025),
-    )
-    (samples / "Mortgage Notes.docx").write_bytes(b"not a real docx " * 800)
-
-    _donations_xlsx(samples / "Donation Receipts 2025.xlsx")
-
-    # Google Drive realities. A client who keeps records in Google Sheets
-    # shares a .gsheet shortcut, which is a link — not the spreadsheet; the
-    # scanner rejects it with export instructions rather than a size error.
-    (samples / "Donation Receipts 2025.gsheet").write_text(
-        '{"url": "https://docs.google.com/spreadsheets/d/1aB2cD3eF4gH5iJ6kL7mN8oP/edit",'
-        ' "doc_id": "1aB2cD3eF4gH5iJ6kL7mN8oP", "email": "client@example.com"}',
-        encoding="utf-8",
-    )
-    # A Google Drive upload caught mid-flight: ignored, never counted as a
-    # delivered document, and it disappears on its own once sync finishes.
-    (samples / "W-2 Jane Smith 2025.pdf.tmp.driveupload").write_bytes(b"\x00" * 4096)
-
-    (samples / "vacation photo.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"J" * 9000)
-
-
 # ----------------------------------------------------------------- commands ----
 
 
 def _engagement_dir(argv: list[str]) -> Path:
     if "--engagement" in argv:
         return Path(argv[argv.index("--engagement") + 1])
-    return _root() / ENGAGEMENT_DIRNAME
+    raise ManifestError("Pick an engagement first (--engagement <folder>)")
 
 
 def _lock_payload(engagement: Path) -> dict | None:
@@ -404,7 +231,6 @@ def _state(engagement: Path) -> dict:
             "prepared": str(engagement / PREPARED_DIR_NAME),
             "index": str(engagement / INDEX_FILENAME),
             "manifest": str(manifest_path),
-            "samples": str((clients_root() or REPO_ROOT) / SAMPLES_DIRNAME),
         },
     }
 
@@ -446,19 +272,6 @@ def _cmd_scan(argv: list[str]) -> dict:
             raise ManifestError(run.error) from None
         raise
     return payload
-
-
-def _cmd_reset(argv: list[str]) -> dict:
-    root = _root()
-    for child in list(root.iterdir()):
-        shutil.rmtree(child) if child.is_dir() else child.unlink()
-    engagement = root / ENGAGEMENT_DIRNAME
-    engagement.mkdir(parents=True)
-    create_template(engagement / MANIFEST_FILENAME, DEMO_ITEMS,
-                    EngagementInfo(client="John Smith", firm=DEFAULT_FIRM))
-    scaffold_engagement(engagement)
-    _build_samples(root / SAMPLES_DIRNAME)
-    return {"reset": True, "state": _state(engagement)}
 
 
 def _cmd_templates(argv: list[str]) -> dict:
@@ -756,7 +569,6 @@ COMMANDS = {
     "priors": _cmd_priors,
     "rollover": _cmd_rollover,
     "scan": _cmd_scan,
-    "reset": _cmd_reset,
     "templates": _cmd_templates,
     "list": _cmd_list,
     "create": _cmd_create,

@@ -9,7 +9,7 @@ import datetime as dt
 
 import pytest
 
-from tracker.api import DEMO_ITEMS, _build_samples
+from tests.samples import DEMO_ITEMS, build_samples
 from tracker.manifest import Status, create_template
 from tracker.manifest import EngagementInfo, write_engagement_info
 from tracker.registry import Engagement, Registry, discover_engagements
@@ -35,7 +35,7 @@ SUNDAY = dt.date(2026, 3, 15)
 @pytest.fixture(scope="session")
 def samples(tmp_path_factory):
     folder = tmp_path_factory.mktemp("samples")
-    _build_samples(folder)
+    build_samples(folder)
     return folder
 
 

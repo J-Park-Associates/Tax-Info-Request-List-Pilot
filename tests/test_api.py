@@ -3,8 +3,8 @@
 The contract under test: every command answers with one JSON object and an
 exit code, an error is a JSON object too (never a traceback on stdout), and
 the create path refuses a bad request list with a sentence a person can act
-on. The demo root is redirected into a temp folder so no test touches the
-real demo-marketing tree.
+on. The clients root is a temp folder recorded through settings, the way
+the app records it, so no test touches a real one.
 """
 
 import datetime as dt
@@ -125,19 +125,28 @@ def test_create_will_not_overwrite_an_existing_engagement(capsys, demo_root):
     assert "already exists" in payload["error"]
 
 
-# ------------------------------------------------------------ reset + scan ----
+# ----------------------------------------------------------- create + scan ----
 
 
-def test_reset_then_scan_plays_the_demo_end_to_end(capsys, demo_root):
-    code, payload = run(capsys, "reset")
-    assert code == 0 and payload["reset"] is True
-    engagement = demo_root / api.ENGAGEMENT_DIRNAME
-    samples = demo_root / api.SAMPLES_DIRNAME
-    assert samples.is_dir()
+def sample_engagement(capsys, demo_root, tmp_path, *names):
+    """A 1040 engagement created through the API with sample documents dropped in."""
+    from tests.samples import build_samples
 
-    # The client drags every sample into the one folder.
+    spec = {"name": "Smith Family 2025", "form": "1040", "client": "John Smith",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith Family 2025"
+    samples = tmp_path / "samples"
+    build_samples(samples)
     for sample in samples.iterdir():
-        (engagement / SHARED_DIR_NAME / sample.name).write_bytes(sample.read_bytes())
+        if not names or sample.name in names:
+            (engagement / SHARED_DIR_NAME / sample.name).write_bytes(sample.read_bytes())
+    return engagement
+
+
+def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root, tmp_path):
+    # The client drags every sample into the one folder.
+    engagement = sample_engagement(capsys, demo_root, tmp_path)
 
     code, payload = run(capsys, "scan", "--engagement", str(engagement))
     assert code == 0, payload
@@ -227,12 +236,9 @@ def test_state_shows_statuses_a_locked_excel_deferred(capsys, demo_root):
 # ------------------------------------------------------------ needs review ----
 
 
-def test_assign_files_a_parked_document_and_rescans(capsys, demo_root):
-    assert run(capsys, "reset")[0] == 0
-    engagement = demo_root / api.ENGAGEMENT_DIRNAME
-    samples = demo_root / api.SAMPLES_DIRNAME
-    for name in ("Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf"):
-        (engagement / SHARED_DIR_NAME / name).write_bytes((samples / name).read_bytes())
+def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path):
+    engagement = sample_engagement(capsys, demo_root, tmp_path,
+                                   "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
     code, payload = run(capsys, "scan", "--engagement", str(engagement))
     assert code == 0
     parked = [e for e in payload["state"]["index"] if e["decision"] == "Needs Review"]
@@ -255,9 +261,8 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root):
     assert ".docx not allowed" in d01["validation_notes"]
 
 
-def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root):
-    assert run(capsys, "reset")[0] == 0
-    engagement = demo_root / api.ENGAGEMENT_DIRNAME
+def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_path):
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
     code, payload = run(capsys, "assign", "--engagement", str(engagement),
                         stdin={"original": "ghost.pdf", "identifier": "A01"})
     assert code == 1

@@ -1,44 +1,24 @@
-"""Tests for tracker/templates.py — one catalog, and the CSVs are copies of it.
+"""Tests for tracker/templates.py — one catalog, read directly by everyone.
 
 The claim under test: there is exactly one source of truth for what each
-return type asks for. The CSVs in templates/ are generated from the Python
-catalog, so a hand edit to a CSV, or a catalog edit without a regenerate,
-fails here rather than quietly forking the list.
+return type asks for, every row of it can recognise its own document, and
+the year it is written for follows the calendar rather than a person.
 """
-
-from pathlib import Path
 
 import pytest
 
 from tracker.content_check import has_content_rules
 from tracker.manifest import ManifestError, load_manifest, create_template
 from tracker.templates import (
-    CSV_COLUMNS,
     FORM_TEMPLATES,
     FORM_TYPES,
-    csv_name,
-    export_csvs,
     item_from_spec,
-    render_csv,
-    stale_csvs,
     template_items,
 )
 
-REPO = Path(__file__).resolve().parent.parent
-TEMPLATES_DIR = REPO / "templates"
 
-
-def test_the_committed_csvs_match_the_catalog():
-    assert stale_csvs(TEMPLATES_DIR) == [], (
-        "templates/*.csv have drifted from tracker/templates.py — "
-        "run `python -m tracker.templates export`"
-    )
-
-
-def test_every_form_type_has_a_checklist_and_a_csv():
+def test_every_form_type_has_a_checklist():
     assert {f["id"] for f in FORM_TYPES} == set(FORM_TEMPLATES)
-    for form in FORM_TEMPLATES:
-        assert (TEMPLATES_DIR / csv_name(form)).is_file(), form
 
 
 @pytest.mark.parametrize("form", sorted(FORM_TEMPLATES))
@@ -51,22 +31,6 @@ def test_each_checklist_is_a_valid_manifest(form, tmp_path):
     path = create_template(tmp_path / f"{form}.xlsx", items)
     loaded = load_manifest(path)
     assert [i.identifier for i in loaded] == [i.identifier for i in items]
-
-
-def test_csv_carries_the_manifest_columns_and_the_core_flag():
-    text = render_csv("1040")
-    header, first = text.splitlines()[:2]
-    assert header == ",".join(CSV_COLUMNS)
-    assert first.startswith("A01,W-2 Wage Statements - All Employers,TY2025,2,pdf,5,W-2,")
-    assert first.endswith(",yes")
-
-
-def test_export_writes_one_csv_per_form(tmp_path):
-    written = export_csvs(tmp_path)
-    assert sorted(p.name for p in written) == sorted(csv_name(f) for f in FORM_TEMPLATES)
-    assert stale_csvs(tmp_path) == []
-    (tmp_path / csv_name("1040")).write_text("edited by hand\n", encoding="utf-8")
-    assert stale_csvs(tmp_path) == [csv_name("1040")]
 
 
 def test_unknown_form_is_refused():

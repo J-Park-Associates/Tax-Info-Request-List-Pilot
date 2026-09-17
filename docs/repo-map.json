@@ -13,19 +13,17 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 84,
-    "edges": 188,
-    "reused": 63
+    "nodes": 74,
+    "edges": 183,
+    "reused": 33
   },
   "node_types": [
     "artifact",
     "concept",
-    "demo",
     "doc",
     "module",
     "package",
     "script",
-    "template",
     "test",
     "tool",
     "ui",
@@ -53,8 +51,8 @@
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "1734d2b5d1dd1434",
-      "lines": 56,
+      "sha256": "90fd2a79c4f2b787",
+      "lines": 50,
       "role": "CI: runs the test suite and `repo_map.py check` on every push to main and every pull request.",
       "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Both steps always report, so a stale map and a failing test surface in the same run."
     },
@@ -86,7 +84,7 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fd8b47d9f3d3a1ed",
+      "sha256": "cad568c4121f32ac",
       "lines": 55,
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
     },
@@ -94,18 +92,15 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d3b89a5520b2377b",
-      "lines": 790,
+      "sha256": "76517fc65b5cea08",
+      "lines": 602,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
         "DEFAULT_FIRM",
-        "DEMO_ITEMS",
-        "ENGAGEMENT_DIRNAME",
-        "SAMPLES_DIRNAME",
         "main"
       ],
-      "role": "The JSON command layer the desktop app talks to: state, scaffold, sort, scan, assign, create, rollover, templates, list, priors, reset. Also the demo sample-file builder.",
+      "role": "The JSON command layer the desktop app talks to: state, scan, assign, create, rollover, templates, list, priors, check, unlock, settings, set-root, install-schedule.",
       "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=never - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and copies the newest engagement's firm."
     },
     {
@@ -401,8 +396,8 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3774797ea7198f82",
-      "lines": 368,
+      "sha256": "5444930db3865f1a",
+      "lines": 359,
       "cli": "python -m tracker.scanner",
       "exports": [
         "CACHE_FILENAME",
@@ -437,7 +432,7 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a535f3ce4054542f",
+      "sha256": "aa3c983bd32cbd68",
       "lines": 106,
       "cli": "python -m tracker.settings",
       "exports": [
@@ -456,28 +451,19 @@
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e4e20305ade2f495",
-      "lines": 712,
-      "cli": "python -m tracker.templates",
+      "sha256": "e1fe3baad5216c2e",
+      "lines": 607,
       "exports": [
-        "CSV_COLUMNS",
-        "DEMO_FORM",
         "FORM_TEMPLATES",
         "FORM_TYPES",
-        "TEMPLATES_DIRNAME",
         "base_year",
-        "csv_name",
-        "csv_rows",
         "default_tax_year",
-        "export_csvs",
         "item_from_spec",
-        "render_csv",
         "shift_item",
-        "stale_csvs",
         "template_items"
       ],
-      "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword/date rules that recognise each document. The ONLY source of truth for the checklists; templates/*.csv are generated from it.",
-      "notes": "Edit the Python, run `python -m tracker.templates export`, commit both. tests/test_templates.py and CI fail if the CSVs drift. item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included, so the catalog is never edited for a new year. No date_pattern in the catalog: each row's Period implies its year check."
+      "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword rules that recognise each document. The ONLY source of truth for the checklists; the wizard and the rollover read it directly.",
+      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check."
     },
     {
       "id": "tracker/validators.py",
@@ -510,72 +496,6 @@
       "notes": "Never downloads a cloud-only placeholder \u2014 a stub must never be filed as if it were the document. A file that vanishes between listing and stat is reported pending_sync, never raised \u2014 a scheduled scan must not die on one replaced file."
     },
     {
-      "id": "templates/README.md",
-      "type": "template",
-      "layer": "data",
-      "sha256": "da62c1d5ef3d18bb",
-      "lines": 17
-    },
-    {
-      "id": "templates/form-1040.csv",
-      "type": "template",
-      "layer": "data",
-      "sha256": "fa2d61e51aa111f3",
-      "lines": 16
-    },
-    {
-      "id": "templates/form-1041.csv",
-      "type": "template",
-      "layer": "data",
-      "sha256": "be8da7002781800a",
-      "lines": 12
-    },
-    {
-      "id": "templates/form-1065.csv",
-      "type": "template",
-      "layer": "data",
-      "sha256": "1ced951bb3d77db4",
-      "lines": 16
-    },
-    {
-      "id": "templates/form-1120.csv",
-      "type": "template",
-      "layer": "data",
-      "sha256": "ac53af5644672860",
-      "lines": 16
-    },
-    {
-      "id": "templates/form-1120s.csv",
-      "type": "template",
-      "layer": "data",
-      "sha256": "b3ebb3e4669045c0",
-      "lines": 16
-    },
-    {
-      "id": "templates/form-990.csv",
-      "type": "template",
-      "layer": "data",
-      "sha256": "2d5baa239f8e82b6",
-      "lines": 14
-    },
-    {
-      "id": "demo/demo_manifest.py",
-      "type": "demo",
-      "layer": "demo",
-      "sha256": "d3c4f8dccdd2ad41",
-      "lines": 168,
-      "cli": "python -m demo.demo_manifest",
-      "exports": [
-        "DEMO_DIR",
-        "MANIFEST",
-        "SAMPLE_ITEMS",
-        "full_demo",
-        "scanner_style_write",
-        "show"
-      ],
-      "role": "Hands-on walkthrough of the manifest layer, including the Excel-lock retry and sidecar behaviour you can watch live by holding the file open in Excel."
-    },
-    {
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
@@ -588,7 +508,7 @@
       "id": "app/package.json",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "c0b80281932f5afb",
+      "sha256": "707afa5a155b4675",
       "lines": 15
     },
     {
@@ -603,16 +523,16 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "8e48815ae2bd0f4d",
-      "lines": 657,
+      "sha256": "7ccfdfb2d37f8e9f",
+      "lines": 638,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "6f6020b1d45d271b",
-      "lines": 335,
+      "sha256": "fd692e747dd7dd02",
+      "lines": 248,
       "role": "Desktop app shell markup."
     },
     {
@@ -626,8 +546,8 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "ec5903246eabb712",
-      "lines": 637,
+      "sha256": "3815d6ab9dec9634",
+      "lines": 559,
       "role": "Desktop app styling."
     },
     {
@@ -640,27 +560,19 @@
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
     {
-      "id": "DEMO-SCRIPT.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "72ac0bffdf8a7449",
-      "lines": 193,
-      "role": "The script for walking someone through a demo."
-    },
-    {
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "46e47a2d8eef57d2",
-      "lines": 289,
-      "role": "What the system is, how to run each stage, and the two ways to demo it."
+      "sha256": "5cfdc5d94e7ff5c0",
+      "lines": 242,
+      "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "83b9003529c04065",
-      "lines": 232,
+      "sha256": "d074fd78c5f78331",
+      "lines": 231,
       "role": "The build plan, the hard constraints and the decision log. Components 1-10, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -668,8 +580,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "12757e3a0e8158a2",
-      "lines": 263,
+      "sha256": "084356921f3e2233",
+      "lines": 252,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -677,16 +589,9 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3bb123d56d4197f3",
-      "lines": 76,
+      "sha256": "49ebbf7ba36000ed",
+      "lines": 89,
       "role": "How the day-to-day workflow runs."
-    },
-    {
-      "id": "portable-readme.txt",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "f4dec31c7cb1ffbc",
-      "lines": 54
     },
     {
       "id": "requirements.txt",
@@ -742,34 +647,27 @@
       "layer": "external"
     },
     {
-      "id": "Build Portable Demo.bat",
+      "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "96bb5640b2836aef",
-      "lines": 49
+      "sha256": "79ba9e80a1930457",
+      "lines": 37
     },
     {
-      "id": "Scan Demo.bat",
+      "id": "Start App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "7cf6d4803c10af1e",
-      "lines": 16
-    },
-    {
-      "id": "Start Demo.bat",
-      "type": "script",
-      "layer": "root",
-      "sha256": "b8e119d74c1d81fa",
-      "lines": 33
+      "sha256": "ecd2701cf39e9c9e",
+      "lines": 28
     },
     {
       "id": "api_entry.py",
       "type": "module",
       "layer": "root",
-      "sha256": "64d5256b0dbb64f0",
+      "sha256": "faef8963c9b13d11",
       "lines": 7,
       "cli": "python api_entry.py",
-      "role": "PyInstaller entry point. Freezes tracker.api into tracker-api.exe for the portable Windows demo.",
+      "role": "PyInstaller entry point. Freezes tracker.api into tracker-api.exe for the portable Windows app.",
       "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module."
     },
     {
@@ -823,14 +721,32 @@
       "role": "The drafted chase email, waiting for a person to read, edit and send. Carries a fingerprint so the weekly job can tell whether it has been edited."
     },
     {
+      "id": "tests/samples.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "0a5bfb86d5b759d3",
+      "lines": 186,
+      "exports": [
+        "DEMO_ITEMS",
+        "build_samples",
+        "donations_xlsx",
+        "form_1098_lines",
+        "lines_1099_int",
+        "prior_return_lines",
+        "text_pdf",
+        "w2_lines"
+      ]
+    },
+    {
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2d929a11c62bd420",
-      "lines": 473,
+      "sha256": "df0206a01dde8e04",
+      "lines": 478,
       "exports": [
         "demo_root",
         "run",
+        "sample_engagement",
         "test_a_bad_due_date_is_a_sentence",
         "test_a_manifest_problem_is_a_json_error_not_a_traceback",
         "test_a_name_of_only_illegal_characters_falls_back",
@@ -843,12 +759,12 @@
         "test_create_refuses_a_non_numeric_count_with_a_sentence",
         "test_create_refuses_an_identifier_that_cannot_name_a_folder",
         "test_create_shifts_the_checklist_to_the_engagements_year",
+        "test_create_then_scan_plays_a_whole_engagement_end_to_end",
         "test_create_will_not_overwrite_an_existing_engagement",
         "test_create_writes_the_engagement_sheet_the_scheduled_run_reads",
         "test_install_schedule_uses_the_same_root_as_the_app",
         "test_item_from_spec_normalizes_extensions",
         "test_priors_then_rollover_is_the_desktop_returning_client_path",
-        "test_reset_then_scan_plays_the_demo_end_to_end",
         "test_rollover_carries_the_client_but_not_last_years_link_or_due",
         "test_rollover_refuses_a_missing_prior",
         "test_rollover_retires_the_prior_in_the_priors_list",
@@ -1169,7 +1085,7 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1a70c389d42cf68c",
+      "sha256": "fd7da0aa8af7a62f",
       "lines": 399,
       "exports": [
         "FRIDAY",
@@ -1315,18 +1231,13 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9b10499f1fcd60f1",
-      "lines": 114,
+      "sha256": "f9d1b3667fe90cb8",
+      "lines": 78,
       "exports": [
-        "REPO",
-        "TEMPLATES_DIR",
         "test_a_request_with_no_rule_defaults_to_its_own_name",
         "test_catalog_rows_shift_to_the_engagements_year",
-        "test_csv_carries_the_manifest_columns_and_the_core_flag",
         "test_each_checklist_is_a_valid_manifest",
-        "test_every_form_type_has_a_checklist_and_a_csv",
-        "test_export_writes_one_csv_per_form",
-        "test_the_committed_csvs_match_the_catalog",
+        "test_every_form_type_has_a_checklist",
         "test_the_tax_year_comes_from_the_calendar",
         "test_unknown_form_is_refused"
       ]
@@ -1416,7 +1327,7 @@
       "source": "curated"
     },
     {
-      "from": "Build Portable Demo.bat",
+      "from": "Build App.bat",
       "to": "api_entry.py",
       "type": "freezes",
       "source": "curated"
@@ -1434,13 +1345,7 @@
       "source": "curated"
     },
     {
-      "from": "Scan Demo.bat",
-      "to": "tracker/scanner.py",
-      "type": "launches",
-      "source": "curated"
-    },
-    {
-      "from": "Start Demo.bat",
+      "from": "Start App.bat",
       "to": "app/main.js",
       "type": "launches",
       "source": "curated"
@@ -1506,16 +1411,22 @@
       "source": "curated"
     },
     {
-      "from": "demo/demo_manifest.py",
-      "to": "tracker/manifest.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
       "from": "docs/ROADMAP.md",
       "to": "tracker/__init__.py",
       "type": "documents",
       "source": "curated"
+    },
+    {
+      "from": "tests/samples.py",
+      "to": "pkg:openpyxl",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
     },
     {
       "from": "tests/test_api.py",
@@ -1563,6 +1474,12 @@
       "from": "tests/test_api.py",
       "to": "tracker/templates.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -1813,12 +1730,6 @@
     },
     {
       "from": "tests/test_runner.py",
-      "to": "tracker/api.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_runner.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
       "source": "derived"
@@ -1839,6 +1750,12 @@
       "from": "tests/test_runner.py",
       "to": "tracker/scaffold.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -2470,42 +2387,6 @@
       "to": "tracker/rollover.py",
       "type": "imports",
       "source": "derived"
-    },
-    {
-      "from": "tracker/templates.py",
-      "to": "templates/form-1040.csv",
-      "type": "writes",
-      "source": "curated"
-    },
-    {
-      "from": "tracker/templates.py",
-      "to": "templates/form-1041.csv",
-      "type": "writes",
-      "source": "curated"
-    },
-    {
-      "from": "tracker/templates.py",
-      "to": "templates/form-1065.csv",
-      "type": "writes",
-      "source": "curated"
-    },
-    {
-      "from": "tracker/templates.py",
-      "to": "templates/form-1120.csv",
-      "type": "writes",
-      "source": "curated"
-    },
-    {
-      "from": "tracker/templates.py",
-      "to": "templates/form-1120s.csv",
-      "type": "writes",
-      "source": "curated"
-    },
-    {
-      "from": "tracker/templates.py",
-      "to": "templates/form-990.csv",
-      "type": "writes",
-      "source": "curated"
     },
     {
       "from": "tracker/validators.py",

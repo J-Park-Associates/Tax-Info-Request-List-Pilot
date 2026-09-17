@@ -17,9 +17,8 @@ people side.
 
 ## Starting an engagement
 
-The request list is built from one catalog, `tracker/templates.py`; the
-CSVs in `templates/` are generated from it for reading in Excel and never
-edited by hand.
+The request list is built from one catalog, `tracker/templates.py`, and
+the manifest an engagement is created with is the readable copy of it.
 
 - **Returning client (the default):** roll last year's engagement forward.
   In the desktop app, *New Engagement* opens on the returning-client page;
@@ -64,12 +63,26 @@ The scanner owns the status column; people own the override column.
 - **Nothing is ever sent by the system.** Open `reminder-draft.txt`, edit
   it, send it yourself. An edited draft is never overwritten.
 - **Catalog changes affect every future engagement.** Edit
-  `tracker/templates.py`, run `python -m tracker.templates export`, commit
-  the Python and the regenerated CSVs together. The test suite fails if
-  they disagree.
+  `tracker/templates.py` and commit it; the test suite checks every row can
+  recognise its own document.
+
+## Two things a person still does in the app
+
+- **Check Manifest** runs the same validation the scheduled job runs before
+  it touches a file: a bad regex or a non-number typed in Excel is named
+  with its row, and rows the rules cannot act on are listed as warnings.
+  Allowed Extensions left blank means `pdf, xlsx, csv`; `*` means any type.
+  A Period that names a year is the year check; `*` in Date Pattern turns
+  it off. Only the first 10 pages of a PDF are read.
+- **File it**, on anything in Needs Review: pick the request (the picker
+  starts on the router's own guess), optionally give a keyword, and the
+  filer moves the copy under the canonical name, rewrites the index row as
+  assigned by a person, learns the keyword and re-scans. If a run has
+  died, its lock is shown with its start time and can be cleared once it
+  is an hour old.
 
 ## Collaboration
 
 - Small team: commit directly to `main`; pull before editing the catalog.
 - Larger team: work on a branch and open a pull request. CI runs the suite
-  and checks that the repository map and the template CSVs are current.
+  and checks that the repository map is current.
