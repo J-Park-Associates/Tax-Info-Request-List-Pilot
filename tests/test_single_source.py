@@ -455,3 +455,33 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
                 assert name in owned, (rel, name)
         for name in re.findall(r"--out (\S+\.xml)", read(rel)):
             assert name == SCHEDULE_XML_FILENAME, (rel, name)
+
+
+def test_the_package_prose_names_constants_rather_than_their_values():
+    """A docstring or comment may name MANIFEST_FILENAME; it may not spell the value."""
+    import ast
+
+    from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME
+    from tracker.locking import LOCK_FILENAME
+    from tracker.manifest import Override, Status
+    from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
+    from tracker.runner import LOG_FILENAME
+    from tracker.scaffold import MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME
+    from tracker.scanner import CACHE_FILENAME
+    from tracker.settings import SETTINGS_FILENAME
+
+    values = {INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+              LOG_FILENAME, MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME, CACHE_FILENAME, SETTINGS_FILENAME}
+    quoted = {f"``{v}``" for v in set(Status.ALL) | set(Override.ALL)}
+    for path in (REPO / "tracker").glob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        tree = ast.parse(text)
+        prose = [ast.get_docstring(tree) or ""]
+        prose += [ast.get_docstring(node) or "" for node in ast.walk(tree)
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+        prose += [line.split("#", 1)[1] for line in text.splitlines() if line.lstrip().startswith("#")]
+        prose_text = "\n".join(prose)
+        for token in quoted:
+            assert token not in prose_text, (path.name, token)
+        for value in values:
+            assert value not in prose_text, (path.name, value)

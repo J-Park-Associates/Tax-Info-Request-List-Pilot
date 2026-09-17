@@ -1,29 +1,29 @@
 """Draft the "still waiting on these" email to a client (component 9).
 
-Reads a scanned ``_manifest.xlsx`` and writes a plain-text draft the
+Reads a scanned ``MANIFEST_FILENAME`` and writes a plain-text draft the
 accountant can read, edit and paste into Outlook. **It never sends anything**
 — there is no SMTP, no mail client, no network call anywhere in this module.
 A reminder goes out because a person decided to send it.
 
 What the client is asked for:
 
-- ``Missing`` — never arrived.
-- ``Partial`` — some of the expected files arrived, not all.
-- ``Failed Validation`` — something arrived that we could not use.
+- ``Status.MISSING`` — never arrived.
+- ``Status.PARTIAL`` — some of the expected files arrived, not all.
+- ``Status.FAILED`` — something arrived that we could not use.
 
 What the client is deliberately *not* asked for:
 
-- ``Received`` — it is in.
-- ``Pending Sync`` — it is in; the cloud is still copying it down. Nothing for
+- ``Status.RECEIVED`` — it is in.
+- ``Status.PENDING_SYNC`` — it is in; the cloud is still copying it down. Nothing for
   the client to do, so nothing to say.
-- Any row with a Manual Override. ``Waived`` is no longer needed and
-  ``Accepted`` has already been judged good enough by a person; re-asking
+- Any row with a Manual Override. ``Override.WAIVED`` is no longer needed and
+  ``Override.ACCEPTED`` has already been judged good enough by a person; re-asking
   would contradict that person.
 - Rows whose only problem is that *we* have not looked yet ("review
   manually", an un-OCR'd scan). The document may be perfect. Asking a client
   to resend something we simply have not read is how a firm looks careless,
   so those rows go to the accountant instead, under *needs a person*. That
-  holds for a ``Partial`` row too: if the file that would complete it is one
+  holds for a ``Status.PARTIAL`` row too: if the file that would complete it is one
   we have not read, "1 of 2 received" is not something we know yet.
 - Rows whose request folder does not exist. We cannot honestly tell a client
   we never received something we never made a place to put — that is a

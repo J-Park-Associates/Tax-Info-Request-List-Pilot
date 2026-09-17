@@ -17,8 +17,8 @@ Precedence, precisely:
 - Counts learn from reality: a row that expected 2 W-2s and received 3 asks
   for 3 next year. Counts are never lowered — a client who under-delivered
   still owes what was asked.
-- ``Waived`` is a decision about the client, so it carries forward.
-  ``Accepted`` is a judgment about specific files from one particular year,
+- ``Override.WAIVED`` is a decision about the client, so it carries forward.
+  ``Override.ACCEPTED`` is a judgment about specific files from one particular year,
   so it does not.
 
 A template row the client has never had is **not** added. For a returning

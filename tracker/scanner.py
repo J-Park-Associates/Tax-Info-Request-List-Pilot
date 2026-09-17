@@ -1,10 +1,10 @@
 """Scan orchestrator for the Client Document Tracker (component 5).
 
-Ties the layers together for one engagement: walk ``Prepared/`` — the
+Ties the layers together for one engagement: walk ``PREPARED_DIR_NAME/`` — the
 working set :mod:`tracker.filer` built from the client's drop folder — match
 folders to manifest rows (prefix rule, longest identifier wins), run
 validation tiers 1-3, resolve each row's status deterministically, and write
-results back to ``_manifest.xlsx`` (lock-resiliently, via the manifest layer).
+results back to ``MANIFEST_FILENAME`` (lock-resiliently, via the manifest layer).
 
 Status policy (docs/ROADMAP.md decision log):
 
@@ -22,7 +22,7 @@ Status policy (docs/ROADMAP.md decision log):
   common single-file case never pays for hashing.
 
 Strictly read-only: the scanner reads the prepared copies and writes only
-the manifest, content cache and run-lock. It never touches ``Shared/`` at
+the manifest, content cache and run-lock. It never touches ``SHARED_DIR_NAME/`` at
 all — the client's originals are the filer's business, and even there they
 are only ever moved, never altered. The engagement lock (:mod:`tracker.locking`,
 shared with the filer) prevents overlapping runs; stale locks are replaced.
@@ -239,11 +239,11 @@ def _join(facts: list[str]) -> str:
 
 
 def _prepared_warnings(prepared_dir: Path, claimed: set[Path]) -> list[str]:
-    """Things in ``Prepared/`` that no manifest row accounts for.
+    """Things in ``PREPARED_DIR_NAME/`` that no manifest row accounts for.
 
     Loose files in the root and folders matching no identifier - somebody
     dragged something in by hand. Parked documents are NOT listed here:
-    ``_index.xlsx`` is their record, with the reason each was parked, and
+    ``INDEX_FILENAME`` is their record, with the reason each was parked, and
     the app works from it. Reporting them twice was how the two disagreed.
     """
     warnings: list[str] = []
@@ -356,7 +356,7 @@ if __name__ == "__main__":
     ns = parser.parse_args()
 
     engagement = Path(ns.engagement_dir)
-    # One log for the system - the runner's runs.log. A hand-run scan just talks.
+    # One log for the system - the runner's LOG_FILENAME. A hand-run scan just talks.
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

@@ -150,9 +150,9 @@ def scaffold_engagement(
     *,
     contact: str | None = None,
 ) -> ScaffoldResult:
-    """Create/refresh the ``Shared/`` tree for one engagement.
+    """Create/refresh the ``SHARED_DIR_NAME/`` tree for one engagement.
 
-    ``engagement_dir`` must contain ``_manifest.xlsx``. Raises
+    ``engagement_dir`` must contain ``MANIFEST_FILENAME``. Raises
     :class:`tracker.manifest.ManifestError` if it is missing or invalid —
     scaffolding never proceeds from a manifest it can't fully validate.
 

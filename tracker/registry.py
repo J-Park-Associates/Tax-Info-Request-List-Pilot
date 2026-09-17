@@ -2,7 +2,7 @@
 
 There is no registry file. The unattended run is pointed at the folder the
 firm keeps its clients in and walks it for engagement folders - any folder
-holding ``_manifest.xlsx``. What the run needs to know about each one (who
+holding ``MANIFEST_FILENAME``. What the run needs to know about each one (who
 the client is, the share link, the due date, whether to chase them by email,
 whether the engagement is still active) lives on the manifest's own
 **Engagement** sheet, written by the wizard when the engagement is created.
@@ -15,8 +15,8 @@ told.
 
 Discovery is bounded and predictable:
 
-- It never descends into an engagement folder once found (``Prepared/`` and
-  ``Shared/`` are the engagement's, not other engagements).
+- It never descends into an engagement folder once found (``PREPARED_DIR_NAME/`` and
+  ``SHARED_DIR_NAME/`` are the engagement's, not other engagements).
 - Folders whose names start with ``.`` or ``_`` are skipped (sync staging,
   hidden state).
 - Depth is capped so a mistaken root (a whole drive) fails fast instead of

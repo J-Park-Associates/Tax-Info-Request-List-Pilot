@@ -8,8 +8,8 @@ validation proceeds normally, so the whole layer is fully testable with
 File Explorer and Excel alone.
 
 - Tier 1 (existence): :func:`iter_candidate_files` / :func:`check_folder` —
-  which real files does a request folder contain (junk like ``desktop.ini``,
-  ``Thumbs.db``, ``~$`` Office locks excluded)?
+  which real files does a request folder contain (junk like the names in ``_IGNORED_NAMES``,
+  ``OFFICE_LOCK_PREFIX`` locks excluded)?
 - Tier 2 (integrity): :func:`check_file` — extension whitelist, minimum
   size, and a ``pypdf`` open test for PDFs.
 

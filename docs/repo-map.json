@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 78,
     "edges": 240,
-    "reused": 0
+    "reused": 45
   },
   "node_types": [
     "artifact",
@@ -84,7 +84,7 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "42f873f43ce42a5f",
+      "sha256": "10293596056a443d",
       "lines": 80,
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
     },
@@ -92,7 +92,7 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1f696cef3d6c38cb",
+      "sha256": "dffee0f4281dd314",
       "lines": 679,
       "cli": "python -m tracker.api",
       "exports": [
@@ -144,8 +144,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9b9d4105fed37a0d",
-      "lines": 815,
+      "sha256": "59685b27faa70936",
+      "lines": 814,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -189,7 +189,7 @@
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0bb8636ec8b06127",
+      "sha256": "fb0aac11faab040a",
       "lines": 132,
       "exports": [
         "EngagementLockedError",
@@ -383,7 +383,7 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a1b906ce5c626896",
+      "sha256": "c9686d70028fd4c4",
       "lines": 226,
       "cli": "python -m tracker.registry",
       "exports": [
@@ -408,7 +408,7 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fe94bcd26331520f",
+      "sha256": "4240b61c0c3d666d",
       "lines": 559,
       "cli": "python -m tracker.reminder",
       "exports": [
@@ -469,7 +469,7 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "20d9532e7ff64989",
+      "sha256": "6e54aff1cdee1738",
       "lines": 385,
       "cli": "python -m tracker.rollover",
       "exports": [
@@ -532,7 +532,7 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5eb8ee4360cbc81a",
+      "sha256": "492300cc89469a86",
       "lines": 448,
       "cli": "python -m tracker.runner",
       "exports": [
@@ -574,7 +574,7 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "27b1cf59df87e72b",
+      "sha256": "7109f52793890140",
       "lines": 280,
       "cli": "python -m tracker.scaffold",
       "exports": [
@@ -610,7 +610,7 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "71dd532073353d52",
+      "sha256": "3e185c9e86f0ed95",
       "lines": 376,
       "cli": "python -m tracker.scanner",
       "exports": [
@@ -780,7 +780,7 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "96a90971d5fe6e3b",
+      "sha256": "b97ef763182fdd8b",
       "lines": 364,
       "cli": "python -m tracker.validators",
       "exports": [
@@ -1586,8 +1586,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e50bffe795f2a64a",
-      "lines": 458,
+      "sha256": "87bb9dae78907bba",
+      "lines": 488,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -1610,6 +1610,7 @@
         "test_the_example_root_is_the_same_everywhere",
         "test_the_frozen_api_name_has_one_home",
         "test_the_package_docstring_lists_every_module",
+        "test_the_package_prose_names_constants_rather_than_their_values",
         "test_the_product_name_has_one_home",
         "test_the_readme_engagement_sheet_table_matches_the_fields",
         "test_the_readme_names_the_carried_forward_sheet_the_rollover_writes",

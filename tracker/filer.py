@@ -3,22 +3,22 @@
 The client sees one folder and drops everything into it. This module turns
 that pile into two things:
 
-``Shared/PBC/``
+``SHARED_DIR_NAME/PBC_DIR_NAME/``
     Every document the client provided, moved out of the drop zone but left
     completely untouched — same bytes, same filename. This is the
     provided-by-client record, and the client can still see it.
 
-``Prepared/{Identifier} - {Document}/``
+``PREPARED_DIR_NAME/<folder_name_for(item)>/``
     A renamed copy of each identified document, on the firm's side of the
     engagement, named to one convention so a preparer can work the return
     without opening the client's filing habits.
 
-``_index.xlsx`` maps one to the other: every original, where it went, what
+``INDEX_FILENAME`` maps one to the other: every original, where it went, what
 it was renamed to, and — when it was not filed — why not.
 
 Guarantees:
 
-- **Originals are never altered.** Files are moved into ``PBC/`` and copied
+- **Originals are never altered.** Files are moved into ``PBC_DIR_NAME/`` and copied
   from there; nothing is renamed in place, edited, or deleted. Ever.
 - **Nothing is guessed.** Routing is :mod:`tracker.router`'s deterministic
   decision; anything ambiguous lands in ``REVIEW_DIR_NAME`` for a person.
@@ -30,20 +30,20 @@ Guarantees:
   (:mod:`tracker.locking`, the same one the scanner takes) while it works,
   so a scheduled run and a click in the desktop app cannot both move the
   same originals and overwrite each other's index rows.
-- **Wherever the client put it counts.** ``PBC/`` is visible to the client
+- **Wherever the client put it counts.** ``PBC_DIR_NAME/`` is visible to the client
   and the README says "drop it anywhere", so a file that lands straight in
-  ``PBC/`` is treated as a drop that has already been preserved: it is
+  ``PBC_DIR_NAME/`` is treated as a drop that has already been preserved: it is
   filed and indexed in place, never ignored.
 - **A working copy that went missing is replaced.** A re-sent document
-  whose earlier copy is no longer in ``Prepared/`` is filed again rather
-  than dismissed as a duplicate; the original was always safe in ``PBC/``.
+  whose earlier copy is no longer in ``PREPARED_DIR_NAME/`` is filed again rather
+  than dismissed as a duplicate; the original was always safe in ``PBC_DIR_NAME/``.
 - **One bad file never costs the audit trail.** Each drop is handled on its
   own: a file the sync client still holds open is left in place for the
   next run, a file that fails *after* it was preserved is recorded as
   needing review with the error, and the index is written whatever happens
-  to the files after it. If Excel has ``_index.xlsx`` open, the new rows
-  wait in ``_index.pending.json`` and are merged into the next write —
-  nothing that was moved into ``PBC/`` is ever left unrecorded.
+  to the files after it. If Excel has ``INDEX_FILENAME`` open, the new rows
+  wait in ``INDEX_PENDING_FILENAME`` and are merged into the next write —
+  nothing that was moved into ``PBC_DIR_NAME/`` is ever left unrecorded.
 """
 
 from __future__ import annotations
@@ -114,7 +114,7 @@ FILED = "Filed"
 NEEDS_REVIEW = "Needs Review"
 DUPLICATE = "Duplicate"
 
-#: Reason prefix on index rows a person filed from 00 - Needs Review.
+#: Reason prefix on index rows a person filed from REVIEW_DIR_NAME.
 ASSIGNED_BY_PERSON = "assigned by a person"
 
 #: How candidate identifiers are joined in the Candidates cell.
@@ -127,7 +127,7 @@ class FilingError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class IndexEntry:
-    """One row of ``_index.xlsx`` — the audit trail for one original file.
+    """One row of ``INDEX_FILENAME`` — the audit trail for one original file.
 
     The fields ARE the columns: their order is the column order, the
     ``INDEX_LAYOUT`` table below gives each its header and width, and the
@@ -233,7 +233,7 @@ def prepared_name_for(item: RequestItem, extension: str, taken: set[str]) -> str
 
 
 def prepared_location(folder: Path, name: str) -> str:
-    """Where a working copy is, relative to the engagement: ``Prepared/<folder>/<name>``."""
+    """Where a working copy is, relative to the engagement: ``PREPARED_DIR_NAME/<folder>/<name>``."""
     return f"{PREPARED_DIR_NAME}/{folder.name}/{name}"
 
 
@@ -349,12 +349,12 @@ def write_index(
     retries: int | None = None,
     retry_delay: float | None = None,
 ) -> bool:
-    """Rewrite ``_index.xlsx`` from ``entries`` (oldest first), lock-resiliently.
+    """Rewrite ``INDEX_FILENAME`` from ``entries`` (oldest first), lock-resiliently.
 
     The index is the audit trail for originals that have *already been
     moved*, so losing a row is not an option. If Excel holds the workbook
     open, the write is retried with backoff; if it stays locked, every row
-    not yet in the workbook is saved to ``_index.pending.json`` and folded
+    not yet in the workbook is saved to ``INDEX_PENDING_FILENAME`` and folded
     into the next successful write (``read_index`` already sees them).
 
     Returns True if the workbook was written, False if rows were deferred.
@@ -387,7 +387,7 @@ def write_index(
 def iter_drops(shared_dir: Path) -> list[Path]:
     """Client-dropped files awaiting sorting.
 
-    Everything under ``Shared/`` except the preserved ``PBC/`` originals,
+    Everything under ``SHARED_DIR_NAME/`` except the preserved ``PBC_DIR_NAME/`` originals,
     the generated README, and OS/sync junk. Subfolders are included — a
     client who drags a whole folder in still gets it sorted.
     """
@@ -407,9 +407,9 @@ def iter_drops(shared_dir: Path) -> list[Path]:
 
 
 def unrecorded_in_pbc(pbc_dir: Path, engagement_dir: Path, entries: list[IndexEntry]) -> list[Path]:
-    """Files sitting in ``PBC/`` that no index row accounts for.
+    """Files sitting in ``PBC_DIR_NAME/`` that no index row accounts for.
 
-    The client can see ``PBC/`` and has been told to drop things anywhere,
+    The client can see ``PBC_DIR_NAME/`` and has been told to drop things anywhere,
     so some will land here. They are already where an original belongs;
     they just have not been filed or recorded yet.
     """
@@ -664,7 +664,7 @@ class AssignResult:
     """What filing one parked document by hand did."""
 
     entry: IndexEntry            # the rewritten index row
-    moved_review_copy: bool      # True: the copy in 00 - Needs Review became the working copy
+    moved_review_copy: bool      # True: the parked copy (REVIEW_DIR_NAME) became the working copy
     keyword: str = ""            # keyword added to the row's Any Keywords, if any
     keyword_note: str = ""       # why it was not added, when it was not
     index_deferred: bool = False
@@ -681,12 +681,11 @@ def assign_review_file(
     """File a parked document under a request, the way the filer would have.
 
     ``original`` is the index row to act on: its PBC location
-    (``Shared/PBC/scan0012.pdf``) or, failing that, its original name among
+    (``SHARED_DIR_NAME/PBC_DIR_NAME/<original name>``) or, failing that, its original name among
     the rows still marked Needs Review. The working copy is created under the
-    canonical name in the request's folder - moved from ``00 - Needs
-    Review`` when it is still there, copied from ``PBC/`` when it is not -
+    canonical name in the request's folder - moved from ``REVIEW_DIR_NAME`` when it is still there, copied from ``PBC_DIR_NAME/`` when it is not -
     and the index row is rewritten as Filed with the decision attributed to
-    a person. The original in ``PBC/`` is not touched.
+    a person. The original in ``PBC_DIR_NAME/`` is not touched.
 
     ``keyword`` is optional: added to the request's Any Keywords so the next
     document like this one routes itself. If Excel holds the manifest the

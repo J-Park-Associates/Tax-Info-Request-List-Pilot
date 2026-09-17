@@ -7,7 +7,7 @@ clients folder:
     python -m tracker.runner <clients root>
 
 That is the whole scheduled task. There is nothing to register: a folder
-holding ``_manifest.xlsx`` is an engagement, and the manifest's Engagement
+holding ``MANIFEST_FILENAME`` is an engagement, and the manifest's Engagement
 sheet says who the client is and how they are chased. Creating an engagement
 in the desktop app is all it takes for the nightly run to pick it up.
 
@@ -20,7 +20,7 @@ step looks at the day. ``--reminders always`` forces a draft on any day and
 
 **Nothing is ever sent.** The draft step writes ``DRAFT_FILENAME`` into
 the engagement folder and stops there. A person opens it, edits it and sends
-it. An engagement whose Engagement sheet says ``Reminders: no`` is left out of
+it. An engagement whose Engagement sheet says ``Reminders`` set to ``NO`` is left out of
 the automated draft entirely — that is a standing decision about that client,
 and neither the schedule nor ``--reminders always`` overrides it. Drafting one by hand for
 anybody, any time, is still just:
@@ -106,8 +106,8 @@ class EngagementRun:
     waiting: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
-    index_deferred: bool = False     # _index.xlsx was locked; rows in the sidecar
-    manifest_deferred: bool = False  # _manifest.xlsx was locked; statuses in the sidecar
+    index_deferred: bool = False     # the index was locked; rows in the sidecar
+    manifest_deferred: bool = False  # the manifest was locked; statuses in the sidecar
     statuses: dict[str, int] = field(default_factory=dict)
     outstanding_count: int = 0       # from tracker.manifest.summarize, the one count
     drafted: Path | None = None
@@ -187,7 +187,7 @@ def should_draft(
 ) -> bool:
     """Whether the automated run drafts a reminder for this engagement today.
 
-    ``Reminders: no`` on the manifest's Engagement sheet wins over every
+    ``Reminders`` set to ``NO`` on the manifest's Engagement sheet wins over every
     mode. It is a standing decision that this client is not chased by email,
     and a command line flag is not the place to reverse it —
     ``python -m tracker.reminder`` still drafts one on demand for anybody.

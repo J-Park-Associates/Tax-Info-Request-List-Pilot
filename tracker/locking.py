@@ -1,12 +1,12 @@
 """One lock per engagement, shared by every step that changes it (component 12).
 
-The filer moves the client's originals and rewrites ``_index.xlsx``; the
-scanner rewrites ``_manifest.xlsx``. Two of either running at once on the
+The filer moves the client's originals and rewrites ``INDEX_FILENAME``; the
+scanner rewrites ``MANIFEST_FILENAME``. Two of either running at once on the
 same engagement - a scheduled run overlapping a click in the desktop app,
 or Task Scheduler's repeat firing while an OCR-heavy pass is still going -
 would race on the same files, and the loser's index rows would be
 overwritten by the winner's. That is the one way an original can end up in
-``PBC/`` with no record of how it got there, so the lock is not optional
+``PBC_DIR_NAME/`` with no record of how it got there, so the lock is not optional
 and it is not per step: whoever holds ``LOCK_FILENAME`` owns the engagement
 until they let go.
 

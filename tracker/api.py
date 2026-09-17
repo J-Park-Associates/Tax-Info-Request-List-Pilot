@@ -128,7 +128,7 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
 #: executable when frozen) - the same answer tracker.settings gives.
 REPO_ROOT = settings_dir()
 def _root() -> Path:
-    """The clients root from settings.json - the one place it is kept."""
+    """The clients root from the settings file - the one place it is kept."""
     root = clients_root()
     if root is None:
         raise ManifestError(
