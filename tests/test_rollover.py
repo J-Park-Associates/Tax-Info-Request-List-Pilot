@@ -335,3 +335,16 @@ def test_a_derived_year_check_is_not_carried_as_text(prior, tmp_path):
     assert cells["C01"] is None and rows["C01"].date_pattern == r"(?i)\b2026\b"
     assert rows["C01"].date_pattern_derived
     assert cells["A01"] == r"(?i)\b2026\b"        # A01 typed its own pattern; it shifts and stays
+
+
+def test_a_rollover_reads_the_prior_year_without_moving_anything_in_it(prior):
+    """The prior engagement is read, never written: an unreadable index
+    sidecar there is left where it is, not quarantined by a rollover."""
+    from tracker.filer import INDEX_FILENAME
+    from tracker.manifest import pending_path
+
+    sidecar = pending_path(prior / INDEX_FILENAME)
+    sidecar.write_text("{not json", encoding="utf-8")
+    before = sorted(p.name for p in prior.iterdir())
+    roll_forward(prior)
+    assert sidecar.exists() and sorted(p.name for p in prior.iterdir()) == before

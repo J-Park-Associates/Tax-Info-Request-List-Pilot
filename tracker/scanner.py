@@ -46,6 +46,7 @@ from tracker.manifest import (
     Status,
     StatusUpdate,
     load_manifest,
+    pending_updates,
     summarize,
     with_pending,
     write_statuses,
@@ -291,7 +292,14 @@ def scan_engagement(
     # The lock comes before the manifest is read (see tracker.locking): a
     # sort that finished in between would otherwise be invisible to this scan.
     with engagement_lock(engagement_dir) if not dry_run else nullcontext():
-        items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+        manifest_path = engagement_dir / MANIFEST_FILENAME
+        # The statuses a locked Excel kept out of the workbook last time are
+        # what this scan compares against: the Received Date it carried
+        # forward ("first date all validations passed") and the status a
+        # regression is measured from both live there until the write lands.
+        items = with_pending(
+            load_manifest(manifest_path), pending_updates(manifest_path, quarantine=not dry_run)
+        )
         prepared_dir = engagement_dir / PREPARED_DIR_NAME
         cache = ContentCache(engagement_dir / CACHE_FILENAME)
         pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
@@ -319,7 +327,7 @@ def scan_engagement(
                 path for folder in claimed for path in iter_candidate_files(folder)
             }
         )
-        report.written = write_statuses(engagement_dir / MANIFEST_FILENAME, updates)
+        report.written = write_statuses(manifest_path, updates)
         report.deferred = not report.written
         cache.save()
         return report

@@ -35,6 +35,13 @@ run appears to be going, and the one after proceeds. The two numbers used to
 be typed apart (3600 s against a two-hour limit), and a legitimately long
 scan could have its lock replaced under it by the next repeat.
 
+**Dead owners are not waited for.** The file names its owner's process
+id. A lock whose owner is no longer running - the desktop shell killed the
+API at its own timeout, a power cut, a crash - is stale at any age: waiting
+out the run limit for a process that is gone only blocks the engagement.
+A process id the system has since reused looks alive, and then the age
+rule above applies, which is the safe direction.
+
 **One machine per clients root.** ``O_EXCL`` is atomic on one filesystem. A
 lock file that a cloud client syncs between two machines is not a lock:
 both can create theirs before either copy arrives. Run the schedule, and the
@@ -82,6 +89,57 @@ class EngagementLock:
     token: str
 
 
+def pid_alive(pid: str | int) -> bool | None:
+    """Whether the process a lock names is still running; None if unknowable."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if pid <= 0:
+        return None
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        ERROR_INVALID_PARAMETER = 87           # no such process
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # Access denied and the like: it exists, we just cannot ask.
+            return False if ctypes.get_last_error() == ERROR_INVALID_PARAMETER else None
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return None
+            return code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return None
+    return True
+
+
+def _owner_gone(lock: Path) -> bool:
+    """True when the lock names a process that is no longer running."""
+    try:
+        fields = dict(part.split("=", 1) for part in lock.read_text(encoding="utf-8").split() if "=" in part)
+    except OSError:
+        return False
+    return pid_alive(fields.get(_PID_KEY, "")) is False
+
+
 def acquire_lock(engagement_dir: Path) -> EngagementLock:
     """Take the engagement lock or raise :class:`EngagementLockedError`.
 
@@ -97,12 +155,16 @@ def acquire_lock(engagement_dir: Path) -> EngagementLock:
                 age = time.time() - lock.stat().st_mtime
             except OSError:
                 continue  # lock vanished between checks; retry
-            if age < STALE_LOCK_SECONDS:
+            gone = _owner_gone(lock)
+            if age < STALE_LOCK_SECONDS and not gone:
                 raise EngagementLockedError(
                     f"another scan or sort appears to be running ({lock.name} is "
                     f"{age:.0f}s old); if not, delete the lock file"
                 ) from None
-            log.warning("Replacing stale engagement lock (%.0f s old)", age)
+            log.warning(
+                "Replacing stale engagement lock (%.0f s old%s)", age,
+                "; its owner is no longer running" if gone else "",
+            )
             try:
                 lock.unlink(missing_ok=True)
             except PermissionError:
@@ -152,8 +214,13 @@ class LockStatus:
     pid: str            # process id, if the file said
 
     @property
+    def owner_gone(self) -> bool:
+        """The process the lock names is no longer running (False if unknowable)."""
+        return pid_alive(self.pid) is False
+
+    @property
     def stale(self) -> bool:
-        return self.age_seconds >= STALE_LOCK_SECONDS
+        return self.age_seconds >= STALE_LOCK_SECONDS or self.owner_gone
 
 
 def lock_status(engagement_dir: Path | str) -> LockStatus | None:
@@ -177,7 +244,8 @@ def lock_line(pid: int, started: dt.datetime) -> str:
 
 
 def clear_stale_lock(engagement_dir: Path | str) -> LockStatus:
-    """Remove a lock older than :data:`STALE_LOCK_SECONDS`; refuse a fresh one.
+    """Remove a lock older than :data:`STALE_LOCK_SECONDS` or whose owner is
+    gone; refuse a fresh one.
 
     A fresh lock is a run in progress; clearing it would let two runs race,
     which is the one thing the lock exists to prevent. The caller is told

@@ -803,8 +803,6 @@ def write_statuses(
     for attempt in range(1, retries + 1):
         try:
             _apply_updates(path, merged)
-            pending_path(path).unlink(missing_ok=True)
-            return True
         except PermissionError as exc:
             log.warning(
                 "Manifest locked (attempt %d/%d): %s", attempt, retries, exc
@@ -812,6 +810,15 @@ def write_statuses(
             if attempt < retries:
                 time.sleep(delay)
                 delay *= 2
+            continue
+        # The workbook holds every update now. A sidecar something else
+        # holds open cannot be deleted, but it must not be mistaken for a
+        # locked workbook: saving it again would only re-defer what landed.
+        try:
+            pending_path(path).unlink(missing_ok=True)
+        except PermissionError as exc:
+            log.warning("%s was written but %s is held open and stays (%s)", path.name, pending_path(path).name, exc)
+        return True
 
     _save_pending(path, merged)
     log.error(

@@ -2,6 +2,7 @@
 
 import datetime as dt
 import json
+import os
 
 import pytest
 from openpyxl import load_workbook
@@ -271,7 +272,7 @@ def test_dry_run_writes_nothing(engagement):
 
 
 def test_fresh_lock_blocks_scan(engagement):
-    (engagement / LOCK_FILENAME).write_text("pid=999", encoding="utf-8")
+    (engagement / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
     with pytest.raises(ScanLockedError, match="another scan"):
         scan_engagement(engagement, today=DAY1)
 
@@ -280,7 +281,7 @@ def test_stale_lock_replaced_and_released(engagement):
     import os
 
     lock = engagement / LOCK_FILENAME
-    lock.write_text("pid=999", encoding="utf-8")
+    lock.write_text(f"pid={os.getpid()}", encoding="utf-8")
     old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
     os.utime(lock, (old, old))
 
@@ -385,3 +386,36 @@ def test_waived_rows_are_named_so_counts_can_leave_them_out(engagement):
     report = scan_engagement(engagement, today=DAY1)
     assert report.summary.waived == 1
     assert report.summary.total == 2
+
+
+def test_a_deferred_scan_is_what_the_next_scan_measures_from(engagement, monkeypatch):
+    # Excel held the manifest through two scans. The Received Date the first
+    # deferred scan stamped is "the first date all validations passed"; the
+    # second must carry it, not re-stamp today. And when the file is then
+    # gone and Excel closed, the row regresses from Received - with its date
+    # and a note - instead of landing as plain Missing.
+    from openpyxl.workbook.workbook import Workbook as WorkbookClass
+
+    import tracker.manifest as manifest_module
+
+    a01 = folder(engagement, "A01")
+    text_pdf(a01 / "chase.pdf", "Chase Bank Statement Dec 2025")
+
+    def locked_save(self, filename):
+        raise PermissionError(f"[Errno 13] locked: {filename}")
+    monkeypatch.setattr(WorkbookClass, "save", locked_save)
+    monkeypatch.setattr(manifest_module, "LOCK_RETRY_DELAY", 0.001)
+
+    first = scan_engagement(engagement, today=DAY1)
+    assert first.deferred and first.updates["A01"].received_date == DAY1
+    second = scan_engagement(engagement, today=DAY2)
+    assert second.deferred and second.updates["A01"].received_date == DAY1
+
+    (a01 / "chase.pdf").unlink()
+    monkeypatch.undo()                                    # Excel closed
+    third = scan_engagement(engagement, today=DAY2)
+    assert third.written
+    row = statuses(engagement)["A01"]
+    assert row.status == Status.MISSING and row.received_date == DAY1
+    assert REGRESSION_NOTE.format(status=Status.RECEIVED, date=DAY1.isoformat(), why="").rstrip("; ") \
+        in row.validation_notes

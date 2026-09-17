@@ -10,6 +10,7 @@ the app records it, so no test touches a real one.
 import datetime as dt
 import io
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -375,7 +376,7 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     assert run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]["lock"] is None
 
     lock = engagement / LOCK_FILENAME
-    lock.write_text(lock_line(999, dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
+    lock.write_text(lock_line(os.getpid(), dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
     assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False,
                                "stale_after_minutes": STALE_LOCK_SECONDS // 60}
@@ -473,7 +474,7 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
 
     # A lock held by another run is reported as skipped, not as an error.
     from tracker.locking import LOCK_FILENAME
-    (engagement / LOCK_FILENAME).write_text(lock_line(999, dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
+    (engagement / LOCK_FILENAME).write_text(lock_line(os.getpid(), dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0 and payload["run"]["skipped"].startswith("another run")
     (engagement / LOCK_FILENAME).unlink()

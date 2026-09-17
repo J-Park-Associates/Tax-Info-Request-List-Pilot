@@ -258,7 +258,7 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
     from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, read_index
 
     try:
-        rows = read_index(prior_dir / INDEX_FILENAME)
+        rows = read_index(prior_dir / INDEX_FILENAME, quarantine=False)  # a rollover only reads the prior year
     except Exception:  # an unreadable index must never block a rollover
         return []
     seen: dict[str, str] = {}

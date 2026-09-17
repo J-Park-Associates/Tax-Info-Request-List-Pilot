@@ -72,6 +72,7 @@ from tracker.manifest import (
     COL_IDENTIFIER,
     LOCK_RETRIES,
     LOCK_RETRY_DELAY,
+    TEMP_SUFFIX,
     Override,
     RequestItem,
     add_any_keyword,
@@ -261,6 +262,32 @@ def request_folder(item: RequestItem, assigned: dict[str, list[Path]], prepared_
     return existing[0] if existing else prepared_dir / folder_name_for(item)
 
 
+def _existing_copy(folder: Path, original: Path, digest: str) -> Path | None:
+    """A file already in ``folder`` holding ``original``'s bytes, or None.
+
+    A run that was killed after copying a working copy but before the
+    index recorded it (Task Scheduler's limit, the app's timeout, a power
+    cut) leaves the copy behind with no row naming it. The next run sees
+    the original as unrecorded and would copy it again as ``(2)``; the
+    copy that is already there is reused instead. Sizes are compared
+    first, so only a same-sized neighbour is hashed.
+    """
+    if not folder.is_dir():
+        return None
+    try:
+        size = original.stat().st_size
+    except OSError:
+        return None
+    for candidate in sorted(folder.iterdir()):
+        try:
+            if candidate.is_file() and candidate.stat().st_size == size and sha256_of(candidate) == digest:
+                log.warning("Reusing %s: a working copy with these bytes was already there", candidate.name)
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
 def _unique_path(folder: Path, name: str) -> Path:
     """A free path in ``folder`` for ``name``, never overwriting anything."""
     target = folder / name
@@ -306,7 +333,14 @@ def _read_pending_index(path: Path, *, quarantine: bool = True) -> _PendingIndex
     if not sidecar.exists():
         return None
     try:
-        raw = json.loads(sidecar.read_text(encoding="utf-8"))
+        text = sidecar.read_text(encoding="utf-8")
+    except OSError as exc:
+        # Not corruption: a sharing violation, a dehydrated placeholder, a
+        # disk that is not there. The snapshot may be the only current copy
+        # of the index, so it is neither moved nor guessed past.
+        raise OSError(f"could not read {sidecar.name}: {exc}") from exc
+    try:
+        raw = json.loads(text)
         if isinstance(raw, list):                       # before INDEX_SIDECAR_VERSION
             return _PendingIndex([_entry_from_json(row) for row in raw], snapshot=False)
         if not isinstance(raw, dict):
@@ -317,9 +351,42 @@ def _read_pending_index(path: Path, *, quarantine: bool = True) -> _PendingIndex
             raise ValueError(f"index sidecar version {version!r}; this version reads {INDEX_SIDECAR_VERSION}")
         rows = [_entry_from_json(row) for row in raw[_SIDECAR_ENTRIES_KEY]]
         return _PendingIndex(rows, snapshot=True)
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError) as exc:
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         quarantine_sidecar(sidecar, exc, "index", quarantine=quarantine)
         return None
+
+
+def _discard_pending_index(path: Path) -> bool:
+    """Remove the snapshot a successful workbook write has just superseded.
+
+    True if it is gone. False if something holds it open (Windows refuses
+    the delete): the workbook is the newer of the two now, and
+    ``read_index`` prefers the newer, so a snapshot that outlives its
+    landing is inert until the next write removes it. What must not happen
+    is the write being reported as deferred - that would replace the
+    snapshot with an older one still.
+    """
+    sidecar = _pending_index_path(path)
+    try:
+        sidecar.unlink(missing_ok=True)
+        return True
+    except PermissionError as exc:
+        log.warning("%s was written but %s is held open and stays (%s)", path.name, sidecar.name, exc)
+        return False
+
+
+def _snapshot_is_stale(path: Path) -> bool:
+    """True when the workbook was written after the snapshot beside it.
+
+    A snapshot is saved only when the workbook could not be; a workbook
+    newer than the snapshot was therefore written by a later run (which
+    folded the snapshot in first) or saved by a person in Excel. Either
+    way the snapshot is not the index any more.
+    """
+    try:
+        return path.stat().st_mtime > _pending_index_path(path).stat().st_mtime
+    except OSError:
+        return False
 
 
 def _save_pending_index(path: Path, entries: list[IndexEntry]) -> None:
@@ -339,14 +406,46 @@ def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     before ``INDEX_SIDECAR_VERSION`` holds only new rows, appended after
     the workbook's.
 
+    A snapshot the workbook has since outlived (the write landed but the
+    sidecar could not be deleted, or a person saved the workbook in Excel)
+    is the *older* of the two: the workbook's rows win, with two
+    exceptions that never lose what only the snapshot knows - a row for an
+    original the workbook does not list (it has been moved; it is never
+    forgotten over a timestamp), and a person's filing decision
+    (``ASSIGNED_BY_PERSON``) on a row the workbook still shows parked,
+    which only Excel saving a stale workbook could have undone.
+
     ``quarantine=False`` is for readers and dry runs: an unreadable sidecar
-    is reported and skipped, never moved - looking changes nothing.
+    is reported and skipped, never moved - looking changes nothing. A
+    sidecar that cannot be *read* (I/O) raises: it may be the only current
+    copy of the index, and nothing is guessed past it.
     """
     pending = _read_pending_index(path, quarantine=quarantine)
-    if pending is not None and pending.snapshot:
+    if pending is not None and pending.snapshot and not _snapshot_is_stale(path):
         return list(pending.entries)
     workbook = _read_index_workbook(path)
-    return workbook + pending.entries if pending is not None else workbook
+    if pending is None:
+        return workbook
+    if not pending.snapshot:
+        return workbook + pending.entries
+    decided = {
+        e.pbc_location: e for e in pending.entries
+        if e.pbc_location and e.decision == FILED and e.reason.startswith(ASSIGNED_BY_PERSON)
+    }
+    merged = [
+        decided[e.pbc_location]
+        if e.decision == NEEDS_REVIEW and e.pbc_location in decided else e
+        for e in workbook
+    ]
+    recorded = {e.pbc_location for e in workbook if e.pbc_location}
+    unknown = [e for e in pending.entries if e.pbc_location and e.pbc_location not in recorded]
+    kept = sum(1 for a, b in zip(merged, workbook, strict=True) if a is not b) + len(unknown)
+    if kept:
+        log.warning(
+            "%s is newer than its snapshot; keeping %d row(s) only the snapshot had right",
+            path.name, kept,
+        )
+    return merged + unknown
 
 
 def _as_float(value: object) -> float:
@@ -431,13 +530,16 @@ def write_index(
     for attempt in range(1, retries + 1):
         try:
             _save_index(path, entries)
-            _pending_index_path(path).unlink(missing_ok=True)
-            return True
         except PermissionError as exc:
             log.warning("Index locked (attempt %d/%d): %s", attempt, retries, exc)
             if attempt < retries:
                 time.sleep(delay)
                 delay *= 2
+            continue
+        # The workbook is written. A sidecar that cannot be deleted now is
+        # older than it and is read as such; it is not a reason to defer.
+        _discard_pending_index(path)
+        return True
 
     _save_pending_index(path, entries)
     log.error(
@@ -472,6 +574,20 @@ def iter_drops(shared_dir: Path) -> list[Path]:
     return drops
 
 
+def unfinished_drops(shared_dir: Path) -> list[Path]:
+    """Files under ``SHARED_DIR_NAME/`` that end in ``TEMP_SUFFIX``: a
+    transfer still in progress, left alone until it finishes - and named
+    in the report, so one that never finishes is not a silence."""
+    if not shared_dir.is_dir():
+        return []
+    pbc = shared_dir / PBC_DIR_NAME
+    return sorted(
+        path for path in shared_dir.rglob(f"*{TEMP_SUFFIX}")
+        if path.is_file() and pbc not in path.parents
+        and not any(is_sync_staging(part) for part in path.parts)
+    )
+
+
 def unrecorded_in_pbc(pbc_dir: Path, engagement_dir: Path, entries: list[IndexEntry]) -> list[Path]:
     """Files sitting in ``PBC_DIR_NAME/`` that no index row accounts for.
 
@@ -484,6 +600,51 @@ def unrecorded_in_pbc(pbc_dir: Path, engagement_dir: Path, entries: list[IndexEn
         path for path in iter_candidate_files(pbc_dir)
         if path.relative_to(engagement_dir).as_posix() not in recorded
     ]
+
+
+#: The sentence a replaced original gets. It is a file error, not a new
+#: drop: the working copy was made from bytes that are gone, and which of
+#: the two the client meant is not the filer's to guess.
+REPLACED_IN_PBC = (
+    "{location} no longer holds the bytes recorded on {received}; its working copy "
+    "{prepared} was made from the earlier file - a person should look"
+)
+
+
+def replaced_in_pbc(
+    pbc_dir: Path, engagement_dir: Path, entries: list[IndexEntry]
+) -> list[tuple[Path, IndexEntry]]:
+    """Recorded originals in ``PBC_DIR_NAME/`` whose bytes no longer match their row.
+
+    The client can see the folder and Explorer offers "Replace", so a
+    corrected document can land over the one already filed. Matching on
+    the path alone would call that file recorded and never look at it
+    again, while the working copy under ``PREPARED_DIR_NAME`` stayed the
+    old one. The size is compared first; a file the same size is hashed
+    only when it was modified after its row was received, so a run does
+    not re-read every original.
+    """
+    by_location: dict[str, IndexEntry] = {}
+    for entry in entries:            # the newest row for a location wins
+        if entry.pbc_location and entry.digest:
+            by_location[entry.pbc_location] = entry
+    replaced = []
+    for path in iter_candidate_files(pbc_dir):
+        entry = by_location.get(path.relative_to(engagement_dir).as_posix())
+        if entry is None:
+            continue
+        try:
+            stat = path.stat()
+            if round(stat.st_size / 1024, 1) == entry.size_kb:
+                modified = dt.date.fromtimestamp(stat.st_mtime).isoformat()
+                if entry.received and modified <= entry.received:
+                    continue
+            if sha256_of(path) == entry.digest:
+                continue
+        except OSError:
+            continue                 # unreadable now; the next run looks again
+        replaced.append((path, entry))
+    return replaced
 
 
 def _prune_empty_dirs(shared_dir: Path, keep: Path) -> None:
@@ -545,7 +706,18 @@ def file_drops(
         sidecar_waiting = _pending_index_path(index_path).exists()
 
         drops = iter_drops(shared_dir)
+        # A file still being written (a sync client's or a browser's
+        # ``TEMP_SUFFIX`` name) is not sorted, and is not passed over in
+        # silence either: it is reported as waiting, like a placeholder.
+        report.waiting.extend(unfinished_drops(shared_dir))
         strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
+        # An original replaced under its own name is said loudly, every run,
+        # until a person has looked; it is not sorted again and not guessed.
+        for path, earlier in replaced_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []:
+            report.errors.append(FileError(path.name, REPLACED_IN_PBC.format(
+                location=earlier.pbc_location, received=earlier.received,
+                prepared=earlier.prepared_location or "(none)",
+            ), True))
         if not drops and not strays:
             if not dry_run and sidecar_waiting:
                 report.index_deferred = not write_index(index_path, entries)
@@ -723,7 +895,11 @@ def _sort_one(
         filed_as = prepared_name_for(item, extension_of(drop), run.reserved[dest_folder])
         if not dry_run:
             dest_folder.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(pbc_target, dest_folder / filed_as)
+            existing = _existing_copy(dest_folder, pbc_target, digest)
+            if existing is not None:
+                filed_as = existing.name
+            else:
+                shutil.copy2(pbc_target, dest_folder / filed_as)
         entry = IndexEntry(
             received=stamp, original_name=drop.name, size_kb=size_kb,
             digest=digest, identifier=item.identifier,
@@ -738,8 +914,10 @@ def _sort_one(
     review_name = drop.name
     if not dry_run:
         run.review_dir.mkdir(parents=True, exist_ok=True)
-        review_target = _unique_path(run.review_dir, drop.name)
-        shutil.copy2(pbc_target, review_target)
+        review_target = _existing_copy(run.review_dir, pbc_target, digest)
+        if review_target is None:
+            review_target = _unique_path(run.review_dir, drop.name)
+            shutil.copy2(pbc_target, review_target)
         review_name = review_target.name
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
@@ -838,7 +1016,18 @@ def assign_review_file(
             candidates="",
         )
         entries[position] = new_entry
-        deferred = not write_index(index_path, entries)
+        try:
+            deferred = not write_index(index_path, entries)
+        except BaseException:
+            # Excel holding the index is handled inside write_index (the
+            # snapshot). Anything else - disk full, a held sidecar, an
+            # interrupt - leaves the copy where the index still says it is,
+            # so a retry files it once rather than copying it twice.
+            if moved:
+                shutil.move(str(target), parked)
+            else:
+                target.unlink(missing_ok=True)
+            raise
 
         keyword = keyword.strip()
         note = ""
