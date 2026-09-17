@@ -80,6 +80,35 @@ def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
     assert "vocab.engagement_flag" in js
 
 
+def test_the_shell_runs_only_commands_the_api_has():
+    # main.js learns the allowlist from the API's vocabulary; before that it
+    # runs exactly one command, the one the renderer calls first, and that
+    # command must exist in Python.
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+    bootstrap = re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1)
+    assert bootstrap in api.COMMANDS
+    first_call = re.search(r'call\(\["([a-z-]+)"\]', read("app/renderer/app.js")).group(1)
+    assert first_call == bootstrap
+    assert "vocab.commands" in main_js and "vocab.engagement_flag" in main_js
+    assert "openable.has(" in main_js                       # opens only paths the API reported
+    assert 'proc.on("close", (code)' in main_js             # the exit code is not discarded
+    assert "TRACKER_TIMEOUT_MS" in main_js and "proc.kill()" in main_js
+    assert "sandbox: true" in main_js and "setWindowOpenHandler" in main_js
+
+
+def test_the_renderer_builds_the_page_from_data_not_html():
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert sink not in js, sink
+    assert 'http-equiv="Content-Security-Policy"' in html
+    assert "'unsafe-inline'" not in html and "'unsafe-eval'" not in html
+    assert not re.search(r"<script[^>]*>[^<]", html)        # no inline script
+    assert not re.search(r' on[a-z]+="', html)              # no inline handlers
+
+
 def test_the_window_colour_is_read_from_the_stylesheet():
     assert re.search(r"--bg:\s*#", read("app/renderer/style.css"))
     main_js = read("app/main.js")

@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 82,
     "edges": 256,
-    "reused": 51
+    "reused": 54
   },
   "node_types": [
     "artifact",
@@ -849,10 +849,10 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "0bf90b26ce0c53a5",
-      "lines": 95,
+      "sha256": "a2063fbfccc203b4",
+      "lines": 169,
       "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC.",
-      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command."
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a tracker that outlives TRACKER_TIMEOUT_MS is killed and reported. The window is sandboxed, cannot navigate and cannot open windows."
     },
     {
       "id": "app/package-lock.json",
@@ -880,17 +880,18 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "590c5e89ff2df146",
-      "lines": 676,
-      "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge."
+      "sha256": "2f01bb09526a77e5",
+      "lines": 699,
+      "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.",
+      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "49049d27973f5baa",
-      "lines": 251,
-      "role": "Desktop app shell markup."
+      "sha256": "52aca3086f299045",
+      "lines": 256,
+      "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files."
     },
     {
       "id": "app/renderer/logo.svg",
@@ -928,8 +929,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "82017c50d1276106",
-      "lines": 254,
+      "sha256": "538cf52c5412863f",
+      "lines": 255,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -937,8 +938,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "858e70ca317a3812",
-      "lines": 442,
+      "sha256": "560ed6a10ae40247",
+      "lines": 443,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1687,8 +1688,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "29c5bcc672f7526a",
-      "lines": 553,
+      "sha256": "4909e058fab37c6d",
+      "lines": 582,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -1719,6 +1720,7 @@
         "test_the_product_name_has_one_home",
         "test_the_readme_engagement_sheet_table_matches_the_fields",
         "test_the_readme_names_the_carried_forward_sheet_the_rollover_writes",
+        "test_the_renderer_builds_the_page_from_data_not_html",
         "test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag",
         "test_the_renderer_types_no_vocabulary_of_its_own",
         "test_the_roadmap_names_every_status_in_bold",
@@ -1726,6 +1728,7 @@
         "test_the_roadmap_schema_table_matches_the_manifest_headers",
         "test_the_scan_button_label_is_typed_once",
         "test_the_shell_and_the_preload_agree_on_every_ipc_channel",
+        "test_the_shell_runs_only_commands_the_api_has",
         "test_the_standing_rules_are_worded_once_and_quoted_everywhere",
         "test_the_stub_and_staging_examples_docs_give_are_the_validators",
         "test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else",

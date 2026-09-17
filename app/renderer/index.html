@@ -2,6 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <!-- Nothing but this app's own files may run or be loaded: no inline
+       script, no remote resource. The page is built from API data with
+       DOM nodes, never from HTML strings. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'" />
   <title></title>
   <link rel="stylesheet" href="style.css" />
 </head>

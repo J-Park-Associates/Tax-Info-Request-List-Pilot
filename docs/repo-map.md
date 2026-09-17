@@ -184,7 +184,7 @@ tracker.api / create → tracker.scaffold → client drops into Shared/ → trac
 - **`app/main.js`** — Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC.
   - imports: `app/package.json`
   - tested by: **no dedicated test file**
-  - note: This is the cross-language boundary: everything the UI can do is a tracker.api command.
+  - note: This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths; the tracker's exit code is read, not discarded, and a tracker that outlives TRACKER_TIMEOUT_MS is killed and reported. The window is sandboxed, cannot navigate and cannot open windows.
 - **`app/package-lock.json`**
   - tested by: **no dedicated test file**
 - **`app/package.json`**
@@ -193,7 +193,8 @@ tracker.api / create → tracker.scaffold → client drops into Shared/ → trac
 - **`app/preload.js`** — Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path) and tracker.pickFolder(). Nothing else crosses.
   - tested by: **no dedicated test file**
 - **`app/renderer/app.js`** — The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.
-- **`app/renderer/index.html`** — Desktop app shell markup.
+  - note: Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns.
+- **`app/renderer/index.html`** — Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files.
 - **`app/renderer/logo.svg`**
 - **`app/renderer/style.css`** — Desktop app styling.
 

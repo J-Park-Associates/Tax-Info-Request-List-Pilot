@@ -1,6 +1,12 @@
 // Electron main process — window + IPC bridge to the Python tracker.
 // All tracking logic lives in the Python package (tracker/api.py); this
 // process only shuttles JSON and opens paths in Explorer/Excel.
+//
+// The renderer is treated as untrusted at this boundary: it may only run
+// commands the API says exist, only open paths the API reported, and a
+// tracker process that hangs is killed rather than left to disable a button
+// for ever. Python still validates everything it is given; this is the
+// second wall, not the first.
 
 const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
@@ -23,7 +29,50 @@ const FROZEN_API = app.isPackaged
   : null;
 const SETTINGS_DIR = app.isPackaged ? path.dirname(process.execPath) : REPO_ROOT;
 
+// A pass over one engagement can OCR every PDF in it; the scheduled task is
+// allowed two hours. A command that outlives this is killed and reported,
+// so the button it disabled comes back.
+const TRACKER_TIMEOUT_MS = 30 * 60 * 1000;
+
+// The command the renderer runs first, and the only one allowed before the
+// API has said which commands exist: its reply carries vocab.commands (the
+// allowlist) and vocab.engagement_flag. Pinned to tracker.api.COMMANDS and
+// to the renderer's first call by tests/test_single_source.py.
+const BOOTSTRAP_COMMAND = "list";
+let allowedCommands = null;   // vocab.commands, once seen
+let engagementFlag = null;    // vocab.engagement_flag, once seen
+// Paths the API has reported (state.paths): the only ones the shell opens.
+// The renderer never names a path of its own, so anything else is refused.
+const openable = new Set();
+
+function learn(result) {
+  const vocab = result && result.vocab;
+  if (vocab && Array.isArray(vocab.commands)) allowedCommands = new Set(vocab.commands);
+  if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
+  const paths = (result && result.paths) || (result && result.state && result.state.paths);
+  if (paths && typeof paths === "object") {
+    for (const value of Object.values(paths)) if (typeof value === "string") openable.add(value);
+  }
+}
+
+// What a well-formed command line looks like: a known command, alone or
+// followed by the engagement flag and one folder.
+function commandProblem(args) {
+  if (!Array.isArray(args) || !args.length || !args.every((a) => typeof a === "string")) {
+    return "Malformed command.";
+  }
+  const [command, ...rest] = args;
+  if (allowedCommands ? !allowedCommands.has(command) : command !== BOOTSTRAP_COMMAND) {
+    return `Unknown command: ${command}`;
+  }
+  if (rest.length === 0) return null;
+  if (rest.length === 2 && engagementFlag && rest[0] === engagementFlag && rest[1]) return null;
+  return "Malformed command arguments.";
+}
+
 function runTracker(args, payload) {
+  const problem = commandProblem(args);
+  if (problem) return Promise.resolve({ error: problem });
   return new Promise((resolve) => {
     const env = { ...process.env, TRACKER_SETTINGS_DIR: SETTINGS_DIR, TRACKER_PRODUCT_NAME: PRODUCT_NAME };
     const proc = FROZEN_API
@@ -35,17 +84,30 @@ function runTracker(args, payload) {
         });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (value && !value.error) learn(value);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      proc.kill();
+      settle({ error: `The tracker took longer than ${TRACKER_TIMEOUT_MS / 60000} minutes and was stopped.` });
+    }, TRACKER_TIMEOUT_MS);
     proc.stdout.on("data", (d) => (stdout += d));
     proc.stderr.on("data", (d) => (stderr += d));
+    proc.stdin.on("error", () => {});   // a process that died before reading stdin is reported by "close"
     proc.on("error", (err) =>
-      resolve({ error: `Could not start Python: ${err.message}` })
+      settle({ error: `Could not start the tracker: ${err.message}` })
     );
-    proc.on("close", () => {
+    proc.on("close", (code) => {
       try {
-        resolve(JSON.parse(stdout));
+        settle(JSON.parse(stdout));
       } catch {
-        resolve({
-          error: `Unexpected tracker output.\n${(stderr || stdout).slice(0, 400)}`,
+        settle({
+          error: `Unexpected tracker output (exit code ${code}).\n${(stderr || stdout).slice(0, 400)}`,
         });
       }
     });
@@ -54,11 +116,18 @@ function runTracker(args, payload) {
   });
 }
 
+function openPath(p) {
+  if (typeof p !== "string" || !openable.has(p)) {
+    return Promise.resolve("That path is not one the tracker reported; nothing was opened.");
+  }
+  return shell.openPath(p);
+}
+
 ipcMain.handle("tracker-cmd", (_event, args, payload) => runTracker(args, payload));
-ipcMain.handle("open-path", (_event, p) => shell.openPath(p));
+ipcMain.handle("open-path", (_event, p) => openPath(p));
 ipcMain.handle("pick-folder", async (_event, title) => {
   const result = await dialog.showOpenDialog({
-    title,
+    title: typeof title === "string" ? title : undefined,
     properties: ["openDirectory"],
   });
   return result.canceled ? null : result.filePaths[0];
@@ -85,8 +154,13 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
     },
   });
+  // One page, no navigation, no pop-ups: the renderer has nowhere else to go.
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 
