@@ -1,18 +1,18 @@
 """One lock per engagement, shared by every step that changes it (component 12).
 
-The filer moves the client's originals and rewrites ``_index.xlsx``; the
-scanner rewrites ``_manifest.xlsx``. Two of either running at once on the
+The filer moves the client's originals and rewrites ``INDEX_FILENAME``; the
+scanner rewrites ``MANIFEST_FILENAME``. Two of either running at once on the
 same engagement - a scheduled run overlapping a click in the desktop app,
 or Task Scheduler's repeat firing while an OCR-heavy pass is still going -
 would race on the same files, and the loser's index rows would be
 overwritten by the winner's. That is the one way an original can end up in
-``PBC/`` with no record of how it got there, so the lock is not optional
-and it is not per step: whoever holds ``_scan.lock`` owns the engagement
+``PBC_DIR_NAME/`` with no record of how it got there, so the lock is not optional
+and it is not per step: whoever holds ``LOCK_FILENAME`` owns the engagement
 until they let go.
 
 The lock is a file created with ``O_EXCL`` (atomic on NTFS and POSIX) that
-names the process and the time. A lock older than an hour is assumed to
-belong to a run that died without cleaning up and is replaced with a
+names the process and the time. A lock older than ``STALE_LOCK_SECONDS`` is
+assumed to belong to a run that died without cleaning up and is replaced with a
 warning; a younger one is respected and the caller is told to wait.
 
 Dry runs never take the lock - they write nothing, so they cannot race.
@@ -31,8 +31,10 @@ from typing import Iterator
 
 log = logging.getLogger("tracker.locking")
 
-#: Kept as ``_scan.lock`` so existing engagements, docs and habits still apply.
+#: Kept under the scanner's old name so existing engagements and habits still apply.
 LOCK_FILENAME = "_scan.lock"
+_PID_KEY = "pid"
+_STARTED_KEY = "started"
 STALE_LOCK_SECONDS = 3600
 
 
@@ -47,7 +49,7 @@ def acquire_lock(engagement_dir: Path) -> Path:
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             with os.fdopen(fd, "w") as fh:
-                fh.write(f"pid={os.getpid()} started={dt.datetime.now().isoformat()}")
+                fh.write(lock_line(os.getpid(), dt.datetime.now()))
             return lock
         except FileExistsError:
             try:
@@ -89,8 +91,13 @@ def lock_status(engagement_dir: Path | str) -> LockStatus | None:
     fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
     return LockStatus(
         path=lock, age_seconds=max(age, 0.0),
-        started=fields.get("started", ""), pid=fields.get("pid", ""),
+        started=fields.get(_STARTED_KEY, ""), pid=fields.get(_PID_KEY, ""),
     )
+
+
+def lock_line(pid: int, started: dt.datetime) -> str:
+    """What the lock file says: who took it and when, as ``lock_status`` reads it back."""
+    return f"{_PID_KEY}={pid} {_STARTED_KEY}={started.isoformat()}"
 
 
 def clear_stale_lock(engagement_dir: Path | str) -> LockStatus:

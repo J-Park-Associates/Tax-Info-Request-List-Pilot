@@ -1,4 +1,4 @@
-"""Tier-3 content validation for the Client Document Tracker (component 4).
+"""Tier-3 content validation for the tracker (component 4).
 
 Extracts text from client documents (read-only) and applies the deterministic
 rules from the manifest row: Required Keywords (ALL must appear), Any
@@ -13,12 +13,12 @@ Extractors by extension:
                         The OCR stack is entirely optional: when absent, the
                         file is reported as unverifiable with a clear note —
                         nothing breaks.
-- ``.xlsx`` / ``.xlsm`` → openpyxl (all sheets, cached formula values);
+- ``XLSX_EXTENSIONS``   → openpyxl (all sheets, cached formula values);
                         date cells are rendered in both ISO (2025-12-31)
                         and US (12/31/2025) forms so either pattern style
                         matches.
-- ``.csv/.tsv/.txt``  → plain text (utf-8, then cp1252 fallback).
-- anything else       → no extractor; reported unverifiable, review manually.
+- ``TEXT_EXTENSIONS``   → plain text (utf-8, then cp1252 fallback).
+- anything else       → no extractor; reported unverifiable, for a person (``reasons.UNCHECKABLE_TYPE``).
 
 Keyword matching is case-insensitive. Date Pattern is applied to the raw
 text as-is, so authors control case sensitivity with inline flags (``(?i)``).
@@ -27,20 +27,22 @@ Caching: :class:`ContentCache` stores only *verdicts* — pass/fail + reason —
 keyed by ``(path, size, mtime, rules-fingerprint)``. Extracted client text is
 deliberately never persisted anywhere. Editing a row's rules changes the
 fingerprint and triggers one re-extraction; unchanged files on unchanged
-rules are never re-read, which keeps a 15-minute scan cadence cheap.
+rules are never re-read, which keeps the scheduled cadence cheap.
 """
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 import logging
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import MISSING, asdict, fields, dataclass
 from pathlib import Path
 
-from tracker.manifest import RequestItem
+from tracker import reasons
+from tracker.manifest import RequestItem, has_routing_rules
+from tracker.validators import PDF_EXTENSION, extension_of
 
 log = logging.getLogger("tracker.content_check")
 
@@ -59,6 +61,9 @@ _MIN_TEXT_CHARS = 20
 #: stalled a run. A keyword deep in a long document is not evidence the
 #: router should be acting on anyway.
 MAX_PAGES = 10
+#: The other file types whose text can be read (PDF_EXTENSION is the third).
+XLSX_EXTENSIONS = ("xlsx", "xlsm")
+TEXT_EXTENSIONS = ("csv", "tsv", "txt")
 _MAX_OCR_PAGES = MAX_PAGES
 
 
@@ -75,8 +80,9 @@ class ContentResult:
 
 
 def has_content_rules(item: RequestItem) -> bool:
-    """Whether tier 3 has anything to check on this row at all."""
-    return bool(item.required_keywords or item.any_keywords or item.date_pattern)
+    """Whether tier 3 has anything to check on this row at all: a routing
+    rule, or a year check derived from Period (which checks but never routes)."""
+    return has_routing_rules(item) or bool(item.date_pattern)
 
 
 def rules_fingerprint(item: RequestItem) -> str:
@@ -108,28 +114,16 @@ def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
     missing = [k for k in item.required_keywords if not contains_keyword(text, k)]
     if missing:
         listed = ", ".join(f"'{k}'" for k in missing)
-        return ContentResult(
-            ok=False,
-            reason=f"required keyword(s) {listed} not found; possible wrong document",
-        )
+        return ContentResult(ok=False, reason=reasons.WRONG_DOCUMENT.format(listed=listed))
 
     if item.any_keywords and not any(
         contains_keyword(text, k) for k in item.any_keywords
     ):
         listed = ", ".join(item.any_keywords)
-        return ContentResult(
-            ok=False,
-            reason=f"none of the expected keywords found ({listed})",
-        )
+        return ContentResult(ok=False, reason=reasons.NO_EXPECTED_KEYWORD.format(listed=listed))
 
     if item.date_pattern and not re.search(item.date_pattern, text):
-        return ContentResult(
-            ok=False,
-            reason=(
-                f"expected period not found (pattern: {item.date_pattern}); "
-                "possible wrong period"
-            ),
-        )
+        return ContentResult(ok=False, reason=reasons.WRONG_PERIOD.format(pattern=item.date_pattern))
 
     return ContentResult(ok=True)
 
@@ -184,12 +178,12 @@ def _extract_textfile(path: Path) -> str:
 
 def extract_text(path: Path) -> str | None:
     """Extract text from a supported file; None if no extractor exists."""
-    extension = path.suffix.lower().lstrip(".")
-    if extension == "pdf":
+    extension = extension_of(path)
+    if extension == PDF_EXTENSION:
         return _extract_pdf(path)
-    if extension in ("xlsx", "xlsm"):
+    if extension in XLSX_EXTENSIONS:
         return _extract_xlsx(path)
-    if extension in ("csv", "tsv", "txt"):
+    if extension in TEXT_EXTENSIONS:
         return _extract_textfile(path)
     return None
 
@@ -253,39 +247,32 @@ def check_content(
 
 
 def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
-    extension = path.suffix.lower().lstrip(".")
+    extension = extension_of(path)
     try:
         text = extract_text(path)
     except Exception as exc:
         return ContentResult(
             ok=False,
-            reason=f"text extraction failed ({exc.__class__.__name__}: {exc})",
+            reason=reasons.EXTRACTION_FAILED.format(error=f"{exc.__class__.__name__}: {exc}"),
             extractable=False,
         )
 
     if text is None:
         return ContentResult(
             ok=False,
-            reason=f"content rules cannot be checked on .{extension} files; review manually",
+            reason=reasons.UNCHECKABLE_TYPE.format(extension=extension),
             extractable=False,
         )
 
-    if extension == "pdf" and len(text.strip()) < _MIN_TEXT_CHARS:
+    if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS:
         ocr_text = _ocr_pdf(path)
         if ocr_text is None:
             return ContentResult(
-                ok=False,
-                reason=(
-                    "PDF appears to be a scan with no text layer and OCR is "
-                    "not installed; review manually"
-                ),
-                extractable=False,
+                ok=False, reason=reasons.NO_TEXT_LAYER.format(), extractable=False,
             )
         if not ocr_text.strip():
             return ContentResult(
-                ok=False,
-                reason="no readable text found in PDF, even after OCR; review manually",
-                extractable=False,
+                ok=False, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False,
             )
         text = ocr_text
 
@@ -293,6 +280,11 @@ def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
 
 
 # ------------------------------------------------------------------- cache ----
+
+
+def _identity(stat: os.stat_result, fingerprint: str) -> dict:
+    """What makes a cached verdict still apply: the file as it was, the rules as they were."""
+    return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "fp": fingerprint}
 
 
 class ContentCache:
@@ -327,31 +319,18 @@ class ContentCache:
             stat = file.stat()
         except OSError:
             return None
-        if (
-            entry.get("size") != stat.st_size
-            or entry.get("mtime_ns") != stat.st_mtime_ns
-            or entry.get("fp") != fingerprint
-        ):
+        if any(entry.get(key) != value for key, value in _identity(stat, fingerprint).items()):
             return None
-        return ContentResult(
-            ok=bool(entry["ok"]),
-            reason=entry.get("reason", ""),
-            extractable=bool(entry.get("extractable", True)),
-        )
+        defaults = {f.name: f.default for f in fields(ContentResult)}
+        return ContentResult(**{name: entry.get(name, default) for name, default in defaults.items()
+                                if name in entry or default is not MISSING})
 
     def put(self, file: Path, fingerprint: str, result: ContentResult) -> None:
         try:
             stat = file.stat()
         except OSError:
             return  # gone already; nothing worth remembering about it
-        self._entries[self._key(file)] = {
-            "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-            "fp": fingerprint,
-            "ok": result.ok,
-            "reason": result.reason,
-            "extractable": result.extractable,
-        }
+        self._entries[self._key(file)] = _identity(stat, fingerprint) | asdict(result)
         self._dirty = True
 
     def prune(self, existing: set[Path]) -> None:

@@ -8,9 +8,28 @@ import pytest
 from openpyxl import Workbook, load_workbook
 from openpyxl.workbook.workbook import Workbook as WorkbookClass
 
+from tests.samples import col
+from tracker import reasons
 from tracker.manifest import (
+    DEFAULT_MIN_SIZE_KB,
+    YES,
+    NO,
+    ENGAGEMENT_LABELS,
+    COL_ALLOWED_EXTENSIONS,
+    COL_DATE_PATTERN,
+    COL_DOCUMENT,
+    COL_EXPECTED_COUNT,
+    COL_IDENTIFIER,
+    COL_MANUAL_OVERRIDE,
+    COL_STATUS,
+    ENGAGEMENT_SHEET_NAME,
     HEADERS,
     SHEET_NAME,
+    CORRUPT_SUFFIX,
+    SUMMARY_EMPTY,
+    TEMP_SUFFIX,
+    SUMMARY_SEPARATOR,
+    UNSCANNED_LABEL,
     ManifestError,
     Override,
     RequestItem,
@@ -21,6 +40,7 @@ from tracker.manifest import (
     pending_path,
     write_statuses,
 )
+from tracker.scaffold import MANIFEST_FILENAME
 
 SAMPLE_ITEMS = [
     RequestItem(
@@ -52,7 +72,7 @@ SAMPLE_ITEMS = [
 
 @pytest.fixture
 def manifest(tmp_path):
-    return create_template(tmp_path / "_manifest.xlsx", SAMPLE_ITEMS)
+    return create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS)
 
 
 # ---------------------------------------------------------------- loading ----
@@ -66,7 +86,7 @@ def test_template_load_roundtrip(manifest):
     assert a01.document == "Dec 2025 Bank Statement"
     assert a01.period == "Dec 2025"
     assert a01.expected_count == 1          # default
-    assert a01.min_size_kb == 5             # default
+    assert a01.min_size_kb == DEFAULT_MIN_SIZE_KB
     assert a01.allowed_extensions == ("pdf",)
     assert a01.required_keywords == ("Chase",)
     assert a01.any_keywords == ()
@@ -99,55 +119,54 @@ def test_missing_column_rejected(tmp_path):
     wb = Workbook()
     ws = wb.active
     ws.title = SHEET_NAME
-    for idx, header in enumerate(h for h in HEADERS if h != "Status"):
+    for idx, header in enumerate(h for h in HEADERS if h != COL_STATUS):
         ws.cell(row=1, column=idx + 1, value=header)
     path = tmp_path / "bad.xlsx"
     wb.save(path)
-    with pytest.raises(ManifestError, match="missing column.*Status"):
+    with pytest.raises(ManifestError, match=f"missing column.*{COL_STATUS}"):
         load_manifest(path)
 
 
 def _write_cell(path, row, header, value):
     wb = load_workbook(path)
     ws = wb[SHEET_NAME]
-    col = HEADERS.index(header) + 1
-    ws.cell(row=row, column=col, value=value)
+    ws.cell(row=row, column=col(header), value=value)
     wb.save(path)
 
 
 def test_duplicate_identifier_rejected(manifest):
-    _write_cell(manifest, 3, "Identifier", "A01")
+    _write_cell(manifest, 3, COL_IDENTIFIER, "A01")
     with pytest.raises(ManifestError, match="Duplicate identifier 'A01'.*rows 2 and 3"):
         load_manifest(manifest)
 
 
 def test_bad_regex_rejected(manifest):
-    _write_cell(manifest, 2, "Date Pattern", "([unclosed")
+    _write_cell(manifest, 2, COL_DATE_PATTERN, "([unclosed")
     with pytest.raises(ManifestError, match="Row 2.*not a valid regex"):
         load_manifest(manifest)
 
 
 def test_bad_expected_count_rejected(manifest):
-    _write_cell(manifest, 2, "Expected Count", "twelve")
+    _write_cell(manifest, 2, COL_EXPECTED_COUNT, "twelve")
     with pytest.raises(ManifestError, match="Row 2.*whole number"):
         load_manifest(manifest)
 
 
 def test_unknown_status_rejected(manifest):
-    _write_cell(manifest, 2, "Status", "Done-ish")
+    _write_cell(manifest, 2, COL_STATUS, "Done-ish")
     with pytest.raises(ManifestError, match="Row 2.*Status must be one of"):
         load_manifest(manifest)
 
 
 def test_unknown_override_rejected(manifest):
-    _write_cell(manifest, 2, "Manual Override", "Maybe")
+    _write_cell(manifest, 2, COL_MANUAL_OVERRIDE, "Maybe")
     with pytest.raises(ManifestError, match="Row 2.*Manual Override"):
         load_manifest(manifest)
 
 
 def test_blank_rows_skipped(manifest):
-    _write_cell(manifest, 6, "Identifier", "C01")  # row 5 left entirely blank
-    _write_cell(manifest, 6, "Document", "Trial Balance")
+    _write_cell(manifest, 6, COL_IDENTIFIER, "C01")  # row 5 left entirely blank
+    _write_cell(manifest, 6, COL_DOCUMENT, "Trial Balance")
     items = load_manifest(manifest)
     assert [i.identifier for i in items] == ["A01", "A02", "B01", "C01"]
     assert items[-1].row == 6
@@ -217,7 +236,7 @@ def test_pending_sidecar_merged_and_cleared(manifest):
                     "status": Status.PENDING_SYNC,
                     "file_count": 1,
                     "received_date": None,
-                    "validation_notes": "cloud-only placeholder",
+                    "validation_notes": reasons.PENDING_SYNC.format(),
                 },
             }
         ),
@@ -241,7 +260,7 @@ def test_corrupt_sidecar_quarantined(manifest, caplog):
     pending_path(manifest).write_text("{not json", encoding="utf-8")
     assert write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}) is True
     assert not pending_path(manifest).exists()
-    assert pending_path(manifest).with_suffix(".corrupt.json").exists()
+    assert pending_path(manifest).with_suffix(CORRUPT_SUFFIX).exists()
     assert "Unreadable pending sidecar" in caplog.text
 
 
@@ -253,7 +272,7 @@ def _manifest_with_identifiers(tmp_path, *identifiers):
         RequestItem(identifier=ident, document=f"Doc {n}")
         for n, ident in enumerate(identifiers, start=1)
     ]
-    return create_template(tmp_path / "_manifest.xlsx", items)
+    return create_template(tmp_path / MANIFEST_FILENAME, items)
 
 
 @pytest.mark.parametrize("identifier", ["A:01", "A/01", "A?1", 'B"1', "A01.", "A<1>"])
@@ -288,7 +307,7 @@ def test_a_crash_mid_save_leaves_the_previous_manifest_intact(manifest, monkeypa
     with pytest.raises(KeyboardInterrupt):
         write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}, retries=1)
 
-    assert not manifest.with_name(manifest.name + ".tmp").exists()
+    assert not manifest.with_name(manifest.name + TEMP_SUFFIX).exists()
     assert [i.identifier for i in load_manifest(manifest)] == ["A01", "A02", "B01"]
 
 
@@ -301,7 +320,7 @@ def test_the_engagement_sheet_round_trips(tmp_path):
     info = EngagementInfo(client="John Smith", name="Smiths 2025", link="https://drive.example/abc",
                           due=dt.date(2026, 4, 15), sender="Jason Park", firm="J Park",
                           reminders=False, active=True)
-    path = create_template(tmp_path / "_manifest.xlsx", SAMPLE_ITEMS, info)
+    path = create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS, info)
     assert load_engagement_info(path) == info
     assert [i.identifier for i in load_manifest(path)] == ["A01", "A02", "B01"]  # Requests untouched
 
@@ -315,7 +334,7 @@ def test_a_manifest_without_the_sheet_loads_as_defaults(manifest):
     from tracker.manifest import EngagementInfo, load_engagement_info
 
     wb = lw(manifest)
-    del wb["Engagement"]
+    del wb[ENGAGEMENT_SHEET_NAME]
     wb.save(manifest)
     assert load_engagement_info(manifest) == EngagementInfo()
 
@@ -326,17 +345,17 @@ def test_yes_no_cells_are_forgiving_but_not_guessing(manifest):
 
     def set_cell(label, value):
         wb = lw(manifest)
-        for row in wb["Engagement"].iter_rows(min_row=1, max_col=2):
+        for row in wb[ENGAGEMENT_SHEET_NAME].iter_rows(min_row=1, max_col=2):
             if row[0].value == label:
                 row[1].value = value
         wb.save(manifest)
 
-    set_cell("Reminders", "No ")
+    set_cell(ENGAGEMENT_LABELS["reminders"], f"{NO.capitalize()} ")
     assert load_engagement_info(manifest).reminders is False
-    set_cell("Active", "TRUE")
+    set_cell(ENGAGEMENT_LABELS["active"], "TRUE")
     assert load_engagement_info(manifest).active is True
-    set_cell("Active", "later")
-    with pytest.raises(ManifestError, match="Active must be yes or no"):
+    set_cell(ENGAGEMENT_LABELS["active"], "later")
+    with pytest.raises(ManifestError, match=f"{ENGAGEMENT_LABELS['active']} must be {YES} or {NO}"):
         load_engagement_info(manifest)
 
 
@@ -358,9 +377,9 @@ def test_a_blank_allowed_extensions_means_the_safe_default_not_anything(tmp_path
     from openpyxl import load_workbook as lw
     from tracker.manifest import DEFAULT_EXTENSIONS
 
-    path = create_template(tmp_path / "_manifest.xlsx", [RequestItem(identifier="A01", document="W-2")])
+    path = create_template(tmp_path / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="W-2")])
     wb = lw(path)
-    wb["Requests"].cell(row=2, column=5).value = None   # the accountant cleared the cell
+    wb[SHEET_NAME].cell(row=2, column=col(COL_ALLOWED_EXTENSIONS)).value = None   # the accountant cleared the cell
     wb.save(path)
     assert load_manifest(path)[0].allowed_extensions == DEFAULT_EXTENSIONS
 
@@ -368,11 +387,11 @@ def test_a_blank_allowed_extensions_means_the_safe_default_not_anything(tmp_path
 def test_accepting_any_file_type_has_to_be_said_with_a_star(tmp_path):
     from openpyxl import load_workbook as lw
 
-    path = create_template(tmp_path / "_manifest.xlsx", [RequestItem(identifier="A01", document="W-2")])
+    path = create_template(tmp_path / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="W-2")])
     # An item built with no extensions means anything; the template writes "*"
     # so the workbook says so and the loader reads it back the same way.
     wb = lw(path)
-    assert wb["Requests"].cell(row=2, column=5).value == "*"
+    assert wb[SHEET_NAME].cell(row=2, column=col(COL_ALLOWED_EXTENSIONS)).value == "*"
     wb.close()
     assert load_manifest(path)[0].allowed_extensions == ()
 
@@ -386,17 +405,17 @@ def test_check_manifest_reports_problems_with_their_row(manifest):
 
     assert check_manifest(manifest).ok
     wb = lw(manifest)
-    wb["Requests"].cell(row=3, column=9, value="(unclosed")   # A02 Date Pattern
+    wb[SHEET_NAME].cell(row=3, column=col(COL_DATE_PATTERN), value="(unclosed")   # A02 Date Pattern
     wb.save(manifest)
     result = check_manifest(manifest)
     assert not result.ok
-    assert result.problems[0].startswith("Row 3: Date Pattern is not a valid regex")
+    assert result.problems[0].startswith(f"Row 3: {COL_DATE_PATTERN} is not a valid regex")
 
 
 def test_check_manifest_warns_about_rows_the_rules_cannot_act_on(tmp_path):
     from tracker.manifest import _save_pending, check_manifest
 
-    path = create_template(tmp_path / "_manifest.xlsx", [
+    path = create_template(tmp_path / MANIFEST_FILENAME, [
         RequestItem(identifier="A01", document="Anything goes"),              # no rule, "*"
         RequestItem(identifier="A02", document="W-2", required_keywords=("W-2",),
                     allowed_extensions=("pdf",)),
@@ -405,7 +424,7 @@ def test_check_manifest_warns_about_rows_the_rules_cannot_act_on(tmp_path):
     _save_pending(path, {"A02": StatusUpdate(status=Status.RECEIVED)})
     result = check_manifest(path)
     assert result.ok
-    assert [w[:14] for w in result.warnings] == ["Row 2 (A01): n", "Row 2 (A01): A", "_manifest.pend"]
+    assert [w[:14] for w in result.warnings] == ["Row 2 (A01): n", "Row 2 (A01): A", pending_path(path).name[:14]]
     assert "never be filed automatically" in result.warnings[0]
     assert "any file type counts" in result.warnings[1]
     assert "close Excel and re-scan" in result.warnings[2]
@@ -433,9 +452,12 @@ def test_summarize_is_the_one_count():
     assert summary.received == 2
     assert summary.outstanding == 2
     assert summary.unscanned == 1
-    assert summary.counts == {"Received": 2, "Missing": 1, "Partial": 1, "Pending Sync": 1}
-    assert summary.line == "Missing: 1 · Partial: 1 · Pending Sync: 1 · Received: 2 · Requested: 1 · Waived: 1"
-    assert summarize([]).line == "no requests"
+    assert summary.counts == {Status.RECEIVED: 2, Status.MISSING: 1, Status.PARTIAL: 1, Status.PENDING_SYNC: 1}
+    assert summary.line == SUMMARY_SEPARATOR.join([
+        f"{Status.MISSING}: 1", f"{Status.PARTIAL}: 1", f"{Status.PENDING_SYNC}: 1",
+        f"{Status.RECEIVED}: 2", f"{UNSCANNED_LABEL}: 1", f"{Override.WAIVED}: 1",
+    ])
+    assert summarize([]).line == SUMMARY_EMPTY
 
 
 # ------------------------------------------------------- the derived year ----
@@ -450,7 +472,7 @@ def test_a_period_with_a_year_implies_the_year_check(tmp_path):
     assert derived_date_pattern("Current") == ""
     assert derived_date_pattern("Acct 120250") == ""      # not a year
 
-    path = create_template(tmp_path / "_manifest.xlsx", [
+    path = create_template(tmp_path / MANIFEST_FILENAME, [
         RequestItem(identifier="A01", document="W-2", period="TY2025", required_keywords=("W-2",)),
         RequestItem(identifier="A02", document="Trust deed", period="Current", required_keywords=("trust",)),
         RequestItem(identifier="A03", document="Typed", period="TY2025", required_keywords=("x",),
@@ -465,11 +487,11 @@ def test_a_period_with_a_year_implies_the_year_check(tmp_path):
 def test_a_star_in_date_pattern_means_no_year_check(tmp_path):
     from openpyxl import load_workbook as lw
 
-    path = create_template(tmp_path / "_manifest.xlsx", [
+    path = create_template(tmp_path / MANIFEST_FILENAME, [
         RequestItem(identifier="A01", document="W-2", period="TY2025", required_keywords=("W-2",)),
     ])
     wb = lw(path)
-    wb["Requests"].cell(row=2, column=9, value="*")
+    wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="*")
     wb.save(path)
     [row] = load_manifest(path)
     assert row.date_pattern == "" and not row.date_pattern_derived

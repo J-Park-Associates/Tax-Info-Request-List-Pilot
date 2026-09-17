@@ -17,8 +17,8 @@ Precedence, precisely:
 - Counts learn from reality: a row that expected 2 W-2s and received 3 asks
   for 3 next year. Counts are never lowered — a client who under-delivered
   still owes what was asked.
-- ``Waived`` is a decision about the client, so it carries forward.
-  ``Accepted`` is a judgment about specific files from one particular year,
+- ``Override.WAIVED`` is a decision about the client, so it carries forward.
+  ``Override.ACCEPTED`` is a judgment about specific files from one particular year,
   so it does not.
 
 A template row the client has never had is **not** added. For a returning
@@ -33,20 +33,25 @@ Nothing here writes to the prior year's engagement — it is read-only history.
 
 from __future__ import annotations
 
-import re
-from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Sequence
 
 from openpyxl import load_workbook
 
-from tracker.manifest import (
+from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
+    COL_DOCUMENT,
+    COL_IDENTIFIER,
+    EngagementInfo,
+    ManifestError,
     Override,
     RequestItem,
     Status,
     create_template,
+    detect_year,
     load_manifest,
+    shift_item,
+    shift_years,
 )
 from tracker.scaffold import MANIFEST_FILENAME
 
@@ -55,16 +60,17 @@ ORIGIN_PRIOR = "carried from last year"
 ORIGIN_WAIVED = "waived last year"
 ORIGIN_NEW = "new this year"
 
+#: What stands in for the target year when the prior list gave none away.
+UNKNOWN_YEAR_LABEL = "next year"
 CARRIED_SHEET = "Carried Forward"
-CARRIED_HEADERS = (
-    "Identifier", "Document", "Origin", "Why it is on the list",
-    "Last Year Status", "Last Year Files",
-)
-
-#: A four-digit year standing on its own. The digit guards keep an account
-#: number like 120250 from being read as "2025" and quietly shifted.
-_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
-
+#: Heads the sheet's (and the CLI's) list of last year's unmatched documents.
+UNFILED_HEADING = "Sent last year but never filed — check these are covered:"
+#: The Carried Forward sheet, described once: header -> column width.
+CARRIED_LAYOUT: dict[str, int] = {
+    COL_IDENTIFIER: 12, COL_DOCUMENT: 40, "Origin": 22, "Why it is on the list": 52,
+    "Last Year Status": 18, "Last Year Files": 14,
+}
+CARRIED_HEADERS = tuple(CARRIED_LAYOUT)
 
 @dataclass(frozen=True, slots=True)
 class RolledItem:
@@ -105,39 +111,24 @@ class RolloverReport:
         return [r for r in self.rolled if r.origin == ORIGIN_WAIVED]
 
 
-# ------------------------------------------------------------------ years ----
-
-
-def shift_years(text: str, delta: int) -> str:
-    """Move every four-digit year in ``text`` by ``delta``.
-
-    Shifting rather than substituting one fixed year keeps *relative* periods
-    correct: on a 2025 → 2026 roll, a row asking for the TY2024 prior-year
-    return correctly comes to ask for TY2025.
-    """
-    if not text or not delta:
-        return text
-    return _YEAR.sub(lambda m: str(int(m.group(0)) + delta), text)
-
-
-def detect_year(items: Sequence[RequestItem]) -> int | None:
-    """The tax year a manifest is about, inferred from its own rows.
-
-    The most common year across periods and date rules wins; ties go to the
-    later year. Returns None when nothing carries a year at all.
-    """
-    years: Counter[int] = Counter()
-    for item in items:
-        for text in (item.period, item.date_pattern):
-            for match in _YEAR.findall(text or ""):
-                years[int(match)] += 1
-    if not years:
-        return None
-    best = max(years.values())
-    return max(year for year, count in years.items() if count == best)
-
-
 # ------------------------------------------------------------- carry rules ----
+
+
+def next_tax_year(prior_year: int) -> int:
+    """The year a rolled engagement is for: the one after the prior's."""
+    return prior_year + 1
+
+
+def carry_engagement_info(prior: EngagementInfo, *, rolled_from: str) -> EngagementInfo:
+    """Last year's Engagement sheet as this year's starting point.
+
+    The client, the sender, the firm and the reminders decision are about
+    the client and carry forward. The share link and the due date are this
+    year's to set. The name is never written (the folder is the name), and
+    Rolled From is what retires the prior (tracker.registry.mark_superseded).
+    """
+    return replace(prior, name="", link="", due=None, active=True, rolled_from=rolled_from)
+
 
 
 def _carry(
@@ -183,7 +174,7 @@ def _carry(
     )
 
     if prior.manual_override == Override.WAIVED:
-        return item, ORIGIN_WAIVED, "waived last year; clear the override to request it again"
+        return item, ORIGIN_WAIVED, f"{ORIGIN_WAIVED}; clear the override to request it again"
     if prior.status == Status.RECEIVED:
         note = f"received last year ({prior.file_count or 0} file(s))"
         if expected > prior.expected_count:
@@ -220,7 +211,7 @@ def roll_forward(
 
     prior_year = detect_year(prior_items)
     if target_year is None and prior_year is not None:
-        target_year = prior_year + 1
+        target_year = next_tax_year(prior_year)
     delta = (target_year - prior_year) if (prior_year and target_year) else 0
 
     template_year = detect_year(template) if template else None
@@ -247,17 +238,7 @@ def roll_forward(
         if spec.identifier in seen:
             continue
         offer = RolledItem(
-            item=RequestItem(
-                identifier=spec.identifier,
-                document=shift_years(spec.document, tmpl_delta),
-                period=shift_years(spec.period, tmpl_delta),
-                expected_count=spec.expected_count,
-                allowed_extensions=spec.allowed_extensions,
-                min_size_kb=spec.min_size_kb,
-                required_keywords=spec.required_keywords,
-                any_keywords=spec.any_keywords,
-                date_pattern=shift_years(spec.date_pattern, tmpl_delta),
-            ),
+            item=shift_item(spec, tmpl_delta),
             origin=ORIGIN_NEW,
             note="not on last year's list — confirm it applies",
         )
@@ -316,10 +297,10 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
                            ORIGIN_NEW, offer.note])
         if report.unfiled_last_year:
             ws.append([])
-            ws.append(["Sent last year but never filed — check these are covered:"])
+            ws.append([UNFILED_HEADING])
             for line in report.unfiled_last_year:
                 ws.append(["", line])
-        for column, width in zip(ws.column_dimensions, (12, 40, 22, 52, 18, 14)):
+        for column, width in zip(ws.column_dimensions, CARRIED_LAYOUT.values()):
             ws.column_dimensions[column].width = width
         ws.freeze_panes = "A2"
         wb.save(path)
@@ -333,7 +314,7 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
 if __name__ == "__main__":
     import argparse
 
-    from tracker.templates import FORM_TEMPLATES, template_items
+    from tracker.templates import require_form, template_items
 
     parser = argparse.ArgumentParser(
         description="Build next year's request list from a returning client's prior engagement"
@@ -351,8 +332,10 @@ if __name__ == "__main__":
 
     template = []
     if ns.form:
-        if ns.form not in FORM_TEMPLATES:
-            parser.error(f"unknown form {ns.form}; try one of {', '.join(FORM_TEMPLATES)}")
+        try:
+            require_form(ns.form)
+        except ManifestError as exc:
+            parser.error(str(exc))
         template = template_items(ns.form)
 
     result = roll_forward(
@@ -365,33 +348,30 @@ if __name__ == "__main__":
     target = Path(ns.new_engagement_dir)
     target.mkdir(parents=True, exist_ok=True)
     manifest = write_rollover_manifest(target / MANIFEST_FILENAME, result)
-    # The Engagement sheet comes along (client, sender, firm, reminders); the
-    # link and due date are this year's to set. Rolled From retires the prior.
-    from dataclasses import replace as _replace
     from tracker.manifest import load_engagement_info, write_engagement_info
 
-    write_engagement_info(manifest, _replace(
+    write_engagement_info(manifest, carry_engagement_info(
         load_engagement_info(result.prior_dir / MANIFEST_FILENAME),
-        name=target.name, link="", due=None, active=True, rolled_from=str(result.prior_dir),
+        rolled_from=str(result.prior_dir),
     ))
 
-    span = f"{result.prior_year} → {result.target_year}" if result.prior_year else "next year"
+    span = f"{result.prior_year} → {result.target_year}" if result.prior_year else UNKNOWN_YEAR_LABEL
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")
     for rolled in result.carried:
         flag = "WAIVED " if rolled.origin == ORIGIN_WAIVED else "CARRIED"
-        print(f"  {flag} {rolled.item.identifier:6} {rolled.item.document}")
+        print(f"  {flag} {rolled.item.label}")
         print(f"          {rolled.note}")
     for rolled in result.added:
-        print(f"  NEW     {rolled.item.identifier:6} {rolled.item.document}")
+        print(f"  NEW     {rolled.item.label}")
         print(f"          {rolled.note}")
     if result.offered:
         print(f"\n  Not added — the standard {ns.form or 'checklist'} also has "
               f"{len(result.offered)} request(s) this client has never had.")
         print("  Add any that now apply with --include-new, or by hand:")
         for offer in result.offered:
-            print(f"    + {offer.item.identifier:6} {offer.item.document}")
+            print(f"    + {offer.item.label}")
     if result.unfiled_last_year:
-        print("\n  Sent last year but never filed — check these are covered:")
+        print(f"\n  {UNFILED_HEADING}")
         for line in result.unfiled_last_year:
             print(f"    ? {line}")
     print(f"\n  Manifest: {manifest}")
@@ -400,5 +380,5 @@ if __name__ == "__main__":
         from tracker.scaffold import scaffold_engagement
 
         scaffolded = scaffold_engagement(target)
-        print(f"  Client drop folder: {scaffolded.shared_dir}")
-        print(f"  Prepared tree:      {scaffolded.prepared_dir}")
+        for line in scaffolded.describe():
+            print(f"  {line}")

@@ -4,10 +4,19 @@ import datetime as dt
 import json
 
 import pytest
+
+from tracker.locking import STALE_LOCK_SECONDS
 from openpyxl import load_workbook
 from pypdf import PdfWriter
 
+from tests.samples import col
+from tracker import reasons
 from tracker.manifest import (
+    SUMMARY_SEPARATOR,
+    COL_EXPECTED_COUNT,
+    COL_MANUAL_OVERRIDE,
+    ENGAGEMENT_SHEET_NAME,
+    SHEET_NAME,
     Override,
     RequestItem,
     Status,
@@ -21,6 +30,14 @@ from tracker.scaffold import (
     scaffold_engagement,
 )
 from tracker.scanner import (
+    DUPLICATES_NOTE,
+    OVERRIDE_NOTE,
+    REGRESSION_COUNT_RAISED,
+    REGRESSION_FILES_CHANGED,
+    REGRESSION_NOTE,
+    SYNCING_NOTE,
+    PARTIAL_NOTE,
+    CACHE_FILENAME,
     LOCK_FILENAME,
     ScanLockedError,
     scan_engagement,
@@ -110,7 +127,7 @@ def test_full_scan_statuses_and_writeback(engagement):
     assert rows["A01"].received_date == DAY1
     assert rows["A01"].file_count == 1
     assert rows["A02"].status == Status.PARTIAL
-    assert "2 of 3 expected files" in rows["A02"].validation_notes
+    assert PARTIAL_NOTE.format(count=2, expected=3) in rows["A02"].validation_notes
     assert rows["B01"].status == Status.MISSING
     assert rows["B01"].file_count == 0
 
@@ -121,7 +138,7 @@ def test_failed_validation_with_reasons(engagement):
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
     assert row.status == Status.FAILED
-    assert "'Chase' not found" in row.validation_notes
+    assert reasons.WRONG_DOCUMENT.matches(row.validation_notes) and "'Chase'" in row.validation_notes
 
 
 def test_received_date_sticky_across_scans(engagement):
@@ -140,7 +157,7 @@ def test_auto_revert_preserves_date_and_notes(engagement):
     row = statuses(engagement)["A01"]
     assert row.status == Status.MISSING            # auto-revert
     assert row.received_date == DAY1               # original date preserved
-    assert "was Received 2026-07-01" in row.validation_notes
+    assert REGRESSION_NOTE.format(status=Status.RECEIVED, date="2026-07-01", why="").rstrip("; ") in row.validation_notes
 
 
 def test_manual_override_status_untouched(tmp_path):
@@ -168,8 +185,8 @@ def test_manual_override_status_untouched(tmp_path):
     row = statuses(eng)["A01"]
     assert row.status == Status.RECEIVED           # override kept it
     assert row.received_date == DAY1
-    assert row.validation_notes.startswith("[override: Accepted]")
-    assert "'Chase' not found" in row.validation_notes  # facts still recorded
+    assert row.validation_notes.startswith(OVERRIDE_NOTE.format(override=Override.ACCEPTED))
+    assert reasons.WRONG_DOCUMENT.matches(row.validation_notes) and "'Chase'" in row.validation_notes  # facts still recorded
 
 
 def test_duplicates_do_not_inflate_count(engagement):
@@ -182,7 +199,7 @@ def test_duplicates_do_not_inflate_count(engagement):
     row = statuses(engagement)["A02"]
     assert row.file_count == 2                     # 3 files, 2 distinct
     assert row.status == Status.PARTIAL
-    assert "1 duplicate file(s) ignored" in row.validation_notes
+    assert DUPLICATES_NOTE.format(n=1) in row.validation_notes
 
 
 def test_pending_sync_status(engagement, monkeypatch):
@@ -194,7 +211,7 @@ def test_pending_sync_status(engagement, monkeypatch):
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
     assert row.status == Status.PENDING_SYNC
-    assert "still syncing" in row.validation_notes
+    assert SYNCING_NOTE.format(n=1) in row.validation_notes
 
 
 def test_deleted_folder_reported_missing(engagement):
@@ -202,7 +219,7 @@ def test_deleted_folder_reported_missing(engagement):
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
     assert row.status == Status.MISSING
-    assert "re-run scaffold" in row.validation_notes
+    assert reasons.NO_REQUEST_FOLDER.matches(row.validation_notes)
 
 
 # --------------------------------------------------------------- unfiled ----
@@ -222,11 +239,11 @@ def test_strays_in_prepared_are_warnings_and_parked_files_are_not(engagement):
 
     report = scan_engagement(engagement, today=DAY1)
     assert report.warnings == [
-        "loose_notes.txt is loose in Prepared/; it belongs in a request folder",
-        "folder 'misc uploads' in Prepared/ matches no request (1 file(s) inside)",
+        f"loose_notes.txt is loose in {PREPARED_DIR_NAME}/; it belongs in a request folder",
+        f"folder 'misc uploads' in {PREPARED_DIR_NAME}/ matches no request (1 file(s) inside)",
     ]
     wb = load_workbook(engagement / MANIFEST_FILENAME)
-    assert wb.sheetnames == ["Requests", "Engagement"]     # no second record
+    assert wb.sheetnames == [SHEET_NAME, ENGAGEMENT_SHEET_NAME]     # no second record
     wb.close()
 
     (prepared / "loose_notes.txt").unlink()
@@ -240,7 +257,7 @@ def test_the_scan_report_carries_the_one_summary(engagement):
     report = scan_engagement(engagement, today=DAY1)
     assert report.summary.received == 1
     assert report.summary.outstanding == 2
-    assert report.summary.line == "Missing: 2 · Received: 1"
+    assert report.summary.line == SUMMARY_SEPARATOR.join([f"{Status.MISSING}: 2", f"{Status.RECEIVED}: 1"])
 
 
 # ------------------------------------------------------- lock and dry-run ----
@@ -252,7 +269,7 @@ def test_dry_run_writes_nothing(engagement):
     assert report.dry_run and not report.written
     assert report.updates["A01"].status == Status.RECEIVED  # facts computed
     assert statuses(engagement)["A01"].status == ""          # nothing written
-    assert not (engagement / "_content_cache.json").exists()
+    assert not (engagement / CACHE_FILENAME).exists()
     assert not (engagement / LOCK_FILENAME).exists()
 
 
@@ -267,7 +284,7 @@ def test_stale_lock_replaced_and_released(engagement):
 
     lock = engagement / LOCK_FILENAME
     lock.write_text("pid=999", encoding="utf-8")
-    old = (dt.datetime.now() - dt.timedelta(hours=2)).timestamp()
+    old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
     os.utime(lock, (old, old))
 
     report = scan_engagement(engagement, today=DAY1)   # takes over stale lock
@@ -278,7 +295,7 @@ def test_stale_lock_replaced_and_released(engagement):
 def test_content_cache_created_and_pruned(engagement):
     pdf = text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec")
     scan_engagement(engagement, today=DAY1)
-    cache_file = engagement / "_content_cache.json"
+    cache_file = engagement / CACHE_FILENAME
     assert cache_file.exists()
     data = json.loads(cache_file.read_text(encoding="utf-8"))
     assert any("chase.pdf" in k for k in data["files"])
@@ -316,15 +333,15 @@ def test_raising_expected_count_after_received_names_the_real_change(engagement)
     text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
     scan_engagement(engagement, today=DAY1)
     wb = load_workbook(engagement / MANIFEST_FILENAME)
-    wb["Requests"].cell(row=2, column=4, value=2)   # A01 Expected Count 1 -> 2
+    wb[SHEET_NAME].cell(row=2, column=col(COL_EXPECTED_COUNT), value=2)   # A01 Expected Count 1 -> 2
     wb.save(engagement / MANIFEST_FILENAME)
     wb.close()
     report = scan_engagement(engagement, today=DAY2)
     update = report.updates["A01"]
     assert update.status == Status.PARTIAL
     assert update.received_date == DAY1
-    assert "Expected Count is now 2" in update.validation_notes
-    assert "files changed" not in update.validation_notes
+    assert REGRESSION_COUNT_RAISED.format(expected=2) in update.validation_notes
+    assert REGRESSION_FILES_CHANGED not in update.validation_notes
 
 
 def test_accepted_means_received_with_a_date(engagement):
@@ -334,13 +351,13 @@ def test_accepted_means_received_with_a_date(engagement):
 
     scan_engagement(engagement, today=DAY1)          # A01 Missing: no file at all
     wb = lw(engagement / MANIFEST_FILENAME)
-    wb["Requests"].cell(row=2, column=10, value="Accepted")
+    wb[SHEET_NAME].cell(row=2, column=col(COL_MANUAL_OVERRIDE), value=Override.ACCEPTED)
     wb.save(engagement / MANIFEST_FILENAME)
     report = scan_engagement(engagement, today=DAY2)
     update = report.updates["A01"]
     assert update.status == Status.RECEIVED
     assert update.received_date == DAY2
-    assert update.validation_notes.startswith("[override: Accepted]")
+    assert update.validation_notes.startswith(OVERRIDE_NOTE.format(override=Override.ACCEPTED))
     assert statuses(engagement)["A01"].status == Status.RECEIVED
     # Stamped once: a later scan keeps the first date.
     assert scan_engagement(engagement, today=DAY2 + dt.timedelta(days=3)).updates["A01"].received_date == DAY2
@@ -350,7 +367,7 @@ def test_waived_rows_are_named_so_counts_can_leave_them_out(engagement):
     from openpyxl import load_workbook as lw
 
     wb = lw(engagement / MANIFEST_FILENAME)
-    wb["Requests"].cell(row=4, column=10, value="Waived")   # B01
+    wb[SHEET_NAME].cell(row=4, column=col(COL_MANUAL_OVERRIDE), value=Override.WAIVED)   # B01
     wb.save(engagement / MANIFEST_FILENAME)
     report = scan_engagement(engagement, today=DAY1)
     assert report.summary.waived == 1

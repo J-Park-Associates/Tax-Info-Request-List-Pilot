@@ -1,9 +1,13 @@
 {
   "name": "tax-document-tracker",
+  "productName": "Tax Document Tracker",
   "version": "1.1.0",
-  "description": "J Park & Associates - Tax Document Tracker",
+  "description": "Deterministic tax-document request tracking for a CPA firm",
   "main": "main.js",
   "private": true,
+  "config": {
+    "apiName": "tracker-api"
+  },
   "scripts": {
     "start": "electron ."
   },

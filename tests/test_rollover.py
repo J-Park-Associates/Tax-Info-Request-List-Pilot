@@ -10,7 +10,12 @@ import datetime as dt
 import pytest
 from openpyxl import load_workbook
 
+from tests.samples import col
 from tracker.manifest import (
+    COL_DATE_PATTERN,
+    COL_IDENTIFIER,
+    COL_MANUAL_OVERRIDE,
+    SHEET_NAME,
     Override,
     RequestItem,
     Status,
@@ -28,7 +33,8 @@ from tracker.rollover import (
     shift_years,
     write_rollover_manifest,
 )
-from tracker.scaffold import MANIFEST_FILENAME
+from tracker.router import UNMATCHED
+from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME
 
 # Last year's engagement: a 2025 individual return.
 PRIOR = [
@@ -186,10 +192,10 @@ def test_accepted_does_not_carry(prior):
     write_statuses(eng / MANIFEST_FILENAME,
                    {"C01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
     wb = load_workbook(eng / MANIFEST_FILENAME)
-    ws = wb["Requests"]
+    ws = wb[SHEET_NAME]
     for row in ws.iter_rows(min_row=2):
         if row[0].value == "C01":
-            row[9].value = Override.ACCEPTED
+            row[col(COL_MANUAL_OVERRIDE) - 1].value = Override.ACCEPTED
     wb.save(eng / MANIFEST_FILENAME)
     wb.close()
 
@@ -200,7 +206,7 @@ def test_accepted_does_not_carry(prior):
 def test_unreceived_rows_are_carried_with_a_flag(prior):
     c01 = rolled_by_id(roll_forward(prior))["C01"]
     assert c01.origin == ORIGIN_PRIOR
-    assert "Missing" in c01.note and "confirm it still applies" in c01.note
+    assert Status.MISSING in c01.note and "confirm it still applies" in c01.note
 
 
 # -------------------------------------------------------------- new requests ----
@@ -249,10 +255,10 @@ def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
 
     write_index(prior / INDEX_FILENAME, [
         IndexEntry(received="2026-03-01", original_name="K-1 Redwood LP.pdf",
-                   size_kb=12.0, digest="abc", identifier="", document="",
-                   filed_as="K-1 Redwood LP.pdf", prepared_location="",
+                   size_kb=12.0, digest="abc", identifier="",
+                   prepared_location=f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/K-1 Redwood LP.pdf",
                    pbc_location="", decision=NEEDS_REVIEW,
-                   reason="matched no request"),
+                   reason=UNMATCHED),
     ])
     report = roll_forward(prior)
     assert any("K-1 Redwood LP.pdf" in s for s in report.unfiled_last_year)
@@ -319,8 +325,9 @@ def test_a_derived_year_check_is_not_carried_as_text(prior, tmp_path):
     target.mkdir()
     path = write_rollover_manifest(target / MANIFEST_FILENAME, report)
     wb = lw(path)
-    ws = wb["Requests"]
-    cells = {ws.cell(row=r, column=1).value: ws.cell(row=r, column=9).value for r in range(2, ws.max_row + 1)}
+    ws = wb[SHEET_NAME]
+    cells = {ws.cell(row=r, column=col(COL_IDENTIFIER)).value: ws.cell(row=r, column=col(COL_DATE_PATTERN)).value
+             for r in range(2, ws.max_row + 1)}
     wb.close()
     rows = {i.identifier: i for i in load_manifest(path)}
     assert rows["C01"].period == "TY2026"

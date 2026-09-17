@@ -43,16 +43,13 @@ client-files/**
 *.qbw
 *.qbb
 *.tlg
-~$*.xlsx
-~$*.docx
 
 # Scheduled-run artifacts. Drafts quote real clients' outstanding documents
-# and the run log names them. Neither belongs in the repo — they live beside
-# the client folders.
+# and the run log names them. Neither belongs in the repo: the log lives in
+# the clients root, the drafts beside each engagement.
 runs.log
 # The clients root, written once by the app (or python -m tracker.settings).
 settings.json
 tax-tracker.xml
 reminder-draft.txt
 reminder-draft.NEW.txt
-tax-tracker.xml

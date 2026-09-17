@@ -53,16 +53,23 @@ SCHEMA_VERSION = 1
 #: Extensions worth a node. Everything else is noise in a code map.
 #: ``.yml``/``.yaml`` earns its place because CI config is part of how the repo
 #: works, not decoration around it — and an agent reading the map should know a
-#: workflow exists. Only tracked files are mapped, so the gitignored
-#: ``engagements.yaml`` (real client names, real share links) never appears.
-SOURCE_SUFFIXES = {".py", ".js", ".html", ".css", ".csv", ".md", ".bat",
+#: workflow exists. Only tracked files are mapped, so gitignored runtime files
+#: (settings.json, drafts, logs) never appear.
+#: The two test edges the map draws, and what it says when there is none.
+#: CLAUDE.md explains them by these names; tests/test_single_source.py pins it.
+MAP_INTRO = "Read this instead of re-scanning the repository."
+TESTED_BY = "tested by"
+EXERCISED_BY = "exercised by"
+NO_TEST_FILE = "no dedicated test file"
+
+SOURCE_SUFFIXES = {".py", ".js", ".html", ".css", ".md", ".bat",
                    ".json", ".txt", ".svg", ".yml", ".yaml"}
 
 #: The map's own output. Writing the map changes these files, so mapping them
 #: would leave the map permanently stale against itself. The curated file is
 #: deliberately NOT excluded: it is an input, and editing it must show up as
 #: drift so `update` rebuilds the descriptions.
-EXCLUDED = {"docs/repo-map.json", "docs/repo-map.md"}
+EXCLUDED = {p.relative_to(ROOT).as_posix() for p in (MAP_PATH, MARKDOWN_PATH)}
 
 #: Directory → (node type, layer). First match wins; order matters.
 LAYERS: tuple[tuple[str, str, str], ...] = (
@@ -70,12 +77,9 @@ LAYERS: tuple[tuple[str, str, str], ...] = (
     ("tracker/", "module", "core"),
     ("tests/", "test", "tests"),
     ("tools/", "tool", "tooling"),
-    ("templates/", "template", "data"),
     ("docs/", "doc", "docs"),
     ("app/renderer/", "ui", "desktop-app"),
     ("app/", "module", "desktop-app"),
-    ("demo/standalone/", "demo", "demo"),
-    ("demo/", "demo", "demo"),
 )
 
 _REQUIRE = re.compile(r"""require\(\s*["']([^"']+)["']\s*\)""")
@@ -94,6 +98,7 @@ class Node:
     sha256: str = ""
     lines: int = 0
     exports: list[str] = field(default_factory=list)
+    constants: dict[str, str] = field(default_factory=dict)   # UPPER_CASE = literal, derived
     cli: str = ""
     role: str = ""            # curated
     notes: str = ""           # curated
@@ -109,6 +114,8 @@ class Node:
             out["cli"] = self.cli
         if self.exports:
             out["exports"] = self.exports
+        if self.constants:
+            out["constants"] = self.constants
         if self.role:
             out["role"] = self.role
         if self.notes:
@@ -176,9 +183,9 @@ def test_edge_kind(test_path: str, target: str) -> str:
     - ``tests``     — the test file that owns this module by name. This is
       coverage, and renders as "tested by".
     - ``exercises`` — any other test importing it. Real and worth knowing
-      (ten test files import manifest.py, so its schema is load-bearing
+      (many test files import manifest.py, so its schema is load-bearing
       across the suite) but it is not that module's coverage. A test
-      borrowing DEMO_ITEMS from tracker/api.py to build a fixture asserts
+      borrowing a fixture from tests/samples.py to build an engagement asserts
       nothing whatsoever about tracker/api.py.
     - ``imports``   — a test importing another *test* for a shared helper.
       Not coverage in any sense; a fixture builder being reused.
@@ -206,6 +213,20 @@ def _unambiguous_stems(paths: list[str]) -> dict[str, str]:
 
 def parse_python(text: str, path: str) -> tuple[list[str], list[tuple[str, str]], bool]:
     """Exported names, (module, kind) imports, and whether it has a CLI."""
+    exports, imports, has_cli, _ = parse_python_full(text, path)
+    return exports, imports, has_cli
+
+
+def parse_python_full(
+    text: str, path: str
+) -> tuple[list[str], list[tuple[str, str]], bool, dict[str, str]]:
+    """As parse_python, plus the module's literal constants.
+
+    A constant is a top-level ``UPPER_CASE = <literal>`` (strings, numbers,
+    booleans, tuples of those). They are rendered into the map so a doc can
+    cite ``MAX_PAGES`` and a reader can see its value without the source -
+    and so a value never has to be restated in prose to be findable.
+    """
     try:
         tree = ast.parse(text)
     except SyntaxError as exc:
@@ -230,6 +251,7 @@ def parse_python(text: str, path: str) -> tuple[list[str], list[tuple[str, str]]
                     and test.left.id == "__name__"):
                 has_cli = True
 
+    constants: dict[str, str] = {}
     for node in tree.body:  # top level only — nested defs are not the API
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             if not node.name.startswith("_"):
@@ -238,8 +260,23 @@ def parse_python(text: str, path: str) -> tuple[list[str], list[tuple[str, str]]
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id.isupper():
                     exports.append(target.id)
+                    literal = _literal_text(node.value)
+                    if literal is not None and not target.id.startswith("_"):
+                        constants[target.id] = literal
 
-    return exports, imports, has_cli
+    return exports, imports, has_cli, constants
+
+
+def _literal_text(value: ast.expr) -> str | None:
+    """A short rendering of a literal constant, or None if it is not one."""
+    if isinstance(value, ast.Constant):
+        return repr(value.value)
+    if isinstance(value, ast.Tuple) and all(isinstance(e, ast.Constant) for e in value.elts):
+        rendered = ", ".join(repr(e.value) for e in value.elts)
+        return f"({rendered},)" if len(value.elts) == 1 else f"({rendered})"
+    if isinstance(value, ast.JoinedStr):
+        return None
+    return None
 
 
 def parse_js(text: str) -> list[str]:
@@ -259,8 +296,9 @@ def derive_node(path: str, root: Path) -> tuple[Node, list[dict]]:
     if path.endswith(".py"):
         text = full.read_text(encoding="utf-8")
         node.lines = text.count("\n") + 1
-        exports, imports, has_cli = parse_python(text, path)
+        exports, imports, has_cli, constants = parse_python_full(text, path)
         node.exports = sorted(set(exports))
+        node.constants = constants
         if has_cli:
             node.cli = f"python -m {module_name(path)}" if "/" in path else f"python {path}"
 
@@ -375,7 +413,8 @@ def build(root: Path | None = None, previous: dict | None = None) -> dict:
             node = Node(
                 id=path, type=cached["type"], layer=cached["layer"],
                 sha256=digest, lines=cached.get("lines", 0),
-                exports=cached.get("exports", []), cli=cached.get("cli", ""),
+                exports=cached.get("exports", []), constants=cached.get("constants", {}),
+                cli=cached.get("cli", ""),
             )
             edges.extend(edges_by_source.get(path, []))
             reused += 1
@@ -423,7 +462,7 @@ def build(root: Path | None = None, previous: dict | None = None) -> dict:
     return {
         "schema": SCHEMA_VERSION,
         "generated": date.today().isoformat(),
-        "generator": "tools/repo_map.py",
+        "generator": f"{Path(__file__).resolve().parent.name}/{Path(__file__).name}",
         "generator_sha256": fingerprint,
         "pipeline": curated.get("pipeline", []),
         "counts": {"nodes": len(nodes), "edges": len(edges), "reused": reused},
@@ -462,6 +501,14 @@ def stale_files(graph: dict, root: Path | None = None) -> dict[str, list[str]]:
 # --------------------------------------------------------------- rendering ----
 
 
+def _curated_label() -> str:
+    """The curated file as the map names it: relative to the root when it is under it."""
+    try:
+        return CURATED_PATH.relative_to(ROOT).as_posix()
+    except ValueError:
+        return f"{CURATED_PATH.parent.name}/{CURATED_PATH.name}"
+
+
 def render_markdown(graph: dict) -> str:
     """The agent-facing rendering: what each part is, and what it talks to."""
     nodes = {n["id"]: n for n in graph["nodes"]}
@@ -475,12 +522,12 @@ def render_markdown(graph: dict) -> str:
         "# Repository map",
         "",
         "<!-- GENERATED by tools/repo_map.py — do not edit by hand. -->",
-        "<!-- Curated descriptions live in docs/repo-map.curated.json. -->",
+        f"<!-- Curated descriptions live in {_curated_label()}. -->",
         "",
         f"Generated {graph['generated']} · {graph['counts']['nodes']} nodes · "
         f"{graph['counts']['edges']} edges · schema v{graph['schema']}",
         "",
-        "**Read this instead of re-scanning the repository.** Check it is current "
+        f"**{MAP_INTRO}** Check it is current "
         "with `python tools/repo_map.py check`, and refresh it after changing code "
         "with `python tools/repo_map.py update` (incremental — only re-parses what "
         "changed).",
@@ -492,11 +539,10 @@ def render_markdown(graph: dict) -> str:
         lines += ["## The pipeline", "", "```", " → ".join(pipeline), "```", ""]
 
     lines += ["## Modules", ""]
-    for layer in ("core", "tooling", "ci", "desktop-app", "demo", "root"):
+    for layer in ("core", "tooling", "ci", "desktop-app", "root"):
         members = [n for n in graph["nodes"]
                    if n["layer"] == layer and n["type"] in ("module", "tool", "ui",
-                                                            "demo", "script",
-                                                            "workflow")]
+                                                            "script", "workflow")]
         if not members:
             continue
         lines += [f"### {layer}", ""]
@@ -505,6 +551,9 @@ def render_markdown(graph: dict) -> str:
             lines.append(f"- **`{node['id']}`**{' — ' + role if role else ''}")
             if node.get("cli"):
                 lines.append(f"  - CLI: `{node['cli']}`")
+            if node.get("constants"):
+                rendered = ", ".join(f"`{k}` = {v}" for k, v in node["constants"].items())
+                lines.append(f"  - constants: {rendered}")
             imports = sorted({e["to"] for e in out_edges.get(node["id"], [])
                               if e["type"] == "imports" and not e["to"].startswith("pkg:")})
             if imports:
@@ -516,13 +565,13 @@ def render_markdown(graph: dict) -> str:
             covered_by = sorted({e["from"] for e in in_edges.get(node["id"], [])
                                  if e["type"] == "tests"})
             if covered_by:
-                lines.append(f"  - tested by: {', '.join(f'`{c}`' for c in covered_by)}")
+                lines.append(f"  - {TESTED_BY}: {', '.join(f'`{c}`' for c in covered_by)}")
             elif node["type"] in ("module", "tool"):
-                lines.append("  - tested by: **no dedicated test file**")
+                lines.append(f"  - {TESTED_BY}: **{NO_TEST_FILE}**")
             exercised_by = sorted({e["from"] for e in in_edges.get(node["id"], [])
                                    if e["type"] == "exercises"})
             if exercised_by:
-                lines.append("  - exercised by (imported, not its coverage): "
+                lines.append(f"  - {EXERCISED_BY} (imported, not its coverage): "
                              + ", ".join(f"`{x}`" for x in exercised_by))
             writes = sorted({e["to"] for e in out_edges.get(node["id"], [])
                              if e["type"] == "writes"})
@@ -576,7 +625,7 @@ def render_markdown(graph: dict) -> str:
         "",
         "Derived facts (imports, exports, CLIs, tests, hashes) are parsed from the "
         "source — never hand-edit them. Descriptions, artifacts and cross-language "
-        "hops are curated in `docs/repo-map.curated.json`; edit that file and re-run "
+        f"hops are curated in `{_curated_label()}`; edit that file and re-run "
         "`update`.",
         "",
     ]

@@ -1,14 +1,14 @@
-"""Folder scaffolding for the Client Document Tracker (component 2, docs/ROADMAP.md).
+"""Folder scaffolding for the tracker (component 2, docs/ROADMAP.md).
 
-Reads an engagement's ``_manifest.xlsx`` and lays out both sides of one
+Reads an engagement's manifest (``MANIFEST_FILENAME``) and lays out both sides of one
 engagement:
 
-- **Client side** — ``Shared/``, a single folder the client drops everything
-  into, with ``Shared/PBC/`` holding the originals once
+- **Client side** — ``SHARED_DIR_NAME``, a single folder the client drops
+  everything into, with ``PBC_DIR_NAME`` inside it holding the originals once
   :mod:`tracker.filer` has sorted them, and an auto-generated
-  ``_README.txt`` telling the client they need not sort anything.
-- **Firm side** — ``Prepared/``, one ``{Identifier} - {Document}`` folder per
-  request row for the renamed working copies, plus ``00 - Needs Review``
+  ``README_NAME`` telling the client they need not sort anything.
+- **Firm side** — ``PREPARED_DIR_NAME``, one folder per request row (named by
+  ``folder_name_for``) for the renamed working copies, plus ``REVIEW_DIR_NAME``
   for anything the rules could not confidently identify.
 
 Guarantees:
@@ -22,8 +22,8 @@ Guarantees:
   the item's identifier followed by a non-alphanumeric boundary — the same
   prefix rule the scanner uses — so a client rename like
   ``A01 - bank stuff`` never causes a duplicate ``A01`` folder.
-- **Windows-safe names.** Illegal characters (``\\ / : * ? " < > |``) are
-  replaced, trailing dots/spaces stripped, and names length-capped.
+- **Windows-safe names.** Illegal characters (``manifest.WINDOWS_ILLEGAL_CHARS``)
+  are replaced, trailing dots/spaces stripped, and names length-capped.
 
 Waived items (Manual Override = Waived) get no new folder; their existing
 folders are left alone and they are dropped from the README.
@@ -36,11 +36,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from tracker.manifest import Override, RequestItem, load_engagement_info, load_manifest
+from tracker.reasons import GOOGLE_EXPORT_HINT
+from tracker.validators import google_stub_examples
+from tracker.manifest import (
+    ENGAGEMENT_SHEET_NAME,
+    label_for,
+    WINDOWS_ILLEGAL_CHARS,
+    Override,
+    RequestItem,
+    load_engagement_info,
+    load_manifest,
+)
 
 MANIFEST_FILENAME = "_manifest.xlsx"
 SHARED_DIR_NAME = "Shared"
 README_NAME = "_README.txt"
+#: Heads the client README's request list.
+README_HEADING = "WHAT WE STILL NEED"
 
 #: The client's untouched originals, inside the folder they can see.
 PBC_DIR_NAME = "PBC"
@@ -49,8 +61,8 @@ PREPARED_DIR_NAME = "Prepared"
 #: Where anything the rules could not confidently identify waits for a human.
 REVIEW_DIR_NAME = "00 - Needs Review"
 
-#: Characters Windows forbids in file/folder names, plus control chars.
-_ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+#: The one list of characters Windows forbids lives in tracker.manifest.
+_ILLEGAL_CHARS = WINDOWS_ILLEGAL_CHARS
 _MAX_FOLDER_NAME = 100
 
 
@@ -65,8 +77,8 @@ def sanitize_component(text: str) -> str:
 
 
 def folder_name_for(item: RequestItem) -> str:
-    """Canonical folder name for a request item: ``{Identifier} - {Document}``."""
-    name = f"{sanitize_component(item.identifier)} - {sanitize_component(item.document)}"
+    """Canonical folder name for a request item: identifier and document, joined."""
+    name = label_for(sanitize_component(item.identifier), sanitize_component(item.document))
     return name[:_MAX_FOLDER_NAME].rstrip(". ")
 
 
@@ -128,15 +140,19 @@ class ScaffoldResult:
     waived: list[str] = field(default_factory=list)         # skipped (Override=Waived)
     readme: Path | None = None
 
+    def describe(self) -> list[str]:
+        """The two lines every CLI prints about a laid-out engagement."""
+        return [f"Client drop folder: {self.shared_dir}", f"Prepared tree:      {self.prepared_dir}"]
+
 
 def scaffold_engagement(
     engagement_dir: Path | str,
     *,
     contact: str | None = None,
 ) -> ScaffoldResult:
-    """Create/refresh the ``Shared/`` tree for one engagement.
+    """Create/refresh the ``SHARED_DIR_NAME/`` tree for one engagement.
 
-    ``engagement_dir`` must contain ``_manifest.xlsx``. Raises
+    ``engagement_dir`` must contain ``MANIFEST_FILENAME``. Raises
     :class:`tracker.manifest.ManifestError` if it is missing or invalid —
     scaffolding never proceeds from a manifest it can't fully validate.
 
@@ -198,7 +214,7 @@ def _write_readme(
         "you don't need to sort anything or name anything. We sort it.",
         "",
         "1. Drag your documents anywhere in this folder.",
-        "2. Within a few minutes each file moves into the PBC folder.",
+        f"2. Each file moves into the {PBC_DIR_NAME} folder on the next scheduled pass.",
         "   That is us filing it - your file is safe, unchanged, and still",
         "   yours to look at. Nothing is ever renamed or deleted.",
         "3. Keep going until the list below is covered. Send them as you",
@@ -206,19 +222,17 @@ def _write_readme(
         "4. Original PDFs or Excel files are preferred; scans and photos",
         "   are fine as long as they are readable.",
         "5. If a document lives in Google Docs or Google Sheets, please",
-        "   download it first (File > Download > PDF or Excel) and upload",
-        "   that copy - Google shortcut files (.gdoc, .gsheet) can't be read.",
+        f"   download it first ({GOOGLE_EXPORT_HINT}) and upload",
+        f"   that copy - Google shortcut files ({google_stub_examples()}) can't be read.",
         "6. To replace something, just drop in the new copy.",
         "",
-        "WHAT WE STILL NEED",
+        README_HEADING,
         "-" * 45,
     ]
     for item in items:
-        entry = f"{item.identifier} - {item.document}"
-        if item.period:
-            entry += f"  ({item.period})"
-        if item.expected_count > 1:
-            entry += f"  [{item.expected_count} files expected]"
+        entry = item.label
+        if item.expected_text:
+            entry += f"  [{item.expected_text}]"
         lines.append(entry)
     lines.append("")
     if contact:
@@ -246,16 +260,16 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Lay out Shared/ (client drop folder) and Prepared/ from _manifest.xlsx"
+        description=f"Lay out {SHARED_DIR_NAME}/ (client drop folder) and {PREPARED_DIR_NAME}/ from {MANIFEST_FILENAME}"
     )
-    parser.add_argument("engagement_dir", help="folder containing _manifest.xlsx")
+    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
     parser.add_argument("--contact", default=None,
-                        help="contact line for _README.txt (default: the Engagement sheet's firm)")
+                        help=f"contact line for {README_NAME} (default: the {ENGAGEMENT_SHEET_NAME} sheet's firm)")
     ns = parser.parse_args()
 
     res = scaffold_engagement(ns.engagement_dir, contact=ns.contact)
-    print(f"Client drop folder: {res.shared_dir}")
-    print(f"Prepared tree:      {res.prepared_dir}")
+    for line in res.describe():
+        print(line)
     for folder in res.created:
         print(f"  + created  {folder.name}")
     for ident in res.existing:

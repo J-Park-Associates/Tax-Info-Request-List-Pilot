@@ -6,6 +6,7 @@ import pytest
 from openpyxl import Workbook
 from pypdf import PdfWriter
 
+from tracker import reasons
 from tracker.manifest import RequestItem
 from tracker.content_check import (
     ContentCache,
@@ -72,7 +73,7 @@ def test_required_keywords(tmp_path):
     assert check_content(pdf, item(required_keywords=("Chase",))).ok
     result = check_content(pdf, item(required_keywords=("Chase", "Wells Fargo")))
     assert not result.ok
-    assert "'Wells Fargo'" in result.reason and "wrong document" in result.reason
+    assert "'Wells Fargo'" in result.reason and reasons.WRONG_DOCUMENT.matches(result.reason)
 
 
 def test_keywords_case_insensitive(tmp_path):
@@ -91,7 +92,7 @@ def test_date_pattern(tmp_path):
     pdf = text_pdf(tmp_path / "s.pdf", "Statement period: December 2025")
     assert check_content(pdf, item(date_pattern=r"(?i)december\s+2025")).ok
     result = check_content(pdf, item(date_pattern=r"(?i)january\s+2026"))
-    assert not result.ok and "wrong period" in result.reason
+    assert not result.ok and reasons.WRONG_PERIOD.matches(result.reason)
 
 
 def test_evaluate_rules_lists_all_missing():
@@ -127,7 +128,7 @@ def test_unsupported_extension(tmp_path):
     f.write_bytes(b"binary")
     result = check_content(f, item(required_keywords=("x",)))
     assert not result.ok and not result.extractable
-    assert ".docx" in result.reason and "review manually" in result.reason
+    assert ".docx" in result.reason and reasons.UNCHECKABLE_TYPE.matches(result.reason)
 
 
 def test_image_only_pdf_without_ocr(tmp_path, monkeypatch):
@@ -140,7 +141,7 @@ def test_image_only_pdf_without_ocr(tmp_path, monkeypatch):
 
     result = check_content(scan, item(required_keywords=("Chase",)))
     assert not result.ok and not result.extractable
-    assert "OCR is not installed" in result.reason
+    assert reasons.NO_TEXT_LAYER.matches(result.reason)
 
 
 def test_ocr_text_used_when_available(tmp_path, monkeypatch):
@@ -252,7 +253,6 @@ def _many_page_pdf(path, texts):
 def test_only_the_first_pages_of_a_pdf_are_read(tmp_path):
     from tracker.content_check import MAX_PAGES, extract_text
 
-    assert MAX_PAGES == 10
     texts = [f"page {i + 1} filler" for i in range(15)]
     texts[2] = "Form W-2 early"
     texts[12] = "Form 1098 late"

@@ -1,4 +1,4 @@
-"""Tier 1-2 file validation for the Client Document Tracker (component 3).
+"""Tier 1-2 file validation for the tracker (component 3).
 
 Pure, read-only functions over local paths — no dependency on any one sync
 provider (OneDrive and Google Drive for desktop both work). Cloud awareness
@@ -8,8 +8,8 @@ validation proceeds normally, so the whole layer is fully testable with
 File Explorer and Excel alone.
 
 - Tier 1 (existence): :func:`iter_candidate_files` / :func:`check_folder` —
-  which real files does a request folder contain (junk like ``desktop.ini``,
-  ``Thumbs.db``, ``~$`` Office locks excluded)?
+  which real files does a request folder contain (junk like the names in ``_IGNORED_NAMES``,
+  ``OFFICE_LOCK_PREFIX`` locks excluded)?
 - Tier 2 (integrity): :func:`check_file` — extension whitelist, minimum
   size, and a ``pypdf`` open test for PDFs.
 
@@ -30,7 +30,8 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from tracker.manifest import RequestItem
+from tracker import reasons
+from tracker.manifest import TEMP_SUFFIX, RequestItem
 
 # pypdf logs its own warnings while parsing corrupt files; we already surface
 # every failure as a FileResult.reason, so keep the console clean.
@@ -38,8 +39,17 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 # Junk that never counts as a client document.
 _IGNORED_NAMES = {"desktop.ini", "thumbs.db", ".ds_store"}
-_IGNORED_PREFIXES = ("~$", ".tmp.drive")  # Office locks; Google Drive transfer temps
-_IGNORED_SUFFIXES = (".tmp", ".driveupload", ".drivedownload")
+#: Office lock files.
+OFFICE_LOCK_PREFIX = "~$"
+#: The one file type whose integrity (and text) can be checked in depth.
+PDF_EXTENSION = "pdf"
+#: Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
+#: folders (.tmp.driveupload / .tmp.drivedownload); anything under one is a
+#: partial transfer, not a delivered document, and the folder itself is
+#: the sync client's, never the client's.
+_SYNC_STAGING_PREFIX = ".tmp.drive"
+_IGNORED_PREFIXES = (OFFICE_LOCK_PREFIX, _SYNC_STAGING_PREFIX)
+_IGNORED_SUFFIXES = (TEMP_SUFFIX, ".driveupload", ".drivedownload")
 
 # Google-native documents sync down as tiny shortcut/stub files, not real
 # documents. Validating them is impossible locally, so tier 2 fails them with
@@ -99,6 +109,25 @@ class FolderResult:
 # ----------------------------------------------------------------- tier 1 ----
 
 
+
+
+
+def google_stub_examples(limit: int = 2) -> str:
+    """``.gdoc, .gsheet`` - the commonest stub types, for a sentence to a client."""
+    common = [ext for ext in ("gdoc", "gsheet", "gslides") if ext in _GOOGLE_STUB_EXTENSIONS]
+    return ", ".join(f".{ext}" for ext in common[:limit])
+
+
+def is_sync_staging(name: str) -> bool:
+    """True for a folder name the sync client uses for transfers in flight."""
+    return name.lower().startswith(_SYNC_STAGING_PREFIX)
+
+
+def extension_of(path: Path) -> str:
+    """The extension the rules see: lower-case, no dot (``"pdf"``)."""
+    return path.suffix.lower().lstrip(".")
+
+
 def is_ignored(path: Path) -> bool:
     """True for OS/Office/sync junk that never counts as a client document."""
     name = path.name.lower()
@@ -108,10 +137,7 @@ def is_ignored(path: Path) -> bool:
         or name.endswith(_IGNORED_SUFFIXES)
     ):
         return True
-    # Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
-    # directories (.tmp.driveupload / .tmp.drivedownload); anything under
-    # one is a partial transfer, not a delivered document.
-    return any(part.lower().startswith(".tmp.drive") for part in path.parts[:-1])
+    return any(is_sync_staging(part) for part in path.parts[:-1])
 
 
 def google_stub_reason(path: Path) -> str:
@@ -120,14 +146,10 @@ def google_stub_reason(path: Path) -> str:
     Empty string for anything else. Shared by tier-2 validation and the
     router so the client gets the same actionable sentence either way.
     """
-    extension = path.suffix.lower().lstrip(".")
+    extension = extension_of(path)
     if extension not in _GOOGLE_STUB_EXTENSIONS:
         return ""
-    return (
-        f".{extension} is a Google Docs shortcut, not the document itself; "
-        "ask the client to download it (File > Download > PDF or Excel) "
-        "and upload that copy"
-    )
+    return reasons.GOOGLE_STUB.format(extension=extension)
 
 
 def is_cloud_placeholder(path: Path) -> bool:
@@ -192,11 +214,11 @@ def _pdf_error_uncached(path: Path) -> str:
         reader = PdfReader(path)
         if reader.is_encrypted:
             if not reader.decrypt(""):
-                return "PDF is password-protected; please ask the client for an unlocked copy"
+                return reasons.PASSWORD_PROTECTED.format()
         if len(reader.pages) == 0:
-            return "PDF contains no pages"
+            return reasons.NO_PAGES.format()
     except Exception as exc:  # pypdf raises many types on corrupt input
-        return f"not a readable PDF ({exc.__class__.__name__}: {exc})"
+        return reasons.UNREADABLE_PDF.format(error=f"{exc.__class__.__name__}: {exc}")
     return ""
 
 
@@ -207,18 +229,19 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
             path=path,
             ok=False,
             pending_sync=True,
-            reason="cloud-only placeholder; waiting for OneDrive/Google Drive to sync",
+            reason=reasons.PENDING_SYNC.format(),
         )
 
-    extension = path.suffix.lower().lstrip(".")
+    extension = extension_of(path)
     if stub := google_stub_reason(path):
         return FileResult(path=path, ok=False, reason=stub)
     if item.allowed_extensions and extension not in item.allowed_extensions:
-        allowed = ", ".join(item.allowed_extensions)
         return FileResult(
             path=path,
             ok=False,
-            reason=f"extension .{extension} not allowed (expected: {allowed})",
+            reason=reasons.EXTENSION_NOT_ALLOWED.format(
+                extension=extension, allowed=", ".join(item.allowed_extensions)
+            ),
         )
 
     try:
@@ -231,19 +254,16 @@ def check_file(path: Path, item: RequestItem) -> FileResult:
             path=path,
             ok=False,
             pending_sync=True,
-            reason=f"file disappeared during the scan ({exc.__class__.__name__}); will re-check next run",
+            reason=reasons.VANISHED.format(error=exc.__class__.__name__),
         )
     if size < item.min_size_kb * 1024:
         return FileResult(
             path=path,
             ok=False,
-            reason=(
-                f"file is {size / 1024:.1f} KB, below the {item.min_size_kb} KB "
-                "minimum; possible placeholder or failed upload"
-            ),
+            reason=reasons.TOO_SMALL.format(size_kb=size / 1024, minimum=item.min_size_kb),
         )
 
-    if extension == "pdf":
+    if extension == PDF_EXTENSION:
         error = _pdf_error(path)
         if error:
             return FileResult(path=path, ok=False, reason=error)
@@ -287,13 +307,14 @@ if __name__ == "__main__":
         MANIFEST_FILENAME,
         README_NAME,
         PREPARED_DIR_NAME,
+        REVIEW_DIR_NAME,
         assign_folders,
     )
 
     parser = argparse.ArgumentParser(
         description="Dry-run validation preview (read-only; writes nothing)"
     )
-    parser.add_argument("engagement_dir", help="folder containing _manifest.xlsx")
+    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
     ns = parser.parse_args()
 
     engagement = Path(ns.engagement_dir)
@@ -310,7 +331,7 @@ if __name__ == "__main__":
         folders = assigned[item.identifier]
         print(f"[{item.identifier}] {item.document}")
         if not folders:
-            print("    ! no folder found (re-run scaffold?)\n")
+            print(f"    ! {reasons.NO_REQUEST_FOLDER.format()}\n")
             continue
         for folder in folders:
             result = check_folder(folder, item)
@@ -327,7 +348,7 @@ if __name__ == "__main__":
             n = len(result.valid)
             print(f"    => {n} valid file(s), expected {item.expected_count}\n")
 
-    # Anything loose in Prepared/ or in folders matching no identifier.
+    # Anything loose in PREPARED_DIR_NAME or in folders matching no identifier.
     claimed = {f for folders in assigned.values() for f in folders}
     if prepared.is_dir():
         loose = [
@@ -337,6 +358,6 @@ if __name__ == "__main__":
             or (p.is_dir() and p not in claimed)
         ]
         if loose:
-            print("Not matched to a request (see 00 - Needs Review):")
+            print(f"Not matched to a request (see {REVIEW_DIR_NAME}):")
             for name in loose:
                 print(f"    ? {name}")

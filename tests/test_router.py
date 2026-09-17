@@ -9,8 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from tracker import reasons
 from tracker.manifest import Override, RequestItem
-from tracker.router import AMBIGUOUS, UNMATCHED, route_file, route_files
+from tracker.router import AMBIGUOUS, CONTESTED_PREFIX, EVIDENCE_CONTENT, EVIDENCE_FILENAME, NO_REQUEST_ACCEPTS, UNMATCHED, route_file, route_files
+from tracker.scaffold import MANIFEST_FILENAME
 
 from tests.test_scanner import text_pdf
 
@@ -43,7 +45,7 @@ def test_content_match_routes(tmp_path):
     f = text_pdf(tmp_path / "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
     routing = route_file(f, ITEMS)
     assert routing.identifier == "A01"
-    assert routing.evidence == "content"
+    assert routing.evidence == EVIDENCE_CONTENT
     assert "content matched" in routing.reason
 
 
@@ -72,8 +74,8 @@ def test_wrong_year_is_not_routed(tmp_path):
     f = text_pdf(tmp_path / "old.pdf", "Form W-2 Wage and Tax Statement 2024")
     routing = route_file(f, [*ITEMS, prior_year])
     assert routing.identifier is None
-    assert "looks like A01" in routing.reason
-    assert "possible wrong period" in routing.reason
+    assert f"{CONTESTED_PREFIX} A01" in routing.reason
+    assert reasons.WRONG_PERIOD.matches(routing.reason)
 
 
 def test_filename_rescues_a_scan_with_no_text_layer(tmp_path):
@@ -82,7 +84,7 @@ def test_filename_rescues_a_scan_with_no_text_layer(tmp_path):
     text_pdf(f, "")  # valid PDF, no usable text
     routing = route_file(f, ITEMS, text=None)
     assert routing.identifier == "C01"
-    assert routing.evidence == "filename"
+    assert routing.evidence == EVIDENCE_FILENAME
 
 
 def test_filename_match_respects_word_boundaries(tmp_path):
@@ -179,8 +181,8 @@ def test_google_stub_review_reason_tells_the_client_what_to_do(tmp_path):
     f = tmp_path / "Donation Receipts 2025.gsheet"
     f.write_text('{"url": "https://docs.google.com/..."}', encoding="utf-8")
     reason = route_file(f, ITEMS).reason
-    assert "Google Docs shortcut" in reason
-    assert "File > Download" in reason
+    assert reasons.GOOGLE_STUB.matches(reason)
+    assert reasons.GOOGLE_EXPORT_HINT in reason
 
 
 # ------------------------------------------------------ honest review reasons ----
@@ -188,7 +190,7 @@ def test_google_stub_review_reason_tells_the_client_what_to_do(tmp_path):
 
 def test_a_matching_document_the_row_refuses_says_why(tmp_path):
     # The content says "W-2", but the row's size floor rejects the file. The
-    # review reason must carry the real cause, not "matched no request".
+    # review reason must carry the real cause, not UNMATCHED.
     strict = RequestItem(
         identifier="A01", document="W-2 Wage Statements", allowed_extensions=("pdf",),
         min_size_kb=50, required_keywords=("W-2",),
@@ -196,8 +198,8 @@ def test_a_matching_document_the_row_refuses_says_why(tmp_path):
     f = text_pdf(tmp_path / "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     routing = route_file(f, [strict])
     assert routing.identifier is None
-    assert "looks like A01" in routing.reason
-    assert "below the 50 KB minimum" in routing.reason
+    assert f"{CONTESTED_PREFIX} A01" in routing.reason
+    assert reasons.TOO_SMALL.matches(routing.reason) and "50 KB" in routing.reason
     assert routing.candidates == ("A01",)
 
 
@@ -206,7 +208,7 @@ def test_a_file_type_nobody_accepts_is_named_as_such(tmp_path):
     f.write_bytes(b"not a real docx " * 100)
     routing = route_file(f, ITEMS)
     assert routing.identifier is None
-    assert "no request accepts .docx files" in routing.reason
+    assert NO_REQUEST_ACCEPTS.format(extension="docx") in routing.reason
 
 
 def test_a_corrupt_pdf_is_a_review_reason_not_a_crash(tmp_path):
@@ -214,7 +216,7 @@ def test_a_corrupt_pdf_is_a_review_reason_not_a_crash(tmp_path):
     f.write_bytes(b"%PDF-1.4 garbage " * 40)
     routing = route_file(f, ITEMS)
     assert routing.identifier is None
-    assert "not a readable PDF" in routing.reason
+    assert reasons.UNREADABLE_PDF.matches(routing.reason)
 
 
 def test_filename_fallback_tolerates_the_run_together_spelling(tmp_path):
@@ -222,7 +224,7 @@ def test_filename_fallback_tolerates_the_run_together_spelling(tmp_path):
     f = text_pdf(tmp_path / "Smith W2 2025.pdf", "")
     routing = route_file(f, ITEMS)
     assert routing.identifier == "A01"
-    assert routing.evidence == "filename"
+    assert routing.evidence == EVIDENCE_FILENAME
     # ...but "W20" is still not "W-2".
     other = text_pdf(tmp_path / "Smith W20 form.pdf", "")
     assert route_file(other, ITEMS).identifier is None
@@ -235,7 +237,7 @@ def test_a_derived_year_never_routes_on_its_own_but_still_contests(tmp_path):
     # document just because the document mentions the year.
     from tracker.manifest import create_template, load_manifest
 
-    path = create_template(tmp_path / "_manifest.xlsx", [
+    path = create_template(tmp_path / MANIFEST_FILENAME, [
         RequestItem(identifier="C01", document="Mortgage Interest Statement", period="TY2025",
                     allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("1098",)),
         RequestItem(identifier="Z01", document="Anything from 2025", period="TY2025",
@@ -245,7 +247,7 @@ def test_a_derived_year_never_routes_on_its_own_but_still_contests(tmp_path):
     old = text_pdf(tmp_path / "old.pdf", "Form 1098 Mortgage Interest Statement 2024")
     routing = route_file(old, items)
     assert routing.identifier is None
-    assert "looks like C01" in routing.reason and "wrong period" in routing.reason
+    assert f"{CONTESTED_PREFIX} C01" in routing.reason and reasons.WRONG_PERIOD.matches(routing.reason)
 
     current = text_pdf(tmp_path / "new.pdf", "Form 1098 Mortgage Interest Statement 2025")
     assert route_file(current, items).identifier == "C01"

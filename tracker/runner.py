@@ -1,26 +1,26 @@
 """The unattended run across every engagement in the registry (component 10).
 
-One command does a full pass — file the drop folder, scan, and on Saturdays
+One command does a full pass — file the drop folder, scan, and on the draft day
 draft the week's chase email — for every engagement found under the firm's
 clients folder:
 
-    python -m tracker.runner "D:\\OneDrive\\Clients"
+    python -m tracker.runner <clients root>
 
 That is the whole scheduled task. There is nothing to register: a folder
-holding ``_manifest.xlsx`` is an engagement, and the manifest's Engagement
+holding ``MANIFEST_FILENAME`` is an engagement, and the manifest's Engagement
 sheet says who the client is and how they are chased. Creating an engagement
 in the desktop app is all it takes for the nightly run to pick it up.
 
-**Drafting is weekly, on Saturday.** A reminder that lands in the accountant's
-lap every night is noise that gets ignored; one a week, waiting on Saturday
-for a Monday send, is a thing someone actually reads. The filing and scanning
+**Drafting is weekly, on ``DRAFT_WEEKDAY``.** A reminder that lands in the accountant's
+lap every night is noise that gets ignored; one a week, waiting over the weekend
+for a start-of-week send, is a thing someone actually reads. The filing and scanning
 steps still run on whatever schedule the task is set to — only the drafting
 step looks at the day. ``--reminders always`` forces a draft on any day and
 ``--reminders never`` suppresses it, so the schedule is a default, not a cage.
 
-**Nothing is ever sent.** The Saturday step writes ``reminder-draft.txt`` into
+**Nothing is ever sent.** The draft step writes ``DRAFT_FILENAME`` into
 the engagement folder and stops there. A person opens it, edits it and sends
-it. An engagement whose Engagement sheet says ``Reminders: no`` is left out of
+it. An engagement whose Engagement sheet says ``Reminders`` set to ``NO`` is left out of
 the automated draft entirely — that is a standing decision about that client,
 and neither the schedule nor ``--reminders always`` overrides it. Drafting one by hand for
 anybody, any time, is still just:
@@ -29,7 +29,7 @@ anybody, any time, is still just:
 
 **A draft you have edited is never overwritten.** The weekly run recognizes
 its own unedited output by the fingerprint in the header; anything else it
-leaves alone and writes ``reminder-draft.NEW.txt`` beside it instead.
+leaves alone and writes ``NEW_DRAFT_FILENAME`` beside it instead.
 
 One engagement's failure never stops the others. An unreadable manifest, a
 scan already running, a drop that would not sort — each is recorded against
@@ -47,9 +47,22 @@ from pathlib import Path
 from typing import Sequence
 
 from tracker.filer import file_drops
-from tracker.manifest import ManifestError, check_manifest
+from tracker.manifest import (
+    ISO_DATE_HINT,
+    ENGAGEMENT_LABELS,
+    ENGAGEMENT_SHEET_NAME,
+    NO,
+    ManifestError,
+    check_manifest,
+)
 from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
-from tracker.registry import Engagement, Registry, RegistryError, discover_engagements
+from tracker.registry import (
+    SKIP_ROLLED_FORWARD,
+    Engagement,
+    Registry,
+    RegistryError,
+    discover_engagements,
+)
 from tracker.reminder import (
     DRAFT_FILENAME,
     NEW_DRAFT_FILENAME,
@@ -59,11 +72,13 @@ from tracker.reminder import (
 )
 from tracker.scanner import ScanLockedError, scan_engagement
 
-#: Saturday. ``dt.date.weekday()`` counts from Monday=0.
+#: ``dt.date.weekday()`` counts from the start of the week as 0.
 DRAFT_WEEKDAY = 5
 
 WEEKDAY_NAMES = ("monday", "tuesday", "wednesday", "thursday",
                  "friday", "saturday", "sunday")
+#: The draft day as a word, for help text and the app.
+DRAFT_DAY_NAME = WEEKDAY_NAMES[DRAFT_WEEKDAY]
 
 #: When the run drafts reminders.
 REMINDERS_AUTO = "auto"      # only on DRAFT_WEEKDAY — the scheduled default
@@ -71,7 +86,15 @@ REMINDERS_ALWAYS = "always"  # draft today, whatever day it is
 REMINDERS_NEVER = "never"    # file and scan only
 REMINDER_MODES = (REMINDERS_AUTO, REMINDERS_ALWAYS, REMINDERS_NEVER)
 
+#: The run log, written into the clients root (the folder the job is given)
+#: so the firm finds it beside the engagements it describes.
 LOG_FILENAME = "runs.log"
+#: The runner's own flags, named once so the scheduler builds a command
+#: line the parser below still accepts.
+LOG_FLAG = "--log"
+DATE_FLAG = "--date"
+#: What the run says about an engagement it drafted nothing for.
+NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
 
 
 @dataclass(slots=True)
@@ -84,8 +107,8 @@ class EngagementRun:
     waiting: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
-    index_deferred: bool = False     # _index.xlsx was locked; rows in the sidecar
-    manifest_deferred: bool = False  # _manifest.xlsx was locked; statuses in the sidecar
+    index_deferred: bool = False     # the index was locked; rows in the sidecar
+    manifest_deferred: bool = False  # the manifest was locked; statuses in the sidecar
     statuses: dict[str, int] = field(default_factory=dict)
     outstanding_count: int = 0       # from tracker.manifest.summarize, the one count
     drafted: Path | None = None
@@ -153,7 +176,7 @@ class RunReport:
 
 
 def is_draft_day(today: dt.date, weekday: int = DRAFT_WEEKDAY) -> bool:
-    """True on the day of the week reminders are drafted (Saturday)."""
+    """True on the day of the week reminders are drafted (``DRAFT_WEEKDAY``)."""
     return today.weekday() == weekday
 
 
@@ -165,7 +188,7 @@ def should_draft(
 ) -> bool:
     """Whether the automated run drafts a reminder for this engagement today.
 
-    ``Reminders: no`` on the manifest's Engagement sheet wins over every
+    ``Reminders`` set to ``NO`` on the manifest's Engagement sheet wins over every
     mode. It is a standing decision that this client is not chased by email,
     and a command line flag is not the place to reverse it —
     ``python -m tracker.reminder`` still drafts one on demand for anybody.
@@ -188,7 +211,7 @@ def run_engagement(
     reminders: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
 ) -> EngagementRun:
-    """File, scan and (on Saturday) draft for one engagement.
+    """File, scan and (on the draft day) draft for one engagement.
 
     Never raises for an engagement-level problem: anything that goes wrong is
     recorded on the returned :class:`EngagementRun` so the caller can keep
@@ -198,10 +221,10 @@ def run_engagement(
     run = EngagementRun(engagement=engagement)
 
     if engagement.superseded_by:
-        run.skipped = f"rolled forward into {engagement.superseded_by}"
+        run.skipped = SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)
         return run
     if not engagement.active:
-        run.skipped = "inactive (Engagement sheet says Active: no)"
+        run.skipped = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
         return run
     if not engagement.path.is_dir():
         run.error = f"folder not found: {engagement.path}"
@@ -250,13 +273,13 @@ def run_engagement(
         if dry_run:
             run.draft_note = (
                 f"would draft {run.outstanding} item(s)" if run.outstanding
-                else "nothing outstanding; no reminder needed"
+                else NOTHING_OUTSTANDING
             )
             return run
 
         draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
         if not draft.has_outstanding:
-            run.draft_note = "nothing outstanding; no reminder needed"
+            run.draft_note = NOTHING_OUTSTANDING
             return run
 
         written = write_draft(draft, engagement_dir=engagement.path,
@@ -375,7 +398,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="File, scan and (on Saturdays) draft reminders for every "
+        description=f"File, scan and (on {DRAFT_DAY_NAME}s) draft reminders for every "
                     "engagement found under the clients folder. Never sends anything."
     )
     parser.add_argument("root", help="the folder the firm keeps its clients in")
@@ -384,13 +407,13 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true",
                         help="decide everything, write and move nothing")
     parser.add_argument("--reminders", choices=REMINDER_MODES, default=REMINDERS_AUTO,
-                        help="auto: Saturdays only (default); always: today too; "
+                        help=f"auto: {DRAFT_DAY_NAME}s only (default); always: today too; "
                              "never: file and scan only")
     parser.add_argument("--weekday", default="", choices=("",) + WEEKDAY_NAMES,
-                        help="draft on this day instead of Saturday")
-    parser.add_argument("--date", default="",
-                        help="pretend today is this YYYY-MM-DD (for testing a schedule)")
-    parser.add_argument("--log", nargs="?", const=LOG_FILENAME, default="",
+                        help=f"draft on this day instead of {DRAFT_DAY_NAME}")
+    parser.add_argument(DATE_FLAG, default="",
+                        help=f"pretend today is this {ISO_DATE_HINT} (for testing a schedule)")
+    parser.add_argument(LOG_FLAG, nargs="?", const=LOG_FILENAME, default="",
                         help=f"append the run summary to a log (default: {LOG_FILENAME})")
     ns = parser.parse_args()
 
@@ -404,7 +427,7 @@ if __name__ == "__main__":
         try:
             when = dt.date.fromisoformat(ns.date)
         except ValueError:
-            parser.error(f"--date must be YYYY-MM-DD, got {ns.date!r}")
+            parser.error(f"{DATE_FLAG} must be {ISO_DATE_HINT}, got {ns.date!r}")
 
     day = WEEKDAY_NAMES.index(ns.weekday) if ns.weekday else DRAFT_WEEKDAY
 

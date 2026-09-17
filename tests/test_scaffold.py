@@ -2,8 +2,9 @@
 
 import pytest
 
-from tracker.manifest import ManifestError, Override, RequestItem, create_template
+from tracker.manifest import EXPECTED_PATTERN, ManifestError, Override, RequestItem, create_template
 from tracker.scaffold import (
+    README_HEADING,
     MANIFEST_FILENAME,
     README_NAME,
     PBC_DIR_NAME,
@@ -106,7 +107,7 @@ def test_creates_folders_and_readme(engagement):
 
     readme = (shared / README_NAME).read_text(encoding="utf-8")
     assert "A01 - Dec 2025 Bank Statement" in readme
-    assert "[12 files expected]" in readme
+    assert f"[{EXPECTED_PATTERN.format(n=12)}]" in readme
     assert "C01" not in readme                    # waived items dropped
     assert "J Park & Associates" in readme
     assert "Google Docs" in readme                # export-first guidance
@@ -166,7 +167,7 @@ def test_readme_refreshed_on_rerun(engagement):
     readme.write_text("client scribbled over this", encoding="utf-8")
 
     scaffold_engagement(engagement)
-    assert "WHAT WE STILL NEED" in readme.read_text(encoding="utf-8")
+    assert README_HEADING in readme.read_text(encoding="utf-8")
 
 
 def test_missing_manifest_raises(tmp_path):

@@ -6,8 +6,7 @@ let engagements = [];      // [{name, path}]
 let active = null;         // path of the active engagement
 let forms = [];            // tax form catalog [{id, label, who, blurb}]
 let templatesByForm = {};  // form id -> tailored request template items
-let yearsByForm = {};      // form id -> tax year a new engagement is for (from the calendar)
-let defaultYear = null;    // the same, whatever the form
+let defaultYear = null;    // the tax year a new engagement is for (from the calendar)
 let nameIsAuto = true;     // new-client name follows client + year + form until typed
 let selectedForm = null;   // form id chosen on the wizard's first page
 let templates = [];        // template items for the chosen form
@@ -17,20 +16,30 @@ let selectedPrior = null;  // path of the prior engagement chosen on page 0
 
 const $ = (id) => document.getElementById(id);
 
-const CHIP_CLASS = {
-  "Received": "chip-received",
-  "Partial": "chip-partial",
-  "Failed Validation": "chip-failed",
-  "Missing": "chip-missing",
-  "Pending Sync": "chip-pending",
-};
+// Every word the app compares or shows comes from the API's vocabulary
+// (tracker.api._vocab): statuses, overrides, decisions, defaults, patterns.
+// Nothing here is typed twice; the CSS classes are derived from the keys.
+let vocab = null;
+
+function statusKey(status) {
+  const entry = vocab.statuses.find((s) => s.value === status);
+  return entry ? entry.key : vocab.unscanned_key;
+}
 
 function chip(status, override) {
-  if (override === "Waived") return `<span class="chip chip-requested">Waived</span>`;
-  const label = status || "Requested";
-  const cls = CHIP_CLASS[status] || "chip-requested";
-  return `<span class="chip ${cls}">${label}</span>`;
+  if (override === vocab.overrides.waived) {
+    return `<span class="chip chip-${vocab.unscanned_key}">${esc(vocab.overrides.waived)}</span>`;
+  }
+  const label = status || vocab.unscanned_label;
+  return `<span class="chip chip-${statusKey(status)}">${esc(label)}</span>`;
 }
+
+function fill(pattern, values) {
+  return pattern.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+}
+
+// The one button label the app owns; the docs that name it are pinned to it.
+const SCAN_LABEL = "Sort & Scan";
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"]/g, (c) =>
@@ -52,7 +61,7 @@ async function call(args, payload) {
   return result;
 }
 
-const withEng = (cmd) => (active ? [cmd, "--engagement", active] : [cmd]);
+const withEng = (cmd) => (active ? [cmd, vocab.engagement_flag, active] : [cmd]);
 
 // ── rendering ───────────────────────────────────────────────────────────
 
@@ -61,7 +70,7 @@ function ruleTooltip(item) {
   if (item.allowed_extensions.length) rules.push(`Types: ${item.allowed_extensions.join(", ")}`);
   if (item.required_keywords.length) rules.push(`Must contain: ${item.required_keywords.join(", ")}`);
   if (item.any_keywords.length) rules.push(`Any of: ${item.any_keywords.join(", ")}`);
-  if (item.expected_count > 1) rules.push(`${item.expected_count} files expected`);
+  if (item.expected_count > 1) rules.push(fill(vocab.expected_pattern, { n: item.expected_count }));
   return rules.join("  ·  ") || "No content rules";
 }
 
@@ -96,17 +105,17 @@ function render(state) {
 // ── Needs review: a person's decision, carried out by the filer ──────────
 
 function renderReview(state) {
-  const parked = (state.index || []).filter((e) => e.decision === "Needs Review");
+  const parked = (state.index || []).filter((e) => e.decision === vocab.decisions.needs_review);
   $("review-card").classList.toggle("hidden", parked.length === 0);
   const options = state.items
-    .filter((i) => i.manual_override !== "Waived")
+    .filter((i) => i.manual_override !== vocab.overrides.waived)
     .map((i) => `<option value="${esc(i.identifier)}">${esc(i.identifier)} — ${esc(i.document)}</option>`)
     .join("");
   const ids = new Set(state.items.map((i) => i.identifier));
   $("review-list").innerHTML = parked.map((e) => {
-    // "looks like A01 (...)" is the router's own reading; a person still
-    // confirms, but the picker starts on that row instead of on nothing.
-    const guess = (String(e.reason).match(/looks like ([A-Za-z0-9._-]+)/) || [])[1];
+    // The router's own candidates travel as data in the index; a person
+    // still confirms, but the picker starts on the first one.
+    const guess = (e.candidates || [])[0] || "";
     const picked = guess && ids.has(guess) ? guess : "";
     return `
     <li data-original="${esc(e.pbc_location)}">
@@ -177,7 +186,7 @@ function renderLock(state) {
     $("btn-unlock").classList.remove("hidden");
   } else {
     $("lock-text").textContent =
-      `A run${since} is still going (${lock.age_minutes} min). Sort & Scan will wait for it; a lock older than an hour can be cleared here.`;
+      `A run${since} is still going (${lock.age_minutes} min). ${SCAN_LABEL} will wait for it; a lock older than ${lock.stale_after_minutes} minutes can be cleared here.`;
     notice.className = "banner ok";
     $("btn-unlock").classList.add("hidden");
   }
@@ -189,7 +198,7 @@ async function clearLock() {
   try {
     const result = await call(withEng("unlock"));
     render(result.state);
-    banner(`Stale lock cleared (${result.age_minutes} min old). Run Sort & Scan when ready.`, "ok");
+    banner(`Stale lock cleared (${result.age_minutes} min old). Run ${SCAN_LABEL} when ready.`, "ok");
   } catch (err) {
     toast(err.message);
   } finally {
@@ -218,15 +227,44 @@ async function checkManifest() {
 
 // ── data flows ──────────────────────────────────────────────────────────
 
+// Everything static on the page that names a Python-owned fact is filled
+// here, once, from the vocabulary: the product, the rules, the folder the
+// originals go to, the year bounds, the example root, the button label.
+function applyVocabulary() {
+  document.title = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;
+  $("brand-product").textContent = vocab.product;
+  $("scan-label").textContent = SCAN_LABEL;
+  $("root-input").placeholder = `e.g. ${vocab.example_root}`;
+  $("ro-include-note").textContent =
+    `Also add checklist rows this client has never had (otherwise they are listed as offers on the ${vocab.carried_sheet} sheet)`;
+  for (const id of ["ro-year", "ne-year"]) {
+    $(id).min = vocab.year_min;
+    $(id).max = vocab.year_max;
+    $(id).title = vocab.year_note;
+  }
+  $("ro-client").placeholder = vocab.origin_prior;
+  $("cu-ext").title = vocab.extension_default_note;
+  $("cu-kw").title = `A word the document itself contains, e.g. 'Schedule E'. Keyword ${vocab.keyword_default_note}; shorten it to something the file really says.`;
+  const cards = document.querySelectorAll("#assurances .assure div");
+  vocab.rules.forEach((rule, i) => {
+    if (!cards[i]) return;
+    cards[i].querySelector("strong").textContent = rule.headline;
+    cards[i].querySelector("span").textContent = rule.detail;
+  });
+}
+
 let clientsRoot = "";      // the one folder every engagement sits under
 
 async function loadEngagements(preferPath) {
   const listed = await call(["list"]);
+  vocab = listed.vocab;
+  applyVocabulary();
   engagements = listed.engagements;
   clientsRoot = listed.root || "";
   $("setup-card").classList.toggle("hidden", !listed.needs_root);
   if (listed.needs_root) {
     $("root-input").value = clientsRoot;
+    $("firm-input").value = vocab.firm || "";
     $("setup-note").textContent = clientsRoot
       ? `${clientsRoot} is not a folder any more. Point the app at the right one.`
       : "The scheduled job walks this same folder, so this is the only place it is set.";
@@ -245,7 +283,7 @@ async function refresh(preferPath) {
   try {
     if (!(await loadEngagements(preferPath))) {
       if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
-      banner(`No engagements under ${clientsRoot} yet — click New Engagement to create the first.`, "ok");
+      banner(`No engagements under ${clientsRoot} yet — click ${$("btn-new").textContent.trim()} to create the first.`, "ok");
       $("rows").innerHTML = "";
       return;
     }
@@ -259,7 +297,10 @@ async function saveRoot() {
   const btn = $("btn-save-root");
   btn.disabled = true;
   try {
-    const result = await call(["set-root"], { root: $("root-input").value.trim() });
+    const result = await call(["set-root"], {
+      root: $("root-input").value.trim(),
+      firm: $("firm-input").value.trim(),
+    });
     banner(`Clients folder set to ${result.root} (written to ${result.settings_path}).`, "ok");
     await refresh();
   } catch (err) {
@@ -270,13 +311,14 @@ async function saveRoot() {
 }
 
 async function installSchedule() {
-  if (!confirm("Register the daily job with Task Scheduler for this clients folder?\n\nIt files, scans and (on Saturdays) drafts reminders. Nothing is ever sent.")) return;
+  const sched = vocab.schedule;
+  if (!confirm(`Register the daily job with Task Scheduler for this clients folder?\n\nIt files, scans and (on ${sched.draft_day}s) drafts reminders. Nothing is ever sent.`)) return;
   const btn = $("btn-schedule");
   btn.disabled = true;
   try {
-    const result = await call(["install-schedule"], { start: "07:00", every: 120 });
+    const result = await call(["install-schedule"], {});
     if (result.installed) {
-      banner(`Scheduled: every day from 07:00, repeating every 2 hours, over ${result.root}. Re-run this to change it.`, "ok");
+      banner(`Scheduled: every day from ${result.start}, repeating every ${result.every} minutes, over ${result.root}. Re-run this to change it.`, "ok");
     } else {
       banner(`Not Windows here. On the scheduling machine run:  ${result.command.join(" ")}`, "warn");
     }
@@ -321,7 +363,7 @@ async function runScan() {
   } finally {
     btn.disabled = false;
     btn.classList.remove("spinning");
-    $("scan-label").textContent = "Sort & Scan";
+    $("scan-label").textContent = SCAN_LABEL;
   }
 }
 
@@ -335,7 +377,6 @@ async function openWizard() {
       const result = await call(["templates"]);
       forms = result.forms;
       templatesByForm = result.templates;
-      yearsByForm = result.years || {};
       defaultYear = result.default_year || null;
     }
     priors = (await call(["priors"])).priors;
@@ -363,7 +404,7 @@ function showStep(step) {
 function priorMeta(p) {
   const bits = [];
   if (p.superseded_by) bits.push(`already rolled forward into ${p.superseded_by}`);
-  if (p.year) bits.push(`TY${p.year}`);
+  if (p.year) bits.push(fill(vocab.period_pattern, { year: p.year }));
   bits.push(`${p.requests} request${p.requests === 1 ? "" : "s"}`);
   if (p.requests) bits.push(`${p.received} received`);
   return bits.join(" · ");
@@ -388,14 +429,14 @@ function renderPriorPage() {
 
 function syncPriorDefaults() {
   const prior = priors.find((p) => p.path === selectedPrior);
-  const year = prior && prior.year ? prior.year + 1 : "";
+  const year = prior && prior.next_year ? prior.next_year : "";
   $("ro-year").value = year;
   $("ro-name").value = "";
   $("ro-client").value = prior ? prior.client || "" : "";
   $("ro-link").value = "";
   $("ro-due").value = "";
   $("ro-name").placeholder = prior
-    ? `${prior.name} - ${year || "next year"}`
+    ? fill(vocab.rollover_name_pattern, { prior: prior.name, year: year || vocab.unknown_year_label })
     : "defaults to last year's name and the new year";
 }
 
@@ -421,8 +462,8 @@ async function rollForward() {
     await refresh(result.state.paths.engagement);
     const r = result.rollover;
     const parts = [`${r.carried.length} request(s) carried from ${r.prior}`];
-    if (r.offered.length) parts.push(`${r.offered.length} template row(s) offered but not added — see the Carried Forward sheet`);
-    if (r.unfiled_last_year.length) parts.push(`${r.unfiled_last_year.length} file(s) sent last year were never filed — check the Carried Forward sheet`);
+    if (r.offered.length) parts.push(`${r.offered.length} template row(s) offered but not added — see the ${r.carried_sheet} sheet`);
+    if (r.unfiled_last_year.length) parts.push(`${r.unfiled_last_year.length} file(s) sent last year were never filed — check the ${r.carried_sheet} sheet`);
     banner(`Engagement "${result.created}" rolled forward: ${parts.join("; ")}.`, "ok");
   } catch (err) {
     toast(err.message);
@@ -451,8 +492,10 @@ function chooseForm(formId) {
   $("tmpl-head-label").textContent = `${form.label} request list — tick what applies`;
   $("ne-name").value = "";
   nameIsAuto = true;
-  $("ne-year").value = yearsByForm[formId] || defaultYear || "";
-  $("ne-name").placeholder = `e.g. Smith Family TY${$("ne-year").value} ${form.label}`;
+  $("cu-ext").placeholder = vocab.default_extensions;
+  $("cu-kw").placeholder = vocab.keyword_default_note;
+  $("ne-year").value = defaultYear || "";
+  $("ne-name").placeholder = fill(vocab.name_pattern, { client: vocab.new_client_placeholder, year: $("ne-year").value, form: form.label });
   $("ne-client").value = "";
   $("ne-link").value = "";
   $("ne-due").value = "";
@@ -468,9 +511,9 @@ function syncNameDefault() {
   if (!nameIsAuto) return;
   const client = $("ne-client").value.trim();
   const form = forms.find((f) => f.id === selectedForm);
-  const year = Number($("ne-year").value) || yearsByForm[selectedForm];
+  const year = Number($("ne-year").value) || defaultYear;
   $("ne-name").value = client
-    ? [client, year ? `TY${year}` : "", form ? form.label : ""].filter(Boolean).join(" ")
+    ? fill(vocab.name_pattern, { client, year, form: form ? form.label : "" }).replace(/\s+/g, " ").trim()
     : "";
 }
 
@@ -479,7 +522,7 @@ function templateSummary(t) {
   if (t.extensions) bits.push(t.extensions);
   if (t.required_keywords) bits.push(`must contain "${t.required_keywords}"`);
   if (t.any_keywords) bits.push(`any of: ${t.any_keywords}`);
-  if (t.expected_count > 1) bits.push(`${t.expected_count} files`);
+  if (t.expected_count > 1) bits.push(fill(vocab.expected_pattern, { n: t.expected_count }));
   return bits.join(" · ");
 }
 
@@ -498,18 +541,16 @@ function renderCustomList() {
   $("cu-list").innerHTML = customItems.map((c, i) => `
     <li>
       <span class="tmpl-id">${esc(c.identifier)}</span>
-      <span>${esc(c.document)} <span class="tmpl-rules">${esc(c.extensions)}${c.required_keywords ? ` · must contain "${esc(c.required_keywords)}"` : ""}</span></span>
+      <span>${esc(c.document)} <span class="tmpl-rules">${esc(c.extensions || vocab.extension_default_note)} · ${c.required_keywords ? `must contain "${esc(c.required_keywords)}"` : `keyword ${esc(vocab.keyword_default_note)}`}</span></span>
       <button class="cu-remove" data-index="${i}" aria-label="Remove ${esc(c.document)}">✕</button>
     </li>`).join("");
 }
 
-// The keyword field follows the document name until the user types their
-// own. A request with no keyword can never auto-file, so the default is
-// visible here and again in the manifest, never silent.
-let keywordIsAuto = true;
-
-function syncKeywordDefault() {
-  if (keywordIsAuto) $("cu-kw").value = $("cu-doc").value.trim();
+// Blank fields are sent blank: the catalog's item_from_spec() fills the
+// file types and the keyword (the document name) by the one rule, and the
+// manifest shows the result. The placeholders say what that rule does.
+function customIdentifier(position) {
+  return `X${String(position).padStart(2, "0")}`;
 }
 
 function addCustomItem() {
@@ -519,14 +560,13 @@ function addCustomItem() {
     return;
   }
   customItems.push({
-    identifier: `X${String(customItems.length + 1).padStart(2, "0")}`,
+    identifier: customIdentifier(customItems.length + 1),
     document: doc,
-    extensions: $("cu-ext").value.trim() || "pdf",
-    required_keywords: $("cu-kw").value.trim() || doc,
+    extensions: $("cu-ext").value.trim(),
+    required_keywords: $("cu-kw").value.trim(),
   });
   $("cu-doc").value = "";
   $("cu-kw").value = "";
-  keywordIsAuto = true;
   renderCustomList();
 }
 
@@ -596,7 +636,7 @@ $("btn-schedule").addEventListener("click", installSchedule);
 $("btn-save-root").addEventListener("click", saveRoot);
 $("root-input").addEventListener("keydown", (e) => e.key === "Enter" && saveRoot());
 $("btn-browse").addEventListener("click", async () => {
-  const picked = await window.tracker.pickFolder();
+  const picked = await window.tracker.pickFolder($("setup-title").textContent);
   if (picked) $("root-input").value = picked;
 });
 $("btn-unlock").addEventListener("click", clearLock);
@@ -607,10 +647,8 @@ $("ne-name").addEventListener("input", () => {
   syncNameDefault();
 });
 $("cu-add").addEventListener("click", addCustomItem);
-$("cu-doc").addEventListener("input", syncKeywordDefault);
-$("cu-kw").addEventListener("input", () => {
-  keywordIsAuto = $("cu-kw").value.trim() === "";
-  syncKeywordDefault();
+$("cu-doc").addEventListener("input", () => {
+  $("cu-kw").placeholder = $("cu-doc").value.trim() || vocab.keyword_default_note;
 });
 $("cu-doc").addEventListener("keydown", (e) => e.key === "Enter" && addCustomItem());
 $("ne-create").addEventListener("click", createEngagement);
@@ -626,7 +664,7 @@ $("cu-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".cu-remove");
   if (btn) {
     customItems.splice(Number(btn.dataset.index), 1);
-    customItems.forEach((c, i) => (c.identifier = `X${String(i + 1).padStart(2, "0")}`));
+    customItems.forEach((c, i) => (c.identifier = customIdentifier(i + 1)));
     renderCustomList();
   }
 });

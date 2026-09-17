@@ -35,9 +35,9 @@ Two things deliberately do *not* route a file:
 
 When a file is not routed, the reason says why in the most useful terms
 available: a document whose content fits a request but which that request
-refused (too small, wrong type, unreadable) is reported as *looks like A01
-(file is 3.1 KB, below the 5 KB minimum)*, and a file every request refused
-for the same reason carries that reason — "matched no request" alone is the
+refused (too small, wrong type, unreadable) is reported as ``CONTESTED_PREFIX``
+plus the request and its refusal, and a file every request refused
+for the same reason carries that reason — ``UNMATCHED`` alone is the
 last resort, not the default.
 
 Routing is read-only. Moving, renaming and indexing happen in
@@ -50,10 +50,12 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from tracker import reasons
 from tracker.content_check import contains_keyword, evaluate_rules, extract_text
 from tracker.manifest import Override, RequestItem, has_routing_rules
 from tracker.validators import (
     check_file,
+    extension_of,
     google_stub_reason,
     is_cloud_placeholder,
     is_ignored,
@@ -62,7 +64,12 @@ from tracker.validators import (
 #: Why a file was not routed. Stored verbatim in the index's Reason column.
 UNMATCHED = "matched no request"
 AMBIGUOUS = "matched more than one request"
-PENDING = "cloud-only placeholder; waiting for OneDrive/Google Drive to sync"
+#: What a routing decision rested on.
+EVIDENCE_CONTENT = "content"
+EVIDENCE_FILENAME = "filename"
+PENDING = reasons.PENDING_SYNC.format()
+#: Every request refused the file type: said once, checked by tests by name.
+NO_REQUEST_ACCEPTS = "no request accepts .{extension} files"
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 
@@ -75,7 +82,7 @@ class Routing:
     identifier: str | None          # None → needs human review
     reason: str                     # plain English, safe to show a client
     candidates: tuple[str, ...] = ()  # identifiers that accepted the file
-    evidence: str = ""              # "content" | "filename" | ""
+    evidence: str = ""              # EVIDENCE_CONTENT | EVIDENCE_FILENAME | ""
     pending: bool = False           # still syncing; leave it where it is
 
     @property
@@ -125,6 +132,23 @@ def _considers(item: RequestItem) -> bool:
     return item.manual_override != Override.WAIVED and has_routing_rules(item)
 
 
+#: How a contested file's reason starts. The candidates travel as data
+#: (Routing.candidates, then the index's Candidates column); nothing parses
+#: this sentence to get them back.
+CONTESTED_PREFIX = "looks like"
+
+
+def _contested(path: Path, near: list[tuple[str, str]]) -> Routing:
+    listed = "; ".join(f"{ident} ({why})" for ident, why in near)
+    return Routing(
+        path=path,
+        identifier=None,
+        reason=f"{CONTESTED_PREFIX} {listed} - a person should confirm",
+        candidates=tuple(ident for ident, _ in near),
+        evidence=EVIDENCE_CONTENT,
+    )
+
+
 def route_file(
     path: Path, items: list[RequestItem], *, text: str | None = None
 ) -> Routing:
@@ -137,7 +161,7 @@ def route_file(
         return Routing(path=path, identifier=None, reason=PENDING, pending=True)
 
     # A Google-native stub can never be filed, and the client can fix it —
-    # say so instead of the generic "matched no request".
+    # say so instead of the generic UNMATCHED.
     if stub := google_stub_reason(path):
         return Routing(path=path, identifier=None, reason=stub)
 
@@ -182,19 +206,12 @@ def route_file(
     # A document that announces itself as one request's paperwork but fails
     # that request's other rules is contested — never file it somewhere else.
     if near and not strong:
-        listed = "; ".join(f"{ident} ({why})" for ident, why in near)
-        return Routing(
-            path=path,
-            identifier=None,
-            reason=f"looks like {listed} — a person should confirm",
-            candidates=tuple(ident for ident, _ in near),
-            evidence="content",
-        )
+        return _contested(path, near)
 
     for hits, strength, how in (
-        (strong, "content", "content matched this request's keywords"),
-        (medium, "content", "content matched this request's keywords"),
-        (by_name, "filename", "file name matched this request's keywords"),
+        (strong, EVIDENCE_CONTENT, "content matched this request's required keywords"),
+        (medium, EVIDENCE_CONTENT, "content matched this request's keywords"),
+        (by_name, EVIDENCE_FILENAME, "file name matched this request's keywords"),
     ):
         if len(hits) == 1:
             return Routing(
@@ -216,16 +233,9 @@ def route_file(
     # The content says which request this is, but the file itself was
     # refused (too small, wrong type, unreadable PDF). Say that, so the
     # person reviewing it - and the client, via the reminder - hears the
-    # real reason instead of "matched no request".
+    # real reason instead of UNMATCHED.
     if blocked:
-        listed = "; ".join(f"{ident} ({why})" for ident, why in blocked)
-        return Routing(
-            path=path,
-            identifier=None,
-            reason=f"looks like {listed} - a person should confirm",
-            candidates=tuple(ident for ident, _ in blocked),
-            evidence="content",
-        )
+        return _contested(path, blocked)
 
     # Nothing matched and every request refused the file for the same
     # reason: that reason is the story (a corrupt PDF, a locked PDF, a
@@ -233,12 +243,12 @@ def route_file(
     if refusals and len(refusals) == sum(1 for i in items if _considers(i)):
         if len(set(refusals)) == 1:
             return Routing(path=path, identifier=None, reason=f"{UNMATCHED}; {refusals[0]}")
-        if all(r.startswith("extension .") for r in refusals):
-            ext = path.suffix.lower().lstrip(".") or "(none)"
+        if all(reasons.EXTENSION_NOT_ALLOWED.matches(r) for r in refusals):
+            ext = extension_of(path) or "(none)"
             return Routing(
                 path=path,
                 identifier=None,
-                reason=f"{UNMATCHED}; no request accepts .{ext} files",
+                reason=f"{UNMATCHED}; {NO_REQUEST_ACCEPTS.format(extension=ext)}",
             )
 
     if extraction_error:

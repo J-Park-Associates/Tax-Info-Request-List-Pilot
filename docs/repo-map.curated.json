@@ -9,24 +9,22 @@
     "Edit this file, then run `python tools/repo_map.py update`. Never edit",
     "docs/repo-map.json or docs/repo-map.md directly — both are generated."
   ],
-
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
     "client drops into Shared/",
     "tracker.filer",
     "tracker.scanner",
-    "tracker.reminder (Saturdays)",
+    "tracker.reminder (on DRAFT_WEEKDAY)",
     "a person sends the draft"
   ],
-
   "nodes": {
     "tracker/manifest.py": {
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
       "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns — scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check."
     },
     "tracker/scaffold.py": {
-      "role": "Turns a manifest into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/{Identifier} - {Document}/ plus 00 - Needs Review. Writes the client's _README.txt.",
+      "role": "Turns a manifest into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/<folder_name_for(item)>/ plus 00 - Needs Review. Writes the client's _README.txt.",
       "notes": "Also the home of the path constants every other module imports: MANIFEST_FILENAME, SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME. Runs on every scheduled pass now; the README is rewritten only when its text changed. The README contact comes from the Engagement sheet (firm, else sender) unless given."
     },
     "tracker/validators.py": {
@@ -35,27 +33,31 @@
     },
     "tracker/content_check.py": {
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. Caches verdicts.",
-      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES (10) pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run."
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run."
     },
     "tracker/router.py": {
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only).",
-      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing — misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as 'looks like A01 (...)', and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched."
+      "notes": "Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing — misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched."
     },
     "tracker/filer.py": {
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, new rows wait in _index.pending.json and read_index() already sees them. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed 'assigned by a person', learns a keyword onto the request, all under the engagement lock."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, new rows wait in _index.pending.json and read_index() already sees them. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock. INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value."
     },
     "tracker/scanner.py": {
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and writes the result back into the manifest.",
-      "notes": "Holds a stale-aware per-engagement run lock, so two scheduled runs cannot overlap. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of 'files changed'. An Accepted row is written Received with a date (decision 33); ScanReport.waived names rows counts should leave out. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them."
+      "notes": "Holds a stale-aware per-engagement run lock, so two scheduled runs cannot overlap. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them."
     },
     "tracker/locking.py": {
-      "role": "One lock per engagement (_scan.lock, O_EXCL, stale after an hour), held by the filer while sorting and by the scanner while scanning. EngagementLockedError; engagement_lock() context manager.",
+      "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by the filer while sorting and by the scanner while scanning. EngagementLockedError; engagement_lock() context manager.",
       "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's index rows were overwritten. Dry runs never take it. lock_status()/clear_stale_lock() back the app's lock notice: a stale lock can be cleared from the app, a fresh one is refused with how long to wait."
     },
     "tracker/settings.py": {
-      "role": "settings.json beside the app: the one place the clients root is kept. clients_root()/set_clients_root(); TRACKER_SETTINGS_DIR from the Electron shell says where beside-the-app is.",
+      "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root and the firm are kept. clients_root()/set_clients_root(), firm()/set_firm(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is.",
       "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever."
+    },
+    "tracker/reasons.py": {
+      "role": "Every refusal said once: for each cause, the note the scanner writes (a template), the marker the reminder recognises it by, the plain sentence the client is asked with, and whether the row is the firm's to look at.",
+      "notes": "Replaced substrings retyped in reminder.py to recognise sentences typed in validators/content_check/scanner: rewording a producer silently changed what a client was asked. tests/test_reasons.py checks each marker is part of its own template."
     },
     "tracker/rollover.py": {
       "role": "Builds a returning client's next-year request list from their prior engagement. Prior-year data always wins; the template may only fill blanks.",
@@ -67,19 +69,19 @@
     },
     "tracker/registry.py": {
       "role": "Finds every engagement under the clients root: any folder holding _manifest.xlsx, without descending into one. Reads each manifest's Engagement sheet for client, link, due, sender, firm, reminders and active. There is no registry file.",
-      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, an unreadable manifest is listed with its problem rather than dropped, and a root with no manifest at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's sheet is the record."
+      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, an unreadable manifest is listed with its problem rather than dropped, and a root with no manifest at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's sheet is the record. Engagement wraps EngagementInfo (the sheet as loaded) and delegates its fields rather than copying them, so a field added to the sheet reaches discovery without a second edit."
     },
     "tracker/runner.py": {
-      "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on Saturdays) draft. This is the whole scheduled task.",
-      "notes": "Owns the Saturday rule in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too."
+      "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too."
     },
     "tracker/scheduling.py": {
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings.json root."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Generates for a clients root (--root), not a registry file. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. --root defaults to the settings file's root. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name, time limit) are module constants the API's install-schedule reports back so the app shows what was actually installed."
     },
     "tracker/api.py": {
-      "role": "The JSON command layer the desktop app talks to: state, scan, assign, create, rollover, templates, list, priors, check, unlock, settings, set-root, install-schedule.",
-      "notes": "Every command prints one JSON object and returns an exit code — errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=never - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and copies the newest engagement's firm."
+      "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
+      "notes": "Every command prints one JSON object and returns an exit code — errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes."
     },
     "tracker/templates.py": {
       "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword rules that recognise each document. The ONLY source of truth for the checklists; the wizard and the rollover read it directly.",
@@ -89,7 +91,7 @@
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
     },
     "api_entry.py": {
-      "role": "PyInstaller entry point. Freezes tracker.api into tracker-api.exe for the portable Windows app.",
+      "role": "PyInstaller entry point. Freezes tracker.api into the executable app/package.json's config.apiName names, for the portable Windows app.",
       "notes": "The only reason this exists is that PyInstaller needs a real script, not a -m module."
     },
     ".github/workflows/ci.yml": {
@@ -116,25 +118,34 @@
       "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed, and a change to this file forces a full rebuild — new derivation rules must not leave edges typed by the old ones. Test edges are three-way on purpose: `tests` (the test file owning the module by name) is coverage, `exercises` (any other test importing it) is not, and a test importing another test is a plain `imports`."
     },
     "app/main.js": {
-      "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen tracker-api.exe in the portable build) and relays its JSON to the renderer over IPC.",
+      "role": "Electron main process. Spawns the Python API (`python -m tracker.api`, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC.",
       "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command."
     },
     "app/preload.js": {
-      "role": "Context bridge exposing exactly two calls to the renderer: tracker.call(args, payload) and tracker.open(path). Nothing else crosses."
+      "role": "Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path) and tracker.pickFolder(). Nothing else crosses."
     },
     "app/renderer/app.js": {
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge."
     },
-    "app/renderer/index.html": { "role": "Desktop app shell markup." },
-    "app/renderer/style.css": { "role": "Desktop app styling." },
+    "app/renderer/index.html": {
+      "role": "Desktop app shell markup."
+    },
+    "app/renderer/style.css": {
+      "role": "Desktop app styling."
+    },
     "docs/ROADMAP.md": {
-      "role": "The build plan, the hard constraints and the decision log. Components 1-10, all built and tested.",
+      "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
-    "docs/workflow.md": { "role": "How the day-to-day workflow runs." },
-    "README.md": { "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md." },
-    "requirements.txt": { "role": "Runtime and dev dependencies; the optional OCR extras are documented here too." },
-
+    "docs/workflow.md": {
+      "role": "How the day-to-day workflow runs."
+    },
+    "README.md": {
+      "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
+    },
+    "requirements.txt": {
+      "role": "Runtime and dev dependencies; the optional OCR extras are documented here too."
+    },
     "artifact:_manifest.xlsx": {
       "type": "artifact",
       "layer": "runtime",
@@ -170,7 +181,6 @@
       "layer": "runtime",
       "role": "The drafted chase email, waiting for a person to read, edit and send. Carries a fingerprint so the weekly job can tell whether it has been edited."
     },
-
     "rule:no-AI-on-client-documents": {
       "type": "concept",
       "layer": "constraint",
@@ -179,73 +189,229 @@
     "rule:originals-are-never-altered": {
       "type": "concept",
       "layer": "constraint",
-      "role": "Originals are moved byte for byte under their own names into Shared/PBC/ and never renamed in place, edited or deleted. All work happens on copies."
+      "role": "Originals are never altered. Files are moved byte for byte under their own names into Shared/PBC/; all work happens on copies, and every move is recorded in _index.xlsx."
     },
     "rule:nothing-is-guessed": {
       "type": "concept",
       "layer": "constraint",
-      "role": "A document is filed only when exactly one request accepts it. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person."
+      "role": "Nothing is guessed. A document is filed only when exactly one request accepts it. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person - misfiling a tax document is worse than not filing it."
     },
     "rule:nothing-is-ever-sent": {
       "type": "concept",
       "layer": "constraint",
-      "role": "The system drafts client emails and stops. There is no SMTP, no mail client and no network call in the reminder or scheduling path; a person always sends."
+      "role": "Nothing is ever sent. The system drafts client emails and stops. There is no SMTP, no mail client and no network call in the reminder or scheduling path."
     }
   },
-
   "edges": [
-    {"from": "tracker/filer.py", "to": "artifact:Shared/", "type": "reads"},
-    {"from": "tracker/filer.py", "to": "artifact:Prepared/", "type": "writes"},
-    {"from": "tracker/filer.py", "to": "artifact:_index.xlsx", "type": "writes"},
-    {"from": "tracker/filer.py", "to": "artifact:_index.pending.json", "type": "writes"},
-
-    {"from": "tracker/filer.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
-
-    {"from": "tracker/scanner.py", "to": "artifact:Prepared/", "type": "reads"},
-    {"from": "tracker/scanner.py", "to": "artifact:_manifest.xlsx", "type": "writes"},
-    {"from": "tracker/scanner.py", "to": "artifact:_manifest.pending.json", "type": "writes"},
-
-    {"from": "tracker/scaffold.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
-    {"from": "tracker/registry.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
-    {"from": "tracker/scaffold.py", "to": "artifact:Shared/", "type": "writes"},
-    {"from": "tracker/scaffold.py", "to": "artifact:Prepared/", "type": "writes"},
-
-    {"from": "tracker/manifest.py", "to": "artifact:_manifest.xlsx", "type": "writes"},
-    {"from": "tracker/manifest.py", "to": "artifact:_manifest.pending.json", "type": "writes"},
-
-    {"from": "tracker/reminder.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
-    {"from": "tracker/reminder.py", "to": "artifact:reminder-draft.txt", "type": "writes"},
-    {"from": "tracker/reminder.py", "to": "artifact:Prepared/", "type": "reads"},
-
-    {"from": "tracker/rollover.py", "to": "artifact:_manifest.xlsx", "type": "reads"},
-
-    {"from": "tracker/filer.py", "to": "tracker/scanner.py", "type": "precedes"},
-    {"from": "tracker/scanner.py", "to": "tracker/reminder.py", "type": "precedes"},
-    {"from": "tracker/scaffold.py", "to": "tracker/filer.py", "type": "precedes"},
-
-    {"from": "app/main.js", "to": "api_entry.py", "type": "spawns"},
-    {"from": "app/main.js", "to": "tracker/api.py", "type": "spawns"},
-    {"from": "app/renderer/app.js", "to": "app/preload.js", "type": "calls"},
-    {"from": "app/renderer/index.html", "to": "app/renderer/app.js", "type": "loads"},
-    {"from": "app/renderer/index.html", "to": "app/renderer/style.css", "type": "loads"},
-    {"from": "Build App.bat", "to": "api_entry.py", "type": "freezes"},
-    {"from": "Start App.bat", "to": "app/main.js", "type": "launches"},
-
-
-    {"from": "tracker/router.py", "to": "rule:nothing-is-guessed", "type": "enforces"},
-    {"from": "tracker/filer.py", "to": "rule:originals-are-never-altered", "type": "enforces"},
-    {"from": "tracker/filer.py", "to": "rule:nothing-is-guessed", "type": "enforces"},
-    {"from": "tracker/content_check.py", "to": "rule:no-AI-on-client-documents", "type": "enforces"},
-    {"from": "tracker/validators.py", "to": "rule:no-AI-on-client-documents", "type": "enforces"},
-    {"from": "tracker/reminder.py", "to": "rule:nothing-is-ever-sent", "type": "enforces"},
-    {"from": "tracker/runner.py", "to": "rule:nothing-is-ever-sent", "type": "enforces"},
-    {"from": "tracker/scheduling.py", "to": "rule:nothing-is-ever-sent", "type": "enforces"},
-
-    {"from": "docs/ROADMAP.md", "to": "tracker/__init__.py", "type": "documents"},
-    {"from": "README.md", "to": "tracker/runner.py", "type": "documents"},
-    {"from": "CLAUDE.md", "to": "tools/repo_map.py", "type": "documents"},
-    {"from": "tools/repo_map.py", "to": "docs/repo-map.curated.json", "type": "reads"},
-    {"from": ".github/workflows/ci.yml", "to": "tools/repo_map.py", "type": "runs"},
-    {"from": ".github/workflows/ci.yml", "to": "requirements.txt", "type": "reads"}
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:Shared/",
+      "type": "reads"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:Prepared/",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:_index.xlsx",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:_index.pending.json",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads"
+    },
+    {
+      "from": "tracker/scanner.py",
+      "to": "artifact:Prepared/",
+      "type": "reads"
+    },
+    {
+      "from": "tracker/scanner.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/scanner.py",
+      "to": "artifact:_manifest.pending.json",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/scaffold.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads"
+    },
+    {
+      "from": "tracker/registry.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads"
+    },
+    {
+      "from": "tracker/scaffold.py",
+      "to": "artifact:Shared/",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/scaffold.py",
+      "to": "artifact:Prepared/",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/manifest.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/manifest.py",
+      "to": "artifact:_manifest.pending.json",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "artifact:reminder-draft.txt",
+      "type": "writes"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "artifact:Prepared/",
+      "type": "reads"
+    },
+    {
+      "from": "tracker/rollover.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "tracker/scanner.py",
+      "type": "precedes"
+    },
+    {
+      "from": "tracker/scanner.py",
+      "to": "tracker/reminder.py",
+      "type": "precedes"
+    },
+    {
+      "from": "tracker/scaffold.py",
+      "to": "tracker/filer.py",
+      "type": "precedes"
+    },
+    {
+      "from": "app/main.js",
+      "to": "api_entry.py",
+      "type": "spawns"
+    },
+    {
+      "from": "app/main.js",
+      "to": "tracker/api.py",
+      "type": "spawns"
+    },
+    {
+      "from": "app/renderer/app.js",
+      "to": "app/preload.js",
+      "type": "calls"
+    },
+    {
+      "from": "app/renderer/index.html",
+      "to": "app/renderer/app.js",
+      "type": "loads"
+    },
+    {
+      "from": "app/renderer/index.html",
+      "to": "app/renderer/style.css",
+      "type": "loads"
+    },
+    {
+      "from": "Build App.bat",
+      "to": "api_entry.py",
+      "type": "freezes"
+    },
+    {
+      "from": "Start App.bat",
+      "to": "app/main.js",
+      "type": "launches"
+    },
+    {
+      "from": "tracker/router.py",
+      "to": "rule:nothing-is-guessed",
+      "type": "enforces"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "rule:originals-are-never-altered",
+      "type": "enforces"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "rule:nothing-is-guessed",
+      "type": "enforces"
+    },
+    {
+      "from": "tracker/content_check.py",
+      "to": "rule:no-AI-on-client-documents",
+      "type": "enforces"
+    },
+    {
+      "from": "tracker/validators.py",
+      "to": "rule:no-AI-on-client-documents",
+      "type": "enforces"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "rule:nothing-is-ever-sent",
+      "type": "enforces"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "rule:nothing-is-ever-sent",
+      "type": "enforces"
+    },
+    {
+      "from": "tracker/scheduling.py",
+      "to": "rule:nothing-is-ever-sent",
+      "type": "enforces"
+    },
+    {
+      "from": "docs/ROADMAP.md",
+      "to": "tracker/__init__.py",
+      "type": "documents"
+    },
+    {
+      "from": "README.md",
+      "to": "tracker/runner.py",
+      "type": "documents"
+    },
+    {
+      "from": "CLAUDE.md",
+      "to": "tools/repo_map.py",
+      "type": "documents"
+    },
+    {
+      "from": "tools/repo_map.py",
+      "to": "docs/repo-map.curated.json",
+      "type": "reads"
+    },
+    {
+      "from": ".github/workflows/ci.yml",
+      "to": "tools/repo_map.py",
+      "type": "runs"
+    },
+    {
+      "from": ".github/workflows/ci.yml",
+      "to": "requirements.txt",
+      "type": "reads"
+    }
   ]
 }

@@ -11,6 +11,10 @@ from xml.etree import ElementTree
 import pytest
 
 from tracker.scheduling import (
+    N8N_RUN_NODE,
+    N8N_TRIGGER_NODE,
+    TASK_XML_NAMESPACE,
+    DEFAULT_START,
     TASK_NAME,
     is_absolute_path,
     n8n_workflow,
@@ -18,7 +22,7 @@ from tracker.scheduling import (
     task_scheduler_xml,
 )
 
-NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+NS = {"t": TASK_XML_NAMESPACE}
 
 ARGS = dict(
     python=r"C:\Python311\python.exe",
@@ -45,7 +49,7 @@ def test_the_job_runs_daily_so_saturday_is_never_missed():
     """The runner decides the day, so one daily task covers the weekly draft."""
     root = parsed()
     assert root.find(".//t:ScheduleByDay/t:DaysInterval", NS).text == "1"
-    assert root.find(".//t:CalendarTrigger/t:StartBoundary", NS).text.endswith("T07:00:00")
+    assert root.find(".//t:CalendarTrigger/t:StartBoundary", NS).text.endswith(f"T{DEFAULT_START}:00")
 
 
 def test_a_repeat_interval_is_optional_and_well_formed():
@@ -123,9 +127,9 @@ def test_the_n8n_workflow_is_valid_json_with_one_wired_connection():
     workflow = json.loads(json.dumps(n8n_workflow(**ARGS)))
 
     assert workflow["name"] == TASK_NAME
-    assert [node["name"] for node in workflow["nodes"]] == ["Every day", "File, scan, draft"]
-    wired = workflow["connections"]["Every day"]["main"][0][0]["node"]
-    assert wired == "File, scan, draft"
+    assert [node["name"] for node in workflow["nodes"]] == [N8N_TRIGGER_NODE, N8N_RUN_NODE]
+    wired = workflow["connections"][N8N_TRIGGER_NODE]["main"][0][0]["node"]
+    assert wired == N8N_RUN_NODE
 
 
 def test_the_n8n_command_runs_the_runner_from_the_working_directory():
@@ -172,3 +176,22 @@ def test_install_runs_schtasks_on_windows_and_only_shows_the_command_elsewhere(m
     monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: Failed())
     with pytest.raises(RuntimeError, match="Access is denied"):
         install_task(tmp_path / "t.xml")
+
+
+def test_the_command_line_is_built_once_for_both_schedulers():
+    from tracker.scheduling import runner_arguments, start_hour
+
+    xml = task_scheduler_xml(**ARGS)
+    flow = n8n_workflow(**ARGS)
+    command = flow["nodes"][1]["parameters"]["command"]
+    assert runner_arguments(ARGS["root"]) in xml
+    assert runner_arguments(ARGS["root"]) in command
+    assert start_hour(DEFAULT_START) == int(DEFAULT_START.split(":")[0]) and start_hour("18:30") == 18
+    assert flow["nodes"][0]["parameters"]["rule"]["interval"][0]["triggerAtHour"] == start_hour()
+
+
+def test_the_description_names_the_drafting_day_from_the_runner():
+    from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
+
+    xml = task_scheduler_xml(**ARGS)
+    assert f"On {WEEKDAY_NAMES[DRAFT_WEEKDAY].capitalize()}s it also drafts" in xml

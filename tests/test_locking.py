@@ -10,6 +10,7 @@ import os
 import pytest
 
 from tracker.locking import (
+    STALE_LOCK_SECONDS,
     LOCK_FILENAME,
     EngagementLockedError,
     acquire_lock,
@@ -34,7 +35,7 @@ def test_a_fresh_lock_blocks_a_second_run(tmp_path):
 def test_a_stale_lock_is_replaced(tmp_path):
     lock = tmp_path / LOCK_FILENAME
     lock.write_text("pid=999", encoding="utf-8")
-    old = (dt.datetime.now() - dt.timedelta(hours=2)).timestamp()
+    old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
     os.utime(lock, (old, old))
     with engagement_lock(tmp_path):
         assert str(os.getpid()) in lock.read_text(encoding="utf-8")
@@ -68,7 +69,7 @@ def test_a_fresh_lock_is_refused_and_a_stale_one_cleared(tmp_path):
     lock.write_text("pid=999 started=2026-03-14T07:03:00", encoding="utf-8")
     with pytest.raises(EngagementLockedError, match="may still be going"):
         clear_stale_lock(tmp_path)
-    old = (dt.datetime.now() - dt.timedelta(hours=2)).timestamp()
+    old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
     os.utime(lock, (old, old))
     cleared = clear_stale_lock(tmp_path)
     assert cleared.stale and cleared.started == "2026-03-14T07:03:00"

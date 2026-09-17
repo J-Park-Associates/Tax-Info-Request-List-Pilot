@@ -1,4 +1,4 @@
-/* Tax Document Tracker — marketing demo
+/* The desktop app's stylesheet.
    Light, trustworthy financial-services aesthetic. Navy primary, generous
    whitespace, color-coded status chips. Segoe UI (native, offline-safe). */
 
@@ -180,9 +180,9 @@ body {
 .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .chip-received  { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
 .chip-partial   { background: #fffbeb; border-color: #fde68a; color: #b45309; }
-.chip-failed    { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.chip-failed-validation  { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
 .chip-missing   { background: #f1f5f9; border-color: #d8e0ea; color: #475569; }
-.chip-pending   { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.chip-pending-sync   { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
 .chip-requested { background: #f8fafc; border-color: #e2e8f0; color: #64748b; }
 .chip-requested::before { background: #cbd5e1; }
 

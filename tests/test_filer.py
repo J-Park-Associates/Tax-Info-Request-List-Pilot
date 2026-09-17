@@ -13,14 +13,18 @@ from openpyxl import load_workbook
 from tracker.filer import (
     DUPLICATE,
     FILED,
+    INDEX_COLUMNS,
     INDEX_FILENAME,
+    INDEX_LAYOUT,
     INDEX_SHEET,
     NEEDS_REVIEW,
     file_drops,
     prepared_name_for,
     read_index,
 )
-from tracker.manifest import RequestItem, create_template
+from tests.samples import col
+from tracker.manifest import COL_DOCUMENT, SHEET_NAME, RequestItem, create_template
+from tracker.router import UNMATCHED
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PBC_DIR_NAME,
@@ -139,7 +143,7 @@ def test_unroutable_file_is_preserved_and_parked(engagement):
     assert (review / "vacation.pdf").exists()
     (entry,) = report.review
     assert entry.decision == NEEDS_REVIEW
-    assert "matched no request" in entry.reason
+    assert UNMATCHED in entry.reason
     assert not report.filed
 
 
@@ -244,21 +248,54 @@ def test_dry_run_moves_nothing(engagement):
 
 
 def test_index_workbook_is_readable_in_excel(engagement):
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    drop(engagement, "mystery.pdf", "nothing recognizable here")
-    file_drops(engagement, today=DAY1)
+    from tracker.filer import INDEX_COLUMNS, INDEX_LAYOUT
 
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
     wb = load_workbook(engagement / INDEX_FILENAME)
     ws = wb[INDEX_SHEET]
-    header = [c.value for c in ws[1]]
-    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    headers = [c.value for c in ws[1]]
+    assert headers == list(INDEX_COLUMNS)
+    # Read the row by header name, the way the filer itself reads it back.
+    row = dict(zip(headers, [c.value for c in ws[2]]))
+    assert row[INDEX_LAYOUT["decision"][0]] == FILED
+    assert row[INDEX_LAYOUT["identifier"][0]] == "A01"
+    assert row[INDEX_LAYOUT["prepared_location"][0]].endswith(".pdf")
+    assert ws.freeze_panes == "A2"
     wb.close()
 
-    assert header[:4] == ["Received", "Original Name", "Size KB", "SHA-256"]
-    assert {r[1] for r in rows} == {"w2.pdf", "mystery.pdf"}
-    decisions = {r[1]: r[9] for r in rows}
-    assert decisions["w2.pdf"] == FILED
-    assert decisions["mystery.pdf"] == NEEDS_REVIEW
+
+def test_an_index_written_with_older_columns_still_reads(tmp_path):
+    # Filed As and Document were stored copies and are gone; Candidates is
+    # new. An index from before either change reads by header name.
+    from openpyxl import Workbook
+    from tracker.filer import read_index
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = INDEX_SHEET
+    ws.append(["Received", "Original Name", "Size KB", "SHA-256", "Identifier", "Document",
+               "Filed As", "Prepared Location", "PBC Location", "Decision", "Reason"])
+    ws.append(["2026-01-01", "w2.pdf", 9.4, "abc", "A01", "W-2 Wage Statements",
+               "A01 - W-2 Wage Statements - TY2025.pdf",
+               f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements/A01 - W-2 Wage Statements - TY2025.pdf",
+               f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2.pdf", FILED, "content matched"])
+    path = tmp_path / INDEX_FILENAME
+    wb.save(path)
+    [entry] = read_index(path)
+    assert entry.identifier == "A01" and entry.decision == FILED
+    assert entry.filed_as == "A01 - W-2 Wage Statements - TY2025.pdf"   # derived, not stored
+    assert entry.candidates == ""
+
+
+def test_the_routers_candidates_travel_as_data_in_the_index(engagement):
+    from tracker.filer import read_index
+
+    drop(engagement, "old.pdf", "Form W-2 Wage and Tax Statement 2024")   # contested: wrong year
+    report = file_drops(engagement, today=DAY1)
+    [parked] = report.review
+    assert parked.candidates == "A01"
+    assert read_index(engagement / INDEX_FILENAME)[0].candidates == "A01"
 
 
 def test_prepared_name_for_collides_safely():
@@ -299,7 +336,7 @@ def test_a_locked_index_never_orphans_files_already_moved(engagement, monkeypatc
         raise PermissionError(f"[Errno 13] locked: {path}")
 
     monkeypatch.setattr(filer_module, "save_workbook_atomically", locked)
-    monkeypatch.setattr(filer_module, "INDEX_RETRY_DELAY", 0.001)
+    monkeypatch.setattr(filer_module, "LOCK_RETRY_DELAY", 0.001)
     report = file_drops(engagement, today=DAY1)
     assert report.handled == 2
     assert report.index_deferred is True
@@ -348,7 +385,7 @@ def test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed(engagemen
     assert set(rows) == {"a-w2.pdf", "b-mortgage.pdf", "c-w2.pdf"}
     assert rows["b-mortgage.pdf"].decision == NEEDS_REVIEW
     assert "No space left" in rows["b-mortgage.pdf"].reason
-    assert "PBC/b-mortgage.pdf" in rows["b-mortgage.pdf"].reason
+    assert f"{PBC_DIR_NAME}/b-mortgage.pdf" in rows["b-mortgage.pdf"].reason
 
 
 def test_a_drop_still_held_open_is_left_for_the_next_run(engagement, monkeypatch):
@@ -405,14 +442,14 @@ def test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder(engag
     drop(engagement, "john.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     wb = load_workbook(engagement / MANIFEST_FILENAME)
-    wb["Requests"].cell(row=2, column=2, value="W-2s (all employers)")
+    wb[SHEET_NAME].cell(row=2, column=col(COL_DOCUMENT), value="W-2s (all employers)")
     wb.save(engagement / MANIFEST_FILENAME)
     wb.close()
     drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
     report = file_drops(engagement, today=DAY2)
     folders = [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir() if p.name.startswith("A01")]
     assert folders == ["A01 - W-2 Wage Statements"]
-    assert report.filed[0].prepared_location.startswith("Prepared/A01 - W-2 Wage Statements/")
+    assert report.filed[0].prepared_location.startswith(f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements/")
 
 
 def test_a_file_dropped_straight_into_pbc_is_filed_and_indexed(engagement):
@@ -423,7 +460,7 @@ def test_a_file_dropped_straight_into_pbc_is_filed_and_indexed(engagement):
     assert [e.original_name for e in report.filed] == ["w2.pdf"]
     assert original.read_bytes() == before                    # not moved, not touched
     rows = read_index(engagement / INDEX_FILENAME)
-    assert rows[0].pbc_location == "Shared/PBC/w2.pdf"
+    assert rows[0].pbc_location == f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2.pdf"
     assert (engagement / rows[0].prepared_location).exists()
     # Recorded now, so the next run leaves it alone.
     assert file_drops(engagement, today=DAY2).handled == 0
@@ -460,7 +497,8 @@ def test_a_hand_edited_index_cell_does_not_stop_the_next_run(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     wb = load_workbook(engagement / INDEX_FILENAME)
-    wb.active.cell(row=2, column=3, value="about 9 KB")
+    size_col = INDEX_COLUMNS.index(INDEX_LAYOUT["size_kb"][0]) + 1
+    wb.active.cell(row=2, column=size_col, value="about 9 KB")
     wb.save(engagement / INDEX_FILENAME)
     wb.close()
     drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")

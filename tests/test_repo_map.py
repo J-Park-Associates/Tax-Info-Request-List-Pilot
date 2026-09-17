@@ -336,8 +336,8 @@ def test_the_generated_outputs_are_not_mapped(repo):
 
     graph = repo_map.build(repo)
     ids = {n["id"] for n in graph["nodes"]}
-    assert "docs/repo-map.json" not in ids
-    assert "docs/repo-map.md" not in ids
+    for excluded in repo_map.EXCLUDED:
+        assert excluded not in ids
     assert repo_map.stale_files(graph, repo) == {"changed": [], "added": [], "removed": []}
 
 
@@ -359,7 +359,7 @@ def test_the_curated_file_is_mapped_so_editing_it_shows_as_drift(repo):
 
 def test_the_markdown_leads_with_how_to_use_and_refresh_it(repo):
     text = repo_map.render_markdown(repo_map.build(repo))
-    assert "Read this instead of re-scanning the repository" in text
+    assert repo_map.MAP_INTRO in text
     assert "repo_map.py update" in text
     assert "do not edit by hand" in text
 

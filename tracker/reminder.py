@@ -1,29 +1,29 @@
 """Draft the "still waiting on these" email to a client (component 9).
 
-Reads a scanned ``_manifest.xlsx`` and writes a plain-text draft the
+Reads a scanned ``MANIFEST_FILENAME`` and writes a plain-text draft the
 accountant can read, edit and paste into Outlook. **It never sends anything**
 — there is no SMTP, no mail client, no network call anywhere in this module.
 A reminder goes out because a person decided to send it.
 
 What the client is asked for:
 
-- ``Missing`` — never arrived.
-- ``Partial`` — some of the expected files arrived, not all.
-- ``Failed Validation`` — something arrived that we could not use.
+- ``Status.MISSING`` — never arrived.
+- ``Status.PARTIAL`` — some of the expected files arrived, not all.
+- ``Status.FAILED`` — something arrived that we could not use.
 
 What the client is deliberately *not* asked for:
 
-- ``Received`` — it is in.
-- ``Pending Sync`` — it is in; the cloud is still copying it down. Nothing for
+- ``Status.RECEIVED`` — it is in.
+- ``Status.PENDING_SYNC`` — it is in; the cloud is still copying it down. Nothing for
   the client to do, so nothing to say.
-- Any row with a Manual Override. ``Waived`` is no longer needed and
-  ``Accepted`` has already been judged good enough by a person; re-asking
+- Any row with a Manual Override. ``Override.WAIVED`` is no longer needed and
+  ``Override.ACCEPTED`` has already been judged good enough by a person; re-asking
   would contradict that person.
 - Rows whose only problem is that *we* have not looked yet ("review
   manually", an un-OCR'd scan). The document may be perfect. Asking a client
   to resend something we simply have not read is how a firm looks careless,
   so those rows go to the accountant instead, under *needs a person*. That
-  holds for a ``Partial`` row too: if the file that would complete it is one
+  holds for a ``Status.PARTIAL`` row too: if the file that would complete it is one
   we have not read, "1 of 2 received" is not something we know yet.
 - Rows whose request folder does not exist. We cannot honestly tell a client
   we never received something we never made a place to put — that is a
@@ -37,7 +37,7 @@ anything unrecognized falls back to the safe generic ask. No generative AI
 touches any of this, and no client document is read here at all — only the
 manifest the scanner already wrote.
 
-One more guard: files sitting in ``00 - Needs Review`` are things the client
+One more guard: files sitting in ``REVIEW_DIR_NAME`` are things the client
 *has* already sent that nobody has identified yet. Sending a reminder over
 the top of those risks asking for a document already in hand, so their count
 is reported and the CLI says so plainly before you send.
@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from tracker.manifest import (
+    ISO_DATE_HINT,
     RequestItem,
     Status,
     load_engagement_info,
@@ -68,15 +69,33 @@ from tracker.scaffold import (
 from tracker.validators import iter_candidate_files
 
 DRAFT_FILENAME = "reminder-draft.txt"
+DUE_FLAG = "--due"
 
 #: Where a fresh draft goes when the standing one has been edited by hand.
-NEW_DRAFT_FILENAME = "reminder-draft.NEW.txt"
+NEW_DRAFT_FILENAME = Path(DRAFT_FILENAME).stem + ".NEW" + Path(DRAFT_FILENAME).suffix
 
 _FINGERPRINT_PREFIX = "Fingerprint: "
-_SEPARATOR = "=" * 60
+_RULE_WIDTH = 60
+_SEPARATOR = "=" * _RULE_WIDTH
 
-#: Statuses that mean the client still owes us something.
-OUTSTANDING = (Status.MISSING, Status.PARTIAL, Status.FAILED)
+#: Statuses that mean the client still owes us something (re-exported).
+OUTSTANDING = Status.OUTSTANDING
+
+#: The subject lines and the banner every draft opens with.
+SUBJECT_NEEDED = "{engagement}: {n} document(s) still needed"
+SUBJECT_COMPLETE = "{engagement}: we have everything - thank you"
+DRAFT_BANNER = "DRAFT - NOTHING HAS BEEN SENT."
+#: The sentence every draft opens its instructions with.
+DROP_ANYWHERE = "Everything goes in the same place - just drop it into the shared"
+#: The footer headings for what the draft deliberately did not ask for.
+HELD_BACK_HEADING = "NOT ASKED FOR"
+HELD_BACK_LINE = "NOT ASKED"
+#: The footer's warning about parked files, and what to do about it.
+REVIEW_WARNING = "{n} file(s) the client already sent are still in " + REVIEW_DIR_NAME + "."
+REVIEW_ADVICE = "Identify them before sending, or you may ask for something you have."
+#: What a Partial row is asked with.
+PARTIAL_ASK = "{have} of {expected} received, {missing} still to come"
+PARTIAL_ASK_COMPLETE = "{have} of {expected} received"
 
 SECTION_MISSING = "NOT YET RECEIVED"
 SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
@@ -84,46 +103,8 @@ SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
 
 SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL, SECTION_FAILED)
 
-#: Shown when a failure has no recognized cause. Deliberately vague about our
-#: rules and specific about what the client should do.
-GENERIC_ASK = "we could not read the file that arrived; please send it again"
-
-#: Notes that mean "a person here has not looked yet", not "the client did
-#: something wrong". These never become a client ask.
-_FIRM_SIDE_MARKERS = (
-    "review manually",
-    "no text layer",
-    "no readable text",
-)
-
-_SCAFFOLD_MARKER = "request folder not found"
-
-#: (substring found in a validation note, sentence written to the client).
-#: First match wins, so the specific causes are listed before the vague ones.
-_ASK_RULES: tuple[tuple[str, str], ...] = (
-    ("password-protected",
-     "the file is password-protected; please send an unlocked copy"),
-    ("google docs shortcut",
-     "that was a Google Docs/Sheets shortcut rather than the document itself; "
-     "please download it (File > Download > PDF or Excel) and send that copy"),
-    ("possible placeholder or failed upload",
-     "the file arrived almost empty, so the upload may not have finished; "
-     "please send it again"),
-    ("not allowed",
-     "we cannot open that file type; please send it as a PDF or an Excel file"),
-    ("possible wrong document",
-     "the document that arrived does not look like this item; "
-     "please check that the right file was sent"),
-    ("none of the expected keywords found",
-     "the document that arrived does not look like this item; "
-     "please check that the right file was sent"),
-    ("possible wrong period",
-     "the document that arrived appears to cover a different period; "
-     "please check the year"),
-    ("contains no pages", GENERIC_ASK),
-    ("not a readable pdf", GENERIC_ASK),
-    ("text extraction failed", GENERIC_ASK),
-)
+from tracker import reasons
+from tracker.reasons import GENERIC_ASK  # re-exported; the one generic sentence
 
 
 class ReminderError(Exception):
@@ -140,10 +121,7 @@ class ReminderLine:
 
     @property
     def label(self) -> str:
-        entry = f"{self.item.identifier} - {self.item.document}"
-        if self.item.period:
-            entry += f" ({self.item.period})"
-        return entry
+        return self.item.label
 
     def render(self) -> str:
         line = f"  - {self.label}"
@@ -202,29 +180,27 @@ def client_ask(item: RequestItem) -> str:
         expected = item.expected_count
         have = item.file_count or 0
         missing = max(expected - have, 0)
-        return (f"{have} of {expected} received, {missing} still to come"
-                if missing else f"{have} of {expected} received")
+        return (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
+                if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
 
     if item.status != Status.FAILED:
         return ""
 
-    note = (item.validation_notes or "").lower()
-    for marker, sentence in _ASK_RULES:
-        if marker in note:
-            return sentence
-    return GENERIC_ASK
+    reason = reasons.find(item.validation_notes or "")
+    return reason.client_ask if reason else GENERIC_ASK
 
 
 def _firm_side_reason(item: RequestItem) -> str:
     """Why this row is the firm's problem rather than the client's, or ""."""
-    note = (item.validation_notes or "").lower()
-    if any(marker in note for marker in _FIRM_SIDE_MARKERS):
-        return "waiting on a person here to read it, not on the client"
+    note = item.validation_notes or ""
+    for reason in reasons.FIRM_SIDE:
+        if reason is not reasons.NO_REQUEST_FOLDER and reason.matches(note):
+            return reason.firm_side_note
     return ""
 
 
 def _missing_detail(item: RequestItem) -> str:
-    return f"{item.expected_count} files expected" if item.expected_count > 1 else ""
+    return item.expected_text
 
 
 # ---------------------------------------------------------------- sorting ----
@@ -254,12 +230,8 @@ def triage(items: Sequence[RequestItem]) -> tuple[
         if item.manual_override or item.status not in OUTSTANDING:
             continue
 
-        note = (item.validation_notes or "").lower()
-        if _SCAFFOLD_MARKER in note:
-            gaps.append(FirmSideFlag(
-                item=item,
-                reason="no request folder, so nothing could be filed here; re-run scaffold",
-            ))
+        if reasons.NO_REQUEST_FOLDER.matches(item.validation_notes or ""):
+            gaps.append(FirmSideFlag(item=item, reason=reasons.NO_REQUEST_FOLDER.firm_side_note))
             continue
 
         # A Failed row we have not read is ours, not the client's. So is a
@@ -269,8 +241,7 @@ def triage(items: Sequence[RequestItem]) -> tuple[
         reason = _firm_side_reason(item)
         if reason and item.status in (Status.FAILED, Status.PARTIAL):
             if item.status == Status.PARTIAL:
-                reason = ("some of what arrived is waiting on a person here to "
-                          "read it; confirm before asking for more")
+                reason = reasons.FIRM_WAITING_PARTIAL
             attention.append(FirmSideFlag(item=item, reason=reason))
             continue
 
@@ -284,7 +255,7 @@ def triage(items: Sequence[RequestItem]) -> tuple[
 
 
 def count_needs_review(engagement_dir: Path) -> int:
-    """Files parked in ``00 - Needs Review`` — already sent, not yet identified."""
+    """Files parked in ``REVIEW_DIR_NAME`` — already sent, not yet identified."""
     review = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
     return len(iter_candidate_files(review))
 
@@ -333,14 +304,14 @@ def _compose_body(
 
         if share_link:
             out += [
-                "Everything goes in the same place - just drop it into the shared",
+                DROP_ANYWHERE,
                 "folder. One folder, no sorting and no naming needed; we do that:",
                 f"  {share_link}",
                 "",
             ]
         else:
             out += [
-                "Everything goes in the same place - just drop it into the shared",
+                DROP_ANYWHERE,
                 "folder we set up. One folder, no sorting and no naming needed.",
                 "",
             ]
@@ -421,9 +392,9 @@ def draft_reminder(
     )
 
     if lines:
-        subject = f"{engagement}: {len(lines)} document(s) still needed"
+        subject = SUBJECT_NEEDED.format(engagement=engagement, n=len(lines))
     else:
-        subject = f"{engagement}: we have everything - thank you"
+        subject = SUBJECT_COMPLETE.format(engagement=engagement)
 
     return ReminderDraft(
         engagement=engagement,
@@ -482,7 +453,7 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
 
     With ``preserve_edits`` (what the weekly job uses), a draft somebody has
     already edited is never overwritten — the new one is written alongside it
-    as ``reminder-draft.NEW.txt`` and that path is returned instead. An hour
+    as ``NEW_DRAFT_FILENAME`` and that path is returned instead. An hour
     of someone's editing is worth more than this week's regenerated text.
     """
     if path is None:
@@ -496,33 +467,32 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
 
     footer: list[str] = []
     if draft.scaffold_gaps:
-        footer += ["", "-" * 60,
-                   "NOT ASKED FOR - fix these here first:"]
-        footer += [f"  {flag.item.identifier} - {flag.item.document}: {flag.reason}"
+        footer += ["", "-" * _RULE_WIDTH,
+                   f"{HELD_BACK_HEADING} - fix these here first:"]
+        footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.scaffold_gaps]
     if draft.needs_attention:
-        footer += ["", "-" * 60,
-                   "NOT ASKED FOR - waiting on us, not the client:"]
-        footer += [f"  {flag.item.identifier} - {flag.item.document}: {flag.reason}"
+        footer += ["", "-" * _RULE_WIDTH,
+                   f"{HELD_BACK_HEADING} - waiting on us, not the client:"]
+        footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.needs_attention]
     if draft.pending_statuses:
-        footer += ["", "-" * 60,
+        footer += ["", "-" * _RULE_WIDTH,
                    f"{draft.pending_statuses} status update(s) are still waiting to be "
                    "written into the manifest (it was open in Excel during the last",
                    "scan). This draft already reflects them; close Excel and re-scan",
                    "to see them in the sheet."]
     if draft.needs_review_files:
-        footer += ["", "-" * 60,
-                   f"{draft.needs_review_files} file(s) the client already sent are "
-                   f"still in {REVIEW_DIR_NAME}.",
-                   "Identify them before sending, or you may ask for something you have."]
+        footer += ["", "-" * _RULE_WIDTH,
+                   REVIEW_WARNING.format(n=draft.needs_review_files),
+                   REVIEW_ADVICE]
 
     body = draft.text
     if footer:
         body += "\n" + "\n".join(footer) + "\n"
 
     header = [
-        "DRAFT - NOTHING HAS BEEN SENT.",
+        DRAFT_BANNER,
         "Read it, edit it, then send it yourself.",
         f"{_FINGERPRINT_PREFIX}{draft_fingerprint(body)}",
         "(That line is how the weekly job tells whether you have edited this",
@@ -546,7 +516,7 @@ if __name__ == "__main__":
     parser.add_argument("--client", default="", help="client's name for the greeting")
     parser.add_argument("--engagement-name", default="", help="override the folder name")
     parser.add_argument("--link", default="", help="share link to the client drop folder")
-    parser.add_argument("--due", default="", help="due date, YYYY-MM-DD")
+    parser.add_argument(DUE_FLAG, default="", help=f"due date, {ISO_DATE_HINT}")
     parser.add_argument("--from-name", default="", help="who the email is from")
     parser.add_argument("--firm", default="", help="firm name for the sign-off")
     parser.add_argument("--write", action="store_true",
@@ -558,7 +528,7 @@ if __name__ == "__main__":
         try:
             due = dt.date.fromisoformat(ns.due)
         except ValueError:
-            parser.error(f"--due must be YYYY-MM-DD, got {ns.due!r}")
+            parser.error(f"{DUE_FLAG} must be {ISO_DATE_HINT}, got {ns.due!r}")
 
     try:
         result = draft_reminder(
@@ -573,17 +543,16 @@ if __name__ == "__main__":
     except ReminderError as exc:
         raise SystemExit(f"Cannot draft a reminder: {exc}")
 
-    print("DRAFT - nothing has been sent.\n")
+    print(f"{DRAFT_BANNER}\n")
     print(result.text)
 
     for flag in result.scaffold_gaps:
-        print(f"NOT ASKED: {flag.item.identifier} - {flag.item.document}: {flag.reason}")
+        print(f"{HELD_BACK_LINE}: {flag.item.label}: {flag.reason}")
     for flag in result.needs_attention:
-        print(f"NOT ASKED: {flag.item.identifier} - {flag.item.document}: {flag.reason}")
+        print(f"{HELD_BACK_LINE}: {flag.item.label}: {flag.reason}")
     if result.needs_review_files:
-        print(f"\nWARNING: {result.needs_review_files} file(s) the client already sent "
-              f"are still in {REVIEW_DIR_NAME}.")
-        print("Identify them before sending this, or you may ask for something you have.")
+        print(f"\nWARNING: {REVIEW_WARNING.format(n=result.needs_review_files)}")
+        print(REVIEW_ADVICE)
 
     if ns.write:
         written = write_draft(result, engagement_dir=ns.engagement_dir)

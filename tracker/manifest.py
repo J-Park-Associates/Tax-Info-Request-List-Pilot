@@ -1,9 +1,9 @@
-"""Manifest layer for the Client Document Tracker (component 1, docs/ROADMAP.md).
+"""Manifest layer for the tracker (component 1, docs/ROADMAP.md).
 
-Owns everything about ``_manifest.xlsx``: the schema, loading and validating
+Owns everything about the manifest workbook (``MANIFEST_FILENAME``): the schema, loading and validating
 rows into :class:`RequestItem` dataclasses, and writing scanner status back
 with Excel-lock resilience (retry with backoff, then defer updates to a
-``_manifest.pending.json`` sidecar that is merged on the next write).
+``PENDING_SUFFIX`` sidecar that is merged on the next write).
 
 This module never touches client files — only the manifest workbook and its
 sidecar. All values are validated on load and fail loudly with row context so
@@ -18,7 +18,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -87,15 +87,34 @@ ANY_EXTENSION = "*"
 #: in Period - typing it again as a regex was the redundancy, and not typing
 #: it was a 2024 form satisfying a TY2025 request.
 NO_DATE_CHECK = "*"
-_PERIOD_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+#: The years a tax year can be. The pattern below is built from them, and
+#: the app's year inputs are bounded by them.
+YEAR_MIN = 1900
+YEAR_MAX = 2099
+#: A four-digit year standing on its own. The digit guards keep an account
+#: number like 120250 from being read as "2025". Used wherever a year is
+#: found or shifted: the derived year check, rollover, the catalog.
+YEAR_PATTERN = re.compile(
+    r"(?<!\d)(?:" + "|".join(str(c) for c in range(YEAR_MIN // 100, YEAR_MAX // 100 + 1))
+    + r")\d{2}(?!\d)"
+)
+_PERIOD_YEAR = YEAR_PATTERN
+
+#: Characters Windows forbids in file and folder names, plus control
+#: characters - the one list, for identifiers and for sanitising names.
+_ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
+WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
+WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
 DATE_FORMAT = "yyyy-mm-dd"
+#: How a date is asked for on a command line or in the wizard.
+ISO_DATE_HINT = "YYYY-MM-DD"
 
 #: Characters an identifier may not contain. The identifier becomes the
 #: prefix of a Windows folder name and is matched back by that prefix, so
-#: anything the filesystem would alter (\\ / : * ? " < > | and control
-#: characters) or strip (a trailing dot) would leave the scanner unable to
+#: anything the filesystem would alter (``WINDOWS_ILLEGAL_CHARS``) or strip
+#: (a trailing dot) would leave the scanner unable to
 #: find the folder scaffold just made — a permanent "folder not found".
-_ILLEGAL_IDENTIFIER_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+_ILLEGAL_IDENTIFIER_CHARS = WINDOWS_ILLEGAL_CHARS
 
 
 class Status:
@@ -108,6 +127,35 @@ class Status:
     PENDING_SYNC = "Pending Sync"
 
     ALL = (MISSING, PARTIAL, FAILED, RECEIVED, PENDING_SYNC)
+    #: The client still owes us something: what the reminder asks for and
+    #: what ``summarize`` counts as outstanding, decided once.
+    OUTSTANDING = (MISSING, PARTIAL, FAILED)
+
+
+#: What a row with no status yet is called wherever a count is shown: it
+#: has been requested and nothing has been looked at. Not a Status, because
+#: the scanner never writes it.
+UNSCANNED_LABEL = "Requested"
+#: How ``Summary.line`` joins its counts, and what it says with no rows.
+SUMMARY_SEPARATOR = " · "
+SUMMARY_EMPTY = "no requests"
+
+#: The Engagement sheet's yes/no cells, as written; ``_parse_yes_no`` also
+#: reads the usual spellings a person types.
+YES = "yes"
+NO = "no"
+
+#: Sidecars beside a workbook: rows waiting because Excel held it, an
+#: unreadable sidecar kept as evidence, and the temp file an atomic save
+#: lands in first.
+PENDING_SUFFIX = ".pending.json"
+CORRUPT_SUFFIX = ".corrupt.json"
+TEMP_SUFFIX = ".tmp"
+
+#: How long a locked workbook is retried before rows are deferred to the
+#: sidecar; the index uses the same policy.
+LOCK_RETRIES = 5
+LOCK_RETRY_DELAY = 0.5
 
 
 class Override:
@@ -144,6 +192,63 @@ class RequestItem:
     validation_notes: str = ""
     row: int = 0                               # Excel row this item came from
 
+    @property
+    def label(self) -> str:
+        """``A01 - W-2 Wage Statements (TY2025)`` - how a request is named to people."""
+        text = label_for(self.identifier, self.document)
+        return f"{text} ({self.period})" if self.period else text
+
+    @property
+    def expected_text(self) -> str:
+        """``2 files expected`` when more than one file is due, else ``""``."""
+        return EXPECTED_PATTERN.format(n=self.expected_count) if self.expected_count > 1 else ""
+
+
+def shift_years(text: str, delta: int) -> str:
+    """Move every four-digit year in ``text`` by ``delta``.
+
+    Shifting rather than substituting one fixed year keeps *relative* periods
+    correct: on a 2025 -> 2026 roll, a row asking for the TY2024 prior-year
+    return correctly comes to ask for TY2025.
+    """
+    if not text or not delta:
+        return text
+    return YEAR_PATTERN.sub(lambda m: str(int(m.group(0)) + delta), text)
+
+
+def shift_item(item: "RequestItem", delta: int) -> "RequestItem":
+    """``item`` with every year in its document, period and typed date pattern moved.
+
+    A derived year check is left alone: the shifted Period derives it again.
+    """
+    if not delta:
+        return item
+    return replace(
+        item,
+        document=shift_years(item.document, delta),
+        period=shift_years(item.period, delta),
+        date_pattern="" if item.date_pattern_derived else shift_years(item.date_pattern, delta),
+    )
+
+
+def detect_year(items: Iterable["RequestItem"]) -> int | None:
+    """The tax year a list of rows is about, inferred from its own rows.
+
+    The most common year across periods and typed date rules wins; ties go
+    to the later year. None when nothing carries a year at all.
+    """
+    from collections import Counter
+
+    years: Counter[int] = Counter()
+    for item in items:
+        for text in (item.period, "" if item.date_pattern_derived else item.date_pattern):
+            for match in YEAR_PATTERN.findall(text or ""):
+                years[int(match)] += 1
+    if not years:
+        return None
+    best = max(years.values())
+    return max(year for year, count in years.items() if count == best)
+
 
 @dataclass(frozen=True, slots=True)
 class EngagementInfo:
@@ -153,18 +258,33 @@ class EngagementInfo:
     it existed) loads as all defaults and is still processed.
     """
 
-    client: str = ""        # greeting name in the reminder
-    name: str = ""          # engagement label; the folder name if blank
-    link: str = ""          # share link to the client's drop folder
+    # What each field is for is said once, in ENGAGEMENT_HELP below.
+    client: str = ""
+    name: str = ""
+    link: str = ""
     due: dt.date | None = None
-    sender: str = ""        # who the reminder is from
-    firm: str = ""          # sign-off line
-    reminders: bool = True  # False: this client is not chased by email
-    active: bool = True     # False: the scheduled run skips this folder
-    rolled_from: str = ""   # the prior engagement this one was rolled forward from
+    sender: str = ""
+    firm: str = ""
+    reminders: bool = True
+    active: bool = True
+    rolled_from: str = ""
 
 
 #: Row labels on the Engagement sheet, in the order they are written.
+#: How a request's parts are joined into one name: the README line, the
+#: request folder and the working copy all use it.
+LABEL_SEPARATOR = " - "
+
+
+def label_for(*parts: str) -> str:
+    """``A01 - W-2 Wage Statements`` from its parts, blanks dropped."""
+    return LABEL_SEPARATOR.join(part for part in parts if part)
+
+
+#: How a multi-file request says so, everywhere (the README, the reminder,
+#: the app's wizard preview).
+EXPECTED_PATTERN = "{n} files expected"
+
 ENGAGEMENT_FIELDS = (
     ("Client", "client"),
     ("Engagement Name", "name"),
@@ -176,6 +296,33 @@ ENGAGEMENT_FIELDS = (
     ("Active", "active"),
     ("Rolled From", "rolled_from"),
 )
+#: field name -> the sheet's label, for messages that name a cell.
+ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
+#: What each cell is for, as the README tells it.
+#: What the yes/no and Rolled From cells mean, said on the sheet and in the README.
+ENGAGEMENT_NOTES = {
+    "reminders": f"{NO} = this client is not chased by email",
+    "active": f"{NO} = the scheduled run skips this folder",
+    "rolled_from": "written by the rollover; the engagement it names is no longer chased",
+}
+ENGAGEMENT_HELP = {
+    "client": "greeting name in the reminder",
+    "name": "label; the folder name if blank",
+    "link": "pasted into the reminder",
+    "due": "the date the reminder asks the client to send things by",
+    "sender": "who the reminder is from",
+    "firm": "the sign-off line and the client README's contact (typed once at setup)",
+    **ENGAGEMENT_NOTES,
+}
+
+
+def engagement_sheet_note() -> str:
+    """The italic line under the Engagement sheet, built from the notes."""
+    return ". ".join(
+        f"{ENGAGEMENT_LABELS[field]}: {note}" if field != "rolled_from"
+        else f"{ENGAGEMENT_LABELS[field]} is {note}"
+        for field, note in ENGAGEMENT_NOTES.items()
+    ) + "."
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,7 +399,7 @@ def derived_date_pattern(period: str) -> str:
     return rf"(?i)\b{match.group(0)}\b" if match else ""
 
 
-def _parse_extensions(value: object) -> tuple[str, ...]:
+def parse_extensions(value: object) -> tuple[str, ...]:
     """Blank → the safe default; ``*`` → anything (empty tuple); else the list."""
     parts = _csv_tuple(value)
     if not parts:
@@ -269,7 +416,7 @@ def identifier_problem(identifier: str) -> str:
     bad identifier is refused with the same sentence wherever it is typed.
     """
     if _ILLEGAL_IDENTIFIER_CHARS.search(identifier):
-        return 'may not contain any of \\ / : * ? " < > | (it becomes a folder name)'
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it becomes a folder name)"
     if identifier != identifier.rstrip(". "):
         return "may not end with a dot or a space (Windows drops them from folder names)"
     return ""
@@ -293,6 +440,24 @@ def _header_map(ws) -> dict[str, int]:
 # --------------------------------------------------------------- loading ----
 
 
+def _open_manifest(path: Path):
+    """The workbook, read-only (cached values), or the one sentence for why not."""
+    if not path.exists():
+        raise ManifestError(f"Manifest not found: {path}")
+    try:
+        return load_workbook(path, data_only=True)
+    except ManifestError:
+        raise
+    except Exception as exc:  # zip/corruption errors from openpyxl
+        raise ManifestError(f"Could not open {path}: {exc}") from exc
+
+
+def _requests_sheet(wb, path: Path):
+    if SHEET_NAME not in wb.sheetnames:
+        raise ManifestError(f"{path.name} has no {SHEET_NAME!r} sheet")
+    return wb[SHEET_NAME]
+
+
 def load_manifest(path: Path | str) -> list[RequestItem]:
     """Load and validate every request row from ``path``.
 
@@ -300,18 +465,9 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
     Raises :class:`ManifestError` with row context on any invalid data.
     """
     path = Path(path)
-    if not path.exists():
-        raise ManifestError(f"Manifest not found: {path}")
+    wb = _open_manifest(path)
     try:
-        wb = load_workbook(path, data_only=True)
-    except ManifestError:
-        raise
-    except Exception as exc:  # zip/corruption errors from openpyxl
-        raise ManifestError(f"Could not open {path}: {exc}") from exc
-    try:
-        if SHEET_NAME not in wb.sheetnames:
-            raise ManifestError(f"{path.name} has no {SHEET_NAME!r} sheet")
-        ws = wb[SHEET_NAME]
+        ws = _requests_sheet(wb, path)
         columns = _header_map(ws)
 
         items: list[RequestItem] = []
@@ -377,7 +533,7 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
                     document=document,
                     period=period,
                     expected_count=expected_count,
-                    allowed_extensions=_parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
+                    allowed_extensions=parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
                     min_size_kb=min_size_kb,
                     required_keywords=_csv_tuple(values[COL_REQUIRED_KEYWORDS]),
                     any_keywords=_csv_tuple(values[COL_ANY_KEYWORDS]),
@@ -407,9 +563,17 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
 # ------------------------------------------------------------- write-back ----
 
 
-def pending_path(manifest_path: Path) -> Path:
-    """Sidecar file that holds updates deferred by an Excel lock."""
-    return manifest_path.with_name(manifest_path.stem + ".pending.json")
+def pending_path(workbook_path: Path) -> Path:
+    """The sidecar beside ``workbook_path`` that holds rows an Excel lock deferred."""
+    return workbook_path.with_name(workbook_path.stem + PENDING_SUFFIX)
+
+
+def quarantine_sidecar(sidecar: Path, exc: Exception, what: str) -> Path:
+    """Move an unreadable sidecar aside (kept as evidence) so it is never retried for ever."""
+    corrupt = sidecar.with_suffix(CORRUPT_SUFFIX)
+    sidecar.replace(corrupt)
+    log.error("Unreadable %s sidecar moved to %s: %s", what, corrupt.name, exc)
+    return corrupt
 
 
 def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
@@ -419,23 +583,11 @@ def _load_pending(manifest_path: Path) -> dict[str, StatusUpdate]:
     try:
         raw = json.loads(sidecar.read_text(encoding="utf-8"))
         return {
-            ident: StatusUpdate(
-                status=u["status"],
-                file_count=int(u.get("file_count", 0)),
-                received_date=(
-                    dt.date.fromisoformat(u["received_date"])
-                    if u.get("received_date")
-                    else None
-                ),
-                validation_notes=u.get("validation_notes", ""),
-            )
+            ident: _update_from_json(u)
             for ident, u in raw.items()
         }
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-        # Preserve the evidence rather than retry-looping on garbage forever.
-        corrupt = sidecar.with_suffix(".corrupt.json")
-        sidecar.replace(corrupt)
-        log.error("Unreadable pending sidecar moved to %s: %s", corrupt.name, exc)
+        quarantine_sidecar(sidecar, exc, "pending")
         return {}
 
 
@@ -469,14 +621,23 @@ def with_pending(
     return out
 
 
+def _update_to_json(update: StatusUpdate) -> dict:
+    """A StatusUpdate as the sidecar stores it: its fields, the date as text."""
+    payload = asdict(update)
+    payload["received_date"] = update.received_date.isoformat() if update.received_date else None
+    return payload
+
+
+def _update_from_json(raw: Mapping) -> StatusUpdate:
+    values = {f.name: raw.get(f.name, f.default) for f in fields(StatusUpdate) if f.name != "status"}
+    values["received_date"] = dt.date.fromisoformat(raw["received_date"]) if raw.get("received_date") else None
+    values["file_count"] = int(values["file_count"] or 0)
+    return StatusUpdate(status=raw["status"], **values)
+
+
 def _save_pending(manifest_path: Path, updates: Mapping[str, StatusUpdate]) -> None:
     payload = {
-        ident: {
-            "status": u.status,
-            "file_count": u.file_count,
-            "received_date": u.received_date.isoformat() if u.received_date else None,
-            "validation_notes": u.validation_notes,
-        }
+        ident: _update_to_json(u)
         for ident, u in updates.items()
     }
     pending_path(manifest_path).write_text(
@@ -496,7 +657,7 @@ def save_workbook_atomically(wb: Workbook, path: Path) -> None:
     A file Excel holds open still raises ``PermissionError`` (from the
     replace rather than the save), so lock-retry callers behave as before.
     """
-    temp = path.with_name(path.name + ".tmp")
+    temp = path.with_name(path.name + TEMP_SUFFIX)
     try:
         wb.save(temp)
         os.replace(temp, path)
@@ -509,9 +670,7 @@ def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
     PermissionError if Excel holds the file locked (caller retries)."""
     wb = load_workbook(path)  # NOT data_only: preserves any formulas on save
     try:
-        if SHEET_NAME not in wb.sheetnames:
-            raise ManifestError(f"{path.name} has no {SHEET_NAME!r} sheet")
-        ws = wb[SHEET_NAME]
+        ws = _requests_sheet(wb, path)
         columns = _header_map(ws)
 
         rows_by_identifier = {
@@ -550,8 +709,8 @@ def write_statuses(
     path: Path | str,
     updates: Mapping[str, StatusUpdate],
     *,
-    retries: int = 5,
-    retry_delay: float = 0.5,
+    retries: int = LOCK_RETRIES,
+    retry_delay: float = LOCK_RETRY_DELAY,
 ) -> bool:
     """Write scanner columns for the given identifiers, lock-resiliently.
 
@@ -631,10 +790,10 @@ class Summary:
         """``Received: 3 · Missing: 2 · Waived: 1`` - the same everywhere."""
         parts = [f"{status}: {n}" for status, n in sorted(self.counts.items())]
         if self.unscanned:
-            parts.append(f"Requested: {self.unscanned}")
+            parts.append(f"{UNSCANNED_LABEL}: {self.unscanned}")
         if self.waived:
-            parts.append(f"Waived: {self.waived}")
-        return " · ".join(parts) or "no requests"
+            parts.append(f"{Override.WAIVED}: {self.waived}")
+        return SUMMARY_SEPARATOR.join(parts) or SUMMARY_EMPTY
 
 
 def summarize(items: Iterable[RequestItem]) -> Summary:
@@ -655,7 +814,7 @@ def summarize(items: Iterable[RequestItem]) -> Summary:
         counts[status] = counts.get(status, 0) + 1
         if status == Status.RECEIVED:
             received += 1
-        elif status in (Status.MISSING, Status.PARTIAL, Status.FAILED):
+        elif status in Status.OUTSTANDING:
             outstanding += 1
     return Summary(counts=counts, total=total, received=received,
                    outstanding=outstanding, waived=waived, unscanned=unscanned)
@@ -705,12 +864,12 @@ def check_manifest(path: Path | str) -> ManifestCheck:
             continue
         if not has_routing_rules(item):
             warnings.append(
-                f"Row {item.row} ({item.identifier}): no Required Keywords, Any Keywords "
-                "or Date Pattern, so its documents can never be filed automatically"
+                f"Row {item.row} ({item.identifier}): no {COL_REQUIRED_KEYWORDS}, {COL_ANY_KEYWORDS} "
+                f"or {COL_DATE_PATTERN}, so its documents can never be filed automatically"
             )
         if not item.allowed_extensions:
             warnings.append(
-                f"Row {item.row} ({item.identifier}): Allowed Extensions is '*', so any "
+                f"Row {item.row} ({item.identifier}): {COL_ALLOWED_EXTENSIONS} is '{ANY_EXTENSION}', so any "
                 "file type counts as this document"
             )
     pending = pending_path(path)
@@ -731,12 +890,12 @@ def _parse_yes_no(value: object, label: str, default: bool) -> bool:
         return default
     if isinstance(value, bool):
         return value
-    if text in ("yes", "y", "true", "1"):
+    if text in (YES, "y", "true", "1"):
         return True
-    if text in ("no", "n", "false", "0"):
+    if text in (NO, "n", "false", "0"):
         return False
     raise ManifestError(
-        f"{ENGAGEMENT_SHEET_NAME} sheet: {label} must be yes or no, got {value!r}"
+        f"{ENGAGEMENT_SHEET_NAME} sheet: {label} must be {YES} or {NO}, got {value!r}"
     )
 
 
@@ -761,12 +920,7 @@ def _engagement_from_sheet(ws) -> EngagementInfo:
 def load_engagement_info(path: Path | str) -> EngagementInfo:
     """The Engagement sheet of ``path``; all defaults if the sheet is absent."""
     path = Path(path)
-    if not path.exists():
-        raise ManifestError(f"Manifest not found: {path}")
-    try:
-        wb = load_workbook(path, data_only=True)
-    except Exception as exc:
-        raise ManifestError(f"Could not open {path}: {exc}") from exc
+    wb = _open_manifest(path)
     try:
         if ENGAGEMENT_SHEET_NAME not in wb.sheetnames:
             return EngagementInfo()
@@ -785,17 +939,13 @@ def _write_engagement_sheet(wb: Workbook, info: EngagementInfo) -> None:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
         value = getattr(info, field_name)
         if isinstance(value, bool):
-            value = "yes" if value else "no"
+            value = YES if value else NO
         elif isinstance(value, dt.date):
             cell = ws.cell(row=row, column=2, value=value)
             cell.number_format = DATE_FORMAT
             continue
         ws.cell(row=row, column=2, value=value or None)
-    note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1,
-                   value="Reminders: no = this client is not chased by email. "
-                         "Active: no = the scheduled run skips this folder. "
-                         "Rolled From is written by the rollover; the engagement it "
-                         "names is no longer chased.")
+    note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1, value=engagement_sheet_note())
     note.font = Font(italic=True, color="666666")
 
 
@@ -884,20 +1034,24 @@ def create_template(
         ws.column_dimensions[get_column_letter(idx)].width = _COLUMN_WIDTHS[header]
     ws.freeze_panes = "A2"
 
+    column = {header: index for index, header in enumerate(HEADERS, start=1)}
     for row, item in enumerate(items, start=2):
-        ws.cell(row=row, column=1, value=item.identifier)
-        ws.cell(row=row, column=2, value=item.document)
-        ws.cell(row=row, column=3, value=item.period or None)
-        ws.cell(row=row, column=4, value=item.expected_count)
-        # An item built in code with no extensions means "anything"; say so,
-        # or the loader would read the blank back as the safe default.
-        ws.cell(row=row, column=5, value=", ".join(item.allowed_extensions) or ANY_EXTENSION)
-        ws.cell(row=row, column=6, value=item.min_size_kb)
-        ws.cell(row=row, column=7, value=", ".join(item.required_keywords) or None)
-        ws.cell(row=row, column=8, value=", ".join(item.any_keywords) or None)
-        ws.cell(row=row, column=9,
-                value=None if item.date_pattern_derived else (item.date_pattern or None))
-        ws.cell(row=row, column=10, value=item.manual_override or None)
+        cells = {
+            COL_IDENTIFIER: item.identifier,
+            COL_DOCUMENT: item.document,
+            COL_PERIOD: item.period or None,
+            COL_EXPECTED_COUNT: item.expected_count,
+            # An item built in code with no extensions means "anything"; say
+            # so, or the loader would read the blank back as the safe default.
+            COL_ALLOWED_EXTENSIONS: ", ".join(item.allowed_extensions) or ANY_EXTENSION,
+            COL_MIN_SIZE_KB: item.min_size_kb,
+            COL_REQUIRED_KEYWORDS: ", ".join(item.required_keywords) or None,
+            COL_ANY_KEYWORDS: ", ".join(item.any_keywords) or None,
+            COL_DATE_PATTERN: None if item.date_pattern_derived else (item.date_pattern or None),
+            COL_MANUAL_OVERRIDE: item.manual_override or None,
+        }
+        for header, value in cells.items():
+            ws.cell(row=row, column=column[header], value=value)
 
     _write_engagement_sheet(wb, info or EngagementInfo())
     wb.active = 0

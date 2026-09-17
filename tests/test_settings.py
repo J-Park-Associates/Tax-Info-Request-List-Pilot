@@ -10,6 +10,7 @@ import json
 import pytest
 
 from tracker.settings import (
+    KEY_CLIENTS_ROOT,
     ENV_SETTINGS_DIR,
     SETTINGS_FILENAME,
     SettingsError,
@@ -37,7 +38,7 @@ def test_the_root_is_written_once_and_read_back(beside_the_app):
     clients.mkdir()
     assert set_clients_root(clients) == clients
     assert clients_root() == clients
-    assert json.loads(settings_path().read_text(encoding="utf-8")) == {"clients_root": str(clients)}
+    assert json.loads(settings_path().read_text(encoding="utf-8")) == {KEY_CLIENTS_ROOT: str(clients)}
 
 
 def test_a_folder_that_does_not_exist_is_refused(beside_the_app):
