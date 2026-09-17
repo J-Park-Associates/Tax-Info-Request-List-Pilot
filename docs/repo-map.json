@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 82,
     "edges": 258,
-    "reused": 51
+    "reused": 59
   },
   "node_types": [
     "artifact",
@@ -120,8 +120,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c78013425354297e",
-      "lines": 513,
+      "sha256": "1ce15cc091fbc297",
+      "lines": 542,
       "cli": "python -m tracker.content_check",
       "exports": [
         "CACHE_FILENAME",
@@ -133,11 +133,11 @@
         "OcrError",
         "TEXT_EXTENSIONS",
         "XLSX_EXTENSIONS",
-        "_FORM_VARIANT",
+        "_DASHES",
+        "_JOINER",
         "_MAX_OCR_PAGES",
         "_MIN_TEXT_CHARS",
-        "_VARIANT_AFTER",
-        "_VARIANT_BEFORE",
+        "_PAGE_BREAK",
         "check_content",
         "contains_keyword",
         "evaluate_rules",
@@ -150,13 +150,13 @@
       ],
       "constants": {
         "CACHE_FILENAME": "'_content_cache.json'",
-        "CACHE_VERSION": "2",
+        "CACHE_VERSION": "3",
         "MAX_PAGES": "10",
         "XLSX_EXTENSIONS": "('xlsx', 'xlsm')",
         "TEXT_EXTENSIONS": "('csv', 'tsv', 'txt')"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache (CACHE_FILENAME) keeps the verdicts.",
-      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION 2; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached."
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION 2; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3."
     },
     {
       "id": "tracker/filer.py",
@@ -384,8 +384,8 @@
       "id": "tracker/reasons.py",
       "type": "module",
       "layer": "core",
-      "sha256": "115b7d267b7e56c3",
-      "lines": 172,
+      "sha256": "795647defce0f4a9",
+      "lines": 176,
       "exports": [
         "EXTENSION_NOT_ALLOWED",
         "EXTRACTION_FAILED",
@@ -399,6 +399,7 @@
         "NO_REQUEST_FOLDER",
         "NO_TEXT_AFTER_OCR",
         "NO_TEXT_LAYER",
+        "OCR_FAILED",
         "PASSWORD_PROTECTED",
         "PENDING_SYNC",
         "Reason",
@@ -419,7 +420,7 @@
         "GOOGLE_EXPORT_HINT": "'File > Download > PDF or Excel'"
       },
       "role": "Every refusal said once: for each cause, the note the scanner writes (a template), the marker the reminder recognises it by, the plain sentence the client is asked with, and whether the row is the firm's to look at.",
-      "notes": "Replaced substrings retyped in reminder.py to recognise sentences typed in validators/content_check/scanner: rewording a producer silently changed what a client was asked. tests/test_reasons.py checks each marker is part of its own template. Decision 55: reasons_in() strips the file-name prefixes the scanner writes, so a marker is never found in a client's file name."
+      "notes": "Replaced substrings retyped in reminder.py to recognise sentences typed in validators/content_check/scanner: rewording a producer silently changed what a client was asked. tests/test_reasons.py checks each marker is part of its own template. Decision 55: reasons_in() strips the file-name prefixes the scanner writes, so a marker is never found in a client's file name. OCR_FAILED is firm-side: ours to retry, not the client's to resend (decision 57)."
     },
     {
       "id": "tracker/registry.py",
@@ -450,14 +451,16 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fb3cf6c90327774a",
-      "lines": 565,
+      "sha256": "d4798095410bd84d",
+      "lines": 581,
       "cli": "python -m tracker.reminder",
       "exports": [
+        "BOTH_DRAFTS_EDITED",
         "DRAFT_BANNER",
         "DRAFT_FILENAME",
         "DROP_ANYWHERE",
         "DUE_FLAG",
+        "DraftsEditedError",
         "FirmSideFlag",
         "HELD_BACK_HEADING",
         "HELD_BACK_LINE",
@@ -504,7 +507,7 @@
         "SECTION_FAILED": "'RECEIVED, BUT WE COULD NOT USE IT'"
       },
       "role": "Drafts the client chase email from a scanned manifest. Draft only \u2014 there is no SMTP anywhere in this module.",
-      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Overlays pending_updates() from the manifest sidecar before triaging, so a scan that Excel kept from writing still stops the draft asking for a document that arrived. Reads the Engagement sheet itself for client, link, due, sender and firm; keyword arguments are one-off overrides for the CLI."
+      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Overlays pending_updates() from the manifest sidecar before triaging, so a scan that Excel kept from writing still stops the draft asking for a document that arrived. Reads the Engagement sheet itself for client, link, due, sender and firm; keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing."
     },
     {
       "id": "tracker/rollover.py",
@@ -577,8 +580,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a54374f80847e821",
-      "lines": 498,
+      "sha256": "0c28abe14e228df3",
+      "lines": 519,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -618,7 +621,7 @@
         "NOTHING_OUTSTANDING": "'nothing outstanding; no reminder needed'"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57: _mark_drafted() dates the draft files whenever the draft step ran, so a quiet draft day is not a missed one."
     },
     {
       "id": "tracker/scaffold.py",
@@ -950,8 +953,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3006aaacf5a99b99",
-      "lines": 259,
+      "sha256": "0833ae85e09eec24",
+      "lines": 260,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -959,7 +962,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0e17aa93a5306215",
+      "sha256": "a95f538742e76259",
       "lines": 451,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1043,8 +1046,8 @@
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "951097cb43475d78",
-      "lines": 84,
+      "sha256": "7136ce5da10643c4",
+      "lines": 87,
       "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements-build.txt, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
       "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block."
     },
@@ -1052,8 +1055,8 @@
       "id": "Start App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "b27eb43ca4f74c12",
-      "lines": 37,
+      "sha256": "1f4dc5ddf947d740",
+      "lines": 39,
       "role": "Runs the desktop app from source: checks for Python and Node, installs the Electron packages app/package-lock.json pins (`npm ci`, first run only) and starts Electron.",
       "notes": "Electron is started through its own entry script under `node`, never the `npx` shim: the shim breaks when the folder's path contains an ampersand, which the firm's own checkout does (decision 53). Electron downloads its binary on the first start, so the install step needs the network once. Decision 55: installs requirements.txt every start (a second when satisfied)."
     },
@@ -1216,7 +1219,7 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "453f967e9577f53c",
+      "sha256": "100a819d0a83d5f2",
       "lines": 316,
       "exports": [
         "counting_extractor",
@@ -1420,14 +1423,15 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "958b30bfe24a11a0",
-      "lines": 342,
+      "sha256": "359cda9b9335b60f",
+      "lines": 350,
       "exports": [
         "SCANNED",
         "engagement",
         "item",
         "test_a_missing_request_folder_is_our_problem_not_the_clients",
         "test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients",
+        "test_an_ocr_failure_is_the_firms_to_retry_not_the_clients_to_resend",
         "test_an_unscanned_manifest_will_not_be_drafted_from",
         "test_draft_greets_signs_and_counts",
         "test_draft_with_nothing_outstanding_says_so",
@@ -1541,19 +1545,21 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "050fc3fe434ab1ae",
-      "lines": 357,
+      "sha256": "200c5d262380e04a",
+      "lines": 378,
       "exports": [
         "DONATIONS",
         "INT_DIV",
         "ITEMS",
         "MORTGAGE",
         "W2",
+        "test_a_clients_hyphenated_file_name_still_routes",
         "test_a_corrupt_pdf_is_a_review_reason_not_a_crash",
         "test_a_derived_year_never_routes_on_its_own_but_still_contests",
         "test_a_file_type_nobody_accepts_is_named_as_such",
         "test_a_matching_document_the_row_refuses_says_why",
         "test_a_multi_page_scan_with_no_text_layer_still_routes_by_its_name",
+        "test_a_scanners_stamp_is_not_a_text_layer",
         "test_a_sensibly_named_scan_is_not_ocrd",
         "test_a_tuition_statement_is_never_filed_as_mortgage_interest",
         "test_ambiguous_match_goes_to_review",
@@ -1580,8 +1586,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c2a9671bb1a0aa2c",
-      "lines": 466,
+      "sha256": "82216eff9c057511",
+      "lines": 504,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -1592,6 +1598,7 @@
         "samples",
         "test_a_clients_folder_drives_a_real_run_with_nothing_registered",
         "test_a_draft_day_the_machine_missed_is_caught_up_on_the_next_pass",
+        "test_a_draft_day_with_nothing_to_chase_still_counts_as_drafted",
         "test_a_dry_run_writes_nothing_at_all",
         "test_a_manual_run_drafts_on_a_weekday",
         "test_a_missing_folder_is_recorded_not_raised",
@@ -1602,6 +1609,7 @@
         "test_a_weekday_run_files_and_scans_but_writes_no_draft",
         "test_always_mode_drafts_on_any_day",
         "test_an_edited_draft_survives_the_next_weekly_run",
+        "test_an_edited_second_draft_is_never_clobbered_by_the_next_repeat",
         "test_an_engagement_whose_manifest_cannot_be_read_fails_alone",
         "test_an_unknown_reminder_mode_fails_loudly",
         "test_an_unreadable_manifest_is_recorded_not_raised",
@@ -1654,7 +1662,7 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9e0a0df99b3a0448",
+      "sha256": "135bb40d4e9bcf9e",
       "lines": 442,
       "exports": [
         "DAY1",
@@ -1691,8 +1699,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cf37a264401dd242",
-      "lines": 246,
+      "sha256": "8793bee4c97362d2",
+      "lines": 249,
       "exports": [
         "ARGS",
         "NS",

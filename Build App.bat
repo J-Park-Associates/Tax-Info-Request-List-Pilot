@@ -59,6 +59,9 @@ rem No parentheses in this value: it is expanded inside the parenthesised
 rem block below, where a ")" would end the block early.
 set COMMIT=not a git checkout
 for /f "usebackq delims=" %%i in (`git rev-parse HEAD 2^>nul`) do set COMMIT=%%i
+rem A package made from a tree with uncommitted changes is not the commit
+rem it names; BUILD-INFO.txt says so rather than claim otherwise.
+for /f "usebackq delims=" %%i in (`git status --porcelain 2^>nul`) do set COMMIT=%COMMIT% plus uncommitted changes
 for /f "usebackq delims=" %%i in (`%PY% --version`) do set PYVER=%%i
 for /f "usebackq delims=" %%i in (`node --version`) do set NODEVER=%%i
 for /f "usebackq delims=" %%i in (`npm --version`) do set NPMVER=%%i

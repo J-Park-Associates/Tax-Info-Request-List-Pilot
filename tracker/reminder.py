@@ -110,6 +110,17 @@ class ReminderError(Exception):
     """A reminder could not be drafted from this engagement."""
 
 
+#: What the run says when it left both drafts alone.
+BOTH_DRAFTS_EDITED = (
+    f"{DRAFT_FILENAME} and {NEW_DRAFT_FILENAME} have both been edited; this week's "
+    "draft was not written - send or delete one of them first"
+)
+
+
+class DraftsEditedError(ReminderError):
+    """Both draft files carry a person's edits; nothing was overwritten."""
+
+
 @dataclass(frozen=True, slots=True)
 class ReminderLine:
     """One bullet in the draft: a request, and what we are asking for."""
@@ -469,6 +480,11 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
 
     if preserve_edits and path.exists() and not is_unedited(path):
         path = path.with_name(NEW_DRAFT_FILENAME)
+        if path.exists() and not is_unedited(path):
+            # Both drafts carry somebody's work. The scheduled repeat runs
+            # several times on the draft day; the second one must not
+            # take the edits the first one made room for.
+            raise DraftsEditedError(BOTH_DRAFTS_EDITED)
 
     footer: list[str] = []
     if draft.scaffold_gaps:

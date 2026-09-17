@@ -140,6 +140,10 @@ NO_TEXT_AFTER_OCR = Reason(
     "no-text-after-ocr", "no readable text found in PDF, even after OCR; review manually",
     "no readable text", firm_side=True,
 )
+OCR_FAILED = Reason(
+    "ocr-failed", "OCR failed on this file ({error}); will try again next run",
+    "OCR failed", firm_side=True,
+)
 
 # ---- the folder ---------------------------------------------------------------
 
@@ -155,7 +159,7 @@ ALL: tuple[Reason, ...] = (
     PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, EXTENSION_NOT_ALLOWED,
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
     NO_PAGES, UNREADABLE_PDF, EXTRACTION_FAILED,
-    UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, PENDING_SYNC, VANISHED,
+    UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )
 

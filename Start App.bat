@@ -6,7 +6,9 @@ rem that is instant and fully offline.
 
 cd /d "%~dp0"
 
-where python >nul 2>nul || (
+rem Not "where python": on a fresh Windows that finds the Store's
+rem installer stub, which is not Python. Ask the interpreter itself.
+python -c "import sys" >nul 2>nul || (
   echo Python was not found. Install Python 3.11+ and re-run.
   pause & exit /b 1
 )

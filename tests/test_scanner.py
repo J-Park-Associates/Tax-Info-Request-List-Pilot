@@ -151,7 +151,7 @@ def test_received_date_sticky_across_scans(engagement):
 
 
 def test_auto_revert_preserves_date_and_notes(engagement):
-    pdf = text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec")
+    pdf = text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
     scan_engagement(engagement, today=DAY1)
 
     pdf.unlink()                                   # client deleted their file

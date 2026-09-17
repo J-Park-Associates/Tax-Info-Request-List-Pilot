@@ -76,7 +76,7 @@ def test_required_keywords(tmp_path):
 
 
 def test_keywords_case_insensitive(tmp_path):
-    pdf = text_pdf(tmp_path / "s.pdf", "CHASE BANK statement")
+    pdf = text_pdf(tmp_path / "s.pdf", "CHASE BANK statement for the account")
     assert check_content(pdf, item(required_keywords=("chase", "Statement"))).ok
 
 

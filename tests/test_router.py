@@ -354,3 +354,24 @@ def test_a_derived_year_never_routes_on_its_own_but_still_contests(tmp_path):
     routing = route_file(only_year, items)
     assert routing.identifier is None                      # Z01 must not claim it
     assert "add a keyword to Z01" in routing.reason
+
+
+def test_a_scanners_stamp_is_not_a_text_layer(tmp_path):
+    # "Page 1 of 2" on each of two pages, or "Scanned by CamScanner" on one,
+    # is more than a handful of characters and still no reading of the
+    # document. The name routes it, as for a blank scan.
+    for text, pages in (("Page 1 of 2", 2), ("Scanned by CamScanner", 1)):
+        f = text_pdf(tmp_path / "Form 1098 Mortgage Interest.pdf", text, pages=pages)
+        routing = route_file(f, ITEMS)
+        assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME, text
+
+
+def test_a_clients_hyphenated_file_name_still_routes(tmp_path):
+    # A form's own variant is part of its name; a bank's or a person's is
+    # a separator. Both sides of the hyphen, both ways.
+    for name, expected in (
+        ("1098-Citi.pdf", "C01"), ("W2-Tom.pdf", "A01"), ("Jane-W2.pdf", "A01"),
+        ("smith-1098-mtg.pdf", "C01"), ("1098-T.pdf", None), ("W-2G winnings.pdf", None),
+    ):
+        f = text_pdf(tmp_path / name, "")
+        assert route_file(f, ITEMS).identifier == expected, name

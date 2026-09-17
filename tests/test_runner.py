@@ -198,6 +198,44 @@ def test_an_edited_draft_survives_the_next_weekly_run(tmp_path, samples):
     assert "has been edited" in second.draft_note
 
 
+def test_an_edited_second_draft_is_never_clobbered_by_the_next_repeat(tmp_path, samples):
+    # The draft day's repeat runs several times. The first made room for the
+    # person's edits by writing NEW; the next must not take NEW's edits too.
+    from tracker.reminder import BOTH_DRAFTS_EDITED
+
+    engagement = build_engagement(tmp_path, samples)
+    first = run_engagement(engagement, today=SATURDAY).drafted
+    first.write_bytes(first.read_bytes() + b"\r\nPS: ask about the rental.\r\n")
+    second = run_engagement(engagement, today=SATURDAY).drafted
+    assert second.name == NEW_DRAFT_FILENAME
+    edited_new = second.read_bytes() + b"\r\nPPS: and the boat.\r\n"
+    second.write_bytes(edited_new)
+
+    third = run_engagement(engagement, today=SATURDAY)
+    assert third.drafted is None and third.ok
+    assert third.draft_note == BOTH_DRAFTS_EDITED
+    assert second.read_bytes() == edited_new
+
+
+def test_a_draft_day_with_nothing_to_chase_still_counts_as_drafted(tmp_path, samples):
+    # Nothing outstanding on Saturday writes no file. The old draft's date
+    # must still move, or every weekday pass after it would be a catch-up
+    # and draft the moment something turned outstanding mid-week.
+    import os
+
+    from tracker.runner import _mark_drafted, last_drafted
+
+    engagement = build_engagement(tmp_path, samples)
+    drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=14)).drafted
+    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=14), dt.time(9)).timestamp()
+    os.utime(drafted, (stamp, stamp))
+    assert last_drafted(engagement.path) == SATURDAY - dt.timedelta(days=14)
+    _mark_drafted(engagement.path)                     # what a quiet draft day does
+    assert last_drafted(engagement.path) == dt.date.today()
+    assert should_draft(Engagement(path=engagement.path), SATURDAY + dt.timedelta(days=3),
+                        REMINDERS_AUTO, drafted=last_drafted(engagement.path)) is False
+
+
 def test_an_untouched_draft_is_refreshed_in_place(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
     first = run_engagement(engagement, today=SATURDAY).drafted

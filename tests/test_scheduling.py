@@ -6,6 +6,7 @@ command, and says plainly that it drafts rather than sends.
 """
 
 import json
+import os
 from xml.etree import ElementTree
 
 import pytest
@@ -228,6 +229,7 @@ def test_the_description_names_the_drafting_day_from_the_runner():
     assert f"On {WEEKDAY_NAMES[DRAFT_WEEKDAY].capitalize()}s it also drafts" in xml
 
 
+@pytest.mark.skipif(os.name != "nt", reason="the Windows argument parser is the thing under test")
 def test_a_clients_root_ending_in_a_backslash_survives_the_argument_parser():
     # A drive root or a share ends in a backslash; quoted as-is, the
     # Windows argument parser reads the backslash as escaping the quote and
@@ -238,7 +240,8 @@ def test_a_clients_root_ending_in_a_backslash_survives_the_argument_parser():
     from tracker.runner import RUNNER_MODE_FLAG
     from tracker.scheduling import quote_argument, runner_arguments
 
-    for root in ("D:" + "\\", "D:" + "\\" + "Clients", "\\server\share\\"):
+    sep = chr(92)
+    for root in ("D:" + sep, "D:" + sep + "Clients", sep * 2 + "server" + sep + "share" + sep):
         command = f'"{sys.executable}" -c "import sys; print(sys.argv[1:])" {quote_argument(root)} --log'
         argv = subprocess.run(command, capture_output=True, text=True, check=True).stdout.strip()
         assert argv == repr([root, "--log"]), (root, argv)

@@ -63,11 +63,16 @@ logging.getLogger("pdfminer").setLevel(logging.ERROR)
 #: The verdict cache beside the manifest, shared by the filer and the scanner.
 CACHE_FILENAME = "_content_cache.json"
 #: Its layout; an older layout is simply reset (the cache is disposable).
-CACHE_VERSION = 2
+#: 3: verdicts that were the machine's (no OCR, OCR failed) are no longer
+#: stored; a cache written before that carried them for ever.
+CACHE_VERSION = 3
 
-#: A "text" PDF with fewer stripped characters than this is treated as a
-#: scan/image-only PDF and routed to the OCR fallback.
-_MIN_TEXT_CHARS = 20
+#: A "text" PDF with fewer stripped characters than this *per page read*
+#: is a scan: what little it has is a scanner's stamp ("Scanned by
+#: CamScanner", "Page 1 of 2"), not the document, and is not read as one.
+#: Pages are counted from the page breaks ``_extract_pdf`` writes.
+_MIN_TEXT_CHARS = 25
+_PAGE_BREAK = "\f"
 
 #: Read at most this many pages of any PDF, with or without OCR. The words
 #: that identify a document - its form number, the tax year, the payer -
@@ -130,35 +135,59 @@ def rules_fingerprint(item: RequestItem) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
-#: A form's variant letters, hyphen-joined to its number: the ``T`` of
-#: ``1098-T``, the ``INT`` of ``1099-INT``, the ``2`` of ``W-2``. One to four
-#: characters with a letter among them; a longer or all-digit neighbour
-#: (``smith-1098-2025.pdf``) is a separator's hyphen, not a form's.
-_FORM_VARIANT = r"[a-z0-9]{1,4}"
-_VARIANT_AFTER = re.compile(rf"-(?={_FORM_VARIANT}(?![a-z0-9]))[0-9]*[a-z]")
-_VARIANT_BEFORE = re.compile(rf"(?<![a-z0-9])(?=[0-9]*[a-z]){_FORM_VARIANT}-$")
+#: The variants the IRS joins to a form's number: ``1098-T`` is the tuition
+#: form, not the mortgage form ``1098``; ``1099-R`` is not ``1099-INT``. A
+#: keyword of the bare number means the bare form and must not match a
+#: variant. Keyed by the number with its dashes removed (``w2`` for W-2), so
+#: a keyword written either way is found. Any other hyphen-joined neighbour
+#: - an employer, a bank, a person (``1098-Citi``, ``W2-Tom``) - is a
+#: separator's hyphen and still matches, which is what a client's file
+#: name usually carries. One list; the manifest check consults it too.
+FORM_VARIANTS: dict[str, tuple[str, ...]] = {
+    "1098": ("t", "e", "c", "f", "q"),
+    "1099": ("int", "div", "b", "r", "misc", "nec", "oid", "k", "g", "s", "sa",
+             "q", "ltc", "patr", "cap", "c", "a", "h", "da"),
+    "1095": ("a", "b", "c"),
+    "1040": ("sr", "nr", "x", "es", "v", "ss"),
+    "1041": ("a", "es", "n", "qft", "t", "v"),
+    "1065": ("x", "b"),
+    "1120": ("s", "x", "f", "h", "w", "c", "l", "pc", "pol", "reit", "ric", "sf"),
+    "941": ("x", "ss", "pr"),
+    "990": ("ez", "pf", "t", "n"),
+    "5498": ("sa", "esa", "qa"),
+    "w2": ("g", "gu", "as", "vi", "c"),
+    "w3": ("c", "ss", "pr"),
+}
+#: What may sit between a number and its variant, or between a keyword's
+#: words: nothing ("1098T"), spaces, or any dash a PDF or a keyboard yields.
+_JOINER = r"[\s\-‐‑‒–—]*"
+_DASHES = re.compile(r"[\s\-‐‑‒–—]")
 
 
-def _joined_to_a_form(text: str, start: int, end: int) -> bool:
-    """True when the token at ``text[start:end]`` is one half of a longer
-    form name: ``1098`` in "1098-T", ``1099`` in "1099-R", ``2`` in "W-2G"."""
-    return (
-        _VARIANT_AFTER.match(text, end) is not None
-        or _VARIANT_BEFORE.search(text, 0, start) is not None
-    )
+def _joined_to_a_variant(text: str, keyword: str, match: re.Match[str]) -> bool:
+    """True when the matched keyword ends in a form number that ``text``
+    continues with one of that form's variants: ``1098`` in "1098-T" or
+    "1098 T", ``form 1040`` in "Form-1040-SR"."""
+    variants = FORM_VARIANTS.get(_DASHES.sub("", keyword.strip().lower().split()[-1]))
+    if not variants:
+        return False
+    tail = re.compile(rf"{_JOINER}(?:{'|'.join(variants)})(?![a-z0-9])")
+    return tail.match(text, match.end()) is not None
 
 
 def keyword_pattern(keyword: str) -> str | None:
     """The regular expression one keyword is looked for with, or None if blank.
 
-    Whole tokens only, and whitespace or a hyphen between a keyword's
-    words (``interest income`` matches "interest-income" in a file name).
+    Whole tokens only. Between a keyword's words, and on either side of a
+    dash inside a word, anything a dash can become: ``interest income``
+    matches "interest-income" in a file name, ``w-2`` matches "W2" and
+    "W–2", ``1099-int`` matches "1099INT".
     """
-    words = [re.escape(w) for w in keyword.strip().lower().split()]
-    if not words:
+    words = [_JOINER.join(re.escape(part) for part in w.split("-"))
+             for w in keyword.strip().lower().split()]
+    if not words or not any(words):
         return None
-    between = r"[\s-]+"
-    return rf"(?<![a-z0-9]){between.join(words)}(?![a-z0-9])"
+    return rf"(?<![a-z0-9]){_JOINER.join(words)}(?![a-z0-9])"
 
 
 def contains_keyword(text: str, keyword: str) -> bool:
@@ -166,11 +195,11 @@ def contains_keyword(text: str, keyword: str) -> bool:
 
     Matched on token boundaries rather than as a bare substring, so ``EIN``
     does not match "being", ``1098`` does not match "10983", and ``W-2``
-    still matches "W-2 Wage and Tax Statement". A hyphen-joined variant
-    is part of the form's name, not a boundary: ``1098`` does not match
-    "1098-T" and ``1099`` does not match "1099-R", because a tuition
-    statement filed as mortgage interest is exactly the misfiling the
-    keywords exist to prevent. A row that means every 1099 lists them.
+    still matches "W-2 Wage and Tax Statement". A form's own variant is
+    part of its name, not a boundary: ``1098`` does not match "1098-T"
+    and ``1099`` does not match "1099-R" (``FORM_VARIANTS``), because a
+    tuition statement filed as mortgage interest is exactly the misfiling
+    the keywords exist to prevent. A row that means every 1099 lists them.
     Keywords drive both status and — via :mod:`tracker.router` — where a
     document gets filed, so a coincidental substring must never count as
     evidence.
@@ -179,9 +208,7 @@ def contains_keyword(text: str, keyword: str) -> bool:
     if pattern is None:
         return False
     text = text.lower()
-    return any(
-        not _joined_to_a_form(text, m.start(), m.end()) for m in re.finditer(pattern, text)
-    )
+    return any(not _joined_to_a_variant(text, keyword, m) for m in re.finditer(pattern, text))
 
 
 def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
@@ -213,7 +240,7 @@ def _extract_pdf(path: Path) -> str:
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages[:MAX_PAGES]:
             parts.append(page.extract_text() or "")
-    return "\n".join(parts)
+    return _PAGE_BREAK.join(parts)
 
 
 def _extract_xlsx(path: Path) -> str:
@@ -318,7 +345,8 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
         return Extraction(
             None, reason=reasons.UNCHECKABLE_TYPE.format(extension=extension), extractable=False,
         )
-    if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS:
+    pages = text.count(_PAGE_BREAK) + 1
+    if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS * pages:
         if not ocr:
             return Extraction(text, needs_ocr=True)
         return extract_by_ocr(path)
@@ -330,8 +358,9 @@ def extract_by_ocr(path: Path) -> Extraction:
     try:
         ocr_text = _ocr_pdf(path)
     except OcrError as exc:
+        # Ours to retry, not the client's to resend: the file may be fine.
         return Extraction(
-            None, reason=reasons.EXTRACTION_FAILED.format(error=str(exc)),
+            None, reason=reasons.OCR_FAILED.format(error=str(exc)),
             extractable=False, error=str(exc), transient=True,
         )
     if ocr_text is None:

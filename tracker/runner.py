@@ -41,6 +41,7 @@ if anything failed, so the scheduler shows a red run instead of a silent one.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -64,6 +65,7 @@ from tracker.registry import (
 from tracker.reminder import (
     DRAFT_FILENAME,
     NEW_DRAFT_FILENAME,
+    DraftsEditedError,
     ReminderError,
     draft_reminder,
     write_draft,
@@ -337,15 +339,34 @@ def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
     draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
     if not draft.has_outstanding:
         run.draft_note = NOTHING_OUTSTANDING
+        _mark_drafted(engagement.path)
         return
 
-    written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True)
+    try:
+        written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True)
+    except DraftsEditedError as exc:
+        run.draft_note = str(exc)
+        _mark_drafted(engagement.path)
+        return
     run.drafted = written
     if written.name == NEW_DRAFT_FILENAME:
         run.draft_note = (
             f"{DRAFT_FILENAME} has been edited, so this week's draft was "
             f"written to {NEW_DRAFT_FILENAME} instead"
         )
+
+
+def _mark_drafted(engagement_dir: Path) -> None:
+    """The draft step ran and chose to write nothing (nothing outstanding,
+    or both drafts edited): the draft files' dates are what ``last_drafted``
+    reads, so they are brought up to now - or a stale date would make every
+    later weekday pass a catch-up and draft the first time anything turned
+    outstanding mid-week."""
+    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
+        try:
+            os.utime(engagement_dir / name, None)
+        except OSError:
+            continue
 
 
 def _why_no_draft(engagement: Engagement, today: dt.date,
@@ -389,7 +410,7 @@ def run_registry(
 def format_report(report: RunReport) -> str:
     """The console (and log) rendering of one pass."""
     mode = {
-        REMINDERS_AUTO: ("drafting reminders" if is_draft_day(report.today)
+        REMINDERS_AUTO: ("drafting reminders" if is_draft_day(report.today) or report.drafted
                          else "no reminders today"),
         REMINDERS_ALWAYS: "drafting reminders (forced)",
         REMINDERS_NEVER: "reminders suppressed",
