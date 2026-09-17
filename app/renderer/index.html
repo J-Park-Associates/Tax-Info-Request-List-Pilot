@@ -12,88 +12,9 @@
       <span class="brand-divider"></span>
       <span class="brand-product">Tax Document Tracker</span>
     </div>
-    <span class="demo-badge">Marketing Demo</span>
   </header>
 
   <div class="layout">
-    <!-- ═══════════════ Presenter guide ═══════════════ -->
-    <aside class="guide">
-      <div class="guide-header">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-        </svg>
-        <h2>Presenter Guide</h2>
-      </div>
-      <p class="guide-sub">Full script: <em>DEMO-SCRIPT.md</em> in the project folder.</p>
-
-      <details class="step" open>
-        <summary><span class="step-num">1</span> Set the scene</summary>
-        <div class="step-body">
-          <p class="say">"Every tax season starts the same way: we send you a list of documents we need, and then everyone spends February playing email ping-pong. We replaced that with a shared folder that checks the documents itself."</p>
-          <p class="do">Click <strong>Reset Demo</strong> so every request shows <em>Missing</em>.</p>
-        </div>
-      </details>
-
-      <details class="step">
-        <summary><span class="step-num">2</span> Pick the return type</summary>
-        <div class="step-body">
-          <p class="say">"Setting up a new client takes a minute, not a morning. The first question is simply: what kind of return? Each form type carries its own tailored request list — a 1040 asks for W-2s and 1098s, an 1120-S asks for the trial balance and shareholder basis."</p>
-          <p class="do">Click <strong>New Engagement</strong>. Show the form-type cards — <em>1040, 1120, 1120-S, 1065, 1041, 990</em> — then pick <strong>Form 1040</strong>.</p>
-        </div>
-      </details>
-
-      <details class="step">
-        <summary><span class="step-num">3</span> Build the tailored list</summary>
-        <div class="step-body">
-          <p class="say">"Here's the 1040 checklist from years of engagements — I tick what applies to your situation, add anything unusual, and everything behind the scenes builds itself. Note the keyword column: that's what lets us recognise each document later, and it's yours to edit."</p>
-          <p class="do">Name it after <em>the prospect's own family or company</em>. Untick a couple of items, add one custom request (e.g. "Rental Property Records"). Click <strong>Create Engagement</strong> — the request list, the client's folder and our working tree are all built from that one click.</p>
-        </div>
-      </details>
-
-      <details class="step">
-        <summary><span class="step-num">4</span> What the client sees</summary>
-        <div class="step-body">
-          <p class="say">"Here's the part clients actually care about. They get one folder. Not a folder per document, not a portal with a password — one folder, and the instruction is 'drop everything in here.' They never sort anything, name anything, or work out which file matches which line on our list."</p>
-          <p class="do">Click <strong>Open Client Folder</strong>. Show how little is in it: <em>_README.txt</em> and <em>PBC</em>.</p>
-        </div>
-      </details>
-
-      <details class="step">
-        <summary><span class="step-num">5</span> Play the client</summary>
-        <div class="step-body">
-          <p class="say">"Let's be the client — helpful, busy, occasionally wrong. Everything goes in the one folder, including last year's W-2 by mistake, the same W-2 twice, a Word file where we need the 1098, and a vacation photo."</p>
-          <p class="do">Click <strong>Open Sample Documents</strong>, select them <strong>all</strong>, and drag them into the one client folder. No sorting — that's the whole point.</p>
-        </div>
-      </details>
-
-      <details class="step">
-        <summary><span class="step-num">6</span> The moment — scan</summary>
-        <div class="step-body">
-          <p class="say">"In production this runs by itself every fifteen minutes. Watch it sort that pile — without any person opening a single file."</p>
-          <p class="do">Click <strong>Run Scan</strong>. Then re-open <strong>Client folder</strong>: the drop zone is empty and every original is sitting in <em>PBC</em> under its own name. Walk the results:
-            A01 <em>Received</em> — both 2025 W-2s found and renamed, the duplicate kept but filed once.
-            A02 <em>Partial</em> — 2 of 3, it knows exactly what's still owed.
-            <em>Needs review</em> — last year's W-2 ("looks like A01 but the period is wrong"), the Word file, the Google Sheets shortcut and the photo. It never guessed.</p>
-        </div>
-      </details>
-
-      <details class="step">
-        <summary><span class="step-num">7</span> The accountant's view</summary>
-        <div class="step-body">
-          <p class="say">"And it all lands in the tool accountants already live in — Excel. One sheet for where each request stands, and one that maps every file the client sent to exactly where it ended up and what we renamed it to. Nothing disappears into a black box."</p>
-          <p class="do">Click <strong>Open Manifest in Excel</strong>, then show <strong>_index.xlsx</strong> — original name, filed-as name, and the reason for anything in review.</p>
-        </div>
-      </details>
-
-      <details class="step">
-        <summary><span class="step-num">8</span> The trust close</summary>
-        <div class="step-body">
-          <p class="say">"Three guarantees. Every decision is a deterministic rule — no AI ever reads your tax documents. Your originals are never altered: we move them into PBC byte for byte under your own file names, we work from copies, and every move is written down. And your judgment always wins — one column in Excel overrides any automated result."</p>
-          <p class="do">Point at the assurance bar at the bottom of this screen.</p>
-        </div>
-      </details>
-    </aside>
-
     <!-- ═══════════════ Dashboard ═══════════════ -->
     <main class="main">
       <div class="toolbar">
@@ -105,15 +26,7 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
           New Engagement
         </button>
-        <button id="btn-reset" class="btn btn-ghost" title="Rebuild the demo from scratch">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-          Reset Demo
-        </button>
         <span class="toolbar-spacer"></span>
-        <button id="btn-samples" class="btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-          Open Sample Documents
-        </button>
         <button id="btn-shared" class="btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
           Open Client Folder

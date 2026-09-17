@@ -328,7 +328,6 @@ def _print_report(report: ScanReport) -> None:
 
 if __name__ == "__main__":
     import argparse
-    from logging.handlers import RotatingFileHandler
 
     parser = argparse.ArgumentParser(
         description="Scan an engagement's Prepared/ tree and update _manifest.xlsx"
@@ -340,18 +339,10 @@ if __name__ == "__main__":
     ns = parser.parse_args()
 
     engagement = Path(ns.engagement_dir)
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
-    if not ns.dry_run and engagement.is_dir():
-        handlers.append(
-            RotatingFileHandler(
-                engagement / "_scan.log", maxBytes=512_000, backupCount=2,
-                encoding="utf-8",
-            )
-        )
+    # One log for the system - the runner's runs.log. A hand-run scan just talks.
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        handlers=handlers,
     )
 
     from tracker.manifest import ManifestError

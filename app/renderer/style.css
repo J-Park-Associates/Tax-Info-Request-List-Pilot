@@ -49,87 +49,9 @@ body {
 .brand-divider { width: 1px; height: 22px; background: rgba(248, 250, 252, 0.35); }
 .brand-product { font-size: 15px; font-weight: 400; color: #cbd5e1; }
 
-.demo-badge {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  padding: 5px 12px;
-  border: 1px solid rgba(248, 250, 252, 0.4);
-  border-radius: 999px;
-  color: #e2e8f0;
-}
-
 /* ── Layout ──────────────────────────────────────────────────────────── */
 
 .layout { display: flex; flex: 1; min-height: 0; }
-
-/* ── Presenter guide ─────────────────────────────────────────────────── */
-
-.guide {
-  width: 390px;
-  flex-shrink: 0;
-  background: var(--card);
-  border-right: 1px solid var(--border);
-  padding: 20px;
-  overflow-y: auto;
-}
-
-.guide-header { display: flex; align-items: center; gap: 9px; color: var(--navy); }
-.guide-header h2 { font-size: 16px; font-weight: 600; }
-.guide-sub { font-size: 12.5px; color: var(--subtle); margin: 4px 0 14px; }
-
-.step {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 8px;
-  background: #fbfcfe;
-  overflow: hidden;
-}
-
-.step summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  font-weight: 600;
-  font-size: 13.5px;
-  color: var(--navy);
-  cursor: pointer;
-  list-style: none;
-  transition: background-color 180ms ease;
-}
-.step summary::-webkit-details-marker { display: none; }
-.step summary:hover { background: #f1f5f9; }
-.step summary:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
-
-.step-num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--navy);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.step-body { padding: 4px 14px 14px 46px; font-size: 13px; }
-
-.say {
-  color: var(--muted);
-  font-style: italic;
-  border-left: 3px solid #c7d7ef;
-  padding-left: 10px;
-  margin-bottom: 8px;
-}
-
-.do { color: var(--text); }
-.do strong { color: var(--blue-dark); }
-.do em { font-style: normal; font-weight: 600; color: var(--navy); }
 
 /* ── Main dashboard ──────────────────────────────────────────────────── */
 

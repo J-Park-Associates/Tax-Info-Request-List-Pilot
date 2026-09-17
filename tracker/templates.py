@@ -6,12 +6,9 @@ they are called, how many to expect and — the part that makes the pipeline
 run unattended — the keyword and date rules the router and scanner use to
 recognise each one.
 
-This is the **only** place the checklists live. The plain-CSV copies in
-``templates/`` are generated from it (``python -m tracker.templates
-export``) so an accountant can read them in Excel, and
-``tests/test_templates.py`` fails if the committed CSVs drift from the
-catalog. Edit the Python, regenerate the CSVs, commit both. There is no
-second list to keep in step.
+This is the **only** place the checklists live. There is no second copy to
+keep in step: the manifest an engagement is created with is the readable
+one, and the wizard reads this module directly.
 
 Every row carries a keyword rule. A request with no keyword has no way to
 recognise its document, so it never auto-files (see :mod:`tracker.router`);
@@ -22,9 +19,7 @@ written here: a Period like ``TY2025`` implies it (:func:`tracker.manifest.deriv
 
 from __future__ import annotations
 
-import csv
 import datetime as dt
-from pathlib import Path
 
 from tracker.manifest import (
     ANY_EXTENSION,
@@ -32,16 +27,6 @@ from tracker.manifest import (
     ManifestError,
     RequestItem,
     identifier_problem,
-)
-
-#: Where the generated CSV copies live, relative to the repository root.
-TEMPLATES_DIRNAME = "templates"
-
-#: Columns of the generated CSVs: the manifest's accountant columns, plus
-#: whether the wizard pre-ticks the row.
-CSV_COLUMNS = (
-    "Identifier", "Document", "Period", "Expected Count", "Allowed Extensions",
-    "Min Size KB", "Required Keywords", "Any Keywords", "Date Pattern", "Core",
 )
 
 # Tax form catalog — the wizard's first page. Selecting a form type tailors
@@ -488,7 +473,6 @@ FORM_TEMPLATES = {
     ],
 }
 
-DEMO_FORM = "1040"
 
 
 # ------------------------------------------------------------------ items ----
@@ -620,92 +604,3 @@ def template_items(
     base = base_year(form)
     delta = (year - base) if base else 0
     return [shift_item(item, delta) for item in items]
-
-
-# -------------------------------------------------------------------- csv ----
-
-
-def csv_name(form: str) -> str:
-    """``form-1120s.csv`` for ``1120S``: the file an accountant opens."""
-    return f"form-{form.lower()}.csv"
-
-
-def csv_rows(form: str) -> list[list[str]]:
-    """The CSV body for one form, one list per row, header excluded."""
-    rows = []
-    for spec in FORM_TEMPLATES[form]:
-        item = item_from_spec(spec)
-        rows.append([
-            item.identifier,
-            item.document,
-            item.period,
-            str(item.expected_count),
-            ", ".join(item.allowed_extensions),
-            str(item.min_size_kb),
-            ", ".join(item.required_keywords),
-            ", ".join(item.any_keywords),
-            item.date_pattern,
-            "yes" if spec["core"] else "",
-        ])
-    return rows
-
-
-def render_csv(form: str) -> str:
-    """The exact text of the generated CSV for ``form``."""
-    import io
-
-    out = io.StringIO()
-    writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(CSV_COLUMNS)
-    writer.writerows(csv_rows(form))
-    return out.getvalue()
-
-
-def export_csvs(directory: Path | str) -> list[Path]:
-    """Write every form's CSV into ``directory``; returns the paths written."""
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    written = []
-    for form in FORM_TEMPLATES:
-        path = directory / csv_name(form)
-        path.write_text(render_csv(form), encoding="utf-8", newline="")
-        written.append(path)
-    return written
-
-
-def stale_csvs(directory: Path | str) -> list[str]:
-    """Names of CSVs in ``directory`` that differ from the catalog (or are missing)."""
-    directory = Path(directory)
-    stale = []
-    for form in FORM_TEMPLATES:
-        path = directory / csv_name(form)
-        if not path.exists() or path.read_text(encoding="utf-8") != render_csv(form):
-            stale.append(path.name)
-    return stale
-
-
-# -------------------------------------------------------------------- CLI ----
-
-if __name__ == "__main__":
-    import argparse
-    import sys
-
-    repo_root = Path(__file__).resolve().parent.parent
-    parser = argparse.ArgumentParser(
-        description="Export the form catalog to CSV, or check the committed CSVs match it"
-    )
-    parser.add_argument("command", choices=("export", "check"))
-    parser.add_argument("--dir", default=str(repo_root / TEMPLATES_DIRNAME),
-                        help="where the CSVs live (default: templates/ in the repo)")
-    ns = parser.parse_args()
-
-    if ns.command == "export":
-        for path in export_csvs(ns.dir):
-            print(f"wrote {path}")
-        raise SystemExit(0)
-
-    drift = stale_csvs(ns.dir)
-    if drift:
-        print(f"Stale: {', '.join(drift)} - run `python -m tracker.templates export`")
-        sys.exit(1)
-    print(f"{len(FORM_TEMPLATES)} CSV(s) in {ns.dir} match the catalog")

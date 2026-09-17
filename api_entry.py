@@ -1,4 +1,4 @@
-"""PyInstaller entry point for the portable demo's tracker API."""
+"""PyInstaller entry point for the portable app's tracker API."""
 import sys
 from tracker.api import main
 

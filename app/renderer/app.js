@@ -325,23 +325,6 @@ async function runScan() {
   }
 }
 
-async function resetDemo() {
-  if (!confirm("Rebuild the demo from scratch?\n\nThis wipes ALL demo engagements (including ones you created) and regenerates the sample documents.")) return;
-  const btn = $("btn-reset");
-  btn.disabled = true;
-  try {
-    await call(["reset"]);
-    active = null;
-    await loadEngagements();
-    render(await call(withEng("state")));
-    banner("Demo reset — every request is waiting on the client again.", "ok");
-  } catch (err) {
-    toast(err.message);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
 // ── New Engagement wizard ───────────────────────────────────────────────
 // Opens on the returning-client page — rolling last year forward is the
 // default action. Behind it: pick a tax form type, then trim its list.
@@ -583,10 +566,8 @@ async function createEngagement() {
 // ── wiring ──────────────────────────────────────────────────────────────
 
 $("btn-scan").addEventListener("click", runScan);
-$("btn-reset").addEventListener("click", resetDemo);
 $("btn-new").addEventListener("click", openWizard);
 $("btn-shared").addEventListener("click", () => paths && window.tracker.open(paths.shared));
-$("btn-samples").addEventListener("click", () => paths && window.tracker.open(paths.samples));
 $("btn-excel").addEventListener("click", () => paths && window.tracker.open(paths.manifest));
 $("btn-index").addEventListener("click", () => paths && window.tracker.open(paths.index));
 $("eng-select").addEventListener("change", (e) => {

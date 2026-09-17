@@ -23,13 +23,6 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 
 **Full design & build status: [docs/ROADMAP.md](docs/ROADMAP.md)**
 
-## Demo
-
-`Build Portable Demo.bat` builds `Tax Document Tracker.exe`, the full desktop
-app on Windows 10/11: it writes real folders and a real `_manifest.xlsx` you
-can open in Excel. `Start Demo.bat` runs the same app from source with Python
-and Node installed.
-
 ## How it works
 
 ```
@@ -38,7 +31,6 @@ and Node installed.
 ├── _index.xlsx           ← every original: where it went, what it became
 ├── _index.pending.json   ← only while Excel has the index open; merged next run
 ├── _content_cache.json   ← verdict cache (no client text is ever stored)
-├── _scan.log
 ├── Prepared/             ← the firm's working set (the client never sees it)
 │   ├── A01 - W-2 Wage Statements - All Employers/
 │   │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
@@ -51,8 +43,7 @@ and Node installed.
 
 1. Roll a returning client's list forward from last year (the default), or
    pick the tax form type for a new client — the catalog lives in
-   `tracker/templates.py`; the CSVs in [templates/](templates/) are
-   generated from it
+   `tracker/templates.py` and nowhere else
 2. List the engagement's document requests (and validation rules) in
    `_manifest.xlsx`
 3. `python -m tracker.scaffold <engagement_dir>` — builds `Shared/` and
@@ -177,36 +168,6 @@ The schedule is a default, not a cage:
 client isn't chased by email — neither the schedule nor `--reminders always`
 overrides it, though the per-engagement CLI above still drafts one on demand.
 
-### Catching a typo before the run does
-
-**Check Manifest** in the app runs the same validation the scheduled job
-runs before it touches a file: a bad regex or a non-number typed in Excel is
-named with its row, and rows the rules cannot act on (no keyword, `*` file
-types, statuses still waiting for Excel to close) are listed as warnings.
-Allowed Extensions left blank means `pdf, xlsx, csv`; accepting any file
-type has to be written as `*`. Only the first 10 pages of a PDF are read.
-
-If a run dies, its lock is shown in the app with its start time; one older
-than an hour can be cleared there, a fresh one is refused.
-
-### Triage without moving files by hand
-
-A document the rules could not place waits in `00 - Needs Review`. In the
-app, each one shows why it was parked, a picker of the engagement's requests
-and a **File it** button: the working copy goes under the request's canonical
-name, the index row is rewritten as *Filed — assigned by a person*, an
-optional keyword is added to the request so the next such document files
-itself, and the engagement is re-scanned. Nobody drags a file into a folder
-or types a name. The same action is `python -m tracker.api assign`.
-
-**An edited draft is never overwritten.** Each draft carries a fingerprint of
-its own text in the header; if what's on disk no longer matches, the weekly
-run leaves it alone and writes `reminder-draft.NEW.txt` beside it instead.
-
-One engagement failing never stops the others — a missing folder or an
-unreadable manifest is recorded against that client and the run moves on, then
-exits non-zero so the scheduler shows a red run rather than a silent one.
-
 ### Returning clients: last year is the starting point
 
 A client who filed with us last year is not a blank form, so their next
@@ -253,23 +214,12 @@ the index, because misfiling a tax document is worse than not filing it.
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward
-(`python -m tracker.rollover`, or the desktop wizard's first page). For a new
-client you choose the return type; every form carries its own checklist.
-The catalog is `tracker/templates.py`; the CSVs below are generated from it
-by `python -m tracker.templates export` and checked by the suite:
-
-| Form | Return | Template |
-|---|---|---|
-| 1040 | Individual / joint | [templates/form-1040.csv](templates/form-1040.csv) |
-| 1120 | C corporation | [templates/form-1120.csv](templates/form-1120.csv) |
-| 1120-S | S corporation | [templates/form-1120s.csv](templates/form-1120s.csv) |
-| 1065 | Partnership / multi-member LLC | [templates/form-1065.csv](templates/form-1065.csv) |
-| 1041 | Estate or trust | [templates/form-1041.csv](templates/form-1041.csv) |
-| 990 | Tax-exempt organization | [templates/form-990.csv](templates/form-990.csv) |
-
-The same catalog drives the desktop app: **New Engagement** opens on the
-returning-client page (pick last year's engagement, the list rolls forward),
-with a form-type picker behind it for a client who is new to the firm.
+(the desktop wizard's first page, or `python -m tracker.rollover`). For a
+new client you choose the return type - 1040, 1120, 1120-S, 1065, 1041 or
+990 - and every form carries its own checklist in `tracker/templates.py`,
+the only place it lives. The wizard shows it to tick, trim and extend, for
+the tax year the calendar says, and the manifest it creates is the readable
+copy.
 
 ## Setup
 
@@ -280,9 +230,12 @@ python -m pytest tests/        # verify: all green
 
 Optional OCR for scanned PDFs: see [requirements.txt](requirements.txt).
 
-## Try it
+## Running the app
 
-`demo/` contains a working sample engagement — see
-[demo/demo_manifest.py](demo/demo_manifest.py) and the CLIs above. The
-Electron marketing demo (`Start Demo.bat`, presenter script in
-[DEMO-SCRIPT.md](DEMO-SCRIPT.md)) walks a Form 1040 engagement end to end.
+`Start App.bat` runs the desktop app from source (Python 3.11+ and Node
+installed); `Build App.bat` packages it as `Tax Document Tracker.exe` for a
+machine with neither. On first launch the app asks where your clients live
+and writes that to `settings.json` beside itself; everything else follows
+from that one folder. Who does what, and the life of a request, is in
+[docs/workflow.md](docs/workflow.md); the decision log is
+[docs/ROADMAP.md](docs/ROADMAP.md).

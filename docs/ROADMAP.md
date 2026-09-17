@@ -3,9 +3,8 @@
 A Windows-compatible system for income tax information requests: each engagement
 starts by picking the return type (1040, 1120, 1120-S, 1065, 1041, 990), which
 selects a tailored document request template (`FORM_TEMPLATES` in
-`tracker/templates.py`, the one source of truth; the CSV checklists in `templates/`
-are generated from it). A returning client's list is rolled forward from last year
-instead. The system then scaffolds a cloud-synced folder
+`tracker/templates.py`, the one source of truth). A returning client's list is
+rolled forward from last year instead. The system then scaffolds a cloud-synced folder
 structure (OneDrive or Google Drive) from an Excel manifest, gives the client **one
 folder** to drop everything into, then sorts what arrives: originals are preserved in
 `Shared/PBC/`, renamed working copies are filed into `Prepared/{Identifier} - {Document}/`,
@@ -88,6 +87,7 @@ into the manifest.
 | 38 | One pass, one count, one record | **The app's Sort & Scan is the runner's pass** (`run_engagement`), so the button and the job do the same thing to the same folder; `sort` and `scaffold` commands are gone. **`summarize()` is the only count** of where an engagement stands - runner log, reminder, scanner CLI and app all read it. **The index is the only record of parked files**; the Unfiled sheet is no longer written (old ones are left alone), and what it alone knew - loose files and unrecognised folders in `Prepared/` - are warnings on the pass. |
 | 39 | One name, one firm, one root | **The folder is the engagement's name**; the wizard no longer copies it onto the sheet (a copy drifts the first time the folder is renamed; the cell is still read if present). **The sheet's Firm is the sign-off and the README contact**; the reminder and scaffold read the sheet themselves, and the wizard copies the newest engagement's firm so it is typed once. **The clients root is in `settings.json` beside the app**, set on first launch (or `python -m tracker.settings <folder>`); the app, the priors list, `tracker.scheduling` and the Install Schedule button all read that one value. |
 | 40 | The year, once | **Period implies the year check.** The year was typed twice (Period for people, Date Pattern for the rules) and, on 73 of 78 catalog rows, only once - so a 2024 form satisfied a TY2025 request. A blank Date Pattern on a row whose Period names a year now checks for that year; `*` says no check; a typed regex wins. A derived year is a *check* on a document a keyword already matched, never evidence on its own, so a row with only a Period can still never claim a document. Rollover leaves derived checks blank; the shifted Period derives them again. |
+| 41 | The demo, and the second copies | **Gone.** The presenter guide in the app, the demo buttons, the demo folder and batch file, the demo script and portable readme, and the sample builder in the API module (now `tests/samples.py`, which the suite still needs). The template CSVs and their check: the manifest is the readable copy. The scanner's per-engagement log: `runs.log` is the log. The README is setup; `docs/workflow.md` is how the work is done. |
 
 ## Architecture
 
@@ -100,7 +100,6 @@ OneDrive / Google Drive (synced locally on Windows)
             ├── _index.xlsx           ← every original: where it went, what it became
             ├── _manifest.pending.json← sidecar written only if Excel had the file locked
             ├── _index.pending.json   ← same, for index rows while Excel has _index.xlsx open
-            ├── scan.log              ← rotating log
             ├── Prepared/             ← firm-side working set (NOT shared)
             │   ├── A01 - W-2 Wage Statements - All Employers/
             │   │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
@@ -200,7 +199,7 @@ no-genAI-on-financial-docs rule.)*
 | 8 | `tracker/rollover.py` — build a returning client's next-year list from their prior engagement. Prior-year fields always win; the template only fills blanks and its unknown rows are offered rather than added. Years shift as a set (so relative periods stay right), counts learn from what arrived and never shrink, `Waived` carries and `Accepted` does not. Writes a `Carried Forward` sheet explaining every row. CLI: `python -m tracker.rollover <prior_dir> <new_dir> [--form] [--year] [--include-new] [--scaffold]` | ✅ built + tested |
 | 9 | `tracker/reminder.py` — draft client email per engagement from Missing/Partial/Failed rows (draft only — no sending; no SMTP anywhere in the module). Validation notes are translated into plain client instructions, never quoted. Rows we simply have not read yet, and rows with no request folder, are held back for a person instead of being asked for; untriaged `00 - Needs Review` files raise a warning so a reminder never asks for something already in hand. CLI: `python -m tracker.reminder <engagement_dir> [--client] [--link] [--due] [--from-name] [--firm] [--write]` | ✅ built + tested |
 | 10 | Scheduling — `tracker/registry.py` (discovery: every folder under the clients root holding `_manifest.xlsx` is an engagement; its Engagement sheet supplies client, link, due, reminders and active; an unreadable manifest is listed with its error, never dropped), `tracker/runner.py` (one unattended pass: file → scan → draft, with per-engagement failure isolation and a non-zero exit so the scheduler shows a red run), and `tracker/scheduling.py` (generates the Task Scheduler XML / n8n workflow). **Reminders are drafted weekly, on Saturday** — the runner owns the day, so one daily task covers it and a missed Saturday still drafts on the next run. CLI: `python -m tracker.runner <clients root> [--only] [--dry-run] [--reminders auto\|always\|never] [--weekday] [--date] [--log]` | ✅ built + tested |
-| 11 | `tracker/templates.py` — the per-form request catalog (`FORM_TYPES`, `FORM_TEMPLATES`) and `item_from_spec()`. The one source of truth for the checklists: `templates/*.csv` are generated by `python -m tracker.templates export` and `tests/test_templates.py` (and CI) fail if they drift. A request with no rule gets its own document name as the required keyword. The desktop wizard opens on the returning-client page (`priors` → `rollover`) and falls back to this catalog for a new client. CLI: `python -m tracker.templates export\|check` | ✅ built + tested |
+| 11 | `tracker/templates.py` — the per-form request catalog (`FORM_TYPES`, `FORM_TEMPLATES`) and `item_from_spec()`; the one source of truth for the checklists, read directly by the wizard and the rollover. A request with no rule gets its own document name as the required keyword; the year check is implied by each row's Period; `default_tax_year()` follows the calendar. | ✅ built + tested |
 | 12 | `tracker/locking.py` — the per-engagement lock (`_scan.lock`), taken by the filer while sorting and the scanner while scanning, stale after an hour. One lock, because a sort and a scan overlapping is how an original ends up in `PBC/` with no index row. | ✅ built + tested |
 
 ## Edge Cases (designed in)
