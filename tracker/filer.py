@@ -783,11 +783,8 @@ def file_drops(
                     continue
 
                 try:
-                    digest = sha256_of(drop)
-                    size_kb = round(drop.stat().st_size / 1024, 1)
+                    drop.stat()          # still there, and readable: a file mid-write is left
                 except OSError as exc:
-                    # Still being written, or withdrawn between listing and now.
-                    # Nothing has moved, so leaving it is safe; next run retries.
                     report.errors.append(FileError(
                         drop.name, f"could not read it ({exc}); left in place", True
                     ))
@@ -811,6 +808,23 @@ def file_drops(
                         log.warning("Left %s in place: %s", drop.name, exc)
                         continue
                 pbc_rel = pbc_target.relative_to(engagement_dir).as_posix()
+                # The record is of the bytes that were preserved: hashed where
+                # they now are, after the move, so a sync client landing a newer
+                # version in between can never leave the index describing one
+                # file and the folder holding another.
+                recorded_at = drop if dry_run and not already_in_pbc else pbc_target
+                try:
+                    digest = sha256_of(recorded_at)
+                    size_kb = round(recorded_at.stat().st_size / 1024, 1)
+                except OSError as exc:
+                    if already_in_pbc or dry_run:
+                        report.errors.append(FileError(
+                            drop.name, f"could not read it ({exc}); left in place", True
+                        ))
+                        log.warning("Left %s in place: %s", drop.name, exc)
+                        continue
+                    digest, size_kb = "", 0.0     # moved, unreadable now: recorded anyway
+                    log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
 
                 try:
                     entry = _sort_one(drop, pbc_target, pbc_rel, digest, size_kb, stamp, run)

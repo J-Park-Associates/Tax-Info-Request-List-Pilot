@@ -385,3 +385,21 @@ def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior)
     )
     info = load_engagement_info(prior.parent / "Smith TY2026" / MANIFEST_FILENAME)
     assert Path(info.rolled_from).is_absolute() and Path(info.rolled_from) == prior.resolve()
+
+
+def test_a_file_named_like_a_formula_is_a_name_on_the_carried_sheet(prior, tmp_path):
+    from openpyxl import load_workbook
+
+    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry, write_index
+    from tracker.rollover import CARRIED_SHEET, write_rollover_manifest
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    write_index(prior / INDEX_FILENAME, [
+        IndexEntry(received="2026-03-01", original_name="=SUM scan.pdf", size_kb=12.0, digest="abc",
+                   identifier="", prepared_location="", pbc_location="", decision=NEEDS_REVIEW, reason=UNMATCHED),
+    ])
+    target = tmp_path / "next"
+    target.mkdir()
+    write_rollover_manifest(target / MANIFEST_FILENAME, roll_forward(prior))
+    ws = load_workbook(target / MANIFEST_FILENAME, data_only=True)[CARRIED_SHEET]
+    assert any("=SUM scan.pdf" in str(c.value) for row in ws.iter_rows() for c in row if c.value)

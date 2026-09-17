@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 82,
     "edges": 261,
-    "reused": 50
+    "reused": 48
   },
   "node_types": [
     "artifact",
@@ -163,8 +163,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "366623ddae11dce7",
-      "lines": 1163,
+      "sha256": "6be143f4d5b8afc3",
+      "lines": 1177,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -210,14 +210,14 @@
         "REPLACED_IN_PBC": "'{location} no longer holds the bytes recorded on {received}; its working copy {prepared} was made from the earlier file - a person should look'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is."
     },
     {
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5aed26c8a218a17c",
-      "lines": 321,
+      "sha256": "bd73d2723463e6b7",
+      "lines": 323,
       "exports": [
         "EngagementLock",
         "EngagementLockedError",
@@ -251,8 +251,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0f45335d84fe3585",
-      "lines": 1185,
+      "sha256": "791fd3099dcecbf7",
+      "lines": 1190,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -521,8 +521,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c764520618e830be",
-      "lines": 394,
+      "sha256": "28ac8b0a95b92928",
+      "lines": 398,
       "cli": "python -m tracker.rollover",
       "exports": [
         "CARRIED_HEADERS",
@@ -548,7 +548,7 @@
         "UNFILED_HEADING": "'Sent last year but never filed \u2014 check these are covered:'"
       },
       "role": "Builds a returning client's next-year request list from their prior engagement. Prior-year data always wins; the template may only fill blanks.",
-      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other. Derived year checks are left blank in the new manifest; the shifted Period derives them again. Decision 56: reads the prior year's manifest with_pending(), quarantining nothing."
+      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other. Derived year checks are left blank in the new manifest; the shifted Period derives them again. Decision 56: reads the prior year's manifest with_pending(), quarantining nothing. Decision 61: every Carried Forward cell is text."
     },
     {
       "id": "tracker/router.py",
@@ -635,8 +635,8 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "8d3bc26943f8fc69",
-      "lines": 280,
+      "sha256": "55d47b603c124ab9",
+      "lines": 290,
       "cli": "python -m tracker.scaffold",
       "exports": [
         "MANIFEST_FILENAME",
@@ -665,7 +665,7 @@
         "REVIEW_DIR_NAME": "'00 - Needs Review'"
       },
       "role": "Turns a manifest into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/<folder_name_for(item)>/ plus 00 - Needs Review. Writes the client's _README.txt.",
-      "notes": "Also the home of the path constants every other module imports: MANIFEST_FILENAME, SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME. Runs on every scheduled pass now; the README is rewritten only when its text changed. The README contact comes from the Engagement sheet (firm, else sender) unless given."
+      "notes": "Also the home of the path constants every other module imports: MANIFEST_FILENAME, SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME. Runs on every scheduled pass now; the README is rewritten only when its text changed. The README contact comes from the Engagement sheet (firm, else sender) unless given. Decision 61: the README is written whole and a failure to refresh it is a log line, never the end of a pass."
     },
     {
       "id": "tracker/scanner.py",
@@ -769,8 +769,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "728853aec29ea6c3",
-      "lines": 152,
+      "sha256": "2cfd60c9caa4352e",
+      "lines": 154,
       "cli": "python -m tracker.settings",
       "exports": [
         "ENV_PRODUCT_NAME",
@@ -963,8 +963,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "57490d553b745dd0",
-      "lines": 263,
+      "sha256": "b3fd59584a7d29f7",
+      "lines": 264,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -972,7 +972,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3b6e7ef809a6d4e3",
+      "sha256": "0a4c7bf013590ec8",
       "lines": 451,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1353,8 +1353,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "77bdf625975c9dc7",
-      "lines": 622,
+      "sha256": "a561d40192f6070a",
+      "lines": 637,
       "exports": [
         "SAMPLE_ITEMS",
         "manifest",
@@ -1362,6 +1362,7 @@
         "test_a_crash_mid_save_leaves_the_previous_manifest_intact",
         "test_a_derived_year_is_a_check_not_a_reason_to_route",
         "test_a_failed_save_reports_its_own_error_not_a_locked_temp_file",
+        "test_a_formula_in_the_keyword_cell_is_refused_not_rewritten",
         "test_a_manifest_without_the_sheet_loads_as_defaults",
         "test_a_period_with_a_year_implies_the_year_check",
         "test_a_second_corrupt_sidecar_never_overwrites_the_first",
@@ -1523,14 +1524,15 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "89230eb5634eb64e",
-      "lines": 388,
+      "sha256": "c66dbab69f29b154",
+      "lines": 406,
       "exports": [
         "PRIOR",
         "TEMPLATE",
         "prior",
         "rolled_by_id",
         "test_a_derived_year_check_is_not_carried_as_text",
+        "test_a_file_named_like_a_formula_is_a_name_on_the_carried_sheet",
         "test_a_rollover_learns_from_the_prior_years_deferred_scan_too",
         "test_a_rollover_reads_the_prior_year_without_moving_anything_in_it",
         "test_accepted_does_not_carry",
@@ -1656,11 +1658,12 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "81da296ca62f5288",
-      "lines": 198,
+      "sha256": "f8858b09eaa6d2dc",
+      "lines": 217,
       "exports": [
         "ITEMS",
         "engagement",
+        "test_a_readme_the_client_side_holds_does_not_stop_the_scaffold",
         "test_assign_folders_longest_identifier_wins",
         "test_client_rename_with_prefix_not_duplicated",
         "test_creates_folders_and_readme",
@@ -1755,13 +1758,14 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b3cfaf762d03fc72",
-      "lines": 65,
+      "sha256": "4168cbc4636b8df9",
+      "lines": 78,
       "exports": [
         "beside_the_app",
         "test_a_folder_that_does_not_exist_is_refused",
         "test_an_unreadable_settings_file_is_an_error_not_a_default",
         "test_nothing_set_means_none_not_a_guess",
+        "test_the_root_is_stored_absolute_and_a_bare_drive_is_its_root",
         "test_the_root_is_written_once_and_read_back",
         "test_the_settings_file_is_swapped_in_whole"
       ]

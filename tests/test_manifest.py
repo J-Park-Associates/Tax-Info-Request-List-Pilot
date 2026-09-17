@@ -619,3 +619,18 @@ def test_a_failed_save_reports_its_own_error_not_a_locked_temp_file(tmp_path, mo
             temp.write_bytes(b"half")
             raise OSError(28, "No space left on device")
     assert target.read_bytes() == b"before"
+
+
+def test_a_formula_in_the_keyword_cell_is_refused_not_rewritten(manifest):
+    from openpyxl import load_workbook
+
+    from tracker.manifest import COL_ANY_KEYWORDS, add_any_keyword
+
+    wb = load_workbook(manifest)
+    ws = wb[SHEET_NAME]
+    headers = [c.value for c in ws[1]]
+    ws.cell(row=2, column=headers.index(COL_ANY_KEYWORDS) + 1, value="=B2")
+    wb.save(manifest)
+    with pytest.raises(ManifestError, match="holds a formula"):
+        add_any_keyword(manifest, "A01", "wages")
+    assert load_workbook(manifest)[SHEET_NAME].cell(row=2, column=headers.index(COL_ANY_KEYWORDS) + 1).value == "=B2"

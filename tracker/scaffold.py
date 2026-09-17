@@ -31,6 +31,7 @@ folders are left alone and they are dropped from the README.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -44,9 +45,12 @@ from tracker.manifest import (
     label_for,
     load_engagement_info,
     load_manifest,
+    write_text_atomically,
 )
 from tracker.reasons import GOOGLE_EXPORT_HINT
 from tracker.validators import google_stub_examples
+
+log = logging.getLogger("tracker.scaffold")
 
 MANIFEST_FILENAME = "_manifest.xlsx"
 SHARED_DIR_NAME = "Shared"
@@ -250,7 +254,13 @@ def _write_readme(
             return readme
     except OSError:
         pass
-    readme.write_text(text, encoding="utf-8", newline="\r\n")
+    # Client-visible and cosmetic: a sync client uploading it, a viewer
+    # holding it, or a folder the client made under its name must not stop
+    # the sort and the scan behind it. Written whole; a failure is a log line.
+    try:
+        write_text_atomically(readme, text, encoding="utf-8", newline="\r\n")
+    except OSError as exc:
+        log.warning("Could not refresh %s (%s); the pass goes on", readme.name, exc)
     return readme
 
 

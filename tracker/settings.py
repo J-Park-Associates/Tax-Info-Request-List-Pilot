@@ -126,6 +126,8 @@ def set_clients_root(root: Path | str) -> Path:
     root = Path(str(root).strip())
     if not root.is_dir():
         raise SettingsError(f"not a folder: {root}")
+    if str(root).rstrip("/") == root.drive:       # "D:" is the drive's current folder to Windows
+        root = Path(root.drive + os.sep)
     root = root.resolve()   # the scheduled job and the app do not share a working folder
     data = _read()
     data[KEY_CLIENTS_ROOT] = str(root)

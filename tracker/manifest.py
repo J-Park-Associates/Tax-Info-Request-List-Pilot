@@ -1100,6 +1100,11 @@ def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
             if _cell_str(ws.cell(row=row, column=columns[COL_IDENTIFIER]).value) != identifier:
                 continue
             cell = ws.cell(row=row, column=columns[COL_ANY_KEYWORDS])
+            if cell.data_type == "f":
+                raise ManifestError(
+                    f"Row {row} ({identifier}): {COL_ANY_KEYWORDS} holds a formula; "
+                    f"type the keyword {keyword!r} into it by hand"
+                )
             existing = _csv_tuple(cell.value)
             if keyword.lower() in (k.lower() for k in existing):
                 return False

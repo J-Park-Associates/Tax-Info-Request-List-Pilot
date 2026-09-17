@@ -47,6 +47,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     Override,
     RequestItem,
     Status,
+    as_text,
     create_template,
     detect_year,
     load_manifest,
@@ -309,6 +310,9 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
             ws.append([UNFILED_HEADING])
             for line in report.unfiled_last_year:
                 ws.append(["", line])
+        for cells in ws.iter_rows():
+            for cell in cells:
+                as_text(cell)         # a client's file name in the unfiled list is a name
         for column, width in zip(ws.column_dimensions, CARRIED_LAYOUT.values(), strict=False):
             ws.column_dimensions[column].width = width
         ws.freeze_panes = "A2"

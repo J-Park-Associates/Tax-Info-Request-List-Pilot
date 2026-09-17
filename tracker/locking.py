@@ -225,6 +225,8 @@ def release_lock(lock: EngagementLock) -> None:
     # a scan) and would find its own live pid in the file; so the file is
     # marked released, which every reader takes as an owner that is gone.
     try:
+        if lock.path.read_text(encoding="utf-8", errors="replace") != lock.token:
+            return                # another run took it while we waited; theirs now
         lock.path.write_text(RELEASED_LINE, encoding="utf-8")
         log.warning("%s could not be removed on release; marked released instead", lock.path.name)
     except OSError as exc:
