@@ -136,9 +136,10 @@ def pid_alive(pid: str | int) -> bool | None:
 def _owner_gone(lock: Path) -> bool:
     """True when the lock names a process that is no longer running."""
     try:
-        fields = dict(part.split("=", 1) for part in lock.read_text(encoding="utf-8").split() if "=" in part)
+        text = lock.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
+    fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
     if fields.get(_HOST_KEY, "") != _this_host():
         # Another machine's process (a synced clients root): whether it is
         # running cannot be known from here, so the age rule decides.
@@ -207,7 +208,13 @@ def release_lock(lock: EngagementLock) -> None:
             lock.path.name,
         )
         return
-    lock.path.unlink(missing_ok=True)
+    try:
+        lock.path.unlink(missing_ok=True)
+    except PermissionError as exc:
+        # A sync client uploading the file at this moment. The run is done
+        # and its handle closed; the file names a process that will read
+        # as gone the next time anyone looks, so it is inert, not a failure.
+        log.warning("%s could not be removed on release (%s); it will read as stale", lock.path.name, exc)
 
 
 @dataclass(frozen=True, slots=True)

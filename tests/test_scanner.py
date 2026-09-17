@@ -439,3 +439,31 @@ def test_a_received_file_the_sync_client_dehydrated_is_not_a_regression(engageme
     assert row.status == Status.PENDING_SYNC and row.received_date == DAY1
     assert REGRESSION_FILES_CHANGED not in row.validation_notes
     assert SYNCING_NOTE.format(n=1) in row.validation_notes
+
+
+def test_an_empty_note_replaces_the_old_one(engagement):
+    # openpyxl's cell(value=None) writes nothing. "request folder not found"
+    # must not outlive the folder, or the reminder holds the row back for ever.
+    folder(engagement, "A01").rmdir()
+    scan_engagement(engagement, today=DAY1)
+    assert reasons.NO_REQUEST_FOLDER.matches(statuses(engagement)["A01"].validation_notes)
+    scaffold_engagement(engagement)                      # the next pass creates it
+    scan_engagement(engagement, today=DAY2)
+    assert statuses(engagement)["A01"].validation_notes == ""
+
+
+def test_a_document_a_person_filed_is_not_second_guessed_by_the_rules(engagement):
+    # A person filed it from Needs Review; the row's required keyword is not
+    # in it. Their decision stands: Received, not "wrong document" and a
+    # client asked for the right file.
+    from tracker.filer import assign_review_file, file_drops
+    from tracker.scaffold import SHARED_DIR_NAME
+    from tracker.scanner import ACCEPTED_NOTE
+
+    text_pdf(engagement / SHARED_DIR_NAME / "statement.pdf", "Annual account statement 2025 interest paid")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1)
+    scan_engagement(engagement, today=DAY1)
+    row = statuses(engagement)["A01"]
+    assert row.status == Status.RECEIVED and row.file_count == 1
+    assert ACCEPTED_NOTE.format(n=1) in row.validation_notes

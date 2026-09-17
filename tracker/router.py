@@ -125,18 +125,11 @@ def _filename_hit(path: Path, item: RequestItem) -> bool:
     neither ``ledger-10983.pdf`` nor ``1098-T.pdf`` - the tuition form is
     not the mortgage form, whichever side of the hyphen is read.
     """
+    # Clients write "W2" for "W-2" and "1099INT" for "1099-INT": the keyword
+    # pattern already reads a dash or a space as optional, and the same
+    # rule keeps "Form1040-ES.pdf" from being last year's Form 1040.
     name = _SEPARATORS.sub(" ", path.stem.lower())
-    for keyword in (*item.required_keywords, *item.any_keywords):
-        parts = [p for p in _WORD_SPLIT.split(keyword.lower()) if p]
-        if not parts:
-            continue
-        if contains_keyword(name, keyword):
-            return True
-        # Clients write "W2" for "W-2" and "1099INT" for "1099-INT"; the
-        # run-together spelling is the same whole token, not a substring.
-        if len(parts) > 1 and contains_keyword(name, "".join(parts)):
-            return True
-    return False
+    return any(contains_keyword(name, keyword) for keyword in (*item.required_keywords, *item.any_keywords))
 
 
 def _required_matched(text: str, item: RequestItem) -> bool:

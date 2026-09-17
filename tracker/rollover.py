@@ -360,7 +360,7 @@ if __name__ == "__main__":
 
     write_engagement_info(manifest, carry_engagement_info(
         load_engagement_info(result.prior_dir / MANIFEST_FILENAME),
-        rolled_from=str(result.prior_dir),
+        rolled_from=str(result.prior_dir.resolve()),   # the runner's cwd is not this one
     ))
 
     span = f"{result.prior_year} → {result.target_year}" if result.prior_year else UNKNOWN_YEAR_LABEL

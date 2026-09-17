@@ -375,3 +375,29 @@ def test_a_clients_hyphenated_file_name_still_routes(tmp_path):
     ):
         f = text_pdf(tmp_path / name, "")
         assert route_file(f, ITEMS).identifier == expected, name
+
+
+def test_a_run_together_form_number_is_still_its_own_variant(tmp_path):
+    # "Form1040-ES.pdf" is not last year's Form 1040. The keyword pattern
+    # reads "form 1040" as "form1040" itself; a separate run-together
+    # fallback used to skip the variant rule.
+    from dataclasses import replace
+
+    from tracker.templates import template_items
+
+    items = [replace(i, min_size_kb=0) for i in template_items("1040", core_only=True, year=2025)]
+    for name in ("Form1040-ES.pdf", "Form1040 V.pdf", "Form1040_V.pdf", "Form 1040-V.pdf"):
+        assert route_file(text_pdf(tmp_path / name, ""), items).identifier is None, name
+    assert route_file(text_pdf(tmp_path / "Form1040 2024.pdf", ""), items).identifier == "B01"
+
+
+def test_a_keyword_with_nothing_in_it_matches_nothing(tmp_path):
+    # "-" or "n/a" typed into a keyword cell must not be a keyword that
+    # every document satisfies - least of all a required one.
+    dash = RequestItem(
+        identifier="Z01", document="Not applicable", allowed_extensions=("pdf",),
+        min_size_kb=0, required_keywords=("-",),
+    )
+    f = text_pdf(tmp_path / "IMG_2025_0312.pdf", "Form 1099-R Distributions From Pensions 2025")
+    assert route_file(f, [dash]).identifier is None
+    assert route_file(f, [dash, MORTGAGE]).identifier is None

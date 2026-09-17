@@ -726,6 +726,20 @@ def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> No
     write_text_atomically(path, json.dumps(payload, indent=indent))
 
 
+def as_text(cell):
+    """Keep a value the tracker wrote from data a string, whatever it starts with.
+
+    openpyxl reads a string beginning with ``=`` as a formula. A client file
+    called ``=SUM scan.pdf`` would then be written into the index as a
+    formula, read back as an empty cell, and shown by Excel as an error.
+    A person's own formulas in the manifest are not touched: this is
+    applied only to cells the tracker fills from data.
+    """
+    if isinstance(cell.value, str) and cell.data_type == "f":
+        cell.data_type = "s"
+    return cell
+
+
 def save_workbook_atomically(wb: Workbook, path: Path) -> None:
     """Save ``wb`` to ``path`` without ever leaving a half-written file there.
 
@@ -767,11 +781,12 @@ def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
             if update.received_date is not None:
                 date_cell.number_format = DATE_FORMAT
             ws.cell(row=row, column=columns[COL_FILE_COUNT], value=update.file_count)
-            ws.cell(
-                row=row,
-                column=columns[COL_VALIDATION_NOTES],
-                value=update.validation_notes or None,
-            )
+            # cell(value=None) assigns nothing: a note that is now empty must
+            # still replace the one before it, or "request folder not found"
+            # outlives the folder and the reminder holds the row back for ever.
+            notes = ws.cell(row=row, column=columns[COL_VALIDATION_NOTES])
+            notes.value = update.validation_notes or None
+            as_text(notes)
         save_workbook_atomically(wb, path)
     finally:
         wb.close()
@@ -918,6 +933,10 @@ class ManifestCheck:
 #: matches none of the family's members (``1099`` does not match ``1099-INT``;
 #: see ``tracker.content_check.contains_keyword``), so the check says so.
 FORM_FAMILIES = {"1099": "1099-INT", "1095": "1095-A"}
+EMPTY_KEYWORD_WARNING = (
+    "Row {row} ({identifier}): the keyword '{keyword}' has no letters or digits and "
+    "matches nothing; leave the cell blank instead"
+)
 BARE_FORM_NUMBER_WARNING = (
     "Row {row} ({identifier}): the keyword '{keyword}' matches only that form, not its "
     "variants such as {example}; list the forms this request means"
@@ -962,6 +981,9 @@ def check_manifest(path: Path | str) -> ManifestCheck:
                 "file type counts as this document"
             )
         for keyword in (*item.required_keywords, *item.any_keywords):
+            if not any(ch.isalnum() for ch in keyword):
+                warnings.append(EMPTY_KEYWORD_WARNING.format(
+                    row=item.row, identifier=item.identifier, keyword=keyword.strip()))
             if keyword.strip() in FORM_FAMILIES:
                 warnings.append(BARE_FORM_NUMBER_WARNING.format(
                     row=item.row, identifier=item.identifier, keyword=keyword.strip(),
@@ -1144,7 +1166,7 @@ def create_template(
             COL_MANUAL_OVERRIDE: item.manual_override or None,
         }
         for header, value in cells.items():
-            ws.cell(row=row, column=column[header], value=value)
+            as_text(ws.cell(row=row, column=column[header], value=value))
 
     _write_engagement_sheet(wb, info or EngagementInfo())
     wb.active = 0

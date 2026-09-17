@@ -41,7 +41,6 @@ if anything failed, so the scheduler shows a red run instead of a silent one.
 from __future__ import annotations
 
 import datetime as dt
-import os
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,6 +67,7 @@ from tracker.reminder import (
     DraftsEditedError,
     ReminderError,
     draft_reminder,
+    is_unedited,
     write_draft,
 )
 from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
@@ -339,14 +339,13 @@ def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
     draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
     if not draft.has_outstanding:
         run.draft_note = NOTHING_OUTSTANDING
-        _mark_drafted(engagement.path)
+        _retire_stale_drafts(engagement.path)
         return
 
     try:
         written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True)
     except DraftsEditedError as exc:
         run.draft_note = str(exc)
-        _mark_drafted(engagement.path)
         return
     run.drafted = written
     if written.name == NEW_DRAFT_FILENAME:
@@ -356,17 +355,17 @@ def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
         )
 
 
-def _mark_drafted(engagement_dir: Path) -> None:
-    """The draft step ran and chose to write nothing (nothing outstanding,
-    or both drafts edited): the draft files' dates are what ``last_drafted``
-    reads, so they are brought up to now - or a stale date would make every
-    later weekday pass a catch-up and draft the first time anything turned
-    outstanding mid-week."""
+def _retire_stale_drafts(engagement_dir: Path) -> None:
+    """Nothing is outstanding: last week's draft, still asking for documents
+    that have since arrived, is not something to send. The run's own
+    unedited draft is removed; one a person has edited is theirs and is
+    left exactly as it is, date included. With no draft file left,
+    ``last_drafted`` reads "never", and the engagement waits for its next
+    draft day rather than catching up a week that had nothing to chase."""
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
-        try:
-            os.utime(engagement_dir / name, None)
-        except OSError:
-            continue
+        path = engagement_dir / name
+        if path.is_file() and is_unedited(path):
+            path.unlink()
 
 
 def _why_no_draft(engagement: Engagement, today: dt.date,

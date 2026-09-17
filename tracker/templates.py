@@ -137,7 +137,7 @@ FORM_TEMPLATES = {
         _row("A02", "1099-INT / 1099-DIV - Interest & Dividend Income", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-oid, interest income, dividend", expected_count=3),
         _row("B01", "Prior-Year Federal & State Tax Returns", core=True, period=TY_PRIOR, any_keywords="form 1040, tax return"),
         _row("C01", "Mortgage Interest Statement - Form 1098", core=True, required_keywords="1098"),
-        _row("D01", "Charitable Contribution Receipts", core=True, extensions="pdf, xlsx", any_keywords="charitable, contribution, donation"),
+        _row("D01", "Charitable Contribution Receipts", core=True, extensions="pdf, xlsx", any_keywords="charitable, donation, charitable contribution"),
         _row("E01", "1099-B / Brokerage Year-End Statements", core=False, extensions="pdf, csv", any_keywords="1099-b, brokerage, proceeds from broker"),
         _row("E02", "1099-R Retirement Distributions", core=False, any_keywords="1099-r, retirement distribution"),
         _row("F01", "Schedule K-1s Received", core=False, any_keywords="schedule k-1, k-1"),
@@ -145,7 +145,7 @@ FORM_TEMPLATES = {
         _shared("H01", "estimated_tax", core=False),
         _row("I01", "Form 1095-A - Marketplace Health Insurance", core=False, any_keywords="1095-a, marketplace"),
         _row("J01", "Childcare Provider Statements - Name, EIN, Amounts", core=False, extensions="pdf, xlsx", any_keywords="childcare, dependent care, provider"),
-        _row("K01", "IRA / HSA Contribution Statements - Form 5498", core=False, any_keywords="5498, ira contribution, hsa"),
+        _row("K01", "IRA / HSA Contribution Statements - Form 5498", core=False, any_keywords="5498, ira contribution, hsa contribution"),
         _row("L01", "Tuition Statements - Form 1098-T", core=False, any_keywords="1098-t, tuition"),
     ],
     "1120": [

@@ -365,3 +365,23 @@ def test_a_rollover_learns_from_the_prior_years_deferred_scan_too(prior, monkeyp
     a01 = rolled_by_id(report)["A01"]
     assert a01.prior_status == Status.RECEIVED
     assert a01.item.expected_count >= 3
+
+
+def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior):
+    """A relative prior on the command line is resolved before it is written
+    as Rolled From; the scheduled run's working folder is not this one."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from tracker.manifest import load_engagement_info
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    repo = Path(__file__).resolve().parent.parent
+    subprocess.run(
+        [sys.executable, "-m", "tracker.rollover", prior.name, "Smith TY2026"],
+        cwd=prior.parent, check=True, capture_output=True,
+        env={**__import__("os").environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
+    )
+    info = load_engagement_info(prior.parent / "Smith TY2026" / MANIFEST_FILENAME)
+    assert Path(info.rolled_from).is_absolute() and Path(info.rolled_from) == prior.resolve()

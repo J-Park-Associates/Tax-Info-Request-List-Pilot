@@ -701,6 +701,13 @@ def test_a_resend_is_refiled_when_the_working_copy_was_deleted(engagement):
     # A re-send whose working copy is still there is still just a duplicate.
     drop(engagement, "w2 third time.pdf", "Form W-2 Wage and Tax Statement 2025")
     assert [e.decision for e in file_drops(engagement, today=DAY2).duplicates] == [DUPLICATE]
+    # ...and one more drop after the working copy goes again: the Duplicate
+    # row must not shadow the Filed row, or this re-send is never re-filed.
+    working.unlink()
+    drop(engagement, "w2 fourth time.pdf", "Form W-2 Wage and Tax Statement 2025")
+    fourth = file_drops(engagement, today=DAY2)
+    assert fourth.duplicates == [] and [e.original_name for e in fourth.filed] == ["w2 fourth time.pdf"]
+    assert working.exists()
 
 
 def test_empty_client_folders_are_cleared_after_sorting(engagement):
@@ -1028,3 +1035,40 @@ def test_every_unfinished_transfer_name_is_reported_as_waiting(engagement):
         (engagement / SHARED_DIR_NAME / f"upload{suffix}").write_bytes(b"partial")
     report = file_drops(engagement, today=DAY1)
     assert sorted(p.name for p in report.waiting) == sorted(f"upload{s}" for s in UNFINISHED_SUFFIXES)
+
+
+
+def test_assigning_reuses_a_copy_an_earlier_attempt_left_and_leaves_no_half_copy(engagement, monkeypatch):
+    # The same two guarantees the sort path has (decisions 54, 56), on the
+    # path a person drives: a kill after the move made a copy the index
+    # never learned of, and a copy that fails half-way leaves nothing.
+    import tracker.filer as filer_module
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest Statement"
+    earlier = c01 / "C01 - Mortgage Interest Statement - TY2025.pdf"
+    (engagement / parked.prepared_location).rename(earlier)      # the killed attempt's move
+    result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    assert [p.name for p in c01.iterdir()] == [earlier.name] and result.entry.filed_as == earlier.name
+
+    drop(engagement, "scan0013.pdf", "nothing the rules recognise either")
+    parked = file_drops(engagement, today=DAY2).review[0]
+    (engagement / parked.prepared_location).unlink()             # a person removed the parked copy
+
+    def half(src, dst):
+        filer_module.Path(dst).write_bytes(b"%PDF-1.4 half")
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(filer_module.shutil, "copy2", half)
+    with pytest.raises(OSError):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    monkeypatch.undo()
+    assert [p.name for p in c01.iterdir()] == [earlier.name]     # no half copy beside it
+
+
+def test_a_file_named_like_a_formula_is_recorded_as_its_name(engagement):
+    drop(engagement, "=SUM scan.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.original_name == "=SUM scan.pdf"

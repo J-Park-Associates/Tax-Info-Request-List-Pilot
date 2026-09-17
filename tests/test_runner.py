@@ -217,23 +217,37 @@ def test_an_edited_second_draft_is_never_clobbered_by_the_next_repeat(tmp_path, 
     assert second.read_bytes() == edited_new
 
 
-def test_a_draft_day_with_nothing_to_chase_still_counts_as_drafted(tmp_path, samples):
-    # Nothing outstanding on Saturday writes no file. The old draft's date
-    # must still move, or every weekday pass after it would be a catch-up
-    # and draft the moment something turned outstanding mid-week.
+def test_a_draft_day_with_nothing_to_chase_retires_the_runs_own_stale_draft(tmp_path, samples):
+    # Last week's draft asked for a document that has since arrived. The
+    # run's own unedited draft is removed rather than left (or re-dated) as
+    # something to send; a draft a person edited is theirs and stays put.
     import os
 
-    from tracker.runner import _mark_drafted, last_drafted
+    from tracker.runner import last_drafted
 
-    engagement = build_engagement(tmp_path, samples)
-    drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=14)).drafted
-    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=14), dt.time(9)).timestamp()
-    os.utime(drafted, (stamp, stamp))
-    assert last_drafted(engagement.path) == SATURDAY - dt.timedelta(days=14)
-    _mark_drafted(engagement.path)                     # what a quiet draft day does
-    assert last_drafted(engagement.path) == dt.date.today()
-    assert should_draft(Engagement(path=engagement.path), SATURDAY + dt.timedelta(days=3),
-                        REMINDERS_AUTO, drafted=last_drafted(engagement.path)) is False
+    only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
+    folder = tmp_path / "Settled TY2025"
+    folder.mkdir()
+    create_template(folder / MANIFEST_FILENAME, only_the_return)
+    scaffolded = scaffold_engagement(folder)
+    engagement = Engagement(path=folder, info=EngagementInfo(client="John Smith"))
+    drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=7)).drafted
+    assert drafted is not None                                  # last week: still missing
+
+    name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
+    (scaffolded.shared_dir / name).write_bytes((samples / name).read_bytes())
+    run = run_engagement(engagement, today=SATURDAY)
+    assert run.draft_note == NOTHING_OUTSTANDING and not drafted.exists()
+    assert last_drafted(folder) is None
+    assert run_engagement(engagement, today=SATURDAY + dt.timedelta(days=3)).drafted is None
+
+    edited = folder / DRAFT_FILENAME
+    edited.write_bytes(b"a person's own words")
+    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=7), dt.time(9)).timestamp()
+    os.utime(edited, (stamp, stamp))
+    run_engagement(engagement, today=SATURDAY)
+    assert edited.read_bytes() == b"a person's own words"
+    assert last_drafted(folder) == SATURDAY - dt.timedelta(days=7)
 
 
 def test_an_untouched_draft_is_refreshed_in_place(tmp_path, samples):

@@ -75,6 +75,7 @@ from tracker.manifest import (
     Override,
     RequestItem,
     add_any_keyword,
+    as_text,
     label_for,
     load_manifest,
     pending_path,
@@ -301,7 +302,10 @@ def _copy_whole(source: Path, target: Path) -> None:
     try:
         shutil.copy2(source, target)
     except BaseException:
-        target.unlink(missing_ok=True)
+        try:
+            target.unlink(missing_ok=True)
+        except OSError as exc:      # held by a scanner: say so, keep the real error
+            log.warning("Half-written %s could not be removed (%s)", target.name, exc)
         raise
 
 
@@ -444,7 +448,10 @@ def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     if pending is None:
         return workbook
     if not pending.snapshot:
-        return workbook + pending.entries
+        # A bare-list sidecar holds rows to append once. If it could not be
+        # deleted after they landed, they are in the workbook already.
+        recorded = {e.pbc_location for e in workbook if e.pbc_location}
+        return workbook + [e for e in pending.entries if e.pbc_location not in recorded]
     decided = {
         e.pbc_location: e for e in pending.entries
         if e.pbc_location and e.decision == FILED and e.reason.startswith(ASSIGNED_BY_PERSON)
@@ -511,6 +518,8 @@ def _save_index(path: Path, entries: list[IndexEntry]) -> None:
     ws.append(list(INDEX_COLUMNS))
     for entry in entries:
         ws.append(entry.as_row())
+        for cell in ws[ws.max_row]:
+            as_text(cell)             # a file called "=SUM scan.pdf" is a name, not a formula
     for index, (_, width) in enumerate(INDEX_LAYOUT.values(), start=1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "A2"
@@ -716,7 +725,11 @@ def file_drops(
         items = load_manifest(engagement_dir / MANIFEST_FILENAME)
         by_id = {i.identifier: i for i in items}
         entries = read_index(index_path, quarantine=not dry_run)
-        known = {e.digest: e for e in entries if e.digest}
+        # The row that holds each document's bytes. A Duplicate row only
+        # points at another row; letting it shadow the Filed row would hide
+        # a working copy that has since been deleted, and a re-send that
+        # answers "Missing" would be called a duplicate for ever.
+        known = {e.digest: e for e in entries if e.digest and e.decision != DUPLICATE}
         # Rows a locked Excel deferred last time still belong in the workbook -
         # fold them in as soon as it is free, whether or not this run sorts anything.
         sidecar_waiting = _pending_index_path(index_path).exists()
@@ -1021,7 +1034,14 @@ def assign_review_file(
             shutil.move(str(parked), target)   # keeps any notes a person made on it
             moved = True
         else:
-            shutil.copy2(source, target)
+            # The parked copy is gone: a run killed after an earlier attempt
+            # moved it, or a person did. A copy with these bytes already in
+            # the folder is that attempt's, and is reused rather than doubled.
+            existing = _existing_copy(dest_folder, source, entry.digest) if entry.digest else None
+            if existing is not None:
+                filed_as, target = existing.name, existing
+            else:
+                _copy_whole(source, target)
 
         new_entry = replace(
             entry,
@@ -1071,10 +1091,7 @@ def _index_records(index_path: Path, entry: IndexEntry) -> bool:
         rows = read_index(index_path, quarantine=False)
     except Exception:
         return False
-    return any(
-        r.pbc_location == entry.pbc_location and r.decision == entry.decision
-        and r.prepared_location == entry.prepared_location for r in rows
-    )
+    return entry in rows          # the whole row: an older row for the same location is not it
 
 
 def _find_parked(entries: list[IndexEntry], original: str) -> int:

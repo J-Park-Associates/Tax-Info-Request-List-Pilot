@@ -71,6 +71,7 @@ from tracker.validators import (
 OVERRIDE_NOTE = "[override: {override}]"
 PARTIAL_NOTE = "{count} of {expected} expected files"
 DUPLICATES_NOTE = "{n} duplicate file(s) ignored"
+ACCEPTED_NOTE = "{n} file(s) filed here by a person; content rules not applied to them"
 FOLDERS_NOTE = "{n} folders match this identifier"
 MORE_ISSUES_NOTE = "(+{n} more issues)"
 SYNCING_MORE_NOTE = "{n} more file(s) still syncing"
@@ -113,14 +114,38 @@ class ScanReport:
 # ------------------------------------------------------------- per-item ----
 
 
+def _filed_by_a_person(engagement_dir: Path) -> frozenset[Path]:
+    """Working copies the index records as a person's filing decision."""
+    from tracker.filer import ASSIGNED_BY_PERSON, FILED, INDEX_FILENAME, read_index
+
+    try:
+        rows = read_index(engagement_dir / INDEX_FILENAME, quarantine=False)
+    except Exception as exc:   # an unreadable index is the filer's problem, not the scan's
+        log.warning("Could not read the index for a person's decisions: %s", exc)
+        return frozenset()
+    return frozenset(
+        engagement_dir / row.prepared_location for row in rows
+        if row.decision == FILED and row.prepared_location and row.reason.startswith(ASSIGNED_BY_PERSON)
+    )
+
+
+
 def _scan_item(
     item: RequestItem,
     folders: list[Path],
     cache: ContentCache,
     today: dt.date,
     pdf_cache: PdfVerdictCache | None = None,
+    accepted: frozenset[Path] = frozenset(),
 ) -> StatusUpdate:
-    """Run tiers 1-3 for one manifest row and resolve its status."""
+    """Run tiers 1-3 for one manifest row and resolve its status.
+
+    ``accepted`` are working copies a person filed here from Needs Review
+    (the index says ``ASSIGNED_BY_PERSON``): their decision stands, so the
+    content rules are not run on those files - a rule the document does
+    not satisfy would otherwise turn the person's decision into a client
+    ask for the "right" file.
+    """
     results = [
         fr for folder in folders for fr in check_folder(folder, item, pdf_cache=pdf_cache).files
     ]
@@ -129,7 +154,12 @@ def _scan_item(
 
     valid: list[Path] = []
     content_failed: list[tuple[Path, str]] = []
+    by_person = 0
     for f in (f for f in results if f.ok):
+        if f.path in accepted:
+            valid.append(f.path)
+            by_person += 1
+            continue
         verdict = check_content(f.path, item, cache)
         if verdict.ok:
             valid.append(f.path)
@@ -162,6 +192,8 @@ def _scan_item(
     failures.sort(key=lambda note: not any(r.matches(note) for r in reasons.FIRM_SIDE))
 
     facts: list[str] = []
+    if by_person:
+        facts.append(ACCEPTED_NOTE.format(n=by_person))
     if duplicates:
         facts.append(DUPLICATES_NOTE.format(n=duplicates))
     if len(folders) > 1:
@@ -313,8 +345,11 @@ def scan_engagement(
         pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
 
+        accepted = _filed_by_a_person(engagement_dir)
         updates = {
-            item.identifier: _scan_item(item, assigned[item.identifier], cache, today, pdf_cache)
+            item.identifier: _scan_item(
+                item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
+            )
             for item in items
         }
 

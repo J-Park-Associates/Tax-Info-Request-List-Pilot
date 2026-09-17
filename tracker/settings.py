@@ -70,7 +70,7 @@ def _read() -> dict:
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SettingsError(f"{path} could not be read: {exc}") from None
     if not isinstance(data, dict):
         raise SettingsError(f"{path} should hold one JSON object")

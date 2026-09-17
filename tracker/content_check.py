@@ -142,16 +142,16 @@ def rules_fingerprint(item: RequestItem) -> str:
 #: a keyword written either way is found. Any other hyphen-joined neighbour
 #: - an employer, a bank, a person (``1098-Citi``, ``W2-Tom``) - is a
 #: separator's hyphen and still matches, which is what a client's file
-#: name usually carries. One list; the manifest check consults it too.
+#: name usually carries. One list, in the one module that reads keywords.
 FORM_VARIANTS: dict[str, tuple[str, ...]] = {
-    "1098": ("t", "e", "c", "f", "q"),
+    "1098": ("t", "e", "c", "f", "q", "ma"),
     "1099": ("int", "div", "b", "r", "misc", "nec", "oid", "k", "g", "s", "sa",
-             "q", "ltc", "patr", "cap", "c", "a", "h", "da"),
+             "q", "ltc", "patr", "cap", "c", "a", "h", "da", "ls", "sb", "qa"),
     "1095": ("a", "b", "c"),
-    "1040": ("sr", "nr", "x", "es", "v", "ss"),
+    "1040": ("sr", "nr", "x", "es", "v", "ss", "c"),
     "1041": ("a", "es", "n", "qft", "t", "v"),
     "1065": ("x", "b"),
-    "1120": ("s", "x", "f", "h", "w", "c", "l", "pc", "pol", "reit", "ric", "sf"),
+    "1120": ("s", "x", "f", "h", "w", "c", "l", "pc", "pol", "reit", "ric", "sf", "nd"),
     "941": ("x", "ss", "pr"),
     "990": ("ez", "pf", "t", "n"),
     "5498": ("sa", "esa", "qa"),
@@ -160,8 +160,9 @@ FORM_VARIANTS: dict[str, tuple[str, ...]] = {
 }
 #: What may sit between a number and its variant, or between a keyword's
 #: words: nothing ("1098T"), spaces, or any dash a PDF or a keyboard yields.
-_JOINER = r"[\s\-‐‑‒–—]*"
-_DASHES = re.compile(r"[\s\-‐‑‒–—]")
+_DASH_CHARS = "".join(("-", chr(0x2010), chr(0x2011), chr(0x2012), chr(0x2013), chr(0x2014), chr(0x2212), chr(0xAD)))   # hyphen, the Unicode dashes, minus, soft hyphen
+_JOINER = rf"[\s{re.escape(_DASH_CHARS)}]*"
+_DASHES = re.compile(rf"[\s{re.escape(_DASH_CHARS)}]")
 
 
 def _joined_to_a_variant(text: str, keyword: str, match: re.Match[str]) -> bool:
@@ -183,9 +184,12 @@ def keyword_pattern(keyword: str) -> str | None:
     matches "interest-income" in a file name, ``w-2`` matches "W2" and
     "W–2", ``1099-int`` matches "1099INT".
     """
-    words = [_JOINER.join(re.escape(part) for part in w.split("-"))
+    # Only the letters and digits are the keyword; a "-" or "n/a" typed into
+    # a keyword cell is nothing to look for, and must not match everything.
+    words = [_JOINER.join(re.escape(part) for part in _DASHES.split(w) if part)
              for w in keyword.strip().lower().split()]
-    if not words or not any(words):
+    words = [w for w in words if w]
+    if not words:
         return None
     return rf"(?<![a-z0-9]){_JOINER.join(words)}(?![a-z0-9])"
 
