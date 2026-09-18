@@ -28,7 +28,12 @@ def shipped_rows(tmp_path, form):
     return [replace(i, min_size_kb=0) for i in load_manifest(manifest)]
 
 
-CASES = [
+# One block per decision (docs/ROADMAP.md), oldest first. CASES, below,
+# tags every case with its decision, so a rule change runs its whole
+# history by name before it is trusted: ``python -m pytest -k d67`` is
+# decision 67's cases, ``-k "d66 or d67 or d68"`` the three rounds that
+# kept reopening one another.
+_DECISION_62 = [
     # form, file name, the document's text (lines), where it belongs (None: parked)
     ("1040", "2024 return with Schedule A.pdf", [
         "Form 1040 2024 U.S. Individual Income Tax Return",
@@ -142,6 +147,8 @@ CASES = [
     ("990", "Dec 2025 bank.pdf", [
         "Checking Account Statement", "Statement period 12/01/2025 - 12/31/2025", "Deposits and other credits 4,000.00",
     ], "B02"),
+]
+_DECISION_63 = [
     # Round six: the W-2 as the IRS lays it out (title at the foot), documents
     # that mention forms they are not, and returns with their schedules.
     ("1040", "W-2 IRS layout.pdf", [
@@ -206,6 +213,8 @@ CASES = [
         "Sign Here Under penalties of perjury, I declare that I have examined this return",
         "Form 1120 (2024)",
     ], "A01"),
+]
+_DECISION_65 = [
     # Round eight: the firm's own paperwork, and another entity's return, are not the prior-year return.
     ("1040", "organizer.pdf", [
         "2025 Individual Income Tax Organizer", "Filing Status Single Married filing jointly",
@@ -224,6 +233,8 @@ CASES = [
         "Trial Balance As of December 31, 2025", "Checking Account 12,000.00 Savings Account 30,000.00",
         "Accumulated Depreciation -4,000.00 Shareholder Distributions 10,000.00",
     ], "A02"),
+]
+_DECISION_66 = [
     # Round nine. A form number in the title counts only when the title
     # names the form in its own right: the IRS's "Attention" page, a
     # scanner's or an email's cover, an organizer's lines and a bank's
@@ -306,6 +317,8 @@ CASES = [
     ("1040", "1099-DIV.pdf", [
         "Form 1099-DIV Dividends and Distributions 2025", "OMB No. 1545-0110", "1a Total ordinary dividends 300.00", "Form 1099-DIV (Rev. January 2024)",
     ], "A02"),
+]
+_DECISION_67 = [
     # Round ten. A form told to the reader is a reference whatever follows it; a title
     # that lists three forms names none; a savings plan's contribution statement is not
     # a charitable receipt; the childcare row knows the provider's statement; the
@@ -345,6 +358,8 @@ CASES = [
         "2025 Form 1040-ES Estimated Tax for Individuals", "Purpose of This Package",
         "make a copy of one of your unused estimated tax payment vouchers, fill it in, and mail it with your payment",
     ], None),
+]
+_DECISION_68 = [
     # Round eleven. A broker's consolidated 1099 is one family's document: the
     # interest-and-dividend one files, the one with a 1099-B is the rows' own
     # tie. A receipt row keys on receipt wording, not on a pledge, a thank-you
@@ -391,6 +406,8 @@ CASES = [
         "WageWorks Benefits Administration", "2025 Dependent Care Statement",
         "Dependent Care FSA elected 5,000.00", "Claims reimbursed 5,000.00",
     ], None),
+]
+_DECISION_69 = [
     # Round twelve. A sentence wraps where it will, so the word before a form
     # may end the line above; a checklist sets a form off from its title with
     # a dash; a savings plan's contribution record, receipt or summary is not
@@ -440,8 +457,20 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize("form, name, lines, expected", CASES, ids=[c[1] for c in CASES])
-def test_every_shipped_catalog_files_real_forms_where_they_belong(tmp_path, form, name, lines, expected):
+#: (decision, form, file name, lines, expected) - every case, tagged with the
+#: decision that introduced it. tools/vocab_report.py reads this list too.
+CASES = [
+    (decision, *case)
+    for decision, block in (
+        (62, _DECISION_62), (63, _DECISION_63), (65, _DECISION_65), (66, _DECISION_66),
+        (67, _DECISION_67), (68, _DECISION_68), (69, _DECISION_69),
+    )
+    for case in block
+]
+
+
+@pytest.mark.parametrize("decision, form, name, lines, expected", CASES, ids=[f"d{c[0]}-{c[2]}" for c in CASES])
+def test_every_shipped_catalog_files_real_forms_where_they_belong(tmp_path, decision, form, name, lines, expected):
     items = shipped_rows(tmp_path, form)
     routing = route_file(text_pdf(tmp_path / name, NL.join(lines)), items)
-    assert routing.identifier == expected, (name, routing.reason)
+    assert routing.identifier == expected, (f"decision {decision}", name, routing.reason)

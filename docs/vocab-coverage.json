@@ -1,0 +1,5334 @@
+{
+ "catalogs": {
+  "1040": {
+   "reached_only_elsewhere": [
+    [
+     "E01",
+     "1099-b"
+    ],
+    [
+     "E01",
+     "proceeds from broker"
+    ],
+    [
+     "E01",
+     "realized gain and loss"
+    ]
+   ],
+   "reached_without_expectation": [],
+   "rows": {
+    "A01": {
+     "document": "W-2 Wage Statements - All Employers",
+     "keywords": [
+      {
+       "keyword": "W-2",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2 IRS layout.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "scanner cover then W-2.pdf"
+        },
+        {
+         "decision": 67,
+         "expected": null,
+         "kind": "case",
+         "name": "firm transmittal.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "wage and tax statement",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2.pdf"
+        },
+        {
+         "decision": 62,
+         "expected": null,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2 IRS layout.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "scanner cover then W-2.pdf"
+        },
+        {
+         "decision": 67,
+         "expected": null,
+         "kind": "case",
+         "name": "organizer checklist.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "employee's social security number",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2 IRS layout.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "scanner cover then W-2.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "A02": {
+     "document": "1099-INT / 1099-DIV - Interest & Dividend Income",
+     "keywords": [
+      {
+       "keyword": "1099-int",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-INT.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": "A02",
+         "kind": "case",
+         "name": "Vanguard consolidated 1099.pdf"
+        },
+        {
+         "decision": 68,
+         "kind": "case",
+         "name": "Vanguard consolidated 1099.pdf"
+        },
+        {
+         "expected": "A02",
+         "kind": "irs",
+         "name": "f1099int.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "1099-div",
+       "reached_by": [
+        {
+         "decision": 66,
+         "expected": "A02",
+         "kind": "case",
+         "name": "1099-DIV.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": "A02",
+         "kind": "case",
+         "name": "Vanguard consolidated 1099.pdf"
+        },
+        {
+         "decision": 68,
+         "kind": "case",
+         "name": "Vanguard consolidated 1099.pdf"
+        },
+        {
+         "expected": "A02",
+         "kind": "irs",
+         "name": "f1099div.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "1099-oid",
+       "reached_by": [
+        {
+         "expected": "A02",
+         "kind": "irs",
+         "name": "f1099oid.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "B01": {
+     "document": "Prior-Year Federal & State Tax Returns",
+     "keywords": [
+      {
+       "keyword": "individual income tax return",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "B01",
+         "kind": "case",
+         "name": "2024 return with Schedule A.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": "B01",
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": null,
+         "kind": "case",
+         "name": "4868 extension.pdf"
+        },
+        {
+         "decision": 65,
+         "expected": null,
+         "kind": "case",
+         "name": "engagement letter.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1040.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1040x.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f4868.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f8879.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "filing status",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "B01",
+         "kind": "case",
+         "name": "2024 return with Schedule A.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": "B01",
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 65,
+         "expected": null,
+         "kind": "case",
+         "name": "engagement letter.pdf"
+        },
+        {
+         "decision": 65,
+         "expected": null,
+         "kind": "case",
+         "name": "organizer.pdf"
+        },
+        {
+         "decision": 66,
+         "expected": null,
+         "kind": "case",
+         "name": "organizer with every line.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1040.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1040es.pdf"
+        },
+        {
+         "expected": "H01",
+         "kind": "irs",
+         "name": "f1040es_2025.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1040nr.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1040s.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1040x.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "under penalties of perjury",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120-S.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 990.pdf"
+        },
+        {
+         "decision": 62,
+         "expected": "B01",
+         "kind": "case",
+         "name": "2024 return with Schedule A.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": "B01",
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1120 with schedules.pdf"
+        },
+        {
+         "decision": 65,
+         "expected": null,
+         "kind": "case",
+         "name": "2024 1120-S dropped by the owner.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1040.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1040nr.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1040s.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1040x.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1065.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1096.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1120.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120s.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f8879.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f940.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f941.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990ez.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "C01": {
+     "document": "Mortgage Interest Statement - Form 1098",
+     "keywords": [
+      {
+       "keyword": "1098",
+       "reached_by": [
+        {
+         "expected": "C01",
+         "kind": "irs",
+         "name": "f1098.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "mortgage interest",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "B01",
+         "kind": "case",
+         "name": "2024 return with Schedule A.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": "B01",
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 66,
+         "expected": null,
+         "kind": "case",
+         "name": "organizer with every line.pdf"
+        },
+        {
+         "decision": 67,
+         "expected": null,
+         "kind": "case",
+         "name": "escrow letter.pdf"
+        },
+        {
+         "decision": 67,
+         "expected": null,
+         "kind": "case",
+         "name": "organizer checklist.pdf"
+        },
+        {
+         "decision": 67,
+         "expected": null,
+         "kind": "case",
+         "name": "organizer homeowners section.pdf"
+        },
+        {
+         "decision": 69,
+         "expected": null,
+         "kind": "case",
+         "name": "escrow letter wrapped.pdf"
+        },
+        {
+         "decision": 69,
+         "expected": null,
+         "kind": "case",
+         "name": "organizer deductions page.pdf"
+        },
+        {
+         "decision": 69,
+         "expected": null,
+         "kind": "case",
+         "name": "organizer homeowners wrapped.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1040sa.pdf"
+        },
+        {
+         "expected": "C01",
+         "kind": "irs",
+         "name": "f1098.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "D01": {
+     "document": "Charitable Contribution Receipts",
+     "keywords": [
+      {
+       "keyword": "donation receipt",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "giving statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of giving",
+       "reached_by": [
+        {
+         "decision": 68,
+         "expected": "D01",
+         "kind": "case",
+         "name": "statement of giving.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "giving summary",
+       "reached_by": [
+        {
+         "decision": 67,
+         "expected": "D01",
+         "kind": "case",
+         "name": "giving summary.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "giving record",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "donor statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "charitable contribution statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "charitable contributions statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "charitable giving",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "tax-deductible donation",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "tax-deductible gift",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "donated goods",
+       "reached_by": [
+        {
+         "decision": 67,
+         "expected": "D01",
+         "kind": "case",
+         "name": "goodwill receipt.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "no goods or services",
+       "reached_by": [
+        {
+         "decision": 66,
+         "expected": "D01",
+         "kind": "case",
+         "name": "donation receipt.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": "D01",
+         "kind": "case",
+         "name": "church contribution statement.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "thank you for your donation",
+       "reached_by": [
+        {
+         "decision": 66,
+         "expected": "D01",
+         "kind": "case",
+         "name": "donation receipt.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "receipt for your donation",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "acknowledge your donation",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "acknowledge your charitable contribution",
+       "reached_by": [
+        {
+         "decision": 67,
+         "expected": "D01",
+         "kind": "case",
+         "name": "acknowledgment letter.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": "D01",
+         "kind": "case",
+         "name": "acknowledgment letter.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "E01": {
+     "document": "1099-B / Brokerage Year-End Statements",
+     "keywords": [
+      {
+       "keyword": "1099-b",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-B.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "proceeds from broker",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-B.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "brokerage statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "realized gain and loss",
+       "reached_by": [
+        {
+         "decision": 68,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "E02": {
+     "document": "1099-R Retirement Distributions",
+     "keywords": [
+      {
+       "keyword": "1099-r",
+       "reached_by": [
+        {
+         "decision": 66,
+         "expected": "E02",
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "expected": "E02",
+         "kind": "irs",
+         "name": "f1099r.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "retirement distribution",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "F01": {
+     "document": "Schedule K-1s Received",
+     "keywords": [
+      {
+       "keyword": "partner's share of income",
+       "reached_by": [
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "K-1 1065 in a trust.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "K-1 with its footer under box 19.pdf"
+        },
+        {
+         "expected": "F01",
+         "kind": "irs",
+         "name": "f1065sk1.pdf"
+        },
+        {
+         "expected": "F01",
+         "kind": "irs",
+         "name": "f1065sk1_2024.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "shareholder's share of income",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "K-1 with its footer under box 16.pdf"
+        },
+        {
+         "expected": "F01",
+         "kind": "irs",
+         "name": "f1120ssk.pdf"
+        },
+        {
+         "expected": "F01",
+         "kind": "irs",
+         "name": "f1120ssk_2024.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "beneficiary's share of income",
+       "reached_by": [
+        {
+         "expected": "F01",
+         "kind": "irs",
+         "name": "f1041sk1.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "G01": {
+     "document": "Property Tax Statements",
+     "keywords": [
+      {
+       "keyword": "property tax statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "property tax bill",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "secured property tax",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "tax assessor",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "assessor",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "parcel number",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "H01": {
+     "document": "Estimated Tax Payment Records",
+     "keywords": [
+      {
+       "keyword": "estimated tax payment voucher 1",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "H01",
+         "kind": "case",
+         "name": "1040-ES voucher.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax payment voucher 2",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax payment voucher 3",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax payment voucher 4",
+       "reached_by": [
+        {
+         "decision": 67,
+         "expected": "H01",
+         "kind": "case",
+         "name": "paid voucher stub.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax payment voucher for individuals",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "amount of estimated tax you are paying",
+       "reached_by": [
+        {
+         "decision": 67,
+         "expected": "H01",
+         "kind": "case",
+         "name": "paid voucher stub.pdf"
+        },
+        {
+         "expected": "H01",
+         "kind": "irs",
+         "name": "f1040es_2025.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax voucher",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated payments made",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "I01": {
+     "document": "Form 1095-A - Marketplace Health Insurance",
+     "keywords": [
+      {
+       "keyword": "1095-a",
+       "reached_by": [
+        {
+         "expected": "I01",
+         "kind": "irs",
+         "name": "f1095a.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "marketplace identifier",
+       "reached_by": [
+        {
+         "expected": "I01",
+         "kind": "irs",
+         "name": "f1095a.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "monthly enrollment premium",
+       "reached_by": [
+        {
+         "decision": 63,
+         "expected": "B01",
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "expected": "I01",
+         "kind": "irs",
+         "name": "f1095a.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "advance payment of premium tax credit",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "J01": {
+     "document": "Childcare Provider Statements - Name, EIN, Amounts",
+     "keywords": [
+      {
+       "keyword": "child care statement",
+       "reached_by": [
+        {
+         "decision": 66,
+         "expected": "J01",
+         "kind": "case",
+         "name": "childcare statement.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "childcare statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "daycare statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "child care provider statement",
+       "reached_by": [
+        {
+         "decision": 67,
+         "expected": "J01",
+         "kind": "case",
+         "name": "childcare provider statement.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "childcare provider statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "daycare provider statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "dependent care provider statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "child care receipt",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "childcare receipt",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "daycare receipt",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "child care tax statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "childcare tax statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of child care expenses",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of childcare expenses",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of daycare expenses",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "year-end child care",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "year-end childcare",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "year-end daycare",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "K01": {
+     "document": "IRA / HSA Contribution Statements - Form 5498",
+     "keywords": [
+      {
+       "keyword": "5498",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "email print then 5498.pdf"
+        },
+        {
+         "decision": 66,
+         "expected": "K01",
+         "kind": "case",
+         "name": "email print then 5498.pdf"
+        },
+        {
+         "expected": "K01",
+         "kind": "irs",
+         "name": "f5498.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "5498-sa",
+       "reached_by": [
+        {
+         "expected": "K01",
+         "kind": "irs",
+         "name": "f5498sa.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "5498-esa",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "ira contribution information",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "email print then 5498.pdf"
+        },
+        {
+         "decision": 66,
+         "expected": "K01",
+         "kind": "case",
+         "name": "email print then 5498.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "medicare advantage msa information",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "L01": {
+     "document": "Tuition Statements - Form 1098-T",
+     "keywords": [
+      {
+       "keyword": "1098-t",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "1098-T behind the Attention page.pdf"
+        },
+        {
+         "expected": "L01",
+         "kind": "irs",
+         "name": "f1098t.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "qualified tuition and related expenses",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "1098-T behind the Attention page.pdf"
+        },
+        {
+         "expected": "L01",
+         "kind": "irs",
+         "name": "f1098t.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    }
+   },
+   "rows_without_a_filing_document": [
+    "E01",
+    "G01"
+   ],
+   "unreached": [
+    [
+     "D01",
+     "donation receipt"
+    ],
+    [
+     "D01",
+     "giving statement"
+    ],
+    [
+     "D01",
+     "giving record"
+    ],
+    [
+     "D01",
+     "donor statement"
+    ],
+    [
+     "D01",
+     "charitable contribution statement"
+    ],
+    [
+     "D01",
+     "charitable contributions statement"
+    ],
+    [
+     "D01",
+     "charitable giving"
+    ],
+    [
+     "D01",
+     "tax-deductible donation"
+    ],
+    [
+     "D01",
+     "tax-deductible gift"
+    ],
+    [
+     "D01",
+     "receipt for your donation"
+    ],
+    [
+     "D01",
+     "acknowledge your donation"
+    ],
+    [
+     "E01",
+     "brokerage statement"
+    ],
+    [
+     "E02",
+     "retirement distribution"
+    ],
+    [
+     "G01",
+     "property tax statement"
+    ],
+    [
+     "G01",
+     "property tax bill"
+    ],
+    [
+     "G01",
+     "secured property tax"
+    ],
+    [
+     "G01",
+     "tax assessor"
+    ],
+    [
+     "G01",
+     "assessor"
+    ],
+    [
+     "G01",
+     "parcel number"
+    ],
+    [
+     "H01",
+     "estimated tax payment voucher 2"
+    ],
+    [
+     "H01",
+     "estimated tax payment voucher 3"
+    ],
+    [
+     "H01",
+     "estimated tax payment voucher for individuals"
+    ],
+    [
+     "H01",
+     "estimated tax voucher"
+    ],
+    [
+     "H01",
+     "estimated payments made"
+    ],
+    [
+     "I01",
+     "advance payment of premium tax credit"
+    ],
+    [
+     "J01",
+     "childcare statement"
+    ],
+    [
+     "J01",
+     "daycare statement"
+    ],
+    [
+     "J01",
+     "childcare provider statement"
+    ],
+    [
+     "J01",
+     "daycare provider statement"
+    ],
+    [
+     "J01",
+     "dependent care provider statement"
+    ],
+    [
+     "J01",
+     "child care receipt"
+    ],
+    [
+     "J01",
+     "childcare receipt"
+    ],
+    [
+     "J01",
+     "daycare receipt"
+    ],
+    [
+     "J01",
+     "child care tax statement"
+    ],
+    [
+     "J01",
+     "childcare tax statement"
+    ],
+    [
+     "J01",
+     "statement of child care expenses"
+    ],
+    [
+     "J01",
+     "statement of childcare expenses"
+    ],
+    [
+     "J01",
+     "statement of daycare expenses"
+    ],
+    [
+     "J01",
+     "year-end child care"
+    ],
+    [
+     "J01",
+     "year-end childcare"
+    ],
+    [
+     "J01",
+     "year-end daycare"
+    ],
+    [
+     "K01",
+     "5498-esa"
+    ],
+    [
+     "K01",
+     "medicare advantage msa information"
+    ]
+   ]
+  },
+  "1041": {
+   "reached_only_elsewhere": [],
+   "reached_without_expectation": [
+    [
+     "A02",
+     "assigned you an employer identification number"
+    ],
+    [
+     "B01",
+     "1099-oid"
+    ],
+    [
+     "B01",
+     "1099-r"
+    ],
+    [
+     "B02",
+     "realized gain and loss"
+    ],
+    [
+     "B02",
+     "year-end account statement"
+    ]
+   ],
+   "rows": {
+    "A01": {
+     "document": "Trust Instrument / Will & Amendments",
+     "keywords": [
+      {
+       "keyword": "trust agreement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "last will",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "codicil",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "A02": {
+     "document": "IRS EIN Assignment Letter",
+     "keywords": [
+      {
+       "keyword": "cp 575",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A02",
+         "kind": "case",
+         "name": "CP 575.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "CP 575 in a corporation.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "ein assignment",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "assigned you employer identification number",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A02",
+         "kind": "case",
+         "name": "CP 575.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "assigned you an employer identification number",
+       "reached_by": [
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "CP 575 in a corporation.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "A03": {
+     "document": "Prior-Year Fiduciary Returns",
+     "keywords": [
+      {
+       "keyword": "income tax return for estates and trusts",
+       "reached_by": [
+        {
+         "expected": "A03",
+         "kind": "irs",
+         "name": "f1041.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "under penalties of perjury",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120-S.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 990.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 return with Schedule A.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1120 with schedules.pdf"
+        },
+        {
+         "decision": 65,
+         "kind": "case",
+         "name": "2024 1120-S dropped by the owner.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040nr.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040x.pdf"
+        },
+        {
+         "expected": "A03",
+         "kind": "irs",
+         "name": "f1041.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1065.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1096.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f8879.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f940.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f941.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990ez.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "B01": {
+     "document": "1099s for Trust / Estate Accounts",
+     "keywords": [
+      {
+       "keyword": "1099-int",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-INT.pdf"
+        },
+        {
+         "decision": 68,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 68,
+         "kind": "case",
+         "name": "Vanguard consolidated 1099.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": "B01",
+         "kind": "case",
+         "name": "Vanguard consolidated 1099.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1099int.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "1099-div",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "1099-DIV.pdf"
+        },
+        {
+         "decision": 68,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 68,
+         "kind": "case",
+         "name": "Vanguard consolidated 1099.pdf"
+        },
+        {
+         "decision": 68,
+         "expected": "B01",
+         "kind": "case",
+         "name": "Vanguard consolidated 1099.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1099div.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "1099-b",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "B01",
+         "kind": "case",
+         "name": "1099-B.pdf"
+        },
+        {
+         "decision": 68,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "1099-oid",
+       "reached_by": [
+        {
+         "kind": "irs",
+         "name": "f1099oid.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "1099-r",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099r.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "1099-misc",
+       "reached_by": [
+        {
+         "decision": 68,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1099msc.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "1099-nec",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "B02": {
+     "document": "Brokerage Year-End Statements",
+     "keywords": [
+      {
+       "keyword": "brokerage statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "realized gain and loss",
+       "reached_by": [
+        {
+         "decision": 68,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "year-end account statement",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "brokerage.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "C01": {
+     "document": "Distributions to Beneficiaries - Dates & Amounts",
+     "keywords": [
+      {
+       "keyword": "distributions to beneficiaries",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "beneficiary distribution",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "distribution schedule",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C02": {
+     "document": "Beneficiary Names, Addresses & Tax IDs",
+     "keywords": [
+      {
+       "keyword": "beneficiary information",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "beneficiary list",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "beneficiary names",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "D01": {
+     "document": "Fiduciary, Attorney & Accounting Fees Paid",
+     "keywords": [
+      {
+       "keyword": "fiduciary fees paid",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "trustee fees",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "accounting fees paid",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "legal fees paid",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "attorney fees paid",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "fee invoice",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "E01": {
+     "document": "Cost Basis for Assets Sold During the Year",
+     "keywords": [
+      {
+       "keyword": "cost basis schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "basis of assets sold",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "date acquired and date sold",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "purchase price and sale price",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "F01": {
+     "document": "Rental / Business Income & Expense Detail",
+     "keywords": [
+      {
+       "keyword": "rental income and expenses",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "rent roll",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "schedule e detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "schedule c detail",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    }
+   },
+   "rows_without_a_filing_document": [
+    "A01",
+    "B02",
+    "C01",
+    "C02",
+    "D01",
+    "E01",
+    "F01"
+   ],
+   "unreached": [
+    [
+     "A01",
+     "trust agreement"
+    ],
+    [
+     "A01",
+     "last will"
+    ],
+    [
+     "A01",
+     "codicil"
+    ],
+    [
+     "A02",
+     "ein assignment"
+    ],
+    [
+     "B02",
+     "brokerage statement"
+    ],
+    [
+     "C01",
+     "distributions to beneficiaries"
+    ],
+    [
+     "C01",
+     "beneficiary distribution"
+    ],
+    [
+     "C01",
+     "distribution schedule"
+    ],
+    [
+     "C02",
+     "beneficiary information"
+    ],
+    [
+     "C02",
+     "beneficiary list"
+    ],
+    [
+     "C02",
+     "beneficiary names"
+    ],
+    [
+     "D01",
+     "fiduciary fees paid"
+    ],
+    [
+     "D01",
+     "trustee fees"
+    ],
+    [
+     "D01",
+     "accounting fees paid"
+    ],
+    [
+     "D01",
+     "legal fees paid"
+    ],
+    [
+     "D01",
+     "attorney fees paid"
+    ],
+    [
+     "D01",
+     "fee invoice"
+    ],
+    [
+     "E01",
+     "cost basis schedule"
+    ],
+    [
+     "E01",
+     "basis of assets sold"
+    ],
+    [
+     "E01",
+     "date acquired and date sold"
+    ],
+    [
+     "E01",
+     "purchase price and sale price"
+    ],
+    [
+     "F01",
+     "rental income and expenses"
+    ],
+    [
+     "F01",
+     "rent roll"
+    ],
+    [
+     "F01",
+     "schedule e detail"
+    ],
+    [
+     "F01",
+     "schedule c detail"
+    ]
+   ]
+  },
+  "1065": {
+   "reached_only_elsewhere": [],
+   "reached_without_expectation": [
+    [
+     "A03",
+     "trial balance"
+    ],
+    [
+     "A04",
+     "general ledger"
+    ],
+    [
+     "B01",
+     "balance sheet as of"
+    ],
+    [
+     "B01",
+     "profit and loss"
+    ],
+    [
+     "B02",
+     "deposits and other credits"
+    ],
+    [
+     "C01",
+     "cap table"
+    ]
+   ],
+   "rows": {
+    "A01": {
+     "document": "Prior-Year Federal & State Partnership Returns",
+     "keywords": [
+      {
+       "keyword": "return of partnership income",
+       "reached_by": [
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f1065.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "under penalties of perjury",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120-S.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 990.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 return with Schedule A.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1120 with schedules.pdf"
+        },
+        {
+         "decision": 65,
+         "kind": "case",
+         "name": "2024 1120-S dropped by the owner.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040nr.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040x.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f1065.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1096.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1120.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f8879.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f940.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f941.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990ez.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "A02": {
+     "document": "Partnership Agreement & Amendments",
+     "keywords": [
+      {
+       "keyword": "partnership agreement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "operating agreement",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A02",
+         "kind": "case",
+         "name": "operating agreement.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "A03": {
+     "document": "Trial Balance - Year-End",
+     "keywords": [
+      {
+       "keyword": "trial balance",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "trial balance.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "trial balance.pdf"
+        },
+        {
+         "decision": 65,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "A04": {
+     "document": "General Ledger Detail",
+     "keywords": [
+      {
+       "keyword": "general ledger",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "B01": {
+     "document": "Year-End Financial Statements",
+     "keywords": [
+      {
+       "keyword": "balance sheet as of",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of financial position",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "B01",
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "income statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of income",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "profit and loss",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "P&L.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of operations",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of activities",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of cash flows",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "B02": {
+     "document": "December Bank Statements & Year-End Reconciliations",
+     "keywords": [
+      {
+       "keyword": "bank statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of account",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "checking summary",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "deposits and additions",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "deposits and other credits",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "Nov 2025 bank.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "bank annual summary.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "checks paid",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "withdrawals and other debits",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "bank reconciliation",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C01": {
+     "document": "Partner List with Ownership % & Changes",
+     "keywords": [
+      {
+       "keyword": "partner list",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "partner roster",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "member list",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "cap table",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "cap table.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "capitalization table",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C02": {
+     "document": "Partner Capital Account Detail",
+     "keywords": [
+      {
+       "keyword": "capital account detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "capital account statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "capital account analysis by partner",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C03": {
+     "document": "Contributions & Distributions by Partner",
+     "keywords": [
+      {
+       "keyword": "contributions and distributions by partner",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "partner contribution detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "partner distribution detail",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C04": {
+     "document": "Guaranteed Payment Detail",
+     "keywords": [
+      {
+       "keyword": "guaranteed payment detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "guaranteed payments by partner",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "D01": {
+     "document": "Fixed Asset Additions & Disposals Detail",
+     "keywords": [
+      {
+       "keyword": "fixed asset schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "fixed asset listing",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "fixed asset additions",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "asset additions and disposals",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "E01": {
+     "document": "Loan Agreements & Year-End Balances",
+     "keywords": [
+      {
+       "keyword": "loan agreement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "promissory note",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "amortization schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "loan statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "principal balance",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "F01": {
+     "document": "Special Allocation Support - Section 704(b)",
+     "keywords": [
+      {
+       "keyword": "special allocation",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "section 704(b)",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "G01": {
+     "document": "State Apportionment Data - Sales, Payroll, Property by State",
+     "keywords": [
+      {
+       "keyword": "apportionment schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "apportionment data",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "sales by state",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "payroll by state",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    }
+   },
+   "rows_without_a_filing_document": [
+    "A03",
+    "A04",
+    "B02",
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "D01",
+    "E01",
+    "F01",
+    "G01"
+   ],
+   "unreached": [
+    [
+     "A02",
+     "partnership agreement"
+    ],
+    [
+     "B01",
+     "income statement"
+    ],
+    [
+     "B01",
+     "statement of income"
+    ],
+    [
+     "B01",
+     "statement of operations"
+    ],
+    [
+     "B01",
+     "statement of activities"
+    ],
+    [
+     "B01",
+     "statement of cash flows"
+    ],
+    [
+     "B02",
+     "bank statement"
+    ],
+    [
+     "B02",
+     "statement of account"
+    ],
+    [
+     "B02",
+     "checking summary"
+    ],
+    [
+     "B02",
+     "deposits and additions"
+    ],
+    [
+     "B02",
+     "checks paid"
+    ],
+    [
+     "B02",
+     "withdrawals and other debits"
+    ],
+    [
+     "B02",
+     "bank reconciliation"
+    ],
+    [
+     "C01",
+     "partner list"
+    ],
+    [
+     "C01",
+     "partner roster"
+    ],
+    [
+     "C01",
+     "member list"
+    ],
+    [
+     "C01",
+     "capitalization table"
+    ],
+    [
+     "C02",
+     "capital account detail"
+    ],
+    [
+     "C02",
+     "capital account statement"
+    ],
+    [
+     "C02",
+     "capital account analysis by partner"
+    ],
+    [
+     "C03",
+     "contributions and distributions by partner"
+    ],
+    [
+     "C03",
+     "partner contribution detail"
+    ],
+    [
+     "C03",
+     "partner distribution detail"
+    ],
+    [
+     "C04",
+     "guaranteed payment detail"
+    ],
+    [
+     "C04",
+     "guaranteed payments by partner"
+    ],
+    [
+     "D01",
+     "fixed asset schedule"
+    ],
+    [
+     "D01",
+     "fixed asset listing"
+    ],
+    [
+     "D01",
+     "fixed asset additions"
+    ],
+    [
+     "D01",
+     "asset additions and disposals"
+    ],
+    [
+     "E01",
+     "loan agreement"
+    ],
+    [
+     "E01",
+     "promissory note"
+    ],
+    [
+     "E01",
+     "amortization schedule"
+    ],
+    [
+     "E01",
+     "loan statement"
+    ],
+    [
+     "E01",
+     "principal balance"
+    ],
+    [
+     "F01",
+     "special allocation"
+    ],
+    [
+     "F01",
+     "section 704(b)"
+    ],
+    [
+     "G01",
+     "apportionment schedule"
+    ],
+    [
+     "G01",
+     "apportionment data"
+    ],
+    [
+     "G01",
+     "sales by state"
+    ],
+    [
+     "G01",
+     "payroll by state"
+    ]
+   ]
+  },
+  "1120": {
+   "reached_only_elsewhere": [
+    [
+     "E02",
+     "form 1125-e"
+    ]
+   ],
+   "reached_without_expectation": [
+    [
+     "A03",
+     "general ledger"
+    ],
+    [
+     "B01",
+     "statement of financial position"
+    ],
+    [
+     "B02",
+     "deposits and other credits"
+    ],
+    [
+     "E01",
+     "form w-3"
+    ],
+    [
+     "F01",
+     "estimated tax payment voucher 1"
+    ],
+    [
+     "F01",
+     "estimated tax payment voucher 4"
+    ],
+    [
+     "F01",
+     "amount of estimated tax you are paying"
+    ]
+   ],
+   "rows": {
+    "A01": {
+     "document": "Prior-Year Federal & State Corporate Returns",
+     "keywords": [
+      {
+       "keyword": "u.s. corporation income tax return",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A01",
+         "kind": "case",
+         "name": "2024 1120.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": "A01",
+         "kind": "case",
+         "name": "2024 1120 with schedules.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f1120.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "under penalties of perjury",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120-S.pdf"
+        },
+        {
+         "decision": 62,
+         "expected": "A01",
+         "kind": "case",
+         "name": "2024 1120.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 990.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 return with Schedule A.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 63,
+         "expected": "A01",
+         "kind": "case",
+         "name": "2024 1120 with schedules.pdf"
+        },
+        {
+         "decision": 65,
+         "kind": "case",
+         "name": "2024 1120-S dropped by the owner.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040nr.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040x.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1065.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1096.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f1120.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1120h.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1120s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f8879.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f940.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f941.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990ez.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "A02": {
+     "document": "Trial Balance - Year-End",
+     "keywords": [
+      {
+       "keyword": "trial balance",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "trial balance.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "trial balance.pdf"
+        },
+        {
+         "decision": 65,
+         "expected": "A02",
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "A03": {
+     "document": "General Ledger Detail",
+     "keywords": [
+      {
+       "keyword": "general ledger",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "B01": {
+     "document": "Year-End Financial Statements",
+     "keywords": [
+      {
+       "keyword": "balance sheet as of",
+       "reached_by": [
+        {
+         "decision": 66,
+         "expected": "B01",
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of financial position",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "income statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of income",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "profit and loss",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "B01",
+         "kind": "case",
+         "name": "P&L.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of operations",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of activities",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of cash flows",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "B02": {
+     "document": "December Bank Statements & Year-End Reconciliations",
+     "keywords": [
+      {
+       "keyword": "bank statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of account",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "checking summary",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "deposits and additions",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "deposits and other credits",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "Nov 2025 bank.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "bank annual summary.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "checks paid",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "withdrawals and other debits",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "bank reconciliation",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C01": {
+     "document": "Fixed Asset Additions & Disposals Detail",
+     "keywords": [
+      {
+       "keyword": "fixed asset schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "fixed asset listing",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "fixed asset additions",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "asset additions and disposals",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C02": {
+     "document": "Depreciation Schedules",
+     "keywords": [
+      {
+       "keyword": "depreciation schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "depreciation detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "depreciation report",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "form 4562",
+       "reached_by": [
+        {
+         "expected": "C02",
+         "kind": "irs",
+         "name": "f4562.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "D01": {
+     "document": "Loan Agreements & Year-End Balances",
+     "keywords": [
+      {
+       "keyword": "loan agreement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "promissory note",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "amortization schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "loan statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "principal balance",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "E01": {
+     "document": "Payroll Tax Returns - Forms 941 & W-3",
+     "keywords": [
+      {
+       "keyword": "form 941",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f941.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "employer's quarterly federal tax return",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f941.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "form 940",
+       "reached_by": [
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f940.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "employer's annual federal unemployment",
+       "reached_by": [
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f940.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "form w-3",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "W-3.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "w-3 transmittal",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "E02": {
+     "document": "Officer Compensation Detail",
+     "keywords": [
+      {
+       "keyword": "officer compensation detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "officer compensation schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "form 1125-e",
+       "reached_by": [
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1125e.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "F01": {
+     "document": "Estimated Tax Payment Records",
+     "keywords": [
+      {
+       "keyword": "estimated tax payment voucher 1",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1040-ES voucher.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax payment voucher 2",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax payment voucher 3",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax payment voucher 4",
+       "reached_by": [
+        {
+         "decision": 67,
+         "kind": "case",
+         "name": "paid voucher stub.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax payment voucher for individuals",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "amount of estimated tax you are paying",
+       "reached_by": [
+        {
+         "decision": 67,
+         "kind": "case",
+         "name": "paid voucher stub.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040es_2025.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax voucher",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated payments made",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "G01": {
+     "document": "Shareholder List & Ownership Changes",
+     "keywords": [
+      {
+       "keyword": "shareholder list",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "stock ledger",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "cap table",
+       "reached_by": [
+        {
+         "decision": 66,
+         "expected": "G01",
+         "kind": "case",
+         "name": "cap table.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "capitalization table",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "H01": {
+     "document": "State Apportionment Data - Sales, Payroll, Property by State",
+     "keywords": [
+      {
+       "keyword": "apportionment schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "apportionment data",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "sales by state",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "payroll by state",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "I01": {
+     "document": "Book-Tax Difference Support - Schedule M-1 Items",
+     "keywords": [
+      {
+       "keyword": "book-tax difference",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "m-1 adjustment",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "m-1 support",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "book to tax reconciliation",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    }
+   },
+   "rows_without_a_filing_document": [
+    "A03",
+    "B02",
+    "C01",
+    "D01",
+    "E02",
+    "F01",
+    "H01",
+    "I01"
+   ],
+   "unreached": [
+    [
+     "B01",
+     "income statement"
+    ],
+    [
+     "B01",
+     "statement of income"
+    ],
+    [
+     "B01",
+     "statement of operations"
+    ],
+    [
+     "B01",
+     "statement of activities"
+    ],
+    [
+     "B01",
+     "statement of cash flows"
+    ],
+    [
+     "B02",
+     "bank statement"
+    ],
+    [
+     "B02",
+     "statement of account"
+    ],
+    [
+     "B02",
+     "checking summary"
+    ],
+    [
+     "B02",
+     "deposits and additions"
+    ],
+    [
+     "B02",
+     "checks paid"
+    ],
+    [
+     "B02",
+     "withdrawals and other debits"
+    ],
+    [
+     "B02",
+     "bank reconciliation"
+    ],
+    [
+     "C01",
+     "fixed asset schedule"
+    ],
+    [
+     "C01",
+     "fixed asset listing"
+    ],
+    [
+     "C01",
+     "fixed asset additions"
+    ],
+    [
+     "C01",
+     "asset additions and disposals"
+    ],
+    [
+     "C02",
+     "depreciation schedule"
+    ],
+    [
+     "C02",
+     "depreciation detail"
+    ],
+    [
+     "C02",
+     "depreciation report"
+    ],
+    [
+     "D01",
+     "loan agreement"
+    ],
+    [
+     "D01",
+     "promissory note"
+    ],
+    [
+     "D01",
+     "amortization schedule"
+    ],
+    [
+     "D01",
+     "loan statement"
+    ],
+    [
+     "D01",
+     "principal balance"
+    ],
+    [
+     "E02",
+     "officer compensation detail"
+    ],
+    [
+     "E02",
+     "officer compensation schedule"
+    ],
+    [
+     "F01",
+     "estimated tax payment voucher 2"
+    ],
+    [
+     "F01",
+     "estimated tax payment voucher 3"
+    ],
+    [
+     "F01",
+     "estimated tax payment voucher for individuals"
+    ],
+    [
+     "F01",
+     "estimated tax voucher"
+    ],
+    [
+     "F01",
+     "estimated payments made"
+    ],
+    [
+     "G01",
+     "shareholder list"
+    ],
+    [
+     "G01",
+     "stock ledger"
+    ],
+    [
+     "G01",
+     "capitalization table"
+    ],
+    [
+     "H01",
+     "apportionment schedule"
+    ],
+    [
+     "H01",
+     "apportionment data"
+    ],
+    [
+     "H01",
+     "sales by state"
+    ],
+    [
+     "H01",
+     "payroll by state"
+    ],
+    [
+     "I01",
+     "book-tax difference"
+    ],
+    [
+     "I01",
+     "m-1 adjustment"
+    ],
+    [
+     "I01",
+     "m-1 support"
+    ],
+    [
+     "I01",
+     "book to tax reconciliation"
+    ]
+   ]
+  },
+  "1120S": {
+   "reached_only_elsewhere": [],
+   "reached_without_expectation": [
+    [
+     "A03",
+     "general ledger"
+    ],
+    [
+     "B01",
+     "balance sheet as of"
+    ],
+    [
+     "B01",
+     "statement of financial position"
+    ],
+    [
+     "B01",
+     "profit and loss"
+    ],
+    [
+     "B02",
+     "deposits and other credits"
+    ],
+    [
+     "C01",
+     "cap table"
+    ],
+    [
+     "E01",
+     "form 941"
+    ],
+    [
+     "E01",
+     "employer's quarterly federal tax return"
+    ],
+    [
+     "E01",
+     "form w-3"
+    ],
+    [
+     "E01",
+     "w-3 transmittal"
+    ]
+   ],
+   "rows": {
+    "A01": {
+     "document": "Prior-Year Federal & State S-Corp Returns",
+     "keywords": [
+      {
+       "keyword": "income tax return for an s corporation",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A01",
+         "kind": "case",
+         "name": "2024 1120-S.pdf"
+        },
+        {
+         "decision": 65,
+         "kind": "case",
+         "name": "2024 1120-S dropped by the owner.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f1120s.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "under penalties of perjury",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A01",
+         "kind": "case",
+         "name": "2024 1120-S.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 990.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 return with Schedule A.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1120 with schedules.pdf"
+        },
+        {
+         "decision": 65,
+         "kind": "case",
+         "name": "2024 1120-S dropped by the owner.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040nr.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040x.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1065.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1096.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1120.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120h.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f1120s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f8879.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f940.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f941.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f990ez.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "A02": {
+     "document": "Trial Balance - Year-End",
+     "keywords": [
+      {
+       "keyword": "trial balance",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A02",
+         "kind": "case",
+         "name": "trial balance.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "trial balance.pdf"
+        },
+        {
+         "decision": 65,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "A03": {
+     "document": "General Ledger Detail",
+     "keywords": [
+      {
+       "keyword": "general ledger",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "B01": {
+     "document": "Year-End Financial Statements",
+     "keywords": [
+      {
+       "keyword": "balance sheet as of",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of financial position",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "income statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of income",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "profit and loss",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "P&L.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of operations",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of activities",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of cash flows",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "B02": {
+     "document": "December Bank Statements & Year-End Reconciliations",
+     "keywords": [
+      {
+       "keyword": "bank statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of account",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "checking summary",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "deposits and additions",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "deposits and other credits",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "Nov 2025 bank.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "bank annual summary.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "checks paid",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "withdrawals and other debits",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "bank reconciliation",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C01": {
+     "document": "Shareholder List with Ownership % & Changes",
+     "keywords": [
+      {
+       "keyword": "shareholder list",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "stock ledger",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "cap table",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "cap table.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "capitalization table",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C02": {
+     "document": "Distributions by Shareholder",
+     "keywords": [
+      {
+       "keyword": "distributions by shareholder",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "shareholder distribution schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "distribution detail by shareholder",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C03": {
+     "document": "Shareholder Basis Schedules",
+     "keywords": [
+      {
+       "keyword": "shareholder basis schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "stock basis schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "stock and debt basis",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "basis computation",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "D01": {
+     "document": "Officer / Shareholder W-2 Compensation Detail",
+     "keywords": [
+      {
+       "keyword": "officer compensation detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "shareholder w-2",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "officer w-2",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "D02": {
+     "document": "Health Insurance Premiums for >2% Shareholders",
+     "keywords": [
+      {
+       "keyword": "health insurance premiums paid",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "2% shareholder",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "shareholder health insurance premiums",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "E01": {
+     "document": "Payroll Tax Returns - Forms 941 & W-3",
+     "keywords": [
+      {
+       "keyword": "form 941",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f941.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "employer's quarterly federal tax return",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f941.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "form 940",
+       "reached_by": [
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f940.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "employer's annual federal unemployment",
+       "reached_by": [
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f940.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "form w-3",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "W-3.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "w-3 transmittal",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "F01": {
+     "document": "Fixed Asset Additions & Disposals Detail",
+     "keywords": [
+      {
+       "keyword": "fixed asset schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "fixed asset listing",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "fixed asset additions",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "asset additions and disposals",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "G01": {
+     "document": "Loan Agreements & Shareholder Loan Activity",
+     "keywords": [
+      {
+       "keyword": "loan agreement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "promissory note",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "shareholder loan agreement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "loan statement",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "H01": {
+     "document": "State Apportionment Data - Sales, Payroll, Property by State",
+     "keywords": [
+      {
+       "keyword": "apportionment schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "apportionment data",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "sales by state",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "payroll by state",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    }
+   },
+   "rows_without_a_filing_document": [
+    "A03",
+    "B01",
+    "B02",
+    "C01",
+    "C02",
+    "C03",
+    "D01",
+    "D02",
+    "F01",
+    "G01",
+    "H01"
+   ],
+   "unreached": [
+    [
+     "B01",
+     "income statement"
+    ],
+    [
+     "B01",
+     "statement of income"
+    ],
+    [
+     "B01",
+     "statement of operations"
+    ],
+    [
+     "B01",
+     "statement of activities"
+    ],
+    [
+     "B01",
+     "statement of cash flows"
+    ],
+    [
+     "B02",
+     "bank statement"
+    ],
+    [
+     "B02",
+     "statement of account"
+    ],
+    [
+     "B02",
+     "checking summary"
+    ],
+    [
+     "B02",
+     "deposits and additions"
+    ],
+    [
+     "B02",
+     "checks paid"
+    ],
+    [
+     "B02",
+     "withdrawals and other debits"
+    ],
+    [
+     "B02",
+     "bank reconciliation"
+    ],
+    [
+     "C01",
+     "shareholder list"
+    ],
+    [
+     "C01",
+     "stock ledger"
+    ],
+    [
+     "C01",
+     "capitalization table"
+    ],
+    [
+     "C02",
+     "distributions by shareholder"
+    ],
+    [
+     "C02",
+     "shareholder distribution schedule"
+    ],
+    [
+     "C02",
+     "distribution detail by shareholder"
+    ],
+    [
+     "C03",
+     "shareholder basis schedule"
+    ],
+    [
+     "C03",
+     "stock basis schedule"
+    ],
+    [
+     "C03",
+     "stock and debt basis"
+    ],
+    [
+     "C03",
+     "basis computation"
+    ],
+    [
+     "D01",
+     "officer compensation detail"
+    ],
+    [
+     "D01",
+     "shareholder w-2"
+    ],
+    [
+     "D01",
+     "officer w-2"
+    ],
+    [
+     "D02",
+     "health insurance premiums paid"
+    ],
+    [
+     "D02",
+     "2% shareholder"
+    ],
+    [
+     "D02",
+     "shareholder health insurance premiums"
+    ],
+    [
+     "F01",
+     "fixed asset schedule"
+    ],
+    [
+     "F01",
+     "fixed asset listing"
+    ],
+    [
+     "F01",
+     "fixed asset additions"
+    ],
+    [
+     "F01",
+     "asset additions and disposals"
+    ],
+    [
+     "G01",
+     "loan agreement"
+    ],
+    [
+     "G01",
+     "promissory note"
+    ],
+    [
+     "G01",
+     "shareholder loan agreement"
+    ],
+    [
+     "G01",
+     "loan statement"
+    ],
+    [
+     "H01",
+     "apportionment schedule"
+    ],
+    [
+     "H01",
+     "apportionment data"
+    ],
+    [
+     "H01",
+     "sales by state"
+    ],
+    [
+     "H01",
+     "payroll by state"
+    ]
+   ]
+  },
+  "990": {
+   "reached_only_elsewhere": [
+    [
+     "C02",
+     "compensation of officers"
+    ],
+    [
+     "D01",
+     "schedule b"
+    ],
+    [
+     "E01",
+     "program service accomplishment"
+    ]
+   ],
+   "reached_without_expectation": [
+    [
+     "A02",
+     "trial balance"
+    ],
+    [
+     "B01",
+     "balance sheet as of"
+    ],
+    [
+     "B01",
+     "statement of financial position"
+    ],
+    [
+     "B01",
+     "profit and loss"
+    ],
+    [
+     "G01",
+     "form 940"
+    ],
+    [
+     "G01",
+     "employer's annual federal unemployment"
+    ],
+    [
+     "G01",
+     "form w-3"
+    ],
+    [
+     "G01",
+     "w-3 transmittal"
+    ]
+   ],
+   "rows": {
+    "A01": {
+     "document": "Prior-Year Form 990 & State Filings",
+     "keywords": [
+      {
+       "keyword": "return of organization exempt from income tax",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A01",
+         "kind": "case",
+         "name": "2024 990.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990ez.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "under penalties of perjury",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120-S.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120.pdf"
+        },
+        {
+         "decision": 62,
+         "expected": "A01",
+         "kind": "case",
+         "name": "2024 990.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 return with Schedule A.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1120 with schedules.pdf"
+        },
+        {
+         "decision": 65,
+         "kind": "case",
+         "name": "2024 1120-S dropped by the owner.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040nr.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040x.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1065.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1096.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f8879.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f940.pdf"
+        },
+        {
+         "expected": "G01",
+         "kind": "irs",
+         "name": "f941.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990ez.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "A02": {
+     "document": "Trial Balance - Year-End",
+     "keywords": [
+      {
+       "keyword": "trial balance",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "trial balance.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "trial balance.pdf"
+        },
+        {
+         "decision": 65,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "B01": {
+     "document": "Year-End Financial Statements",
+     "keywords": [
+      {
+       "keyword": "balance sheet as of",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of financial position",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "income statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of income",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "profit and loss",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "P&L.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of operations",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of activities",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of cash flows",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "B02": {
+     "document": "December Bank Statements & Year-End Reconciliations",
+     "keywords": [
+      {
+       "keyword": "bank statement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of account",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "checking summary",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "deposits and additions",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "deposits and other credits",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 62,
+         "expected": null,
+         "kind": "case",
+         "name": "Nov 2025 bank.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "bank annual summary.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "checks paid",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "withdrawals and other debits",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "bank reconciliation",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C01": {
+     "document": "Board of Directors List & Meeting Minutes",
+     "keywords": [
+      {
+       "keyword": "board of directors list",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "list of directors",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "meeting minutes",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "board minutes",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "C02": {
+     "document": "Officer & Key Employee Compensation Detail",
+     "keywords": [
+      {
+       "keyword": "officer compensation detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "key employee compensation",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "compensation of officers",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "2024 1120.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120s.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1125e.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f990pf.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "D01": {
+     "document": "Contribution / Donor Detail - Schedule B Support",
+     "keywords": [
+      {
+       "keyword": "donor list",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "donor detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "contributions by donor",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "schedule b",
+       "reached_by": [
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040sb.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1065.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099div.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099int.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099oid.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120s.pdf"
+        },
+        {
+         "expected": "G01",
+         "kind": "irs",
+         "name": "f941.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990ez.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "D02": {
+     "document": "Grants Made - Recipients & Amounts",
+     "keywords": [
+      {
+       "keyword": "grants paid schedule",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "schedule of grants",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "grantee list",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "grantee",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "E01": {
+     "document": "Program Service Accomplishment Descriptions",
+     "keywords": [
+      {
+       "keyword": "program service accomplishment",
+       "reached_by": [
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990ez.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "program accomplishments",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "program description",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "F01": {
+     "document": "Fundraising Event Revenue & Expense Detail",
+     "keywords": [
+      {
+       "keyword": "fundraising event detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "special event revenue",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "event revenue and expense",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    },
+    "G01": {
+     "document": "Payroll Tax Returns - Forms 941 & W-3",
+     "keywords": [
+      {
+       "keyword": "form 941",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "expected": "G01",
+         "kind": "irs",
+         "name": "f941.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "employer's quarterly federal tax return",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "expected": "G01",
+         "kind": "irs",
+         "name": "f941.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "form 940",
+       "reached_by": [
+        {
+         "kind": "irs",
+         "name": "f940.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "employer's annual federal unemployment",
+       "reached_by": [
+        {
+         "kind": "irs",
+         "name": "f940.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "form w-3",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "W-3.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "w-3 transmittal",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "H01": {
+     "document": "Unrelated Business Income Detail",
+     "keywords": [
+      {
+       "keyword": "form 990-t",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "unrelated business income detail",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "ubti schedule",
+       "reached_by": [],
+       "rule": "any"
+      }
+     ]
+    }
+   },
+   "rows_without_a_filing_document": [
+    "A02",
+    "B01",
+    "C01",
+    "C02",
+    "D01",
+    "D02",
+    "E01",
+    "F01",
+    "H01"
+   ],
+   "unreached": [
+    [
+     "B01",
+     "income statement"
+    ],
+    [
+     "B01",
+     "statement of income"
+    ],
+    [
+     "B01",
+     "statement of operations"
+    ],
+    [
+     "B01",
+     "statement of activities"
+    ],
+    [
+     "B01",
+     "statement of cash flows"
+    ],
+    [
+     "B02",
+     "bank statement"
+    ],
+    [
+     "B02",
+     "statement of account"
+    ],
+    [
+     "B02",
+     "checking summary"
+    ],
+    [
+     "B02",
+     "deposits and additions"
+    ],
+    [
+     "B02",
+     "checks paid"
+    ],
+    [
+     "B02",
+     "withdrawals and other debits"
+    ],
+    [
+     "B02",
+     "bank reconciliation"
+    ],
+    [
+     "C01",
+     "board of directors list"
+    ],
+    [
+     "C01",
+     "list of directors"
+    ],
+    [
+     "C01",
+     "meeting minutes"
+    ],
+    [
+     "C01",
+     "board minutes"
+    ],
+    [
+     "C02",
+     "officer compensation detail"
+    ],
+    [
+     "C02",
+     "key employee compensation"
+    ],
+    [
+     "D01",
+     "donor list"
+    ],
+    [
+     "D01",
+     "donor detail"
+    ],
+    [
+     "D01",
+     "contributions by donor"
+    ],
+    [
+     "D02",
+     "grants paid schedule"
+    ],
+    [
+     "D02",
+     "schedule of grants"
+    ],
+    [
+     "D02",
+     "grantee list"
+    ],
+    [
+     "D02",
+     "grantee"
+    ],
+    [
+     "E01",
+     "program accomplishments"
+    ],
+    [
+     "E01",
+     "program description"
+    ],
+    [
+     "F01",
+     "fundraising event detail"
+    ],
+    [
+     "F01",
+     "special event revenue"
+    ],
+    [
+     "F01",
+     "event revenue and expense"
+    ],
+    [
+     "H01",
+     "form 990-t"
+    ],
+    [
+     "H01",
+     "unrelated business income detail"
+    ],
+    [
+     "H01",
+     "ubti schedule"
+    ]
+   ]
+  }
+ },
+ "counts": {
+  "catalogs": 6,
+  "documents": {
+   "case": 95,
+   "irs": 50
+  },
+  "keywords": 335,
+  "reached_only_elsewhere": 7,
+  "reached_without_expectation": 36,
+  "rows": 78,
+  "rows_without_a_filing_document": 48,
+  "unreached": 223
+ },
+ "inputs": {
+  "tests/irs/f1040.pdf": "3d31c226df0d189ced80e039d01cf0f8820c1019681a0f0ca6264de277b7e982",
+  "tests/irs/f1040es.pdf": "396ffad25baa737b33a67d27624f7444be3ac4e7245d287aebe5f89864f90b54",
+  "tests/irs/f1040es_2025.pdf": "a6e94741c8fc559a668e3d73c5b2680132ad1f54d233782e2af7f2325905cfb7",
+  "tests/irs/f1040nr.pdf": "aa1c0523595ad630e097e41d42a35cbc7fa04685633a842d9ff4a7aa7b478c7a",
+  "tests/irs/f1040s.pdf": "162a646c25af23338d103193f1a82a058ae61f9086b41d445edfb8672d5d0072",
+  "tests/irs/f1040s1.pdf": "8dafec719f6a4716c259a2bdaca546d9bb9e262d1eabef885fe116a7327458fa",
+  "tests/irs/f1040sa.pdf": "c14acf3478f4c33f27ac6e8ecd9f94b6fb25b16745b341728bd27847d2ef56bb",
+  "tests/irs/f1040sb.pdf": "dd1ec3719954532bd219343d81385a2ada3c8e9573fc755a3893f1fbbecc63e2",
+  "tests/irs/f1040sd.pdf": "90564c8b7e49280363612639b804d113ebedb516c2e87c70649f29c844da1d2e",
+  "tests/irs/f1040x.pdf": "e4d8d7df37209218d0d63d06e988004306365354873481726e93916accf3013e",
+  "tests/irs/f1041.pdf": "95540fbdb580102735b89866554bb0b556d37f3e6c8781c677c8398db7908c10",
+  "tests/irs/f1041sk1.pdf": "d8d7b6eacabdf145474aee8385fcfeafe68bd2f69baaef52d9a8227ebcd45fc3",
+  "tests/irs/f1065.pdf": "0f19f556e12ef53c41ba27e5930b4373103f3abcf64693c4ea686451b2a8f56f",
+  "tests/irs/f1065sk1.pdf": "66098d4d48537ce2dac1f093d6351567957896e5843d8c524823b380068f6547",
+  "tests/irs/f1065sk1_2024.pdf": "58e55bd504214d6678801fda33917a851fbdf6e26e7140fc9d1bc3d5b7902f9f",
+  "tests/irs/f1095a.pdf": "df83be599d3bdcda826862aa5125868c2f481191a53c8417ed5fba91eccc7473",
+  "tests/irs/f1095b.pdf": "d6b37dc8e837fb722e139426caa8f2e298d678d98ae84c0f10e66f63eeaab784",
+  "tests/irs/f1095c.pdf": "53f0a430f0444342d6c3f96cdfb2e819fa5a52929dddf4859bf2d77ac347e080",
+  "tests/irs/f1096.pdf": "4d70b0618592ab4e1f31fb2781a4fea5d18d957931a666562c79585266aa3e0b",
+  "tests/irs/f1098.pdf": "304da9c0f67a46ff04ba831359185dc13dde335199cbf7c413dc879e5410dd87",
+  "tests/irs/f1098t.pdf": "f461d17ce14de4efb4d95936c8639434861dbf174da250ac777f50cd1883c692",
+  "tests/irs/f1099div.pdf": "4ea1de804ff1db921753bd6319beeccfe4647299e03d79816e04d852a9cd1435",
+  "tests/irs/f1099g.pdf": "65a416c52508d8a3d77ee1734194767d1e1c8a607c778fd1914dd1a62da569a2",
+  "tests/irs/f1099int.pdf": "ee7697c9b29374596fd9645b157b7312d121ae3c2f76bebf68908c3fc2b739e6",
+  "tests/irs/f1099k.pdf": "fa3a2b659f7ee13d59ea6c66ad992a5ab55afa0060db275ad1ee122478189b89",
+  "tests/irs/f1099msc.pdf": "38051fe1cdce8fac5183a7e7b182b1a0de590dcfec3e4f66a156eba3f98943fa",
+  "tests/irs/f1099nec.pdf": "68a8f00078be6dd6a4912cc4209df317b31840d5fe19560222d39df9f2f7ff49",
+  "tests/irs/f1099nec_2024.pdf": "807913ea46c20c35741f1eb6c79d78c6da37dfd5389eff94a2beb308d239fef3",
+  "tests/irs/f1099oid.pdf": "cc88d18964125c3f69a6fd15afcb5cd8b90fb1c3ea68c7b3b7b91a106e17d756",
+  "tests/irs/f1099r.pdf": "d3de9319bed344f02621f97760a50bd19093de22f7d1e3352bd8ff10f61a4c44",
+  "tests/irs/f1099s.pdf": "f682abe945492be97fa285605a2b0a78aeda93ab56c43f8c7abfcedbb47bb1bb",
+  "tests/irs/f1099sa.pdf": "cc2324629a9bd416180c1e10b66ce44d914937a6c4a11cc4bb8e17c22da44bd1",
+  "tests/irs/f1120.pdf": "016c7fb4042a565c23a98014b17019af7ddc89e3260dd3f926b84d6688b7be6e",
+  "tests/irs/f1120h.pdf": "dffaa4d3079cc0ba14e7f50c823bf19ff9595c54c274d03ffe859c60382eab6f",
+  "tests/irs/f1120s.pdf": "c4b7cae7f2283a2e3225523ea001a710109fee34aad909461421025b287cd18d",
+  "tests/irs/f1120ssk.pdf": "104ac7b1137cb78c9051d4e3424630dca233887f17928b311fef6fd578baacd0",
+  "tests/irs/f1120ssk_2024.pdf": "c90fec338c02c39e56cc2dd6ebd8c5e921ec5b653cd75b149c040f88e2e54be4",
+  "tests/irs/f1125e.pdf": "7d3295ba7039b4b0e84786f75f481dd1ca98df10c0695fade6fdaacc6817e729",
+  "tests/irs/f4562.pdf": "c05f9d1f5e26b1b21e18b0a13adbbcd3d568bb9f3ca53bd7bba7c795c7799b4a",
+  "tests/irs/f4868.pdf": "36c7607db08ff469ed4e5df89e27ca90f29023c7cd6ca77c69343045e8f33d29",
+  "tests/irs/f5498.pdf": "745fe725b8b59b5ab5d797045b2715416b7ef4bca86c7337fce210e064866f17",
+  "tests/irs/f5498sa.pdf": "aaf55e3c61e8fc6913e00ff3eb5ffb0c9a780f3e39339aa8d2ac1810b2657994",
+  "tests/irs/f8879.pdf": "f6c6ef51c0cb91f6f2e805818c755281e8485f768e6999c272ed1e06e9504fea",
+  "tests/irs/f940.pdf": "575bb0d645ff613574c9b58506c6e0f7cbdc757c85ebc3e766ffc59fd5709d7c",
+  "tests/irs/f941.pdf": "38a3d8cf7a455101d52543c8c48e66202bc25c189ead878627e35c797c88e2ad",
+  "tests/irs/f990.pdf": "0b715d2790691ca6d4fb16ba0923e3cdf1d0e04cd26ea48788d41a708e945533",
+  "tests/irs/f990ez.pdf": "290b3f9018ae12837b0ffdc32a8cb7beca78917caffdaf313c85d17d4e73a27c",
+  "tests/irs/f990pf.pdf": "999df73380009f180fcc741f778a47bc83a25de3116fb1a1cf8d03f6b24b39ba",
+  "tests/irs/fw2.pdf": "61eca7c81f16d3965819fe1f31be4fe68c1b2887a81f51172f1d2ed2b2b9f087",
+  "tests/irs/fw3.pdf": "2df15f40431bd52814cbac85d9843102b09a640b6fe558f201e5214ff1890656",
+  "tests/test_catalog.py": "095e6b5b97c1215a968c70e2cf08648367e498a63fb32bed31e2a562225b27bc",
+  "tests/test_irs_forms.py": "0335f63ef3e5cb8dbcd12e250b46e594a2e14f5956a20abd72f9f16db3e306c3",
+  "tools/vocab_report.py": "515db060717036f3ba803f9531898b7dd22d68c92908bde4c3374e9f8ea9dd1d",
+  "tracker/content_check.py": "e9ab87cd552e3d8975ef9c1ce156318973ed7f613efd9b23ed38680296ddfb1c",
+  "tracker/manifest.py": "c8a1fb796470ffdfef5f431f52fe42ef0c582617558e63a5e13758bb0f07679e",
+  "tracker/templates.py": "ea0badb31196b6cd04174c0de6244874e8704a14ec69e428af17dae91b5e08d2"
+ },
+ "note": "GENERATED by tools/vocab_report.py \u2014 do not edit by hand.",
+ "schema": 1
+}

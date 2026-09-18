@@ -69,6 +69,28 @@ Never edit `docs/repo-map.json` or `docs/repo-map.md` — both are generated, an
 both say so at the top. `tests/test_repo_map.py::test_the_committed_map_is_current`
 fails if the committed map has drifted, so the suite catches a forgotten update.
 
+## The vocabulary coverage report
+
+[`docs/vocab-coverage.md`](docs/vocab-coverage.md) is the map's counterpart
+for the routing rules: which keyword in each catalog is reached by which IRS
+form in `tests/irs/` or reconstructed case in `tests/test_catalog.py`, and
+which keywords nothing in the suite defends. `tools/vocab_report.py`
+generates it from the catalog, the matcher and the suite; it is committed
+and checked by hash, like the map:
+
+```
+python tools/vocab_report.py check      # exit 0 = current, 1 = an input changed (names it)
+python tools/vocab_report.py build      # rebuild after changing a keyword, a case or the matcher
+python tools/vocab_report.py show 1040  # one catalog, row by row
+```
+
+Read its headline lists before changing a keyword: an unreached keyword has
+no test to say when it starts misfiling. Rebuild it in the same commit as a
+catalog, matcher or case change; `tests/test_vocab_report.py` fails on a
+stale one. Every case in `tests/test_catalog.py` carries the decision that
+introduced it, so `python -m pytest -k d67` runs decision 67's whole history
+before a rule it touched is trusted.
+
 ## The standing rules
 
 These are not style preferences. They are why the system is trusted with
