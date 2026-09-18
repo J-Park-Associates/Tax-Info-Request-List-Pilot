@@ -153,6 +153,7 @@ FORM_VARIANTS: dict[str, tuple[str, ...]] = {
     "1041": ("a", "es", "n", "qft", "t", "v"),
     "1065": ("x", "b"),
     "1120": ("s", "x", "f", "h", "w", "c", "l", "pc", "pol", "reit", "ric", "sf", "nd"),
+    "940": ("pr", "ss"),
     "941": ("x", "ss", "pr"),
     "990": ("ez", "pf", "t", "n"),
     "5498": ("sa", "esa", "qa"),
@@ -276,34 +277,62 @@ def _title(text: str) -> str:
     return text[:space.start()] if space else text
 
 
+#: How a form names itself, and how it names another form. Its own number
+#: is followed by its year or revision - "Form 1040 (2025)", "Form 1099-DIV
+#: (Rev. January 2024)", "941 for 2026:" - on the title and on every page's
+#: footer. Another form's number is quoted: "(Form 1040)", "Form 1040 or
+#: 1040-SR", "Form 1040 instructions", "Form 1040, line 8". The two shapes
+#: are told apart here, because a W-2's instruction pages name Form 1040
+#: thirty times and the W-2 itself a dozen.
+_SELF_WEIGHT, _PLAIN_WEIGHT, _REFERENCE_WEIGHT = 3, 1, 0
+_SELF_AFTER = re.compile(r"\s*(?:\(\s*)?(?:rev\b|(?:19|20)\d{2}\b)|\s+for\s+(?:19|20)\d{2}\b")
+_REFERENCE_AFTER = re.compile(
+    r"\s*[,.;)]|\s+(?:or|and|line|lines|instructions?|to|if|is|are|was|were|schedule|box|page|worksheet)\b"
+)
+
+
+def _mention_weight(text: str, match: re.Match[str], end: int) -> int:
+    """``end`` is where the form number (with its real variant) stops."""
+    if match.start() > 0 and text[match.start() - 1] == "(":
+        return _REFERENCE_WEIGHT
+    if _SELF_AFTER.match(text, end):
+        return _SELF_WEIGHT
+    if _REFERENCE_AFTER.match(text, end):
+        return _REFERENCE_WEIGHT
+    return _PLAIN_WEIGHT
+
+
 def dominant_forms(text: str) -> set[str]:
     """The form number ``text`` is about, normalised (``w2``, ``1099int``),
     as a set of at most one.
 
-    A document prints its own number on every copy and every page's
-    footer, and another form's once in passing: the number mentioned most
-    is its own, and among equals the one mentioned first. A number
-    mentioned only once is its own only when no other form is named at all
-    - an IRS notice that lists three forms to file is about none of them.
+    Mentions are weighed by their shape (``_mention_weight``): a form's
+    own number, dated, on the title and every footer outweighs the other
+    forms its instructions quote. The heaviest is its own; among equals,
+    the first mentioned. A number that never appears in its own right and
+    only once in passing is nobody's - an IRS notice that lists three
+    forms to file is about none of them.
     """
-    counts: dict[str, int] = {}
+    low = text.lower()
+    scores: dict[str, int] = {}
     first: dict[str, int] = {}
-    for match in _FORM_MENTION.finditer(text.lower()):
+    for match in _FORM_MENTION.finditer(low):
         number, variant = match.group(1), match.group(2)
         base = _DASHES.sub("", number)
         if base not in FORM_VARIANTS:
             continue
+        end = match.end()
         if variant and variant not in FORM_VARIANTS[base]:
-            variant = None                      # "1040 line" is Form 1040, not a variant
+            variant, end = None, match.end(1)   # "1040 line" is Form 1040, not a variant
         key = _form_key(number, variant)
-        counts[key] = counts.get(key, 0) + 1
+        scores[key] = scores.get(key, 0) + _mention_weight(low, match, end)
         first.setdefault(key, match.start())
-    if not counts:
+    if not scores:
         return set()
-    top = max(counts.values())
-    if top < 2 and len(counts) > 1:
+    top = max(scores.values())
+    if top < 2:
         return set()
-    return {min((key for key, n in counts.items() if n == top), key=first.get)}
+    return {min((key for key, n in scores.items() if n == top), key=first.get)}
 
 
 def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
