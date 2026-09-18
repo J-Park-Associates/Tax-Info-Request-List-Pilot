@@ -231,6 +231,32 @@ def test_include_new_adds_the_offers(prior):
     assert rolled_by_id(report)["E01"].origin == ORIGIN_NEW
 
 
+def test_a_template_row_differing_from_a_priors_only_in_case_is_the_same_row(prior, tmp_path):
+    # The tenth reading: both were written, and load_manifest() refused the
+    # new manifest as a duplicate until a person edited it in Excel.
+    from dataclasses import replace
+
+    from tracker.manifest import load_manifest
+
+    lowered = [replace(spec, identifier=spec.identifier.lower()) if spec.identifier == "A01" else spec for spec in TEMPLATE]
+    report = roll_forward(prior, template=lowered, include_new=True)
+    assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01", "E01"]
+    out = tmp_path / "Smith Family 2026" / MANIFEST_FILENAME
+    write_rollover_manifest(out, report)
+    assert [i.identifier for i in load_manifest(out)] == ["A01", "B01", "C01", "D01", "E01"]
+
+
+def test_the_carried_sheet_has_readable_columns(prior, tmp_path):
+    from tracker.rollover import CARRIED_LAYOUT
+
+    out = tmp_path / "Smith Family 2026" / MANIFEST_FILENAME
+    write_rollover_manifest(out, roll_forward(prior, template=TEMPLATE))
+    wb = load_workbook(out)
+    widths = [wb[CARRIED_SHEET].column_dimensions[c].width for c in ("A", "B", "C")[:len(CARRIED_LAYOUT)]]
+    wb.close()
+    assert widths == list(CARRIED_LAYOUT.values())[:len(widths)]
+
+
 def test_offers_reach_the_workbook_without_becoming_requests(prior, tmp_path):
     """A person must be able to see what was withheld, in Excel."""
     from tracker.manifest import load_manifest

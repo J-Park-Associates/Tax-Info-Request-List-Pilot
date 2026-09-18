@@ -356,6 +356,31 @@ def test_the_dominant_form_is_the_heaviest_then_the_first_mentioned():
     assert dominant_forms("Form 4562 depreciation\nForm 4562 depreciation") == {"4562"}   # "4562 depreciation" is not 4562-DEPR
 
 
+def test_a_form_told_to_the_reader_is_a_reference_whatever_follows_it():
+    # The tenth reading: "attach Form 1098 (2025)" read as a form naming
+    # itself, because the year was looked at before the word in front.
+    from tracker.content_check import _REFERENCE_WEIGHT, _mentions, says
+
+    for text in ("attach Form 1098 (2025)", "see Form 1098 for 2025 mailed separately", "Forms W-2 2025"):
+        assert all(weight == _REFERENCE_WEIGHT for _, _, weight in _mentions(text.lower())), text
+    assert not says("2025 Individual Income Tax Organizer\nMortgage interest paid: attach Form 1098 (2025)", "1098")
+    assert not says("Annual Escrow Account Disclosure Statement\nFor your deduction, see Form 1098 for 2025.", "1098")
+
+
+def test_a_title_that_lists_three_forms_names_none_of_them():
+    from tracker.content_check import _title_forms, says
+
+    checklist = ("2025 Individual Income Tax Organizer\nIncome Documents Checklist\n"
+                 "Form W-2 - Wage and Tax Statement\nForm 1098 - Mortgage Interest Statement\n"
+                 "Form 1099-INT - Interest Income\nForm 1099-DIV - Dividends and Distributions")
+    assert _title_forms(checklist.lower()) == set()
+    assert not says(checklist, "1098") and not says(checklist, "1099-int")
+    transmittal = "Enclosed please find: Form W-2 2025, Form 1098 2025, Form 1099-INT 2025"
+    assert _title_forms(transmittal.lower()) == set()
+    # Two is a composite, and the rows' own tie parks it.
+    assert _title_forms("form 1099-int interest income 2025\nform 1099-b proceeds from broker 2025") == {"1099int", "1099b"}
+
+
 def test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right():
     from tracker.content_check import says
 

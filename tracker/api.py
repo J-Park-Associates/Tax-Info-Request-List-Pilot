@@ -143,8 +143,12 @@ NEW_CLIENT_PLACEHOLDER = "New"
 
 
 def _new_engagement_dir(name: str) -> Path:
-    """Where a new engagement goes, refused if the folder is already there."""
-    engagement = _root() / name
+    """Where a new engagement goes, refused if the folder is already there
+    or if ``name`` would put it anywhere but straight under the root."""
+    root = _root()
+    engagement = root / name
+    if engagement.resolve().parent != root.resolve():
+        raise ManifestError(f"'{name}' is not a folder name")
     if engagement.exists():
         raise ManifestError(f"An engagement named '{name}' already exists")
     return engagement
@@ -315,7 +319,7 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None) -> Engag
 def _engagement_name(requested: str, fallback: str) -> str:
     """A folder name from what the user typed, or the fallback if nothing usable is left."""
     name = sanitize_component(requested.strip())
-    return name if any(ch.isalnum() for ch in name) else fallback
+    return name if any(ch.isalnum() for ch in name) else sanitize_component(fallback)
 
 
 def _state(engagement: Path) -> dict:

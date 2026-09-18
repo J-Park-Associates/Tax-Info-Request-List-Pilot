@@ -576,8 +576,11 @@ def write_index(
     for attempt in range(1, retries + 1):
         try:
             _save_index(path, entries)
-        except PermissionError as exc:
-            log.warning("Index locked (attempt %d/%d): %s", attempt, retries, exc)
+        except OSError as exc:
+            # Excel holding the file is the usual reason; a network share
+            # blinking or a disk with no room are the others, and a row for
+            # an original already moved must reach the snapshot either way.
+            log.warning("Index not written (attempt %d/%d): %s", attempt, retries, exc)
             if attempt < retries:
                 time.sleep(delay)
                 delay *= 2
@@ -589,7 +592,7 @@ def write_index(
 
     _save_pending_index(path, entries)
     log.error(
-        "%s still locked after %d attempts; a snapshot of all %d row(s) deferred to %s",
+        "%s still not written after %d attempts; a snapshot of all %d row(s) deferred to %s",
         path.name, retries, len(entries), INDEX_PENDING_FILENAME,
     )
     return False
@@ -610,7 +613,7 @@ def iter_drops(shared_dir: Path) -> list[Path]:
     pbc = shared_dir / PBC_DIR_NAME
     drops = []
     for path in sorted(shared_dir.rglob("*")):
-        if not path.is_file() or is_ignored(path) or _through_a_link(path, shared_dir):
+        if not path.is_file() or is_ignored(path) or _through_a_link(path, shared_dir) or not _storable(path):
             continue
         if path == shared_dir / README_NAME:
             continue
@@ -620,13 +623,35 @@ def iter_drops(shared_dir: Path) -> list[Path]:
     return drops
 
 
+def _storable(path: Path) -> bool:
+    """Whether the name can be written into the index at all. NTFS holds
+    names as UTF-16 and takes an unpaired surrogate (a truncated emoji, a
+    Mac's or a NAS's name in a broken code page); the workbook and the
+    snapshot sidecar are UTF-8 and cannot hold it. Such a name once took
+    the whole index down, every pass, with the pass's originals moved."""
+    try:
+        path.name.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+#: The reparse tags that make a name a link to somewhere else. A cloud
+#: sync client's placeholder is a reparse point too (its tag is the
+#: client's own) and is a file of the client's, not a link.
+_LINK_TAGS = frozenset(
+    tag for tag in (getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None), getattr(stat, "IO_REPARSE_TAG_SYMLINK", None))
+    if tag is not None
+)
+
+
 def _is_link(path: Path) -> bool:
-    """A symlink, or on Windows a junction or any other reparse point."""
+    """A symlink, or on Windows a junction (a mount point)."""
     try:
         st = os.lstat(path)
     except OSError:
         return False
-    return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+    return stat.S_ISLNK(st.st_mode) or getattr(st, "st_reparse_tag", 0) in _LINK_TAGS
 
 
 def _through_a_link(path: Path, root: Path) -> bool:
@@ -647,17 +672,39 @@ def _through_a_link(path: Path, root: Path) -> bool:
 
 def unreachable_drops(shared_dir: Path) -> list[Path]:
     """Names under ``SHARED_DIR_NAME/`` that are listed but cannot be
-    opened as files: on Windows a name ending in a dot or a space, or a
-    device name (``nul``), which a Mac or a sync client can deliver.
-    Reported, so a document that can never be sorted is not a silence."""
+    handled under that name: on Windows a name ending in a dot or a space,
+    or a device name (``nul``), which a Mac or a sync client can deliver;
+    anywhere, a name the index cannot hold (``_storable``), inside
+    ``PBC_DIR_NAME/`` too, where it would otherwise be sorted as a stray
+    every pass. Reported, so a document that can never be sorted is not
+    a silence."""
     if not shared_dir.is_dir():
         return []
     pbc = shared_dir / PBC_DIR_NAME
     return sorted(
         path for path in shared_dir.rglob("*")
-        if not path.is_file() and not path.is_dir() and not _is_link(path)
-        and pbc not in path.parents and path != pbc
+        if not _storable(path)
+        or (not path.is_file() and not path.is_dir() and not _is_link(path)
+            and pbc not in path.parents and path != pbc)
     )
+
+
+def unlistable_folders(shared_dir: Path) -> list[Path]:
+    """Folders under ``SHARED_DIR_NAME/`` the run cannot list (an ACL that
+    denies the run's account; a folder moved in from elsewhere keeps its
+    own). ``rglob`` passes over them without a word, and every document
+    inside would be invisible to every list; these are reported instead."""
+    if not shared_dir.is_dir():
+        return []
+    failed: list[Path] = []
+
+    def onerror(exc: OSError) -> None:
+        if exc.filename:
+            failed.append(Path(exc.filename))
+
+    for _ in os.walk(shared_dir, onerror=onerror):
+        pass
+    return sorted(failed)
 
 
 def unfinished_drops(shared_dir: Path) -> list[Path]:
@@ -686,6 +733,7 @@ def unrecorded_in_pbc(pbc_dir: Path, engagement_dir: Path, entries: list[IndexEn
     return [
         path for path in iter_candidate_files(pbc_dir)
         if path.relative_to(engagement_dir).as_posix() not in recorded
+        and not _through_a_link(path, pbc_dir) and _storable(path)
     ]
 
 
@@ -718,6 +766,8 @@ def replaced_in_pbc(
             by_location[entry.pbc_location] = entry
     replaced = []
     for path in iter_candidate_files(pbc_dir):
+        if _through_a_link(path, pbc_dir):
+            continue
         entry = by_location.get(path.relative_to(engagement_dir).as_posix())
         if entry is None:
             continue
@@ -733,23 +783,32 @@ def replaced_in_pbc(
 
 
 def _record_missing_digests(engagement_dir: Path, entries: list[IndexEntry]) -> int:
-    """Fill in the digest and size of every row that has none and whose
-    original in ``PBC_DIR_NAME/`` can be read now. Returns how many were filled."""
+    """Fill in the digest and size of every row that has none, from the
+    bytes the pass that wrote the row actually handled. Returns how many.
+
+    Those bytes are the row's working copy: the pass made it from the
+    original as it was then. The original in ``PBC_DIR_NAME/`` as it is
+    *now* is no evidence of that - the client may have replaced it since
+    (the tenth reading did exactly that, and a digest adopted from the
+    replacement made the index describe the working copy wrongly and hid
+    the replacement for ever). A row with no working copy left is left
+    with no digest: nobody's, as decision 65 says.
+    """
     filled = 0
     for position, entry in enumerate(entries):
-        if entry.digest or not entry.pbc_location:
+        if entry.digest or not entry.prepared_location:
             continue
-        original = engagement_dir / entry.pbc_location
-        if not original.is_file() or is_cloud_placeholder(original):
+        copy = engagement_dir / entry.prepared_location
+        if not copy.is_file() or is_cloud_placeholder(copy):
             continue
         try:
-            digest = sha256_of(original)
-            size_kb = round(original.stat().st_size / 1024, 1)
+            digest = sha256_of(copy)
+            size_kb = round(copy.stat().st_size / 1024, 1)
         except OSError:
-            continue                 # still unreadable; the next run looks again
+            continue                 # unreadable now; the next run looks again
         entries[position] = replace(entry, digest=digest, size_kb=size_kb)
         filled += 1
-        log.info("Recorded the bytes of %s, preserved earlier but unread", entry.pbc_location)
+        log.info("Recorded the bytes of %s from its working copy, preserved earlier but unread", entry.pbc_location)
     return filled
 
 
@@ -829,9 +888,14 @@ def file_drops(
         report.waiting.extend(unfinished_drops(shared_dir))
         for path in unreachable_drops(shared_dir):
             report.errors.append(FileError(
-                path.name, "cannot be opened under this name (a name Windows refuses); rename it", True
+                path.name, "cannot be handled under this name (a name Windows refuses, or the index cannot hold); rename it", True
             ))
-            log.warning("Left %s in place: the name cannot be opened", path.name)
+            log.warning("Left %s in place: the name cannot be handled", path.name)
+        for folder in unlistable_folders(shared_dir):
+            report.errors.append(FileError(
+                folder.name, "is a folder this run cannot list (its permissions deny it); whatever is inside is not sorted", True
+            ))
+            log.warning("Could not list %s: its permissions deny it", folder)
         strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
         # An original replaced under its own name is said loudly, every run,
         # until a person has looked; it is not sorted again and not guessed.
@@ -1131,19 +1195,30 @@ def assign_review_file(
         if is_cloud_placeholder(source):
             raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
         digest, size_kb = entry.digest, entry.size_kb
+        parked = engagement_dir / entry.prepared_location if entry.prepared_location else None
         if not digest:
             # The pass that preserved this original could not read it back
-            # (decision 65) and recorded no digest. The bytes are readable
-            # now, and a row a person files must carry them: the scanner
-            # honours the person's filing only while the copy holds the
-            # bytes the row recorded, and a row with none is honoured never.
+            # (decision 65) and recorded no digest. A row a person files
+            # must carry one: the scanner honours the person's filing only
+            # while the copy holds the bytes the row recorded, and a row
+            # with none is honoured never. The bytes are the parked copy's
+            # - what the pass handled - and the original must still hold
+            # them; the original alone is trusted only when no copy is
+            # left to check it against.
+            evidence = parked if parked is not None and parked.is_file() else source
             try:
-                digest = sha256_of(source)
-                size_kb = round(source.stat().st_size / 1024, 1)
+                digest = sha256_of(evidence)
+                size_kb = round(evidence.stat().st_size / 1024, 1)
+                replaced = evidence is not source and sha256_of(source) != digest
             except OSError as exc:
                 raise FilingError(
                     f"the original {entry.pbc_location} could not be read ({exc}); try again when it can"
                 ) from exc
+            if replaced:
+                raise FilingError(
+                    f"the original {entry.pbc_location} no longer holds the bytes its parked copy "
+                    "was made from - it was replaced after it arrived; look at the file first"
+                )
         elif sha256_of(source) != entry.digest:
             # The client replaced the original after it was parked (the pass
             # reports it as REPLACED_IN_PBC). Filing the new bytes under the
@@ -1160,7 +1235,6 @@ def assign_review_file(
         filed_as = prepared_name_for(item, extension_of(source), taken)
         target = dest_folder / filed_as
 
-        parked = engagement_dir / entry.prepared_location if entry.prepared_location else None
         moved = reused = False
         if parked is not None and parked.is_file():
             _move_whole(parked, target)   # keeps any notes a person made on it
@@ -1197,10 +1271,13 @@ def assign_review_file(
             # not written, where it is if the write landed and only the
             # sidecar's removal was interrupted.
             if not _index_records(index_path, new_entry):
-                if moved:
-                    _move_whole(target, parked)
-                elif not reused:          # a copy that was already there stays
-                    target.unlink(missing_ok=True)
+                try:
+                    if moved:
+                        _move_whole(target, parked)
+                    elif not reused:          # a copy that was already there stays
+                        target.unlink(missing_ok=True)
+                except OSError as undo:       # the copy stays where it is; the real error is the one to hear
+                    log.error("Could not put %s back after the index write failed: %s", target.name, undo)
             raise
 
         keyword = keyword.strip()

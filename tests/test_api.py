@@ -142,6 +142,20 @@ def test_create_builds_manifest_and_folders(capsys, demo_root):
     assert [i["identifier"] for i in payload["state"]["items"]][-1] == "X01"
 
 
+def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_root):
+    # The tenth reading: a blank name fell back to the raw client field, and
+    # a client called "..\\..\\escaped" wrote the engagement above the root,
+    # where discovery never finds it and nobody is chased.
+    spec = {"name": "", "client": "..\\..\\escaped", "form": "1040", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    created = demo_root / payload["created"]
+    assert created.parent == demo_root and (created / MANIFEST_FILENAME).is_file()
+    assert not (demo_root.parent.parent / "escaped TY2025 Form 1040").exists()
+    with pytest.raises(api.ManifestError, match="not a folder name"):
+        api._new_engagement_dir("..\\outside")
+
+
 def test_create_refuses_an_identifier_that_cannot_name_a_folder(capsys, demo_root):
     spec = {"name": "Bad", "items": [{"identifier": "A:01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)

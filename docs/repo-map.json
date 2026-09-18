@@ -14,8 +14,8 @@
   ],
   "counts": {
     "nodes": 84,
-    "edges": 272,
-    "reused": 57
+    "edges": 274,
+    "reused": 59
   },
   "node_types": [
     "artifact",
@@ -93,8 +93,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b84565276cbe0f6b",
-      "lines": 714,
+      "sha256": "7bd2ff3597c0b341",
+      "lines": 718,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -114,14 +114,14 @@
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root."
     },
     {
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "4428f2599fe0bd7f",
-      "lines": 764,
+      "sha256": "05e92072facff28c",
+      "lines": 780,
       "cli": "python -m tracker.content_check",
       "exports": [
         "CACHE_FILENAME",
@@ -142,6 +142,7 @@
         "_FORM_NUMBER",
         "_JOINER",
         "_LINE_START",
+        "_LIST_OF_FORMS",
         "_MAX_OCR_PAGES",
         "_MIN_TEXT_CHARS",
         "_PAGE_BREAK",
@@ -172,14 +173,14 @@
         "TITLE_CHARS": "400"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache (CACHE_FILENAME) keeps the verdicts.",
-      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5."
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule."
     },
     {
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "af7f5ddeb42a3d2f",
-      "lines": 1288,
+      "sha256": "98f4559a97e036df",
+      "lines": 1365,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -198,6 +199,7 @@
         "NEEDS_REVIEW",
         "REPLACED_IN_PBC",
         "_CANDIDATE_SEP",
+        "_LINK_TAGS",
         "_MAX_STEM",
         "_SIDECAR_ENTRIES_KEY",
         "_SIDECAR_VERSION_KEY",
@@ -211,6 +213,7 @@
         "replaced_in_pbc",
         "request_folder",
         "unfinished_drops",
+        "unlistable_folders",
         "unreachable_drops",
         "unrecorded_in_pbc",
         "write_index"
@@ -226,7 +229,7 @@
         "REPLACED_IN_PBC": "'{location} no longer holds the bytes recorded on {received}; its working copy {prepared} was made from the earlier file - a person should look'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row. Decision 67: bytes recorded late are the working copy's, never the original's as it is now (_record_missing_digests(); assign refuses a replaced original by the parked copy's bytes); a name UTF-8 cannot hold is reported and never sorted (_storable(), in PBC too); write_index() retries and snapshots on any OSError; a link is a mount point or a symlink by reparse tag (_LINK_TAGS), a cloud placeholder is not one; unlistable_folders() reports a folder the run cannot list; PBC is not walked through a link; a failed rollback inside assign is logged and the write's error raised."
     },
     {
       "id": "tracker/locking.py",
@@ -452,8 +455,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "834a2fd6f6d0eeab",
-      "lines": 236,
+      "sha256": "b50ce88d32b0d7fb",
+      "lines": 286,
       "cli": "python -m tracker.registry",
       "exports": [
         "Engagement",
@@ -461,6 +464,7 @@
         "Registry",
         "RegistryError",
         "SKIP_ROLLED_FORWARD",
+        "_TAIL_NAMES",
         "discover_engagements",
         "engagement_dirs",
         "engagement_from",
@@ -471,7 +475,7 @@
         "MAX_DEPTH": "4"
       },
       "role": "Finds every engagement under the clients root: any folder holding _manifest.xlsx, without descending into one. Reads each manifest's Engagement sheet for client, link, due, sender, firm, reminders and active. There is no registry file.",
-      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, an unreadable manifest is listed with its problem rather than dropped, and a root with no manifest at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's sheet is the record. Engagement wraps EngagementInfo (the sheet as loaded) and delegates its fields rather than copying them, so a field added to the sheet reaches discovery without a second edit. Decision 66: _same_folder() matches Rolled From by the client and engagement folder names when the absolute path no longer resolves, so a clients root that moved does not bring retired priors back."
+      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, an unreadable manifest is listed with its problem rather than dropped, and a root with no manifest at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's sheet is the record. Engagement wraps EngagementInfo (the sheet as loaded) and delegates its fields rather than copying them, so a field added to the sheet reaches discovery without a second edit. Decision 66: _same_folder() matches Rolled From by the client and engagement folder names when the absolute path no longer resolves, so a clients root that moved does not bring retired priors back. Decision 67: _prior_of() never compares an engagement with itself and matches the engagement sharing the most trailing names (at least _TAIL_NAMES) only when it is the only one - a year level above the client has two sharing the last two; _walk_engagements() lists a folder it could not read as a problem row, never a silence."
     },
     {
       "id": "tracker/reminder.py",
@@ -541,8 +545,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "28ac8b0a95b92928",
-      "lines": 398,
+      "sha256": "3c8b306b75e7f2d3",
+      "lines": 402,
       "cli": "python -m tracker.rollover",
       "exports": [
         "CARRIED_HEADERS",
@@ -568,7 +572,7 @@
         "UNFILED_HEADING": "'Sent last year but never filed \u2014 check these are covered:'"
       },
       "role": "Builds a returning client's next-year request list from their prior engagement. Prior-year data always wins; the template may only fill blanks.",
-      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other. Derived year checks are left blank in the new manifest; the shifted Period derives them again. Decision 56: reads the prior year's manifest with_pending(), quarantining nothing. Decision 61: every Carried Forward cell is text."
+      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other. Derived year checks are left blank in the new manifest; the shifted Period derives them again. Decision 56: reads the prior year's manifest with_pending(), quarantining nothing. Decision 61: every Carried Forward cell is text. Decision 67: a template row is the prior's row whatever its case (load_manifest() compares identifiers without it); the Carried Forward widths are set by column letter."
     },
     {
       "id": "tracker/router.py",
@@ -608,8 +612,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d9189f646920d9b2",
-      "lines": 527,
+      "sha256": "3736e3aa55d64d4d",
+      "lines": 535,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -649,7 +653,7 @@
         "NOTHING_OUTSTANDING": "'nothing outstanding; no reminder needed'"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57/60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) so it is neither stale nor a missed week. Decision 58: a draft day with nothing to chase retires the run's own unedited draft (_retire_stale_drafts()); an edited one is left as it is. Decision 60: _refresh_stale_draft() rewrites the run's own unedited draft on a quiet draft day."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57/60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) so it is neither stale nor a missed week. Decision 58: a draft day with nothing to chase retires the run's own unedited draft (_retire_stale_drafts()); an edited one is left as it is. Decision 60: _refresh_stale_draft() rewrites the run's own unedited draft on a quiet draft day. Decision 67: main() reconfigures stdout and stderr to replace what the console cannot encode, so a client's file name never turns a finished run into a traceback."
     },
     {
       "id": "tracker/scaffold.py",
@@ -826,8 +830,8 @@
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7f92a0def8d78e72",
-      "lines": 355,
+      "sha256": "f6d683e1804a9efa",
+      "lines": 361,
       "exports": [
         "AS_OF_YEAR_END",
         "BASE_YEAR",
@@ -856,7 +860,7 @@
         "KEYWORD_DEFAULT_NOTE": "'defaults to the document name'"
       },
       "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword rules that recognise each document. The ONLY source of truth for the checklists; the wizard and the rollover read it directly.",
-      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check. Decision 60: a catalog keyword is the form's own title or a phrase only it carries, never a word other forms print about it (a 1040 says W-2; a 1095-C says Marketplace). Decision 62: every catalog row keys on the document's own title phrase; tests/test_catalog.py routes reconstructions of the real forms against every catalog. Decision 63: the prior-year return rows require their form number and title, so a return wins over its schedules' lines. Decision 64: the return rows require their title phrase, not their number; the K-1 row keys on the K-1's title; tests/irs/ (the IRS's own forms) and tests/test_irs_forms.py route them all. Decision 65: every prior-year return row requires the jurat; schedule rows key on their titles, not on account names. Decision 66: no row keys on a line every return prints (dividends and distributions, ownership percentage, donation) or the organizer asks (child care provider); the receipt, list and childcare rows key on those documents' own titles."
+      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check. Decision 60: a catalog keyword is the form's own title or a phrase only it carries, never a word other forms print about it (a 1040 says W-2; a 1095-C says Marketplace). Decision 62: every catalog row keys on the document's own title phrase; tests/test_catalog.py routes reconstructions of the real forms against every catalog. Decision 63: the prior-year return rows require their form number and title, so a return wins over its schedules' lines. Decision 64: the return rows require their title phrase, not their number; the K-1 row keys on the K-1's title; tests/irs/ (the IRS's own forms) and tests/test_irs_forms.py route them all. Decision 65: every prior-year return row requires the jurat; schedule rows key on their titles, not on account names. Decision 66: no row keys on a line every return prints (dividends and distributions, ownership percentage, donation) or the organizer asks (child care provider); the receipt, list and childcare rows key on those documents' own titles. Decision 67: the receipt row does not key on contribution statement (an IRA's, a 529's); the childcare row knows the provider's statement; the estimated tax row keys on a voucher's own lines (its numbered heading, the amount line), not the booklet's prose."
     },
     {
       "id": "tracker/validators.py",
@@ -983,8 +987,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ad24a434a8dbeb9c",
-      "lines": 269,
+      "sha256": "4f0252035e4d2e52",
+      "lines": 270,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -992,7 +996,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "178226d41d90a445",
+      "sha256": "404cfed461fd84e9",
       "lines": 451,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1163,8 +1167,8 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a697e0eb82b86011",
-      "lines": 209,
+      "sha256": "1a79c5d4c0f08f5e",
+      "lines": 241,
       "exports": [
         "DEMO_ITEMS",
         "PRIOR_YEAR",
@@ -1174,6 +1178,7 @@
         "donations_xlsx",
         "form_1098_lines",
         "lines_1099_int",
+        "listing_denied",
         "prior_return_lines",
         "row",
         "text_pdf",
@@ -1184,8 +1189,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3cd57cf7c0176ed6",
-      "lines": 650,
+      "sha256": "45346072b3b39fec",
+      "lines": 664,
       "exports": [
         "demo_root",
         "run",
@@ -1206,6 +1211,7 @@
         "test_create_shifts_the_checklist_to_the_engagements_year",
         "test_create_then_scan_plays_a_whole_engagement_end_to_end",
         "test_create_will_not_overwrite_an_existing_engagement",
+        "test_create_with_no_name_builds_one_that_stays_under_the_root",
         "test_create_writes_the_engagement_sheet_the_scheduled_run_reads",
         "test_every_chip_class_the_vocabulary_implies_exists_in_the_stylesheet",
         "test_install_schedule_defaults_come_from_scheduling",
@@ -1249,8 +1255,8 @@
       "id": "tests/test_catalog.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "91e1b419ef755fbc",
-      "lines": 317,
+      "sha256": "31fe04c3be107887",
+      "lines": 356,
       "exports": [
         "CASES",
         "NL",
@@ -1262,8 +1268,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1416d5855e0d8445",
-      "lines": 410,
+      "sha256": "19a82631bc96d9ff",
+      "lines": 435,
       "exports": [
         "counting_extractor",
         "item",
@@ -1272,8 +1278,10 @@
         "test_a_form_names_itself_with_its_year_or_revision",
         "test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right",
         "test_a_form_quoted_in_a_sentence_is_a_reference",
+        "test_a_form_told_to_the_reader_is_a_reference_whatever_follows_it",
         "test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading",
         "test_a_sheets_row_is_a_line_and_its_cells_are_set_apart",
+        "test_a_title_that_lists_three_forms_names_none_of_them",
         "test_any_keywords",
         "test_cache_corrupt_resets_silently",
         "test_cache_hit_and_invalidation",
@@ -1298,8 +1306,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c0a61fc586b7e8d0",
-      "lines": 1164,
+      "sha256": "3bd19522967a84f5",
+      "lines": 1264,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1309,6 +1317,7 @@
         "pbc",
         "prepared",
         "test_a_bare_list_sidecar_from_an_older_version_is_appended_once",
+        "test_a_cloud_placeholder_is_not_a_link",
         "test_a_copy_that_fails_half_way_leaves_no_truncated_working_copy",
         "test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder",
         "test_a_drop_still_held_open_is_left_for_the_next_run",
@@ -1318,9 +1327,11 @@
         "test_a_file_dropped_straight_into_pbc_is_filed_and_indexed",
         "test_a_file_named_like_a_formula_is_recorded_as_its_name",
         "test_a_file_still_being_written_is_reported_as_waiting_not_passed_over",
+        "test_a_folder_the_run_cannot_list_is_reported_every_pass",
         "test_a_hand_edited_index_cell_does_not_stop_the_next_run",
         "test_a_locked_index_keeps_a_persons_filing_decision",
         "test_a_locked_index_never_orphans_files_already_moved",
+        "test_a_name_the_index_cannot_hold_is_reported_not_allowed_to_take_the_index_down",
         "test_a_name_windows_cannot_open_is_reported_not_passed_over",
         "test_a_persons_decision_survives_excel_saving_the_stale_workbook",
         "test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them",
@@ -1341,6 +1352,7 @@
         "test_assigning_refuses_what_a_person_should_not_do",
         "test_assigning_reuses_a_copy_an_earlier_attempt_left_and_leaves_no_half_copy",
         "test_assigning_still_files_when_excel_holds_the_manifest",
+        "test_bytes_recorded_after_the_fact_are_the_working_copys_and_a_replaced_original_is_said",
         "test_client_subfolders_are_flattened",
         "test_deferred_rows_are_folded_in_even_when_the_only_drop_is_still_syncing",
         "test_dry_run_moves_nothing",
@@ -1372,8 +1384,8 @@
       "id": "tests/test_irs_forms.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8e7bd799c9cd6149",
-      "lines": 91,
+      "sha256": "0335f63ef3e5cb8d",
+      "lines": 92,
       "exports": [
         "EXPECT",
         "IRS",
@@ -1471,16 +1483,18 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fae9d5e12b31d7ac",
-      "lines": 183,
+      "sha256": "40d023bb4bb8f8c3",
+      "lines": 225,
       "exports": [
         "ITEMS",
         "make",
         "test_a_bad_yes_no_on_the_sheet_is_reported_not_guessed",
+        "test_a_client_folder_the_walk_cannot_list_is_a_problem_row_not_a_silence",
         "test_a_manifest_without_the_sheet_is_still_an_engagement",
         "test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves",
         "test_a_root_that_is_not_a_folder_is_an_error",
         "test_a_root_with_no_engagement_is_an_error_not_a_quiet_no_op",
+        "test_a_year_level_above_the_client_never_retires_the_new_engagement_itself",
         "test_an_engagement_is_its_sheet",
         "test_an_engagements_own_subfolders_are_never_engagements",
         "test_an_unreadable_manifest_is_listed_with_its_problem_not_dropped",
@@ -1581,8 +1595,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c66dbab69f29b154",
-      "lines": 406,
+      "sha256": "548f02291b0567e5",
+      "lines": 432,
       "exports": [
         "PRIOR",
         "TEMPLATE",
@@ -1592,6 +1606,7 @@
         "test_a_file_named_like_a_formula_is_a_name_on_the_carried_sheet",
         "test_a_rollover_learns_from_the_prior_years_deferred_scan_too",
         "test_a_rollover_reads_the_prior_year_without_moving_anything_in_it",
+        "test_a_template_row_differing_from_a_priors_only_in_case_is_the_same_row",
         "test_accepted_does_not_carry",
         "test_counts_are_never_lowered",
         "test_counts_learn_from_what_arrived",
@@ -1608,6 +1623,7 @@
         "test_shift_years_leaves_form_numbers_alone",
         "test_shift_years_moves_every_year",
         "test_template_only_fills_blanks",
+        "test_the_carried_sheet_has_readable_columns",
         "test_the_rollover_command_line_records_where_the_prior_year_really_is",
         "test_unfiled_documents_from_last_year_are_surfaced",
         "test_unknown_template_rows_are_offered_not_added",
@@ -2115,6 +2131,12 @@
     },
     {
       "from": "tests/samples.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
       "source": "derived"
@@ -2513,6 +2535,12 @@
       "from": "tests/test_registry.py",
       "to": "tracker/scaffold.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_registry.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {

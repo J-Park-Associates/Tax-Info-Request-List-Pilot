@@ -467,6 +467,14 @@ def main(argv: list[str] | None = None) -> int:
     Returns the exit code - non-zero if any engagement failed, so the
     scheduler shows a red run."""
     import argparse
+    import sys
+
+    # The report names client files, and the scheduler's console is not
+    # UTF-8: a name it cannot encode must not turn a finished run into a
+    # traceback after every original has been moved (the tenth reading).
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.runner",

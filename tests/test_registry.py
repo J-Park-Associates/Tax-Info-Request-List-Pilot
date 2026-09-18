@@ -7,6 +7,7 @@ can read is still reported.
 """
 
 import datetime as dt
+from pathlib import Path
 
 import pytest
 
@@ -55,6 +56,47 @@ def test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves(tmp_pa
     found = [engagement_from(p) for p in engagement_dirs(moved)]
     retired = {e.path.name: e.superseded_by for e in mark_superseded(found)}
     assert retired["Smith - 2025"] and not retired["Smith - 2026"]
+
+
+def test_a_year_level_above_the_client_never_retires_the_new_engagement_itself(tmp_path):
+    # The tenth reading: with Clients/2025/Smith/1040 and Clients/2026/Smith/1040
+    # the last two names are the same every year, and the two-name fallback
+    # retired the new engagement into itself; the run then skipped both.
+    from tracker.registry import engagement_from, mark_superseded
+
+    root = tmp_path / "Clients"
+    prior = make(root, "2025", "Smith", "1040")
+    make(root, "2026", "Smith", "1040", info=EngagementInfo(rolled_from=str(prior.resolve())))
+    make(root, "Chicago", "Smith", "1040")                 # another office's live client of the same name
+    found = [engagement_from(p) for p in engagement_dirs(root)]
+    retired = {str(e.path.relative_to(root)): e.superseded_by for e in mark_superseded(found)}
+    assert retired == {str(Path("2025", "Smith", "1040")): "1040", str(Path("2026", "Smith", "1040")): "",
+                       str(Path("Chicago", "Smith", "1040")): ""}
+
+    root.rename(tmp_path / "Moved")                        # the root moves: the third name still decides
+    moved = tmp_path / "Moved"
+    found = [engagement_from(p) for p in engagement_dirs(moved)]
+    retired = {str(e.path.relative_to(moved)): e.superseded_by for e in mark_superseded(found)}
+    assert retired[str(Path("2025", "Smith", "1040"))] == "1040"
+    assert retired[str(Path("2026", "Smith", "1040"))] == "" and retired[str(Path("Chicago", "Smith", "1040"))] == ""
+
+
+def test_a_client_folder_the_walk_cannot_list_is_a_problem_row_not_a_silence(tmp_path):
+    # The tenth reading: an ACL that denies the run's account made a whole
+    # client vanish from the registry, and the run reported success.
+    from tests.samples import listing_denied
+
+    root = tmp_path / "Clients"
+    make(root, "Jones", "Jones - 2025")
+    smith = root / "Smith"
+    make(root, "Smith", "Smith - 2025")
+
+    with listing_denied(smith):
+        registry = discover_engagements(root)
+    by_name = {e.path.name: e for e in registry.engagements}
+    assert by_name["Jones - 2025"].problem == ""
+    assert "could not be listed" in by_name["Smith"].problem      # the run reports it as an error, by name
+    assert [e.path.name for e in registry.engagements if not e.problem] == ["Jones - 2025"]
 
 
 def test_every_folder_with_a_manifest_is_an_engagement(tmp_path):

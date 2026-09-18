@@ -306,6 +306,45 @@ CASES = [
     ("1040", "1099-DIV.pdf", [
         "Form 1099-DIV Dividends and Distributions 2025", "OMB No. 1545-0110", "1a Total ordinary dividends 300.00", "Form 1099-DIV (Rev. January 2024)",
     ], "A02"),
+    # Round ten. A form told to the reader is a reference whatever follows it; a title
+    # that lists three forms names none; a savings plan's contribution statement is not
+    # a charitable receipt; the childcare row knows the provider's statement; the
+    # 1040-ES booklet's prose is not a voucher and a paid voucher says what it is.
+    ("1040", "organizer homeowners section.pdf", [
+        "2025 Individual Income Tax Organizer - Homeowners Section",
+        "Mortgage interest paid on your residence: attach Form 1098 (2025)", "Property taxes paid: attach your bill",
+    ], None),
+    ("1040", "escrow letter.pdf", [
+        "Wells Fargo Home Mortgage", "Annual Escrow Account Disclosure Statement",
+        "For your mortgage interest deduction, see Form 1098 for 2025 mailed separately.",
+    ], None),
+    ("1040", "firm transmittal.pdf", [
+        "J Park & Associates", "Enclosed please find: Form W-2 2025, Form 1098 2025, Form 1099-INT 2025",
+    ], None),
+    ("1040", "organizer checklist.pdf", [
+        "2025 Individual Income Tax Organizer", "Income Documents Checklist", "Form W-2 - Wage and Tax Statement",
+        "Form 1098 - Mortgage Interest Statement", "Form 1099-INT - Interest Income", "Form 1099-DIV - Dividends and Distributions",
+    ], None),
+    ("1040", "IRA contribution statement.pdf", [
+        "Vanguard", "2025 Traditional IRA Contribution Statement", "Contributions for tax year 2025: 7,000.00",
+        "Fair market value as of December 31, 2025",
+    ], None),
+    ("1040", "529 contribution statement.pdf", ["ScholarShare 529", "2025 Contribution Statement", "Total contributions 5,000.00"], None),
+    ("1040", "childcare provider statement.pdf", [
+        "Little Stars Daycare", "Child Care Provider Statement for 2025", "Provider EIN 12-3456789", "Total paid for care of Emma Smith: 9,600.00",
+    ], "J01"),
+    ("1040", "giving summary.pdf", ["Fidelity Charitable", "2025 Giving Summary", "Grants recommended 2,500.00"], "D01"),
+    ("1040", "goodwill receipt.pdf", ["Goodwill Industries", "Tax Receipt for Donated Goods", "Date 11/02/2025", "3 bags of clothing"], "D01"),
+    ("1040", "acknowledgment letter.pdf", [
+        "Red Cross", "We gratefully acknowledge your charitable contribution of $500 received on December 15, 2025.",
+    ], "D01"),
+    ("1040", "paid voucher stub.pdf", [
+        "Form 1040-ES", "2025 Estimated Tax Payment Voucher 4", "Amount of estimated tax you are paying by check or money order 2,500.00",
+    ], "H01"),
+    ("1040", "1040-ES instructions only.pdf", [
+        "2025 Form 1040-ES Estimated Tax for Individuals", "Purpose of This Package",
+        "make a copy of one of your unused estimated tax payment vouchers, fill it in, and mail it with your payment",
+    ], None),
 ]
 
 

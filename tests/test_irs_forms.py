@@ -42,8 +42,9 @@ EXPECT = [
     ("f1040.pdf", "1040", 2026, "B01"), ("f1040x.pdf", "1040", 2026, "B01"), ("f1040nr.pdf", "1040", 2026, None),
     ("f1040s.pdf", "1040", 2026, None), ("f1040sa.pdf", "1040", 2026, None), ("f1040sb.pdf", "1040", 2026, None),
     ("f1040sd.pdf", "1040", 2026, None), ("f1040s1.pdf", "1040", 2026, None),
-    # The 1040-ES package is the payment vouchers with their worksheet: the estimated tax row's.
-    ("f1040es.pdf", "1040", 2026, "H01"), ("f1040es_2025.pdf", "1040", 2025, "H01"),
+    # The 1040-ES booklet's instructions say "estimated tax payment voucher" in prose, which is not
+    # a voucher; the 2025 package's vouchers are within the pages read and say what a voucher says.
+    ("f1040es.pdf", "1040", 2026, None), ("f1040es_2025.pdf", "1040", 2025, "H01"), ("f1040es.pdf", "1120", 2026, None),
     ("f4868.pdf", "1040", 2026, None), ("f8879.pdf", "1040", 2026, None), ("f1096.pdf", "1040", 2025, None),
     ("f1096.pdf", "1120", 2025, None), ("f1096.pdf", "1041", 2025, None),
     ("f1120.pdf", "1120", 2026, "A01"), ("f1120h.pdf", "1120", 2026, None), ("f1120s.pdf", "1120", 2026, None),

@@ -31,6 +31,7 @@ scheduled task, not an empty practice.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -111,10 +112,13 @@ def _skip(folder: Path) -> bool:
     )
 
 
-def engagement_dirs(root: Path | str, *, max_depth: int = MAX_DEPTH) -> list[Path]:
-    """Every folder under ``root`` holding a manifest, sorted, without descending into one."""
-    root = Path(root)
+def _walk_engagements(root: Path, max_depth: int) -> tuple[list[Path], list[tuple[Path, str]]]:
+    """Every folder under ``root`` holding a manifest, sorted, without
+    descending into one - and every folder the walk could not list, with
+    why. A client's folder an ACL denies the run's account would
+    otherwise vanish from the run without a word (the tenth reading)."""
     found: list[Path] = []
+    unlisted: list[tuple[Path, str]] = []
 
     def walk(folder: Path, depth: int) -> None:
         if (folder / MANIFEST_FILENAME).is_file():
@@ -124,14 +128,20 @@ def engagement_dirs(root: Path | str, *, max_depth: int = MAX_DEPTH) -> list[Pat
             return
         try:
             children = sorted(p for p in folder.iterdir() if p.is_dir())
-        except OSError:
+        except OSError as exc:
+            unlisted.append((folder, f"could not be listed ({exc.strerror or exc})"))
             return
         for child in children:
             if not _skip(child):
                 walk(child, depth + 1)
 
     walk(root, 0)
-    return found
+    return found, unlisted
+
+
+def engagement_dirs(root: Path | str, *, max_depth: int = MAX_DEPTH) -> list[Path]:
+    """Every folder under ``root`` holding a manifest, sorted, without descending into one."""
+    return _walk_engagements(Path(root), max_depth)[0]
 
 
 def engagement_from(folder: Path) -> Engagement:
@@ -145,21 +155,55 @@ def engagement_from(folder: Path) -> Engagement:
 
 
 def _same_folder(a: str, b: Path) -> bool:
-    """Whether the folder ``Rolled From`` names (``a``) is the engagement
-    folder ``b``. By the resolved path first; failing that, by the last
-    two names of each - the client's folder and the engagement's - because
-    Rolled From is written absolute, and a clients root that has since
-    moved to another drive would otherwise bring every retired prior back
-    to life, and the draft day would chase last year's lists."""
     try:
-        if Path(a).resolve() == b.resolve():
-            return True
+        return Path(a).resolve() == b.resolve()
     except OSError:
-        pass
-    named, folder = Path(a), Path(b)
-    if len(named.parts) < 2 or len(folder.parts) < 2:
         return False
-    return Path(*named.parts[-2:]) == Path(*folder.parts[-2:])
+
+
+def _shared_tail(a: str, b: Path) -> int:
+    """How many trailing folder names ``a`` and ``b`` have in common."""
+    named = [os.path.normcase(part) for part in Path(a).parts]
+    folder = [os.path.normcase(part) for part in b.parts]
+    count = 0
+    while count < len(named) and count < len(folder) and named[-1 - count] == folder[-1 - count]:
+        count += 1
+    return count
+
+
+#: How much of a Rolled From path must match an engagement folder, by
+#: name, when the path itself no longer resolves: the client's folder and
+#: the engagement's.
+_TAIL_NAMES = 2
+
+
+def _prior_of(candidate: Engagement, index: int, engagements: list[Engagement]) -> int | None:
+    """Which engagement ``candidate`` was rolled forward from, as an index.
+
+    By the resolved path first. Failing that - Rolled From is written
+    absolute, and a clients root that has moved to another drive would
+    otherwise bring every retired prior back to life for the draft day -
+    by the folder names: the engagement, other than the candidate itself,
+    whose path ends in the most of Rolled From's names, at least
+    ``_TAIL_NAMES``, and only when that engagement is the only one to do
+    so. A layout with a year level above the client (``2025/Smith/1040``
+    and ``2026/Smith/1040``) has two engagements sharing the last two
+    names, and the third name decides; two that tie decide nothing.
+    """
+    for position, prior in enumerate(engagements):
+        if position != index and _same_folder(candidate.rolled_from, prior.path):
+            return position
+    tails = {
+        position: _shared_tail(candidate.rolled_from, prior.path)
+        for position, prior in enumerate(engagements) if position != index
+    }
+    if not tails:
+        return None
+    longest = max(tails.values())
+    if longest < _TAIL_NAMES:
+        return None
+    matches = [position for position, tail in tails.items() if tail == longest]
+    return matches[0] if len(matches) == 1 else None
 
 
 def mark_superseded(engagements: list[Engagement]) -> list[Engagement]:
@@ -173,12 +217,12 @@ def mark_superseded(engagements: list[Engagement]) -> list[Engagement]:
     year's manifest and type "no".
     """
     successors: dict[int, str] = {}
-    for candidate in engagements:
+    for index, candidate in enumerate(engagements):
         if not candidate.rolled_from:
             continue
-        for index, prior in enumerate(engagements):
-            if _same_folder(candidate.rolled_from, prior.path):
-                successors[index] = candidate.label
+        prior = _prior_of(candidate, index, engagements)
+        if prior is not None:
+            successors[prior] = candidate.label
     return [
         replace(e, superseded_by=successors[i]) if i in successors else e
         for i, e in enumerate(engagements)
@@ -190,15 +234,21 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
     root = Path(root)
     if not root.is_dir():
         raise RegistryError(f"clients root is not a folder: {root}")
-    folders = engagement_dirs(root, max_depth=max_depth)
-    if not folders:
+    folders, unlisted = _walk_engagements(root, max_depth)
+    if not folders and not unlisted:
         raise RegistryError(
             f"no engagement found under {root} (no folder holding {MANIFEST_FILENAME} "
             f"within {max_depth} levels) - is this the right folder?"
         )
+    # A folder the walk could not list is listed with its problem, as an
+    # unreadable manifest is: whatever engagements it holds are not run,
+    # and the run must say so rather than report success without them.
     return Registry(
         source=root,
-        engagements=mark_superseded([engagement_from(f) for f in folders]),
+        engagements=mark_superseded(
+            [engagement_from(f) for f in folders]
+            + [Engagement(path=folder, problem=problem) for folder, problem in unlisted]
+        ),
     )
 
 

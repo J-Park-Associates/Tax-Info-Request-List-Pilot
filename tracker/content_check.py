@@ -181,7 +181,9 @@ _APOSTROPHES = "".join(("'", chr(0x2019), chr(0x2018), chr(0x02BC), chr(0x60)))
 _SAME_LINE = r"[^\S\r\n\f\v]"   # whitespace that is not a line break (a no-break space included)
 _JOINER = rf"(?:{_SAME_LINE}|[{re.escape(_DASH_CHARS)}])*"
 _WRAPPING_JOINER = rf"[\s{re.escape(_DASH_CHARS)}]*"
-_LINE_START = rf"(?:^|(?<=[\r\n\f\v])){_SAME_LINE}*"
+#: A heading begins its line, after nothing but blank space, a bullet, a
+#: pipe or a rule (OCR reads a box's edge as "|", a list as "-" or "•").
+_LINE_START = rf"(?:^|(?<=[\r\n\f\v]))(?:{_SAME_LINE}|[{re.escape(_DASH_CHARS)}•*|_])*"
 _DASHES = re.compile(rf"[\s{re.escape(_DASH_CHARS)}]")
 
 
@@ -340,10 +342,12 @@ def _mention_weight(text: str, match: re.Match[str], end: int) -> int:
     start = match.start()
     if start > 0 and text[start - 1] == "(":
         return _REFERENCE_WEIGHT
-    if _SELF_AFTER.match(text, end):
-        return _SELF_WEIGHT
+    # What comes before is read first: "attach Form 1098 (2025)" is told to
+    # the reader, year or no year (the tenth reading added the year).
     if _REFERENCE_BEFORE.search(text, max(0, start - _BEFORE_CHARS), start):
         return _REFERENCE_WEIGHT
+    if _SELF_AFTER.match(text, end):
+        return _SELF_WEIGHT
     if _REFERENCE_AFTER.match(text, end):
         return _REFERENCE_WEIGHT
     return _PLAIN_WEIGHT
@@ -398,17 +402,29 @@ def dominant_forms(text: str) -> set[str]:
     return {min((key for key, n in scores.items() if n == top), key=first.get)}
 
 
-def _title_forms(text: str) -> set[str]:
-    """The form numbers the title (``_title``) names in their own right: a
-    mention there that is not a sentence about another form."""
-    stop = len(_title(text))
+#: A title that names this many forms in their own right is a list of
+#: forms - an organizer's checklist ("Form W-2 - Wage and Tax Statement",
+#: "Form 1098 - Mortgage Interest Statement", ...), a transmittal's
+#: "Enclosed: Form W-2 2025, Form 1098 2025, Form 1099-INT 2025" - and
+#: is none of them, as decision 63 says of a notice that lists three
+#: forms to file. A composite 1099 names two or three and parks on the
+#: rows' own tie.
+_LIST_OF_FORMS = 3
+
+
+def _title_forms(low: str) -> set[str]:
+    """The form numbers the title (``_title``) of ``low`` (lower-cased
+    text) names in their own right: a mention there that is not a
+    sentence about another form. None when the title names
+    ``_LIST_OF_FORMS`` or more."""
+    stop = len(_title(low))
     forms = set()
-    for key, start, weight in _mentions(text.lower()):
+    for key, start, weight in _mentions(low):
         if start >= stop:
             break
         if weight > _REFERENCE_WEIGHT:
             forms.add(key)
-    return forms
+    return forms if len(forms) < _LIST_OF_FORMS else set()
 
 
 def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
@@ -421,7 +437,7 @@ def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
         return False
     bare = _DASHES.sub("", keyword.strip().lower())
     key = bare[4:] if bare.startswith("form") else bare
-    if key in _title_forms(text):
+    if key in _title_forms(text.lower()):
         return True
     return key in (dominant_forms(text) if dominant is None else dominant)
 

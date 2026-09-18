@@ -942,7 +942,12 @@ def test_a_failed_index_write_puts_the_filed_copy_back_where_the_index_says(enga
 
     def disk_full(*args, **kwargs):
         raise OSError(28, "No space left on device")
+    # A full disk takes the workbook and the snapshot alike (the tenth
+    # reading made every write failure retry and then snapshot, as Excel's
+    # lock always did); with nowhere to write, the error is the caller's.
     monkeypatch.setattr(filer_module, "_save_index", disk_full)
+    monkeypatch.setattr(filer_module, "_save_pending_index", disk_full)
+    monkeypatch.setattr(filer_module.time, "sleep", lambda _: None)
     with pytest.raises(OSError):
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     monkeypatch.undo()
@@ -1110,6 +1115,101 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
     file_drops(engagement, today=DAY2)
     later = next(r for r in read_index(engagement / INDEX_FILENAME) if r.original_name == "scan0013.pdf")
     assert later.digest == sha256_of(engagement / later.pbc_location) and later.size_kb > 0
+
+
+def test_bytes_recorded_after_the_fact_are_the_working_copys_and_a_replaced_original_is_said(engagement, monkeypatch):
+    # The tenth reading: the digest filled in on a later pass came from the
+    # original as it was THEN, so a client's replacement was adopted into
+    # the old row, the index described the working copy wrongly, and the
+    # replacement was never reported. The working copy is what the pass
+    # handled; that is the evidence.
+    import tracker.filer as filer_module
+    from tracker.filer import REPLACED_IN_PBC, FilingError, assign_review_file
+    from tracker.validators import sha256_of
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    real = filer_module.sha256_of
+
+    def unreadable(path):
+        if path.parent == pbc(engagement):
+            raise PermissionError("held by the sync client")
+        return real(path)
+    monkeypatch.setattr(filer_module, "sha256_of", unreadable)
+    report = file_drops(engagement, today=DAY1)
+    monkeypatch.undo()
+    filed, parked = report.filed[0], report.review[0]
+    assert filed.digest == "" and parked.digest == ""
+    first_bytes = (engagement / filed.prepared_location).read_bytes()
+
+    # The client replaces both originals under their own names.
+    text_pdf(pbc(engagement) / "w2.pdf", "Form W-2 Wage and Tax Statement 2025 corrected")
+    text_pdf(pbc(engagement) / "scan0012.pdf", "something else entirely")
+
+    report = file_drops(engagement, today=DAY2)
+    rows = {r.original_name: r for r in read_index(engagement / INDEX_FILENAME)}
+    assert rows["w2.pdf"].digest == sha256_of(engagement / filed.prepared_location)      # the copy's bytes
+    assert (engagement / filed.prepared_location).read_bytes() == first_bytes            # untouched
+    said = [e.name for e in report.errors if e.error.startswith(REPLACED_IN_PBC.split("{")[0])]
+    assert sorted(said) == ["scan0012.pdf", "w2.pdf"]
+
+    # And a person cannot file the replaced parked one under the old row.
+    with pytest.raises(FilingError, match="replaced after it arrived"):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+
+
+def test_a_folder_the_run_cannot_list_is_reported_every_pass(engagement):
+    from tests.samples import listing_denied
+    from tracker.filer import unlistable_folders
+
+    denied = engagement / SHARED_DIR_NAME / "from my accountant"
+    denied.mkdir()
+    text_pdf(denied / "inside-w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "readable-w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    with listing_denied(denied):
+        assert unlistable_folders(engagement / SHARED_DIR_NAME) == [denied]
+        report = file_drops(engagement, today=DAY1)
+    assert [e.original_name for e in report.filed] == ["readable-w2.pdf"]
+    assert [(e.name, e.left_in_place) for e in report.errors] == [(denied.name, True)]
+    assert "cannot list" in report.errors[0].error
+
+
+def test_a_cloud_placeholder_is_not_a_link(tmp_path):
+    # A sync client's placeholder is a reparse point with the client's own
+    # tag; only a mount point (junction) or a symlink is a link.
+    import stat
+
+    from tracker.filer import _LINK_TAGS, _is_link
+
+    plain = tmp_path / "w2.pdf"
+    plain.write_bytes(b"%PDF-1.4")
+    assert not _is_link(plain)
+    assert getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003) in _LINK_TAGS or sys.platform != "win32"
+    assert 0x9000001A not in _LINK_TAGS            # OneDrive's tag
+    try:
+        (tmp_path / "link.pdf").symlink_to(plain)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks need a privilege here")
+    assert _is_link(tmp_path / "link.pdf")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NTFS takes a lone surrogate in a name")
+def test_a_name_the_index_cannot_hold_is_reported_not_allowed_to_take_the_index_down(engagement):
+    # The tenth reading: one such name made every index write fail, after
+    # the pass's originals had been moved, and nothing was recorded again.
+    bad = engagement / SHARED_DIR_NAME / "bank statement \ud83d.pdf"
+    bad.write_bytes(b"%PDF-1.4 a name with half an emoji")
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    report = file_drops(engagement, today=DAY1)
+    assert [e.original_name for e in report.filed] == ["w2.pdf"]
+    assert [e.left_in_place for e in report.errors] == [True] and "rename it" in report.errors[0].error
+    assert bad.exists() and [r.original_name for r in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+    # Dropped straight into PBC, it is reported there too and never sorted as a stray.
+    bad.rename(pbc(engagement) / bad.name)
+    report = file_drops(engagement, today=DAY2)
+    assert report.filed == [] and len(report.errors) == 1
+    assert [r.original_name for r in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="names Windows cannot open")
