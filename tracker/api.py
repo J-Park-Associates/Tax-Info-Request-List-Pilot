@@ -52,6 +52,7 @@ from tracker.manifest import (
     Override,
     Status,
     check_manifest,
+    check_tax_year,
     create_template,
     load_engagement_info,
     load_manifest,
@@ -326,9 +327,7 @@ def _tax_year(given, default: int | None = None) -> int | None:
         year = int(given)
     except (TypeError, ValueError):
         raise ManifestError(f"Tax year must be a whole number, got {given!r}") from None
-    if not YEAR_MIN <= year <= YEAR_MAX:
-        raise ManifestError(f"Tax year must be between {YEAR_MIN} and {YEAR_MAX}, got {year}")
-    return year
+    return check_tax_year(year)
 
 
 def _engagement_name(requested: str, fallback: str) -> str:

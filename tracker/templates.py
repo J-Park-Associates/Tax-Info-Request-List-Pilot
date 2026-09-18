@@ -29,6 +29,7 @@ from tracker.manifest import (
     DEFAULT_MIN_SIZE_KB,
     ManifestError,
     RequestItem,
+    csv_tuple,
     detect_year,
     identifier_problem,
     parse_extensions,
@@ -248,12 +249,6 @@ FORM_TEMPLATES = {
 # ------------------------------------------------------------------ items ----
 
 
-def _csv_field(value) -> tuple[str, ...]:
-    if isinstance(value, (list, tuple)):
-        return tuple(str(v).strip() for v in value if str(v).strip())
-    return tuple(p.strip() for p in str(value or "").split(",") if p.strip())
-
-
 def _whole_number(spec: dict, key: str, default: int, minimum: int, label: str) -> int:
     """A wizard field as an int, refused with a sentence rather than a traceback."""
     raw = spec.get(key)
@@ -286,8 +281,8 @@ def item_from_spec(spec: dict) -> RequestItem:
     problem = identifier_problem(identifier)
     if problem:
         raise ManifestError(f"Identifier {identifier!r} {problem}")
-    required = _csv_field(spec.get("required_keywords"))
-    any_keywords = _csv_field(spec.get("any_keywords"))
+    required = csv_tuple(spec.get("required_keywords"))
+    any_keywords = csv_tuple(spec.get("any_keywords"))
     date_pattern = str(spec.get("date_pattern", "") or "")
     if not (required or any_keywords or date_pattern):
         required = (document,)

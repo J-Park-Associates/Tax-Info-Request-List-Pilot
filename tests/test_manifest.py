@@ -482,6 +482,23 @@ def test_accepting_any_file_type_has_to_be_said_with_a_star(tmp_path):
     assert load_manifest(path)[0].allowed_extensions == ()
 
 
+def test_a_spec_that_gives_its_extensions_as_a_list_gets_those_extensions(tmp_path):
+    # The thirteenth reading: a spec typed as JSON holds ["pdf"], and
+    # stringifying it made one extension called "['pdf']" - which no
+    # document has, so every document parked against that row for ever.
+    from tracker.manifest import DEFAULT_EXTENSIONS, parse_extensions
+    from tracker.templates import item_from_spec
+
+    assert parse_extensions(["pdf"]) == ("pdf",)
+    assert parse_extensions(("PDF", ".Xlsx")) == ("pdf", "xlsx")
+    assert parse_extensions(["*"]) == ()
+    assert parse_extensions([]) == DEFAULT_EXTENSIONS
+    item = item_from_spec({"identifier": "A01", "document": "W-2", "extensions": ["pdf", "xlsx"],
+                           "required_keywords": ["W-2", "wage"]})
+    assert item.allowed_extensions == ("pdf", "xlsx")
+    assert item.required_keywords == ("W-2", "wage")
+
+
 # ------------------------------------------------------------------ check ----
 
 

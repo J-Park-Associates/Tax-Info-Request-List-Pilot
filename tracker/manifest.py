@@ -98,10 +98,13 @@ ANY_EXTENSION = "*"
 #: in Period - typing it again as a regex was the redundancy, and not typing
 #: it was a 2024 form satisfying a TY2025 request.
 NO_DATE_CHECK = "*"
-#: The years a tax year can be. The pattern below is built from them, and
-#: the app's year inputs are bounded by them.
+#: The years a tax year can be. The pattern below is built from them, the
+#: app's year inputs are bounded by them, and every path that takes a year
+#: from a person checks it against them through :func:`check_tax_year`.
 YEAR_MIN = 1900
 YEAR_MAX = 2099
+#: What a year outside those bounds is told, wherever it was typed.
+YEAR_OUT_OF_RANGE = "Tax year must be between {minimum} and {maximum}, got {year}"
 #: A four-digit year standing on its own. The digit guards keep an account
 #: number like 120250 from being read as "2025". Used wherever a year is
 #: found or shifted: the derived year check, rollover, the catalog.
@@ -353,7 +356,15 @@ def _cell_str(value: object) -> str:
     return "" if value is None else str(value).strip()
 
 
-def _csv_tuple(value: object) -> tuple[str, ...]:
+def csv_tuple(value: object) -> tuple[str, ...]:
+    """A cell's comma-separated list, or a list the caller already has.
+
+    A cell holds one string; a spec typed as JSON holds ``["pdf"]``, and
+    stringifying that gave the single extension ``['pdf']``, which no
+    document has and every document therefore parked against for ever.
+    """
+    if isinstance(value, (list, tuple)):
+        return tuple(str(v).strip() for v in value if str(v).strip())
     return tuple(p.strip() for p in _cell_str(value).split(",") if p.strip())
 
 
@@ -429,9 +440,21 @@ def derived_date_pattern(period: str) -> str:
     )
 
 
+def check_tax_year(year: int) -> int:
+    """``year`` back, or ``ManifestError`` if it is not a year a tax return
+    is for. One check, because a year that reaches a manifest unbounded
+    shifts every Period by a few thousand years and the document names
+    with them; the wizard's box and the rollover's flag are two doors into
+    the same room.
+    """
+    if not YEAR_MIN <= year <= YEAR_MAX:
+        raise ManifestError(YEAR_OUT_OF_RANGE.format(minimum=YEAR_MIN, maximum=YEAR_MAX, year=year))
+    return year
+
+
 def parse_extensions(value: object) -> tuple[str, ...]:
     """Blank → the safe default; ``*`` → anything (empty tuple); else the list."""
-    parts = _csv_tuple(value)
+    parts = csv_tuple(value)
     if not parts:
         return DEFAULT_EXTENSIONS
     if any(p == ANY_EXTENSION for p in parts):
@@ -565,8 +588,8 @@ def load_manifest(path: Path | str) -> list[RequestItem]:
                     expected_count=expected_count,
                     allowed_extensions=parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
                     min_size_kb=min_size_kb,
-                    required_keywords=_csv_tuple(values[COL_REQUIRED_KEYWORDS]),
-                    any_keywords=_csv_tuple(values[COL_ANY_KEYWORDS]),
+                    required_keywords=csv_tuple(values[COL_REQUIRED_KEYWORDS]),
+                    any_keywords=csv_tuple(values[COL_ANY_KEYWORDS]),
                     date_pattern=date_pattern,
                     date_pattern_derived=date_pattern_derived,
                     manual_override=_parse_enum(
@@ -1126,7 +1149,7 @@ def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
                     f"Row {row} ({identifier}): {COL_ANY_KEYWORDS} holds a formula; "
                     f"type the keyword {keyword!r} into it by hand"
                 )
-            existing = _csv_tuple(cell.value)
+            existing = csv_tuple(cell.value)
             if keyword.lower() in (k.lower() for k in existing):
                 return False
             cell.value = ", ".join((*existing, keyword))

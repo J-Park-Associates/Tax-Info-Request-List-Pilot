@@ -49,6 +49,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     RequestItem,
     Status,
     as_text,
+    check_tax_year,
     create_template,
     detect_year,
     load_manifest,
@@ -212,6 +213,13 @@ def roll_forward(
     added, unless ``include_new`` is set.
     """
     prior_dir = Path(prior_engagement_dir)
+    # A year is bounded wherever it is typed (decision 68 bounded the
+    # wizard's box; the flag on this command line was the other door).
+    # Unbounded, --year 20265 shifts every Period and every document name
+    # by eighteen thousand years, writes the folders under those names and
+    # retires the live engagement behind them.
+    if target_year is not None:
+        check_tax_year(target_year)
     # The prior year's last scan may have been deferred (Excel held the
     # manifest) and never landed - the usual end of an engagement. What
     # it saw is in the sidecar; read it, move nothing.

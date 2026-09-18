@@ -39,6 +39,13 @@ Guarantees:
 - **A working copy that went missing is replaced.** A re-sent document
   whose earlier copy is no longer in ``PREPARED_DIR_NAME/`` is filed again rather
   than dismissed as a duplicate; the original was always safe in ``PBC_DIR_NAME/``.
+- **An original that leaves the client's own folder is said out loud.**
+  ``PBC_DIR_NAME/`` is the provided-by-client record and the client can see
+  it, so Explorer will delete, rename and drag what is already there. A row
+  whose original is no longer where it says is reported every pass
+  (``MISSING_IN_PBC``); where the bytes turn up elsewhere in the folder the
+  row follows the file rather than the file being filed a second time
+  (``MOVED_IN_PBC``). Neither touches the working copy.
 - **One bad file never costs the audit trail.** Each drop is handled on its
   own: a file the sync client still holds open is left in place for the
   next run, a file that fails *after* it was preserved is recorded as
@@ -66,6 +73,7 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.utils import get_column_letter
 
 from tracker.content_check import CACHE_FILENAME, ContentCache
@@ -507,54 +515,101 @@ def _as_float(value: object) -> float:
         return 0.0
 
 
+def _header_at(rows) -> int | None:
+    """Where the index's header row sits among ``rows``, or None.
+
+    Found, not assumed: a person who typed a title above it, or sorted the
+    sheet with "my data has headers" unchecked, moved it. The columns every
+    version of the index has had (``_MANDATORY_COLUMNS``) are what name it,
+    and it is looked for no further down than ``_HEADER_WITHIN``.
+    """
+    for position, row in enumerate(rows):
+        if position >= _HEADER_WITHIN:
+            return None
+        cells = {str(cell or "").strip() for cell in row}
+        if all(INDEX_LAYOUT[name][0] in cells for name in _MANDATORY_COLUMNS):
+            return position
+    return None
+
+
+def _sheet_with_the_header(wb: Workbook):
+    """The worksheet the index is on, or None if no sheet carries its header.
+
+    ``wb.active`` is whatever tab a person left selected when they saved,
+    which is how a renamed index tab and a notes tab of their own read as
+    an empty index: nothing was there to refuse, and the next write rebuilt
+    the workbook over both. The sheet is chosen by the header instead, with
+    the one the tracker writes preferred when more than one carries it.
+    """
+    carrying = [ws for ws in wb.worksheets if _header_at(ws.iter_rows(values_only=True)) is not None]
+    for ws in carrying:
+        if ws.title == INDEX_SHEET:
+            return ws
+    return carrying[0] if carrying else None
+
+
+def _holds_anything(ws) -> bool:
+    return any(cell not in (None, "") for row in ws.iter_rows(values_only=True) for cell in row)
+
+
+def _blank(row, positions) -> bool:
+    """A row none of ``positions`` holds anything in.
+
+    A row is blank by the columns the index knows - not by its first
+    physical cell, which a column somebody inserted at A, or a cleared
+    Received cell, would make of every row; read as [] the next write
+    would then drop a person's filing with everything else (the eleventh
+    reading).
+    """
+    return not row or all(
+        (row[position] if position < len(row) else None) in (None, "") for position in positions
+    )
+
+
 def _read_index_workbook(path: Path) -> list[IndexEntry]:
     if not path.exists():
         return []
     wb = load_workbook(path, data_only=True)
     try:
-        ws = wb[INDEX_SHEET] if INDEX_SHEET in wb.sheetnames else wb.active
+        ws = _sheet_with_the_header(wb)
+        if ws is None:
+            # No header row in a workbook that holds something is an index
+            # the tracker must not touch (the twelfth reading).
+            if any(_holds_anything(sheet) for sheet in wb.worksheets):
+                raise FilingError(
+                    f"{path.name} has no header row the tracker knows ({', '.join(INDEX_LAYOUT[n][0] for n in _MANDATORY_COLUMNS)}) "
+                    f"within the first {_HEADER_WITHIN} rows of any of its sheets ({', '.join(wb.sheetnames)}); "
+                    "it was edited by hand - restore it before the next run"
+                )
+            return []
         rows = list(ws.iter_rows(values_only=True))
     finally:
         wb.close()
-    if not rows:
-        return []
+    header_at = _header_at(rows)
     # By header name, so an index written with columns since dropped (Filed
-    # As, Document) or before one was added (Candidates) still reads. The
-    # header row is found, not assumed: a person who sorted the sheet with
-    # "my data has headers" unchecked, or typed a title above it, moved it
-    # - and an index that reads as no rows would be rebuilt without its
-    # history on the next write (the twelfth reading). No header row in a
-    # sheet that holds anything is an index the tracker must not touch.
-    header_at = None
-    for position, row in enumerate(rows[:_HEADER_WITHIN]):
-        cells = {str(cell or "").strip() for cell in row}
-        if all(INDEX_LAYOUT[name][0] in cells for name in _MANDATORY_COLUMNS):
-            header_at = position
-            break
-    if header_at is None:
-        if any(cell not in (None, "") for row in rows for cell in row):
-            raise FilingError(
-                f"{path.name} has no header row the tracker knows ({', '.join(INDEX_LAYOUT[n][0] for n in _MANDATORY_COLUMNS)}) "
-                f"within its first {_HEADER_WITHIN} rows; it was edited by hand - restore it before the next run"
-            )
-        return []
+    # As, Document) or before one was added (Candidates) still reads.
     headers = [str(h or "").strip() for h in rows[header_at]]
     by_field = {
         name: headers.index(header)
         for name, (header, _) in INDEX_LAYOUT.items()
         if header in headers
     }
+    # Above the header is data too. A sort with "my data has headers"
+    # unchecked leaves the header wherever its own text sorts - last when
+    # the sheet is sorted on Received, in the middle when it is sorted on
+    # Original Name - and everything above it was dropped in silence, a
+    # person's filing included (the thirteenth reading). Only a row with
+    # none of the mandatory columns filled is a title somebody typed.
+    mandatory = [by_field[name] for name in _MANDATORY_COLUMNS if name in by_field]
+    above = [row for row in rows[:header_at] if not _blank(row, mandatory)]
+    if above:
+        log.warning(
+            "%s holds %d row(s) above its header row - the sheet was sorted with the header "
+            "among the data; they are read, and the next write puts the header back on top",
+            path.name, len(above),
+        )
     entries = []
-    for row in rows[header_at + 1:]:
-        # A row is blank when none of the columns the index knows holds
-        # anything - not when its first physical cell is empty, which a
-        # column somebody inserted at A, or a cleared Received cell, would
-        # make of every row; read as [] the next write would then drop a
-        # person's filing along with everything else (the eleventh reading).
-        if not row or all(
-            (row[position] if position < len(row) else None) in (None, "") for position in by_field.values()
-        ):
-            continue
+    for row in above + [r for r in rows[header_at + 1:] if not _blank(r, by_field.values())]:
         values: dict[str, object] = {}
         for name, position in by_field.items():
             raw = row[position] if position < len(row) else None
@@ -563,10 +618,40 @@ def _read_index_workbook(path: Path) -> list[IndexEntry]:
     return entries
 
 
-def _save_index(path: Path, entries: list[IndexEntry]) -> None:
+def _index_workbook(path: Path) -> tuple[Workbook, object]:
+    """The workbook to write the index into, and the empty sheet for its rows.
+
+    A rewrite built from nothing destroyed whatever else the workbook held
+    - a sheet a person added beside the index, and the name they gave the
+    index's own tab. The workbook already there is reopened and only the
+    index's sheet is replaced, in place and under its own name; everything
+    else is left as it was. Excel holding the file is passed up so the
+    write is retried and then snapshotted; anything that is not a workbook
+    any more is written from nothing, since every row is in ``entries``.
+    """
+    if path.exists():
+        try:
+            wb = load_workbook(path)
+        except OSError:
+            raise                      # held open: write_index retries, then snapshots
+        except Exception as exc:       # not a workbook any more; every row is still in hand
+            log.warning("%s could not be reopened (%s); it is written afresh", path.name, exc)
+        else:
+            ours = _sheet_with_the_header(wb)
+            if ours is None and INDEX_SHEET in wb.sheetnames:
+                ours = wb[INDEX_SHEET]
+            title, at = (ours.title, wb.sheetnames.index(ours.title)) if ours is not None else (INDEX_SHEET, 0)
+            if ours is not None:
+                wb.remove(ours)        # replaced, not appended to: the rows start at 1 again
+            return wb, wb.create_sheet(title, at)
     wb = Workbook()
     ws = wb.active
     ws.title = INDEX_SHEET
+    return wb, ws
+
+
+def _save_index(path: Path, entries: list[IndexEntry]) -> None:
+    wb, ws = _index_workbook(path)
     ws.append(list(INDEX_COLUMNS))
     # The row is counted, not asked for: openpyxl finds max_row by walking
     # every cell, which made writing the index quadratic in its rows.
@@ -661,13 +746,17 @@ def _storable(path: Path) -> bool:
     """Whether the name can be written into the index at all. NTFS holds
     names as UTF-16 and takes an unpaired surrogate (a truncated emoji, a
     Mac's or a NAS's name in a broken code page); the workbook and the
-    snapshot sidecar are UTF-8 and cannot hold it. Such a name once took
+    snapshot sidecar are UTF-8 and cannot hold it. A control character is
+    the same wound from the other side: a POSIX filesystem takes one in a
+    name, and a workbook is XML, which cannot hold it - openpyxl refuses
+    the cell (``ILLEGAL_CHARACTERS_RE``, its own list), and the refusal is
+    a ValueError, so the write is not even retried. Either name once took
     the whole index down, every pass, with the pass's originals moved."""
     try:
         path.name.encode("utf-8")
     except UnicodeEncodeError:
         return False
-    return True
+    return ILLEGAL_CHARACTERS_RE.search(path.name) is None
 
 
 #: The reparse tags that make a name a link to somewhere else. A cloud
@@ -822,6 +911,132 @@ def replaced_in_pbc(
     return replaced
 
 
+#: The sentence a recorded original that has left PBC_DIR_NAME gets. The
+#: client can see that folder and Explorer offers Delete, Rename and drag:
+#: every other disagreement between the index and the disk is said every
+#: pass, and this one was said by nothing at all while the row went on
+#: naming a path that holds no file. Said every pass until it is back or a
+#: person has looked; the working copy is not touched over it.
+MISSING_IN_PBC = (
+    "the original recorded at {location} on {received} is no longer there - deleted, "
+    "renamed or moved after it was preserved; a person should look"
+)
+#: The sentence a row whose original turned up elsewhere in PBC_DIR_NAME
+#: gets. Bytes are what tie a row to a document, so a stray carrying a
+#: missing row's digest is that original under a new name or in a new
+#: folder, not a second copy to file: the row follows the file rather than
+#: a Duplicate row being written and the old row left naming nothing.
+MOVED_IN_PBC = (
+    "the original recorded at {location} is now at {now} - the client renamed or moved "
+    "it and the bytes are the same, so the row follows it"
+)
+#: What that row's Reason keeps, so the path it arrived at is not lost.
+MOVED_FROM_IN_PBC = "the client moved it from {location}, noticed on {found}"
+
+
+def _absent(path: Path) -> bool:
+    """True only where the filesystem says there is no such file.
+
+    Not "could not be read": a permission, a share that blinked or a name
+    this host cannot open is a thing to look again at next pass, never a
+    reason to tell a person their client's original is gone. A cloud
+    placeholder is a file - the sync client has not brought it down, which
+    is not the same as the client having deleted it.
+    """
+    try:
+        path.stat()
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
+def _missing_positions(engagement_dir: Path, entries: list[IndexEntry]) -> list[int]:
+    """Where in ``entries`` the rows sit whose recorded original is gone."""
+    newest: dict[str, int] = {}
+    for position, entry in enumerate(entries):
+        if entry.pbc_location:
+            newest[entry.pbc_location] = position     # the newest row for a location wins
+    return [position for location, position in newest.items() if _absent(engagement_dir / location)]
+
+
+def missing_in_pbc(engagement_dir: Path, entries: list[IndexEntry]) -> list[IndexEntry]:
+    """Recorded originals that are no longer where their row says they are.
+
+    Every row that names a location is looked at - filed, parked and
+    duplicate alike - because each is a promise that the client's own file
+    is still in the folder they can see. Nothing else in a pass would
+    notice: an untouched row is not a drop, not a stray and not a
+    replacement, so the record could empty out while the scan went on
+    reading the working copies and calling every request Received.
+    """
+    return [entries[position] for position in _missing_positions(engagement_dir, entries)]
+
+
+def _row_these_bytes_left(path: Path, waiting: dict[str, list[int]]) -> int | None:
+    """The missing row ``path`` holds the bytes of, if any; each row once."""
+    if not waiting or is_cloud_placeholder(path):
+        return None
+    try:
+        digest = sha256_of(path)
+    except OSError:
+        return None                  # unreadable now; the next run looks again
+    positions = waiting.get(digest)
+    if not positions:
+        return None
+    position = positions.pop(0)
+    if not positions:
+        del waiting[digest]
+    return position
+
+
+def _follow_moved_originals(
+    engagement_dir: Path, entries: list[IndexEntry], strays: list[Path], found: str
+) -> tuple[list[Path], list[tuple[Path, IndexEntry]], list[IndexEntry]]:
+    """Point the rows of originals the client moved inside PBC_DIR_NAME at
+    where their bytes now are, and name the rows that are simply gone.
+
+    A rename or a drag inside the folder the client can see leaves two
+    halves of one document: a row naming a path that holds nothing, and a
+    file no row accounts for. Sorting that file as a new drop writes a
+    Duplicate row for a document already filed and leaves the old row
+    pointing at nothing for ever, so the bytes decide: they are the same
+    original and the row follows the file. Nothing else moves - the
+    working copy the earlier pass made is still the working copy, and what
+    the scanner sees is unchanged. A row recorded without its bytes
+    (decision 65) is nobody's and is never relocated, only said.
+
+    Returns the strays that are still strays, the moves recorded (the file
+    and the row as it was), and the rows whose original nothing holds.
+    """
+    gone = _missing_positions(engagement_dir, entries)
+    if not gone:
+        return strays, [], []
+    waiting: dict[str, list[int]] = {}
+    for position in gone:
+        if entries[position].digest:
+            waiting.setdefault(entries[position].digest, []).append(position)
+    kept: list[Path] = []
+    moved: list[tuple[Path, IndexEntry]] = []
+    followed: set[int] = set()
+    for path in strays:
+        position = _row_these_bytes_left(path, waiting)
+        if position is None:
+            kept.append(path)
+            continue
+        was = entries[position]
+        entries[position] = replace(
+            was,
+            pbc_location=path.relative_to(engagement_dir).as_posix(),
+            reason=f"{was.reason}; {MOVED_FROM_IN_PBC.format(location=was.pbc_location, found=found)}",
+        )
+        moved.append((path, was))
+        followed.add(position)
+        log.warning("The original recorded at %s is now at %s", was.pbc_location, path.name)
+    return kept, moved, [entries[position] for position in gone if position not in followed]
+
+
 #: The sentence a row recorded without its bytes gets when its working
 #: copy and its original no longer agree. Which is the client's document
 #: is not the filer's to guess: the copy may have been annotated, or its
@@ -954,15 +1169,7 @@ def file_drops(
                 location=earlier.pbc_location, received=earlier.received,
                 prepared=earlier.prepared_location,
             ), True))
-        # The row that holds each document's bytes. A Duplicate row only
-        # points at another row; letting it shadow the Filed row would hide
-        # a working copy that has since been deleted, and a re-send that
-        # answers "Missing" would be called a duplicate for ever.
-        known = {e.digest: e for e in entries if e.digest and e.decision != DUPLICATE}
-        # Rows a locked Excel deferred last time still belong in the workbook -
-        # fold them in as soon as it is free, whether or not this run sorts anything.
-        sidecar_waiting = _pending_index_path(index_path).exists() or recorded_digests > 0
-
+        stamp = today.isoformat()
         drops = iter_drops(shared_dir)
         # A file still being written (a sync client's or a browser's
         # ``TEMP_SUFFIX`` name) is not sorted, and is not passed over in
@@ -979,6 +1186,20 @@ def file_drops(
             ))
             log.warning("Could not list %s: its permissions deny it", folder)
         strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
+        # An original the client deleted, renamed or moved after it was
+        # recorded is a row naming a path that holds nothing. Where a stray
+        # carries the row's bytes the row follows the file (and is not
+        # adopted a second time); the rest are said, every pass.
+        strays, moved, gone = _follow_moved_originals(engagement_dir, entries, strays, stamp)
+        for path, earlier in moved:
+            report.attention.append(FileError(path.name, MOVED_IN_PBC.format(
+                location=earlier.pbc_location,
+                now=path.relative_to(engagement_dir).as_posix(),
+            ), True))
+        for earlier in gone:
+            report.attention.append(FileError(earlier.original_name, MISSING_IN_PBC.format(
+                location=earlier.pbc_location, received=earlier.received,
+            ), True))
         # An original replaced under its own name is said loudly, every run,
         # until a person has looked; it is not sorted again and not guessed.
         for path, earlier in replaced_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []:
@@ -986,115 +1207,148 @@ def file_drops(
                 location=earlier.pbc_location, received=earlier.received,
                 prepared=earlier.prepared_location or "(none)",
             ), True))
-        if not drops and not strays:
-            if not dry_run and sidecar_waiting:
-                report.index_deferred = not write_index(index_path, entries)
-            return report
-
-        stamp = today.isoformat()
+        # The row that holds each document's bytes. A Duplicate row only
+        # points at another row; letting it shadow the Filed row would hide
+        # a working copy that has since been deleted, and a re-send that
+        # answers "Missing" would be called a duplicate for ever.
+        known = {e.digest: e for e in entries if e.digest and e.decision != DUPLICATE}
+        # Rows a locked Excel deferred last time still belong in the workbook -
+        # fold them in as soon as it is free, whether or not this run sorts
+        # anything; so does a row that has just followed its original.
+        sidecar_waiting = (
+            _pending_index_path(index_path).exists() or recorded_digests > 0 or bool(moved)
+        )
+        # What the router learns about each document is what the scan will
+        # want to know about its working copy (same bytes): the verdicts go
+        # into the engagement's content cache, keyed by content. It is made
+        # whether or not there is anything to sort, because the tidy-up at
+        # the end of a pass is owed to a pass that sorted nothing too.
+        cache = ContentCache(engagement_dir / CACHE_FILENAME)
         # Names claimed during this run, so a dry run previews the same numbering
         # a real run would produce (nothing is on disk to collide with yet).
         reserved: dict[Path, set[str]] = {}
         recorded = len(entries)
-        if not dry_run:
-            pbc_dir.mkdir(parents=True, exist_ok=True)
-            prepared_dir.mkdir(parents=True, exist_ok=True)
-        # Existing request folders, so a Document renamed in Excel keeps
-        # filing into the folder that already holds its earlier files.
-        assigned = assign_folders(prepared_dir, [i.identifier for i in items])
-        # What the router learns about each document is what the scan will
-        # want to know about its working copy (same bytes): the verdicts go
-        # into the engagement's content cache, keyed by content. The PDF
-        # readability cache is this run's alone.
-        run = _SortContext(
-            items=items, by_id=by_id, known=known, prepared_dir=prepared_dir,
-            review_dir=review_dir, reserved=reserved, assigned=assigned,
-            dry_run=dry_run, report=report,
-            cache=ContentCache(engagement_dir / CACHE_FILENAME), pdf_cache=PdfVerdictCache(),
-        )
         try:
-            for drop, already_in_pbc in (
-                [(d, False) for d in drops] + [(p, True) for p in strays]
-            ):
-                # A file the sync client has not downloaded is not a document yet.
-                if is_cloud_placeholder(drop):
-                    report.waiting.append(drop)
-                    continue
-
-                try:
-                    drop.stat()          # still there, and readable: a file mid-write is left
-                except OSError as exc:
-                    report.errors.append(FileError(
-                        drop.name, f"could not read it ({exc}); left in place", True
-                    ))
-                    log.warning("Left %s in place: %s", drop.name, exc)
-                    continue
-
-                # Preserve the original first: it is the record, whatever happens next.
-                if already_in_pbc or dry_run:
-                    pbc_target = drop if already_in_pbc else pbc_dir / drop.name
-                else:
-                    try:
-                        pbc_target = _unique_path(pbc_dir, drop.name)
-                        _move_whole(drop, pbc_target)
-                    except OSError as exc:
-                        report.errors.append(FileError(
-                            drop.name,
-                            f"could not move it into {PBC_DIR_NAME} ({exc}); "
-                            "left in place",
-                            True,
-                        ))
-                        log.warning("Left %s in place: %s", drop.name, exc)
-                        continue
-                pbc_rel = pbc_target.relative_to(engagement_dir).as_posix()
-                # The record is of the bytes that were preserved: hashed where
-                # they now are, after the move, so a sync client landing a newer
-                # version in between can never leave the index describing one
-                # file and the folder holding another.
-                recorded_at = drop if dry_run and not already_in_pbc else pbc_target
-                try:
-                    digest = sha256_of(recorded_at)
-                    size_kb = round(recorded_at.stat().st_size / 1024, 1)
-                except OSError as exc:
-                    if already_in_pbc or dry_run:
-                        report.errors.append(FileError(
-                            drop.name, f"could not read it ({exc}); left in place", True
-                        ))
-                        log.warning("Left %s in place: %s", drop.name, exc)
-                        continue
-                    digest, size_kb = "", 0.0     # moved, unreadable now: recorded anyway
-                    log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
-
-                try:
-                    entry = _sort_one(drop, pbc_target, pbc_rel, digest, size_kb, stamp, run)
-                except Exception as exc:  # the original is safe; say so and go on
-                    log.exception("Could not file %s", drop.name)
-                    entry = IndexEntry(
-                        received=stamp, original_name=drop.name, size_kb=size_kb,
-                        digest=digest, identifier="",
-                        prepared_location="", pbc_location=pbc_rel,
-                        decision=NEEDS_REVIEW,
-                        reason=(
-                            f"could not be filed ({exc.__class__.__name__}: {exc}); "
-                            f"original preserved in {pbc_rel} - file it by hand"
-                        ),
-                    )
-                    report.errors.append(FileError(drop.name, entry.reason, False))
-                    report.review.append(entry)
-
-                entries.append(entry)
-                if entry.decision != DUPLICATE and digest:
-                    known[digest] = entry
+            if drops or strays:
+                if not dry_run:
+                    pbc_dir.mkdir(parents=True, exist_ok=True)
+                    prepared_dir.mkdir(parents=True, exist_ok=True)
+                # Existing request folders, so a Document renamed in Excel keeps
+                # filing into the folder that already holds its earlier files.
+                assigned = assign_folders(prepared_dir, [i.identifier for i in items])
+                _sort_all(drops, strays, pbc_dir, entries, stamp, _SortContext(
+                    items=items, by_id=by_id, known=known, prepared_dir=prepared_dir,
+                    review_dir=review_dir, reserved=reserved, assigned=assigned,
+                    dry_run=dry_run, report=report,
+                    cache=cache, pdf_cache=PdfVerdictCache(),
+                ))
         finally:
             # Whatever happened above, every original that was moved is on
             # record - and a snapshot waiting from last time is landed even
-            # when every drop this time was left in place.
+            # when every drop this time was left in place, or there was
+            # nothing to sort at all.
             if not dry_run and (len(entries) > recorded or sidecar_waiting):
                 report.index_deferred = not write_index(index_path, entries)
+        # The tidy-up is owed to every pass, not only one that sorted
+        # something: an empty folder the client dragged in outlives the
+        # files that were in it, and a pass that found nothing to do used
+        # to leave it there for ever.
         if not dry_run:
-            run.cache.save()
+            cache.save()
             _prune_empty_dirs(shared_dir, keep=pbc_dir)
     return report
+
+
+def _sort_all(
+    drops: list[Path],
+    strays: list[Path],
+    pbc_dir: Path,
+    entries: list[IndexEntry],
+    stamp: str,
+    run: _SortContext,
+) -> None:
+    """Decide and record every drop and every stray, one at a time.
+
+    Each file is handled on its own: a file the sync client still holds
+    open is left in place for the next run, and one that fails *after* it
+    was preserved is recorded as needing review with the error, so no one
+    bad file costs the rest of the pass or the audit trail. The caller
+    writes the index whatever happens in here.
+    """
+    report, dry_run, known = run.report, run.dry_run, run.known
+    engagement_dir = run.prepared_dir.parent
+    for drop, already_in_pbc in (
+        [(d, False) for d in drops] + [(p, True) for p in strays]
+    ):
+        # A file the sync client has not downloaded is not a document yet.
+        if is_cloud_placeholder(drop):
+            report.waiting.append(drop)
+            continue
+
+        try:
+            drop.stat()          # still there, and readable: a file mid-write is left
+        except OSError as exc:
+            report.errors.append(FileError(
+                drop.name, f"could not read it ({exc}); left in place", True
+            ))
+            log.warning("Left %s in place: %s", drop.name, exc)
+            continue
+
+        # Preserve the original first: it is the record, whatever happens next.
+        if already_in_pbc or dry_run:
+            pbc_target = drop if already_in_pbc else pbc_dir / drop.name
+        else:
+            try:
+                pbc_target = _unique_path(pbc_dir, drop.name)
+                _move_whole(drop, pbc_target)
+            except OSError as exc:
+                report.errors.append(FileError(
+                    drop.name,
+                    f"could not move it into {PBC_DIR_NAME} ({exc}); "
+                    "left in place",
+                    True,
+                ))
+                log.warning("Left %s in place: %s", drop.name, exc)
+                continue
+        pbc_rel = pbc_target.relative_to(engagement_dir).as_posix()
+        # The record is of the bytes that were preserved: hashed where
+        # they now are, after the move, so a sync client landing a newer
+        # version in between can never leave the index describing one
+        # file and the folder holding another.
+        recorded_at = drop if dry_run and not already_in_pbc else pbc_target
+        try:
+            digest = sha256_of(recorded_at)
+            size_kb = round(recorded_at.stat().st_size / 1024, 1)
+        except OSError as exc:
+            if already_in_pbc or dry_run:
+                report.errors.append(FileError(
+                    drop.name, f"could not read it ({exc}); left in place", True
+                ))
+                log.warning("Left %s in place: %s", drop.name, exc)
+                continue
+            digest, size_kb = "", 0.0     # moved, unreadable now: recorded anyway
+            log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
+
+        try:
+            entry = _sort_one(drop, pbc_target, pbc_rel, digest, size_kb, stamp, run)
+        except Exception as exc:  # the original is safe; say so and go on
+            log.exception("Could not file %s", drop.name)
+            entry = IndexEntry(
+                received=stamp, original_name=drop.name, size_kb=size_kb,
+                digest=digest, identifier="",
+                prepared_location="", pbc_location=pbc_rel,
+                decision=NEEDS_REVIEW,
+                reason=(
+                    f"could not be filed ({exc.__class__.__name__}: {exc}); "
+                    f"original preserved in {pbc_rel} - file it by hand"
+                ),
+            )
+            report.errors.append(FileError(drop.name, entry.reason, False))
+            report.review.append(entry)
+
+        entries.append(entry)
+        if entry.decision != DUPLICATE and digest:
+            known[digest] = entry
 
 
 @dataclass(frozen=True, slots=True)
@@ -1327,7 +1581,7 @@ def assign_review_file(
         filed_as = prepared_name_for(item, extension_of(source), taken)
         target = dest_folder / filed_as
 
-        moved = reused = False
+        moved = reused = parked_stood_in = False
         left_in_review = ""
         # A copy with these bytes already in the folder is a killed earlier
         # attempt's, and is reused rather than doubled. Otherwise the parked
@@ -1343,6 +1597,7 @@ def assign_review_file(
             reused = True
             if parked_here and sha256_of(parked) == digest:
                 parked.unlink()           # the attempt's copy stands in for it, byte for byte
+                parked_stood_in = True
         elif parked_here and sha256_of(parked) == digest:
             _move_whole(parked, target)   # keeps any notes a person made on it
             moved = True
@@ -1373,11 +1628,16 @@ def assign_review_file(
             # the copy where the index says it is, so a retry files it once
             # rather than copying it twice: back in Review if the index was
             # not written, where it is if the write landed and only the
-            # sidecar's removal was interrupted.
+            # sidecar's removal was interrupted. A killed attempt's copy
+            # that stood in for the parked one leaves the row still naming
+            # a parked copy that is no longer there, so it is put back -
+            # from the copy that stood in for it, which is it byte for byte.
             if not _index_records(index_path, new_entry):
                 try:
                     if moved:
                         _move_whole(target, parked)
+                    elif parked_stood_in:
+                        _copy_whole(target, parked)
                     elif not reused:          # a copy that was already there stays
                         target.unlink(missing_ok=True)
                 except OSError as undo:       # the copy stays where it is; the real error is the one to hear
