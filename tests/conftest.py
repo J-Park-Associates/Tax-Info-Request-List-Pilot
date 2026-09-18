@@ -1,23 +1,33 @@
 """The agreement check every test in the suite pays for once.
 
-`tracker/ledger.py` is written beside the files that already exist and is
-read by nothing in production. What makes it trustworthy before anything
-depends on it is this: after **every** test, every engagement folder the test
-left under its ``tmp_path`` that carries a record is folded back and compared
-with what the index and the manifest say. One fixture, and the whole suite -
-every drop sorted, every parked file filed, every scan, every locked-Excel
-sidecar, every one of the storage readings in the decision log - becomes a
-test of the record too.
+`tracker/ledger.py` is the engagement's own record, and since decision 88 it
+is what ``read_index()`` and ``load_manifest()`` answer from wherever it has
+anything to say. What keeps that honest is this: after **every** test, every
+engagement folder the test left under its ``tmp_path`` that carries a record
+is folded back and compared with what the *workbooks* say. One fixture, and
+the whole suite - every drop sorted, every parked file filed, every scan,
+every locked-Excel sidecar, every one of the storage readings in the decision
+log - becomes a test of the record too.
+
+**Compared against the workbooks' own readings, never the live ones.** The
+live readers now believe the record, so ``read_index()`` and
+``load_manifest()`` here would be the record compared with itself - a check
+that can only pass. This fixture therefore reads
+``filer.read_index_from_workbook()`` and ``manifest.statuses_from_workbook()``
+(the reading every reader made before decision 88, kept public for exactly
+this) and compares the record with those.
 
 What is compared, and what is not:
 
-- The fold of the record's index-shaped events against ``read_index()`` with
-  its snapshot overlay: the same identities, and for each the same row, field
-  for field. Only when the record carries at least one index-shaped event -
-  an engagement whose record holds nothing but a scan has had no index write
-  go through a writer that records.
+- The fold of the record's index-shaped events against the workbook reading
+  with its snapshot overlay: the same identities, **in the same order**, and
+  for each the same row, field for field. Order matters now that the fold is
+  what ``read_index()`` returns and every write rebuilds the workbook from
+  it. Only when the record carries at least one index-shaped event - an
+  engagement whose record holds nothing but a scan has had no index write go
+  through a writer that records.
 - The statuses the record's ``scanned`` events add up to against the
-  manifest's scanner columns with the pending sidecar overlaid, for every
+  workbook's scanner columns with the pending sidecar overlaid, for every
   identifier the record has ever seen a status for. An identifier the
   manifest no longer carries is passed over: a row deleted or renamed in
   Excel since the scan is dropped by ``_apply_updates`` and by
@@ -28,9 +38,9 @@ legacy workbook and never writes through the writers has nothing to agree
 with - and so is one whose index the tracker refuses to read, which is itself
 what that test is about.
 
-Looking changes nothing: the index is read with ``quarantine=False``, so a
-sidecar this fixture cannot parse is reported and left exactly where the test
-put it.
+Looking changes nothing: the workbooks are read with ``quarantine=False``, so
+a sidecar this fixture cannot parse is reported and left exactly where the
+test put it.
 """
 
 from __future__ import annotations
@@ -38,15 +48,8 @@ from __future__ import annotations
 import pytest
 
 from tracker import ledger
-from tracker.filer import INDEX_FILENAME, FilingError, ledger_key, read_index
-from tracker.manifest import (
-    ManifestError,
-    _load_pending,
-    _update_to_json,
-    load_manifest,
-    with_pending,
-)
-from tracker.manifest import StatusUpdate as _StatusUpdate
+from tracker.filer import INDEX_FILENAME, FilingError, ledger_key, read_index_from_workbook
+from tracker.manifest import ManifestError, statuses_from_workbook
 from tracker.scaffold import MANIFEST_FILENAME
 
 #: Engagements the comparison passes over, by folder name, with the decision
@@ -56,29 +59,25 @@ KNOWN_DISAGREEMENTS: dict[str, str] = {}
 
 
 def _index_rows(engagement_dir):
-    """The index as it now reads, by the identity the record keys rows on."""
+    """The index as the *workbook* reads it, by the identity the record keys
+    rows on. Never ``read_index()``, which answers from the record."""
     return {
         ledger_key(entry): {f: getattr(entry, f) for f in entry.__dataclass_fields__}
-        for entry in read_index(engagement_dir / INDEX_FILENAME, quarantine=False)
+        for entry in read_index_from_workbook(engagement_dir / INDEX_FILENAME, quarantine=False)
     }
 
 
 def _manifest_statuses(engagement_dir):
-    """The manifest's scanner columns with the pending sidecar overlaid."""
+    """The *workbook's* scanner columns with the pending sidecar overlaid.
+    Never ``load_manifest()``, which answers from the record."""
     path = engagement_dir / MANIFEST_FILENAME
     if not path.is_file():
         return None
     try:
-        items = with_pending(load_manifest(path), _load_pending(path, quarantine=False))
+        recorded = statuses_from_workbook(path)
     except ManifestError:
         return None        # a manifest the loader refuses; that is what the test is about
-    return {
-        item.identifier.lower(): _update_to_json(_StatusUpdate(
-            status=item.status, file_count=item.file_count,
-            received_date=item.received_date, validation_notes=item.validation_notes,
-        ))
-        for item in items
-    }
+    return {identifier.lower(): status for identifier, status in recorded.items()}
 
 
 def _compare_rows(name, folded, actual):
@@ -86,6 +85,10 @@ def _compare_rows(name, folded, actual):
         f"{name}: the record and the index do not hold the same originals; "
         f"only in the record: {sorted(set(folded) - set(actual))}; "
         f"only in the index: {sorted(set(actual) - set(folded))}"
+    )
+    assert list(folded) == list(actual), (
+        f"{name}: the record and the index hold the same originals in different "
+        f"orders; the record says {list(folded)}, the index says {list(actual)}"
     )
     for key, row in actual.items():
         recorded = folded[key]

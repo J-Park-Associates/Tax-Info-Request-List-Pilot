@@ -27,6 +27,7 @@ from tracker.filer import (
     file_drops,
     prepared_name_for,
     read_index,
+    read_index_from_workbook,
 )
 from tracker.manifest import COL_DOCUMENT, SHEET_NAME, RequestItem, create_template
 from tracker.router import UNMATCHED
@@ -779,7 +780,12 @@ def test_a_hand_edited_index_cell_does_not_stop_the_next_run(engagement):
     wb.close()
     drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
     assert [e.original_name for e in file_drops(engagement, today=DAY2).filed] == ["jane.pdf"]
-    assert read_index(engagement / INDEX_FILENAME)[0].size_kb == 0.0
+    # Decision 88: the cell is not only survived, it is put back. The reader
+    # answers from the engagement's record, which never held what was typed
+    # over it, and the pass rewrote the workbook from there.
+    recorded = read_index(engagement / INDEX_FILENAME)[0].size_kb
+    assert recorded > 0.0
+    assert read_index_from_workbook(engagement / INDEX_FILENAME)[0].size_kb == recorded
 
 
 # ------------------------------------------------- a person files a parked file ----

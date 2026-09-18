@@ -526,8 +526,63 @@ def _requests_sheet(wb, path: Path):
 def load_manifest(path: Path | str) -> list[RequestItem]:
     """Load and validate every request row from ``path``.
 
+    The request itself - the identifier, the document, the period, the
+    keywords, the extensions, Waived, Manual Override - is the person's, and
+    always comes from the workbook. The machine writes none of it and the
+    engagement's record holds none of it.
+
+    **The scanner columns are the record's, per identifier.** Where
+    ``ledger.LEDGER_FILENAME`` has ever recorded a status for an identifier,
+    that status, its Received Date, File Count and Validation Notes are what
+    this returns for that row; an identifier the record has never seen keeps
+    the workbook's own columns. Two readings side by side, one row at a time:
+    the record is the truth for what it has recorded, the workbook for what
+    it has not. So an engagement scanned before it kept a record, or one row
+    added to the list since, reads exactly as it always did.
+
+    Readers that must also see a status a locked Excel deferred still overlay
+    :func:`pending_updates` through :func:`with_pending` on top of this; the
+    two agree, because a deferred write is recorded as applied.
+
     Reads with ``data_only=True`` so formula cells yield their cached values.
     Raises :class:`ManifestError` with row context on any invalid data.
+    """
+    path = Path(path)
+    # The same replacement with_pending() makes, from the record rather than
+    # from the sidecar: one owner for what replacing a row's scanner columns
+    # means, and one rule for matching an identifier without case.
+    return with_pending(load_manifest_from_workbook(path), _recorded_statuses(path))
+
+
+def _recorded_statuses(manifest_path: Path) -> dict[str, StatusUpdate]:
+    """The status the engagement's record holds for each identifier it has
+    ever recorded one for; empty where there is no record, no ``scanned``
+    event in it, or no reading it.
+
+    A record that does not read as one is said loudly, with the engagement
+    and the line, and the workbook's own columns answer instead - the way the
+    storage path already reports a sidecar it refuses. Never a silent skip.
+    """
+    engagement_dir = manifest_path.parent
+    try:
+        recorded = ledger.statuses(ledger.read_events(engagement_dir))
+        return {identifier: _update_from_json(raw) for identifier, raw in recorded.items()}
+    except (ledger.LedgerError, KeyError, TypeError, ValueError, AttributeError) as exc:
+        log.warning(
+            "%s: its record cannot be read (%s) - the scanner columns in %s answer instead; "
+            "a person should look",
+            engagement_dir.name, exc, manifest_path.name,
+        )
+        return {}
+
+
+def load_manifest_from_workbook(path: Path | str) -> list[RequestItem]:
+    """Every request row as the workbook alone says it, scanner columns included.
+
+    The reading every reader made before the record was believed, kept public
+    under its own name: :func:`load_manifest` layers the record on top of it,
+    the record's own bootstrap imports from it, and the suite's agreement
+    fixture would be comparing the record with itself without it.
     """
     path = Path(path)
     wb = _open_manifest(path)
@@ -855,17 +910,26 @@ def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
         wb.close()
 
 
-def _manifest_statuses(path: Path) -> dict[str, dict]:
-    """Every identifier's scanner columns as the workbook and its sidecar now
-    read them - the bootstrap for an engagement that was scanned before it
-    kept a record of its own."""
-    items = with_pending(load_manifest(path), _load_pending(path, quarantine=False))
+def statuses_from_workbook(path: Path | str, *, quarantine: bool = False) -> dict[str, dict]:
+    """Every identifier's scanner columns as the workbook and its pending
+    sidecar alone read them, by the identifier as the workbook spells it.
+
+    The reading every reader made before the record was believed, kept public
+    under its own name: it is what the record's own bootstrap imports, and
+    what the suite's agreement fixture checks the record against - through
+    :func:`load_manifest` it would be checking the record against itself.
+
+    Looking changes nothing by default: an unreadable sidecar is reported and
+    left where it is.
+    """
+    path = Path(path)
+    items = with_pending(load_manifest_from_workbook(path), _load_pending(path, quarantine=quarantine))
     return {
         item.identifier: _update_to_json(StatusUpdate(
             status=item.status, file_count=item.file_count,
             received_date=item.received_date, validation_notes=item.validation_notes,
         ))
-        for item in items if item.status
+        for item in items
     }
 
 
@@ -893,7 +957,13 @@ def _record_scanned(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
     ledger.append(
         engagement_dir,
         ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: changed}),
-        seed=lambda: [ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: _manifest_statuses(path)})],
+        seed=lambda: [ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {
+            # A row nothing has scanned yet has no status to import, and a
+            # blank one recorded as a status would make the record answer for
+            # a row it has never seen anything happen to.
+            identifier: status
+            for identifier, status in statuses_from_workbook(path).items() if status["status"]
+        }})],
     )
 
 

@@ -5,15 +5,25 @@ person can open, sort, re-type and save from Excel - and each of the readings
 in the decision log found another way that ends with a row lost. The
 workbooks stay; beside them each engagement now keeps ``LEDGER_FILENAME``, one
 JSON object per line, in the order the writers wrote them. It is the record
-of *what was decided*; the workbooks remain the thing a person reads and the
-thing every reader still reads today.
+of *what was decided*; the workbooks remain the thing a person reads.
 
-**Nothing reads it in production yet.** It is written alongside the files
-that already exist, and the whole suite checks after every test that folding
-it back gives exactly what the index and the manifest say (the agreement
-fixture in ``tests/conftest.py``). The record is proved before anything is
-allowed to depend on it; until then it costs one append per decision and
-changes no behaviour at all.
+**The readers believe it, and fall back to the workbooks** (decision 88,
+stage A step 2). :func:`tracker.filer.read_index` answers from :func:`fold`
+wherever the record holds an index-shaped event, and
+:func:`tracker.manifest.load_manifest` takes each identifier's scanner
+columns from :func:`statuses` wherever the record has ever recorded one -
+per identifier, so a row the record has never seen still reads off the
+workbook. An engagement with no record here reads exactly as it always did,
+which is what makes the step reversible: delete the file and the workbooks
+answer again. Both workbooks are still written exactly as before; dropping a
+write is stage B.
+
+What made that safe to switch on is the agreement fixture in
+``tests/conftest.py``: after every test in the suite, the record is folded
+back and compared with the *workbooks' own* readings
+(``filer.read_index_from_workbook()``, ``manifest.statuses_from_workbook()``,
+kept public for exactly this). ``python -m tracker.ledger <folder> --compare``
+is the same check for one engagement, for a person.
 
 **Append-only, one line per event.** A line is written with a single
 ``os.write`` under ``O_APPEND`` and then ``fsync``-ed, so a run killed
@@ -267,6 +277,14 @@ def fold(events: list[dict]) -> dict[str, dict]:
     the original and the row followed the bytes - and the one it left is
     dropped, exactly as the index has only the one row for it.
 
+    **In the index's order.** The rows come back in the order the record
+    first saw each original, and a row that changed identity keeps the place
+    the one it left held, because the index keeps it too: the writer rewrites
+    that row where it sits rather than moving it to the end. Since
+    :func:`tracker.filer.read_index` answers from this fold, an order that
+    drifted from the workbook's would reorder the audit trail on the next
+    write.
+
     An event whose name this version does not know as index-shaped is passed
     over rather than refused: a later version may write one, and a reader
     that refuses what it does not know cannot read a record written by the
@@ -281,7 +299,13 @@ def fold(events: list[dict]) -> dict[str, dict]:
             raise LedgerError(f"an index-shaped {event[EVENT_KEY]!r} event carries no {KEY_KEY!r}")
         was = event.get(WAS_KEY)
         if was and was != key:
-            rows.pop(was, None)
+            if was in rows and key not in rows:
+                # Renamed where it stands: a dict cannot re-key in place, so
+                # the row order is rebuilt around it rather than the row
+                # being dropped and appended at the end.
+                rows = {(key if held == was else held): row for held, row in rows.items()}
+            else:
+                rows.pop(was, None)
         rows[key] = event[ROW_KEY]
     return rows
 
@@ -318,12 +342,97 @@ def head(engagement_dir: Path | str) -> str:
 if __name__ == "__main__":
     import argparse
 
+    def _compare_with_the_workbooks(folder: Path, events: list[dict]) -> int:
+        """Print whether the record and the workbooks agree, and name every
+        place they do not. Returns the exit code: 0 agree, 1 disagree.
+
+        The operator's check (``docs/runbook.md``). Both sides of it are the
+        workbooks' *own* readings - ``filer.read_index_from_workbook()`` and
+        ``manifest.statuses_from_workbook()`` - because since decision 88 the
+        live readers answer from the record, and asking them would only be
+        the record compared with itself.
+
+        Imported here rather than at the top of the module: this module sits
+        at the bottom of the package beside :mod:`tracker.locking` and
+        imports nothing else of it, and a command line nobody imports is the
+        one place that may look upwards.
+        """
+        from tracker.filer import INDEX_FILENAME, ledger_key, read_index_from_workbook
+        from tracker.manifest import statuses_from_workbook
+        from tracker.scaffold import MANIFEST_FILENAME
+
+        disagreements: list[str] = []
+        index_path, manifest_path = folder / INDEX_FILENAME, folder / MANIFEST_FILENAME
+
+        folded = fold(events)
+        workbook_rows = {
+            ledger_key(entry): {f: getattr(entry, f) for f in entry.__dataclass_fields__}
+            for entry in read_index_from_workbook(index_path, quarantine=False)
+        }
+        print(f"  rows:     {len(folded)} recorded, {len(workbook_rows)} in {INDEX_FILENAME}")
+        for key in folded:
+            if key not in workbook_rows:
+                disagreements.append(f"  rows      {key}: recorded, and {INDEX_FILENAME} does not hold it")
+        for key, row in workbook_rows.items():
+            if key not in folded:
+                disagreements.append(f"  rows      {key}: in {INDEX_FILENAME}, and the record does not hold it")
+                continue
+            for field, value in row.items():
+                if folded[key].get(field) != value:
+                    disagreements.append(
+                        f"  rows      {key}, {field}: the record says {folded[key].get(field)!r}, "
+                        f"{INDEX_FILENAME} says {value!r}"
+                    )
+        if set(folded) == set(workbook_rows) and list(folded) != list(workbook_rows):
+            disagreements.append(
+                f"  rows      the same originals in a different order: the record has "
+                f"{list(folded)}, {INDEX_FILENAME} has {list(workbook_rows)}"
+            )
+
+        recorded_statuses = statuses(events)
+        workbook_statuses = (
+            {i.lower(): s for i, s in statuses_from_workbook(manifest_path).items()}
+            if manifest_path.is_file() else {}
+        )
+        gone = 0
+        for identifier, status in recorded_statuses.items():
+            theirs = workbook_statuses.get(identifier.lower())
+            if theirs is None:
+                # A row deleted or renamed in Excel since the scan is dropped
+                # by the write-back and by the pending overlay alike; the
+                # record is right that the status was written.
+                gone += 1
+            elif theirs != status:
+                disagreements.append(
+                    f"  statuses  {identifier}: the record says {status!r}, "
+                    f"{MANIFEST_FILENAME} says {theirs!r}"
+                )
+        print(f"  statuses: {len(recorded_statuses)} recorded, {len(workbook_statuses)} in {MANIFEST_FILENAME}"
+              + (f" ({gone} recorded for a row the manifest no longer carries)" if gone else ""))
+
+        if disagreements:
+            print(f"\n  they do not agree ({len(disagreements)}):")
+            for line in disagreements:
+                print(line)
+            print()
+            return 1
+        print("\n  the record and the workbooks agree\n")
+        return 0
+
     parser = argparse.ArgumentParser(description="Show one engagement's own record")
     parser.add_argument("engagement_dir", help="the engagement folder")
+    parser.add_argument(
+        "--compare", action="store_true",
+        help="check the record against _index.xlsx and _manifest.xlsx, row by row and "
+             "status by status, naming every disagreement; exit 1 if they disagree",
+    )
     ns = parser.parse_args()
 
     folder = Path(ns.engagement_dir)
     recorded = read_events(folder)
+    if ns.compare:
+        print(f"\n{path_for(folder)} against the workbooks beside it")
+        raise SystemExit(_compare_with_the_workbooks(folder, recorded))
     print(f"\n{path_for(folder)}")
     print(f"  events: {len(recorded)}")
     if recorded:

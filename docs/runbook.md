@@ -22,11 +22,18 @@ all live in it. There is no database, no portal and no second copy anywhere.
 `_ledger.jsonl` is that ledger: a line the tool appends every time it
 decides something about a document or writes a status, kept beside the
 workbooks so what the system did is not held only in files Excel can
-rewrite. **Nobody edits it, and nothing you do depends on it yet** — the
-manifest and the index are still what the tool reads and what you read.
+rewrite. **Nobody edits it**, and the tool now believes it: what it has
+recorded about a document or a status is what the app and the drafts show,
+and anything it has not recorded still comes from the manifest and the index,
+which are written exactly as before and are still what you read and edit.
 Leave it where it is; if you are ever asked what one engagement's history
 looks like, `python -m tracker.ledger "<engagement folder>"` prints the
 count and the dates without opening anything.
+
+`python -m tracker.ledger "<engagement folder>" --compare` is the check to
+run if you ever suspect the ledger and the workbooks have parted company: it
+compares them row by row and status by status, names every disagreement, and
+says plainly when there is none.
 
 The folder that holds every engagement is typed once, in the app, on first
 launch. It is written to the settings file beside the app

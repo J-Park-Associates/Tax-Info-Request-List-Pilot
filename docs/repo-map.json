@@ -14,8 +14,8 @@
   ],
   "counts": {
     "nodes": 105,
-    "edges": 387,
-    "reused": 80
+    "edges": 394,
+    "reused": 71
   },
   "node_types": [
     "artifact",
@@ -254,8 +254,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "caa353c7872860eb",
-      "lines": 2222,
+      "sha256": "03a16ccffcd1c905",
+      "lines": 2371,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -298,6 +298,7 @@
         "assign_review_file",
         "dismiss_review_file",
         "file_drops",
+        "index_as_recorded",
         "iter_drops",
         "ledger_key",
         "missing_in_pbc",
@@ -305,6 +306,7 @@
         "prepared_location",
         "prepared_name_for",
         "read_index",
+        "read_index_from_workbook",
         "replaced_in_pbc",
         "request_folder",
         "unfile_document",
@@ -335,14 +337,14 @@
         "RESCAN_REFUSED": "'the status was not put back now ({why}); the next pass does it'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row. Decision 67: bytes recorded late are the working copy's, never the original's as it is now (_record_missing_digests(); assign refuses a replaced original by the parked copy's bytes); a name UTF-8 cannot hold is reported and never sorted (_storable(), in PBC too); write_index() retries and snapshots on any OSError; a link is a mount point or a symlink by reparse tag (_LINK_TAGS), a cloud placeholder is not one; unlistable_folders() reports a folder the run cannot list; PBC is not walked through a link; a failed rollback inside assign is logged and the write's error raised. Decision 68: a row recorded without its bytes is tied to them only while its working copy and its original agree (UNTIED_IN_PBC says the rest every pass); assign moves the parked copy only while it holds the row's bytes; a row is blank when no known column holds anything; unlistable_folders() prunes links, PBC and staging. Decision 69: _read_index_workbook() finds the header row (_MANDATORY_COLUMNS, _HEADER_WITHIN) and refuses a sheet with rows and no header; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's (_copy_taken_by_a_later_row); assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so (AssignResult.left_in_review); unlistable_folders() walks PBC. Decision 72: the rows above the header row are data too (a sort with 'my data has headers' unchecked puts the header last or in the middle, and everything above it was dropped in silence) - only a row with no mandatory column filled is a typed title, and a pass that found rows above the header logs how many; the index's sheet is chosen by the header, not wb.active (_sheet_with_the_header(); a renamed tab beside a person's own empty tab read as no rows and the next write rebuilt the workbook over both), and _index_workbook() rewrites only that sheet in the workbook already there, so a sheet a person added survives; a recorded original that has left PBC/ is reported every pass (missing_in_pbc(), MISSING_IN_PBC) and, where a stray carries its bytes, the row follows the file instead of a Duplicate row being written (_follow_moved_originals(), MOVED_IN_PBC; a row with no digest is never relocated); _storable() also refuses a name openpyxl cannot write (a control character, reachable on POSIX); the tidy-up (the content cache, _prune_empty_dirs()) runs on a pass with nothing to sort, and the sort loop is _sort_all(); the assign rollback puts back a parked copy a reused attempt's copy stood in for. Decision 76: dismiss_review_file() is the other thing a person may do to a parked row - it rewrites it NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing at all, because a document the client sent is never deleted over a decision about the request list. _find_parked() takes a dismissed row too, so filing it is the undo and there is no second path; known (the duplicate test) already held it, so the same bytes sent again are a Duplicate rather than a second review item; _by_a_person() is the one reading of who decided a row, and read_index()'s snapshot merge keeps either decision over a workbook Excel saved stale. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with no identifier and the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself) so the request reverts with its regression note; the alternative people had was dragging the file in Explorer, which the index never learns. A working copy that is no longer the row's bytes is left in the request folder and said out loud (LEFT_FILED), the way assign leaves an annotated parked copy. _the_later_row() is how the snapshot merge tells which of two rows for one original was written last - the later one carries the other's whole Reason inside its own - because an unfiled row is parked again and 'the workbook still shows it parked' had stopped meaning 'before the decision'. Decision 82: IndexEntry.evidence is the last column of INDEX_LAYOUT (header Evidence), written from routing.evidence_record through content_check.format_evidence() and read back through parse_evidence() by IndexEntry.evidence_record - one owner for the cell's shape, a writer here and a reader in the app would have been two. A filed row and a parked row both carry it, and a person's decision (assign, dismiss, unfile) leaves it alone: what the rules saw is the audit trail the override was made against. _MANDATORY_COLUMNS is unchanged, so an index written before the column reads with '', and the snapshot sidecar round-trips it without a version bump (_entry_from_json() already ignores what it does not know and defaults what is missing). Decision 87: every locked write of the index is followed, in the same locked section, by the events that write added or changed, appended to the engagement's own record through tracker/ledger.py - one rule, _rows_changed(), read off the rows themselves rather than collected as the pass goes, so a drop sorted, bytes recorded on a row preserved without them, a row that followed an original the client moved and a row a person rewrote are all recorded and none can be forgotten by a later edit somewhere else. ledger_key() is the identity a row is recorded under (its PBC location) and _ledger_row() is asdict(), the shape the snapshot sidecar already writes, so row serialisation keeps one owner. Where the record already carries rows it is the record, not the pass's own reading of the index, that the new rows are compared against, so a row that reached the workbook by a road no writer took - an older bare-list sidecar folded in, a cell somebody typed over in Excel - is learned on the very next write; the person's decisions record in a finally when _index_records() says the write landed, so an interrupt between the workbook landing and the append cannot lose the one decision a person made. Nothing reads the record back."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row. Decision 67: bytes recorded late are the working copy's, never the original's as it is now (_record_missing_digests(); assign refuses a replaced original by the parked copy's bytes); a name UTF-8 cannot hold is reported and never sorted (_storable(), in PBC too); write_index() retries and snapshots on any OSError; a link is a mount point or a symlink by reparse tag (_LINK_TAGS), a cloud placeholder is not one; unlistable_folders() reports a folder the run cannot list; PBC is not walked through a link; a failed rollback inside assign is logged and the write's error raised. Decision 68: a row recorded without its bytes is tied to them only while its working copy and its original agree (UNTIED_IN_PBC says the rest every pass); assign moves the parked copy only while it holds the row's bytes; a row is blank when no known column holds anything; unlistable_folders() prunes links, PBC and staging. Decision 69: _read_index_workbook() finds the header row (_MANDATORY_COLUMNS, _HEADER_WITHIN) and refuses a sheet with rows and no header; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's (_copy_taken_by_a_later_row); assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so (AssignResult.left_in_review); unlistable_folders() walks PBC. Decision 72: the rows above the header row are data too (a sort with 'my data has headers' unchecked puts the header last or in the middle, and everything above it was dropped in silence) - only a row with no mandatory column filled is a typed title, and a pass that found rows above the header logs how many; the index's sheet is chosen by the header, not wb.active (_sheet_with_the_header(); a renamed tab beside a person's own empty tab read as no rows and the next write rebuilt the workbook over both), and _index_workbook() rewrites only that sheet in the workbook already there, so a sheet a person added survives; a recorded original that has left PBC/ is reported every pass (missing_in_pbc(), MISSING_IN_PBC) and, where a stray carries its bytes, the row follows the file instead of a Duplicate row being written (_follow_moved_originals(), MOVED_IN_PBC; a row with no digest is never relocated); _storable() also refuses a name openpyxl cannot write (a control character, reachable on POSIX); the tidy-up (the content cache, _prune_empty_dirs()) runs on a pass with nothing to sort, and the sort loop is _sort_all(); the assign rollback puts back a parked copy a reused attempt's copy stood in for. Decision 76: dismiss_review_file() is the other thing a person may do to a parked row - it rewrites it NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing at all, because a document the client sent is never deleted over a decision about the request list. _find_parked() takes a dismissed row too, so filing it is the undo and there is no second path; known (the duplicate test) already held it, so the same bytes sent again are a Duplicate rather than a second review item; _by_a_person() is the one reading of who decided a row, and read_index()'s snapshot merge keeps either decision over a workbook Excel saved stale. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with no identifier and the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself) so the request reverts with its regression note; the alternative people had was dragging the file in Explorer, which the index never learns. A working copy that is no longer the row's bytes is left in the request folder and said out loud (LEFT_FILED), the way assign leaves an annotated parked copy. _the_later_row() is how the snapshot merge tells which of two rows for one original was written last - the later one carries the other's whole Reason inside its own - because an unfiled row is parked again and 'the workbook still shows it parked' had stopped meaning 'before the decision'. Decision 82: IndexEntry.evidence is the last column of INDEX_LAYOUT (header Evidence), written from routing.evidence_record through content_check.format_evidence() and read back through parse_evidence() by IndexEntry.evidence_record - one owner for the cell's shape, a writer here and a reader in the app would have been two. A filed row and a parked row both carry it, and a person's decision (assign, dismiss, unfile) leaves it alone: what the rules saw is the audit trail the override was made against. _MANDATORY_COLUMNS is unchanged, so an index written before the column reads with '', and the snapshot sidecar round-trips it without a version bump (_entry_from_json() already ignores what it does not know and defaults what is missing). Decision 87: every locked write of the index is followed, in the same locked section, by the events that write added or changed, appended to the engagement's own record through tracker/ledger.py - one rule, _rows_changed(), read off the rows themselves rather than collected as the pass goes, so a drop sorted, bytes recorded on a row preserved without them, a row that followed an original the client moved and a row a person rewrote are all recorded and none can be forgotten by a later edit somewhere else. ledger_key() is the identity a row is recorded under (its PBC location) and _ledger_row() is asdict(), the shape the snapshot sidecar already writes, so row serialisation keeps one owner. Where the record already carries rows it is the record, not the pass's own reading of the index, that the new rows are compared against, so a row that reached the workbook by a road no writer took - an older bare-list sidecar folded in, a cell somebody typed over in Excel - is learned on the very next write; the person's decisions record in a finally when _index_records() says the write landed, so an interrupt between the workbook landing and the append cannot lose the one decision a person made. Decision 88: read_index() now ANSWERS FROM THAT RECORD wherever it holds an index-shaped event - the rows the writers recorded, in the index's order - and falls back to the workbook where it does not (a legacy folder, or one whose record holds nothing but a scan); every reader above it (runner, scanner, reminder, api._state, review.triage, rollover reading last year) switches with it because they all come through here and none gained a call of its own. read_index_from_workbook() is the workbook's own reading, public because the record's bootstrap imports from it, _index_records() must ask it (it is asked between a write landing and the record learning of it, and the record would say no to the write in question, rolling a person's filing back), and the agreement fixture would otherwise compare the record with itself. A record that does not read as one falls back to the workbook and says so loudly with the engagement and the line (_recorded_rows()), never a silent skip; a row a sidecar holds that the record has never seen is read, said out loud and recorded by the next write (_sidecar_rows_off_the_record()); and a workbook with rows and no header row the tracker knows is still refused before the record answers (_refuse_an_index_edited_past_reading(), the one wording shared with the workbook reading through _the_index_sheet()), because the index is still rewritten every pass. The workbook and both sidecars are written exactly as before - dropping a write is stage B."
     },
     {
       "id": "tracker/ledger.py",
       "type": "module",
       "layer": "core",
-      "sha256": "64238540174c79ff",
-      "lines": 339,
+      "sha256": "a76794473880d64b",
+      "lines": 448,
       "cli": "python -m tracker.ledger",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -400,8 +402,8 @@
         "IMPORTED": "'imported'",
         "MIGRATED": "'migrated'"
       },
-      "role": "The engagement's own append-only record: one JSON object per line in LEDGER_FILENAME, appended under the engagement lock by every writer that changes the index, the snapshot sidecar, the manifest's scanner columns or the pending manifest updates. Owns the event names (preserved, filed, parked, duplicate, assigned_by_person, dismissed_by_person, unfiled_by_person, bytes_recorded, keyword_learned, scanned, imported; drafted and migrated reserved), append() / read_events() / fold() / statuses() / head(), and the file name.",
-      "notes": "Decision 87, stage A of the record/view separation: written beside the files that already exist and read by NOTHING in production - the index, both pending sidecars and the manifest are still the live path, and standing rule 2 still names the index. What makes it trustworthy before anything depends on it is the autouse fixture in tests/conftest.py, which folds it back after every test in the suite and compares it with read_index() (snapshot overlay included) and the manifest's statuses (pending overlay included); it ran over every test of the base. Sits at the bottom beside tracker/locking.py and imports only it: the events are plain dicts, so tracker/filer.py and tracker/manifest.py each serialise their own rows with the function that already owns that shape (dataclasses.asdict for an IndexEntry, exactly as the index sidecar writes it; manifest._update_to_json for a StatusUpdate), and no cycle is created. One os.write of the whole line under O_APPEND then fsync, so a kill mid-append leaves at most a torn tail with no newline after it: read_events() ignores it and the next append() truncates it, and nothing else ever rewrites the file. O_APPEND is atomic for concurrent writers on POSIX and is not on Windows, which is why append() refuses unless locking.lock_is_held() says this process holds the engagement lock - one writer and one protocol rather than a second protocol for Windows. Not SQLite: a database file a cloud client syncs is a corrupted database file, and one database per clients root would put every client's history in one file, the opposite of the rule that an engagement folder carries everything about that engagement and nothing about anyone else's. The bootstrap is what makes an engagement already a season old agree from its first line - the first writer to append imports the index as it now stands (imported), and the first scanned event imports the manifest's statuses. Rows are keyed by the original's PBC location, the identity the snapshot merge and the app's review cards already join on; a row that followed an original the client moved carries the identity it left (was), so the fold drops the vacated one. fold() passes over an event name it does not know and read_events() refuses a bad line anywhere but the tail, so a record written by a later version still reads. The reminder writes files and takes no lock, so drafted is reserved and nothing appends it; runner and api reach the writers through the filer and the scanner and make no call of their own."
+      "role": "The engagement's own append-only record: one JSON object per line in LEDGER_FILENAME, appended under the engagement lock by every writer that changes the index, the snapshot sidecar, the manifest's scanner columns or the pending manifest updates, and - since decision 88 - read back by filer.read_index() and manifest.load_manifest() as the answer wherever it has one. Owns the event names (preserved, filed, parked, duplicate, assigned_by_person, dismissed_by_person, unfiled_by_person, bytes_recorded, keyword_learned, scanned, imported; drafted and migrated reserved), append() / read_events() / fold() / statuses() / head(), the file name, and the CLI's --compare check of the record against the workbooks.",
+      "notes": "Decision 87 wrote it beside the files that already exist and had nothing read it; decision 88 is stage A step 2 - THE READERS BELIEVE IT AND FALL BACK TO THE WORKBOOKS. filer.read_index() answers from fold() wherever the record holds an index-shaped event, manifest.load_manifest() takes each identifier's scanner columns from statuses() wherever the record has recorded one, and both read the workbook for what the record has not - per row and per identifier. Both workbooks and both sidecars are still written exactly as before (dropping a write is stage B) and standing rule 2 still names the index, so deleting the record puts the reading back: that is what makes the step reversible. fold() returns rows in the index's own order, and a row that changed identity keeps the place the one it left held, because the index rewrites that row where it sits and the next write rebuilds the workbook from this fold. What makes all that safe is the autouse fixture in tests/conftest.py, which folds the record back after every test in the suite and compares it with the WORKBOOKS' own readings - read_index_from_workbook() and statuses_from_workbook(), which exist by name for exactly this, since the live readers would be the record compared with itself - row for row, field for field and now in order too. `python -m tracker.ledger <folder> --compare` is the same check for one engagement, for a person, and exits 1 on a disagreement; it imports the filer and the manifest inside the CLI block, so the module itself still imports nothing of the package but locking. Sits at the bottom beside tracker/locking.py and imports only it: the events are plain dicts, so tracker/filer.py and tracker/manifest.py each serialise their own rows with the function that already owns that shape (dataclasses.asdict for an IndexEntry, exactly as the index sidecar writes it; manifest._update_to_json for a StatusUpdate), and no cycle is created. One os.write of the whole line under O_APPEND then fsync, so a kill mid-append leaves at most a torn tail with no newline after it: read_events() ignores it and the next append() truncates it, and nothing else ever rewrites the file. O_APPEND is atomic for concurrent writers on POSIX and is not on Windows, which is why append() refuses unless locking.lock_is_held() says this process holds the engagement lock - one writer and one protocol rather than a second protocol for Windows. Not SQLite: a database file a cloud client syncs is a corrupted database file, and one database per clients root would put every client's history in one file, the opposite of the rule that an engagement folder carries everything about that engagement and nothing about anyone else's. The bootstrap is what makes an engagement already a season old agree from its first line - the first writer to append imports the index as it now stands (imported), and the first scanned event imports the manifest's statuses. Rows are keyed by the original's PBC location, the identity the snapshot merge and the app's review cards already join on; a row that followed an original the client moved carries the identity it left (was), so the fold drops the vacated one. fold() passes over an event name it does not know and read_events() refuses a bad line anywhere but the tail, so a record written by a later version still reads. The reminder writes files and takes no lock, so drafted is reserved and nothing appends it; runner and api reach the writers through the filer and the scanner and make no call of their own."
     },
     {
       "id": "tracker/locking.py",
@@ -443,8 +445,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9888b1bbee7502c2",
-      "lines": 1322,
+      "sha256": "6612bb72743286fc",
+      "lines": 1392,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -526,6 +528,7 @@
         "label_for",
         "load_engagement_info",
         "load_manifest",
+        "load_manifest_from_workbook",
         "parse_extensions",
         "pending_path",
         "pending_updates",
@@ -533,6 +536,7 @@
         "save_workbook_atomically",
         "shift_item",
         "shift_years",
+        "statuses_from_workbook",
         "summarize",
         "temp_path_for",
         "with_pending",
@@ -584,7 +588,7 @@
         "BARE_FORM_NUMBER_WARNING": "\"Row {row} ({identifier}): the keyword '{keyword}' matches only that form, not its variants such as {example}; list the forms this request means\""
       },
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
-      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check. Decision 55: check_manifest() warns when a keyword is a bare family number (FORM_FAMILIES). Decision 58: as_text() keeps a value written from data a string; an empty note replaces the old one; check_manifest() warns on a keyword with no letters or digits (EMPTY_KEYWORD_WARNING). Decision 59: atomic_replacement() never lets the temp's removal mask the write's own error; create_template() saves atomically. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 66: the Engagement sheet's text cells go through as_text() too. Decision 68: with_pending() matches identifiers without case, as load_manifest() does. Decision 72: csv_tuple() takes a list or tuple as the list it already is (a spec's [\"pdf\"] stringified to one extension called ['pdf'], and every document parked against that row), and tracker.templates reads spec fields through it; check_tax_year() is the one bound on a tax year (YEAR_OUT_OF_RANGE), used by the wizard and the rollover alike. Decision 86: the Engagement sheet gained a Form cell and EngagementInfo a form field - which catalog the request list was cut from, as the catalog keys it. ENGAGEMENT_FIELDS owns the label and the sheet is read by label, so the cell is added after the ones already there and an engagement made before it loads with a blank; create_template() takes form as an optional keyword and folds it into the info it writes, because it is one fact about the engagement and not a property of any row - every caller that hands over rows alone records a blank, and a blank never clears a form the info already carries. Nothing refuses a manifest for a blank one. Decision 87: write_statuses() appends a scanned event and add_any_keyword() a keyword_learned event to the engagement's own record (tracker/ledger.py), each after its own write and only while locking.lock_is_held() says the caller is a pass - a request list seeded into a workbook by a test or a tool is not a pass and records nothing, and the record's own bootstrap means the first real pass imports where those rows stood anyway. Only what changed is recorded, so a pass that found the engagement as it left it appends nothing; the statuses go through _update_to_json(), the same shape the pending sidecar stores, so there is one owner for it. A deferred write records too: every reader overlays the sidecar, so which file the statuses landed in is the workaround and not the fact."
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check. Decision 55: check_manifest() warns when a keyword is a bare family number (FORM_FAMILIES). Decision 58: as_text() keeps a value written from data a string; an empty note replaces the old one; check_manifest() warns on a keyword with no letters or digits (EMPTY_KEYWORD_WARNING). Decision 59: atomic_replacement() never lets the temp's removal mask the write's own error; create_template() saves atomically. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 66: the Engagement sheet's text cells go through as_text() too. Decision 68: with_pending() matches identifiers without case, as load_manifest() does. Decision 72: csv_tuple() takes a list or tuple as the list it already is (a spec's [\"pdf\"] stringified to one extension called ['pdf'], and every document parked against that row), and tracker.templates reads spec fields through it; check_tax_year() is the one bound on a tax year (YEAR_OUT_OF_RANGE), used by the wizard and the rollover alike. Decision 86: the Engagement sheet gained a Form cell and EngagementInfo a form field - which catalog the request list was cut from, as the catalog keys it. ENGAGEMENT_FIELDS owns the label and the sheet is read by label, so the cell is added after the ones already there and an engagement made before it loads with a blank; create_template() takes form as an optional keyword and folds it into the info it writes, because it is one fact about the engagement and not a property of any row - every caller that hands over rows alone records a blank, and a blank never clears a form the info already carries. Nothing refuses a manifest for a blank one. Decision 87: write_statuses() appends a scanned event and add_any_keyword() a keyword_learned event to the engagement's own record (tracker/ledger.py), each after its own write and only while locking.lock_is_held() says the caller is a pass - a request list seeded into a workbook by a test or a tool is not a pass and records nothing, and the record's own bootstrap means the first real pass imports where those rows stood anyway. Only what changed is recorded, so a pass that found the engagement as it left it appends nothing; the statuses go through _update_to_json(), the same shape the pending sidecar stores, so there is one owner for it. A deferred write records too: every reader overlays the sidecar, so which file the statuses landed in is the workaround and not the fact. Decision 88: load_manifest() now takes each identifier's Status, Received Date, File Count and Validation Notes FROM THAT RECORD wherever it has ever recorded one (_recorded_statuses(), replayed through with_pending() so there is one rule for replacing a row's scanner columns and one for matching an identifier without case), and leaves the workbook's own columns for an identifier the record has never seen - per identifier, so an engagement scanned before the record and a row added to the list since both read exactly as they always did. The request itself is never the record's: the keywords, the periods, the extensions, Waived, Manual Override and Any Keywords are the person's and always come from the workbook. load_manifest_from_workbook() is the workbook's own reading and statuses_from_workbook() its scanner columns with the pending sidecar overlaid, both public because the scanned bootstrap imports from them and the agreement fixture checks the record against them; through load_manifest() it would be checking the record against itself. A record that does not read as one is said loudly with the engagement and the line, and the workbook answers instead."
     },
     {
       "id": "tracker/reasons.py",
@@ -1254,8 +1258,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "55fe5b84d7e9512a",
-      "lines": 306,
+      "sha256": "7691a0357ef2e5b1",
+      "lines": 307,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1272,8 +1276,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1257059e21b819e4",
-      "lines": 628,
+      "sha256": "debb30e23c05b674",
+      "lines": 638,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1281,8 +1285,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "758661d7b7f6b8bd",
-      "lines": 289,
+      "sha256": "6041834382dae9a4",
+      "lines": 296,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1290,7 +1294,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "28bacbe86d0d5e20",
+      "sha256": "c5b0f8f386af9df4",
       "lines": 7631,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -1448,19 +1452,19 @@
       "id": "artifact:_index.pending.json",
       "type": "artifact",
       "layer": "runtime",
-      "role": "A versioned snapshot of the whole _index.xlsx (INDEX_SIDECAR_VERSION) written when Excel had the workbook open: every row, including one a person rewrote. read_index() returns it in the workbook's place until the next successful write lands it. An older bare-list sidecar holds only rows to append after the workbook's and is folded in once. Written whole or not at all; an unreadable one is moved aside only by a real run, never by a reader or a dry run."
+      "role": "A versioned snapshot of the whole _index.xlsx (INDEX_SIDECAR_VERSION) written when Excel had the workbook open: every row, including one a person rewrote. read_index_from_workbook() returns it in the workbook's place until the next successful write lands it. An older bare-list sidecar holds only rows to append after the workbook's and is folded in once. Written whole or not at all; an unreadable one is moved aside only by a real run, never by a reader or a dry run. Decision 88: it is still read whichever way read_index() answers - it may be the only copy of rows the workbook has not taken, an I/O error reading it is never guessed past, and a row it holds that the record has never seen (a bare list, or a snapshot an older version left) is read, said out loud and recorded by the next write."
     },
     {
       "id": "artifact:_index.xlsx",
       "type": "artifact",
       "layer": "runtime",
-      "role": "Every original the client sent: where it came from, where it went, and what it was renamed to. The audit trail. Its last column, Evidence, says what each candidate request was a candidate on: which of that request's own keywords the document said and where it said them (content_check.format_evidence()), or the code of the reason that refused the file. Catalog words and file names only, never a word of the client's document."
+      "role": "Every original the client sent: where it came from, where it went, and what it was renamed to. The audit trail. Its last column, Evidence, says what each candidate request was a candidate on: which of that request's own keywords the document said and where it said them (content_check.format_evidence()), or the code of the reason that refused the file. Catalog words and file names only, never a word of the client's document. Since decision 88 it is written on every pass exactly as before but READ ONLY AS THE FALLBACK: filer.read_index() answers from _ledger.jsonl wherever that record holds an index-shaped event, and reads this workbook where it does not - a folder from before the record, or one whose record holds nothing but a scan. read_index_from_workbook() is this file's own reading, kept public for the record's bootstrap, for _index_records() (asked between a write landing and the record learning of it) and for the suite's agreement fixture. It is still asked one thing whichever way a read answers: whether it is an index the tracker may touch at all (rows and no header row it knows are refused), because it is still rewritten every pass."
     },
     {
       "id": "artifact:_ledger.jsonl",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The engagement's own append-only record (decision 87): one JSON event per line, in the order the writers wrote them - what was preserved, filed, parked, called a duplicate, decided by a person, had its bytes recorded, taught a keyword, and the statuses each scan applied. Written only under the engagement lock, with O_APPEND and fsync, one line per event and never rewritten; a torn last line is ignored by the reader and truncated by the next append. Read by NOTHING in production yet - the index and the manifest are still the live path, and the suite's autouse fixture is what proves the two agree. A person never edits it."
+      "role": "The engagement's own append-only record (decision 87): one JSON event per line, in the order the writers wrote them - what was preserved, filed, parked, called a duplicate, decided by a person, had its bytes recorded, taught a keyword, and the statuses each scan applied. Written only under the engagement lock, with O_APPEND and fsync, one line per event and never rewritten; a torn last line is ignored by the reader and truncated by the next append. Since decision 88 it is what the readers BELIEVE: filer.read_index() answers from its fold wherever it holds an index-shaped event and manifest.load_manifest() takes each identifier's scanner columns from it wherever it has recorded one, with the workbooks as the per-row, per-identifier fallback. The workbooks are still written exactly as before, so deleting this file puts the reading back - that is what makes the step reversible. A record that does not read as one falls back to the workbook and says so loudly, naming the engagement and the line. A person never edits it, and `python -m tracker.ledger <folder> --compare` is how a person checks it against the workbooks."
     },
     {
       "id": "artifact:_manifest.pending.json",
@@ -1490,8 +1494,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ee8d0463dc37a0e9",
-      "lines": 133,
+      "sha256": "92919e6acb060027",
+      "lines": 136,
       "exports": [
         "the_record_agrees_with_the_workbooks"
       ]
@@ -1798,8 +1802,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "aa8e29e8d1394864",
-      "lines": 2099,
+      "sha256": "e744b6afdfc8f5b2",
+      "lines": 2105,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1962,22 +1966,28 @@
       "id": "tests/test_ledger.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "634e3c662be13cd2",
-      "lines": 273,
+      "sha256": "cc05762ad1295171",
+      "lines": 481,
       "exports": [
         "DAY1",
         "DAY2",
         "ITEMS",
         "REPO",
         "a_keyword",
+        "a_legacy_row",
+        "compare",
         "drop",
         "engagement",
         "lines",
         "row",
+        "test_a_folder_with_no_record_reads_its_index_from_the_workbook",
         "test_a_line_that_is_not_an_event_in_the_middle_is_refused",
         "test_a_pass_records_what_it_filed_and_what_it_parked",
         "test_a_person_filing_a_parked_file_is_recorded_as_theirs",
         "test_a_quiet_pass_appends_no_scan",
+        "test_a_record_holding_only_a_scan_still_reads_its_index_from_the_workbook",
+        "test_a_recorded_identifier_reads_from_the_record_and_an_unrecorded_one_from_the_workbook",
+        "test_a_row_that_changed_identity_keeps_the_place_the_index_keeps_it_in",
         "test_a_row_that_followed_a_moved_original_leaves_no_ghost_behind",
         "test_a_scan_that_changes_a_status_records_it",
         "test_a_torn_last_line_is_ignored_by_the_reader_and_truncated_by_the_next_append",
@@ -1985,9 +1995,14 @@
         "test_an_append_outside_the_engagement_lock_refuses_loudly",
         "test_an_engagement_with_rows_and_no_record_is_seeded_before_its_first_new_event",
         "test_an_event_this_version_does_not_know_is_refused",
+        "test_an_unreadable_record_falls_back_to_the_workbooks_and_names_the_engagement",
+        "test_the_app_shows_a_persons_filing_the_moment_they_make_it",
         "test_the_cli_prints_what_the_folder_holds",
+        "test_the_compare_check_says_they_agree_and_names_a_disagreement",
         "test_the_fold_is_the_last_event_for_each_original",
         "test_the_head_changes_with_every_append_and_not_otherwise",
+        "test_the_index_is_read_from_the_record_and_says_what_the_workbook_says",
+        "test_the_rollover_reads_last_years_statuses_through_the_record_and_otherwise_the_workbook",
         "test_the_statuses_are_built_up_across_the_passes_that_changed_something",
         "test_two_appends_are_two_lines_in_the_order_they_happened"
       ]
@@ -3531,6 +3546,12 @@
     },
     {
       "from": "tests/test_ledger.py",
+      "to": "pkg:openpyxl",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ledger.py",
       "to": "pkg:pytest",
       "type": "depends_on",
       "source": "derived"
@@ -3556,6 +3577,12 @@
     {
       "from": "tests/test_ledger.py",
       "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ledger.py",
+      "to": "tracker/rollover.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -4683,6 +4710,12 @@
     },
     {
       "from": "tracker/filer.py",
+      "to": "artifact:_ledger.jsonl",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/filer.py",
       "to": "artifact:_manifest.xlsx",
       "type": "reads",
       "source": "curated"
@@ -4713,7 +4746,25 @@
     },
     {
       "from": "tracker/ledger.py",
+      "to": "tracker/filer.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ledger.py",
       "to": "tracker/locking.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ledger.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ledger.py",
+      "to": "tracker/scaffold.py",
       "type": "imports",
       "source": "derived"
     },
@@ -4746,6 +4797,12 @@
       "to": "tracker/locking.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/manifest.py",
+      "to": "artifact:_ledger.jsonl",
+      "type": "reads",
+      "source": "curated"
     },
     {
       "from": "tracker/manifest.py",
