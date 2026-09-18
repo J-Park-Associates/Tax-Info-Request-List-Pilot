@@ -13,14 +13,15 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 98,
-    "edges": 345,
-    "reused": 73
+    "nodes": 99,
+    "edges": 348,
+    "reused": 71
   },
   "node_types": [
     "artifact",
     "concept",
     "doc",
+    "file",
     "module",
     "package",
     "script",
@@ -1101,16 +1102,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "39371a475a28c5d7",
-      "lines": 332,
+      "sha256": "3e1862ddaa93eedd",
+      "lines": 340,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "55cc6c003739d862",
-      "lines": 288,
+      "sha256": "ab756885d339bef9",
+      "lines": 289,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1127,8 +1128,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1734d9ff5cac3f3e",
-      "lines": 586,
+      "sha256": "414ed491a140c0bd",
+      "lines": 605,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1136,8 +1137,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fe53db0dde19fead",
-      "lines": 241,
+      "sha256": "897b9e182c43d4b9",
+      "lines": 244,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1260,6 +1261,15 @@
       "cli": "python api_entry.py",
       "role": "PyInstaller entry point: the portable app's one executable, which is the tracker API by default and the scheduled job (tracker.runner.main) when RUNNER_MODE_FLAG comes first.",
       "notes": "PyInstaller needs a real script, not a -m module. Runner mode is dispatched before tracker.api is imported, because the API imports tracker.scheduling whose TASK_NAME needs the product name the Electron shell passes in the environment - and Task Scheduler passes nothing; the job needs neither of the shell's variables. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen."
+    },
+    {
+      "id": "automation.manifest.json",
+      "type": "file",
+      "layer": "root",
+      "sha256": "a94682b8d841239c",
+      "lines": 79,
+      "role": "The firm's Command Center integration surface, and the whole of it: the card this tool shows on the office dashboard, and the four actions it offers there - a preview pass, a real pass, the engagement list and the learned keywords. No tracker code reads this file; the Command Center discovers it under its configured roots and runs the argv arrays in it with cwd set to the repository root.",
+      "notes": "Decision 81. The Center's safety contract refuses any manifest declaring that it schedules itself, and refusing one never stopped a Task Scheduler entry - it only meant this tool stayed off the board or declared a falsehood. The owner's written exception of 2026-09-18 is declared here in safety.scheduled_exception, the dated field the contract gained the same day, and the card prints that sentence; auto_send and money_movement admit no exception, ever. Each action is an argv array, never a shell string, and every flag it names has to exist in the module it calls. The pass takes the clients root as a positional argument rather than reading settings.py, because tracker.runner may not import tracker.settings; tools/learned_keywords.py takes no parameter here and reads the root from the settings file itself. run-pass carries the log flag ahead of a bare -- so the root that follows is read as the positional and not swallowed as the log's optional value."
     },
     {
       "id": "conftest.py",
@@ -2754,6 +2764,24 @@
       "from": "app/renderer/index.html",
       "to": "app/renderer/style.css",
       "type": "loads",
+      "source": "curated"
+    },
+    {
+      "from": "automation.manifest.json",
+      "to": "tools/learned_keywords.py",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
+      "from": "automation.manifest.json",
+      "to": "tracker/registry.py",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
+      "from": "automation.manifest.json",
+      "to": "tracker/runner.py",
+      "type": "runs",
       "source": "curated"
     },
     {

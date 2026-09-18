@@ -278,9 +278,28 @@
     "Build App.bat": {
       "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements-build.txt, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
       "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block. Decision 78: every exit goes through one `:wait` label, which pauses for the person who double-clicked unless TRACKER_BUILD_NONINTERACTIVE is set - the one switch, named in this file's header and read nowhere else, and what lets .github/workflows/build.yml run this file rather than a copy of it."
+    },
+    "automation.manifest.json": {
+      "role": "The firm's Command Center integration surface, and the whole of it: the card this tool shows on the office dashboard, and the four actions it offers there - a preview pass, a real pass, the engagement list and the learned keywords. No tracker code reads this file; the Command Center discovers it under its configured roots and runs the argv arrays in it with cwd set to the repository root.",
+      "notes": "Decision 81. The Center's safety contract refuses any manifest declaring that it schedules itself, and refusing one never stopped a Task Scheduler entry - it only meant this tool stayed off the board or declared a falsehood. The owner's written exception of 2026-09-18 is declared here in safety.scheduled_exception, the dated field the contract gained the same day, and the card prints that sentence; auto_send and money_movement admit no exception, ever. Each action is an argv array, never a shell string, and every flag it names has to exist in the module it calls. The pass takes the clients root as a positional argument rather than reading settings.py, because tracker.runner may not import tracker.settings; tools/learned_keywords.py takes no parameter here and reads the root from the settings file itself. run-pass carries the log flag ahead of a bare -- so the root that follows is read as the positional and not swallowed as the log's optional value."
     }
   },
   "edges": [
+    {
+      "from": "automation.manifest.json",
+      "to": "tracker/runner.py",
+      "type": "runs"
+    },
+    {
+      "from": "automation.manifest.json",
+      "to": "tracker/registry.py",
+      "type": "runs"
+    },
+    {
+      "from": "automation.manifest.json",
+      "to": "tools/learned_keywords.py",
+      "type": "runs"
+    },
     {
       "from": "tracker/filer.py",
       "to": "artifact:Shared/",
