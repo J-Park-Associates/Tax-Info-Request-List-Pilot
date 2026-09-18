@@ -54,6 +54,9 @@ def test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder(besi
     for typed in ("", "   "):
         with pytest.raises(SettingsError, match="no folder given"):
             set_clients_root(typed)
+    for typed in (".", " . ", "./", "tests/.."):        # the twelfth reading: the working folder by another name
+        with pytest.raises(SettingsError, match="working folder itself"):
+            set_clients_root(typed)
     assert clients_root() is None
 
 

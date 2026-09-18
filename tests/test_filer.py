@@ -903,8 +903,8 @@ def test_an_original_replaced_under_its_own_name_is_said_out_loud_every_run(enga
     text_pdf(pbc(engagement) / "w2.pdf", "Form W-2 Wage and Tax Statement 2025 CORRECTED")
     for _ in range(2):
         report = file_drops(engagement, today=DAY2)
-        assert report.handled == 0
-        [error] = report.errors
+        assert report.handled == 0 and report.errors == []          # nothing was left unsorted
+        [error] = report.attention
         assert error.name == "w2.pdf" and error.left_in_place
         assert error.error == REPLACED_IN_PBC.format(
             location=first.pbc_location, received=DAY1.isoformat(), prepared=first.prepared_location)
@@ -984,7 +984,7 @@ def test_a_same_size_replacement_with_an_old_date_is_still_noticed(engagement):
     stamp = original.stat().st_mtime - 30 * 86400
     original.write_text("a,1\nb,3\n", encoding="utf-8")          # same length
     os.utime(original, (stamp, stamp))                            # older than its row
-    [error] = file_drops(engagement, today=DAY2).errors
+    [error] = file_drops(engagement, today=DAY2).attention
     assert error.error == REPLACED_IN_PBC.format(
         location=first.pbc_location, received=DAY1.isoformat(), prepared=first.prepared_location)
 
@@ -1155,9 +1155,8 @@ def test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded(engag
     assert rows["w2.pdf"].digest == "" and rows["scan0012.pdf"].digest == ""              # nothing adopted
     assert rows["scan0013.pdf"].digest == sha256_of(pbc(engagement) / "scan0013.pdf")   # tied: copy and original agree
     assert (engagement / filed.prepared_location).read_bytes() == first_bytes            # untouched
-    said = sorted(e.name for e in report.errors if e.error.startswith(UNTIED_IN_PBC.split("{")[0]))
-    assert said == ["scan0012.pdf", "w2.pdf"]
-    assert all(e.left_in_place for e in report.errors)
+    said = sorted(e.name for e in report.attention if e.error.startswith(UNTIED_IN_PBC.split("{")[0]))
+    assert said == ["scan0012.pdf", "w2.pdf"] and report.errors == []   # for a person, not a failed pass
 
     # A person cannot file either untied row under it; the tied one files and carries its bytes.
     with pytest.raises(FilingError, match="look at both files first"):
@@ -1189,6 +1188,88 @@ def test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_byt
     assert sha256_of(engagement / row_b.prepared_location) == row_b.digest
 
 
+def test_an_index_whose_header_row_moved_is_read_from_it_and_one_with_none_is_refused(engagement):
+    # The twelfth reading: a header row that was not row 1 (a title typed
+    # above it; Excel sorting with "my data has headers" unchecked) read as
+    # no rows at all, and the next pass rebuilt the workbook without its
+    # history - a person's filing included. The header is found; an index
+    # with rows and no header is refused before anything is moved.
+    from openpyxl import load_workbook
+
+    from tracker.filer import FilingError
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    index = engagement / INDEX_FILENAME
+    wb = load_workbook(index)
+    ws = wb[INDEX_SHEET]
+    ws.insert_rows(1, amount=2)
+    ws["A1"] = "Smith Family - index of everything received"
+    wb.save(index)
+    wb.close()
+    assert [r.original_name for r in read_index(index)] == ["w2.pdf"]
+    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    assert file_drops(engagement, today=DAY2).handled == 1
+    rows = read_index(index)
+    assert [r.original_name for r in rows] == ["w2.pdf", "1098.pdf"] and rows[0].received == DAY1.isoformat()
+
+    wb = load_workbook(index)
+    wb[INDEX_SHEET].delete_rows(1)                               # the header itself, gone
+    wb.save(index)
+    wb.close()
+    with pytest.raises(FilingError, match="no header row"):
+        read_index(index)
+    drop(engagement, "later.pdf", "Form W-2 Wage and Tax Statement 2025 later")
+    with pytest.raises(FilingError, match="no header row"):
+        file_drops(engagement, today=DAY2)
+    assert (engagement / SHARED_DIR_NAME / "later.pdf").exists()   # nothing was moved
+
+
+def test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone(engagement, monkeypatch):
+    # The twelfth reading: a digest-less row A whose parked copy a person
+    # removed, then a same-named drop B parked under the freed name, was
+    # "untied" every pass and refused for ever - though the index itself
+    # says whose the file at that path is.
+    import tracker.filer as filer_module
+    from tracker.filer import assign_review_file
+    from tracker.validators import sha256_of
+
+    drop(engagement, "Scan.pdf", "document A, nothing the rules recognise")
+    real = filer_module.sha256_of
+
+    def unreadable(path):
+        if path.parent == pbc(engagement):
+            raise PermissionError("held by the sync client")
+        return real(path)
+    monkeypatch.setattr(filer_module, "sha256_of", unreadable)
+    row_a = file_drops(engagement, today=DAY1).review[0]
+    monkeypatch.undo()
+    assert row_a.digest == ""
+    (engagement / row_a.prepared_location).unlink()
+    drop(engagement, "Scan.pdf", "document B, unrelated")
+    report = file_drops(engagement, today=DAY2)
+    row_b = report.review[0]
+    assert row_b.prepared_location == row_a.prepared_location
+    assert report.attention == [] and report.errors == []          # not untied: its copy is gone
+
+    result = assign_review_file(engagement, row_a.pbc_location, "C01", today=DAY2)
+    assert result.entry.digest == sha256_of(pbc(engagement) / "Scan.pdf")   # document A, from its original
+    assert sha256_of(engagement / result.entry.prepared_location) == result.entry.digest
+    assert (engagement / row_b.prepared_location).exists()          # document B still waits
+
+
+def test_an_annotated_parked_copy_is_left_behind_and_said_so(engagement):
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    text_pdf(engagement / parked.prepared_location, "nothing the rules recognise, with a reviewer's note")
+    result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    assert result.moved_review_copy is False and "left there" in result.left_in_review
+    assert (engagement / parked.prepared_location).exists()
+    assert (engagement / result.entry.prepared_location).read_bytes() == (pbc(engagement) / "scan0012.pdf").read_bytes()
+
+
 def test_a_column_inserted_into_the_index_does_not_read_as_no_rows(engagement):
     # The eleventh reading: the blank-row test looked at the first physical
     # cell, so one column a person inserted at A read every row as blank,
@@ -1210,13 +1291,17 @@ def test_a_column_inserted_into_the_index_does_not_read_as_no_rows(engagement):
 
 
 def test_the_unlistable_walk_covers_the_same_ground_as_the_others(engagement, tmp_path):
+    from tests.samples import listing_denied
     from tracker.filer import unlistable_folders
 
     shared = engagement / SHARED_DIR_NAME
-    (shared / PBC_DIR_NAME / "inside").mkdir(parents=True)
+    inside_pbc = shared / PBC_DIR_NAME / "inside"
+    inside_pbc.mkdir(parents=True)
     staging = shared / ".tmp.driveupload"
     staging.mkdir()
     assert unlistable_folders(shared) == []
+    with listing_denied(inside_pbc):                                # a client drops into PBC too (the twelfth reading)
+        assert unlistable_folders(shared) == [inside_pbc]
     if sys.platform == "win32":
         import _winapi
 

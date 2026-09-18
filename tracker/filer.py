@@ -199,6 +199,10 @@ INDEX_LAYOUT: dict[str, tuple[str, int]] = {
 }
 assert tuple(INDEX_LAYOUT) == tuple(f.name for f in fields(IndexEntry))
 INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
+#: The columns a header row must carry to be the index's (every version
+#: of the index has had them), and how far down a header row is looked for.
+_MANDATORY_COLUMNS = ("original_name", "pbc_location", "decision")
+_HEADER_WITHIN = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,6 +224,11 @@ class FileReport:
     duplicates: list[IndexEntry] = field(default_factory=list)
     waiting: list[Path] = field(default_factory=list)   # cloud-only, left alone
     errors: list[FileError] = field(default_factory=list)
+    #: Originals already sorted whose record no longer fits what is on disk
+    #: (replaced under their name; recorded without bytes and now untied).
+    #: Said every pass for a person, but nothing was left unsorted, so the
+    #: pass is not a failure.
+    attention: list[FileError] = field(default_factory=list)
     index_deferred: bool = False   # index was locked; rows wait in the sidecar
     dry_run: bool = False
 
@@ -510,15 +519,33 @@ def _read_index_workbook(path: Path) -> list[IndexEntry]:
     if not rows:
         return []
     # By header name, so an index written with columns since dropped (Filed
-    # As, Document) or before one was added (Candidates) still reads.
-    headers = [str(h or "").strip() for h in rows[0]]
+    # As, Document) or before one was added (Candidates) still reads. The
+    # header row is found, not assumed: a person who sorted the sheet with
+    # "my data has headers" unchecked, or typed a title above it, moved it
+    # - and an index that reads as no rows would be rebuilt without its
+    # history on the next write (the twelfth reading). No header row in a
+    # sheet that holds anything is an index the tracker must not touch.
+    header_at = None
+    for position, row in enumerate(rows[:_HEADER_WITHIN]):
+        cells = {str(cell or "").strip() for cell in row}
+        if all(INDEX_LAYOUT[name][0] in cells for name in _MANDATORY_COLUMNS):
+            header_at = position
+            break
+    if header_at is None:
+        if any(cell not in (None, "") for row in rows for cell in row):
+            raise FilingError(
+                f"{path.name} has no header row the tracker knows ({', '.join(INDEX_LAYOUT[n][0] for n in _MANDATORY_COLUMNS)}) "
+                f"within its first {_HEADER_WITHIN} rows; it was edited by hand - restore it before the next run"
+            )
+        return []
+    headers = [str(h or "").strip() for h in rows[header_at]]
     by_field = {
         name: headers.index(header)
         for name, (header, _) in INDEX_LAYOUT.items()
         if header in headers
     }
     entries = []
-    for row in rows[1:]:
+    for row in rows[header_at + 1:]:
         # A row is blank when none of the columns the index knows holds
         # anything - not when its first physical cell is empty, which a
         # column somebody inserted at A, or a cleared Received cell, would
@@ -710,13 +737,12 @@ def unlistable_folders(shared_dir: Path) -> list[Path]:
             failed.append(Path(exc.filename))
 
     # The same ground the other walks cover: not behind a link (os.walk
-    # descends a junction), not the preserved originals, not a sync
-    # client's staging folder.
+    # descends a junction), not a sync client's staging folder. PBC is
+    # walked - a client drops there too, and unrecorded_in_pbc() reads it.
     for folder, subfolders, _files in os.walk(shared_dir, onerror=onerror):
         subfolders[:] = [
             name for name in subfolders
             if not _is_link(Path(folder) / name) and not is_sync_staging(name)
-            and not (Path(folder) == shared_dir and name == PBC_DIR_NAME)
         ]
     return sorted(failed)
 
@@ -807,6 +833,17 @@ UNTIED_IN_PBC = (
 )
 
 
+def _copy_taken_by_a_later_row(entries: list[IndexEntry], position: int) -> bool:
+    """Whether a row written after ``entries[position]`` records a working
+    copy at the same path. A parked name is the client's, and a freed one
+    is taken by the next drop called the same: the index itself then says
+    the earlier row's copy is gone, and what sits there is the later row's."""
+    location = entries[position].prepared_location
+    return bool(location) and any(
+        later.prepared_location == location for later in entries[position + 1:]
+    )
+
+
 def _record_missing_digests(
     engagement_dir: Path, entries: list[IndexEntry]
 ) -> tuple[int, list[tuple[Path, IndexEntry]]]:
@@ -829,6 +866,8 @@ def _record_missing_digests(
     for position, entry in enumerate(entries):
         if entry.digest or not entry.prepared_location or not entry.pbc_location:
             continue
+        if _copy_taken_by_a_later_row(entries, position):
+            continue                 # the row's copy is gone; what sits at its path is another row's
         copy = engagement_dir / entry.prepared_location
         original = engagement_dir / entry.pbc_location
         if not copy.is_file() or is_cloud_placeholder(copy):
@@ -911,7 +950,7 @@ def file_drops(
         # and says so where they do not.
         recorded_digests, untied = (0, []) if dry_run else _record_missing_digests(engagement_dir, entries)
         for path, earlier in untied:
-            report.errors.append(FileError(path.name, UNTIED_IN_PBC.format(
+            report.attention.append(FileError(path.name, UNTIED_IN_PBC.format(
                 location=earlier.pbc_location, received=earlier.received,
                 prepared=earlier.prepared_location,
             ), True))
@@ -943,7 +982,7 @@ def file_drops(
         # An original replaced under its own name is said loudly, every run,
         # until a person has looked; it is not sorted again and not guessed.
         for path, earlier in replaced_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []:
-            report.errors.append(FileError(path.name, REPLACED_IN_PBC.format(
+            report.attention.append(FileError(path.name, REPLACED_IN_PBC.format(
                 location=earlier.pbc_location, received=earlier.received,
                 prepared=earlier.prepared_location or "(none)",
             ), True))
@@ -1185,6 +1224,7 @@ class AssignResult:
     keyword: str = ""            # keyword added to the row's Any Keywords, if any
     keyword_note: str = ""       # why it was not added, when it was not
     index_deferred: bool = False
+    left_in_review: str = ""     # a parked copy that no longer held the row's bytes, and stayed
 
 
 def assign_review_file(
@@ -1239,9 +1279,14 @@ def assign_review_file(
             raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
         digest, size_kb = entry.digest, entry.size_kb
         parked = engagement_dir / entry.prepared_location if entry.prepared_location else None
-        # The parked copy is only ever read when it is here and hydrated:
-        # hashing a dehydrated one would make the sync client download it.
-        parked_here = parked is not None and parked.is_file() and not is_cloud_placeholder(parked)
+        # The parked copy is only ever read when it is here, hydrated
+        # (hashing a dehydrated one would make the sync client download
+        # it), and still this row's - a later row at the same path means
+        # this row's copy is gone and what sits there is the later row's.
+        parked_here = (
+            parked is not None and parked.is_file() and not is_cloud_placeholder(parked)
+            and not _copy_taken_by_a_later_row(entries, position)
+        )
         if not digest:
             # The pass that preserved this original could not read it back
             # (decision 65) and recorded no digest. A row a person files
@@ -1283,25 +1328,31 @@ def assign_review_file(
         target = dest_folder / filed_as
 
         moved = reused = False
-        # The parked copy is moved only while it holds the row's bytes. Its
-        # name is the client's, and a freed name is taken by the next drop
-        # called the same: a person filing row A would otherwise carry
-        # document B into the request folder under A's canonical name (the
-        # eleventh reading). Anything else at that path is left alone and
-        # the copy is made from the original, which the check above proved.
-        if parked_here and sha256_of(parked) == digest:
+        left_in_review = ""
+        # A copy with these bytes already in the folder is a killed earlier
+        # attempt's, and is reused rather than doubled. Otherwise the parked
+        # copy is moved, but only while it holds the row's bytes: its name
+        # is the client's, and a freed name is taken by the next drop called
+        # the same, so a person filing row A would carry document B into the
+        # request folder under A's canonical name (the eleventh reading); a
+        # copy a reviewer's app re-saved is not the row's bytes either and
+        # is left where it is, said so, for the person to keep or discard.
+        existing = _existing_copy(dest_folder, source, digest)
+        if existing is not None:
+            filed_as, target = existing.name, existing
+            reused = True
+            if parked_here and sha256_of(parked) == digest:
+                parked.unlink()           # the attempt's copy stands in for it, byte for byte
+        elif parked_here and sha256_of(parked) == digest:
             _move_whole(parked, target)   # keeps any notes a person made on it
             moved = True
         else:
-            # The parked copy is gone: a run killed after an earlier attempt
-            # moved it, or a person did. A copy with these bytes already in
-            # the folder is that attempt's, and is reused rather than doubled.
-            existing = _existing_copy(dest_folder, source, digest)
-            if existing is not None:
-                filed_as, target = existing.name, existing
-                reused = True
-            else:
-                _copy_whole(source, target)
+            if parked_here:
+                left_in_review = (
+                    f"the parked copy {entry.prepared_location} no longer holds the bytes this row "
+                    f"recorded (annotated, or re-saved) and was left there; {filed_as} was copied from the original"
+                )
+            _copy_whole(source, target)
 
         new_entry = replace(
             entry,
@@ -1348,7 +1399,7 @@ def assign_review_file(
                 note = f"keyword {keyword!r} not saved: {exc}"
     return AssignResult(
         entry=new_entry, moved_review_copy=moved, keyword=keyword if not note else "",
-        keyword_note=note, index_deferred=deferred,
+        keyword_note=note, index_deferred=deferred, left_in_review=left_in_review,
     )
 
 

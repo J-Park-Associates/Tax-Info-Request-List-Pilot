@@ -301,6 +301,17 @@ def test_explicit_target_year_wins(prior):
     assert rolled_by_id(report)["A01"].item.period == "TY2030"
 
 
+def test_a_roll_into_the_same_or_an_earlier_year_is_refused(prior):
+    # The twelfth reading: a roll into the prior's own year retired the
+    # live engagement in favour of a copy of itself; an earlier one shifted
+    # every period backwards.
+    from tracker.manifest import ManifestError
+
+    for year in (2025, 2024):
+        with pytest.raises(ManifestError, match="after 2025"):
+            roll_forward(prior, target_year=year)
+
+
 # --------------------------------------------------------------- the workbook ----
 
 

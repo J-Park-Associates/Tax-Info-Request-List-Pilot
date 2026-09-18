@@ -379,17 +379,63 @@ CASES = [
         "No goods or services were provided in exchange for these contributions.",
     ], "D01"),
     ("1040", "statement of giving.pdf", ["First Baptist Church", "2025 Statement of Giving", "Total 2,400.00"], "D01"),
-    ("1040", "contribution record.pdf", ["St. Mary's Parish", "Contribution Record for 2025", "Envelope 214", "Total 900.00"], "D01"),
+    ("1040", "contribution record.pdf", ["St. Mary's Parish", "Contribution Record for 2025", "Envelope 214", "Total 900.00"], None),
     ("1040", "acknowledgment letter.pdf", [
         "Red Cross", "We gratefully acknowledge your charitable contribution of $500 received on December 15, 2025.",
     ], "D01"),
     ("1040", "CA 540-ES voucher.pdf", [
         "TAXABLE YEAR 2025 Estimated Tax for Individuals CALIFORNIA FORM 540-ES",
         "Amount of payment 1,200.00", "Form 540-ES 2025",
-    ], "H01"),
+    ], None),
     ("1040", "dependent care FSA statement.pdf", [
         "WageWorks Benefits Administration", "2025 Dependent Care Statement",
         "Dependent Care FSA elected 5,000.00", "Claims reimbursed 5,000.00",
+    ], None),
+    # Round twelve. A sentence wraps where it will, so the word before a form
+    # may end the line above; a checklist sets a form off from its title with
+    # a dash; a savings plan's contribution record, receipt or summary is not
+    # a charitable receipt; a state return package with its filing letter is
+    # not the estimated tax record.
+    ("1040", "organizer homeowners wrapped.pdf", [
+        "2025 Individual Income Tax Organizer - Homeowners Section",
+        "Mortgage interest paid on your residence: please attach", "Form 1098 (2025) from each lender.",
+        "Property taxes paid: attach your bill",
+    ], None),
+    ("1040", "escrow letter wrapped.pdf", [
+        "Wells Fargo Home Mortgage", "Annual Escrow Account Disclosure Statement",
+        "For your mortgage interest deduction, see", "Form 1098 for 2025 mailed separately.",
+    ], None),
+    ("1040", "bank summary wrapped.pdf", [
+        "First National Bank", "Annual Account Summary January 1, 2025 - December 31, 2025",
+        "Total interest paid 12.50 (reported on", "Form 1099-INT)",
+    ], None),
+    ("1040", "organizer interest page.pdf", [
+        "2025 Individual Income Tax Organizer - Interest and Dividend Income",
+        "Form 1099-INT - Interest Income", "Form 1099-DIV - Dividends and Distributions",
+        "Form 1099-OID - Original Issue Discount", "Payer name  Amount",
+    ], None),
+    ("1041", "organizer 1099 page.pdf", [
+        "2025 Fiduciary Organizer - Income", "Form 1099-INT - Interest Income", "Form 1099-DIV - Dividends and Distributions",
+        "Form 1099-B - Proceeds", "Form 1099-R - Distributions", "Form 1099-MISC - Miscellaneous Information",
+    ], None),
+    ("1040", "organizer deductions page.pdf", [
+        "2025 Individual Income Tax Organizer - Deductions", "Form 1098 - Mortgage Interest Statement",
+        "Form 1098-T - Tuition Statement", "Form 1098-E - Student Loan Interest Statement", "Mortgage interest paid",
+    ], None),
+    ("1040", "IRA contribution record.pdf", ["Fidelity", "Traditional IRA - Account 1234", "2025 Contribution Record", "Contributions 7,000.00"], None),
+    ("1040", "IRA contribution receipt.pdf", ["Charles Schwab", "Contribution Receipt", "Account type: Traditional IRA", "Amount 7,000.00"], None),
+    ("1040", "IRA contribution summary.pdf", ["Vanguard", "2025 IRA Contribution Summary", "Tax-deductible contributions 7,000.00"], None),
+    ("1040", "HSA year-end statement.pdf", ["HealthEquity", "Year-End HSA Statement 2025", "Employee tax-deductible contributions 4,150.00"], None),
+    ("1040", "529 contribution record.pdf", ["ScholarShare 529", "2025 Contribution Record", "Total 5,000.00"], None),
+    ("1040", "DAF grant confirmation.pdf", [
+        "Fidelity Charitable", "Grant Confirmation", "Grants recommended from your giving account are not tax-deductible contributions.",
+    ], None),
+    ("1040", "plasma donation summary.pdf", ["BioLife", "2025 Donation Summary", "Total compensation paid 1,200.00"], None),
+    ("1040", "CA filing instructions then 540.pdf", [
+        "2024 California Filing Instructions", "Prepared for John and Jane Smith",
+        "Your 2024 California return is attached. Sign and mail Form 540 to the Franchise Tax Board.",
+        "Your 2025 estimated tax: mail Form 540-ES vouchers by April 15, June 15, September 15 and January 15.",
+        "TAXABLE YEAR 2024 California Resident Income Tax Return FORM 540", "Form 540 2024 Side 5",
     ], None),
 ]
 

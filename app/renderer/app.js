@@ -172,8 +172,9 @@ async function assignParked(li) {
     if (a.keyword) notes.push(`"${a.keyword}" added to ${a.identifier} so the next one files itself`);
     if (a.keyword_note) notes.push(a.keyword_note);
     if (a.index_deferred) notes.push("the index is open in Excel — the row is saved beside it and merges on the next run");
+    if (a.left_in_review) notes.push(a.left_in_review);
     if (a.scan_note) notes.push(a.scan_note);
-    banner(notes.join(". ") + ".", a.keyword_note || a.index_deferred || a.scan_note ? "warn" : "ok");
+    banner(notes.join(". ") + ".", a.keyword_note || a.index_deferred || a.left_in_review || a.scan_note ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
     btn.disabled = false;
