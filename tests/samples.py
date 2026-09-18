@@ -8,6 +8,11 @@ repository, no client data - so every test starts from the same pile.
 
 This used to live in tracker/api.py as the marketing demo's sample builder.
 The demo is gone; the suite still needs the pile.
+
+``build_scratch_root()`` assembles the same pile into a whole clients root,
+because the build workflow proves the package it just froze by running it and
+a run needs somewhere real to run. That fixture lives here rather than in a
+tool of its own so there is one pile, not two that can drift.
 """
 
 from __future__ import annotations
@@ -18,13 +23,19 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from tracker.manifest import HEADERS
+from tracker.manifest import HEADERS, EngagementInfo, create_template
+from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.templates import BASE_YEAR, template_items
 
 #: The rows the sample documents were written against.
 DEMO_ITEMS = template_items("1040", core_only=True)
 YEAR = BASE_YEAR          # the samples are dated for the catalog's base year
 PRIOR_YEAR = BASE_YEAR - 1
+#: The invented client one scratch root is built for. Nobody real: the pile
+#: below is written from nothing, and no client document enters this repo.
+SCRATCH_CLIENT = "John A. Smith"
+SCRATCH_FIRM = "Example CPA"
+SCRATCH_ENGAGEMENT = f"Smith TY{YEAR}"
 
 
 def col(header: str) -> int:
@@ -227,6 +238,30 @@ def build_samples(samples: Path) -> None:
     (samples / f"W-2 Jane Smith {YEAR}.pdf.tmp.driveupload").write_bytes(b"\x00" * 4096)
 
     (samples / "vacation photo.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"J" * 9000)
+
+
+def build_scratch_root(root: Path | str) -> Path:
+    """A throwaway clients root holding one scaffolded engagement with the
+    whole pile already waiting in its drop folder, and the root returned.
+
+    The build workflow proves the package it has just frozen by running the
+    frozen executable, and a pass over an empty folder proves only that
+    discovery does not crash. This gives it something to walk: the catalog's
+    core rows, the folders the scaffold makes, and the documents a client
+    really sends - one that routes, its byte-identical copy, last year's
+    form, a Google shortcut, a photo - so a single dry pass goes through
+    filing, routing, scanning and drafting the way the scheduled job does.
+
+    Nothing outside ``root`` is written, and nothing in it is a real
+    client's: every byte comes from ``build_samples()`` above.
+    """
+    root = Path(root)
+    engagement = root / SCRATCH_ENGAGEMENT
+    engagement.mkdir(parents=True, exist_ok=True)
+    create_template(engagement / MANIFEST_FILENAME, DEMO_ITEMS,
+                    EngagementInfo(client=SCRATCH_CLIENT, firm=SCRATCH_FIRM))
+    build_samples(scaffold_engagement(engagement).shared_dir)
+    return root
 
 
 @contextmanager

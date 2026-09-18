@@ -1,0 +1,147 @@
+# Builds the portable package the office actually installs, and runs it.
+#
+# The package is the only thing anybody at the firm ever launches: a PyInstaller
+# freeze of api_entry.py beside the Electron shell, carried there on a USB
+# stick. It was built by hand, on one machine, and nothing else ever ran it —
+# so a package that does not start is discovered at the office, after the drive
+# trip. This job runs "Build App.bat" itself, not a re-implementation of it
+# (a second copy of the build would be the thing that drifts), and then runs
+# the frozen executable it produced, because a package that exists is not the
+# same claim as a package that answers.
+#
+# Not on every commit: a freeze, an npm install, an Electron download and a
+# few hundred megabytes of artifact, on a Windows runner, are not what a commit
+# should cost. It is asked for, or made by a release tag.
+name: Build the portable package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+# Two builds of one ref would make the same package twice; the second waits
+# rather than cancelling the first, because a cancelled build leaves nothing
+# to download.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Portable package
+    # The package is a Windows package and the firm's machine is Windows;
+    # there is no other host this could be built on.
+    runs-on: windows-latest
+    steps:
+      # git comes with the checkout, and the build reads it: BUILD-INFO.txt
+      # records the commit the package was made from.
+      - uses: actions/checkout@v4
+
+      # The interpreter the firm's machine runs, which is therefore the one
+      # this package IS: the batch file freezes with whatever `python` is on
+      # the machine. pyproject.toml's [tool.office] is the one place that
+      # version is written down, and tests/test_build.py pins this line to it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      # Only the scratch clients root below needs these; the packages that go
+      # into the package are the virtual environment the batch file makes from
+      # requirements-build.txt, and nothing here touches that.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # The batch file as a person runs it. The one difference is the switch
+      # its own header documents, which skips the waits nobody is here to end.
+      - name: Build the portable package
+        shell: cmd
+        env:
+          TRACKER_BUILD_NONINTERACTIVE: "1"
+        run: |
+          call "Build App.bat"
+          if errorlevel 1 exit /b 1
+
+      # Where the package landed is the batch file's fact and the shell's, not
+      # this file's: OUT, PLATFORM and ARCH are read back out of the batch file
+      # and the two names out of app/package.json, so no path here is a second
+      # copy of one. TRACKER_PRODUCT_NAME is what the Electron shell passes the
+      # frozen API at run time; the smoke checks below pass the same thing,
+      # from the same place, because a frozen build has no package.json to read.
+      - name: Find what the build made
+        run: |
+          $bat = Get-Content "Build App.bat" -Raw
+          $out = [regex]::Match($bat, '(?m)^set OUT=(\S+)').Groups[1].Value
+          $platform = [regex]::Match($bat, '(?m)^set PLATFORM=(\S+)').Groups[1].Value
+          $arch = [regex]::Match($bat, '(?m)^set ARCH=(\S+)').Groups[1].Value
+          $info = [regex]::Match($bat, '(?m)^>\s*"%PKG%\\([^"]+)"').Groups[1].Value
+          $product = node -p "require('./app/package.json').productName"
+          $api = node -p "require('./app/package.json').config.apiName"
+          $package = Join-Path $out "dist\$product-$platform-$arch"
+          $exe = Join-Path $package "resources\$api\$api.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "no frozen executable at $exe" }
+          Add-Content -Path $env:GITHUB_ENV -Value "PACKAGE_DIR=$package"
+          Add-Content -Path $env:GITHUB_ENV -Value "API_EXE=$exe"
+          Add-Content -Path $env:GITHUB_ENV -Value "BUILD_INFO=$(Join-Path $package $info)"
+          Add-Content -Path $env:GITHUB_ENV -Value "TRACKER_PRODUCT_NAME=$product"
+
+      # What the package says about itself: the commit, the interpreter, and
+      # every package frozen into it. It is the first thing to read when a
+      # package misbehaves at the office.
+      - name: Say what was built
+        run: Get-Content -LiteralPath $env:BUILD_INFO
+
+      # An unconfigured install is the state every package is in when it is
+      # first unzipped, and the app's first call is this one. It has to answer
+      # in JSON — a traceback here is a blank window at the office.
+      - name: The frozen API answers in JSON with no clients root set
+        env:
+          TRACKER_SETTINGS_DIR: ${{ runner.temp }}\settings
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:TRACKER_SETTINGS_DIR | Out-Null
+          $printed = & $env:API_EXE list | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "list exited $LASTEXITCODE with: $printed" }
+          $answer = $printed | ConvertFrom-Json
+          if ($answer -is [array]) { throw "list printed more than one JSON value: $printed" }
+          if (-not $answer.PSObject.Properties.Name) { throw "list printed no JSON object: $printed" }
+          Write-Host "list answered with: $($answer.PSObject.Properties.Name -join ', ')"
+
+      # Made-up documents, written from nothing by the suite's own sample
+      # builder. Client data never enters this repo, so the thing CI runs the
+      # package over cannot be a client's folder. The folder is named once
+      # here and handed on, because the runner context a step may read is not
+      # one a job's env can.
+      - name: Build a scratch clients root
+        env:
+          SCRATCH_ROOT: ${{ runner.temp }}\clients
+        run: |
+          python -c "import os; from tests.samples import build_scratch_root; build_scratch_root(os.environ['SCRATCH_ROOT'])"
+          Add-Content -Path $env:GITHUB_ENV -Value "SCRATCH_ROOT=$env:SCRATCH_ROOT"
+
+      # The other half of the executable: the scheduled job. --dry-run decides
+      # everything and writes nothing, and the root holds enough for the pass
+      # to file, route, scan and draft rather than find an empty folder.
+      # --reminders always, because otherwise the draft step would only run on
+      # the one weekday the runner drafts on and most builds would skip it.
+      - name: The frozen executable makes one dry pass
+        run: |
+          & $env:API_EXE --run $env:SCRATCH_ROOT --dry-run --reminders always
+          if ($LASTEXITCODE -ne 0) { throw "the dry pass exited $LASTEXITCODE" }
+
+      # Last, so what can be downloaded is a package that answered both ways.
+      # Seven days: long enough to fetch it and copy it to the stick, short
+      # enough that nobody installs a package from a forgotten run.
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-package
+          path: ${{ env.PACKAGE_DIR }}
+          retention-days: 7

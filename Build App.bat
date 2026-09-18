@@ -7,6 +7,12 @@ rem Reproducible: the Python packages (requirements-build.txt), the Electron
 rem packages (app\package-lock.json, installed with npm ci) and the freeze
 rem itself (api_entry.spec) are all pinned in the commit being built, and
 rem BUILD-INFO.txt records which commit and which tools made the package.
+rem
+rem A person double-clicks this, so it waits for a key before every exit and
+rem the window stays up long enough to read. CI has nobody to press one:
+rem setting TRACKER_BUILD_NONINTERACTIVE (to anything) makes every wait return
+rem at once and changes nothing else. That name is read in exactly one place,
+rem the ":wait" label at the end of this file.
 
 cd /d "%~dp0"
 set OUT=build-portable
@@ -28,21 +34,21 @@ set VENV=%OUT%\venv
 rem Made fresh every build: a package once installed into a reused venv
 rem would be frozen into every later package.
 python -m venv --clear "%VENV%"
-if errorlevel 1 (echo Could not create the build environment & pause & exit /b 1)
+if errorlevel 1 (echo Could not create the build environment & call :wait & exit /b 1)
 set PY="%VENV%\Scripts\python.exe"
 %PY% -m pip install -r requirements-build.txt --quiet
-if errorlevel 1 (echo Installing requirements-build.txt failed & pause & exit /b 1)
+if errorlevel 1 (echo Installing requirements-build.txt failed & call :wait & exit /b 1)
 %PY% -m PyInstaller --noconfirm --clean --distpath %OUT%\py --workpath %OUT%\pyi-work api_entry.spec
-if errorlevel 1 (echo PyInstaller failed & pause & exit /b 1)
+if errorlevel 1 (echo PyInstaller failed & call :wait & exit /b 1)
 
 echo [2/4] Packaging Electron app (npm ci from package-lock.json)...
 pushd app
 call npm ci --no-audit --no-fund
-if errorlevel 1 (popd & echo npm ci failed - check your internet connection. & pause & exit /b 1)
+if errorlevel 1 (popd & echo npm ci failed - check your internet connection. & call :wait & exit /b 1)
 rem The packager is run through its entry script, not the npx shim: the
 rem shim breaks when the folder's path contains an ampersand.
 node node_modules\@electron\packager\bin\electron-packager.mjs . "%NAME%" --platform=%PLATFORM% --arch=%ARCH% --out="..\%OUT%\dist" --overwrite
-if errorlevel 1 (popd & echo electron-packager failed & pause & exit /b 1)
+if errorlevel 1 (popd & echo electron-packager failed & call :wait & exit /b 1)
 popd
 
 echo [3/4] Assembling portable folder...
@@ -52,8 +58,8 @@ rem robocopy, not xcopy: xcopy gives up on long paths (a deep checkout plus
 rem the package's own depth is enough) and the copy would be silently
 rem incomplete. robocopy's exit codes below 8 all mean "copied".
 robocopy "%OUT%\py\%API%" "%PKG%\resources\%API%" /e /nfl /ndl /njh /njs /np >nul
-if errorlevel 8 (echo Copying the frozen API into the package failed & pause & exit /b 1)
-if not exist "%PKG%\resources\%API%\%API%.exe" (echo The package has no %API%.exe & pause & exit /b 1)
+if errorlevel 8 (echo Copying the frozen API into the package failed & call :wait & exit /b 1)
+if not exist "%PKG%\resources\%API%\%API%.exe" (echo The package has no %API%.exe & call :wait & exit /b 1)
 
 rem No parentheses in this value: it is expanded inside the parenthesised
 rem block below, where a ")" would end the block early.
@@ -83,4 +89,12 @@ echo.
 echo Portable app: "%CD%\%PKG%"
 echo Copy that entire folder to a USB drive or laptop and double-click
 echo "%NAME%.exe".
-pause
+call :wait
+exit /b 0
+
+rem The one reader of the switch this file's header names. Every exit above
+rem goes through here, so a person still gets the window they can read and a
+rem build with nobody watching still ends.
+:wait
+if not defined TRACKER_BUILD_NONINTERACTIVE pause
+exit /b 0

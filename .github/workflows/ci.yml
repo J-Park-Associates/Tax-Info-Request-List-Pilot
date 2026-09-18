@@ -1,5 +1,5 @@
 # Runs the test suite and verifies the repository map still matches the tree,
-# on Linux and on Windows.
+# on Linux and on Windows, on the floor interpreter and on the office's.
 #
 # The map check is here because docs/repo-map.md is what agents read instead of
 # re-scanning the repo (see CLAUDE.md). Its freshness is guarded by a test, but
@@ -27,20 +27,36 @@ permissions:
 
 jobs:
   test:
-    name: Tests and repository map (${{ matrix.os }})
+    name: Tests and repository map (${{ matrix.os }}, Python ${{ matrix.python-version }})
     strategy:
       fail-fast: false
+      # Two interpreters on both operating systems, written out one row at a
+      # time rather than crossed: the floor line has to stay readable as one
+      # literal, because tests/test_single_source.py pins it to pyproject's
+      # requires-python by substring and a flow sequence would hide it.
+      #
+      # The floor is what the code may use. The other is what the firm's
+      # machine runs and what the portable package is frozen on
+      # (pyproject.toml's [tool.office], built by .github/workflows/build.yml);
+      # a package that ships on an interpreter the suite has never run under
+      # is tested for the first time at the office (decision 78).
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.14"
+          - os: windows-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.14"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      # The floor pyproject.toml declares is what the firm's Windows box runs,
-      # so it is the version worth the signal (tests/test_single_source.py pins it).
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: requirements.txt
 

@@ -308,7 +308,13 @@ machine with neither. Both are reproducible from the commit: the Python
 packages are pinned in `requirements.txt` and `requirements-build.txt`, the
 Electron packages in `app/package-lock.json` (installed with `npm ci`), and
 the freeze is the committed `api_entry.spec`; a build-info text file in the
-package records the commit and the tool versions that made it. On first launch the app asks where your clients live
+package records the commit and the tool versions that made it. You do not have
+to run the build yourself: `build.yml` builds the same package on demand (the
+Actions tab, *Run workflow*, or a `v*` tag), runs the frozen executable to
+prove it answers, and leaves the package to download as the run's artifact for
+seven days. It builds and tests on the interpreter `[tool.office]` in
+`pyproject.toml` names — the one the firm's machine runs — so the package is
+proved on the interpreter it ships under. On first launch the app asks where your clients live
 and writes that to `settings.json` beside itself; everything else follows
 from that one folder. Who does what, and the life of a request, is in
 [docs/workflow.md](docs/workflow.md); the decision log is

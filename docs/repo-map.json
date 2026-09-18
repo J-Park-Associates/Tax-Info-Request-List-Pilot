@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 93,
-    "edges": 323,
-    "reused": 53
+    "nodes": 95,
+    "edges": 331,
+    "reused": 49
   },
   "node_types": [
     "artifact",
@@ -49,13 +49,22 @@
   ],
   "nodes": [
     {
+      "id": ".github/workflows/build.yml",
+      "type": "workflow",
+      "layer": "ci",
+      "sha256": "1b65dc375ccdcf48",
+      "lines": 148,
+      "role": "Builds the portable package on demand (workflow_dispatch or a `v*` tag) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file and uploads the package as the run's artifact for seven days.",
+      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost."
+    },
+    {
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "905dd83da35b91a3",
-      "lines": 84,
-      "role": "CI: runs the test suite, `repo_map.py check` and `node --check` on the three Electron files, on Linux and Windows, on every push to main and every pull request.",
-      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is in the matrix because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version line is pinned to pyproject's floor by a guard."
+      "sha256": "fd2c5e5f32bb0608",
+      "lines": 100,
+      "role": "CI: runs the test suite, `repo_map.py check`, the vocabulary check, the linter and `node --check` on the three Electron files, on Linux and Windows and on two interpreters, on every push to main and every pull request.",
+      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is in the matrix because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version line is pinned to pyproject's floor by a guard. Decision 78: the matrix carries the interpreter the office runs beside that floor, because the package is frozen on the office's Python and a suite that has never run there proves nothing about it; the four rows are written out one at a time rather than crossed so the floor stays one readable literal for the guard that pins it."
     },
     {
       "id": "rule:no-AI-on-client-documents",
@@ -1092,16 +1101,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "392d84609f591167",
-      "lines": 316,
+      "sha256": "7e508d4d7af1b9f9",
+      "lines": 322,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b755f81ab5fd85db",
-      "lines": 280,
+      "sha256": "97b3b86e439daf5d",
+      "lines": 281,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1118,8 +1127,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "cce1fb5dbb8fd79c",
-      "lines": 541,
+      "sha256": "22c51128f79a232c",
+      "lines": 564,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1219,10 +1228,10 @@
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "7136ce5da10643c4",
-      "lines": 87,
+      "sha256": "c2df60dced58e76b",
+      "lines": 101,
       "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements-build.txt, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
-      "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block."
+      "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block. Decision 78: every exit goes through one `:wait` label, which pauses for the person who double-clicked unless TRACKER_BUILD_NONINTERACTIVE is set - the one switch, named in this file's header and read nowhere else, and what lets .github/workflows/build.yml run this file rather than a copy of it."
     },
     {
       "id": "Start App.bat",
@@ -1312,13 +1321,17 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "661dd0a254cb81ea",
-      "lines": 261,
+      "sha256": "e7b71910916c8021",
+      "lines": 296,
       "exports": [
         "DEMO_ITEMS",
         "PRIOR_YEAR",
+        "SCRATCH_CLIENT",
+        "SCRATCH_ENGAGEMENT",
+        "SCRATCH_FIRM",
         "YEAR",
         "build_samples",
+        "build_scratch_root",
         "col",
         "donations_xlsx",
         "form_1098_lines",
@@ -1330,8 +1343,12 @@
         "text_pdf",
         "w2_lines"
       ],
+      "constants": {
+        "SCRATCH_CLIENT": "'John A. Smith'",
+        "SCRATCH_FIRM": "'Example CPA'"
+      },
       "role": "The pile of client documents the suite starts from, built from nothing: text_pdf() prints lines to a real one-page PDF, sheet_xlsx() writes rows to a real workbook, and build_samples() assembles the drop folder a client would leave (a duplicate, last year's form, a Word file, a Google Sheets shortcut, a photo, a half-uploaded temp file).",
-      "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading."
+      "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift."
     },
     {
       "id": "tests/test_api.py",
@@ -1455,6 +1472,37 @@
       },
       "role": "Guards the backtest: a document is routed by its text and never by its name, a file with no text layer is counted apart rather than parked, the report and the console carry no file or folder name, the skeleton is blank with the request folder as the hint and is never overwritten, and an unrecorded baseline is said rather than passed.",
       "notes": "Decision 74. The corpus it scores is built with tests/samples.py in a temporary folder, because no client document is in the repository or ever will be. It also pins the two things the hiding rests on: the neutral name reaches no keyword in any shipped catalog, and a whole pass writes nothing under the repository root."
+    },
+    {
+      "id": "tests/test_build.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "9beed4df23116fb4",
+      "lines": 147,
+      "exports": [
+        "BUILD_SCRIPT",
+        "BUILD_WORKFLOW",
+        "REPO",
+        "commands",
+        "fired_at_the_frozen_executable",
+        "office_python",
+        "read",
+        "test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk",
+        "test_both_workflows_name_the_one_interpreter_the_office_runs",
+        "test_the_build_workflow_is_never_run_per_commit",
+        "test_the_build_workflow_runs_the_repositorys_own_build_script",
+        "test_the_smoke_checks_drive_the_frozen_entry_by_the_flags_the_code_owns",
+        "test_the_smoke_checks_pass_the_environment_the_electron_shell_passes",
+        "test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads",
+        "test_the_workflow_types_no_path_the_build_script_or_the_shell_owns",
+        "workflow"
+      ],
+      "constants": {
+        "BUILD_WORKFLOW": "'build.yml'",
+        "BUILD_SCRIPT": "'Build App.bat'"
+      },
+      "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down.",
+      "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can."
     },
     {
       "id": "tests/test_catalog.py",
@@ -2462,6 +2510,24 @@
   ],
   "edges": [
     {
+      "from": ".github/workflows/build.yml",
+      "to": "Build App.bat",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
+      "from": ".github/workflows/build.yml",
+      "to": "api_entry.py",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
+      "from": ".github/workflows/build.yml",
+      "to": "tests/samples.py",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
       "from": ".github/workflows/ci.yml",
       "to": "requirements.txt",
       "type": "reads",
@@ -2614,6 +2680,12 @@
     {
       "from": "tests/samples.py",
       "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
+      "to": "tracker/scaffold.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -2777,6 +2849,30 @@
       "from": "tests/test_backtest.py",
       "to": "tools/backtest.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {
