@@ -68,6 +68,12 @@ jobs:
         if: always()
         run: python tools/repo_map.py check
 
+      # The coverage report is what the next review round is briefed from;
+      # a stale one sends it after the wrong keywords.
+      - name: Check the vocabulary coverage report is current
+        if: always()
+        run: python tools/vocab_report.py check
+
       # The Electron shell has no test suite of its own; at least it must parse.
       - name: Check the Electron shell parses
         if: always()
