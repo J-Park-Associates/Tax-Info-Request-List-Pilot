@@ -10,11 +10,13 @@ import json
 import pytest
 
 from tracker.settings import (
+    ENV_REAL_CORPUS,
     ENV_SETTINGS_DIR,
     KEY_CLIENTS_ROOT,
     SETTINGS_FILENAME,
     SettingsError,
     clients_root,
+    real_corpus_dir,
     set_clients_root,
     settings_dir,
     settings_path,
@@ -75,6 +77,23 @@ def test_an_unreadable_settings_file_is_an_error_not_a_default(beside_the_app):
     settings_path().write_text("{not json", encoding="utf-8")
     with pytest.raises(SettingsError, match="could not be read"):
         clients_root()
+
+
+def test_the_real_corpus_is_a_folder_outside_the_repo_or_it_is_nothing(tmp_path, monkeypatch):
+    # The firm's redacted documents are never in the tree, so every machine
+    # without them - CI included - must get None rather than an error.
+    monkeypatch.delenv(ENV_REAL_CORPUS, raising=False)
+    assert real_corpus_dir() is None
+    monkeypatch.setenv(ENV_REAL_CORPUS, "   ")
+    assert real_corpus_dir() is None
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(tmp_path / "gone"))
+    assert real_corpus_dir() is None
+    (tmp_path / "corpus").mkdir()
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(tmp_path / "corpus"))
+    assert real_corpus_dir() == tmp_path / "corpus"
+    (tmp_path / "corpus" / "a document.pdf").write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(tmp_path / "corpus" / "a document.pdf"))
+    assert real_corpus_dir() is None                  # a file is not a corpus
 
 
 def test_the_root_is_stored_absolute_and_a_bare_drive_is_its_root(beside_the_app, monkeypatch):

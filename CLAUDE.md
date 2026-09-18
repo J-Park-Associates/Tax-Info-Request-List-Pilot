@@ -91,6 +91,19 @@ stale one. Every case in `tests/test_catalog.py` carries the decision that
 introduced it, so `python -m pytest -k d67` runs decision 67's whole history
 before a rule it touched is trusted.
 
+The firm's own redacted documents are the third corpus, and they live
+outside the repository: the environment variable TRACKER_REAL_CORPUS names
+the folder holding them, with an expectations.csv beside them saying, per
+document, which catalog and engagement year it is routed against and the
+identifier it must file under — blank where it must park in
+`00 - Needs Review`. `tests/test_real_corpus.py` routes every row of that
+file the way the IRS forms are routed, and the coverage report reads the
+same documents, when the variable is set; both skip when it is not, so a
+machine without a corpus (CI, a fresh clone) is green. They are never
+committed, redacted or not: client documents do not enter the repo, and a
+report built with them names files the firm's clients can be read out of,
+so `check` refuses one.
+
 ## The standing rules
 
 These are not style preferences. They are why the system is trusted with

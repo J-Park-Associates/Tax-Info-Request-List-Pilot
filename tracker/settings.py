@@ -15,6 +15,14 @@ without ``ROOT_FLAG`` reads it too).
 
 Deliberately tiny: one JSON object (the clients root and the firm's name),
 read and written whole, atomic on write. There is no second setting to drift.
+
+``ENV_REAL_CORPUS`` sits here for the same reason the clients root does:
+it is the other folder outside the repository the code is told about - the
+firm's own redacted documents, which the harness and the coverage report
+route when it is set and skip when it is not. It is an environment
+variable rather than a setting because it belongs to the machine a person
+develops on, never to an engagement, and because a run must never depend
+on it.
 """
 
 from __future__ import annotations
@@ -39,6 +47,18 @@ ENV_SETTINGS_DIR = "TRACKER_SETTINGS_DIR"
 #: same file is read directly. There is no second copy of the product name.
 ENV_PRODUCT_NAME = "TRACKER_PRODUCT_NAME"
 PACKAGE_JSON = Path(__file__).resolve().parent.parent / "app" / "package.json"
+#: The folder of the firm's own redacted documents, outside the repository.
+ENV_REAL_CORPUS = "TRACKER_REAL_CORPUS"
+#: The file beside them that says where each one belongs, and its columns:
+#: the document's own name, the catalog it is routed against, the
+#: engagement year, and the identifier it must file under - blank for a
+#: document that must park for a person.
+EXPECTATIONS_FILENAME = "expectations.csv"
+COLUMN_FILE = "file"
+COLUMN_CATALOG = "catalog"
+COLUMN_YEAR = "year"
+COLUMN_EXPECTED = "expected"
+EXPECTATIONS_COLUMNS = (COLUMN_FILE, COLUMN_CATALOG, COLUMN_YEAR, COLUMN_EXPECTED)
 
 
 class SettingsError(Exception):
@@ -101,6 +121,22 @@ def product_name() -> str:
         raise SettingsError(
             f"{ENV_PRODUCT_NAME} is not set and {PACKAGE_JSON.name} is not readable: {exc}"
         ) from exc
+
+
+def real_corpus_dir() -> Path | None:
+    """The folder of the firm's own redacted documents, or None.
+
+    ``ENV_REAL_CORPUS`` names it and it lives outside the repository, so
+    an unset variable and a folder that is not there mean the same thing -
+    there is nothing to route - and both answer None. Raising instead
+    would fail the suite on every machine that has no corpus, CI's
+    included; the harness and the report skip on None and say so.
+    """
+    named = os.environ.get(ENV_REAL_CORPUS, "").strip()
+    if not named:
+        return None
+    folder = Path(named)
+    return folder if folder.is_dir() else None
 
 
 def _write(data: dict) -> None:

@@ -5324,7 +5324,8 @@
   "tests/irs/fw3.pdf": "2df15f40431bd52814cbac85d9843102b09a640b6fe558f201e5214ff1890656",
   "tests/test_catalog.py": "095e6b5b97c1215a968c70e2cf08648367e498a63fb32bed31e2a562225b27bc",
   "tests/test_irs_forms.py": "0335f63ef3e5cb8dbcd12e250b46e594a2e14f5956a20abd72f9f16db3e306c3",
-  "tools/vocab_report.py": "515db060717036f3ba803f9531898b7dd22d68c92908bde4c3374e9f8ea9dd1d",
+  "tests/test_real_corpus.py": "642ad7f2b445d4acac7a043bcfb4bdc2b31da1a44479b5b04f4c991d771ed671",
+  "tools/vocab_report.py": "0bd894810cc002b839cd40b60394ab0343fcb5ff065f20193caef75c349a405a",
   "tracker/content_check.py": "e9ab87cd552e3d8975ef9c1ce156318973ed7f613efd9b23ed38680296ddfb1c",
   "tracker/manifest.py": "c8a1fb796470ffdfef5f431f52fe42ef0c582617558e63a5e13758bb0f07679e",
   "tracker/templates.py": "ea0badb31196b6cd04174c0de6244874e8704a14ec69e428af17dae91b5e08d2"
