@@ -16,8 +16,17 @@ this page does not repeat it. Why anything is the way it is, is
 Clients drop their own documents into a shared Google Drive folder. Google
 Drive for desktop syncs that folder onto the designated machine, and the
 synced engagement folder **is** the record: the manifest, the index, the
-originals, the working copies and the drafts all live in it. There is no
-database, no portal and no second copy anywhere.
+originals, the working copies, the drafts and the engagement's own ledger
+all live in it. There is no database, no portal and no second copy anywhere.
+
+`_ledger.jsonl` is that ledger: a line the tool appends every time it
+decides something about a document or writes a status, kept beside the
+workbooks so what the system did is not held only in files Excel can
+rewrite. **Nobody edits it, and nothing you do depends on it yet** — the
+manifest and the index are still what the tool reads and what you read.
+Leave it where it is; if you are ever asked what one engagement's history
+looks like, `python -m tracker.ledger "<engagement folder>"` prints the
+count and the dates without opening anything.
 
 The folder that holds every engagement is typed once, in the app, on first
 launch. It is written to the settings file beside the app

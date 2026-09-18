@@ -37,6 +37,9 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
+from tracker import ledger
+from tracker.locking import lock_is_held
+
 log = logging.getLogger("tracker.manifest")
 
 SHEET_NAME = "Requests"
@@ -852,6 +855,63 @@ def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
         wb.close()
 
 
+def _manifest_statuses(path: Path) -> dict[str, dict]:
+    """Every identifier's scanner columns as the workbook and its sidecar now
+    read them - the bootstrap for an engagement that was scanned before it
+    kept a record of its own."""
+    items = with_pending(load_manifest(path), _load_pending(path, quarantine=False))
+    return {
+        item.identifier: _update_to_json(StatusUpdate(
+            status=item.status, file_count=item.file_count,
+            received_date=item.received_date, validation_notes=item.validation_notes,
+        ))
+        for item in items if item.status
+    }
+
+
+def _record_scanned(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
+    """Append what this write applied to the engagement's own record.
+
+    Only what *changed*: a pass that found the engagement exactly as it left
+    it appends nothing, so the record is the list of the moments something
+    moved rather than one line per pass for ever.
+
+    Only under the engagement lock, which is what makes this a *pass* - the
+    scanner takes it before it reads a thing. Seeding a request list into a
+    manifest from a test or a tool is not a pass and writes no event; the
+    bootstrap above means the first real pass records where those rows stood
+    anyway, so nothing is lost by the silence.
+    """
+    engagement_dir = path.parent
+    if not lock_is_held(engagement_dir):
+        return
+    applied = {identifier: _update_to_json(update) for identifier, update in updates.items()}
+    already = ledger.statuses(ledger.read_events(engagement_dir))
+    changed = {i: status for i, status in applied.items() if already.get(i) != status}
+    if not changed:
+        return
+    ledger.append(
+        engagement_dir,
+        ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: changed}),
+        seed=lambda: [ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: _manifest_statuses(path)})],
+    )
+
+
+def _record_keyword(path: Path, identifier: str, keyword: str) -> None:
+    """Append a keyword a person's filing taught a request.
+
+    The filer writes the index row first and the keyword after it, both
+    inside its own lock, so by the time this runs the record already carries
+    the rows; a caller outside the lock (a tool, a test) writes no event.
+    """
+    engagement_dir = path.parent
+    if not lock_is_held(engagement_dir):
+        return
+    ledger.append(engagement_dir, ledger.new(
+        ledger.KEYWORD_LEARNED, identifier=identifier, keyword=keyword,
+    ))
+
+
 def write_statuses(
     path: Path | str,
     updates: Mapping[str, StatusUpdate],
@@ -893,9 +953,14 @@ def write_statuses(
             pending_path(path).unlink(missing_ok=True)
         except PermissionError as exc:
             log.warning("%s was written but %s is held open and stays (%s)", path.name, pending_path(path).name, exc)
+        _record_scanned(path, merged)
         return True
 
     _save_pending(path, merged)
+    # Recorded either way: the statuses are applied as far as this system is
+    # concerned - every reader overlays the sidecar - and which file they
+    # landed in is the workaround, not the fact.
+    _record_scanned(path, merged)
     log.error(
         "Manifest still locked after %d attempts; %d update(s) deferred to %s",
         retries,
@@ -1164,6 +1229,7 @@ def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
             cell.value = ", ".join((*existing, keyword))
             as_text(cell)              # a keyword starting with "=" is a keyword, not a formula
             save_workbook_atomically(wb, path)
+            _record_keyword(path, identifier, keyword)
             return True
         raise ManifestError(f"No request {identifier!r} in {path.name}")
     finally:

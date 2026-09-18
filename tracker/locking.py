@@ -271,6 +271,28 @@ def lock_status(engagement_dir: Path | str) -> LockStatus | None:
     )
 
 
+def lock_is_held(engagement_dir: Path | str) -> bool:
+    """Whether *this* process holds this engagement's lock right now.
+
+    Asked by a writer that must not write outside the lock and cannot be
+    handed the lock itself (:mod:`tracker.ledger`, called from deep inside
+    the filer and the manifest). It is the lock file's own line that answers
+    - this host, this process id, not marked released - so it is the same
+    fact :func:`release_lock` and :func:`lock_status` read, not a second one
+    kept in a variable that a raised exception could leave true.
+
+    Never raises: a folder that is not there, or a lock file that cannot be
+    read, is a lock this process does not hold.
+    """
+    status = lock_status(engagement_dir)
+    return (
+        status is not None
+        and not status.released
+        and status.host == _this_host()
+        and status.pid == str(os.getpid())
+    )
+
+
 def _this_host() -> str:
     return socket.gethostname().lower()
 

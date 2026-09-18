@@ -334,6 +334,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     import subprocess
 
     from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME
+    from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import pending_path
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
@@ -343,14 +344,14 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
 
-    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME,
+    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
-        for quoted in re.findall(r"`([^`\s]+\.(?:txt|xml|json|lock|xlsx|log|bat|py|md|js|toml|yml))`", read(rel)):
+        for quoted in re.findall(r"`([^`\s]+\.(?:txt|xml|jsonl|json|lock|xlsx|log|bat|py|md|js|toml|yml))`", read(rel)):
             name = quoted.split("/")[-1].split("\\")[-1]
             if "<" in quoted or "*" in quoted:
                 continue                                  # a pattern, not a file
@@ -538,6 +539,7 @@ def test_documents_state_the_naming_pattern_with_the_one_separator():
 
 def test_tree_diagrams_name_only_runtime_files_the_code_owns():
     from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME
+    from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import pending_path
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
@@ -547,7 +549,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
 
-    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME,
+    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
@@ -555,7 +557,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
         for line in read(rel).splitlines():
             if "──" not in line:
                 continue
-            for name in re.findall(r"(_[\w.-]+\.(?:xlsx|json|txt|lock|log))", line):
+            for name in re.findall(r"(_[\w.-]+\.(?:xlsx|jsonl|json|txt|lock|log))", line):
                 assert name in owned, (rel, name)
         for name in re.findall(r"--out (\S+\.xml)", read(rel)):
             assert name == SCHEDULE_XML_FILENAME, (rel, name)
@@ -566,6 +568,7 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     import ast
 
     from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME
+    from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import Override, Status
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
@@ -581,7 +584,7 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     from tracker.scanner import CACHE_FILENAME
     from tracker.settings import SETTINGS_FILENAME
 
-    values = {INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+    values = {INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
               LOG_FILENAME, MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME, CACHE_FILENAME, SETTINGS_FILENAME,
               f"{SHARED_DIR_NAME}/", f"{PBC_DIR_NAME}/", f"{PREPARED_DIR_NAME}/"}
     quoted = {f"``{v}``" for v in set(Status.ALL) | set(Override.ALL)}

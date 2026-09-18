@@ -91,6 +91,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.utils import get_column_letter
 
+from tracker import ledger
 from tracker.content_check import (
     CACHE_FILENAME,
     ContentCache,
@@ -510,6 +511,124 @@ def _save_pending_index(path: Path, entries: list[IndexEntry]) -> None:
         _SIDECAR_VERSION_KEY: INDEX_SIDECAR_VERSION,
         _SIDECAR_ENTRIES_KEY: [asdict(e) for e in entries],
     })
+
+
+# ------------------------------------------------------------------ record ----
+
+
+def ledger_key(entry: IndexEntry) -> str:
+    """The identity the engagement's record keeps this row under.
+
+    The index's own: where the client's preserved original is, which is what
+    the snapshot merge keys on and what the app joins a review card back by.
+    A row that names no original (only a workbook somebody built by hand has
+    one) falls back to what else the row says about the document, so two such
+    rows are not folded into one.
+    """
+    return entry.pbc_location or f"{entry.received}|{entry.original_name}|{entry.digest}"
+
+
+#: Which event a row's decision is recorded as, when a pass reaches it. The
+#: decisions a person makes are recorded under their own names, at the call
+#: that makes them, so the record says who decided and not only what.
+_LEDGER_EVENT_FOR = {
+    FILED: ledger.FILED,
+    NEEDS_REVIEW: ledger.PARKED,
+    DUPLICATE: ledger.DUPLICATE,
+    NOT_REQUESTED: ledger.PARKED,
+}
+
+
+def _ledger_row(entry: IndexEntry) -> dict:
+    """The row as the record stores it - the shape the index's own sidecar
+    writes and ``_entry_from_json`` reads back, so there is one owner for it."""
+    return asdict(entry)
+
+
+def _ledger_event(name: str, entry: IndexEntry, *, was: str = "") -> dict:
+    event = ledger.new(name, **{ledger.KEY_KEY: ledger_key(entry), ledger.ROW_KEY: _ledger_row(entry)})
+    if was and was != event[ledger.KEY_KEY]:
+        event[ledger.WAS_KEY] = was
+    return event
+
+
+def _seed_from_index(index_path: Path):
+    """The bootstrap for an engagement whose index has rows and whose record
+    has none: every row as it now stands, imported. Called at most once, by
+    the first writer that appends - never by a reader, so looking at a folder
+    still changes nothing."""
+    def seed() -> list[dict]:
+        return [_ledger_event(ledger.IMPORTED, entry) for entry in read_index(index_path, quarantine=False)]
+    return seed
+
+
+def _index_as_recorded(engagement_dir: Path) -> dict[str, dict]:
+    """What the engagement's record says its index rows are, by identity."""
+    return ledger.fold(ledger.read_events(engagement_dir))
+
+
+def _rows_changed(
+    before: dict[str, dict],
+    entries: list[IndexEntry],
+    moved: dict[str, str],
+    decided: dict[str, str],
+) -> list[dict]:
+    """One event per row the index now holds that ``before`` does not already say.
+
+    Read off the rows themselves rather than collected as the caller goes,
+    so every road a row travels - a drop sorted, bytes recorded on a row
+    preserved without them, a row that followed an original the client moved,
+    a row a person rewrote - is recorded by the one rule and none of them can
+    be forgotten by a later edit somewhere else.
+
+    ``moved`` maps a row's new identity to the one it is leaving; ``decided``
+    names the event for the row this call decided itself, so a person's
+    decision is recorded as theirs and not as the decision it happens to
+    write.
+    """
+    events = []
+    for entry in entries:
+        key = ledger_key(entry)
+        was = moved.get(key, "")
+        row = _ledger_row(entry)
+        earlier = before.get(was or key)
+        if earlier == row:
+            continue
+        if key in decided:
+            name = decided[key]
+        elif was:
+            name = ledger.PRESERVED          # the original is elsewhere; the row followed it
+        elif earlier is not None and not earlier["digest"] and row["digest"]:
+            name = ledger.BYTES_RECORDED
+        else:
+            name = _LEDGER_EVENT_FOR.get(entry.decision, ledger.PARKED)
+        events.append(_ledger_event(name, entry, was=was))
+    return events
+
+
+def _record_write(
+    engagement_dir: Path,
+    index_path: Path,
+    before: dict[str, dict],
+    entries: list[IndexEntry],
+    *,
+    moved: dict[str, str] | None = None,
+    decided: dict[str, str] | None = None,
+) -> None:
+    """Append what the index now says and the record does not, under the lock.
+
+    ``before`` is the index as this call found it. Where the record already
+    carries rows it is the record, not that reading, that is compared
+    against: a row can reach the index by a road no writer took - an older
+    version's sidecar folded in, a cell somebody typed over in Excel, a write
+    whose process was killed between the workbook landing and this line - and
+    the next write through here learns it rather than leaving the two
+    disagreeing for ever.
+    """
+    recorded = _index_as_recorded(engagement_dir)
+    bootstrap = None if recorded or not before else _seed_from_index(index_path)
+    for event in _rows_changed(recorded or before, entries, moved or {}, decided or {}):
+        ledger.append(engagement_dir, event, seed=bootstrap)
 
 
 def _by_a_person(entry: IndexEntry) -> bool:
@@ -1244,6 +1363,9 @@ def file_drops(
         items = load_manifest(engagement_dir / MANIFEST_FILENAME)
         by_id = {i.identifier: i for i in items}
         entries = read_index(index_path, quarantine=not dry_run)
+        # What the record already says, taken before anything in this pass
+        # touches a row, so what this pass wrote is what gets recorded.
+        before = {ledger_key(entry): _ledger_row(entry) for entry in entries}
         # An original preserved by a pass that could not read it back has no
         # digest (decision 65). While it has none, a replacement is never
         # noticed and a person's filing of it is never honoured; a later
@@ -1277,6 +1399,11 @@ def file_drops(
         # carries the row's bytes the row follows the file (and is not
         # adopted a second time); the rest are said, every pass.
         strays, moved, gone = _follow_moved_originals(engagement_dir, entries, strays, stamp)
+        # Where a row's identity in the record moved to, and from.
+        moved_keys = {
+            path.relative_to(engagement_dir).as_posix(): ledger_key(earlier)
+            for path, earlier in moved
+        }
         for path, earlier in moved:
             report.attention.append(FileError(path.name, MOVED_IN_PBC.format(
                 location=earlier.pbc_location,
@@ -1338,6 +1465,11 @@ def file_drops(
             # nothing to sort at all.
             if not dry_run and (len(entries) > recorded or sidecar_waiting):
                 report.index_deferred = not write_index(index_path, entries)
+                # The record goes after the write it records, in the same
+                # locked section - whether the workbook took the rows or the
+                # snapshot did, because the sidecar is the workaround and
+                # this is the record.
+                _record_write(engagement_dir, index_path, before, entries, moved=moved_keys)
         # The tidy-up is owed to every pass, not only one that sorted
         # something: an empty folder the client dragged in outlives the
         # files that were in it, and a pass that found nothing to do used
@@ -1613,6 +1745,7 @@ def assign_review_file(
             raise FilingError(f"{identifier} is waived; clear the override first")
 
         entries = read_index(index_path)
+        before = {ledger_key(e): _ledger_row(e) for e in entries}
         position = _find_parked(entries, original)
         entry = entries[position]
         source = engagement_dir / entry.pbc_location
@@ -1711,6 +1844,7 @@ def assign_review_file(
             candidates="",
         )
         entries[position] = new_entry
+        landed = True
         try:
             deferred = not write_index(index_path, entries)
         except BaseException:
@@ -1723,7 +1857,8 @@ def assign_review_file(
             # that stood in for the parked one leaves the row still naming
             # a parked copy that is no longer there, so it is put back -
             # from the copy that stood in for it, which is it byte for byte.
-            if not _index_records(index_path, new_entry):
+            landed = _index_records(index_path, new_entry)
+            if not landed:
                 try:
                     if moved:
                         _move_whole(target, parked)
@@ -1734,6 +1869,13 @@ def assign_review_file(
                 except OSError as undo:       # the copy stays where it is; the real error is the one to hear
                     log.error("Could not put %s back after the index write failed: %s", target.name, undo)
             raise
+        finally:
+            # The record follows the index wherever the index went: an
+            # interrupt between the workbook landing and this line would
+            # otherwise leave the one decision a person made unrecorded.
+            if landed:
+                _record_write(engagement_dir, index_path, before, entries,
+                              decided={ledger_key(new_entry): ledger.ASSIGNED_BY_PERSON})
 
         keyword = keyword.strip()
         note = ""
@@ -1837,6 +1979,7 @@ def dismiss_review_file(
 
     with engagement_lock(engagement_dir):
         entries = read_index(index_path)
+        before = {ledger_key(e): _ledger_row(e) for e in entries}
         position = _find_parked(entries, original)
         entry = entries[position]
         new_entry = replace(
@@ -1848,7 +1991,16 @@ def dismiss_review_file(
         # Nothing was moved, so there is nothing to put back: a write that
         # fails for a reason Excel is not leaves the folder as it was and
         # the row as the index on disk still has it.
-        deferred = not write_index(index_path, entries)
+        landed = True
+        try:
+            deferred = not write_index(index_path, entries)
+        except BaseException:
+            landed = _index_records(index_path, new_entry)
+            raise
+        finally:
+            if landed:
+                _record_write(engagement_dir, index_path, before, entries,
+                              decided={ledger_key(new_entry): ledger.DISMISSED_BY_PERSON})
     return DismissResult(entry=new_entry, index_deferred=deferred)
 
 
@@ -1923,6 +2075,7 @@ def unfile_document(
 
     with engagement_lock(engagement_dir):
         entries = read_index(index_path)
+        before = {ledger_key(e): _ledger_row(e) for e in entries}
         position = _find_filed(entries, original)
         entry = entries[position]
         source = engagement_dir / entry.pbc_location
@@ -1965,12 +2118,14 @@ def unfile_document(
             reason=f"{UNFILED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}",
         )
         entries[position] = new_entry
+        landed = True
         try:
             deferred = not write_index(index_path, entries)
         except BaseException:
             # The same rule as filing: leave the file where the index on disk
             # says it is, so a retry does this once rather than twice.
-            if not _index_records(index_path, new_entry):
+            landed = _index_records(index_path, new_entry)
+            if not landed:
                 try:
                     if still_the_rows:
                         _move_whole(parked, working)
@@ -1979,6 +2134,10 @@ def unfile_document(
                 except OSError as undo:
                     log.error("Could not put %s back after the index write failed: %s", parked.name, undo)
             raise
+        finally:
+            if landed:
+                _record_write(engagement_dir, index_path, before, entries,
+                              decided={ledger_key(new_entry): ledger.UNFILED_BY_PERSON})
 
     # Outside the lock: the scan takes it for itself. A pass that slips in
     # between reads the index this one has already written, so it sees the
