@@ -258,6 +258,33 @@ def test_strays_in_prepared_are_warnings_and_parked_files_are_not(engagement):
     assert scan_engagement(engagement, today=DAY2).warnings == []
 
 
+def test_a_document_a_person_said_nothing_asks_for_is_not_a_warning_either(engagement):
+    """A dismissal rewrites a row; the folder it leaves is the one it was.
+
+    The index is the record of a parked document, with why it was parked and
+    now who set it aside. A warning of its own would be the scan disagreeing
+    with the index about a file the scan cannot see the decision on.
+    """
+    from tracker.filer import (
+        INDEX_FILENAME,
+        NOT_REQUESTED,
+        dismiss_review_file,
+        file_drops,
+        read_index,
+    )
+    from tracker.scaffold import SHARED_DIR_NAME
+
+    text_pdf(engagement / SHARED_DIR_NAME / "irs-notice.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismiss_review_file(engagement, parked.pbc_location, today=DAY1)
+
+    report = scan_engagement(engagement, today=DAY2)
+    assert report.warnings == []
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NOT_REQUESTED
+    assert (engagement / row.prepared_location).is_file()
+
+
 def test_the_scan_report_carries_the_one_summary(engagement):
     text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
     report = scan_engagement(engagement, today=DAY1)

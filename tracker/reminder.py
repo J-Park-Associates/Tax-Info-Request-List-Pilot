@@ -40,13 +40,17 @@ manifest the scanner already wrote.
 One more guard: files sitting in ``REVIEW_DIR_NAME`` are things the client
 *has* already sent that nobody has identified yet. Sending a reminder over
 the top of those risks asking for a document already in hand, so their count
-is reported and the CLI says so plainly before you send.
+is reported and the CLI says so plainly before you send. A file a person has
+marked ``NOT_REQUESTED`` has been identified - as something no request asks
+for - and is not counted; the warning is there to stop a person sending over
+a document nobody has looked at, and they have looked at that one.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -69,6 +73,8 @@ from tracker.scaffold import (
     REVIEW_DIR_NAME,
 )
 from tracker.validators import iter_candidate_files
+
+log = logging.getLogger("tracker.reminder")
 
 DRAFT_FILENAME = "reminder-draft.txt"
 DUE_FLAG = "--due"
@@ -282,9 +288,38 @@ def triage(items: Sequence[RequestItem]) -> tuple[
 
 
 def count_needs_review(engagement_dir: Path) -> int:
-    """Files parked in ``REVIEW_DIR_NAME`` — already sent, not yet identified."""
+    """Files parked in ``REVIEW_DIR_NAME`` — already sent, not yet identified.
+
+    Counted from the folder, not from the index, because a file somebody
+    dragged in by hand is still a file nobody has identified. The index only
+    takes files *out* of the count: a row a person marked ``NOT_REQUESTED``
+    has been looked at, and the whole point of the warning is that a person
+    may be about to ask for something already in hand. A row they have seen
+    is not that.
+
+    An index that cannot be read leaves every file counted. The warning is
+    the loud side of the choice, and the index is the filer's to complain
+    about, not the draft's.
+    """
+    from tracker.filer import INDEX_FILENAME, NOT_REQUESTED, read_index
+
     review = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
-    return len(iter_candidate_files(review))
+    parked = iter_candidate_files(review)
+    if not parked:
+        return 0
+    try:
+        rows = read_index(engagement_dir / INDEX_FILENAME, quarantine=False)
+    except Exception as exc:
+        log.warning("Could not read the index for the files a person has seen: %s", exc)
+        return len(parked)
+    # The newest row for a working copy is the one that counts: a name freed
+    # and taken by the next drop called the same is not the earlier decision.
+    newest = {row.prepared_location: row for row in rows if row.prepared_location}
+    seen = {
+        engagement_dir / location
+        for location, row in newest.items() if row.decision == NOT_REQUESTED
+    }
+    return sum(1 for path in parked if path not in seen)
 
 
 # ----------------------------------------------------------------- drafts ----

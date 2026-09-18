@@ -1718,3 +1718,136 @@ def test_an_empty_folder_is_cleared_by_a_pass_with_nothing_to_sort(engagement):
     left_behind.mkdir()
     report = file_drops(engagement, today=DAY1)
     assert report.handled == 0 and not left_behind.exists()
+
+
+# ------------------------------- a person says no request asks for it (d76) ----
+
+
+def test_dismissing_a_parked_file_rewrites_its_row_and_moves_nothing(engagement):
+    """Not Requested is a decision about the request list, not about the file.
+
+    An agency notice the client sent is still the client's: the working copy
+    stays parked and the original stays in PBC. What the row says changes,
+    and what it said before is kept after it.
+    """
+    from tracker.filer import DISMISSED_BY_PERSON, NOT_REQUESTED, dismiss_review_file
+
+    drop(engagement, "irs-notice.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    copy = engagement / parked.prepared_location
+    original = engagement / parked.pbc_location
+    assert copy.is_file()
+
+    result = dismiss_review_file(engagement, parked.pbc_location, "an IRS notice", today=DAY2)
+
+    assert result.index_deferred is False
+    assert result.entry.decision == NOT_REQUESTED
+    assert result.entry.reason == (
+        f"{DISMISSED_BY_PERSON} on {DAY2.isoformat()} (an IRS notice); was: {parked.reason}"
+    )
+    assert copy.is_file() and copy.read_bytes() == original.read_bytes()
+    assert original.is_file()
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NOT_REQUESTED
+    assert row.prepared_location == parked.prepared_location
+
+
+def test_the_same_document_sent_again_after_a_dismissal_is_a_duplicate(engagement):
+    """Parking it a second time would put back the warning a person just cleared."""
+    from tracker.filer import NOT_REQUESTED, dismiss_review_file
+
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
+
+    drop(engagement, "notice again.pdf", "nothing the rules recognise")   # same bytes
+    report = file_drops(engagement, today=DAY2)
+
+    assert [e.original_name for e in report.duplicates] == ["notice again.pdf"]
+    assert report.review == []
+    review_dir = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    assert [p.name for p in review_dir.iterdir()] == ["notice.pdf"]
+    assert (pbc(engagement) / "notice again.pdf").exists()        # preserved, as always
+    decisions = [r.decision for r in read_index(engagement / INDEX_FILENAME)]
+    assert decisions == [NOT_REQUESTED, DUPLICATE]
+
+
+def test_filing_a_dismissed_document_is_how_the_decision_is_undone(engagement):
+    """A person who was wrong files it; there is no second undo path to build."""
+    from tracker.filer import ASSIGNED_BY_PERSON, assign_review_file, dismiss_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
+
+    result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+
+    assert result.moved_review_copy is True
+    assert result.entry.filed_as == "C01 - Mortgage Interest Statement - TY2025.pdf"
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == FILED and row.identifier == "C01"
+    assert row.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: ")
+    assert (engagement / row.prepared_location).is_file()
+
+
+def test_a_dismissal_excel_kept_out_of_the_workbook_is_not_lost(engagement, monkeypatch):
+    """The snapshot is the index while Excel holds it, and it keeps the decision.
+
+    A dismissal is an edit to a row the workbook already holds, so the same
+    trap as a person's filing: deferring only what is past the workbook's
+    end would lose it, and a stale workbook saved from Excel would undo it.
+    """
+    from tracker.filer import NOT_REQUESTED, dismiss_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    sidecar = engagement / INDEX_PENDING_FILENAME
+
+    _lock_the_index(monkeypatch)
+    result = dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
+    assert result.index_deferred is True and sidecar.exists()
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NOT_REQUESTED
+
+    monkeypatch.undo()                            # Excel closed - having saved
+    _age(sidecar, 60)
+    os.utime(engagement / INDEX_FILENAME, None)   # the workbook is newer, and stale
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NOT_REQUESTED
+
+    assert file_drops(engagement, today=DAY2).index_deferred is False
+    assert not sidecar.exists()
+    [row] = read_index(engagement / INDEX_FILENAME)       # the workbook alone now
+    assert row.decision == NOT_REQUESTED
+
+
+def test_dismissing_something_that_is_not_parked_says_what_it_is(engagement):
+    """A filed document is not a person's to dismiss without unfiling it first."""
+    from tracker.filer import FilingError, dismiss_review_file
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    with pytest.raises(FilingError, match=f"is not waiting for review \\(it is {FILED}"):
+        dismiss_review_file(engagement, "w2.pdf", today=DAY2)
+    with pytest.raises(FilingError, match="nothing in the index is called"):
+        dismiss_review_file(engagement, "ghost.pdf", today=DAY2)
+
+
+def test_dismissing_takes_the_engagement_lock(engagement):
+    """A decision is written to the index, so it queues behind a run like every other."""
+    from tracker.filer import NOT_REQUESTED, dismiss_review_file
+    from tracker.locking import LOCK_FILENAME, EngagementLockedError
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    (engagement / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
+    with pytest.raises(EngagementLockedError):
+        dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NEEDS_REVIEW               # nothing was written
+
+    (engagement / LOCK_FILENAME).unlink()
+    result = dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
+    assert result.entry.decision == NOT_REQUESTED
+    assert not (engagement / LOCK_FILENAME).exists()

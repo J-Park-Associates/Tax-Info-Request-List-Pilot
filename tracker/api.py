@@ -13,6 +13,7 @@ Commands:
   rollover  build next year's list from a returning client's prior year
   scan      one pass, exactly as the scheduled run makes it (no draft)
   assign    file one Needs Review document under a request (a person's call)
+  dismiss   record that no request asks for one Needs Review document
   check     check_manifest() on demand, problems named by row
   settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
@@ -36,8 +37,10 @@ from tracker.filer import (
     FILED,
     INDEX_FILENAME,
     NEEDS_REVIEW,
+    NOT_REQUESTED,
     FilingError,
     assign_review_file,
+    dismiss_review_file,
     read_index,
 )
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
@@ -156,6 +159,12 @@ def _root() -> Path:
 ENGAGEMENT_FLAG = "--engagement"
 #: What a new client is called in the name preview before a name is typed.
 NEW_CLIENT_PLACEHOLDER = "New"
+#: What the Needs Review card calls the decisions a person makes there, and
+#: what it asks them for. The renderer shows these; it types none of them.
+DISMISS_LABEL = "Not requested"
+DISMISS_NOTE_HINT = "why nothing asks for it (optional)"
+DISMISSED_HEADING = "Not requested ({n})"
+FILE_ANYWAY_LABEL = "File it anyway"
 
 
 def _new_engagement_dir(name: str) -> Path:
@@ -251,7 +260,15 @@ def _vocab() -> dict:
         "unscanned_label": UNSCANNED_LABEL,
         "unscanned_key": _slug(UNSCANNED_LABEL),
         "overrides": {"accepted": Override.ACCEPTED, "waived": Override.WAIVED},
-        "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE},
+        # The key a decision is looked up by is the app's handle on it, not
+        # the word: NOT_REQUESTED is keyed by the action that writes it,
+        # because the renderer may not carry the word "Requested" in any
+        # form - it is UNSCANNED_LABEL, a status, and the guard that keeps
+        # the app from typing a status of its own reads the whole file.
+        "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE,
+                      "dismissed": NOT_REQUESTED},
+        "review_labels": {"dismiss": DISMISS_LABEL, "dismiss_note": DISMISS_NOTE_HINT,
+                          "dismissed_heading": DISMISSED_HEADING, "file_anyway": FILE_ANYWAY_LABEL},
         "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
         "expected_pattern": EXPECTED_PATTERN,
         "period_pattern": PERIOD_PATTERN,
@@ -681,6 +698,37 @@ def _cmd_assign(argv: list[str]) -> dict:
     }
 
 
+def _cmd_dismiss(argv: list[str]) -> dict:
+    """Record that no request asks for one parked document, by a person's decision.
+
+    JSON spec on stdin: {"original": "<PBC location or original name>",
+                         "note": "optional"}
+    The index row is rewritten as Not Requested (attributed to a person) and
+    nothing moves: the working copy stays where it is and the client's
+    original is untouched. Filing it afterwards is how the decision is undone.
+
+    There is no re-scan. The document was never filed under a request, so no
+    row's status can change; re-scanning would take the lock again and read
+    every working copy to prove that.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    original = str(spec.get("original", "")).strip()
+    if not original:
+        raise ManifestError("Pick the file no request asks for")
+    result = dismiss_review_file(engagement, original, str(spec.get("note", "") or ""))
+    return {
+        "dismissed": {
+            "original_name": result.entry.original_name,
+            "decision": result.entry.decision,
+            "reason": result.entry.reason,
+            "prepared_location": result.entry.prepared_location,
+            "index_deferred": result.index_deferred,
+        },
+        "state": _state(engagement),
+    }
+
+
 def _cmd_settings(argv: list[str]) -> dict:
     """Where the clients live, and where that is written down."""
     root = clients_root()
@@ -755,6 +803,7 @@ COMMANDS = {
     "list": _cmd_list,
     "create": _cmd_create,
     "assign": _cmd_assign,
+    "dismiss": _cmd_dismiss,
     "check": _cmd_check,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,

@@ -107,7 +107,12 @@ accountant instead:
 
 And if files are still sitting in `00 - Needs Review`, the CLI says so before
 you send: those are documents the client *has* already sent, so a reminder
-over the top of them risks asking for something already in hand.
+over the top of them risks asking for something already in hand. A file a
+person has marked `NOT_REQUESTED` — an agency notice, an extra statement no
+row asks for — is not counted. Its copy stays where it is and nothing is
+deleted; what stops is the warning, which is there for documents nobody has
+decided about. One that stood for the rest of the engagement would be the
+warning people learn to send past.
 
 ### Running it unattended
 

@@ -39,6 +39,11 @@ Guarantees:
 - **A working copy that went missing is replaced.** A re-sent document
   whose earlier copy is no longer in ``PREPARED_DIR_NAME/`` is filed again rather
   than dismissed as a duplicate; the original was always safe in ``PBC_DIR_NAME/``.
+- **A document no request asks for is said so, never erased.**
+  ``dismiss_review_file()`` rewrites the row as ``NOT_REQUESTED`` and moves
+  nothing: an agency notice or an extra statement stays where the client's
+  copy of it is. The weekly draft stops counting it, and filing it later
+  (``assign_review_file()``) is how the decision is undone.
 - **An original that leaves the client's own folder is said out loud.**
   ``PBC_DIR_NAME/`` is the provided-by-client record and the client can see
   it, so Explorer will delete, rename and drag what is already there. A row
@@ -142,9 +147,29 @@ def numbered(stem: str, counter: int, suffix: str) -> str:
 FILED = "Filed"
 NEEDS_REVIEW = "Needs Review"
 DUPLICATE = "Duplicate"
+#: A parked document no request asks for - an agency notice, an extra
+#: statement. The working copy stays in ``REVIEW_DIR_NAME`` (nothing a
+#: client sent is ever deleted) and the original in ``PBC_DIR_NAME/`` is
+#: untouched; what changes is that the draft stops counting it and a
+#: re-send of the same bytes is a duplicate rather than a second review
+#: item. Filing it is how the decision is undone.
+NOT_REQUESTED = "Not Requested"
 
 #: Reason prefix on index rows a person filed from REVIEW_DIR_NAME.
 ASSIGNED_BY_PERSON = "assigned by a person"
+#: Reason prefix on index rows a person said no request asks for.
+DISMISSED_BY_PERSON = "not requested, by a person"
+
+#: Every decision a person makes on a parked row, with the reason prefix it
+#: is written under. A snapshot's row wins over a workbook that still shows
+#: the row as the machine left it when it carries one of these: only Excel
+#: saving a stale workbook could have undone it.
+_PERSONS_DECISIONS = ((FILED, ASSIGNED_BY_PERSON), (NOT_REQUESTED, DISMISSED_BY_PERSON))
+
+#: The decisions that leave a document waiting in ``REVIEW_DIR_NAME`` for a
+#: person, and which a person may therefore act on: one nobody has looked at
+#: yet, and one somebody has said no request asks for.
+_PARKED = (NEEDS_REVIEW, NOT_REQUESTED)
 
 #: How candidate identifiers are joined in the Candidates cell.
 _CANDIDATE_SEP = ", "
@@ -453,6 +478,19 @@ def _save_pending_index(path: Path, entries: list[IndexEntry]) -> None:
     })
 
 
+def _by_a_person(entry: IndexEntry) -> bool:
+    """Whether this row records a decision a person made, not one a pass made.
+
+    Both halves are read: a pass can write the same decision value, and only
+    the reason says who decided. The reason is a prefix, not the whole cell,
+    because what the row said before is kept after it.
+    """
+    return any(
+        entry.decision == decision and entry.reason.startswith(prefix)
+        for decision, prefix in _PERSONS_DECISIONS
+    )
+
+
 def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     """Every index row, oldest first. Empty if there is no index yet.
 
@@ -467,9 +505,9 @@ def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     is the *older* of the two: the workbook's rows win, with two
     exceptions that never lose what only the snapshot knows - a row for an
     original the workbook does not list (it has been moved; it is never
-    forgotten over a timestamp), and a person's filing decision
-    (``ASSIGNED_BY_PERSON``) on a row the workbook still shows parked,
-    which only Excel saving a stale workbook could have undone.
+    forgotten over a timestamp), and a decision a person made
+    (``_PERSONS_DECISIONS``) on a row the workbook still shows as the machine
+    left it, which only Excel saving a stale workbook could have undone.
 
     ``quarantine=False`` is for readers and dry runs: an unreadable sidecar
     is reported and skipped, never moved - looking changes nothing. A
@@ -487,13 +525,13 @@ def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
         # deleted after they landed, they are in the workbook already.
         recorded = {e.pbc_location for e in workbook if e.pbc_location}
         return workbook + [e for e in pending.entries if e.pbc_location not in recorded]
-    decided = {
-        e.pbc_location: e for e in pending.entries
-        if e.pbc_location and e.decision == FILED and e.reason.startswith(ASSIGNED_BY_PERSON)
-    }
+    decided = {e.pbc_location: e for e in pending.entries if e.pbc_location and _by_a_person(e)}
+    # The workbook's row wins wherever it carries a person's decision too -
+    # it is then the newer of the two, and a later decision (filing what was
+    # dismissed) is not undone by the snapshot that came before it.
     merged = [
         decided[e.pbc_location]
-        if e.decision == NEEDS_REVIEW and e.pbc_location in decided else e
+        if e.pbc_location in decided and not _by_a_person(e) else e
         for e in workbook
     ]
     recorded = {e.pbc_location for e in workbook if e.pbc_location}
@@ -1210,7 +1248,10 @@ def file_drops(
         # The row that holds each document's bytes. A Duplicate row only
         # points at another row; letting it shadow the Filed row would hide
         # a working copy that has since been deleted, and a re-send that
-        # answers "Missing" would be called a duplicate for ever.
+        # answers "Missing" would be called a duplicate for ever. Every other
+        # decision holds its bytes, a person's ``NOT_REQUESTED`` included:
+        # the same document sent again is that same document, and parking it
+        # a second time would put back the warning they just cleared.
         known = {e.digest: e for e in entries if e.digest and e.decision != DUPLICATE}
         # Rows a locked Excel deferred last time still belong in the workbook -
         # fold them in as soon as it is free, whether or not this run sorts
@@ -1673,12 +1714,18 @@ def _index_records(index_path: Path, entry: IndexEntry) -> bool:
 
 
 def _find_parked(entries: list[IndexEntry], original: str) -> int:
-    """Index of the row ``original`` names; the newest Needs Review row wins a name."""
+    """Index of the row ``original`` names; the newest parked row wins a name.
+
+    A row a person has already said is ``NOT_REQUESTED`` is parked too: its
+    working copy is still in ``REVIEW_DIR_NAME``, nothing was moved, and
+    filing it is how that decision is undone. Only the two parked decisions
+    are a person's to act on; anything else names itself in the refusal.
+    """
     wanted = original.replace("\\", "/").strip()
     for position in range(len(entries) - 1, -1, -1):
         entry = entries[position]
         if entry.pbc_location == wanted or entry.original_name == wanted:
-            if entry.decision == NEEDS_REVIEW:
+            if entry.decision in _PARKED:
                 return position
             if entry.decision == DUPLICATE and entry.original_name == wanted:
                 continue          # a re-send under the same name; the parked row is older
@@ -1688,6 +1735,66 @@ def _find_parked(entries: list[IndexEntry], original: str) -> int:
                 + ")"
             )
     raise FilingError(f"nothing in the index is called {original!r}")
+
+
+# ---------------------------------------------------------- not requested ----
+
+
+@dataclass(frozen=True, slots=True)
+class DismissResult:
+    """What saying one parked document is not requested did."""
+
+    entry: IndexEntry            # the rewritten index row
+    index_deferred: bool = False
+
+
+def dismiss_review_file(
+    engagement_dir: Path | str,
+    original: str,
+    note: str = "",
+    *,
+    today: dt.date | None = None,
+) -> DismissResult:
+    """Record that no request asks for one parked document.
+
+    ``original`` names the index row the way :func:`assign_review_file` takes
+    it: its PBC location, or failing that its original name among the rows
+    still parked. The row is rewritten as ``NOT_REQUESTED`` with the decision
+    attributed to a person and what the row said before kept after it.
+
+    Nothing moves. The working copy stays in ``REVIEW_DIR_NAME`` and the
+    original in ``PBC_DIR_NAME/`` is untouched, because a document the client
+    sent is never deleted over a decision about a *request*: an agency notice
+    or an extra statement is still theirs, and a person who was wrong files it
+    afterwards with :func:`assign_review_file`. What changes is what the
+    system says about it - the weekly draft stops warning about a file
+    somebody has already looked at, and the same bytes sent again are a
+    duplicate rather than a second thing to look at.
+
+    Because nothing moves, nothing is checked against the bytes: this is a
+    statement about the request list, not about the file. The engagement lock
+    is held and the index written lock-resiliently, as everywhere else.
+    """
+    engagement_dir = Path(engagement_dir)
+    today = today or dt.date.today()
+    index_path = engagement_dir / INDEX_FILENAME
+
+    with engagement_lock(engagement_dir):
+        entries = read_index(index_path)
+        position = _find_parked(entries, original)
+        entry = entries[position]
+        said = f" ({note.strip()})" if note.strip() else ""
+        new_entry = replace(
+            entry,
+            decision=NOT_REQUESTED,
+            reason=f"{DISMISSED_BY_PERSON} on {today.isoformat()}{said}; was: {entry.reason}",
+        )
+        entries[position] = new_entry
+        # Nothing was moved, so there is nothing to put back: a write that
+        # fails for a reason Excel is not leaves the folder as it was and
+        # the row as the index on disk still has it.
+        deferred = not write_index(index_path, entries)
+    return DismissResult(entry=new_entry, index_deferred=deferred)
 
 
 # -------------------------------------------------------------------- CLI ----

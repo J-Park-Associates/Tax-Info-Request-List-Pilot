@@ -70,7 +70,7 @@ The scanner owns the status column; people own the override column.
   `tracker/templates.py` and commit it; the test suite checks every row can
   recognise its own document.
 
-## Two things a person still does in the app
+## Three things a person still does in the app
 
 - **Check Manifest** runs the same validation the scheduled job runs before
   it touches a file: a bad regex or a non-number typed in Excel is named
@@ -85,6 +85,15 @@ The scanner owns the status column; people own the override column.
   assigned by a person, learns the keyword and re-scans. If a run has
   died, its lock is shown with its start time and can be cleared once it
   is older than `tracker.locking.STALE_LOCK_SECONDS`.
+- **Not requested**, on anything in Needs Review no row asks for: an agency
+  notice, an extra statement. The index row is rewritten
+  `tracker.filer.NOT_REQUESTED`, with an optional note saying why and what
+  the row said before kept after it. Nothing moves — the copy stays parked
+  and the client's original is untouched — so the file is out of the way,
+  not gone: the weekly draft stops warning about it, the same document sent
+  again is a duplicate rather than a second thing to look at, and a person
+  who was wrong files it from the folded-away list, which is the only undo
+  there is.
 
 ## Collaboration
 

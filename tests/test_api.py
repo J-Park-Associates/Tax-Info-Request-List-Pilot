@@ -388,6 +388,42 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
     assert ACCEPTED_NOTE.format(n=1) in d01["validation_notes"]
 
 
+def test_dismiss_records_that_nothing_asks_for_a_parked_document(capsys, demo_root, tmp_path):
+    # The app's other half of Needs Review: a file no request asks for stops
+    # being a thing to do without anything being deleted, and the word for it
+    # comes from the vocabulary the renderer reads, not from the renderer.
+    from tracker.filer import DISMISSED_BY_PERSON, NOT_REQUESTED
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "note": "an IRS notice"})
+    assert code == 0, payload
+    dismissed = payload["dismissed"]
+    assert dismissed["decision"] == NOT_REQUESTED
+    assert dismissed["reason"].startswith(DISMISSED_BY_PERSON)
+    assert "an IRS notice" in dismissed["reason"]
+    assert dismissed["index_deferred"] is False
+    # The row is rewritten in place and the working copy is still parked.
+    assert not [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    [row] = [e for e in payload["state"]["index"] if e["decision"] == NOT_REQUESTED]
+    assert (engagement / row["prepared_location"]).is_file()
+    assert api._vocab()["decisions"]["dismissed"] == NOT_REQUESTED
+
+
+def test_dismiss_refuses_a_file_the_index_does_not_know(capsys, demo_root, tmp_path):
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": "ghost.pdf"})
+    assert code == 1
+    assert "nothing in the index is called 'ghost.pdf'" in payload["error"]
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement), stdin={})
+    assert code == 1 and payload["error"]
+
+
 def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
@@ -662,7 +698,7 @@ def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys,
 
 def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     from tracker import STANDING_RULES
-    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
+    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.manifest import DEFAULT_EXTENSIONS, Override, Status
     from tracker.rollover import CARRIED_SHEET
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
@@ -673,7 +709,12 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert [s["value"] for s in vocab["statuses"]] == list(Status.ALL)
     assert {s["key"] for s in vocab["statuses"]} == {api._slug(s) for s in Status.ALL}
     assert vocab["overrides"] == {"accepted": Override.ACCEPTED, "waived": Override.WAIVED}
-    assert vocab["decisions"] == {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE}
+    assert vocab["decisions"] == {"filed": FILED, "needs_review": NEEDS_REVIEW,
+                                  "duplicate": DUPLICATE, "dismissed": NOT_REQUESTED}
+    assert vocab["review_labels"] == {
+        "dismiss": api.DISMISS_LABEL, "dismiss_note": api.DISMISS_NOTE_HINT,
+        "dismissed_heading": api.DISMISSED_HEADING, "file_anyway": api.FILE_ANYWAY_LABEL,
+    }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert vocab["carried_sheet"] == CARRIED_SHEET
     assert vocab["unscanned_key"] == api._slug(vocab["unscanned_label"])

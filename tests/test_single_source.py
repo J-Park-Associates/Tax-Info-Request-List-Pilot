@@ -149,7 +149,7 @@ def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
 
 def test_the_renderer_types_no_vocabulary_of_its_own():
     from tracker.api import _slug
-    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
+    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.manifest import (
         DEFAULT_EXTENSIONS,
         EXPECTED_PATTERN,
@@ -166,7 +166,8 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
 
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
-    for literal in (*Status.ALL, *Override.ALL, FILED, NEEDS_REVIEW, DUPLICATE, DEFAULT_START,
+    for literal in (*Status.ALL, *Override.ALL, FILED, NEEDS_REVIEW, DUPLICATE, NOT_REQUESTED,
+                    DEFAULT_START,
                     ", ".join(DEFAULT_EXTENSIONS), "looks like", UNSCANNED_LABEL,
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
