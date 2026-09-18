@@ -18,7 +18,19 @@ nothing to keep in step.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+#: How the scanner prefixes a failure with the file it is about
+#: (``"name.pdf: reason"``). A marker is looked for in the reasons, never in
+#: a file name: a client who names a file "Not allowed deductions.pdf" has
+#: not been told the file type is not allowed.
+_FILE_PREFIX = re.compile(r"(^|; )[^;]*?\.[a-z0-9]{1,5}: ", re.IGNORECASE)
+
+
+def reasons_in(note: str) -> str:
+    """``note`` with each failure's file-name prefix removed."""
+    return _FILE_PREFIX.sub(lambda m: m.group(1), note or "")
 
 #: Shown to the client when a failure has no recognised cause. Deliberately
 #: vague about our rules and specific about what the client should do.
@@ -45,7 +57,7 @@ class Reason:
         return self.template.format(**detail)
 
     def matches(self, note: str) -> bool:
-        return self.marker.lower() in (note or "").lower()
+        return self.marker.lower() in reasons_in(note).lower()
 
     @property
     def client_ask(self) -> str:
@@ -128,6 +140,10 @@ NO_TEXT_AFTER_OCR = Reason(
     "no-text-after-ocr", "no readable text found in PDF, even after OCR; review manually",
     "no readable text", firm_side=True,
 )
+OCR_FAILED = Reason(
+    "ocr-failed", "OCR failed on this file ({error}); will try again next run",
+    "OCR failed", firm_side=True,
+)
 
 # ---- the folder ---------------------------------------------------------------
 
@@ -143,7 +159,7 @@ ALL: tuple[Reason, ...] = (
     PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, EXTENSION_NOT_ALLOWED,
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
     NO_PAGES, UNREADABLE_PDF, EXTRACTION_FAILED,
-    UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, PENDING_SYNC, VANISHED,
+    UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )
 

@@ -32,14 +32,14 @@ def test_lock_is_taken_and_released(tmp_path):
 
 
 def test_a_fresh_lock_blocks_a_second_run(tmp_path):
-    (tmp_path / LOCK_FILENAME).write_text("pid=999", encoding="utf-8")
+    (tmp_path / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
     with pytest.raises(EngagementLockedError, match="another scan or sort"):
         acquire_lock(tmp_path)
 
 
 def test_a_stale_lock_is_replaced(tmp_path):
     lock = tmp_path / LOCK_FILENAME
-    lock.write_text("pid=999", encoding="utf-8")
+    lock.write_text(f"pid={os.getpid()}", encoding="utf-8")
     old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
     os.utime(lock, (old, old))
     with engagement_lock(tmp_path):
@@ -71,7 +71,7 @@ def test_a_fresh_lock_is_refused_and_a_stale_one_cleared(tmp_path):
     with pytest.raises(EngagementLockedError, match="no lock to clear"):
         clear_stale_lock(tmp_path)
     lock = tmp_path / LOCK_FILENAME
-    lock.write_text("pid=999 started=2026-03-14T07:03:00", encoding="utf-8")
+    lock.write_text(f"pid={os.getpid()} started=2026-03-14T07:03:00", encoding="utf-8")
     with pytest.raises(EngagementLockedError, match="may still be going"):
         clear_stale_lock(tmp_path)
     old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
@@ -93,7 +93,7 @@ def test_the_stale_threshold_outlives_the_scheduled_jobs_time_limit():
 def test_a_lock_replaced_while_held_is_not_released_by_its_old_owner(tmp_path, caplog):
     lock = tmp_path / LOCK_FILENAME
     with engagement_lock(tmp_path):
-        theirs = lock_line(999, dt.datetime(2026, 3, 14, 7, 3))
+        theirs = lock_line(os.getpid(), dt.datetime(2026, 3, 14, 7, 3))
         lock.write_text(theirs, encoding="utf-8")       # another run took it over
     assert lock.exists() and lock.read_text(encoding="utf-8") == theirs
     assert "replaced by another run" in caplog.text
@@ -124,3 +124,83 @@ def test_clearing_a_stale_lock_that_is_still_held_is_refused(tmp_path):
         with pytest.raises(EngagementLockedError, match="still held by a running process"):
             clear_stale_lock(tmp_path)
         assert lock.exists()
+
+
+def test_a_lock_whose_owner_is_gone_is_stale_at_any_age(tmp_path):
+    # The desktop shell kills the API at its own timeout, long before the
+    # scheduled job's limit; the lock it leaves names a process that is not
+    # running, and nobody should wait two hours for it.
+    import subprocess
+    import sys
+
+    from tracker.locking import clear_stale_lock, lock_status
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(lock_line(child.pid, dt.datetime.now()), encoding="utf-8")
+    try:
+        assert lock_status(tmp_path).stale is False
+        with pytest.raises(EngagementLockedError):
+            clear_stale_lock(tmp_path)
+    finally:
+        child.kill()
+        child.wait()
+    assert lock_status(tmp_path).stale is True and lock_status(tmp_path).owner_gone
+    with engagement_lock(tmp_path):                       # replaced, not refused
+        assert str(os.getpid()) in lock.read_text(encoding="utf-8")
+    lock.write_text(lock_line(child.pid, dt.datetime.now()), encoding="utf-8")
+    assert clear_stale_lock(tmp_path).owner_gone
+    assert not lock.exists()
+
+
+def test_a_lock_naming_no_process_falls_back_to_its_age(tmp_path):
+    from tracker.locking import lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text("started=2026-03-14T07:03:00", encoding="utf-8")
+    assert lock_status(tmp_path).stale is False
+    with pytest.raises(EngagementLockedError):
+        with engagement_lock(tmp_path):
+            pass
+
+
+def test_a_lock_from_another_machine_is_judged_by_its_age_alone(tmp_path):
+    # A synced clients root: the other machine's pid is never alive here,
+    # and that must not read as "gone". Only the age rule may replace it.
+    from tracker.locking import lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    import socket
+
+    theirs = lock_line(424242, dt.datetime.now()).replace(
+        f"host={socket.gethostname().lower()}", "host=other-pc")
+    assert "host=other-pc" in theirs
+    lock.write_text(theirs, encoding="utf-8")
+    assert lock_status(tmp_path).owner_gone is False and lock_status(tmp_path).stale is False
+    with pytest.raises(EngagementLockedError):
+        with engagement_lock(tmp_path):
+            pass
+
+
+def test_a_lock_that_cannot_be_deleted_on_release_does_not_block_its_own_process(tmp_path, monkeypatch):
+    # A sync client held the file while the sort let go; the scan that
+    # follows in the same process must not find its own live pid and wait.
+    import tracker.locking as locking_module
+    from tracker.locking import lock_status
+
+    lock = tmp_path / LOCK_FILENAME
+    real_unlink = locking_module.Path.unlink
+
+    def held(self, *args, **kwargs):
+        if self == lock:
+            raise PermissionError("[WinError 32] being uploaded")
+        return real_unlink(self, *args, **kwargs)
+    monkeypatch.setattr(locking_module, "_RELEASE_RETRY_DELAY", 0)
+    monkeypatch.setattr(locking_module.Path, "unlink", held)
+    with engagement_lock(tmp_path):
+        pass
+    assert lock.exists() and lock_status(tmp_path).released and lock_status(tmp_path).stale
+    monkeypatch.undo()
+    with engagement_lock(tmp_path):                          # the next step, same process
+        assert str(os.getpid()) in lock.read_text(encoding="utf-8")
+    assert not lock.exists()

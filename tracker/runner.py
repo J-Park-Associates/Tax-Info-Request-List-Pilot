@@ -41,6 +41,7 @@ if anything failed, so the scheduler shows a red run instead of a silent one.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -64,12 +65,16 @@ from tracker.registry import (
 from tracker.reminder import (
     DRAFT_FILENAME,
     NEW_DRAFT_FILENAME,
+    DraftsEditedError,
     ReminderError,
     draft_reminder,
+    is_unedited,
     write_draft,
 )
 from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.scanner import ScanLockedError, scan_engagement
+
+log = logging.getLogger("tracker.runner")
 
 #: ``dt.date.weekday()`` counts from the start of the week as 0.
 DRAFT_WEEKDAY = 5
@@ -179,11 +184,30 @@ def is_draft_day(today: dt.date, weekday: int = DRAFT_WEEKDAY) -> bool:
     return today.weekday() == weekday
 
 
+def last_draft_day(today: dt.date, weekday: int = DRAFT_WEEKDAY) -> dt.date:
+    """The most recent draft day on or before ``today``."""
+    return today - dt.timedelta(days=(today.weekday() - weekday) % 7)
+
+
+def last_drafted(engagement_dir: Path) -> dt.date | None:
+    """The day this engagement's reminder was last drafted, from the draft
+    files themselves; None if it never was."""
+    stamps = []
+    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
+        try:
+            stamps.append(dt.date.fromtimestamp((engagement_dir / name).stat().st_mtime))
+        except OSError:
+            continue
+    return max(stamps) if stamps else None
+
+
 def should_draft(
     engagement: Engagement,
     today: dt.date,
     mode: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
+    *,
+    drafted: dt.date | None = None,
 ) -> bool:
     """Whether the automated run drafts a reminder for this engagement today.
 
@@ -191,12 +215,20 @@ def should_draft(
     mode. It is a standing decision that this client is not chased by email,
     and a command line flag is not the place to reverse it —
     ``python -m tracker.reminder`` still drafts one on demand for anybody.
+
+    Weekly means once a week, not only on the day: a machine that was off
+    on the draft day drafts on its next pass, when ``drafted`` (the day the
+    last draft was written) is older than the draft day that went by. An
+    engagement never drafted waits for its first draft day, so a client set
+    up mid-week is not chased the same afternoon.
     """
     if not engagement.reminders or mode == REMINDERS_NEVER:
         return False
     if mode == REMINDERS_ALWAYS:
         return True
-    return is_draft_day(today, weekday)
+    if is_draft_day(today, weekday):
+        return True
+    return drafted is not None and drafted < last_draft_day(today, weekday)
 
 
 # --------------------------------------------------------------- one pass ----
@@ -241,7 +273,7 @@ def run_engagement(
         run.warnings.extend(scanned.warnings)
         run.manifest_deferred = scanned.deferred
 
-        if should_draft(engagement, today, reminders, weekday):
+        if should_draft(engagement, today, reminders, weekday, drafted=last_drafted(engagement.path)):
             _draft_step(run, dry_run=dry_run)
         else:
             run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
@@ -310,15 +342,39 @@ def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
     draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
     if not draft.has_outstanding:
         run.draft_note = NOTHING_OUTSTANDING
+        _refresh_stale_draft(draft, engagement.path)
         return
 
-    written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True)
+    try:
+        written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True)
+    except DraftsEditedError as exc:
+        run.draft_note = str(exc)
+        return
     run.drafted = written
     if written.name == NEW_DRAFT_FILENAME:
         run.draft_note = (
             f"{DRAFT_FILENAME} has been edited, so this week's draft was "
             f"written to {NEW_DRAFT_FILENAME} instead"
         )
+
+
+def _refresh_stale_draft(draft, engagement_dir: Path) -> None:
+    """Nothing is outstanding, and a draft from a week that had something to
+    chase is still there. The run's own unedited draft is rewritten as what
+    the run would say today - the same text ``python -m tracker.reminder``
+    writes - so it is neither stale nor dated as if untouched; one a person
+    has edited is theirs and is left exactly as it is. With the file
+    current, ``last_drafted`` reads this draft day and no weekday pass
+    mistakes the quiet week for a missed one.
+    """
+    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
+        path = engagement_dir / name
+        if not path.is_file() or not is_unedited(path):
+            continue
+        try:
+            write_draft(draft, path=path)
+        except OSError as exc:    # open in Word, or a sync client mid-upload: next time
+            log.warning("Could not refresh %s (%s)", path.name, exc)
 
 
 def _why_no_draft(engagement: Engagement, today: dt.date,
@@ -362,7 +418,7 @@ def run_registry(
 def format_report(report: RunReport) -> str:
     """The console (and log) rendering of one pass."""
     mode = {
-        REMINDERS_AUTO: ("drafting reminders" if is_draft_day(report.today)
+        REMINDERS_AUTO: ("drafting reminders" if is_draft_day(report.today) or report.drafted
                          else "no reminders today"),
         REMINDERS_ALWAYS: "drafting reminders (forced)",
         REMINDERS_NEVER: "reminders suppressed",

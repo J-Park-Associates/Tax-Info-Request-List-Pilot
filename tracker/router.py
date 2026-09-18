@@ -71,6 +71,7 @@ from tracker.content_check import (
     extract,
     extract_by_ocr,
     rules_fingerprint,
+    says,
 )
 from tracker.manifest import Override, RequestItem, has_routing_rules
 from tracker.validators import (
@@ -95,6 +96,9 @@ PENDING = reasons.PENDING_SYNC.format()
 NO_REQUEST_ACCEPTS = "no request accepts .{extension} files"
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
+#: What a file name uses between words, read as spaces; a hyphen stays,
+#: because "1098-T.pdf" names the form it names.
+_SEPARATORS = re.compile(r"[^a-z0-9-]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,21 +120,17 @@ class Routing:
 def _filename_hit(path: Path, item: RequestItem) -> bool:
     """True if a keyword from ``item`` appears in ``path``'s own name.
 
-    Compared on word boundaries over a normalized name, so ``1098`` matches
-    ``Form 1098 Mortgage.pdf`` but not ``ledger-10983.pdf``.
+    The same whole-token rule the content check uses (``contains_keyword``),
+    over the name with its separators (``_``, ``.``) read as spaces: so
+    ``1098`` matches ``Form 1098 Mortgage.pdf`` and ``smith_1098.pdf``, but
+    neither ``ledger-10983.pdf`` nor ``1098-T.pdf`` - the tuition form is
+    not the mortgage form, whichever side of the hyphen is read.
     """
-    words = set(_WORD_SPLIT.split(path.stem.lower()))
-    for keyword in (*item.required_keywords, *item.any_keywords):
-        parts = [p for p in _WORD_SPLIT.split(keyword.lower()) if p]
-        if not parts:
-            continue
-        if all(p in words for p in parts):
-            return True
-        # Clients write "W2" for "W-2" and "1099INT" for "1099-INT"; the
-        # run-together spelling is the same whole token, not a substring.
-        if len(parts) > 1 and "".join(parts) in words:
-            return True
-    return False
+    # Clients write "W2" for "W-2" and "1099INT" for "1099-INT": the keyword
+    # pattern already reads a dash or a space as optional, and the same
+    # rule keeps "Form1040-ES.pdf" from being last year's Form 1040.
+    name = _SEPARATORS.sub(" ", path.stem.lower())
+    return any(contains_keyword(name, keyword) for keyword in (*item.required_keywords, *item.any_keywords))
 
 
 def _required_matched(text: str, item: RequestItem) -> bool:
@@ -143,7 +143,7 @@ def _required_matched(text: str, item: RequestItem) -> bool:
     """
     if not item.required_keywords:
         return False
-    return all(contains_keyword(text, k) for k in item.required_keywords)
+    return all(says(text, k) for k in item.required_keywords)
 
 
 def _considers(item: RequestItem) -> bool:
@@ -215,7 +215,9 @@ def route_file(
 
     pdf_cache = pdf_cache or PdfVerdictCache()
     reading = _read(path, items, text)
-    words = reading.text or ""
+    # A text layer below _MIN_TEXT_CHARS (a scanned form's page breaks, a
+    # "Page 1 of 2" stamp) is no reading: the name, or OCR, is the evidence.
+    words = "" if reading.needs_ocr else (reading.text or "")
     # The scanner's verdict is the verdict on the *whole* reading; a scan
     # rescued by its name was never fully read, so nothing is remembered.
     remember = cache is not None and reading.text is not None and not reading.needs_ocr

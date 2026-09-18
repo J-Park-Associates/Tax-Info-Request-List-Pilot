@@ -165,14 +165,24 @@ def _engagement_dir(argv: list[str]) -> Path:
     given = argv[position].strip() if position < len(argv) else ""
     if not given:
         raise ManifestError(hint)
-    engagement = Path(given)
+    return _under_root(Path(given))
+
+
+def _under_root(folder: Path) -> Path:
+    """``folder`` if it lies under the clients root, else a ManifestError.
+
+    Checked whenever a root is *set*, whether or not the folder it names is
+    reachable right now: an unplugged drive is not a licence to read from
+    anywhere. Resolved on both sides, so ``..``, a junction out of the root
+    and a case difference are all seen for what they are.
+    """
     root = clients_root()
-    if root is not None and root.is_dir():
+    if root is not None:
         try:
-            engagement.resolve().relative_to(root.resolve())
+            folder.resolve().relative_to(root.resolve())
         except ValueError:
-            raise ManifestError(f"{engagement} is not under the clients root {root}") from None
-    return engagement
+            raise ManifestError(f"{folder} is not under the clients root {root}") from None
+    return folder
 
 
 #: How a new engagement is named when nobody types a name. The renderer
@@ -499,6 +509,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
     prior = Path(prior_raw)
     if not prior.is_absolute():
         prior = _root() / prior_raw
+    prior = _under_root(prior)
     if not (prior / MANIFEST_FILENAME).is_file():
         raise ManifestError(f"No manifest found in '{prior_raw}'")
 

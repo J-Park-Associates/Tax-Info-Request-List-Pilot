@@ -82,6 +82,7 @@ def text_pdf(path: Path, lines: list[str]) -> Path:
 def w2_lines(employee: str, employer: str, year: int) -> list[str]:
     return [
         f"Form W-2 Wage and Tax Statement - Tax Year {year}",
+        "a Employee's social security number  XXX-XX-1234",
         f"Employer: {employer}",
         f"Employee: {employee}",
         "",
@@ -120,6 +121,8 @@ def prior_return_lines(taxpayer: str, year: int) -> list[str]:
         "Line 24  Total tax                             $24,918.00",
         "Line 33  Total payments                        $26,102.00",
         "Line 34  Overpayment refunded                   $1,184.00",
+        "",
+        "Sign Here - Under penalties of perjury, I declare that I have examined this return.",
     ]
 
 
@@ -140,7 +143,7 @@ def donations_xlsx(path: Path) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "Donations"
-    ws.append([f"Smith Family - Charitable Contributions {YEAR}"])
+    ws.append([f"Smith Family - Donation Receipts {YEAR}"])
     ws.append(["Date", "Organization", "Amount", "Receipt on file"])
     for i in range(1, 301):  # enough rows to clear the size minimum
         ws.append([f"0{(i % 9) + 1}/12/{YEAR}", f"Community Charity {i:03d}", 25 + i, "Yes"])

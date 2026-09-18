@@ -195,3 +195,22 @@ def test_the_readme_contact_comes_from_the_engagement_sheet(tmp_path):
     assert "Questions? Contact J Park & Associates, CPA." in result.readme.read_text(encoding="utf-8")
     result = scaffold_engagement(folder, contact="Someone Else")
     assert "Contact Someone Else." in result.readme.read_text(encoding="utf-8")
+
+
+def test_a_readme_the_client_side_holds_does_not_stop_the_scaffold(engagement, monkeypatch):
+    # The README is cosmetic and client-visible. A viewer holding it, a sync
+    # client uploading it, or a folder the client made under its name is a
+    # log line, not the end of the pass behind it.
+    import tracker.scaffold as scaffold_module
+    from tracker.scaffold import README_NAME, SHARED_DIR_NAME, scaffold_engagement
+
+    scaffold_engagement(engagement)
+    readme = engagement / SHARED_DIR_NAME / README_NAME
+    readme.unlink()
+    readme.mkdir()                                     # a folder under the README's name
+
+    def refused(*args, **kwargs):
+        raise PermissionError("[WinError 32] being uploaded")
+    monkeypatch.setattr(scaffold_module, "write_text_atomically", refused)
+    result = scaffold_engagement(engagement)
+    assert result.prepared_dir is not None and readme.is_dir()

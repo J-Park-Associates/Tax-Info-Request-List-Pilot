@@ -76,7 +76,8 @@ def test_catalog_rows_shift_to_the_engagements_year():
     assert loaded["A01"].date_pattern == r"(?i)\b2027\b" and loaded["A01"].date_pattern_derived
     assert loaded["B01"].date_pattern == r"(?i)\b2026\b"   # ...for every row, one year behind here
     assert shifted["B01"].period == "TY2026"           # prior-year return stays one behind
-    assert shifted["A01"].required_keywords == ("W-2",)  # keywords never shift
+    base = {i.identifier: i for i in template_items("1040")}
+    assert shifted["A01"].required_keywords == base["A01"].required_keywords  # keywords never shift
     unshifted = {i.identifier: i for i in template_items("1040")}
     assert unshifted["A01"].period == TY
 

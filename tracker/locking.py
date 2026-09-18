@@ -35,6 +35,13 @@ run appears to be going, and the one after proceeds. The two numbers used to
 be typed apart (3600 s against a two-hour limit), and a legitimately long
 scan could have its lock replaced under it by the next repeat.
 
+**Dead owners are not waited for.** The file names its owner's process
+id. A lock whose owner is no longer running - the desktop shell killed the
+API at its own timeout, a power cut, a crash - is stale at any age: waiting
+out the run limit for a process that is gone only blocks the engagement.
+A process id the system has since reused looks alive, and then the age
+rule above applies, which is the safe direction.
+
 **One machine per clients root.** ``O_EXCL`` is atomic on one filesystem. A
 lock file that a cloud client syncs between two machines is not a lock:
 both can create theirs before either copy arrives. Run the schedule, and the
@@ -46,6 +53,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import socket
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -58,6 +66,11 @@ log = logging.getLogger("tracker.locking")
 LOCK_FILENAME = "_scan.lock"
 _PID_KEY = "pid"
 _STARTED_KEY = "started"
+_HOST_KEY = "host"
+#: What a lock file says when its owner let go but could not delete it.
+RELEASED_LINE = "released=1"
+_RELEASE_RETRIES = 10
+_RELEASE_RETRY_DELAY = 0.2
 #: How long Task Scheduler lets one pass run before killing it. It lives
 #: here, not in tracker.scheduling, because the stale threshold below is
 #: derived from it and this module imports nothing from the package.
@@ -82,6 +95,64 @@ class EngagementLock:
     token: str
 
 
+def pid_alive(pid: str | int) -> bool | None:
+    """Whether the process a lock names is still running; None if unknowable."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if pid <= 0:
+        return None
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        ERROR_INVALID_PARAMETER = 87           # no such process
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # Access denied and the like: it exists, we just cannot ask.
+            return False if ctypes.get_last_error() == ERROR_INVALID_PARAMETER else None
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return None
+            return code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return None
+    return True
+
+
+def _owner_gone(lock: Path) -> bool:
+    """True when the lock names a process that is no longer running."""
+    try:
+        text = lock.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    fields = dict(part.split("=", 1) for part in text.split() if "=" in part)
+    if text.strip() == RELEASED_LINE:
+        return True
+    if fields.get(_HOST_KEY, "") != _this_host():
+        # Another machine's process (a synced clients root): whether it is
+        # running cannot be known from here, so the age rule decides.
+        return False
+    return pid_alive(fields.get(_PID_KEY, "")) is False
+
+
 def acquire_lock(engagement_dir: Path) -> EngagementLock:
     """Take the engagement lock or raise :class:`EngagementLockedError`.
 
@@ -97,12 +168,16 @@ def acquire_lock(engagement_dir: Path) -> EngagementLock:
                 age = time.time() - lock.stat().st_mtime
             except OSError:
                 continue  # lock vanished between checks; retry
-            if age < STALE_LOCK_SECONDS:
+            gone = _owner_gone(lock)
+            if age < STALE_LOCK_SECONDS and not gone:
                 raise EngagementLockedError(
                     f"another scan or sort appears to be running ({lock.name} is "
                     f"{age:.0f}s old); if not, delete the lock file"
                 ) from None
-            log.warning("Replacing stale engagement lock (%.0f s old)", age)
+            log.warning(
+                "Replacing stale engagement lock (%.0f s old%s)", age,
+                "; its owner is no longer running" if gone else "",
+            )
             try:
                 lock.unlink(missing_ok=True)
             except PermissionError:
@@ -130,7 +205,7 @@ def release_lock(lock: EngagementLock) -> None:
     except OSError:
         pass  # already closed; the file is what matters
     try:
-        current = lock.path.read_text(encoding="utf-8")
+        current = lock.path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return  # already gone
     if current != lock.token:
@@ -139,7 +214,23 @@ def release_lock(lock: EngagementLock) -> None:
             lock.path.name,
         )
         return
-    lock.path.unlink(missing_ok=True)
+    for _attempt in range(_RELEASE_RETRIES):
+        try:
+            lock.path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            # A sync client reading the file for upload: brief, so wait it out.
+            time.sleep(_RELEASE_RETRY_DELAY)
+    # Still held. This process may take the next lock itself (a sort, then
+    # a scan) and would find its own live pid in the file; so the file is
+    # marked released, which every reader takes as an owner that is gone.
+    try:
+        if lock.path.read_text(encoding="utf-8", errors="replace") != lock.token:
+            return                # another run took it while we waited; theirs now
+        lock.path.write_text(RELEASED_LINE, encoding="utf-8")
+        log.warning("%s could not be removed on release; marked released instead", lock.path.name)
+    except OSError as exc:
+        log.warning("%s could not be removed or marked on release (%s)", lock.path.name, exc)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,10 +241,18 @@ class LockStatus:
     age_seconds: float
     started: str        # ISO time the run began, if the file said
     pid: str            # process id, if the file said
+    host: str = ""      # the machine that took it, if the file said
+    released: bool = False   # its owner let go but could not delete it
+
+    @property
+    def owner_gone(self) -> bool:
+        """The process the lock names is no longer running (False if unknowable,
+        including a process on another machine)."""
+        return self.released or (self.host == _this_host() and pid_alive(self.pid) is False)
 
     @property
     def stale(self) -> bool:
-        return self.age_seconds >= STALE_LOCK_SECONDS
+        return self.age_seconds >= STALE_LOCK_SECONDS or self.owner_gone
 
 
 def lock_status(engagement_dir: Path | str) -> LockStatus | None:
@@ -168,16 +267,22 @@ def lock_status(engagement_dir: Path | str) -> LockStatus | None:
     return LockStatus(
         path=lock, age_seconds=max(age, 0.0),
         started=fields.get(_STARTED_KEY, ""), pid=fields.get(_PID_KEY, ""),
+        host=fields.get(_HOST_KEY, ""), released=text.strip() == RELEASED_LINE,
     )
+
+
+def _this_host() -> str:
+    return socket.gethostname().lower()
 
 
 def lock_line(pid: int, started: dt.datetime) -> str:
     """What the lock file says: who took it and when, as ``lock_status`` reads it back."""
-    return f"{_PID_KEY}={pid} {_STARTED_KEY}={started.isoformat()}"
+    return f"{_PID_KEY}={pid} {_STARTED_KEY}={started.isoformat()} {_HOST_KEY}={_this_host()}"
 
 
 def clear_stale_lock(engagement_dir: Path | str) -> LockStatus:
-    """Remove a lock older than :data:`STALE_LOCK_SECONDS`; refuse a fresh one.
+    """Remove a lock older than :data:`STALE_LOCK_SECONDS` or whose owner is
+    gone; refuse a fresh one.
 
     A fresh lock is a run in progress; clearing it would let two runs race,
     which is the one thing the lock exists to prevent. The caller is told

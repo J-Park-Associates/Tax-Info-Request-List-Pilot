@@ -7,6 +7,8 @@ sitting in Needs Review.
 
 
 
+import pytest
+
 from tests.test_scanner import text_pdf
 from tracker import reasons
 from tracker.manifest import Override, RequestItem
@@ -31,7 +33,7 @@ W2 = RequestItem(
 INT_DIV = RequestItem(
     identifier="A02", document="1099-INT / 1099-DIV", period="TY2025",
     allowed_extensions=("pdf", "csv"), min_size_kb=0,
-    any_keywords=("1099", "dividend"),
+    any_keywords=("1099-int", "1099-div", "dividend"),
 )
 MORTGAGE = RequestItem(
     identifier="C01", document="Mortgage Interest Statement", period="TY2025",
@@ -87,11 +89,12 @@ def test_wrong_year_is_not_routed(tmp_path):
 
 def test_filename_rescues_a_scan_with_no_text_layer(tmp_path):
     """An image-only PDF still routes when the client named it sensibly."""
-    f = tmp_path / "Form 1098 Mortgage Interest.pdf"
-    text_pdf(f, "")  # valid PDF, no usable text
-    routing = route_file(f, ITEMS, text=None)
-    assert routing.identifier == "C01"
-    assert routing.evidence == EVIDENCE_FILENAME
+    for name in ("Form 1098 Mortgage Interest.pdf", "smith_1098.pdf", "smith-1098-2025.pdf", "W2 2025.pdf"):
+        f = tmp_path / name
+        text_pdf(f, "")  # valid PDF, no usable text
+        routing = route_file(f, ITEMS, text=None)
+        assert routing.identifier == ("A01" if name.startswith("W2") else "C01"), name
+        assert routing.evidence == EVIDENCE_FILENAME
 
 
 def test_filename_match_respects_word_boundaries(tmp_path):
@@ -164,7 +167,7 @@ def test_ambiguous_match_goes_to_review(tmp_path):
     """A combined 1099 that satisfies two rows is a person's decision."""
     both = RequestItem(
         identifier="E01", document="Brokerage Year-End",
-        allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099",),
+        allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-b",),
     )
     f = text_pdf(tmp_path / "combined.pdf", "Form 1099-INT and 1099-B combined 2025")
     routing = route_file(f, [INT_DIV, both])
@@ -232,13 +235,46 @@ def test_required_keyword_beats_a_generic_any_keyword(tmp_path):
 
 
 def test_keywords_match_on_token_boundaries(tmp_path):
-    """'EIN' must not match 'being'; '1098' must not match '10983'."""
+    """'EIN' must not match 'being'; '1098' must not match '10983' - nor '1098-T'."""
     ein = RequestItem(
         identifier="Z01", document="EIN Letter", allowed_extensions=("pdf",),
         min_size_kb=0, any_keywords=("EIN",),
     )
     f = text_pdf(tmp_path / "note.pdf", "This is being sent regarding 10983 units")
     assert route_file(f, [ein, MORTGAGE]).identifier is None
+    f = text_pdf(tmp_path / "IMG_2025_0311.pdf", "Form 1098-T Tuition Statement 2025 qualified tuition")
+    assert route_file(f, [ein, MORTGAGE]).identifier is None
+
+
+def test_a_tuition_statement_is_never_filed_as_mortgage_interest(tmp_path):
+    # The one misfiling a required keyword of "1098" allowed: Form 1098-T
+    # carries the number, and required keywords outrank the tuition row's
+    # any-keywords. A hyphen-joined variant is part of the form's name.
+    from dataclasses import replace
+
+    from tracker.templates import template_items
+
+    items = [replace(i, min_size_kb=0) for i in template_items("1040", year=2025)]   # L01 included
+    f = text_pdf(tmp_path / "IMG_2025_0311.pdf", "Form 1098-T Tuition Statement 2025 qualified tuition")
+    routing = route_file(f, items)
+    assert routing.identifier == "L01"
+    core = [i for i in items if i.identifier != "L01"]   # a manifest without the tuition row
+    assert route_file(f, core).identifier is None
+    core_only = [replace(i, min_size_kb=0) for i in template_items("1040", core_only=True, year=2025)]
+    f = text_pdf(tmp_path / "IMG_2025_0312.pdf", "Form 1099-R Distributions From Pensions 2025")
+    assert route_file(f, core_only).identifier is None   # not the 1099-INT/DIV row either
+    f = text_pdf(tmp_path / "IMG_2025_0313.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    assert route_file(f, items).identifier == "C01"
+
+
+def test_a_multi_page_scan_with_no_text_layer_still_routes_by_its_name(tmp_path):
+    # Two blank pages extract to a newline, which is text to a truthiness
+    # test and nothing to a reader. The name is the evidence, as for one page.
+    f = text_pdf(tmp_path / "Form 1098 Mortgage Interest.pdf", "", pages=2)
+    routing = route_file(f, ITEMS)
+    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME
+    f = text_pdf(tmp_path / "1098-T scan.pdf", "", pages=2)
+    assert route_file(f, ITEMS).identifier is None
 
 
 def test_google_stub_review_reason_tells_the_client_what_to_do(tmp_path):
@@ -320,3 +356,95 @@ def test_a_derived_year_never_routes_on_its_own_but_still_contests(tmp_path):
     routing = route_file(only_year, items)
     assert routing.identifier is None                      # Z01 must not claim it
     assert "add a keyword to Z01" in routing.reason
+
+
+def test_a_scanners_stamp_is_not_a_text_layer(tmp_path):
+    # "Page 1 of 2" on each of two pages, or "Scanned by CamScanner" on one,
+    # is more than a handful of characters and still no reading of the
+    # document. The name routes it, as for a blank scan.
+    for text, pages in (("Page 1 of 2", 2), ("Scanned by CamScanner", 1)):
+        f = text_pdf(tmp_path / "Form 1098 Mortgage Interest.pdf", text, pages=pages)
+        routing = route_file(f, ITEMS)
+        assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME, text
+
+
+def test_a_clients_hyphenated_file_name_still_routes(tmp_path):
+    # A form's own variant is part of its name; a bank's or a person's is
+    # a separator. Both sides of the hyphen, both ways.
+    for name, expected in (
+        ("1098-Citi.pdf", "C01"), ("W2-Tom.pdf", "A01"), ("Jane-W2.pdf", "A01"),
+        ("smith-1098-mtg.pdf", "C01"), ("1098-T.pdf", None), ("W-2G winnings.pdf", None),
+    ):
+        f = text_pdf(tmp_path / name, "")
+        assert route_file(f, ITEMS).identifier == expected, name
+
+
+def test_a_run_together_form_number_is_still_its_own_variant(tmp_path):
+    # "Form1040-ES.pdf" is not last year's Form 1040. The keyword pattern
+    # reads "form 1040" as "form1040" itself; a separate run-together
+    # fallback used to skip the variant rule.
+    from dataclasses import replace
+
+    from tracker.templates import template_items
+
+    items = [replace(i, min_size_kb=0) for i in template_items("1040", core_only=True, year=2025)]
+    for name in ("Form1040-ES.pdf", "Form1040 V.pdf", "Form1040_V.pdf", "Form 1040-V.pdf"):
+        assert route_file(text_pdf(tmp_path / name, ""), items).identifier is None, name
+    assert route_file(text_pdf(tmp_path / "W2 2025.pdf", ""), items).identifier == "A01"
+
+
+def test_a_keyword_with_nothing_in_it_matches_nothing(tmp_path):
+    # "-" or "n/a" typed into a keyword cell must not be a keyword that
+    # every document satisfies - least of all a required one.
+    dash = RequestItem(
+        identifier="Z01", document="Not applicable", allowed_extensions=("pdf",),
+        min_size_kb=0, required_keywords=("-",),
+    )
+    f = text_pdf(tmp_path / "IMG_2025_0312.pdf", "Form 1099-R Distributions From Pensions 2025")
+    assert route_file(f, [dash]).identifier is None
+    assert route_file(f, [dash, MORTGAGE]).identifier is None
+
+
+def _shipped_rows(tmp_path, form="1040"):
+    """A catalog as an engagement loads it: the Period-derived date check
+    is live, which template_items() alone does not give."""
+    from dataclasses import replace
+
+    from tracker.manifest import create_template, load_manifest
+    from tracker.templates import template_items
+
+    manifest = tmp_path / MANIFEST_FILENAME
+    manifest.unlink(missing_ok=True)
+    create_template(manifest, template_items(form, year=2025))
+    return [replace(i, min_size_kb=0) for i in load_manifest(manifest)]
+
+
+def _shipped_1040_rows(tmp_path):
+    return _shipped_rows(tmp_path, "1040")
+
+
+@pytest.mark.parametrize("name, text, expected", [
+    # What other forms print about their neighbours must not file them there.
+    ("2024 Tax Return.pdf",
+     "Form 1040 U.S. Individual Income Tax Return 2024\nFiling Status Single\nAttach Form(s) W-2 here.\n"
+     "1a Total amount from Form(s) W-2\n36 Amount applied to your 2025 estimated tax\n"
+     "Sign Here Under penalties of perjury, I declare that I have examined this return", "B01"),
+    ("1095-C.pdf",
+     "Form 1095-C Employer-Provided Health Insurance Offer and Coverage 2025\nIf you purchased health "
+     "insurance coverage for 2025 through the Health Insurance Marketplace and wish to claim the premium tax credit", None),
+    ("1095-B.pdf",
+     "Form 1095-B Health Coverage 2025\nPart III Issuer or Other Coverage Provider", None),
+    ("1099-SA.pdf",
+     "Form 1099-SA Distributions From an HSA 2025\nBox 1 The amount may have been a direct payment to the "
+     "medical service provider or distributed to you.", None),
+    ("5498-SA.pdf",
+     "Form 5498-SA HSA, Archer MSA, or Medicare Advantage MSA Information 2025\n"
+     "Box 2 Total HSA or Archer MSA contributions made in 2025", "K01"),
+    ("W-2.pdf", "Form W-2 Wage and Tax Statement 2025\na Employee's social security number\nCopy B To Be Filed With Employee's FEDERAL Tax Return", "A01"),
+    ("1095-A.pdf", "Form 1095-A Health Insurance Marketplace Statement 2025", "I01"),
+    ("church.pdf", "Annual Contribution Statement 2025\nNo goods or services were provided in exchange for these contributions", "D01"),
+    ("K-1.pdf", "Schedule K-1 (Form 1065) 2025 Partner's Share of Income\n5 Interest income 120", "F01"),
+])
+def test_the_shipped_1040_catalog_files_real_forms_where_they_belong(tmp_path, name, text, expected):
+    items = _shipped_1040_rows(tmp_path)
+    assert route_file(text_pdf(tmp_path / name, text), items).identifier == expected, name

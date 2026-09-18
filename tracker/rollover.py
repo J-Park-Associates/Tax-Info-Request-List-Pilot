@@ -47,11 +47,15 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     Override,
     RequestItem,
     Status,
+    as_text,
     create_template,
     detect_year,
     load_manifest,
+    pending_updates,
+    save_workbook_atomically,
     shift_item,
     shift_years,
+    with_pending,
 )
 from tracker.scaffold import MANIFEST_FILENAME
 
@@ -207,7 +211,13 @@ def roll_forward(
     added, unless ``include_new`` is set.
     """
     prior_dir = Path(prior_engagement_dir)
-    prior_items = load_manifest(prior_dir / MANIFEST_FILENAME)
+    # The prior year's last scan may have been deferred (Excel held the
+    # manifest) and never landed - the usual end of an engagement. What
+    # it saw is in the sidecar; read it, move nothing.
+    prior_manifest = prior_dir / MANIFEST_FILENAME
+    prior_items = with_pending(
+        load_manifest(prior_manifest), pending_updates(prior_manifest, quarantine=False)
+    )
 
     prior_year = detect_year(prior_items)
     if target_year is None and prior_year is not None:
@@ -258,7 +268,7 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
     from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, read_index
 
     try:
-        rows = read_index(prior_dir / INDEX_FILENAME)
+        rows = read_index(prior_dir / INDEX_FILENAME, quarantine=False)  # a rollover only reads the prior year
     except Exception:  # an unreadable index must never block a rollover
         return []
     seen: dict[str, str] = {}
@@ -300,10 +310,13 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
             ws.append([UNFILED_HEADING])
             for line in report.unfiled_last_year:
                 ws.append(["", line])
+        for cells in ws.iter_rows():
+            for cell in cells:
+                as_text(cell)         # a client's file name in the unfiled list is a name
         for column, width in zip(ws.column_dimensions, CARRIED_LAYOUT.values(), strict=False):
             ws.column_dimensions[column].width = width
         ws.freeze_panes = "A2"
-        wb.save(path)
+        save_workbook_atomically(wb, path)
     finally:
         wb.close()
     return path
@@ -352,7 +365,7 @@ if __name__ == "__main__":
 
     write_engagement_info(manifest, carry_engagement_info(
         load_engagement_info(result.prior_dir / MANIFEST_FILENAME),
-        rolled_from=str(result.prior_dir),
+        rolled_from=str(result.prior_dir.resolve()),   # the runner's cwd is not this one
     ))
 
     span = f"{result.prior_year} → {result.target_year}" if result.prior_year else UNKNOWN_YEAR_LABEL

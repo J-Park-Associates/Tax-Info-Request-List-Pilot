@@ -6,6 +6,7 @@ decision is written to the index, and running twice changes nothing.
 """
 
 import datetime as dt
+import os
 
 import pytest
 from openpyxl import load_workbook
@@ -647,7 +648,7 @@ def test_the_filer_holds_the_engagement_lock(engagement):
     from tracker.locking import LOCK_FILENAME, EngagementLockedError
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    (engagement / LOCK_FILENAME).write_text("pid=999", encoding="utf-8")
+    (engagement / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
     with pytest.raises(EngagementLockedError):
         file_drops(engagement, today=DAY1)
     assert (engagement / SHARED_DIR_NAME / "w2.pdf").exists()   # nothing moved
@@ -700,6 +701,13 @@ def test_a_resend_is_refiled_when_the_working_copy_was_deleted(engagement):
     # A re-send whose working copy is still there is still just a duplicate.
     drop(engagement, "w2 third time.pdf", "Form W-2 Wage and Tax Statement 2025")
     assert [e.decision for e in file_drops(engagement, today=DAY2).duplicates] == [DUPLICATE]
+    # ...and one more drop after the working copy goes again: the Duplicate
+    # row must not shadow the Filed row, or this re-send is never re-filed.
+    working.unlink()
+    drop(engagement, "w2 fourth time.pdf", "Form W-2 Wage and Tax Statement 2025")
+    fourth = file_drops(engagement, today=DAY2)
+    assert fourth.duplicates == [] and [e.original_name for e in fourth.filed] == ["w2 fourth time.pdf"]
+    assert working.exists()
 
 
 def test_empty_client_folders_are_cleared_after_sorting(engagement):
@@ -804,3 +812,276 @@ def test_assigning_still_files_when_excel_holds_the_manifest(engagement, monkeyp
     result = assign_review_file(engagement, "scan0012.pdf", "C01", keyword="lender")
     assert result.entry.decision == FILED
     assert result.keyword == "" and "open in Excel" in result.keyword_note
+
+
+# ---------------------------------------------- what a review found (decision 54) ----
+
+
+def _age(path, seconds):
+    """Push a file's mtime into the past so a later write is unmistakably newer."""
+    old = path.stat().st_mtime - seconds
+    os.utime(path, (old, old))
+
+
+def test_a_snapshot_the_workbook_has_outlived_does_not_hide_the_workbooks_rows(engagement, monkeypatch):
+    # The write landed but the sidecar could not be deleted (something held
+    # it open). The workbook is the newer of the two; a later run must not
+    # read the stale snapshot, re-route the original the workbook alone
+    # knows, and copy it a second time.
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2-a.pdf", "Form W-2 Wage and Tax Statement 2025 alpha")
+    _lock_the_index(monkeypatch)
+    file_drops(engagement, today=DAY1)                    # snapshot: [w2-a]
+    monkeypatch.undo()
+    sidecar = engagement / INDEX_PENDING_FILENAME
+    assert sidecar.exists()
+
+    def held(path):
+        return False                                       # unlink refused
+    monkeypatch.setattr(filer_module, "_discard_pending_index", held)
+    drop(engagement, "w2-b.pdf", "Form W-2 Wage and Tax Statement 2025 beta")
+    _age(sidecar, 60)
+    report = file_drops(engagement, today=DAY2)           # workbook: [w2-a, w2-b]
+    assert report.index_deferred is False and sidecar.exists()
+    monkeypatch.undo()
+
+    rows = read_index(engagement / INDEX_FILENAME)
+    assert [r.original_name for r in rows] == ["w2-a.pdf", "w2-b.pdf"]
+    assert file_drops(engagement, today=DAY2).handled == 0    # nothing re-sorted
+    assert len(list(prepared(engagement, "A01").iterdir())) == 2
+
+
+def test_a_persons_decision_survives_excel_saving_the_stale_workbook(engagement, monkeypatch):
+    # Excel saved the (older) workbook after the filing was deferred: the
+    # workbook is newer, but its parked row is not the truth.
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    _lock_the_index(monkeypatch)
+    assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    monkeypatch.undo()
+    _age(engagement / INDEX_PENDING_FILENAME, 60)
+    os.utime(engagement / INDEX_FILENAME, None)           # Excel's save, no change to the row
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == FILED and row.identifier == "C01"
+
+
+def test_a_sidecar_that_cannot_be_read_stops_the_run_rather_than_being_guessed_past(engagement, monkeypatch):
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    _lock_the_index(monkeypatch)
+    file_drops(engagement, today=DAY1)
+    monkeypatch.undo()
+    sidecar = engagement / INDEX_PENDING_FILENAME
+    real = filer_module.Path.read_text
+
+    def unreadable(self, *args, **kwargs):
+        if self == sidecar:
+            raise OSError("[Errno 5] Input/output error")
+        return real(self, *args, **kwargs)
+    monkeypatch.setattr(filer_module.Path, "read_text", unreadable)
+    with pytest.raises(OSError, match="could not read"):
+        read_index(engagement / INDEX_FILENAME)
+    monkeypatch.undo()
+    assert sidecar.exists()                               # not quarantined
+
+
+def test_an_original_replaced_under_its_own_name_is_said_out_loud_every_run(engagement):
+    from tracker.filer import REPLACED_IN_PBC
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    first = file_drops(engagement, today=DAY1).filed[0]
+    text_pdf(pbc(engagement) / "w2.pdf", "Form W-2 Wage and Tax Statement 2025 CORRECTED")
+    for _ in range(2):
+        report = file_drops(engagement, today=DAY2)
+        assert report.handled == 0
+        [error] = report.errors
+        assert error.name == "w2.pdf" and error.left_in_place
+        assert error.error == REPLACED_IN_PBC.format(
+            location=first.pbc_location, received=DAY1.isoformat(), prepared=first.prepared_location)
+    assert len(read_index(engagement / INDEX_FILENAME)) == 1
+
+
+def test_a_run_killed_after_copying_does_not_leave_a_second_copy_behind(engagement, monkeypatch):
+    # The working copy was made, the process died before the index recorded
+    # it. The next run finds the original unrecorded and reuses the copy.
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+
+    def killed(*args, **kwargs):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(filer_module, "write_index", killed)
+    with pytest.raises(KeyboardInterrupt):
+        file_drops(engagement, today=DAY1)
+    monkeypatch.undo()
+    assert not (engagement / INDEX_FILENAME).exists()
+
+    report = file_drops(engagement, today=DAY2)
+    assert len(report.filed) == 1 and len(report.review) == 1
+    assert [p.name for p in prepared(engagement, "A01").iterdir()] == [report.filed[0].filed_as]
+    assert [p.name for p in prepared(engagement, REVIEW_DIR_NAME).iterdir()] == ["scan0012.pdf"]
+
+
+def test_a_failed_index_write_puts_the_filed_copy_back_where_the_index_says(engagement, monkeypatch):
+    import tracker.filer as filer_module
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    def disk_full(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(filer_module, "_save_index", disk_full)
+    with pytest.raises(OSError):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    monkeypatch.undo()
+    assert (engagement / parked.prepared_location).exists()
+    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest Statement"
+    assert not c01.exists() or not any(c01.iterdir())
+
+    result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    assert result.moved_review_copy is True
+    assert [p.name for p in prepared(engagement, "C01").iterdir()] == [result.entry.filed_as]
+
+
+def test_a_file_still_being_written_is_reported_as_waiting_not_passed_over(engagement):
+    from tracker.manifest import TEMP_SUFFIX
+
+    half = engagement / SHARED_DIR_NAME / f"upload{TEMP_SUFFIX}"
+    half.write_bytes(b"%PDF-1.4 partial")
+    report = file_drops(engagement, today=DAY1)
+    assert report.waiting == [half] and report.handled == 0
+    assert half.exists()
+
+
+# ------------------------------------------- the second reading (decision 56) ----
+
+
+def test_a_same_size_replacement_with_an_old_date_is_still_noticed(engagement):
+    # One number changed in a CSV, copied in with its original timestamp:
+    # same size, older mtime. Only the bytes can tell.
+    from tracker.filer import REPLACED_IN_PBC
+
+    (engagement / SHARED_DIR_NAME / "ledger.csv").write_text("a,1\nb,2\n", encoding="utf-8")
+    first = file_drops(engagement, today=DAY1).review[0]
+    original = pbc(engagement) / "ledger.csv"
+    stamp = original.stat().st_mtime - 30 * 86400
+    original.write_text("a,1\nb,3\n", encoding="utf-8")          # same length
+    os.utime(original, (stamp, stamp))                            # older than its row
+    [error] = file_drops(engagement, today=DAY2).errors
+    assert error.error == REPLACED_IN_PBC.format(
+        location=first.pbc_location, received=DAY1.isoformat(), prepared=first.prepared_location)
+
+
+def test_an_original_the_sync_client_dehydrated_is_not_downloaded_to_be_checked(engagement, monkeypatch):
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p.name == "w2.pdf")
+
+    def never(path):
+        raise AssertionError(f"hashed {path.name}")
+    monkeypatch.setattr(filer_module, "sha256_of", never)
+    assert file_drops(engagement, today=DAY2).errors == []
+
+
+def test_a_copy_that_fails_half_way_leaves_no_truncated_working_copy(engagement, monkeypatch):
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    def half(src, dst):
+        filer_module.Path(dst).write_bytes(b"%PDF-1.4 half")
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(filer_module.shutil, "copy2", half)
+    report = file_drops(engagement, today=DAY1)
+    monkeypatch.undo()
+    assert len(report.review) == 1 and "No space left" in report.review[0].reason
+    assert not any(prepared(engagement, "A01").iterdir())          # nothing half-written
+    assert (pbc(engagement) / "w2.pdf").exists()                    # the record is safe
+
+
+def test_an_interrupt_after_the_index_landed_does_not_undo_the_filing(engagement, monkeypatch):
+    # write_index wrote the workbook; the interrupt hit while the sidecar
+    # was being removed. The index says Filed at the request folder, so
+    # the copy stays there - moving it back would leave the index lying.
+    import tracker.filer as filer_module
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    def interrupted(path):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(filer_module, "_discard_pending_index", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    monkeypatch.undo()
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == FILED and (engagement / row.prepared_location).exists()
+    assert not (engagement / parked.prepared_location).exists()
+
+
+def test_every_unfinished_transfer_name_is_reported_as_waiting(engagement):
+    from tracker.validators import UNFINISHED_SUFFIXES
+
+    for suffix in UNFINISHED_SUFFIXES:
+        (engagement / SHARED_DIR_NAME / f"upload{suffix}").write_bytes(b"partial")
+    report = file_drops(engagement, today=DAY1)
+    assert sorted(p.name for p in report.waiting) == sorted(f"upload{s}" for s in UNFINISHED_SUFFIXES)
+
+
+
+def test_assigning_reuses_a_copy_an_earlier_attempt_left_and_leaves_no_half_copy(engagement, monkeypatch):
+    # The same two guarantees the sort path has (decisions 54, 56), on the
+    # path a person drives: a kill after the move made a copy the index
+    # never learned of, and a copy that fails half-way leaves nothing.
+    import tracker.filer as filer_module
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest Statement"
+    earlier = c01 / "C01 - Mortgage Interest Statement - TY2025.pdf"
+    (engagement / parked.prepared_location).rename(earlier)      # the killed attempt's move
+    result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    assert [p.name for p in c01.iterdir()] == [earlier.name] and result.entry.filed_as == earlier.name
+
+    drop(engagement, "scan0013.pdf", "nothing the rules recognise either")
+    parked = file_drops(engagement, today=DAY2).review[0]
+    (engagement / parked.prepared_location).unlink()             # a person removed the parked copy
+
+    def half(src, dst):
+        filer_module.Path(dst).write_bytes(b"%PDF-1.4 half")
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(filer_module.shutil, "copy2", half)
+    with pytest.raises(OSError):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    monkeypatch.undo()
+    assert [p.name for p in c01.iterdir()] == [earlier.name]     # no half copy beside it
+
+
+def test_a_file_named_like_a_formula_is_recorded_as_its_name(engagement):
+    drop(engagement, "=SUM scan.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.original_name == "=SUM scan.pdf"
+
+
+def test_assigning_a_replaced_original_is_refused_not_recorded_under_the_old_bytes(engagement):
+    from tracker.filer import FilingError, assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    (engagement / parked.prepared_location).unlink()             # the parked copy is gone
+    text_pdf(pbc(engagement) / "scan0012.pdf", "the client replaced it with something else")
+    with pytest.raises(FilingError, match="replaced after it arrived"):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NEEDS_REVIEW and row.digest == parked.digest

@@ -46,6 +46,7 @@ from tracker.manifest import (
     Status,
     StatusUpdate,
     load_manifest,
+    pending_updates,
     summarize,
     with_pending,
     write_statuses,
@@ -59,6 +60,7 @@ from tracker.scaffold import (
 from tracker.validators import (
     PdfVerdictCache,
     check_folder,
+    is_cloud_placeholder,
     is_ignored,
     iter_candidate_files,
     sha256_of,
@@ -70,6 +72,7 @@ from tracker.validators import (
 OVERRIDE_NOTE = "[override: {override}]"
 PARTIAL_NOTE = "{count} of {expected} expected files"
 DUPLICATES_NOTE = "{n} duplicate file(s) ignored"
+ACCEPTED_NOTE = "{n} file(s) filed here by a person; content rules not applied to them"
 FOLDERS_NOTE = "{n} folders match this identifier"
 MORE_ISSUES_NOTE = "(+{n} more issues)"
 SYNCING_MORE_NOTE = "{n} more file(s) still syncing"
@@ -112,23 +115,70 @@ class ScanReport:
 # ------------------------------------------------------------- per-item ----
 
 
+def _filed_by_a_person(engagement_dir: Path) -> frozenset[Path]:
+    """Working copies the index records as a person's filing decision.
+
+    The newest row for a location is the one that counts (a person's copy
+    that was deleted and whose canonical name a later machine-filed drop
+    took is not theirs), and the file must still hold the bytes that row
+    recorded - the decision was about those bytes, not the name.
+    """
+    from tracker.filer import ASSIGNED_BY_PERSON, FILED, INDEX_FILENAME, read_index
+
+    try:
+        rows = read_index(engagement_dir / INDEX_FILENAME, quarantine=False)
+    except Exception as exc:   # an unreadable index is the filer's problem, not the scan's
+        log.warning("Could not read the index for a person's decisions: %s", exc)
+        return frozenset()
+    newest = {row.prepared_location: row for row in rows if row.prepared_location}
+    accepted = set()
+    for location, row in newest.items():
+        if row.decision != FILED or not row.reason.startswith(ASSIGNED_BY_PERSON):
+            continue
+        path = engagement_dir / location
+        if is_cloud_placeholder(path):
+            continue              # not read: reading would download it; it waits as Pending Sync
+        try:
+            if row.digest and sha256_of(path) == row.digest:
+                accepted.add(path)
+        except OSError:
+            continue
+    return frozenset(accepted)
+
+
+
 def _scan_item(
     item: RequestItem,
     folders: list[Path],
     cache: ContentCache,
     today: dt.date,
     pdf_cache: PdfVerdictCache | None = None,
+    accepted: frozenset[Path] = frozenset(),
 ) -> StatusUpdate:
-    """Run tiers 1-3 for one manifest row and resolve its status."""
+    """Run tiers 1-3 for one manifest row and resolve its status.
+
+    ``accepted`` are working copies a person filed here from Needs Review
+    (the index says ``ASSIGNED_BY_PERSON``): their decision stands, so the
+    content rules are not run on those files - a rule the document does
+    not satisfy would otherwise turn the person's decision into a client
+    ask for the "right" file.
+    """
     results = [
         fr for folder in folders for fr in check_folder(folder, item, pdf_cache=pdf_cache).files
     ]
     pending = [f for f in results if f.pending_sync]
-    tier2_failed = [f for f in results if not f.ok and not f.pending_sync]
+    # A person's decision waives tier 2 as well as tier 3: they looked at
+    # the file, whatever its size or type says.
+    tier2_failed = [f for f in results if not f.ok and not f.pending_sync and f.path not in accepted]
 
     valid: list[Path] = []
     content_failed: list[tuple[Path, str]] = []
-    for f in (f for f in results if f.ok):
+    by_person = 0
+    for f in (f for f in results if f.ok or f.path in accepted):
+        if f.path in accepted:
+            valid.append(f.path)
+            by_person += 1
+            continue
         verdict = check_content(f.path, item, cache)
         if verdict.ok:
             valid.append(f.path)
@@ -155,8 +205,14 @@ def _scan_item(
 
     failures = [f"{f.path.name}: {f.reason}" for f in tier2_failed]
     failures += [f"{path.name}: {reason}" for path, reason in content_failed]
+    # What is ours to look at comes first: the note lists at most
+    # _MAX_LISTED_FAILURES and is cut at _MAX_NOTE_LEN, and a firm-side
+    # marker that fell off the end would turn the row into a client ask.
+    failures.sort(key=lambda note: not any(r.matches(note) for r in reasons.FIRM_SIDE))
 
     facts: list[str] = []
+    if by_person:
+        facts.append(ACCEPTED_NOTE.format(n=by_person))
     if duplicates:
         facts.append(DUPLICATES_NOTE.format(n=duplicates))
     if len(folders) > 1:
@@ -222,6 +278,10 @@ def _received_date(
     """Received Date: stamped on the first Received pass, preserved through regressions."""
     if status == Status.RECEIVED:
         return item.received_date or today
+    if status == Status.PENDING_SYNC:
+        # The file is still there, the sync client has just let go of its
+        # bytes ("free up space"). Nothing changed; the row waits, dated.
+        return item.received_date
     if item.received_date is not None:
         # A row that was Received and is not any more either lost files
         # or was asked for more. Say which; REGRESSION_FILES_CHANGED on a row
@@ -291,14 +351,24 @@ def scan_engagement(
     # The lock comes before the manifest is read (see tracker.locking): a
     # sort that finished in between would otherwise be invisible to this scan.
     with engagement_lock(engagement_dir) if not dry_run else nullcontext():
-        items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+        manifest_path = engagement_dir / MANIFEST_FILENAME
+        # The statuses a locked Excel kept out of the workbook last time are
+        # what this scan compares against: the Received Date it carried
+        # forward ("first date all validations passed") and the status a
+        # regression is measured from both live there until the write lands.
+        items = with_pending(
+            load_manifest(manifest_path), pending_updates(manifest_path, quarantine=not dry_run)
+        )
         prepared_dir = engagement_dir / PREPARED_DIR_NAME
         cache = ContentCache(engagement_dir / CACHE_FILENAME)
         pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
 
+        accepted = _filed_by_a_person(engagement_dir)
         updates = {
-            item.identifier: _scan_item(item, assigned[item.identifier], cache, today, pdf_cache)
+            item.identifier: _scan_item(
+                item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
+            )
             for item in items
         }
 
@@ -319,7 +389,7 @@ def scan_engagement(
                 path for folder in claimed for path in iter_candidate_files(folder)
             }
         )
-        report.written = write_statuses(engagement_dir / MANIFEST_FILENAME, updates)
+        report.written = write_statuses(manifest_path, updates)
         report.deferred = not report.written
         cache.save()
         return report

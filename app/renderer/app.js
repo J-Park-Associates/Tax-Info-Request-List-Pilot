@@ -364,7 +364,7 @@ async function runScan() {
       return;
     }
     if (run.error) {
-      banner(`The pass stopped: ${run.error}`, "err");
+      banner(`The pass reported a problem: ${run.error}`, "err");
       return;
     }
     const did = [`filed ${run.filed}`];

@@ -63,11 +63,17 @@ logging.getLogger("pdfminer").setLevel(logging.ERROR)
 #: The verdict cache beside the manifest, shared by the filer and the scanner.
 CACHE_FILENAME = "_content_cache.json"
 #: Its layout; an older layout is simply reset (the cache is disposable).
-CACHE_VERSION = 2
+#: 3: verdicts that were the machine's (no OCR, OCR failed) are no longer
+#: stored; a cache written before that carried them for ever.
+#: 4: says() changed what a keyword verdict means (a form number is title evidence).
+CACHE_VERSION = 4
 
-#: A "text" PDF with fewer stripped characters than this is treated as a
-#: scan/image-only PDF and routed to the OCR fallback.
-_MIN_TEXT_CHARS = 20
+#: A "text" PDF with fewer stripped characters than this *per page read*
+#: is a scan: what little it has is a scanner's stamp ("Scanned by
+#: CamScanner", "Page 1 of 2"), not the document, and is not read as one.
+#: Pages are counted from the page breaks ``_extract_pdf`` writes.
+_MIN_TEXT_CHARS = 25
+_PAGE_BREAK = "\f"
 
 #: Read at most this many pages of any PDF, with or without OCR. The words
 #: that identify a document - its form number, the tax year, the payer -
@@ -89,6 +95,10 @@ class ContentResult:
     ok: bool
     reason: str = ""
     extractable: bool = True  # False: could not get text (no extractor / no OCR)
+    #: True when the verdict is about the machine, not the document: OCR is
+    #: not installed, or it failed this once. Never cached - installing OCR
+    #: or a second try must be able to change the answer.
+    transient: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +116,7 @@ class Extraction:
     reason: str = ""             # why there is no usable text, if there is none
     extractable: bool = True     # False: no extractor, no OCR, or extraction failed
     error: str = ""              # the exception, when extraction raised
+    transient: bool = False      # the machine's doing (no OCR, OCR failed), not the file's
 
 
 # ------------------------------------------------------------------ rules ----
@@ -125,31 +136,230 @@ def rules_fingerprint(item: RequestItem) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+#: The variants the IRS joins to a form's number: ``1098-T`` is the tuition
+#: form, not the mortgage form ``1098``; ``1099-R`` is not ``1099-INT``. A
+#: keyword of the bare number means the bare form and must not match a
+#: variant. Keyed by the number with its dashes removed (``w2`` for W-2), so
+#: a keyword written either way is found. Any other hyphen-joined neighbour
+#: - an employer, a bank, a person (``1098-Citi``, ``W2-Tom``) - is a
+#: separator's hyphen and still matches, which is what a client's file
+#: name usually carries. One list, in the one module that reads keywords.
+FORM_VARIANTS: dict[str, tuple[str, ...]] = {
+    "1098": ("t", "e", "c", "f", "q", "ma"),
+    "1099": ("int", "div", "b", "r", "misc", "nec", "oid", "k", "g", "s", "sa",
+             "q", "ltc", "patr", "cap", "c", "a", "h", "da", "ls", "sb", "qa"),
+    "1095": ("a", "b", "c"),
+    "1040": ("sr", "nr", "x", "es", "v", "ss", "c"),
+    "1041": ("a", "es", "n", "qft", "t", "v"),
+    "1065": ("x", "b"),
+    "1120": ("s", "x", "f", "h", "w", "c", "l", "pc", "pol", "reit", "ric", "sf", "nd"),
+    "940": ("pr", "ss"),
+    "941": ("x", "ss", "pr"),
+    "990": ("ez", "pf", "t", "n"),
+    "5498": ("sa", "esa", "qa"),
+    "w2": ("g", "gu", "as", "vi", "c"),
+    "w3": ("c", "ss", "pr"),
+}
+#: What may sit between a number and its variant, or between a keyword's
+#: words: nothing ("1098T"), spaces, or any dash a PDF or a keyboard yields.
+_DASH_CHARS = "".join(("-", chr(0x2010), chr(0x2011), chr(0x2012), chr(0x2013), chr(0x2014), chr(0x2212), chr(0xAD)))   # hyphen, the Unicode dashes, minus, soft hyphen
+#: An apostrophe as a keyboard types it, as a PDF prints it, and as OCR reads it.
+_APOSTROPHES = "".join(("'", chr(0x2019), chr(0x2018), chr(0x02BC), chr(0x60)))
+_JOINER = rf"[\s{re.escape(_DASH_CHARS)}]*"
+_DASHES = re.compile(rf"[\s{re.escape(_DASH_CHARS)}]")
+
+
+def _joined_to_a_variant(text: str, keyword: str, match: re.Match[str]) -> bool:
+    """True when the matched keyword ends in a form number that ``text``
+    continues with one of that form's variants: ``1098`` in "1098-T" or
+    "1098 T", ``form 1040`` in "Form-1040-SR"."""
+    variants = FORM_VARIANTS.get(_DASHES.sub("", keyword.strip().lower().split()[-1]))
+    if not variants:
+        return False
+    tail = re.compile(rf"{_JOINER}(?:{'|'.join(variants)})(?![a-z0-9])")
+    return tail.match(text, match.end()) is not None
+
+
+def keyword_pattern(keyword: str) -> str | None:
+    """The regular expression one keyword is looked for with, or None if blank.
+
+    Whole tokens only. Between a keyword's words, and on either side of a
+    dash inside a word, anything a dash can become: ``interest income``
+    matches "interest-income" in a file name, ``w-2`` matches "W2" and
+    "W–2", ``1099-int`` matches "1099INT".
+    """
+    # Only the letters and digits are the keyword; a "-" or "$" typed into
+    # a keyword cell is nothing to look for, and must not match everything.
+    keyword = keyword.strip().lower()
+    if not any(ch.isalnum() for ch in keyword):
+        return None
+    words = [_JOINER.join(_seams(part) for part in _DASHES.split(w) if part) for w in keyword.split()]
+    words = [w for w in words if w]
+    return rf"(?<![a-z0-9]){_JOINER.join(words)}(?![a-z0-9])"
+
+
+def _seams(part: str) -> str:
+    """``part`` escaped, with a dash allowed where letters meet digits (a
+    keyword typed ``w2`` finds "W-2" as ``w-2`` finds "W2"), a plural
+    allowed on a word (``fixed asset`` finds "Fixed Assets"), and a number
+    kept out of a larger amount (``704`` is not in "20,704" or "704.50")."""
+    pieces = re.findall(r"[a-z]+|[0-9]+|[^a-z0-9]+", part)
+    out = []
+    for piece in pieces:
+        if piece.isalpha() and len(piece) >= 3:
+            out.append(re.escape(piece) + "(?:e?s)?")
+        elif piece.isdigit():
+            out.append(rf"(?<![0-9][,.]){re.escape(piece)}(?![,.][0-9])")
+        elif all(ch in _APOSTROPHES for ch in piece):
+            out.append(f"[{re.escape(_APOSTROPHES)}]?")   # typed straight, printed curly, or dropped
+        else:
+            out.append(re.escape(piece))
+    return _JOINER.join(out)
+
+
 def contains_keyword(text: str, keyword: str) -> bool:
     """True if ``keyword`` appears in ``text`` as a whole token.
 
     Matched on token boundaries rather than as a bare substring, so ``EIN``
     does not match "being", ``1098`` does not match "10983", and ``W-2``
-    still matches "W-2 Wage and Tax Statement". Keywords drive both status
-    and — via :mod:`tracker.router` — where a document gets filed, so a
-    coincidental substring must never count as evidence.
+    still matches "W-2 Wage and Tax Statement". A form's own variant is
+    part of its name, not a boundary: ``1098`` does not match "1098-T"
+    and ``1099`` does not match "1099-R" (``FORM_VARIANTS``), because a
+    tuition statement filed as mortgage interest is exactly the misfiling
+    the keywords exist to prevent. A row that means every 1099 lists them.
+    Keywords drive both status and — via :mod:`tracker.router` — where a
+    document gets filed, so a coincidental substring must never count as
+    evidence.
     """
-    escaped = re.escape(keyword.strip().lower())
-    if not escaped:
+    pattern = keyword_pattern(keyword)
+    if pattern is None:
         return False
-    pattern = rf"(?<![a-z0-9]){escaped}(?![a-z0-9])"
-    return re.search(pattern, text.lower()) is not None
+    text = text.lower()
+    return any(not _joined_to_a_variant(text, keyword, m) for m in re.finditer(pattern, text))
+
+
+#: A form number a keyword names is content evidence only where a form
+#: prints its own: in the title - the first ``TITLE_CHARS`` of the text -
+#: or as the number the document prints most, on every copy and every
+#: page's footer (a W-2 prints its title at the foot of the form, below
+#: the boxes). Every 1040 says "Attach Form(s) W-2", every 1095-C's
+#: instructions name "Form 1095-A", every 1099's say "Form 1040-ES", and
+#: those are single mentions of other forms, not the form this is. A file
+#: name is read whole: it is all title.
+TITLE_CHARS = 400
+_FORM_NUMBER = re.compile(r"^(?:form\s+)?([a-z]?\d{3,4}|w\d)(?:[a-z]{1,4})?$")
+_FORM_MENTION = re.compile(
+    rf"(?<![a-z0-9])(?:form\s+)?(w[{re.escape(_DASH_CHARS)}]?[23]|\d{{3,4}})"
+    rf"(?:[\s{re.escape(_DASH_CHARS)}]?([a-z]{{1,4}}))?(?![a-z0-9])"
+)
+
+
+def is_form_number(keyword: str) -> bool:
+    """True for a keyword that is a form's number: ``1098``, ``form 1095-a``,
+    ``W-2``, ``form 940``. A bare number counts only for a known family
+    (``FORM_VARIANTS``); ``form`` in front makes any number one."""
+    bare = _DASHES.sub("", keyword.strip().lower())
+    if bare.startswith("form"):
+        return _FORM_NUMBER.match("form " + bare[4:]) is not None
+    match = _FORM_NUMBER.match(bare)
+    return match is not None and match.group(1) in FORM_VARIANTS
+
+
+def _form_key(number: str, variant: str | None) -> str:
+    return _DASHES.sub("", number) + (variant or "")
+
+
+def _title(text: str) -> str:
+    """The first ``TITLE_CHARS``, extended to the end of the word it cuts."""
+    if len(text) <= TITLE_CHARS:
+        return text
+    space = re.compile(r"\s").search(text, TITLE_CHARS)
+    return text[:space.start()] if space else text
+
+
+#: How a form names itself, and how it names another form. Its own number
+#: is followed by its year or revision - "Form 1040 (2025)", "Form 1099-DIV
+#: (Rev. January 2024)", "941 for 2026:" - on the title and on every page's
+#: footer. Another form's number is quoted: "(Form 1040)", "Form 1040 or
+#: 1040-SR", "Form 1040 instructions", "Form 1040, line 8". The two shapes
+#: are told apart here, because a W-2's instruction pages name Form 1040
+#: thirty times and the W-2 itself a dozen.
+_SELF_WEIGHT, _PLAIN_WEIGHT, _REFERENCE_WEIGHT = 3, 1, 0
+_SELF_AFTER = re.compile(r"[ \t]*(?:\([ \t]*)?(?:rev\b|(?:19|20)\d{2}\b)|[ \t]+for[ \t]+(?:19|20)\d{2}\b")
+_REFERENCE_AFTER = re.compile(
+    r"\s*[,.;)]|\s+(?:or|and|line|lines|instructions?|to|if|is|are|was|were|schedule|box|boxes|page|"
+    r"worksheet|for|with|at|by|filers?|must|may|should)\b"
+)
+
+
+def _mention_weight(text: str, match: re.Match[str], end: int) -> int:
+    """``end`` is where the form number (with its real variant) stops."""
+    if match.start() > 0 and text[match.start() - 1] == "(":
+        return _REFERENCE_WEIGHT
+    if _SELF_AFTER.match(text, end):
+        return _SELF_WEIGHT
+    if _REFERENCE_AFTER.match(text, end):
+        return _REFERENCE_WEIGHT
+    return _PLAIN_WEIGHT
+
+
+def dominant_forms(text: str) -> set[str]:
+    """The form number ``text`` is about, normalised (``w2``, ``1099int``),
+    as a set of at most one.
+
+    Mentions are weighed by their shape (``_mention_weight``): a form's
+    own number, dated, on the title and every footer outweighs the other
+    forms its instructions quote. The heaviest is its own; among equals,
+    the first mentioned. A number that never appears in its own right and
+    only once in passing is nobody's - an IRS notice that lists three
+    forms to file is about none of them.
+    """
+    low = text.lower()
+    scores: dict[str, int] = {}
+    first: dict[str, int] = {}
+    for match in _FORM_MENTION.finditer(low):
+        number, variant = match.group(1), match.group(2)
+        base = _DASHES.sub("", number)
+        if base not in FORM_VARIANTS:
+            continue
+        end = match.end()
+        if variant and variant not in FORM_VARIANTS[base]:
+            variant, end = None, match.end(1)   # "1040 line" is Form 1040, not a variant
+        key = _form_key(number, variant)
+        scores[key] = scores.get(key, 0) + _mention_weight(low, match, end)
+        first.setdefault(key, match.start())
+    if not scores:
+        return set()
+    top = max(scores.values())
+    if top < 2:
+        return set()
+    return {min((key for key, n in scores.items() if n == top), key=first.get)}
+
+
+def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
+    """``contains_keyword`` as content evidence: a form number counts only in
+    the title or as the document's own (dominant) number."""
+    if not is_form_number(keyword):
+        return contains_keyword(text, keyword)
+    if contains_keyword(_title(text), keyword):
+        return True
+    if not contains_keyword(text, keyword):
+        return False
+    bare = _DASHES.sub("", keyword.strip().lower())
+    key = bare[4:] if bare.startswith("form") else bare
+    return key in (dominant_forms(text) if dominant is None else dominant)
 
 
 def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
     """Apply the manifest row's content rules to extracted text."""
-    missing = [k for k in item.required_keywords if not contains_keyword(text, k)]
+    dominant = dominant_forms(text)
+    missing = [k for k in item.required_keywords if not says(text, k, dominant)]
     if missing:
         listed = ", ".join(f"'{k}'" for k in missing)
         return ContentResult(ok=False, reason=reasons.WRONG_DOCUMENT.format(listed=listed))
 
     if item.any_keywords and not any(
-        contains_keyword(text, k) for k in item.any_keywords
+        says(text, k, dominant) for k in item.any_keywords
     ):
         listed = ", ".join(item.any_keywords)
         return ContentResult(ok=False, reason=reasons.NO_EXPECTED_KEYWORD.format(listed=listed))
@@ -170,7 +380,7 @@ def _extract_pdf(path: Path) -> str:
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages[:MAX_PAGES]:
             parts.append(page.extract_text() or "")
-    return "\n".join(parts)
+    return _PAGE_BREAK.join(parts)
 
 
 def _extract_xlsx(path: Path) -> str:
@@ -247,7 +457,11 @@ def _ocr_pdf(path: Path) -> str | None:
         return None  # pip packages present but the Tesseract engine is not
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
-        return ""  # stack available, this file just wouldn't OCR
+        raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
+
+
+class OcrError(RuntimeError):
+    """OCR is installed but failed on this file this time; try again later."""
 
 
 def extract(path: Path, *, ocr: bool = True) -> Extraction:
@@ -271,7 +485,8 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
         return Extraction(
             None, reason=reasons.UNCHECKABLE_TYPE.format(extension=extension), extractable=False,
         )
-    if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS:
+    pages = text.count(_PAGE_BREAK) + 1
+    if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS * pages:
         if not ocr:
             return Extraction(text, needs_ocr=True)
         return extract_by_ocr(path)
@@ -280,9 +495,18 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
 
 def extract_by_ocr(path: Path) -> Extraction:
     """Read a scan by OCR; says why when it cannot (no OCR installed, or no words)."""
-    ocr_text = _ocr_pdf(path)
+    try:
+        ocr_text = _ocr_pdf(path)
+    except OcrError as exc:
+        # Ours to retry, not the client's to resend: the file may be fine.
+        return Extraction(
+            None, reason=reasons.OCR_FAILED.format(error=str(exc)),
+            extractable=False, error=str(exc), transient=True,
+        )
     if ocr_text is None:
-        return Extraction(None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False)
+        # No OCR on this machine: a fact about the machine, remembered by
+        # nobody, so the day it is installed the scan reads the file.
+        return Extraction(None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False, transient=True)
     if not ocr_text.strip():
         return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
     return Extraction(ocr_text, from_ocr=True)
@@ -311,7 +535,7 @@ def check_content(
 
     result = _check_uncached(path, item)
 
-    if cache is not None:
+    if cache is not None and not result.transient:
         cache.put(path, fingerprint, result)
     return result
 
@@ -319,7 +543,9 @@ def check_content(
 def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
     reading = extract(path)
     if reading.text is None:
-        return ContentResult(ok=False, reason=reading.reason, extractable=False)
+        return ContentResult(
+            ok=False, reason=reading.reason, extractable=False, transient=reading.transient,
+        )
     return evaluate_rules(reading.text, item)
 
 

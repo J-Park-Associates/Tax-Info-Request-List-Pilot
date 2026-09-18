@@ -335,3 +335,71 @@ def test_a_derived_year_check_is_not_carried_as_text(prior, tmp_path):
     assert cells["C01"] is None and rows["C01"].date_pattern == r"(?i)\b2026\b"
     assert rows["C01"].date_pattern_derived
     assert cells["A01"] == r"(?i)\b2026\b"        # A01 typed its own pattern; it shifts and stays
+
+
+def test_a_rollover_reads_the_prior_year_without_moving_anything_in_it(prior):
+    """The prior engagement is read, never written: an unreadable index
+    sidecar there is left where it is, not quarantined by a rollover."""
+    from tracker.filer import INDEX_FILENAME
+    from tracker.manifest import pending_path
+
+    sidecar = pending_path(prior / INDEX_FILENAME)
+    sidecar.write_text("{not json", encoding="utf-8")
+    before = sorted(p.name for p in prior.iterdir())
+    roll_forward(prior)
+    assert sidecar.exists() and sorted(p.name for p in prior.iterdir()) == before
+
+
+def test_a_rollover_learns_from_the_prior_years_deferred_scan_too(prior, monkeypatch):
+    """The last scan of the prior year was deferred and never landed - the
+    usual end of an engagement. What it saw is in the sidecar."""
+    import datetime as dt
+
+    from tracker.manifest import Status, StatusUpdate, _save_pending
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    manifest = prior / MANIFEST_FILENAME
+    _save_pending(manifest, {"A01": StatusUpdate(
+        status=Status.RECEIVED, file_count=3, received_date=dt.date(2026, 3, 1))})
+    report = roll_forward(prior)
+    a01 = rolled_by_id(report)["A01"]
+    assert a01.prior_status == Status.RECEIVED
+    assert a01.item.expected_count >= 3
+
+
+def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior):
+    """A relative prior on the command line is resolved before it is written
+    as Rolled From; the scheduled run's working folder is not this one."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from tracker.manifest import load_engagement_info
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    repo = Path(__file__).resolve().parent.parent
+    subprocess.run(
+        [sys.executable, "-m", "tracker.rollover", prior.name, "Smith TY2026"],
+        cwd=prior.parent, check=True, capture_output=True,
+        env={**__import__("os").environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
+    )
+    info = load_engagement_info(prior.parent / "Smith TY2026" / MANIFEST_FILENAME)
+    assert Path(info.rolled_from).is_absolute() and Path(info.rolled_from) == prior.resolve()
+
+
+def test_a_file_named_like_a_formula_is_a_name_on_the_carried_sheet(prior, tmp_path):
+    from openpyxl import load_workbook
+
+    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry, write_index
+    from tracker.rollover import CARRIED_SHEET, write_rollover_manifest
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    write_index(prior / INDEX_FILENAME, [
+        IndexEntry(received="2026-03-01", original_name="=SUM scan.pdf", size_kb=12.0, digest="abc",
+                   identifier="", prepared_location="", pbc_location="", decision=NEEDS_REVIEW, reason=UNMATCHED),
+    ])
+    target = tmp_path / "next"
+    target.mkdir()
+    write_rollover_manifest(target / MANIFEST_FILENAME, roll_forward(prior))
+    ws = load_workbook(target / MANIFEST_FILENAME, data_only=True)[CARRIED_SHEET]
+    assert any("=SUM scan.pdf" in str(c.value) for row in ws.iter_rows() for c in row if c.value)

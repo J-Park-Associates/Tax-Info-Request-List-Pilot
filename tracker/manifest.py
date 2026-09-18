@@ -400,14 +400,33 @@ def _parse_enum(value: object, allowed: tuple[str, ...], column: str, row: int) 
     )
 
 
+_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+_MONTH_NAMES = ("january", "february", "march", "april", "may", "june", "july", "august",
+                "september", "october", "november", "december")
+
+
 def derived_date_pattern(period: str) -> str:
-    """The year check a Period like ``TY2025`` or ``Dec 2025`` implies, or "".
+    """The date check a Period like ``TY2025`` or ``Dec 2025`` implies, or "".
 
     Case-insensitive, whole-token: ``\b2025\b`` matches "Tax Year 2025"
     and "12/31/2025" but not an account number that happens to contain it.
+    A Period that names a month asks for that month too - "December 2025",
+    "Dec 2025" or a "12/dd/2025" date - so a November statement is not the
+    December one a row asks for.
     """
     match = _PERIOD_YEAR.search(period or "")
-    return rf"(?i)\b{match.group(0)}\b" if match else ""
+    if not match:
+        return ""
+    year = match.group(0)
+    month = next((m for m in _MONTHS if (period or "").lower().lstrip().startswith(m)), None)
+    if month is None:
+        return rf"(?i)\b{year}\b"
+    number = _MONTHS.index(month) + 1
+    name = rf"(?:{month}|{_MONTH_NAMES[number - 1]})\.?"          # Dec, Dec., December
+    return (
+        rf"(?i)(?:\b{name}\s[^\n]{{0,20}}\b{year}\b|"
+        rf"\b{year}\b[^\n]{{0,20}}\b{name}\b|\b0?{number}/[0-3]?[0-9]/(?:{year}|{year[2:]})\b)"
+    )
 
 
 def parse_extensions(value: object) -> tuple[str, ...]:
@@ -709,7 +728,14 @@ def atomic_replacement(path: Path) -> Iterator[Path]:
         yield temp
         os.replace(temp, path)
     finally:
-        temp.unlink(missing_ok=True)
+        # The temp's removal must never replace the error that stopped the
+        # write: openpyxl leaves the half-written zip open when save()
+        # raises, Windows then refuses the delete, and a full disk would
+        # read as "open in Excel" and be retried five times.
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("Temporary file %s could not be removed (%s)", temp.name, exc)
 
 
 def write_text_atomically(
@@ -724,6 +750,20 @@ def write_text_atomically(
 def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
     """Write ``payload`` as JSON to ``path`` all-or-nothing; every sidecar uses this."""
     write_text_atomically(path, json.dumps(payload, indent=indent))
+
+
+def as_text(cell):
+    """Keep a value the tracker wrote from data a string, whatever it starts with.
+
+    openpyxl reads a string beginning with ``=`` as a formula. A client file
+    called ``=SUM scan.pdf`` would then be written into the index as a
+    formula, read back as an empty cell, and shown by Excel as an error.
+    A person's own formulas in the manifest are not touched: this is
+    applied only to cells the tracker fills from data.
+    """
+    if isinstance(cell.value, str) and cell.data_type == "f":
+        cell.data_type = "s"
+    return cell
 
 
 def save_workbook_atomically(wb: Workbook, path: Path) -> None:
@@ -767,11 +807,12 @@ def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
             if update.received_date is not None:
                 date_cell.number_format = DATE_FORMAT
             ws.cell(row=row, column=columns[COL_FILE_COUNT], value=update.file_count)
-            ws.cell(
-                row=row,
-                column=columns[COL_VALIDATION_NOTES],
-                value=update.validation_notes or None,
-            )
+            # cell(value=None) assigns nothing: a note that is now empty must
+            # still replace the one before it, or "request folder not found"
+            # outlives the folder and the reminder holds the row back for ever.
+            notes = ws.cell(row=row, column=columns[COL_VALIDATION_NOTES])
+            notes.value = update.validation_notes or None
+            as_text(notes)
         save_workbook_atomically(wb, path)
     finally:
         wb.close()
@@ -803,8 +844,6 @@ def write_statuses(
     for attempt in range(1, retries + 1):
         try:
             _apply_updates(path, merged)
-            pending_path(path).unlink(missing_ok=True)
-            return True
         except PermissionError as exc:
             log.warning(
                 "Manifest locked (attempt %d/%d): %s", attempt, retries, exc
@@ -812,6 +851,15 @@ def write_statuses(
             if attempt < retries:
                 time.sleep(delay)
                 delay *= 2
+            continue
+        # The workbook holds every update now. A sidecar something else
+        # holds open cannot be deleted, but it must not be mistaken for a
+        # locked workbook: saving it again would only re-defer what landed.
+        try:
+            pending_path(path).unlink(missing_ok=True)
+        except PermissionError as exc:
+            log.warning("%s was written but %s is held open and stays (%s)", path.name, pending_path(path).name, exc)
+        return True
 
     _save_pending(path, merged)
     log.error(
@@ -907,6 +955,20 @@ class ManifestCheck:
         return not self.problems
 
 
+#: Form numbers that name a family, not a form: a keyword of just the number
+#: matches none of the family's members (``1099`` does not match ``1099-INT``;
+#: see ``tracker.content_check.contains_keyword``), so the check says so.
+FORM_FAMILIES = {"1099": "1099-INT", "1095": "1095-A"}
+EMPTY_KEYWORD_WARNING = (
+    "Row {row} ({identifier}): the keyword '{keyword}' has no letters or digits and "
+    "matches nothing; leave the cell blank instead"
+)
+BARE_FORM_NUMBER_WARNING = (
+    "Row {row} ({identifier}): the keyword '{keyword}' matches only that form, not its "
+    "variants such as {example}; list the forms this request means"
+)
+
+
 def check_manifest(path: Path | str) -> ManifestCheck:
     """Everything load-time validation would say, plus what it would let slide.
 
@@ -944,6 +1006,15 @@ def check_manifest(path: Path | str) -> ManifestCheck:
                 f"Row {item.row} ({item.identifier}): {COL_ALLOWED_EXTENSIONS} is '{ANY_EXTENSION}', so any "
                 "file type counts as this document"
             )
+        for keyword in (*item.required_keywords, *item.any_keywords):
+            if not any(ch.isalnum() for ch in keyword):
+                warnings.append(EMPTY_KEYWORD_WARNING.format(
+                    row=item.row, identifier=item.identifier, keyword=keyword.strip()))
+            if keyword.strip() in FORM_FAMILIES:
+                warnings.append(BARE_FORM_NUMBER_WARNING.format(
+                    row=item.row, identifier=item.identifier, keyword=keyword.strip(),
+                    example=FORM_FAMILIES[keyword.strip()],
+                ))
     pending = pending_path(path)
     if pending.exists():
         warnings.append(
@@ -1048,10 +1119,16 @@ def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
             if _cell_str(ws.cell(row=row, column=columns[COL_IDENTIFIER]).value) != identifier:
                 continue
             cell = ws.cell(row=row, column=columns[COL_ANY_KEYWORDS])
+            if cell.data_type == "f":
+                raise ManifestError(
+                    f"Row {row} ({identifier}): {COL_ANY_KEYWORDS} holds a formula; "
+                    f"type the keyword {keyword!r} into it by hand"
+                )
             existing = _csv_tuple(cell.value)
             if keyword.lower() in (k.lower() for k in existing):
                 return False
             cell.value = ", ".join((*existing, keyword))
+            as_text(cell)              # a keyword starting with "=" is a keyword, not a formula
             save_workbook_atomically(wb, path)
             return True
         raise ManifestError(f"No request {identifier!r} in {path.name}")
@@ -1121,11 +1198,11 @@ def create_template(
             COL_MANUAL_OVERRIDE: item.manual_override or None,
         }
         for header, value in cells.items():
-            ws.cell(row=row, column=column[header], value=value)
+            as_text(ws.cell(row=row, column=column[header], value=value))
 
     _write_engagement_sheet(wb, info or EngagementInfo())
     wb.active = 0
     path.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(path)
+    save_workbook_atomically(wb, path)
     wb.close()
     return path

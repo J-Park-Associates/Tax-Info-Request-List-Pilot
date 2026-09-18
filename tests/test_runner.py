@@ -118,6 +118,35 @@ def test_reminders_off_beats_every_mode():
     assert should_draft(quiet, SATURDAY, REMINDERS_ALWAYS) is False
 
 
+def test_a_draft_day_the_machine_missed_is_caught_up_on_the_next_pass():
+    # Weekly, not only on the day. The machine was off on Saturday: Sunday's
+    # pass drafts, because the last draft is older than the Saturday that
+    # went by. Monday after a Saturday that did draft: nothing, until next
+    # week. Never drafted: wait for the first Saturday.
+    from tracker.runner import last_draft_day
+
+    engagement = Engagement(path=Path("/x"))
+    assert last_draft_day(SUNDAY) == SATURDAY and last_draft_day(SATURDAY) == SATURDAY
+    assert last_draft_day(FRIDAY) == SATURDAY - dt.timedelta(days=7)
+    assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, drafted=SATURDAY - dt.timedelta(days=7)) is True
+    assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, drafted=SATURDAY) is False
+    assert should_draft(engagement, FRIDAY, REMINDERS_AUTO, drafted=SATURDAY - dt.timedelta(days=7)) is False
+    assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, drafted=None) is False
+
+
+def test_a_pass_after_a_missed_saturday_writes_the_weeks_draft(tmp_path, samples):
+    import os
+
+    engagement = build_engagement(tmp_path, samples)
+    drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=7)).drafted
+    assert drafted is not None
+    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=7), dt.time(9)).timestamp()
+    os.utime(drafted, (stamp, stamp))                  # written last Saturday
+    assert run_engagement(engagement, today=FRIDAY).drafted is None      # this week not yet due
+    run = run_engagement(engagement, today=SUNDAY)     # Saturday was missed
+    assert run.drafted == engagement.path / DRAFT_FILENAME
+
+
 def test_the_draft_day_can_be_moved():
     monday = dt.date(2026, 3, 16)
     assert should_draft(Engagement(path=Path("/x")), monday, REMINDERS_AUTO, weekday=0) is True
@@ -167,6 +196,60 @@ def test_an_edited_draft_survives_the_next_weekly_run(tmp_path, samples):
     assert first.read_bytes() == edited, "an edit must never be clobbered"
     assert second.drafted.name == NEW_DRAFT_FILENAME
     assert "has been edited" in second.draft_note
+
+
+def test_an_edited_second_draft_is_never_clobbered_by_the_next_repeat(tmp_path, samples):
+    # The draft day's repeat runs several times. The first made room for the
+    # person's edits by writing NEW; the next must not take NEW's edits too.
+    from tracker.reminder import BOTH_DRAFTS_EDITED
+
+    engagement = build_engagement(tmp_path, samples)
+    first = run_engagement(engagement, today=SATURDAY).drafted
+    first.write_bytes(first.read_bytes() + b"\r\nPS: ask about the rental.\r\n")
+    second = run_engagement(engagement, today=SATURDAY).drafted
+    assert second.name == NEW_DRAFT_FILENAME
+    edited_new = second.read_bytes() + b"\r\nPPS: and the boat.\r\n"
+    second.write_bytes(edited_new)
+
+    third = run_engagement(engagement, today=SATURDAY)
+    assert third.drafted is None and third.ok
+    assert third.draft_note == BOTH_DRAFTS_EDITED
+    assert second.read_bytes() == edited_new
+
+
+def test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft(tmp_path, samples):
+    # Last week's draft asked for a document that has since arrived. The
+    # run's own unedited draft is rewritten as today's (nothing to chase),
+    # so it is neither stale text nor an old date; a draft a person edited
+    # is theirs and stays exactly as it is.
+    import os
+
+    from tracker.runner import last_drafted
+
+    only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
+    folder = tmp_path / "Settled TY2025"
+    folder.mkdir()
+    create_template(folder / MANIFEST_FILENAME, only_the_return)
+    scaffolded = scaffold_engagement(folder)
+    engagement = Engagement(path=folder, info=EngagementInfo(client="John Smith"))
+    drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=7)).drafted
+    stale = drafted.read_bytes()
+    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=7), dt.time(9)).timestamp()
+    os.utime(drafted, (stamp, stamp))
+
+    name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
+    (scaffolded.shared_dir / name).write_bytes((samples / name).read_bytes())
+    run = run_engagement(engagement, today=SATURDAY)
+    assert run.draft_note == NOTHING_OUTSTANDING and run.drafted is None
+    assert drafted.exists() and drafted.read_bytes() != stale          # today's words
+    assert last_drafted(folder) == dt.date.today()
+    assert run_engagement(engagement, today=SATURDAY + dt.timedelta(days=3)).drafted is None
+
+    drafted.write_bytes(b"a person's own words")
+    os.utime(drafted, (stamp, stamp))
+    run_engagement(engagement, today=SATURDAY)
+    assert drafted.read_bytes() == b"a person's own words"
+    assert last_drafted(folder) == SATURDAY - dt.timedelta(days=7)
 
 
 def test_an_untouched_draft_is_refreshed_in_place(tmp_path, samples):

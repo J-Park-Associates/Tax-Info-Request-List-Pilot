@@ -97,6 +97,8 @@ REVIEW_WARNING = "{n} file(s) the client already sent are still in " + REVIEW_DI
 REVIEW_ADVICE = "Identify them before sending, or you may ask for something you have."
 #: What a Partial row is asked with.
 PARTIAL_ASK = "{have} of {expected} received, {missing} still to come"
+#: The file-type ask, in the row's own terms (the reason's generic ask is for rows that take anything).
+EXTENSION_ASK = "we cannot open that file type; please send it as {accepted}"
 PARTIAL_ASK_COMPLETE = "{have} of {expected} received"
 
 SECTION_MISSING = "NOT YET RECEIVED"
@@ -108,6 +110,17 @@ SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL, SECTION_FAILED)
 
 class ReminderError(Exception):
     """A reminder could not be drafted from this engagement."""
+
+
+#: What the run says when it left both drafts alone.
+BOTH_DRAFTS_EDITED = (
+    f"{DRAFT_FILENAME} and {NEW_DRAFT_FILENAME} have both been edited; this week's "
+    "draft was not written - send or delete one of them first"
+)
+
+
+class DraftsEditedError(ReminderError):
+    """Both draft files carry a person's edits; nothing was overwritten."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,14 +192,29 @@ def client_ask(item: RequestItem) -> str:
         expected = item.expected_count
         have = item.file_count or 0
         missing = max(expected - have, 0)
-        return (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
-                if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
+        ask = (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
+               if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
+        # A count alone hides why: the client who sent both W-2s, one of
+        # them password-protected, is told what to fix, not just "1 of 2".
+        reason = reasons.find(item.validation_notes or "")
+        if reason is not None and not reason.firm_side:
+            ask = f"{ask}; {_ask_for(reason, item)}"
+        return ask
 
     if item.status != Status.FAILED:
         return ""
 
     reason = reasons.find(item.validation_notes or "")
-    return reason.client_ask if reason else GENERIC_ASK
+    return _ask_for(reason, item) if reason else GENERIC_ASK
+
+
+def _ask_for(reason: reasons.Reason, item: RequestItem) -> str:
+    """The reason's client ask, in the row's own terms where it has them:
+    "a PDF or an Excel file" would send a client whose row wants a
+    spreadsheet round the loop again."""
+    if reason is reasons.EXTENSION_NOT_ALLOWED and item.allowed_extensions:
+        return EXTENSION_ASK.format(accepted=" or ".join(f".{ext}" for ext in item.allowed_extensions))
+    return reason.client_ask
 
 
 def _firm_side_reason(item: RequestItem) -> str:
@@ -463,6 +491,11 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
 
     if preserve_edits and path.exists() and not is_unedited(path):
         path = path.with_name(NEW_DRAFT_FILENAME)
+        if path.exists() and not is_unedited(path):
+            # Both drafts carry somebody's work. The scheduled repeat runs
+            # several times on the draft day; the second one must not
+            # take the edits the first one made room for.
+            raise DraftsEditedError(BOTH_DRAFTS_EDITED)
 
     footer: list[str] = []
     if draft.scaffold_gaps:
@@ -554,5 +587,9 @@ if __name__ == "__main__":
         print(REVIEW_ADVICE)
 
     if ns.write:
-        written = write_draft(result, engagement_dir=ns.engagement_dir)
+        try:
+            written = write_draft(result, engagement_dir=ns.engagement_dir, preserve_edits=True)
+        except DraftsEditedError as exc:
+            print(f"\n{exc}")
+            raise SystemExit(1) from None
         print(f"\nDraft written to {written}")

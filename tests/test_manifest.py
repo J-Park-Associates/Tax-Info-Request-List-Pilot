@@ -540,11 +540,19 @@ def test_summarize_is_the_one_count():
 
 
 def test_a_period_with_a_year_implies_the_year_check(tmp_path):
+    import re
+
     from tracker.manifest import derived_date_pattern
 
     assert derived_date_pattern("TY2025") == r"(?i)\b2025\b"
-    assert derived_date_pattern("Dec 2025") == r"(?i)\b2025\b"
     assert derived_date_pattern("As of 12/31/2025") == r"(?i)\b2025\b"
+    # A Period that names a month asks for that month: a November statement
+    # is not the December one, and "12/31/2025" or "December 2025" both are.
+    december = derived_date_pattern("Dec 2025")
+    for text in ("Statement period 12/01/2025 - 12/31/2025", "December 2025 statement", "as of 12/31/2025"):
+        assert re.search(december, text), text
+    for text in ("Statement period 11/01/2025 - 11/30/2025", "Nov 2025", "Tax Year 2025"):
+        assert not re.search(december, text), text
     assert derived_date_pattern("Current") == ""
     assert derived_date_pattern("Acct 120250") == ""      # not a year
 
@@ -582,3 +590,55 @@ def test_a_derived_year_is_a_check_not_a_reason_to_route():
     keyed = RequestItem(identifier="A03", document="x", any_keywords=("w-2",))
     assert has_routing_rules(typed) and has_routing_rules(keyed)
     assert not has_routing_rules(derived)
+
+
+def test_check_manifest_warns_when_a_keyword_names_a_family_of_forms(tmp_path):
+    from tracker.manifest import BARE_FORM_NUMBER_WARNING, FORM_FAMILIES, check_manifest
+
+    path = tmp_path / "m.xlsx"
+    create_template(path, [
+        RequestItem(identifier="B01", document="1099s", allowed_extensions=("pdf",), any_keywords=("1099",)),
+        RequestItem(identifier="C01", document="Mortgage", allowed_extensions=("pdf",), required_keywords=("1098",)),
+    ])
+    check = check_manifest(path)
+    assert check.ok
+    assert check.warnings == [BARE_FORM_NUMBER_WARNING.format(
+        row=2, identifier="B01", keyword="1099", example=FORM_FAMILIES["1099"])]
+
+
+def test_a_failed_save_reports_its_own_error_not_a_locked_temp_file(tmp_path, monkeypatch):
+    # openpyxl leaves the half-written zip open when save() raises; on
+    # Windows the temp then cannot be deleted. That must not turn a full
+    # disk into "open in Excel" retried five times.
+    import tracker.manifest as manifest_module
+    from tracker.manifest import atomic_replacement
+
+    target = tmp_path / "x.xlsx"
+    target.write_bytes(b"before")
+    real_unlink = manifest_module.Path.unlink
+
+    def held(self, *args, **kwargs):
+        if self.name.endswith(manifest_module.TEMP_SUFFIX):
+            raise PermissionError("[WinError 32] still open")
+        return real_unlink(self, *args, **kwargs)
+    monkeypatch.setattr(manifest_module.Path, "unlink", held)
+    with pytest.raises(OSError, match="No space left"):
+        with atomic_replacement(target) as temp:
+            temp.write_bytes(b"half")
+            raise OSError(28, "No space left on device")
+    assert target.read_bytes() == b"before"
+
+
+def test_a_formula_in_the_keyword_cell_is_refused_not_rewritten(manifest):
+    from openpyxl import load_workbook
+
+    from tracker.manifest import COL_ANY_KEYWORDS, add_any_keyword
+
+    wb = load_workbook(manifest)
+    ws = wb[SHEET_NAME]
+    headers = [c.value for c in ws[1]]
+    ws.cell(row=2, column=headers.index(COL_ANY_KEYWORDS) + 1, value="=B2")
+    wb.save(manifest)
+    with pytest.raises(ManifestError, match="holds a formula"):
+        add_any_keyword(manifest, "A01", "wages")
+    assert load_workbook(manifest)[SHEET_NAME].cell(row=2, column=headers.index(COL_ANY_KEYWORDS) + 1).value == "=B2"

@@ -62,3 +62,16 @@ def test_an_unreadable_settings_file_is_an_error_not_a_default(beside_the_app):
     settings_path().write_text("{not json", encoding="utf-8")
     with pytest.raises(SettingsError, match="could not be read"):
         clients_root()
+
+
+def test_the_root_is_stored_absolute_and_a_bare_drive_is_its_root(beside_the_app, monkeypatch):
+    import os
+    from pathlib import Path
+
+    clients = beside_the_app / "Clients"
+    clients.mkdir()
+    monkeypatch.chdir(beside_the_app)
+    assert set_clients_root("Clients") == clients.resolve()
+    if os.name == "nt":
+        drive = Path.cwd().drive
+        assert set_clients_root(drive) == Path(drive + os.sep)

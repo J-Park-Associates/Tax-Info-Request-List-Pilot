@@ -339,3 +339,11 @@ def test_the_draft_reads_the_engagement_sheet_itself(tmp_path):
     assert draft.body.rstrip().endswith("Jason Park\nJ Park & Associates, CPA")
     # A one-off override still wins, for the CLI's flags.
     assert "Hi Sam," in draft_reminder(folder, client_name="Sam").body
+
+
+def test_an_ocr_failure_is_the_firms_to_retry_not_the_clients_to_resend():
+    from tracker import reasons
+
+    assert reasons.OCR_FAILED in reasons.FIRM_SIDE
+    note = "scan.pdf: " + reasons.OCR_FAILED.format(error="TesseractError: timeout")
+    assert reasons.find(note) is reasons.OCR_FAILED

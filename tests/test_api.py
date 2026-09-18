@@ -10,13 +10,13 @@ the app records it, so no test touches a real one.
 import datetime as dt
 import io
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 import tracker.api as api
 from tests.samples import PRIOR_YEAR, col, row
-from tracker import reasons
 from tracker.filer import NEEDS_REVIEW
 from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
@@ -88,6 +88,27 @@ def test_the_engagement_flag_needs_a_folder_under_the_root(capsys, demo_root, tm
     elsewhere = tmp_path / "Elsewhere" / "Smith"
     elsewhere.mkdir(parents=True)
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(elsewhere))
+    assert code == 1 and "not under the clients root" in payload["error"]
+
+
+def test_an_unplugged_clients_root_is_not_a_licence_to_read_anywhere(capsys, demo_root, tmp_path):
+    import shutil
+
+    elsewhere = tmp_path / "Elsewhere" / "Smith"
+    elsewhere.mkdir(parents=True)
+    shutil.rmtree(demo_root)                          # the drive is gone
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(elsewhere))
+    assert code == 1 and "not under the clients root" in payload["error"]
+
+
+def test_a_rollover_takes_its_prior_only_from_under_the_root(capsys, demo_root, tmp_path):
+    from tracker.manifest import create_template
+    from tracker.templates import template_items
+
+    elsewhere = tmp_path / "Elsewhere" / "Smith TY2025"
+    elsewhere.mkdir(parents=True)
+    create_template(elsewhere / MANIFEST_FILENAME, template_items("1040", year=2025))
+    code, payload = run(capsys, "rollover", stdin={"prior": str(elsewhere)})
     assert code == 1 and "not under the clients root" in payload["error"]
 
 
@@ -286,12 +307,13 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
     assert not [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     d01 = next(i for i in payload["state"]["items"] if i["identifier"] == "D01")
     assert "mortgage notes" in d01["any_keywords"]
-    # The re-scan saw it straight away. D01 accepts pdf/xlsx, so a .docx is
-    # Failed Validation with the reason - the person's filing is recorded,
-    # the rules still say what is wrong with it.
-    assert d01["status"] == Status.FAILED
-    assert reasons.EXTENSION_NOT_ALLOWED.matches(d01["validation_notes"])
-    assert ".docx" in d01["validation_notes"]
+    # The re-scan saw it straight away. D01 accepts pdf/xlsx and this is a
+    # .docx, but a person looked at it and filed it: their decision stands,
+    # the row is Received, and the note says the rules were not applied.
+    from tracker.scanner import ACCEPTED_NOTE
+
+    assert d01["status"] == Status.RECEIVED
+    assert ACCEPTED_NOTE.format(n=1) in d01["validation_notes"]
 
 
 def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_path):
@@ -375,7 +397,7 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     assert run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]["lock"] is None
 
     lock = engagement / LOCK_FILENAME
-    lock.write_text(lock_line(999, dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
+    lock.write_text(lock_line(os.getpid(), dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
     assert payload["lock"] == {"started": "2026-03-14T07:03:00", "age_minutes": 0, "stale": False,
                                "stale_after_minutes": STALE_LOCK_SECONDS // 60}
@@ -473,7 +495,7 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
 
     # A lock held by another run is reported as skipped, not as an error.
     from tracker.locking import LOCK_FILENAME
-    (engagement / LOCK_FILENAME).write_text(lock_line(999, dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
+    (engagement / LOCK_FILENAME).write_text(lock_line(os.getpid(), dt.datetime(2026, 3, 14, 7, 3)), encoding="utf-8")
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0 and payload["run"]["skipped"].startswith("another run")
     (engagement / LOCK_FILENAME).unlink()

@@ -2,6 +2,7 @@
 
 import datetime as dt
 import json
+import os
 
 import pytest
 from openpyxl import load_workbook
@@ -59,18 +60,26 @@ ITEMS = [
 ]
 
 
-def text_pdf(path, text: str):
-    content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("ascii")
+def text_pdf(path, text: str, pages: int = 1):
+    """A valid PDF whose every page says ``text`` (nothing, for a scan)."""
+    def _pdf_string(line: str) -> str:
+        return "(" + line.replace(chr(92), chr(92) * 2).replace("(", chr(92) + "(").replace(")", chr(92) + ")") + ")"
+    lines = text.split(chr(10)) if text else [""]
+    body = " ".join(f"{_pdf_string(line)} Tj T*" for line in lines)
+    content = f"BT /F1 12 Tf 14 TL 72 720 Td {body} ET".encode("latin-1", "replace")
+    stream, font = 3 + pages, 4 + pages          # objects 3..2+pages are the pages
+    kids = b" ".join(b"%d 0 R" % (3 + i) for i in range(pages))
     bodies = {
         1: b"<< /Type /Catalog /Pages 2 0 R >>",
-        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        3: (
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>"
-        ),
-        4: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
-        5: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        2: b"<< /Type /Pages /Kids [%s] /Count %d >>" % (kids, pages),
+        stream: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
+        font: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     }
+    for i in range(pages):
+        bodies[3 + i] = (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Contents %d 0 R /Resources << /Font << /F1 %d 0 R >> >> >>" % (stream, font)
+        )
     out = bytearray(b"%PDF-1.4\n")
     offsets = {}
     for n in sorted(bodies):
@@ -146,7 +155,7 @@ def test_received_date_sticky_across_scans(engagement):
 
 
 def test_auto_revert_preserves_date_and_notes(engagement):
-    pdf = text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec")
+    pdf = text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
     scan_engagement(engagement, today=DAY1)
 
     pdf.unlink()                                   # client deleted their file
@@ -271,7 +280,7 @@ def test_dry_run_writes_nothing(engagement):
 
 
 def test_fresh_lock_blocks_scan(engagement):
-    (engagement / LOCK_FILENAME).write_text("pid=999", encoding="utf-8")
+    (engagement / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
     with pytest.raises(ScanLockedError, match="another scan"):
         scan_engagement(engagement, today=DAY1)
 
@@ -280,7 +289,7 @@ def test_stale_lock_replaced_and_released(engagement):
     import os
 
     lock = engagement / LOCK_FILENAME
-    lock.write_text("pid=999", encoding="utf-8")
+    lock.write_text(f"pid={os.getpid()}", encoding="utf-8")
     old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
     os.utime(lock, (old, old))
 
@@ -385,3 +394,99 @@ def test_waived_rows_are_named_so_counts_can_leave_them_out(engagement):
     report = scan_engagement(engagement, today=DAY1)
     assert report.summary.waived == 1
     assert report.summary.total == 2
+
+
+def test_a_deferred_scan_is_what_the_next_scan_measures_from(engagement, monkeypatch):
+    # Excel held the manifest through two scans. The Received Date the first
+    # deferred scan stamped is "the first date all validations passed"; the
+    # second must carry it, not re-stamp today. And when the file is then
+    # gone and Excel closed, the row regresses from Received - with its date
+    # and a note - instead of landing as plain Missing.
+    from openpyxl.workbook.workbook import Workbook as WorkbookClass
+
+    import tracker.manifest as manifest_module
+
+    a01 = folder(engagement, "A01")
+    text_pdf(a01 / "chase.pdf", "Chase Bank Statement Dec 2025")
+
+    def locked_save(self, filename):
+        raise PermissionError(f"[Errno 13] locked: {filename}")
+    monkeypatch.setattr(WorkbookClass, "save", locked_save)
+    monkeypatch.setattr(manifest_module, "LOCK_RETRY_DELAY", 0.001)
+
+    first = scan_engagement(engagement, today=DAY1)
+    assert first.deferred and first.updates["A01"].received_date == DAY1
+    second = scan_engagement(engagement, today=DAY2)
+    assert second.deferred and second.updates["A01"].received_date == DAY1
+
+    (a01 / "chase.pdf").unlink()
+    monkeypatch.undo()                                    # Excel closed
+    third = scan_engagement(engagement, today=DAY2)
+    assert third.written
+    row = statuses(engagement)["A01"]
+    assert row.status == Status.MISSING and row.received_date == DAY1
+    assert REGRESSION_NOTE.format(status=Status.RECEIVED, date=DAY1.isoformat(), why="").rstrip("; ") \
+        in row.validation_notes
+
+
+def test_a_received_file_the_sync_client_dehydrated_is_not_a_regression(engagement, monkeypatch):
+    # OneDrive "free up space" turns a Received file into a placeholder.
+    # The row waits for the bytes; it did not lose the document.
+    received = folder(engagement, "A01") / "chase.pdf"
+    text_pdf(received, "Chase Bank Statement Dec 2025")
+    scan_engagement(engagement, today=DAY1)
+    assert statuses(engagement)["A01"].status == Status.RECEIVED
+
+    monkeypatch.setattr("tracker.validators.is_cloud_placeholder", lambda p: p.name == "chase.pdf")
+    scan_engagement(engagement, today=DAY2)
+    row = statuses(engagement)["A01"]
+    assert row.status == Status.PENDING_SYNC and row.received_date == DAY1
+    assert REGRESSION_FILES_CHANGED not in row.validation_notes
+    assert SYNCING_NOTE.format(n=1) in row.validation_notes
+
+
+def test_an_empty_note_replaces_the_old_one(engagement):
+    # openpyxl's cell(value=None) writes nothing. "request folder not found"
+    # must not outlive the folder, or the reminder holds the row back for ever.
+    folder(engagement, "A01").rmdir()
+    scan_engagement(engagement, today=DAY1)
+    assert reasons.NO_REQUEST_FOLDER.matches(statuses(engagement)["A01"].validation_notes)
+    scaffold_engagement(engagement)                      # the next pass creates it
+    scan_engagement(engagement, today=DAY2)
+    assert statuses(engagement)["A01"].validation_notes == ""
+
+
+def test_a_document_a_person_filed_is_not_second_guessed_by_the_rules(engagement):
+    # A person filed it from Needs Review; the row's required keyword is not
+    # in it. Their decision stands: Received, not "wrong document" and a
+    # client asked for the right file.
+    from tracker.filer import assign_review_file, file_drops
+    from tracker.scaffold import SHARED_DIR_NAME
+    from tracker.scanner import ACCEPTED_NOTE
+
+    text_pdf(engagement / SHARED_DIR_NAME / "statement.pdf", "Annual account statement 2025 interest paid")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1)
+    scan_engagement(engagement, today=DAY1)
+    row = statuses(engagement)["A01"]
+    assert row.status == Status.RECEIVED and row.file_count == 1
+    assert ACCEPTED_NOTE.format(n=1) in row.validation_notes
+
+
+def test_a_persons_acceptance_covers_only_the_bytes_they_filed(engagement):
+    # A person filed one document; they deleted it; a later drop the filer
+    # routed by name took the same canonical name. The acceptance was for
+    # the person's bytes, not the name: the new file faces the rules.
+    from tracker.filer import assign_review_file, file_drops
+    from tracker.scaffold import SHARED_DIR_NAME
+
+    text_pdf(engagement / SHARED_DIR_NAME / "statement.pdf", "Annual account statement 2025 interest paid")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    filed = assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1).entry
+    (engagement / filed.prepared_location).unlink()
+    text_pdf(engagement / SHARED_DIR_NAME / "Chase scan.pdf", "")     # routes by name, same canonical name
+    report = file_drops(engagement, today=DAY2)
+    assert report.filed[0].prepared_location == filed.prepared_location
+    scan_engagement(engagement, today=DAY2)
+    row = statuses(engagement)["A01"]
+    assert row.status != Status.RECEIVED and "filed here by a person" not in row.validation_notes
