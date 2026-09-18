@@ -634,6 +634,7 @@ $("btn-new").addEventListener("click", openWizard);
 $("btn-shared").addEventListener("click", () => paths && window.tracker.open(paths.shared));
 $("btn-excel").addEventListener("click", () => paths && window.tracker.open(paths.manifest));
 $("btn-index").addEventListener("click", () => paths && window.tracker.open(paths.index));
+$("btn-status").addEventListener("click", () => paths && window.tracker.open(paths.status));
 $("eng-select").addEventListener("change", (e) => {
   active = e.target.value;
   refresh(active);

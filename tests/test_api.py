@@ -33,7 +33,7 @@ from tracker.manifest import (
     Status,
     load_manifest,
 )
-from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
+from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
@@ -249,6 +249,48 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
     # What the scanner wrote is what the state command reads back.
     rows = {i.identifier: i for i in load_manifest(engagement / MANIFEST_FILENAME)}
     assert rows["A01"].status == Status.RECEIVED
+
+
+def test_the_apps_pass_appends_the_line_the_scheduled_run_appends(capsys, demo_root, tmp_path):
+    """A pass made from the app used to leave no trace at all: the log is the
+    command line's, and the button makes the same pass, so it writes the same
+    line - appended, never replacing what earlier passes wrote."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    first = (demo_root / LOG_FILENAME).read_text(encoding="utf-8")
+    assert engagement.name in first
+
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    second = (demo_root / LOG_FILENAME).read_text(encoding="utf-8")
+    assert second.startswith(first)
+    assert second.count(engagement.name) == 2
+
+
+def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, tmp_path):
+    """The page is about the practice, not about the engagement the button was
+    pressed on: an engagement nobody scanned is on it too, read rather than run."""
+    page = demo_root / STATUS_PAGE_FILENAME
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    assert run(capsys, "create", stdin={"name": "Jones Family 2025", "form": "1040",
+                                        "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]})[0] == 0
+    assert not page.exists()
+
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+
+    text = page.read_text(encoding="utf-8")
+    assert engagement.name in text and "Jones Family 2025" in text
+    assert "vacation photo.jpg" in text          # the review queue, across the practice
+
+
+def test_state_carries_the_path_of_the_practices_status_page(capsys, demo_root):
+    """The shell opens only paths the API has reported, so the page's path is
+    one of them; the app's Open Status button is that path and nothing else."""
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))
+    assert code == 0
+    assert payload["paths"]["status"] == str(demo_root / STATUS_PAGE_FILENAME)
 
 
 def test_item_from_spec_normalizes_extensions():

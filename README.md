@@ -144,6 +144,14 @@ an engagement in the app is all it takes for the next run to include it —
 `python -m tracker.registry "D:\OneDrive\Clients"` lists what the run would
 find and flags any manifest it cannot read.
 
+Every real pass also writes `tracker.runner.STATUS_PAGE_FILENAME` into that
+same clients folder: the whole practice on one page — every engagement with
+what it still owes and what is still syncing, every file waiting for a person
+across all of them (newest first, with the reason it was parked), and
+everything that errored. It is one self-contained file that opens in any
+browser with nothing installed and nothing fetched; the app's **Open Status**
+button opens that same page, and the app's own pass rewrites it too.
+
 Generate the job itself with:
 
 ```

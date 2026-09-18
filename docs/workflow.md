@@ -9,7 +9,11 @@ people side.
 - **Engagement lead** — owns the engagement's request list: picks the return
   type or rolls last year's list forward, trims and extends it, and fills in
   the client, share link and due date in the wizard (they land on the
-  manifest's Engagement sheet; nothing else needs registering).
+  manifest's Engagement sheet; nothing else needs registering). Starts the
+  morning on `tracker.runner.STATUS_PAGE_FILENAME` — the whole practice on one
+  page, written into the clients folder by every pass and opened by the app's
+  **Open Status** button: what each engagement still owes, what is waiting for
+  a person across all of them, and what failed overnight.
 - **Preparer / staff** — works the `Prepared/` tree, files anything in
   `00 - Needs Review` with the app's *File it* action, sets `Manual Override`
   when their judgment beats the rules, and sends the drafted reminders.

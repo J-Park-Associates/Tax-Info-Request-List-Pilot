@@ -31,6 +31,17 @@ anybody, any time, is still just:
 its own unedited output by the fingerprint in the header; anything else it
 leaves alone and writes ``NEW_DRAFT_FILENAME`` beside it instead.
 
+**Every real pass leaves the practice on one page.** ``STATUS_PAGE_FILENAME``
+is written into the clients root at the end of the pass: every engagement
+with what it owes, every file parked for a person across the whole
+practice, and everything that failed. The desktop app shows one engagement
+at a time, which is the wrong shape for the question a person actually has
+in March - what needs me this morning, across two hundred engagements. It
+is one self-contained file with no script and nothing fetched when it is
+opened, because a page about the firm's clients must not reach the network
+to render, and it is written from a report rather than from a lock: drawing
+the page never changes what it describes.
+
 One engagement's failure never stops the others. An unreadable manifest, a
 scan already running, a drop that would not sort — each is recorded against
 that engagement and the run moves on, because one client's problem must not
@@ -41,19 +52,27 @@ if anything failed, so the scheduler shows a red run instead of a silent one.
 from __future__ import annotations
 
 import datetime as dt
+import html
 import logging
 import traceback
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker.filer import file_drops
+from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, file_drops, read_index
 from tracker.manifest import (
     ENGAGEMENT_LABELS,
     ENGAGEMENT_SHEET_NAME,
     ISO_DATE_HINT,
     NO,
+    YES,
     ManifestError,
     check_manifest,
+    load_manifest,
+    pending_updates,
+    summarize,
+    with_pending,
+    write_text_atomically,
 )
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
@@ -73,6 +92,7 @@ from tracker.reminder import (
 )
 from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.scanner import ScanLockedError, scan_engagement
+from tracker.settings import SettingsError, firm, product_name
 
 log = logging.getLogger("tracker.runner")
 
@@ -93,6 +113,10 @@ REMINDER_MODES = (REMINDERS_AUTO, REMINDERS_ALWAYS, REMINDERS_NEVER)
 #: The run log, written into the clients root (the folder the job is given)
 #: so the firm finds it beside the engagements it describes.
 LOG_FILENAME = "runs.log"
+#: The firm-wide status page, written into the same folder as the log at the
+#: end of every real pass. The log is the trace of one run; this is the
+#: standing answer to what the practice owes and what needs a person.
+STATUS_PAGE_FILENAME = "status.html"
 #: The runner's own flags, named once so the scheduler builds a command
 #: line the parser below still accepts.
 LOG_FLAG = "--log"
@@ -103,6 +127,11 @@ DATE_FLAG = "--date"
 RUNNER_MODE_FLAG = "--run"
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
+#: Why an engagement is passed over, and why one cannot be run at all -
+#: worded once, because the pass and the status page must agree about the
+#: same engagement.
+SKIP_INACTIVE = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
+MANIFEST_UNREADABLE = "manifest could not be read: {problem}"
 
 
 @dataclass(slots=True)
@@ -123,6 +152,9 @@ class EngagementRun:
     draft_note: str = ""      # why there is no draft, when there is a reason
     skipped: str = ""         # why the whole engagement was passed over
     error: str = ""           # what went wrong, if anything did
+    #: When this engagement was passed over. None on a row the status page
+    #: read rather than ran, so the page never dates a pass that never was.
+    last_pass: dt.datetime | None = None
 
     @property
     def ok(self) -> bool:
@@ -249,7 +281,9 @@ def run_engagement(
     going through the rest of the registry.
     """
     today = today or dt.date.today()
-    run = EngagementRun(engagement=engagement)
+    # Stamped before anything is touched, so an engagement that fails its
+    # pre-checks still says when it was last looked at.
+    run = EngagementRun(engagement=engagement, last_pass=dt.datetime.now())
     if not _worth_a_pass(run):
         return run
 
@@ -301,6 +335,21 @@ def run_engagement(
     return run
 
 
+def skipped_because(engagement: Engagement) -> str:
+    """Why this engagement is passed over, or "" if it is not.
+
+    The pass and the status page ask the same question of the same
+    engagement, so they ask it in one place: a prior year its successor
+    retired, and a client the Engagement sheet says is finished with, are
+    neither failures nor work outstanding, and neither should read as one.
+    """
+    if engagement.superseded_by:
+        return SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)
+    if not engagement.active:
+        return SKIP_INACTIVE
+    return ""
+
+
 def _worth_a_pass(run: EngagementRun) -> bool:
     """Whether this engagement gets a pass at all; if not, ``run`` says why.
 
@@ -310,17 +359,14 @@ def _worth_a_pass(run: EngagementRun) -> bool:
     runs. Warnings ride the report rather than being noticed at a deadline.
     """
     engagement = run.engagement
-    if engagement.superseded_by:
-        run.skipped = SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)
-        return False
-    if not engagement.active:
-        run.skipped = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
+    run.skipped = skipped_because(engagement)
+    if run.skipped:
         return False
     if not engagement.path.is_dir():
         run.error = f"folder not found: {engagement.path}"
         return False
     if engagement.problem:
-        run.error = f"manifest could not be read: {engagement.problem}"
+        run.error = MANIFEST_UNREADABLE.format(problem=engagement.problem)
         return False
     checked = check_manifest(engagement.path / MANIFEST_FILENAME)
     if not checked.ok:
@@ -468,6 +514,252 @@ def append_log(path: Path | str, report: RunReport) -> Path:
     return path
 
 
+# ------------------------------------------------------------- status page ----
+
+#: Every word the page shows that is not data. A person reads this page and
+#: nothing else does, so the sentences are worded here rather than buried in
+#: the markup that renders them.
+STATUS_GENERATED = "Generated {stamp}"
+STATUS_ENGAGEMENTS_HEADING = "Engagements"
+STATUS_REVIEW_HEADING = "Waiting for a person"
+STATUS_PROBLEMS_HEADING = "Problems"
+STATUS_NOTHING_PARKED = "Nothing is waiting for a person."
+STATUS_NO_PROBLEMS = "Nothing failed."
+#: What the last-pass cell says for an engagement the page read rather than ran.
+STATUS_NOT_PASSED = "not this pass"
+STATUS_INDEX_UNREADABLE = "{label}: the index could not be read ({error})"
+#: What the deferred-writes cell names, by what Excel was holding open.
+DEFERRED_INDEX = "index rows"
+DEFERRED_STATUSES = "statuses"
+_DEFERRED_SEP = ", "
+
+#: The two tables, column by column, in the order they are drawn.
+STATUS_COLUMNS = (
+    "Engagement", "Client", "Outstanding", STATUS_REVIEW_HEADING, "Still syncing",
+    "Deferred writes", "Problem or skipped", "Warnings", "Last pass", "Drafted",
+)
+REVIEW_COLUMNS = ("Received", "Engagement", "File the client sent", "Reason", "Candidates")
+
+#: Inline, because the page is one file that must render from a share, a
+#: memory stick or an email attachment with nothing fetched: a page about
+#: the firm's clients that reaches the network to look right is a page that
+#: tells somebody else which firm is reading what.
+_STATUS_STYLE = """
+body { font-family: "Segoe UI", system-ui, sans-serif; margin: 2rem 2.5rem; color: #1c1c1c;
+       background: #fbfbfa; line-height: 1.45; }
+h1 { font-size: 1.35rem; margin: 0 0 0.2rem; }
+h2 { font-size: 1.05rem; margin: 2rem 0 0.6rem; border-bottom: 1px solid #d8d6d1; padding-bottom: 0.3rem; }
+p.stamp { margin: 0 0 0.5rem; color: #6b6862; font-size: 0.85rem; }
+table { border-collapse: collapse; width: 100%; font-size: 0.87rem; }
+th, td { text-align: left; padding: 0.35rem 0.6rem; border-bottom: 1px solid #e6e4df; vertical-align: top; }
+th { background: #f0eeea; font-weight: 600; white-space: nowrap; }
+tr:hover td { background: #f6f5f2; }
+ul { margin: 0; padding-left: 1.2rem; }
+li { margin-bottom: 0.3rem; }
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class ParkedFile:
+    """One file waiting for a person, and the engagement it is waiting in."""
+
+    engagement: str
+    received: str
+    original_name: str
+    reason: str
+    candidates: str
+
+
+def _parked_files(report: RunReport) -> tuple[dict[Path, list[ParkedFile]], list[str]]:
+    """Every file parked for a person, by engagement folder, and what could
+    not be read.
+
+    Each engagement's index is read the way every reader reads it - no
+    lock, no quarantine of a sidecar it cannot parse - because drawing the
+    practice must never move a client's file or stand in the way of the
+    pass that is filing one. An index that cannot be read is said rather
+    than skipped: an engagement missing from the queue for a reason nobody
+    can see is how a document waits a month.
+    """
+    parked: dict[Path, list[ParkedFile]] = {}
+    problems: list[str] = []
+    for run in report.runs:
+        engagement = run.engagement
+        try:
+            entries = read_index(engagement.path / INDEX_FILENAME, quarantine=False)
+        except Exception as exc:
+            problems.append(STATUS_INDEX_UNREADABLE.format(label=engagement.label, error=exc))
+            continue
+        parked[engagement.path] = [
+            ParkedFile(engagement=engagement.label, received=entry.received,
+                       original_name=entry.original_name, reason=entry.reason,
+                       candidates=entry.candidates)
+            for entry in entries if entry.decision == NEEDS_REVIEW
+        ]
+    return parked, problems
+
+
+def _page_title(root: Path) -> str:
+    """What the page calls itself.
+
+    The product's name, which the Electron shell passes in and a source
+    checkout reads from the app's own package.json. The packaged app's
+    scheduled job has neither (``api_entry.py`` says why it must not need
+    them), and a pass that has finished its work must not end in a
+    traceback over a heading: the firm's name, and then the folder the
+    practice lives in, are names for the same thing that are always there.
+    """
+    for named in (product_name, firm):
+        try:
+            name = named()
+        except SettingsError:
+            continue
+        if name:
+            return name
+    return root.name
+
+
+def _escaped(value: object) -> str:
+    """One value as page text. Every value on the page goes through here:
+    a client's file name is a name, whatever characters it contains."""
+    return html.escape(str(value))
+
+
+def _cells(values: Iterable[object], tag: str = "td") -> str:
+    return "<tr>" + "".join(f"<{tag}>{_escaped(value)}</{tag}>" for value in values) + "</tr>"
+
+
+def _table(columns: Iterable[object], rows: Iterable[Iterable[object]]) -> list[str]:
+    return ["<table>", _cells(columns, "th"), *(_cells(row) for row in rows), "</table>"]
+
+
+def _engagement_cells(run: EngagementRun, parked: list[ParkedFile]) -> tuple:
+    """One engagement's row, in ``STATUS_COLUMNS`` order."""
+    deferred = [name for name, held in ((DEFERRED_INDEX, run.index_deferred),
+                                        (DEFERRED_STATUSES, run.manifest_deferred)) if held]
+    return (
+        run.engagement.label,
+        run.engagement.client,
+        run.outstanding,
+        len(parked),
+        run.waiting,
+        _DEFERRED_SEP.join(deferred),
+        run.error or run.skipped,
+        len(run.warnings),
+        run.last_pass.isoformat(sep=" ", timespec="seconds") if run.last_pass else STATUS_NOT_PASSED,
+        YES if run.drafted else "",
+    )
+
+
+def write_status_page(root: Path | str, report: RunReport, *,
+                      now: dt.datetime | None = None) -> Path:
+    """Write the practice on one page into ``root``, and return where it went.
+
+    One self-contained file: no script, no style sheet, no image, nothing
+    fetched when it is opened. It names client files, which is why it is
+    written into the firm's own clients folder and never into the
+    repository, and why every value on it goes through :func:`_escaped` -
+    a document called like a tag is shown as its name, not rendered as one.
+
+    Drawn from ``report``, never from a fresh pass: the caller decides what
+    was run and what was only read (see :func:`status_report`), so nothing
+    here takes a lock or writes anything but this page.
+    """
+    root = Path(root)
+    stamp = (now or dt.datetime.now()).isoformat(sep=" ", timespec="seconds")
+    parked, problems = _parked_files(report)
+    problems = [f"{run.engagement.label}: {run.error}" for run in report.errors] + problems
+
+    # Newest first, across the practice: what arrived last night is what
+    # nobody has looked at. Reversed first, so that among files received on
+    # the same day the later index row comes first - the sort is stable and
+    # leaves them in the order it is given.
+    queue = [file for run in report.runs for file in parked.get(run.engagement.path, ())][::-1]
+    queue.sort(key=lambda file: file.received, reverse=True)
+
+    title = _page_title(root)
+    lines = [
+        "<!doctype html>",
+        '<html lang="en">',
+        "<head>",
+        '<meta charset="utf-8">',
+        f"<title>{_escaped(title)}</title>",
+        f"<style>{_STATUS_STYLE}</style>",
+        "</head>",
+        "<body>",
+        f"<h1>{_escaped(title)}</h1>",
+        f'<p class="stamp">{_escaped(STATUS_GENERATED.format(stamp=stamp))}</p>',
+        f"<h2>{_escaped(STATUS_ENGAGEMENTS_HEADING)} ({len(report.runs)})</h2>",
+        *_table(STATUS_COLUMNS,
+                (_engagement_cells(run, parked.get(run.engagement.path, []))
+                 for run in report.runs)),
+        f"<h2>{_escaped(STATUS_REVIEW_HEADING)} ({len(queue)})</h2>",
+        *(_table(REVIEW_COLUMNS,
+                 ((f.received, f.engagement, f.original_name, f.reason, f.candidates)
+                  for f in queue))
+          if queue else [f"<p>{_escaped(STATUS_NOTHING_PARKED)}</p>"]),
+        f"<h2>{_escaped(STATUS_PROBLEMS_HEADING)} ({len(problems)})</h2>",
+        *(["<ul>", *(f"<li>{_escaped(problem)}</li>" for problem in problems), "</ul>"]
+          if problems else [f"<p>{_escaped(STATUS_NO_PROBLEMS)}</p>"]),
+        "</body>",
+        "</html>",
+    ]
+    # A name NTFS holds is not always one UTF-8 can (a lone surrogate); the
+    # page takes what it can write rather than lose the whole practice's
+    # view to one client's file name, exactly as the log does.
+    text = "\n".join(lines).encode("utf-8", "backslashreplace").decode("utf-8") + "\n"
+    path = root / STATUS_PAGE_FILENAME
+    write_text_atomically(path, text)
+    return path
+
+
+def _engagement_status(engagement: Engagement) -> EngagementRun:
+    """One engagement's line, read rather than run.
+
+    The manifest and its sidecar, the way the app reads them for one
+    engagement - no lock, no scaffold, no scan, nothing written. A row the
+    page read carries no pass time, because no pass was made.
+    """
+    run = EngagementRun(engagement=engagement)
+    run.skipped = skipped_because(engagement)
+    if run.skipped:
+        return run           # a prior year's numbers are not this year's work
+    if engagement.problem:
+        run.error = MANIFEST_UNREADABLE.format(problem=engagement.problem)
+        return run
+    manifest_path = engagement.path / MANIFEST_FILENAME
+    try:
+        deferred = pending_updates(manifest_path, quarantine=False)
+        summary = summarize(with_pending(load_manifest(manifest_path), deferred))
+    except (ManifestError, OSError) as exc:
+        run.error = str(exc)
+        return run
+    run.statuses = summary.counts
+    run.outstanding = summary.outstanding
+    run.manifest_deferred = bool(deferred)
+    if engagement.warning:
+        run.warnings.append(engagement.warning)
+    return run
+
+
+def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
+                  today: dt.date | None = None) -> RunReport:
+    """Every engagement in ``registry``, with the runs in ``passed`` folded in.
+
+    The page is about the practice, not about whichever engagement was
+    just run: a pass over one engagement (the app's button) or over a
+    subset (``--only``) still draws every engagement the registry found.
+    An engagement this pass did not touch is read, not run, so the page
+    can be regenerated as often as anyone likes.
+    """
+    ran = {run.engagement.path: run for run in passed}
+    return RunReport(
+        today=today or dt.date.today(),
+        runs=[ran[engagement.path] if engagement.path in ran else _engagement_status(engagement)
+              for engagement in registry.engagements],
+    )
+
+
 # --------------------------------------------------------------------- CLI ----
 
 def main(argv: list[str] | None = None) -> int:
@@ -533,6 +825,21 @@ def main(argv: list[str] | None = None) -> int:
             log_path = loaded.source / LOG_FILENAME
         append_log(log_path, result)
         print(f"\n  Logged to {log_path}")
+
+    if not ns.dry_run:
+        # Every real pass, whether or not it was asked to log, and whether
+        # or not an engagement failed: the page is how a person finds out
+        # that one did. A dry run writes nothing, this included.
+        try:
+            page = write_status_page(loaded.source, status_report(loaded, passed=result.runs))
+        except Exception as exc:
+            # The page is a courtesy; the pass is the job. Every original has
+            # already been moved and every status written by the time we get
+            # here, so nothing about drawing a page may end this in a
+            # traceback - it is said in the log and the run stands.
+            log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
+        else:
+            print(f"\n  The practice: {page}")
 
     return 1 if result.errors else 0
 

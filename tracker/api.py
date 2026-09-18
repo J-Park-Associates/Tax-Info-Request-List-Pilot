@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import shutil
 import sys
 from dataclasses import asdict, replace
@@ -73,7 +74,19 @@ from tracker.rollover import (
     roll_forward,
     write_rollover_manifest,
 )
-from tracker.runner import DRAFT_WEEKDAY, REMINDERS_NEVER, WEEKDAY_NAMES, run_engagement
+from tracker.runner import (
+    DRAFT_WEEKDAY,
+    LOG_FILENAME,
+    REMINDERS_NEVER,
+    STATUS_PAGE_FILENAME,
+    WEEKDAY_NAMES,
+    EngagementRun,
+    RunReport,
+    append_log,
+    run_engagement,
+    status_report,
+    write_status_page,
+)
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PBC_DIR_NAME,
@@ -121,6 +134,8 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     shift_item,
     template_items,
 )
+
+log = logging.getLogger("tracker.api")
 
 #: The folder the app runs from (the repository from source, beside the
 #: executable when frozen) - the same answer tracker.settings gives.
@@ -338,6 +353,7 @@ def _engagement_name(requested: str, fallback: str) -> str:
 
 def _state(engagement: Path) -> dict:
     manifest_path = engagement / MANIFEST_FILENAME
+    root = clients_root()
     # Showing the engagement is a read: nothing is moved, not even a sidecar
     # that cannot be parsed - the next real run is what moves it aside.
     deferred = pending_updates(manifest_path, quarantine=False)
@@ -366,6 +382,11 @@ def _state(engagement: Path) -> dict:
             "prepared": str(engagement / PREPARED_DIR_NAME),
             "index": str(engagement / INDEX_FILENAME),
             "manifest": str(manifest_path),
+            # The practice's page, not this engagement's: it lives in the
+            # clients root. Reported here because the shell opens only the
+            # paths the API has named, and a person looking at one
+            # engagement is one click from the whole practice.
+            "status": str(root / STATUS_PAGE_FILENAME) if root else "",
         },
     }
 
@@ -374,16 +395,49 @@ def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
 
+def _record_pass(run: EngagementRun) -> None:
+    """Leave the record the scheduled run leaves: a line in the run log and
+    the practice's status page, both in the clients root.
+
+    The app's button makes the same pass as the job, so it must leave the
+    same trace - a pass with no record is a pass nobody can check
+    afterwards, and a page that is a night old is one nobody believes. The
+    page is redrawn from every engagement under the root, because it is
+    about the practice and not about the engagement that was just run.
+
+    Neither takes a lock or touches an engagement, and neither failing is
+    allowed to fail the pass: the files have already been moved and the
+    manifest written, so the person is told what happened either way.
+    """
+    root = clients_root()
+    if root is None or not root.is_dir():
+        return
+    # Broadly, both of them: the pass has already moved the client's files
+    # and written the manifest, so nothing about recording it afterwards may
+    # turn a finished pass into an error message in the app.
+    try:
+        append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(),
+                                                  reminders=REMINDERS_NEVER, runs=[run]))
+    except Exception as exc:
+        log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
+    try:
+        write_status_page(root, status_report(discover_engagements(root), passed=[run]))
+    except Exception as exc:
+        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
+
+
 def _cmd_scan(argv: list[str]) -> dict:
     """One pass over this engagement - the same pass the scheduled job makes.
 
     Scaffold, check, file, scan, in that order, with the same lock, the same
     error isolation and the same warnings; only the weekly draft is left
     to the scheduled run (or `python -m tracker.reminder`). There is one
-    definition of a pass, in tracker.runner, and this is it.
+    definition of a pass, in tracker.runner, and this is it - including the
+    record it leaves behind (:func:`_record_pass`).
     """
     engagement = _engagement_dir(argv)
     run = run_engagement(engagement_from(engagement), reminders=REMINDERS_NEVER)
+    _record_pass(run)
     payload = {
         "run": {
             "ok": run.ok,

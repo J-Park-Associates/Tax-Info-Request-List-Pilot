@@ -127,13 +127,14 @@ def test_ci_tests_the_python_floor_pyproject_declares():
 
 def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME
+    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
 
     ignored = [line.strip() for line in read(".gitignore").splitlines()
                if line.strip() and not line.startswith("#")]
-    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME, LOG_FILENAME, SCHEDULE_XML_FILENAME, SETTINGS_FILENAME):
+    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME,
+                 SCHEDULE_XML_FILENAME, SETTINGS_FILENAME):
         assert ignored.count(name) == 1, name
 
 
@@ -321,7 +322,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import pending_path
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME
+    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import MANIFEST_FILENAME, README_NAME
     from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
@@ -329,7 +330,8 @@ def test_documents_name_only_runtime_files_the_code_owns():
 
     owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-             LOG_FILENAME, MANIFEST_FILENAME, README_NAME, SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
+             LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
+             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -524,7 +526,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import pending_path
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME
+    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import MANIFEST_FILENAME, README_NAME
     from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
@@ -532,7 +534,8 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 
     owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-             LOG_FILENAME, MANIFEST_FILENAME, README_NAME, SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
+             LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
+             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
     for rel in DOCUMENTS:
         for line in read(rel).splitlines():
             if "──" not in line:
