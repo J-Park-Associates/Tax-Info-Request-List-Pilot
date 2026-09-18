@@ -14,7 +14,11 @@ that pile into two things:
     without opening the client's filing habits.
 
 ``INDEX_FILENAME`` maps one to the other: every original, where it went, what
-it was renamed to, and — when it was not filed — why not.
+it was renamed to, and — when it was not filed — why not. Its Evidence
+column carries the *why* behind the verdict: which of the manifest row's
+own keywords matched, and where in the document they were said. Catalog
+words and file names only, never a word of the client's document, which is
+the same line the content cache draws.
 
 Guarantees:
 
@@ -87,7 +91,13 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.utils import get_column_letter
 
-from tracker.content_check import CACHE_FILENAME, ContentCache
+from tracker.content_check import (
+    CACHE_FILENAME,
+    ContentCache,
+    Evidence,
+    format_evidence,
+    parse_evidence,
+)
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     COL_IDENTIFIER,
@@ -214,11 +224,22 @@ class IndexEntry:
     decision: str
     reason: str
     candidates: str = ""     # identifiers the router named, for a person to choose from
+    #: Why each candidate was one: the keywords that matched and where they
+    #: were said, written as content_check.format_evidence() writes it. The
+    #: Reason sentence says what was decided; this says what it was decided
+    #: on, and a parked row carries it as much as a filed one, because the
+    #: parked row is the one a person has to work out.
+    evidence: str = ""
 
     @property
     def candidate_list(self) -> list[str]:
         """The router's candidates as the list they were joined from."""
         return [c for c in (part.strip() for part in self.candidates.split(_CANDIDATE_SEP)) if c]
+
+    @property
+    def evidence_record(self) -> dict[str, tuple[Evidence, ...]]:
+        """The Evidence cell read back, by candidate identifier."""
+        return parse_evidence(self.evidence)
 
     @property
     def filed_as(self) -> str:
@@ -241,6 +262,7 @@ INDEX_LAYOUT: dict[str, tuple[str, int]] = {
     "decision": ("Decision", 14),
     "reason": ("Reason", 60),
     "candidates": ("Candidates", 14),
+    "evidence": ("Evidence", 50),
 }
 assert tuple(INDEX_LAYOUT) == tuple(f.name for f in fields(IndexEntry))
 INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
@@ -1510,6 +1532,7 @@ def _sort_one(
             pbc_location=pbc_rel, decision=FILED,
             reason=f"{routing.reason}; {refiled}" if refiled else routing.reason,
             candidates=_CANDIDATE_SEP.join(routing.candidates),
+            evidence=format_evidence(routing.evidence_record),
         )
         report.filed.append(entry)
         return entry
@@ -1528,6 +1551,7 @@ def _sort_one(
         prepared_location=prepared_location(run.review_dir, review_name),
         pbc_location=pbc_rel, decision=NEEDS_REVIEW, reason=routing.reason,
         candidates=_CANDIDATE_SEP.join(routing.candidates),
+        evidence=format_evidence(routing.evidence_record),
     )
     report.review.append(entry)
     return entry

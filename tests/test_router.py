@@ -492,3 +492,67 @@ def test_a_lead_never_takes_a_filing_from_the_row_that_accepted_the_file(tmp_pat
 def test_the_shipped_1040_catalog_files_real_forms_where_they_belong(tmp_path, name, text, expected):
     items = _shipped_1040_rows(tmp_path)
     assert route_file(text_pdf(tmp_path / name, text), items).identifier == expected, name
+
+
+# ------------------------------------------------------- the evidence record ----
+
+
+def test_a_routed_file_records_which_keyword_matched_and_where(tmp_path):
+    from tracker.content_check import RULE_REQUIRED, WHERE_TITLE
+
+    f = text_pdf(tmp_path / "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
+    routing = route_file(f, ITEMS)
+    assert routing.identifier == "A01"
+    found = routing.evidence_record["A01"]
+    assert [(e.rule, e.term, e.where) for e in found if e.rule == RULE_REQUIRED] == [
+        (RULE_REQUIRED, "W-2", WHERE_TITLE),
+    ]
+
+
+def test_the_record_names_only_the_rows_the_decision_names(tmp_path):
+    # Every row considered leaves something behind; one index cell must not
+    # carry the whole manifest's workings.
+    f = text_pdf(tmp_path / "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
+    routing = route_file(f, ITEMS)
+    assert set(routing.evidence_record) == set(routing.candidates) == {"A01"}
+
+
+def test_a_file_routed_by_its_name_records_the_name_as_its_evidence(tmp_path):
+    from tracker.content_check import RULE_FILENAME, WHERE_TITLE
+
+    f = text_pdf(tmp_path / "smith_1098.pdf", "")     # a scan, no text layer
+    routing = route_file(f, ITEMS)
+    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME
+    # A name is all title and has no pages.
+    assert [(e.rule, e.term, e.where, e.page) for e in routing.evidence_record["C01"]] == [
+        (RULE_FILENAME, "1098", WHERE_TITLE, 0),
+    ]
+
+
+def test_a_tier_two_refusal_travels_as_the_reasons_own_code(tmp_path):
+    from tracker.content_check import RULE_REFUSED
+
+    strict = RequestItem(
+        identifier="A01", document="W-2 Wage Statements", allowed_extensions=("pdf",),
+        min_size_kb=50, required_keywords=("W-2",),
+    )
+    f = text_pdf(tmp_path / "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    routing = route_file(f, [strict])
+    assert routing.candidates == ("A01",)
+    # The code, not the sentence: the sentence is written for a person and
+    # may be reworded; reasons.TOO_SMALL.code is the cause's one name.
+    assert [(e.rule, e.term) for e in routing.evidence_record["A01"]] == [
+        (RULE_REFUSED, reasons.TOO_SMALL.code),
+    ]
+
+
+def test_a_contested_file_keeps_the_keywords_that_did_match(tmp_path):
+    from tracker.content_check import RULE_REQUIRED
+
+    # Last year's W-2: the required keyword matched, the year did not.
+    f = text_pdf(tmp_path / "w2.pdf", "Form W-2 Wage and Tax Statement 2024")
+    routing = route_file(f, ITEMS)
+    assert routing.identifier is None and routing.candidates == ("A01",)
+    assert [(e.rule, e.term) for e in routing.evidence_record["A01"]] == [
+        (RULE_REQUIRED, "W-2"),
+    ]

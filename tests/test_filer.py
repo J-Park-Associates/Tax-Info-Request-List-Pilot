@@ -23,6 +23,7 @@ from tracker.filer import (
     INDEX_PENDING_FILENAME,
     INDEX_SHEET,
     NEEDS_REVIEW,
+    IndexEntry,
     file_drops,
     prepared_name_for,
     read_index,
@@ -326,6 +327,8 @@ def test_an_index_written_with_older_columns_still_reads(tmp_path):
     assert entry.identifier == "A01" and entry.decision == FILED
     assert entry.filed_as == "A01 - W-2 Wage Statements - TY2025.pdf"   # derived, not stored
     assert entry.candidates == ""
+    # Evidence is newer than Candidates; an index from before it reads too.
+    assert entry.evidence == "" and entry.evidence_record == {}
 
 
 def test_the_routers_candidates_travel_as_data_in_the_index(engagement):
@@ -336,6 +339,45 @@ def test_the_routers_candidates_travel_as_data_in_the_index(engagement):
     [parked] = report.review
     assert parked.candidates == "A01"
     assert read_index(engagement / INDEX_FILENAME)[0].candidates == "A01"
+
+
+def test_a_filed_row_and_a_parked_row_both_say_what_the_rules_saw(engagement):
+    from tracker.content_check import RULE_REQUIRED, WHERE_TITLE
+    from tracker.filer import read_index
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "old.pdf", "Form W-2 Wage and Tax Statement 2024")   # contested: wrong year
+    file_drops(engagement, today=DAY1)
+
+    by_name = {e.original_name: e for e in read_index(engagement / INDEX_FILENAME)}
+    for name, decision in (("w2.pdf", FILED), ("old.pdf", NEEDS_REVIEW)):
+        entry = by_name[name]
+        assert entry.decision == decision
+        # Read back through the workbook, parsed by the one parser.
+        assert [(e.rule, e.term, e.where) for e in entry.evidence_record["A01"]][:1] == [
+            (RULE_REQUIRED, "W-2", WHERE_TITLE),
+        ], name
+    # The cell carries the firm's own keyword and nothing the document said.
+    assert "W-2@" in by_name["w2.pdf"].evidence
+
+
+def test_the_evidence_column_round_trips_through_the_snapshot_sidecar(tmp_path):
+    from tracker.content_check import RULE_ANY, WHERE_FOOTER, Evidence, format_evidence
+    from tracker.filer import _read_pending_index, _save_pending_index
+
+    entry = IndexEntry(
+        received="2026-01-01", original_name="w2.pdf", size_kb=9.4, digest="abc",
+        identifier="A01", prepared_location="", pbc_location="", decision=NEEDS_REVIEW,
+        reason="matched no request", candidates="A01",
+        evidence=format_evidence({"A01": (Evidence(RULE_ANY, "dividend", WHERE_FOOTER, 3),)}),
+    )
+    path = tmp_path / INDEX_FILENAME
+    _save_pending_index(path, [entry])
+    pending = _read_pending_index(path)
+    assert pending is not None and pending.entries == [entry]
+    assert pending.entries[0].evidence_record == {
+        "A01": (Evidence(RULE_ANY, "dividend", WHERE_FOOTER, 3),),
+    }
 
 
 def test_prepared_name_for_collides_safely():
