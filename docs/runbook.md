@@ -57,7 +57,10 @@ from where it got to.
 **Written exception, 2026-09-18.** The firm's Command Center rule is that
 automations do not schedule themselves; the owner signed off an exception
 for this tool alone, because it drafts and never sends, and because sorted
-documents are no use arriving a day late.
+documents are no use arriving a day late. The exception is declared rather
+than hidden: `automation.manifest.json` carries it in the dated
+`safety.scheduled_exception` field the Command Center's contract gained the
+same day, and the tool's card there prints that sentence.
 
 ## 2. Every morning
 

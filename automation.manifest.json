@@ -1,0 +1,78 @@
+{
+  "manifest_version": 1,
+  "id": "tax-document-tracker",
+  "name": "Tax Document Tracker — client documents sorted & chased",
+  "description": "Sorts what each client drops into their shared folder, scans what is still outstanding against the engagement's request list, and on the draft day writes the week's chase email into the engagement folder as a text file for a person to send. It never sends anything, never moves money, and never touches an original. Its unattended pass is scheduled in Windows Task Scheduler on one designated office machine only, under the owner's written exception of 2026-09-18.",
+  "category": "Client Documents",
+  "docs": ["README.md", "docs/runbook.md"],
+  "safety": {
+    "auto_send": false,
+    "scheduled": true,
+    "scheduled_exception": "2026-09-18 Jason's standing exception, recorded in Automation\\Firm_Automation_Project_Context.md §8: the sorting pass runs itself every two hours on one designated office machine via Windows Task Scheduler, because sorted documents are no use arriving a day late. It files and drafts; it never sends. The machine, the one-machine rule and the schedule are in docs/runbook.md §1.",
+    "money_movement": false
+  },
+  "actions": [
+    {
+      "id": "preview-pass",
+      "label": "Preview a pass",
+      "description": "Decides everything one pass would do across every engagement under the clients folder — what would be filed, what would be parked for a person, what is still outstanding — and writes nothing, moves nothing and drafts nothing.",
+      "kind": "dry-run",
+      "command": ["python", "-m", "tracker.runner", "--dry-run"],
+      "timeout_seconds": 1800,
+      "params": [
+        {
+          "name": "root",
+          "flag": null,
+          "type": "string",
+          "required": true,
+          "placeholder": "D:\\OneDrive\\Clients",
+          "help": "the folder in settings.json"
+        }
+      ]
+    },
+    {
+      "id": "run-pass",
+      "label": "Run a pass",
+      "description": "The real pass: files each engagement's drop folder, re-scans it, and on the draft day writes the week's chase email beside it as a text file. Originals are moved into place and the run summary is appended to the log in the clients folder. Nothing is emailed — a person opens each draft, edits it and sends it. Run it only on the designated machine.",
+      "kind": "authorize",
+      "command": ["python", "-m", "tracker.runner", "--log", "--"],
+      "timeout_seconds": 7200,
+      "params": [
+        {
+          "name": "root",
+          "flag": null,
+          "type": "string",
+          "required": true,
+          "placeholder": "D:\\OneDrive\\Clients",
+          "help": "the folder in settings.json"
+        }
+      ]
+    },
+    {
+      "id": "engagements",
+      "label": "List what a pass would find",
+      "description": "Every engagement under the clients folder, which are active, which are chased by email, and any manifest that could not be read. Reads only.",
+      "kind": "preview",
+      "command": ["python", "-m", "tracker.registry"],
+      "timeout_seconds": 300,
+      "params": [
+        {
+          "name": "root",
+          "flag": null,
+          "type": "string",
+          "required": true,
+          "placeholder": "D:\\OneDrive\\Clients",
+          "help": "the folder in settings.json"
+        }
+      ]
+    },
+    {
+      "id": "learned-keywords",
+      "label": "What the staff taught the router",
+      "description": "Every keyword a person typed into one engagement that no catalog row carries, grouped by request row with how many engagements typed it. Reads only, and refuses to write inside the repository; it takes the clients folder from the settings file.",
+      "kind": "preview",
+      "command": ["python", "tools/learned_keywords.py"],
+      "timeout_seconds": 600
+    }
+  ]
+}
