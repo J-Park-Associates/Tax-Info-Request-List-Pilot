@@ -82,6 +82,17 @@ same day, and the tool's card there prints that sentence.
    **File it anyway** is the undo. A document filed in the wrong place is
    sent back to the review folder with **Unfile**, on the record, and filed
    again from there.
+
+   To see which request each parked file most likely belongs to, run
+   `python -m tracker.review` against the engagement folder. It prints, per
+   parked file, up to three requests best-first with the one line that says
+   why each is on the list — which of that request's keywords the document
+   said, where it said it, and the rule that refused it. It is a shortlist
+   and never a filing: it moves nothing, changes no status and takes no
+   lock, so **File it** is still what files anything, and a request the firm
+   has waived is never offered. A file whose evidence says nothing gets no
+   suggestion at all rather than a guess — an empty shortlist means read the
+   document.
 3. **A locked engagement.** The app shows a notice when a run holds one. If
    it says a run is still going, leave it — **Sort & Scan** waits for it.
    If it says a run left its lock behind, a **Clear lock** button appears;

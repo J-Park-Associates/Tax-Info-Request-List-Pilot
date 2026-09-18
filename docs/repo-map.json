@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 99,
-    "edges": 350,
-    "reused": 73
+    "nodes": 101,
+    "edges": 365,
+    "reused": 72
   },
   "node_types": [
     "artifact",
@@ -95,8 +95,8 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fefdd6be648326f6",
-      "lines": 80,
+      "sha256": "19b8c001a86b905f",
+      "lines": 81,
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
     },
     {
@@ -644,6 +644,46 @@
       "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Overlays pending_updates() from the manifest sidecar before triaging, so a scan that Excel kept from writing still stops the draft asking for a document that arrived. Reads the Engagement sheet itself for client, link, due, sender and firm; keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing. Decision 62: EXTENSION_ASK names the row's own file types; --write preserves edits. Decision 76: count_needs_review() is still the folder's count (a file dragged in by hand has no row and is nobody's decision yet) less the working copies whose newest index row is filer.NOT_REQUESTED - the warning is there for documents nobody has looked at, and a person has looked at those. An index it cannot read leaves every file counted."
     },
     {
+      "id": "tracker/review.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "775fc9e52639b6e4",
+      "lines": 316,
+      "cli": "python -m tracker.review",
+      "exports": [
+        "FILENAME_WORDS",
+        "FOUND_SEPARATOR",
+        "IDENTIFIER_SEPARATOR",
+        "IDENTITY_AGREES",
+        "IDENTITY_AGREES_WRONG_YEAR",
+        "IDENTITY_UNKNOWN",
+        "MAX_SUGGESTIONS",
+        "NOTHING_SUGGESTED",
+        "NOWHERE_WORDS",
+        "REFUSAL_SEPARATOR",
+        "Suggestion",
+        "TERM_WORDS",
+        "Triage",
+        "shortlist_for",
+        "triage"
+      ],
+      "constants": {
+        "MAX_SUGGESTIONS": "3",
+        "IDENTITY_AGREES": "0",
+        "IDENTITY_AGREES_WRONG_YEAR": "1",
+        "IDENTITY_UNKNOWN": "2",
+        "NOWHERE_WORDS": "'somewhere in the document'",
+        "FILENAME_WORDS": "'the file name says {term}'",
+        "TERM_WORDS": "\"'{term}'\"",
+        "NOTHING_SUGGESTED": "'nothing to suggest - the evidence says nothing about which request this is'",
+        "IDENTIFIER_SEPARATOR": "' \u2014 '",
+        "FOUND_SEPARATOR": "', '",
+        "REFUSAL_SEPARATOR": "'; '"
+      },
+      "role": "Triages the review queue: turns the evidence an index row kept into a ranked shortlist of at most three requests a parked file might belong to, each with the one-line reason it is on the list. Layer 2 - it suggests, and it files nothing.",
+      "notes": "Decision 83. triage(engagement_dir) returns one Triage per index row decided NEEDS_REVIEW, each holding the row and a tuple of Suggestion(identifier, reason, rank). It writes no artifact at all: no sidecar, no status, no move, no lock, and no client document is opened - the index's Evidence column is already the store, and a second one could disagree with it the moment somebody filed a row by hand. It reads the manifest and the index (read_index with quarantine off, so not even an unreadable sidecar is moved aside); a caller that already loaded either passes it in. rank sorts ascending as (identity, strength, catalog): identity is a slot reserved for a later step and constant today, strength is RULE_STRENGTH before PLACE_STRENGTH so a required keyword said deep outranks an any-keyword in a title - the way the router already weighs the two rules - and the manifest's own order breaks a tie as a tie. Evidence only: the request list's Missing/Received state is deliberately not a tiebreaker and never fills a shortlist (owner, 2026-09-18), because a nudge with nothing behind it is how a tired reviewer files the wrong document into the last open row. So a row whose evidence says nothing - matched no request, a scan with no text layer, a record carrying only a refusal - gets an empty shortlist and keeps the router's own reason, and a waived row is never suggested. A RULE_REFUSED entry is never a suggestion by itself; beside content evidence its cause is said in that suggestion's sentence, in the words reasons.py gives it. PLACE_WORDS is the one mapping from an evidence place to the words for it, so api._vocab() can expose it rather than the app typing a word of its own. Nothing below it imports it, and it imports neither runner, scheduling, settings nor api; genre and group are reserved for later steps."
+    },
+    {
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
@@ -1137,8 +1177,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e9263892a171cbf2",
-      "lines": 290,
+      "sha256": "75f292270e5a81fe",
+      "lines": 292,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1155,8 +1195,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9116b1174179dd2a",
-      "lines": 605,
+      "sha256": "8d87fa18dfd2c6d5",
+      "lines": 609,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1164,8 +1204,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1dc1f3224a966c91",
-      "lines": 256,
+      "sha256": "ffeb1cb17377db1d",
+      "lines": 267,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -2035,6 +2075,40 @@
       ],
       "role": "Guards the map's trust contract: derived facts come from source, curated judgment survives regeneration, drift is detected, and the committed map matches the tree.",
       "notes": "test_the_committed_map_is_current fails the suite if someone changed code without running `repo_map.py update`."
+    },
+    {
+      "id": "tests/test_review.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "20a7a59cd7e0eee5",
+      "lines": 360,
+      "exports": [
+        "DAY1",
+        "ITEMS",
+        "REPO",
+        "engagement",
+        "identifiers",
+        "park",
+        "parked_row",
+        "test_a_candidate_no_longer_on_the_manifest_is_not_offered",
+        "test_a_contested_file_names_the_row_it_looks_like_with_the_rule_that_failed",
+        "test_a_file_with_no_evidence_gets_no_suggestion_whatever_the_request_list_says",
+        "test_a_keyword_found_in_the_file_name_is_said_to_be_the_file_name",
+        "test_a_keyword_in_the_file_name_ranks_below_anything_the_document_said",
+        "test_a_refusal_beside_content_evidence_is_said_in_that_suggestions_sentence",
+        "test_a_refusal_on_its_own_is_not_a_suggestion",
+        "test_a_required_keyword_outranks_an_any_keyword_said_in_the_same_place",
+        "test_a_row_a_person_said_nothing_asks_for_is_not_triaged",
+        "test_a_row_that_says_it_in_the_title_outranks_one_that_says_it_deep",
+        "test_a_shortlist_never_names_a_waived_row",
+        "test_every_rule_and_place_the_evidence_defines_has_a_strength_and_a_word",
+        "test_the_cli_prints_each_parked_file_and_its_shortlist",
+        "test_the_reason_says_each_keyword_and_where_it_was_said",
+        "test_the_shortlist_is_capped",
+        "test_triage_takes_no_lock_and_writes_nothing",
+        "test_two_rows_with_equal_evidence_keep_catalog_order",
+        "test_two_runs_over_the_same_bytes_give_identical_output"
+      ]
     },
     {
       "id": "tests/test_rollover.py",
@@ -3472,6 +3546,66 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_review.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tracker/locking.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tracker/router.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tests/test_scanner.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tracker/review.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_rollover.py",
       "to": "pkg:openpyxl",
       "type": "depends_on",
@@ -4430,6 +4564,36 @@
       "to": "artifact:reminder-draft.txt",
       "type": "writes",
       "source": "curated"
+    },
+    {
+      "from": "tracker/review.py",
+      "to": "tracker/__init__.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/review.py",
+      "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/review.py",
+      "to": "tracker/filer.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/review.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/review.py",
+      "to": "tracker/scaffold.py",
+      "type": "imports",
+      "source": "derived"
     },
     {
       "from": "tracker/rollover.py",

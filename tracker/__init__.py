@@ -9,6 +9,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - scanner       : orchestrator (scan, resolve, write back)
 - router        : deterministic routing of a dropped file to one request
 - filer         : sort the drop folder, preserve originals, write the index workbook
+- review        : triage the parked files - a ranked shortlist with its reasons, filing nothing
 - rollover      : build a returning client's list from their prior year
 - reminder      : draft (never send) the client reminder email
 - registry      : finds every engagement under the clients root (no registry file)
