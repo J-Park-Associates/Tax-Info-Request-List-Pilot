@@ -68,7 +68,9 @@ The scanner owns the status column; people own the override column.
   it, send it yourself. An edited draft is never overwritten.
 - **Catalog changes affect every future engagement.** Edit
   `tracker/templates.py` and commit it; the test suite checks every row can
-  recognise its own document.
+  recognise its own document. The keywords staff have taught one engagement
+  at a time are listed together by `python tools/learned_keywords.py`, once a
+  season — that list is what the next catalog commit is made of.
 
 ## Four things a person still does in the app
 

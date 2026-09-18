@@ -104,6 +104,20 @@ committed, redacted or not: client documents do not enter the repo, and a
 report built with them names files the firm's clients can be read out of,
 so `check` refuses one.
 
+The catalog is not the only vocabulary in the field. When a person files a
+parked document they may type a keyword, and it is written into that one
+engagement's `Any Keywords` — invisible to every other engagement and to the
+catalog the suite tests. `tools/learned_keywords.py` is the season's list of
+them: it walks every engagement under the clients root, compares each request
+row's keywords against the catalog rows carrying the same identifier and
+document, and groups what is left by row with the number of engagements that
+typed it. It only reads — no lock, no write-back — and it prints no client
+folder name unless it is asked for one, so a keyword several engagements had
+to be taught separately can be promoted into `tracker/templates.py`, where
+the suite defends it. It can run each candidate over the IRS forms in
+`tests/irs/` first, and marks the ones that would misfile a form the suite
+already places.
+
 ## The backtest: the firm's own documents score the router
 
 [`docs/backtest-baseline.json`](docs/backtest-baseline.json) holds one

@@ -265,6 +265,12 @@ routes a file only on a request's *required* keywords; a looser match on
 OCR text goes to review with the lead noted, because a misread word is how
 a document lands under the wrong request.
 
+When a person files something out of `00 - Needs Review` they can type a
+keyword, and it is learned by that one engagement's manifest and nowhere
+else; `python tools/learned_keywords.py` lists every keyword taught that way
+across all your engagements, grouped by request, so the ones several clients
+needed become catalog rows the test suite then defends.
+
 #### What the routing is measured against
 
 Blank IRS forms and reconstructed cases are paperwork nobody sent. The

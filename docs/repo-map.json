@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 95,
-    "edges": 331,
-    "reused": 49
+    "nodes": 97,
+    "edges": 345,
+    "reused": 46
   },
   "node_types": [
     "artifact",
@@ -1092,8 +1092,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "21ff03342a4aaa88",
-      "lines": 188,
+      "sha256": "69199ae81839b623",
+      "lines": 202,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -1101,16 +1101,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7e508d4d7af1b9f9",
-      "lines": 322,
+      "sha256": "8cef42d4ec95b85c",
+      "lines": 328,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "97b3b86e439daf5d",
-      "lines": 281,
+      "sha256": "312cbd4120f7e9e6",
+      "lines": 282,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1127,8 +1127,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "22c51128f79a232c",
-      "lines": 564,
+      "sha256": "d51fb3cbe99708ff",
+      "lines": 582,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1153,8 +1153,8 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "02b322e3b4b60dff",
-      "lines": 116,
+      "sha256": "66eb22820387a3f4",
+      "lines": 118,
       "role": "How the day-to-day workflow runs."
     },
     {
@@ -1718,6 +1718,42 @@
         "catalogs",
         "test_the_irs_forms_file_where_they_belong_or_park"
       ]
+    },
+    {
+      "id": "tests/test_learned_keywords.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "2fcf080e502adfef",
+      "lines": 263,
+      "exports": [
+        "CARRIED",
+        "REPO",
+        "SAID_BY_A_FORM",
+        "SAID_BY_NOTHING",
+        "engagement",
+        "line_for",
+        "taught",
+        "test_a_keyword_on_a_row_no_catalog_knows_is_a_custom_row",
+        "test_a_keyword_the_catalog_already_carries_on_that_row_is_not_learned",
+        "test_a_report_that_was_not_linted_says_so",
+        "test_a_root_neither_given_nor_configured_is_named_not_guessed",
+        "test_a_root_that_is_not_a_folder_is_the_registrys_own_refusal",
+        "test_a_row_is_compared_against_every_catalog_that_holds_it",
+        "test_an_engagement_the_run_would_not_chase_is_still_read_and_is_flagged",
+        "test_an_engagement_whose_manifest_cannot_be_read_is_a_problem_line_not_a_silence",
+        "test_lint_marks_a_keyword_that_would_misfile_a_corpus_form_and_leaves_the_rest_alone",
+        "test_the_default_output_counts_engagements_and_the_flag_names_them",
+        "test_the_out_path_is_resolved_against_the_working_folder",
+        "test_the_report_writes_nothing_under_the_repository_and_refuses_an_out_path_inside_it",
+        "test_two_engagements_that_taught_the_same_keyword_report_it_once_with_the_count"
+      ],
+      "constants": {
+        "CARRIED": "'wage and tax statement'",
+        "SAID_BY_A_FORM": "'qualified tuition and related expenses'",
+        "SAID_BY_NOTHING": "'willow lane payroll recap'"
+      },
+      "role": "Guards the learned-keyword report: two engagements that taught one keyword are one row with a count of two, a keyword the catalog already carries is not reported, a hand-added row is a custom row, an unreadable manifest is a problem line, the default output holds no folder name, nothing under the repository is written and a path inside it is refused, and a keyword an IRS form says is marked as one that would misfile it.",
+      "notes": "Decision 79. The clients roots are scratch trees under tmp_path, built the way tests/test_registry.py builds one: create_template() writes the shipped catalog and add_any_keyword() teaches the keyword, so what the report compares is a real manifest rather than a stand-in. The corpus case reads the fifty IRS forms and takes about half a minute."
     },
     {
       "id": "tests/test_locking.py",
@@ -2414,6 +2450,52 @@
       "notes": "Decision 74. The measure the fifty blank IRS forms and the typed cases cannot be - decision 70's report leaves most keywords and most rows defended by nothing - and the only corpus made of documents a client actually sent. Each document is routed through a hard link (a copy where the file system refuses one) under one neutral name, so the router's by-name fallback can never read the client's name off the file and the score is the routing rules' rather than the firm's naming discipline; the link is the same bytes, so every tier-2 check still sees the real document. A document with no text layer is its own category, because the only evidence left for it would be the name being hidden - unless OCR is allowed, when nothing is handed over and the router does its own reading under its own stricter rule for OCR words. Catalogs are built the way tests/test_irs_forms.py builds them, with the size floor and the year check lifted. Nothing identifying comes back: counts, catalog identifiers and a row's number in the expectations file, never a file name, a folder name below the corpus root or a word of a document; the corpus, its expectations file and the report stay outside the repository and the tool refuses to write into the tree."
     },
     {
+      "id": "tools/learned_keywords.py",
+      "type": "tool",
+      "layer": "tooling",
+      "sha256": "2d87e470115fbef8",
+      "lines": 448,
+      "cli": "python -m tools.learned_keywords",
+      "exports": [
+        "CARRIED_BY",
+        "CUSTOM_ROW",
+        "FILES_AS",
+        "FLAG_INACTIVE",
+        "IN_CATALOGS",
+        "LearnedKeywordsError",
+        "MISFILE",
+        "NONE",
+        "PARKS",
+        "ROOT",
+        "Report",
+        "Row",
+        "SAID_BY",
+        "catalog_index",
+        "chosen_root",
+        "collect",
+        "keywords_of",
+        "lint",
+        "main",
+        "manifest_rows",
+        "out_path",
+        "render",
+        "summary_line"
+      ],
+      "constants": {
+        "FLAG_INACTIVE": "'inactive'",
+        "CARRIED_BY": "'{n} engagement(s)'",
+        "MISFILE": "'would misfile: {form} {placement}'",
+        "FILES_AS": "'files as {identifier} in the {catalog} catalog'",
+        "PARKS": "'parks in the {catalog} catalog'",
+        "SAID_BY": "'said by: {forms}'",
+        "CUSTOM_ROW": "'no catalog holds this row'",
+        "IN_CATALOGS": "'in the {catalogs} catalog(s)'",
+        "NONE": "'- none'"
+      },
+      "role": "Lists what the staff taught the router: every keyword a person typed into one engagement's manifest that no catalog row with the same identifier and document carries, across every engagement under the clients root, grouped by request row with the number of engagements that typed it.",
+      "notes": "Decision 79. A keyword learned through manifest.add_any_keyword() lives in that one manifest, so fifty engagements hold fifty private vocabularies and the catalog is the only one tests/test_catalog.py and tests/test_irs_forms.py defend; this is the season's list of candidates to promote. Read-only in the strong sense: no lock is taken, no manifest is written, the readers' quarantine=False is passed so looking never moves a sidecar, and a report path inside the repository is refused - an engagement folder name is a client's name and the report names them on request. The Engagement sheet does not record which form type an engagement was created from, so a row is compared against every catalog holding it and the report says which matched; a row no catalog holds is a custom request, listed apart with all its keywords. An engagement whose manifest could not be read is a problem line, never a silent skip. It borrows shipped_catalogs() and corpus_documents() from tools/vocab_report.py, so the catalogs it compares against and the corpus a candidate can be run over are the coverage report's."
+    },
+    {
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
@@ -2554,6 +2636,12 @@
     {
       "from": "CLAUDE.md",
       "to": "tools/backtest.py",
+      "type": "documents",
+      "source": "curated"
+    },
+    {
+      "from": "CLAUDE.md",
+      "to": "tools/learned_keywords.py",
       "type": "documents",
       "source": "curated"
     },
@@ -3053,6 +3141,42 @@
       "from": "tests/test_irs_forms.py",
       "to": "tracker/templates.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tools/learned_keywords.py",
+      "type": "tests",
       "source": "derived"
     },
     {
@@ -3755,6 +3879,48 @@
       "from": "tools/backtest.py",
       "to": "docs/backtest-baseline.json",
       "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tools/vocab_report.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/registry.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/scaffold.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/settings.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads",
       "source": "curated"
     },
     {

@@ -137,6 +137,14 @@
       "role": "Guards the backtest: a document is routed by its text and never by its name, a file with no text layer is counted apart rather than parked, the report and the console carry no file or folder name, the skeleton is blank with the request folder as the hint and is never overwritten, and an unrecorded baseline is said rather than passed.",
       "notes": "Decision 74. The corpus it scores is built with tests/samples.py in a temporary folder, because no client document is in the repository or ever will be. It also pins the two things the hiding rests on: the neutral name reaches no keyword in any shipped catalog, and a whole pass writes nothing under the repository root."
     },
+    "tools/learned_keywords.py": {
+      "role": "Lists what the staff taught the router: every keyword a person typed into one engagement's manifest that no catalog row with the same identifier and document carries, across every engagement under the clients root, grouped by request row with the number of engagements that typed it.",
+      "notes": "Decision 79. A keyword learned through manifest.add_any_keyword() lives in that one manifest, so fifty engagements hold fifty private vocabularies and the catalog is the only one tests/test_catalog.py and tests/test_irs_forms.py defend; this is the season's list of candidates to promote. Read-only in the strong sense: no lock is taken, no manifest is written, the readers' quarantine=False is passed so looking never moves a sidecar, and a report path inside the repository is refused - an engagement folder name is a client's name and the report names them on request. The Engagement sheet does not record which form type an engagement was created from, so a row is compared against every catalog holding it and the report says which matched; a row no catalog holds is a custom request, listed apart with all its keywords. An engagement whose manifest could not be read is a problem line, never a silent skip. It borrows shipped_catalogs() and corpus_documents() from tools/vocab_report.py, so the catalogs it compares against and the corpus a candidate can be run over are the coverage report's."
+    },
+    "tests/test_learned_keywords.py": {
+      "role": "Guards the learned-keyword report: two engagements that taught one keyword are one row with a count of two, a keyword the catalog already carries is not reported, a hand-added row is a custom row, an unreadable manifest is a problem line, the default output holds no folder name, nothing under the repository is written and a path inside it is refused, and a keyword an IRS form says is marked as one that would misfile it.",
+      "notes": "Decision 79. The clients roots are scratch trees under tmp_path, built the way tests/test_registry.py builds one: create_template() writes the shipped catalog and add_any_keyword() teaches the keyword, so what the report compares is a real manifest rather than a stand-in. The corpus case reads the fifty IRS forms and takes about half a minute."
+    },
     "tests/test_real_corpus.py": {
       "role": "The harness for the firm's own redacted documents: every row of the expectations file beside them routed against a shipped catalog the way tests/test_irs_forms.py routes the IRS's forms, and asserted to file where the firm says or to park.",
       "notes": "Decision 71. The corpus is outside the repository, in the folder TRACKER_REAL_CORPUS names, and is never committed; with no corpus the routing case skips by name and the harness's own tests - the reading, the routing and the skip - still run on a scratch folder, so the file is exercised on every machine. It owns read_expectations() and real_corpus(), which tools/vocab_report.py imports, so the report and the test cannot disagree about what an expectation means. Decision 74: read_expectations() takes the file's path rather than its folder, because tools/backtest.py scores an expectations file a person keeps wherever they keep it and the contract has to have one reader."
@@ -558,6 +566,16 @@
       "from": ".github/workflows/build.yml",
       "to": "tests/samples.py",
       "type": "runs"
+    },
+    {
+      "from": "CLAUDE.md",
+      "to": "tools/learned_keywords.py",
+      "type": "documents"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads"
     }
   ]
 }
