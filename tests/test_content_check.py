@@ -382,10 +382,15 @@ def test_a_title_that_lists_three_forms_names_none_of_them():
     composite = ("vanguard brokerage services\n2025 consolidated form 1099 - account 8812-4455\n"
                  "form 1099-int   interest income\nform 1099-div   dividends and distributions\n"
                  "form 1099-b   proceeds from broker and barter exchange transactions")
-    assert _title_forms(composite) == {"1099", "1099int", "1099div", "1099b"}
+    assert _title_forms(composite) == {"1099int", "1099div", "1099b"}   # "Form 1099 - Account" is set off by its dash
     assert says(composite, "1099-int") and says(composite, "1099-b")
-    # A page footer names the form itself, whatever word the prose above ended on.
-    assert _title_forms("be sure to\nform 1040-es (2026) estimated tax for individuals") == {"1040es"}
+    # A checklist sets a form off from its title with a dash; no form names itself that way.
+    assert _title_forms("form 1099-int - interest income\nform 1099-div - dividends and distributions") == set()
+    assert _title_forms("form 1099-int   interest income   2025\nform 1099-div   dividends   2025") == {"1099int", "1099div"}
+    assert _title_forms("form w-2 - 2025 wage and tax statement") == {"w2"}     # a dash before the year is still dated
+    # A sentence wraps where it will: the word before a form may end the line above.
+    assert not says("2025 organizer\nmortgage interest paid: please attach\nform 1098 (2025) from each lender", "1098")
+    assert not says("annual escrow account disclosure\nfor your deduction, see\nform 1098 for 2025 mailed separately", "1098")
 
 
 def test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right():

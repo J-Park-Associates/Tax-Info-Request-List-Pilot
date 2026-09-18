@@ -322,19 +322,29 @@ def _title(text: str) -> str:
 #: a dozen. A self-mention's year is on the same line as its number.
 _SELF_WEIGHT, _PLAIN_WEIGHT, _REFERENCE_WEIGHT = 3, 1, 0
 _SELF_AFTER = re.compile(
-    rf"{_SAME_LINE}*(?:\({_SAME_LINE}*)?(?:rev\b|(?:19|20)\d{{2}}\b)|{_SAME_LINE}+for{_SAME_LINE}+(?:19|20)\d{{2}}\b"
+    rf"{_SAME_LINE}*(?:[{re.escape(_DASH_CHARS)}]{_SAME_LINE}*)?(?:\({_SAME_LINE}*)?(?:rev\b|(?:19|20)\d{{2}}\b)"
+    rf"|{_SAME_LINE}+for{_SAME_LINE}+(?:19|20)\d{{2}}\b"
 )
+#: A form's number set off from what follows by a dash - "Form 1098 -
+#: Mortgage Interest Statement", "Form 1099-INT - Interest Income" - is
+#: a checklist's line, a menu of forms; no form prints its own title that
+#: way (the title follows its number on the same line or the next, and a
+#: dated footer names the number with its year).
 _REFERENCE_AFTER = re.compile(
-    r"\s*[,.;)]|\s+(?:or|and|line|lines|instructions?|to|if|is|are|was|were|schedule|box|boxes|page|"
+    rf"\s*[,.;)]|{_SAME_LINE}+[{re.escape(_DASH_CHARS)}]{_SAME_LINE}+|"
+    r"\s+(?:or|and|line|lines|instructions?|to|if|is|are|was|were|schedule|box|boxes|page|"
     r"worksheet|for|with|at|by|filers?|must|may|should)\b"
 )
 #: The words a document prints before a form it is telling the reader
-#: about; a form never names itself after them. On the same line: a
-#: page's footer names the form itself, whatever word the prose above
-#: happened to end on.
+#: about; a form never names itself after them - on the same line or the
+#: one above, because a wrapped sentence breaks where it will ("please
+#: attach" / "Form 1098 (2025) from each lender", the twelfth reading).
+#: A page footer whose prose above ends in one of these words is read as
+#: a reference too; that costs nothing the corpus shows, since a footer
+#: repeats on every page and the others count.
 _REFERENCE_BEFORE = re.compile(
     r"(?<![a-z0-9])(?:forms|attach|attached|see|file|files|filed|use|of|on|from|with|to|and|or|a|an|the|"
-    rf"include|including|per|report|reported){_SAME_LINE}+$"
+    r"include|including|per|report|reported)\s+$"
 )
 _BEFORE_CHARS = 12   # room for the longest word above and the space after it
 

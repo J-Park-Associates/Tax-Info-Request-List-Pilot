@@ -223,6 +223,13 @@ def roll_forward(
     prior_year = detect_year(prior_items)
     if target_year is None and prior_year is not None:
         target_year = next_tax_year(prior_year)
+    if prior_year and target_year and target_year <= prior_year:
+        # A roll into the same year would retire the live engagement in
+        # favour of a copy of itself; into an earlier one would shift every
+        # period backwards. Neither is a rollover.
+        raise ManifestError(
+            f"Roll forward to a year after {prior_year}; {target_year} is not later"
+        )
     delta = (target_year - prior_year) if (prior_year and target_year) else 0
 
     template_year = detect_year(template) if template else None

@@ -621,6 +621,7 @@ def _cmd_assign(argv: list[str]) -> dict:
             "keyword": result.keyword,
             "keyword_note": result.keyword_note,
             "index_deferred": result.index_deferred,
+            "left_in_review": result.left_in_review,
             "scan_note": scan_note,
         },
         "state": _state(engagement),

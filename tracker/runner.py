@@ -264,6 +264,10 @@ def run_engagement(
         run.review = len(filed.review)
         run.waiting = len(filed.waiting)
         run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]
+        # An original already sorted whose record no longer fits the disk
+        # is for a person to look at, every pass - but nothing was left
+        # unsorted, so it rides the warnings rather than failing the run.
+        run.warnings.extend(f"{e.name}: {e.error}" for e in filed.attention)
         run.index_deferred = filed.index_deferred
 
         scanned = scan_engagement(engagement.path, today=today, dry_run=dry_run)

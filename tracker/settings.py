@@ -133,6 +133,10 @@ def set_clients_root(root: Path | str) -> Path:
         raise SettingsError(f"not a folder: {root}")
     if str(root).rstrip("/") == root.drive:       # "D:" is the drive's current folder to Windows
         root = Path(root.drive + os.sep)
+    elif root.resolve() == Path.cwd().resolve():
+        # "." typed into the app's folder box is the app's own folder,
+        # which is a folder, and would be recorded in the real root's place.
+        raise SettingsError("the working folder itself is not a clients root; give the folder's path")
     root = root.resolve()   # the scheduled job and the app do not share a working folder
     data = _read()
     data[KEY_CLIENTS_ROOT] = str(root)
