@@ -72,6 +72,7 @@ from tracker.manifest import (
     COL_IDENTIFIER,
     LOCK_RETRIES,
     LOCK_RETRY_DELAY,
+    ManifestError,
     Override,
     RequestItem,
     add_any_keyword,
@@ -844,7 +845,7 @@ def file_drops(
                     report.review.append(entry)
 
                 entries.append(entry)
-                if entry.decision != DUPLICATE:
+                if entry.decision != DUPLICATE and digest:
                     known[digest] = entry
         finally:
             # Whatever happened above, every original that was moved is on
@@ -891,7 +892,7 @@ def _sort_one(
     """Decide one preserved original's fate and, unless dry-running, copy it."""
     known, report, dry_run = run.known, run.report, run.dry_run
     refiled = ""
-    if digest in known:
+    if digest and digest in known:
         earlier = known[digest]
         engagement_dir = run.prepared_dir.parent
         if (
@@ -1105,6 +1106,8 @@ def assign_review_file(
                     f"keyword {keyword!r} not saved: the manifest is open in Excel; "
                     f"add it to {identifier}'s Any Keywords by hand or close Excel and try again"
                 )
+            except ManifestError as exc:       # the cell holds a formula: the filing stands, the keyword does not
+                note = f"keyword {keyword!r} not saved: {exc}"
     return AssignResult(
         entry=new_entry, moved_review_copy=moved, keyword=keyword if not note else "",
         keyword_note=note, index_deferred=deferred,

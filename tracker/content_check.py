@@ -285,9 +285,10 @@ def _title(text: str) -> str:
 #: are told apart here, because a W-2's instruction pages name Form 1040
 #: thirty times and the W-2 itself a dozen.
 _SELF_WEIGHT, _PLAIN_WEIGHT, _REFERENCE_WEIGHT = 3, 1, 0
-_SELF_AFTER = re.compile(r"\s*(?:\(\s*)?(?:rev\b|(?:19|20)\d{2}\b)|\s+for\s+(?:19|20)\d{2}\b")
+_SELF_AFTER = re.compile(r"[ \t]*(?:\([ \t]*)?(?:rev\b|(?:19|20)\d{2}\b)|[ \t]+for[ \t]+(?:19|20)\d{2}\b")
 _REFERENCE_AFTER = re.compile(
-    r"\s*[,.;)]|\s+(?:or|and|line|lines|instructions?|to|if|is|are|was|were|schedule|box|page|worksheet)\b"
+    r"\s*[,.;)]|\s+(?:or|and|line|lines|instructions?|to|if|is|are|was|were|schedule|box|boxes|page|"
+    r"worksheet|for|with|at|by|filers?|must|may|should)\b"
 )
 
 

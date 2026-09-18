@@ -45,6 +45,7 @@ CASES = [
         "Schedule A 8a Home mortgage interest and points reported to you on Form 1098",
         "Attach Forms W-2G and 1099-R if tax was withheld",
         "1e Taxable dependent care benefits",
+        "Sign Here Under penalties of perjury, I declare that I have examined this return and accompanying schedules",
     ], "B01"),
     ("1040", "1099-SA with instructions.pdf", [
         "Form 1099-SA Distributions From an HSA 2025",
@@ -96,10 +97,13 @@ CASES = [
         "Form 1099-INT Interest Income (Rev. January 2024) 2025",
         "report this interest on your income tax return",
     ], None),
-    ("1120S", "2024 1120-S.pdf", ["Form 1120-S U.S. Income Tax Return for an S Corporation 2024"], "A01"),
+    ("1120S", "2024 1120-S.pdf", [
+        "Form 1120-S U.S. Income Tax Return for an S Corporation 2024",
+        "Sign Here Under penalties of perjury, I declare that I have examined this return",
+    ], "A01"),
     ("1120", "2024 1120.pdf", [
         "Form 1120 U.S. Corporation Income Tax Return 2024", "12 Compensation of officers",
-        "Schedule M-1 Reconciliation of Income",
+        "Schedule M-1 Reconciliation of Income", "Sign Here Under penalties of perjury, I declare",
     ], "A01"),
     ("1120", "K-1 1065.pdf", ["Schedule K-1 (Form 1065) 2025", "17A Post-1986 depreciation adjustment"], None),
     ("1120", "P&L.pdf", [
@@ -130,6 +134,7 @@ CASES = [
     ("990", "2024 990.pdf", [
         "Form 990 Return of Organization Exempt From Income Tax 2024",
         "Part XI Reconciliation of Net Assets", "Board of Directors",
+        "Sign Here Under penalties of perjury, I declare that I have examined this return",
     ], "A01"),
     ("990", "Nov 2025 bank.pdf", [
         "Checking Account Statement", "Statement period 11/01/2025 - 11/30/2025", "Deposits and other credits 4,000.00",
@@ -191,14 +196,30 @@ CASES = [
         "Form 1040 (2024) Page 2 Schedule A Itemized Deductions 5c State and local personal property taxes",
         "8a Home mortgage interest and points reported to you on Form 1098 Schedule B substitute statement from a brokerage firm",
         "Schedule E Passive income from Schedule K-1 Form 8962 Monthly enrollment premiums Form 8283 Noncash Charitable Contributions",
+        "Sign Here Under penalties of perjury, I declare that I have examined this return and accompanying schedules",
         "Form 1040 (2024)",
     ], "B01"),
     ("1120", "2024 1120 with schedules.pdf", [
         "Form 1120 U.S. Corporation Income Tax Return 2024 Department of the Treasury Internal Revenue Service",
         "20 Depreciation from Form 4562 not claimed on Form 1125-A 37 Credited to 2025 estimated tax",
         "Schedule L Balance Sheets per Books Schedule M-1 Reconciliation of Income (Loss) per Books With Income per Return",
+        "Sign Here Under penalties of perjury, I declare that I have examined this return",
         "Form 1120 (2024)",
     ], "A01"),
+    # Round eight: the firm's own paperwork, and another entity's return, are not the prior-year return.
+    ("1040", "organizer.pdf", [
+        "2025 Individual Income Tax Organizer", "Filing Status Single Married filing jointly",
+        "Please provide your 2024 amounts where asked. Attach your 2024 Form 1040.",
+    ], None),
+    ("1040", "engagement letter.pdf", [
+        "Engagement Letter: we will prepare your 2025 Form 1040, U.S. Individual Income Tax Return.",
+        "Filing status will be determined from the information you provide. Prior-year (2024) returns are not included.",
+    ], None),
+    ("1040", "2024 1120-S dropped by the owner.pdf", [
+        "Form 1120-S U.S. Income Tax Return for an S Corporation 2024",
+        "Schedule K 12a Cash charitable contributions", "27 Credited to 2025 estimated tax",
+        "Sign Here Under penalties of perjury, I declare that I have examined this return",
+    ], None),
     ("1120", "QuickBooks trial balance.pdf", [
         "Trial Balance As of December 31, 2025", "Checking Account 12,000.00 Savings Account 30,000.00",
         "Accumulated Depreciation -4,000.00 Shareholder Distributions 10,000.00",
