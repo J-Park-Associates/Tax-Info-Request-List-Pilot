@@ -45,9 +45,14 @@ Two things deliberately do *not* route a file:
 When a file is not routed, the reason says why in the most useful terms
 available: a document whose content fits a request but which that request
 refused (too small, wrong type, unreadable) is reported as ``CONTESTED_PREFIX``
-plus the request and its refusal, and a file every request refused
-for the same reason carries that reason — ``UNMATCHED`` alone is the
-last resort, not the default.
+plus the request and its refusal; a file whose keywords all matched one
+request and whose *year* alone did not is reported the same way, with that
+request named, because "matched no request" is a lie about last year's
+childcare statement; and a file every request refused for the same reason
+carries that reason — ``UNMATCHED`` alone is the last resort, not the
+default. A lead of that kind never pre-empts a filing the way a
+required-keyword match does: it is read only when the file would otherwise
+be parked with no candidate at all.
 
 Routing is read-only. Moving, renaming and indexing happen in
 :mod:`tracker.filer`, which uses the decisions made here. The verdicts the
@@ -66,6 +71,7 @@ from tracker import reasons
 from tracker.content_check import (
     ContentCache,
     Extraction,
+    any_keyword_matched,
     contains_keyword,
     evaluate_rules,
     extract,
@@ -234,6 +240,7 @@ def route_file(
     medium: list[str] = []      # passed on any_keywords / date alone
     ocr_only: list[str] = []    # passed on any_keywords, but the text is OCR's word for it
     near: list[tuple[str, str]] = []   # looks like this request but fails a rule
+    leads: list[tuple[str, str]] = []  # its keywords matched and only the year did not
     by_name: list[str] = []     # no readable text; the filename is all we have
     blocked: list[tuple[str, str]] = []  # content fits, but tier 2 refused the file
     refusals: list[str] = []    # every tier-2 reason, for an honest "why not"
@@ -258,6 +265,12 @@ def route_file(
                     medium.append(item.identifier)
             elif _required_matched(words, item):
                 near.append((item.identifier, verdict.reason))
+            elif reasons.WRONG_PERIOD.matches(verdict.reason) and any_keyword_matched(words, item):
+                # Every keyword this row asks for matched and only its year
+                # did not. That is no filing decision - the year is a check,
+                # never evidence (decision 40) - but it is the lead a person
+                # needs, and it is all this file is going to give them.
+                leads.append((item.identifier, verdict.reason))
         elif _filename_hit(path, item):
             by_name.append(item.identifier)
 
@@ -327,6 +340,15 @@ def route_file(
             identifier=None,
             reason=f"{UNMATCHED}; could not read it ({reading.error})",
         )
+
+    # Nothing accepted the file, and a row's keywords all matched but its
+    # year: say so with the row named, the way a contested file is said.
+    # Unlike a required-keyword match, a lead never pre-empts a filing - it
+    # is read only when the file was going to be parked with no candidate
+    # at all, so the decision is exactly as it was and only the reason and
+    # the candidates improve (the thirteenth reading).
+    if leads:
+        return _contested(path, leads)
 
     rule_less = [i.identifier for i in items if not _considers(i)
                  and i.manual_override != Override.WAIVED]

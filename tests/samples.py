@@ -140,6 +140,26 @@ def form_1098_lines(lender: str, borrower: str, year: int) -> list[str]:
     ]
 
 
+def sheet_xlsx(path: Path, rows: list[list]) -> Path:
+    """A workbook whose first sheet holds ``rows``, one list per row.
+
+    Half of every catalog asks for a bookkeeping export or a schedule, and
+    those arrive as workbooks: a case typed as lines of text cannot stand
+    in for one, because a sheet is read differently. A row is a line and
+    its cells are set apart by a tab (``content_check._extract_xlsx``), so
+    a phrase that runs across two cells is one phrase and a phrase that
+    runs down two rows is two labels - which is the whole point of the
+    rule decision 66 wrote. ``tests/test_catalog.py`` routes its workbook
+    cases through this.
+    """
+    wb = Workbook()
+    ws = wb.active
+    for row in rows:
+        ws.append(list(row))
+    wb.save(path)
+    return path
+
+
 def donations_xlsx(path: Path) -> None:
     wb = Workbook()
     ws = wb.active

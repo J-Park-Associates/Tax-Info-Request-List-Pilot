@@ -425,6 +425,48 @@ def _shipped_1040_rows(tmp_path):
     return _shipped_rows(tmp_path, "1040")
 
 
+def test_a_document_whose_year_alone_failed_names_the_row_it_looks_like(tmp_path):
+    """"Matched no request" is a lie about last year's childcare statement.
+
+    Only six of the seventy-eight catalog rows have required keywords, so
+    only six could ever be *contested*; on the rest, a document that
+    matched every keyword and failed the year went to a person with no
+    candidate and nothing to go on, and the client was asked the generic
+    ask. The decision is unchanged - it is still parked, because the year
+    is a check and never evidence - but the reason names the row, the
+    candidates travel with it, and the ask is the wrong-period one.
+    """
+    items = _shipped_1040_rows(tmp_path)
+    f = text_pdf(tmp_path / "childcare.pdf",
+                 "Bright Horizons Learning Center\n2024 Childcare Statement\nProvider EIN 12-3456789")
+    routing = route_file(f, items)
+    assert routing.identifier is None
+    assert f"{CONTESTED_PREFIX} J01" in routing.reason
+    assert routing.candidates == ("J01",)
+    assert routing.evidence == EVIDENCE_CONTENT
+    assert reasons.find(routing.reason) is reasons.WRONG_PERIOD
+
+
+def test_a_lead_never_takes_a_filing_from_the_row_that_accepted_the_file(tmp_path):
+    """A row whose any-keywords matched with the wrong year is a lead, not a
+    claim: unlike a required-keyword match it pre-empts nothing, so a file
+    one row accepts is still filed there."""
+    childcare = RequestItem(
+        identifier="J01", document="Childcare Provider Statements", period="TY2025",
+        allowed_extensions=("pdf",), min_size_kb=0,
+        any_keywords=("child care statement",), date_pattern=r"(?i)\b2025\b",
+    )
+    receipts = RequestItem(
+        identifier="D01", document="Charitable Contribution Receipts",
+        allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("donation receipt",),
+    )
+    f = text_pdf(tmp_path / "both.pdf", "2024 Child Care Statement\nGoodwill Donation Receipt")
+    routing = route_file(f, [childcare, receipts])
+    assert routing.identifier == "D01"
+    # And with nobody to file it, the lead is what the person is given.
+    assert route_file(f, [childcare]).candidates == ("J01",)
+
+
 @pytest.mark.parametrize("name, text, expected", [
     # What other forms print about their neighbours must not file them there.
     ("2024 Tax Return.pdf",

@@ -105,22 +105,34 @@ SHARED = {
                           extensions="xlsx, csv, pdf"),
     "general_ledger": dict(document="General Ledger Detail", any_keywords="general ledger",
                            extensions="xlsx, csv, pdf"),
+    # A nonprofit's statements carry titles a company's do not; the
+    # Statement of Functional Expenses is one of the package's own, and
+    # keying the officer-compensation row on its "compensation of officers"
+    # line filed the whole package there (the thirteenth reading).
     "financial_statements": dict(
         document="Year-End Financial Statements",
         any_keywords="balance sheet as of, statement of financial position, income statement, statement of income, "
-                     "profit and loss, statement of operations, statement of activities, statement of cash flows",
+                     "profit and loss, statement of operations, statement of activities, statement of cash flows, "
+                     "statement of functional expenses",
         extensions="pdf, xlsx"),
+    # `statement of account` is what a credit-card issuer and a broker head
+    # their December statements with, and neither is the bank statement this
+    # row asks for; a bank's own statement says what its columns are. The row
+    # asks for the year-end reconciliation too, which arrives as a workbook.
     "december_bank": dict(document="December Bank Statements & Year-End Reconciliations",
-                          any_keywords="bank statement, statement of account, checking summary, deposits and additions, "
+                          any_keywords="bank statement, checking summary, deposits and additions, "
                                        "deposits and other credits, checks paid, withdrawals and other debits, "
                                        "bank reconciliation",
-                          period=DEC),
+                          period=DEC, extensions="pdf, xlsx"),
     "payroll_returns": dict(document="Payroll Tax Returns - Forms 941 & W-3",
                             any_keywords="form 941, employer's quarterly federal tax return, form 940, "
                                          "employer's annual federal unemployment, form w-3, w-3 transmittal"),
-    # A voucher's own lines: its numbered heading and the amount line. The
-    # 1040-ES booklet's instructions say "estimated tax payment voucher" in
-    # prose, and its blank vouchers are pages the reader never reaches.
+    # An individual's voucher, by its own lines: its numbered heading and
+    # the amount line. The 1040-ES booklet's instructions say "estimated
+    # tax payment voucher" in prose, and its blank vouchers are pages the
+    # reader never reaches. These lines are the *person's*, which is why a
+    # corporation's row no longer shares them: the individual's 1040-ES
+    # voucher was filing as the corporation's estimated tax record.
     "estimated_tax": dict(document="Estimated Tax Payment Records",
                           any_keywords="estimated tax payment voucher 1, estimated tax payment voucher 2, "
                                        "estimated tax payment voucher 3, estimated tax payment voucher 4, "
@@ -128,20 +140,35 @@ SHARED = {
                                        "amount of estimated tax you are paying, estimated tax voucher, "
                                        "estimated payments made",
                           extensions="pdf, xlsx"),
+    # A corporation's record of the same thing, by the words a corporate
+    # voucher and a bookkeeper's schedule print. A voucher headed
+    # "Estimated Tax Payment Voucher 2" is a person's and must not land
+    # here; the row is named apart from the individual's so that one
+    # document name never means two sets of rules.
+    "business_estimated_tax": dict(document="Corporate Estimated Tax Payment Records",
+                                   any_keywords="corporation estimated tax, estimated tax voucher, "
+                                                "estimated payments made, estimated tax payments made",
+                                   extensions="pdf, xlsx"),
+    # The schedules below are bookkeeping exports, so a workbook is what
+    # arrives most - but a client who prints one to PDF is answering the
+    # request, and an xlsx-only row parked every one of those.
     "fixed_assets": dict(document="Fixed Asset Additions & Disposals Detail",
                          any_keywords="fixed asset schedule, fixed asset listing, fixed asset additions, "
                                       "asset additions and disposals",
-                         extensions="xlsx"),
+                         extensions="xlsx, pdf"),
     "loans": dict(document="Loan Agreements & Year-End Balances",
                   any_keywords="loan agreement, promissory note, amortization schedule, loan statement, "
                                "principal balance",
-                  period=AS_OF_YEAR_END),
+                  period=AS_OF_YEAR_END, extensions="pdf, xlsx"),
     "apportionment": dict(document="State Apportionment Data - Sales, Payroll, Property by State",
                           any_keywords="apportionment schedule, apportionment data, sales by state, payroll by state",
-                          extensions="xlsx"),
+                          extensions="xlsx, pdf"),
+    # `form 1125-e` went with the PDF: the blank Form 1125-E is the IRS's
+    # own Compensation of Officers page, which decision 64 parks, and a
+    # row that accepts a PDF would have filed it as the firm's schedule.
     "officer_comp": dict(document="Officer Compensation Detail",
-                         any_keywords="officer compensation detail, officer compensation schedule, form 1125-e",
-                         extensions="xlsx"),
+                         any_keywords="officer compensation detail, officer compensation schedule",
+                         extensions="xlsx, pdf"),
 }
 
 
@@ -157,14 +184,33 @@ FORM_TEMPLATES = {
         _row("A02", "1099-INT / 1099-DIV - Interest & Dividend Income", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-oid", expected_count=3),
         _row("B01", "Prior-Year Federal & State Tax Returns", core=True, period=TY_PRIOR, required_keywords="individual income tax return, filing status, under penalties of perjury"),
         _row("C01", "Mortgage Interest Statement - Form 1098", core=True, required_keywords="1098, mortgage interest"),
-        _row("D01", "Charitable Contribution Receipts", core=True, extensions="pdf, xlsx", any_keywords="donation receipt, giving statement, statement of giving, giving summary, giving record, donor statement, charitable contribution statement, charitable contributions statement, charitable giving, tax-deductible donation, tax-deductible gift, donated goods, no goods or services, thank you for your donation, receipt for your donation, acknowledge your donation, acknowledge your charitable contribution"),
+        # `thank you for your donation` is a salutation every fundraiser
+        # prints: a political committee's receipt and a crowdfunding site's
+        # both opened with it and both say they are not deductible. The row
+        # keys on receipt wording only; a per-row refusal ("not
+        # tax-deductible") is the structural fix and waits for Phase C.
+        _row("D01", "Charitable Contribution Receipts", core=True, extensions="pdf, xlsx", any_keywords="donation receipt, giving statement, statement of giving, giving summary, giving record, donor statement, charitable contribution statement, charitable giving, tax-deductible donation, tax-deductible gift, donated goods, no goods or services, receipt for your donation, acknowledge your donation, acknowledge your charitable contribution"),
         _row("E01", "1099-B / Brokerage Year-End Statements", core=False, extensions="pdf, csv", any_keywords="1099-b, proceeds from broker, brokerage statement, realized gain and loss"),
         _row("E02", "1099-R Retirement Distributions", core=False, any_keywords="1099-r, retirement distribution"),
         _row("F01", "Schedule K-1s Received", core=False, any_keywords="partner's share of income, shareholder's share of income, beneficiary's share of income"),
-        _row("G01", "Property Tax Statements", core=False, any_keywords="property tax statement, property tax bill, secured property tax, tax assessor, assessor, parcel number"),
+        # The bill's own titles. `assessor` and `parcel number` are printed
+        # by the assessor's "Notice of Assessed Value - This is not a tax
+        # bill", and `property tax bill` by the servicer's escrow analysis,
+        # which lists the bill it paid; a county bill that prints nothing
+        # but "property tax bill" mid-page parks for a person.
+        _row("G01", "Property Tax Statements", core=False, any_keywords="secured property tax bill, annual secured property tax, property tax statement, real estate tax bill, property tax notice"),
         _shared("H01", "estimated_tax", core=False),
-        _row("I01", "Form 1095-A - Marketplace Health Insurance", core=False, any_keywords="1095-a, marketplace identifier, monthly enrollment premium, advance payment of premium tax credit"),
-        _row("J01", "Childcare Provider Statements - Name, EIN, Amounts", core=False, extensions="pdf, xlsx", any_keywords="child care statement, childcare statement, daycare statement, child care provider statement, childcare provider statement, daycare provider statement, dependent care provider statement, child care receipt, childcare receipt, daycare receipt, child care tax statement, childcare tax statement, statement of child care expenses, statement of childcare expenses, statement of daycare expenses, year-end child care, year-end childcare, year-end daycare"),
+        # `advance payment of premium tax credit` is the marketplace's
+        # eligibility notice's sentence as much as the form's column head,
+        # and it never matched the form anyway: the 1095-A wraps it across
+        # two lines. The form's own identifiers are enough.
+        _row("I01", "Form 1095-A - Marketplace Health Insurance", core=False, any_keywords="1095-a, marketplace identifier, monthly enrollment premium"),
+        # The matcher reads the space between a keyword's words as optional,
+        # so `child care statement` already finds "Childcare Statement" and
+        # `day care receipt` finds "Daycare Receipt"; the run-together
+        # spellings were a second copy of every keyword. What was missing
+        # was the two-word one a provider actually prints.
+        _row("J01", "Childcare Provider Statements - Name, EIN, Amounts", core=False, extensions="pdf, xlsx", any_keywords="child care statement, day care statement, child care provider statement, day care provider statement, dependent care provider statement, child care receipt, day care receipt, child care tax statement, statement of child care expenses, statement of day care expenses, year-end child care, year-end day care"),
         _row("K01", "IRA / HSA Contribution Statements - Form 5498", core=False, any_keywords="5498, 5498-sa, 5498-esa, ira contribution information, medicare advantage msa information"),
         _row("L01", "Tuition Statements - Form 1098-T", core=False, any_keywords="1098-t, qualified tuition and related expenses"),
     ],
@@ -179,7 +225,7 @@ FORM_TEMPLATES = {
         _shared("D01", "loans", core=False),
         _shared("E01", "payroll_returns", core=True),
         _shared("E02", "officer_comp", core=False),
-        _shared("F01", "estimated_tax", core=False),
+        _shared("F01", "business_estimated_tax", core=False),
         _row("G01", "Shareholder List & Ownership Changes", core=False, extensions="xlsx, pdf", any_keywords="shareholder list, stock ledger, cap table, capitalization table"),
         _shared("H01", "apportionment", core=False),
         _row("I01", "Book-Tax Difference Support - Schedule M-1 Items", core=False, extensions="xlsx, pdf", any_keywords="book-tax difference, m-1 adjustment, m-1 support, book to tax reconciliation"),
@@ -197,7 +243,10 @@ FORM_TEMPLATES = {
         _row("D02", "Health Insurance Premiums for >2% Shareholders", core=False, extensions="pdf, xlsx", any_keywords="health insurance premiums paid, 2% shareholder, shareholder health insurance premiums"),
         _shared("E01", "payroll_returns", core=False),
         _shared("F01", "fixed_assets", core=False),
-        _row("G01", "Loan Agreements & Shareholder Loan Activity", core=False, extensions="pdf, xlsx", any_keywords="loan agreement, promissory note, shareholder loan agreement, loan statement"),
+        # `shareholder loan agreement` is inside `loan agreement`; the row
+        # was missing the two words an amortisation schedule and a loan
+        # statement print, which the shared loans row has always had.
+        _row("G01", "Loan Agreements & Shareholder Loan Activity", core=False, extensions="pdf, xlsx", any_keywords="loan agreement, promissory note, loan statement, amortization schedule, principal balance"),
         _shared("H01", "apportionment", core=False),
     ],
     "1065": [
@@ -217,15 +266,27 @@ FORM_TEMPLATES = {
         _shared("G01", "apportionment", core=False),
     ],
     "1041": [
-        _row("A01", "Trust Instrument / Will & Amendments", core=True, period="Current", any_keywords="trust agreement, last will, codicil"),
+        # A bare `trust agreement` is what a custodian heads an IRA's
+        # "Traditional IRA Trust Agreement and Disclosure Statement" with;
+        # the estate's own instrument names the kind of trust it is.
+        _row("A01", "Trust Instrument / Will & Amendments", core=True, period="Current", any_keywords="revocable trust agreement, irrevocable trust agreement, declaration of trust, certification of trust, trust instrument, amendment to the trust, last will, codicil"),
         _row("A02", "IRS EIN Assignment Letter", core=False, period="Current", any_keywords="cp 575, ein assignment, assigned you employer identification number, assigned you an employer identification number"),
         _row("A03", "Prior-Year Fiduciary Returns", core=True, period=TY_PRIOR, required_keywords="income tax return for estates and trusts, under penalties of perjury"),
         _row("B01", "1099s for Trust / Estate Accounts", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-b, 1099-oid, 1099-r, 1099-misc, 1099-nec", expected_count=3),
-        _row("B02", "Brokerage Year-End Statements", core=True, any_keywords="brokerage statement, realized gain and loss, year-end account statement"),
-        _row("C01", "Distributions to Beneficiaries - Dates & Amounts", core=True, extensions="xlsx, pdf", any_keywords="distributions to beneficiaries, beneficiary distribution, distribution schedule"),
+        # `year-end account statement` is a bank's heading as much as a
+        # broker's, and a bank's year-end statement is not the brokerage
+        # statement this row asks for; a document titled only that parks.
+        _row("B02", "Brokerage Year-End Statements", core=True, any_keywords="brokerage statement, realized gain and loss"),
+        # `distribution schedule` is a mutual fund's own heading for its
+        # year-end capital gains dates.
+        _row("C01", "Distributions to Beneficiaries - Dates & Amounts", core=True, extensions="xlsx, pdf", any_keywords="distributions to beneficiaries, beneficiary distribution"),
         _row("C02", "Beneficiary Names, Addresses & Tax IDs", core=True, period="Current", extensions="xlsx, pdf", any_keywords="beneficiary information, beneficiary list, beneficiary names"),
         _row("D01", "Fiduciary, Attorney & Accounting Fees Paid", core=False, extensions="pdf, xlsx", any_keywords="fiduciary fees paid, trustee fees, accounting fees paid, legal fees paid, attorney fees paid, fee invoice"),
-        _row("E01", "Cost Basis for Assets Sold During the Year", core=False, extensions="xlsx, pdf", any_keywords="cost basis schedule, basis of assets sold, date acquired and date sold, purchase price and sale price"),
+        # An estate's basis is the value at death, which its schedules call
+        # stepped-up. A bare `date of death` is not the row's: the Form
+        # 5498's instructions tell an estate to ask for a date-of-death
+        # value, and the blank form would have filed here.
+        _row("E01", "Cost Basis for Assets Sold During the Year", core=False, extensions="xlsx, pdf", any_keywords="cost basis schedule, basis of assets sold, date acquired and date sold, purchase price and sale price, stepped-up basis"),
         _row("F01", "Rental / Business Income & Expense Detail", core=False, extensions="xlsx, pdf", any_keywords="rental income and expenses, rent roll, schedule e detail, schedule c detail"),
     ],
     "990": [
@@ -233,11 +294,23 @@ FORM_TEMPLATES = {
         _shared("A02", "trial_balance", core=True),
         _shared("B01", "financial_statements", core=True),
         _shared("B02", "december_bank", core=True),
-        _row("C01", "Board of Directors List & Meeting Minutes", core=True, extensions="pdf, xlsx", any_keywords="board of directors list, list of directors, meeting minutes, board minutes"),
-        _row("C02", "Officer & Key Employee Compensation Detail", core=True, extensions="xlsx", any_keywords="officer compensation detail, key employee compensation, compensation of officers"),
+        _row("C01", "Board of Directors List & Meeting Minutes", core=True, extensions="pdf, xlsx", any_keywords="board of directors list, list of directors, meeting minutes, board minutes, minutes of the, board roster, directors and officers"),
+        # `compensation of officers` is the line every 990's Part VII and
+        # every nonprofit Statement of Functional Expenses prints, and the
+        # 1120 prints it too; the schedule this row asks for is headed
+        # "Compensation of Officers, Directors and Trustees", whose "and"
+        # the Part VII heading ("Directors, Trustees, Key Employees") does
+        # not have - a keyword cannot carry the comma, since Any Keywords
+        # is a comma-separated column.
+        _row("C02", "Officer & Key Employee Compensation Detail", core=True, extensions="xlsx, pdf", any_keywords="officer compensation detail, key employee compensation, directors and trustees"),
         _row("D01", "Contribution / Donor Detail - Schedule B Support", core=True, extensions="xlsx, csv", any_keywords="donor list, donor detail, contributions by donor, schedule b"),
-        _row("D02", "Grants Made - Recipients & Amounts", core=False, extensions="xlsx, pdf", any_keywords="grants paid schedule, schedule of grants, grantee list, grantee"),
-        _row("E01", "Program Service Accomplishment Descriptions", core=False, extensions="pdf, xlsx", any_keywords="program service accomplishment, program accomplishments, program description"),
+        # A bare `grantee` is the word on a grant award letter the charity
+        # *received*; this row is the grants it made. A bare `grants paid`
+        # is line 25 of the 990-PF ("contributions, gifts, grants paid"),
+        # so the schedule is named by its own heading.
+        _row("D02", "Grants Made - Recipients & Amounts", core=False, extensions="xlsx, pdf", any_keywords="grants paid schedule, grants made, schedule of grants, grantee list"),
+        # `program description` is a grant proposal's own heading.
+        _row("E01", "Program Service Accomplishment Descriptions", core=False, extensions="pdf, xlsx", any_keywords="program service accomplishment, program accomplishments"),
         _row("F01", "Fundraising Event Revenue & Expense Detail", core=False, extensions="xlsx, pdf", any_keywords="fundraising event detail, special event revenue, event revenue and expense"),
         _shared("G01", "payroll_returns", core=False),
         _row("H01", "Unrelated Business Income Detail", core=False, extensions="xlsx, pdf", any_keywords="form 990-t, unrelated business income detail, ubti schedule"),

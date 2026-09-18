@@ -44,7 +44,11 @@ corpus itself is never in the repository to be hashed.
 
 A case's text is read as typed; the suite prints it to a PDF and reads
 it back, which preserves its lines, so the two readings agree on every
-keyword the report has been checked against.
+keyword the report has been checked against. A workbook case is rendered
+the way ``content_check._extract_xlsx`` renders a sheet (``as_a_sheet``),
+for the same reason: half of every catalog asks for a schedule a client
+keeps in Excel, and a sheet is read as rows of tab-separated cells, not
+as prose.
 
 ::
 
@@ -185,14 +189,44 @@ def real_documents() -> list[Document]:
     return documents
 
 
-def case_documents() -> list[Document]:
-    """The reconstructed cases, each expected somewhere in the catalog it was written for."""
-    from tests.test_catalog import CASES
+#: The sheet name openpyxl gives a new workbook, which ``_extract_xlsx``
+#: reads as the sheet's first line.
+_SHEET_NAME = "Sheet"
 
-    return [
+
+def as_a_sheet(rows: list[list]) -> str:
+    """A workbook case as ``content_check._extract_xlsx`` renders it: the
+    sheet's name, then one line per row with its cells set apart by a tab.
+
+    The suite writes these cases to a real .xlsx and reads them back; the
+    report renders them instead, so that both see the same text and a
+    keyword that spans two cells is reached in both.
+    """
+    lines = [_SHEET_NAME]
+    for row in rows:
+        cells = [str(value) for value in row if value is not None]
+        if cells:
+            lines.append("\t".join(cells))
+    return "\n".join(lines)
+
+
+def case_documents() -> list[Document]:
+    """The reconstructed cases, each expected somewhere in the catalog it was written for.
+
+    Both kinds: the pages typed as lines, and the workbooks typed as rows
+    (half of every catalog asks for a schedule a client keeps in Excel).
+    """
+    from tests.test_catalog import CASES, XLSX_CASES
+
+    documents = [
         Document(CASE, name, "\n".join(lines), {form: where}, decision)
         for decision, form, name, lines, where in CASES
     ]
+    documents += [
+        Document(CASE, name, as_a_sheet(rows), {form: where}, decision)
+        for decision, form, name, rows, where in XLSX_CASES
+    ]
+    return documents
 
 
 # ------------------------------------------------------------------ report ----

@@ -1,20 +1,7 @@
 {
  "catalogs": {
   "1040": {
-   "reached_only_elsewhere": [
-    [
-     "E01",
-     "1099-b"
-    ],
-    [
-     "E01",
-     "proceeds from broker"
-    ],
-    [
-     "E01",
-     "realized gain and loss"
-    ]
-   ],
+   "reached_only_elsewhere": [],
    "reached_without_expectation": [],
    "rows": {
     "A01": {
@@ -86,10 +73,19 @@
          "name": "scanner cover then W-2.pdf"
         },
         {
-         "decision": 67,
-         "expected": null,
+         "decision": 73,
          "kind": "case",
-         "name": "organizer checklist.pdf"
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
         },
         {
          "expected": "A01",
@@ -163,6 +159,28 @@
          "name": "Vanguard consolidated 1099.pdf"
         },
         {
+         "decision": 73,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "broker cover then the 1099-INT.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "broker cover then the 1099-INT.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "substitute 1099-INT with a dash title.pdf"
+        },
+        {
          "expected": "A02",
          "kind": "irs",
          "name": "f1099int.pdf"
@@ -195,6 +213,11 @@
          "decision": 68,
          "kind": "case",
          "name": "Vanguard consolidated 1099.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
         },
         {
          "expected": "A02",
@@ -462,6 +485,12 @@
        "keyword": "1098",
        "reached_by": [
         {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "substitute 1098 with a dash title.pdf"
+        },
+        {
          "expected": "C01",
          "kind": "irs",
          "name": "f1098.pdf"
@@ -500,12 +529,6 @@
          "decision": 67,
          "expected": null,
          "kind": "case",
-         "name": "organizer checklist.pdf"
-        },
-        {
-         "decision": 67,
-         "expected": null,
-         "kind": "case",
          "name": "organizer homeowners section.pdf"
         },
         {
@@ -527,6 +550,12 @@
          "name": "organizer homeowners wrapped.pdf"
         },
         {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "substitute 1098 with a dash title.pdf"
+        },
+        {
          "expected": null,
          "kind": "irs",
          "name": "f1040sa.pdf"
@@ -546,12 +575,26 @@
      "keywords": [
       {
        "keyword": "donation receipt",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "Goodwill donation receipt.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "giving statement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "church giving statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -580,37 +623,80 @@
       },
       {
        "keyword": "giving record",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "donor advised fund giving record.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "donor statement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "food bank donor statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "charitable contribution statement",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "charitable contributions statement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "humane society contribution statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "charitable giving",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "donor advised fund giving record.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "food bank donor statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "tax-deductible donation",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "humane society contribution statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "tax-deductible gift",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "museum membership renewal.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -621,6 +707,12 @@
          "expected": "D01",
          "kind": "case",
          "name": "goodwill receipt.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "Goodwill donation receipt.pdf"
         }
        ],
        "rule": "any"
@@ -639,18 +731,18 @@
          "expected": "D01",
          "kind": "case",
          "name": "church contribution statement.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "thank you for your donation",
-       "reached_by": [
+        },
         {
-         "decision": 66,
+         "decision": 73,
          "expected": "D01",
          "kind": "case",
-         "name": "donation receipt.pdf"
+         "name": "church giving statement.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "university acknowledgment letter.pdf"
         }
        ],
        "rule": "any"
@@ -662,7 +754,14 @@
       },
       {
        "keyword": "acknowledge your donation",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "university acknowledgment letter.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -701,6 +800,17 @@
          "expected": null,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "1099-B Copy B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
         }
        ],
        "rule": "any"
@@ -718,13 +828,36 @@
          "expected": null,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "1099-B Copy B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "brokerage statement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "Schwab year-end brokerage statement.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "trust brokerage year-end statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -735,6 +868,28 @@
          "expected": null,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "Fidelity realized gain and loss report.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "Schwab year-end brokerage statement.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "trust brokerage year-end statement.pdf"
         }
        ],
        "rule": "any"
@@ -754,6 +909,11 @@
          "name": "fax cover then 1099-R.pdf"
         },
         {
+         "decision": 73,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
          "expected": "E02",
          "kind": "irs",
          "name": "f1099r.pdf"
@@ -763,7 +923,20 @@
       },
       {
        "keyword": "retirement distribution",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "RMD notice for next year.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E02",
+         "kind": "case",
+         "name": "pension retirement distribution summary.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -835,33 +1008,63 @@
      "document": "Property Tax Statements",
      "keywords": [
       {
+       "keyword": "secured property tax bill",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "county secured property tax bill.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "annual secured property tax",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "county secured property tax bill.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
        "keyword": "property tax statement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "property tax statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
-       "keyword": "property tax bill",
-       "reached_by": [],
+       "keyword": "real estate tax bill",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "real estate tax bill.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
-       "keyword": "secured property tax",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "tax assessor",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "assessor",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "parcel number",
-       "reached_by": [],
+       "keyword": "property tax notice",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "property tax notice.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -877,18 +1080,37 @@
          "expected": "H01",
          "kind": "case",
          "name": "1040-ES voucher.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "1040-ES voucher in a corporation.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "estimated tax payment voucher 2",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "1040-ES voucher 2.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "estimated tax payment voucher 3",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "1040-ES voucher 3.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -899,13 +1121,25 @@
          "expected": "H01",
          "kind": "case",
          "name": "paid voucher stub.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "paid voucher stub in a corporation.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "estimated tax payment voucher for individuals",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "NY IT-2105 voucher.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -918,6 +1152,17 @@
          "name": "paid voucher stub.pdf"
         },
         {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "1040-ES voucher 2.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "paid voucher stub in a corporation.pdf"
+        },
+        {
          "expected": "H01",
          "kind": "irs",
          "name": "f1040es_2025.pdf"
@@ -927,12 +1172,36 @@
       },
       {
        "keyword": "estimated tax voucher",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "corporation estimated tax voucher.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "estimated tax voucher 4th quarter.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "estimated payments made",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "corporate estimated payments made.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "estimated payments made schedule.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -944,6 +1213,12 @@
        "keyword": "1095-a",
        "reached_by": [
         {
+         "decision": 73,
+         "expected": "I01",
+         "kind": "case",
+         "name": "1095-A filled.pdf"
+        },
+        {
          "expected": "I01",
          "kind": "irs",
          "name": "f1095a.pdf"
@@ -954,6 +1229,12 @@
       {
        "keyword": "marketplace identifier",
        "reached_by": [
+        {
+         "decision": 73,
+         "expected": "I01",
+         "kind": "case",
+         "name": "1095-A filled.pdf"
+        },
         {
          "expected": "I01",
          "kind": "irs",
@@ -972,16 +1253,17 @@
          "name": "2024 1040 with schedules.pdf"
         },
         {
+         "decision": 73,
+         "expected": "I01",
+         "kind": "case",
+         "name": "1095-A filled.pdf"
+        },
+        {
          "expected": "I01",
          "kind": "irs",
          "name": "f1095a.pdf"
         }
        ],
-       "rule": "any"
-      },
-      {
-       "keyword": "advance payment of premium tax credit",
-       "reached_by": [],
        "rule": "any"
       }
      ]
@@ -997,18 +1279,32 @@
          "expected": "J01",
          "kind": "case",
          "name": "childcare statement.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "J01",
+         "kind": "case",
+         "name": "daycare year-end statement.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "J01",
+         "kind": "case",
+         "name": "year-end child care summary.pdf"
         }
        ],
        "rule": "any"
       },
       {
-       "keyword": "childcare statement",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "daycare statement",
-       "reached_by": [],
+       "keyword": "day care statement",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "J01",
+         "kind": "case",
+         "name": "day care statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -1019,17 +1315,18 @@
          "expected": "J01",
          "kind": "case",
          "name": "childcare provider statement.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "J01",
+         "kind": "case",
+         "name": "childcare provider statement workbook.xlsx"
         }
        ],
        "rule": "any"
       },
       {
-       "keyword": "childcare provider statement",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "daycare provider statement",
+       "keyword": "day care provider statement",
        "reached_by": [],
        "rule": "any"
       },
@@ -1040,17 +1337,26 @@
       },
       {
        "keyword": "child care receipt",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "J01",
+         "kind": "case",
+         "name": "day camp receipt.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
-       "keyword": "childcare receipt",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "daycare receipt",
-       "reached_by": [],
+       "keyword": "day care receipt",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "J01",
+         "kind": "case",
+         "name": "home daycare receipt.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -1059,37 +1365,36 @@
        "rule": "any"
       },
       {
-       "keyword": "childcare tax statement",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
        "keyword": "statement of child care expenses",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "J01",
+         "kind": "case",
+         "name": "preschool statement of child care expenses.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
-       "keyword": "statement of childcare expenses",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "statement of daycare expenses",
+       "keyword": "statement of day care expenses",
        "reached_by": [],
        "rule": "any"
       },
       {
        "keyword": "year-end child care",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "J01",
+         "kind": "case",
+         "name": "year-end child care summary.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
-       "keyword": "year-end childcare",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "year-end daycare",
+       "keyword": "year-end day care",
        "reached_by": [],
        "rule": "any"
       }
@@ -1124,6 +1429,12 @@
        "keyword": "5498-sa",
        "reached_by": [
         {
+         "decision": 73,
+         "expected": "K01",
+         "kind": "case",
+         "name": "5498-SA filled.pdf"
+        },
+        {
          "expected": "K01",
          "kind": "irs",
          "name": "f5498sa.pdf"
@@ -1133,7 +1444,14 @@
       },
       {
        "keyword": "5498-esa",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "K01",
+         "kind": "case",
+         "name": "5498-ESA.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -1155,7 +1473,14 @@
       },
       {
        "keyword": "medicare advantage msa information",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "K01",
+         "kind": "case",
+         "name": "5498-SA filled.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -1188,6 +1513,12 @@
          "name": "1098-T behind the Attention page.pdf"
         },
         {
+         "decision": 73,
+         "expected": "L01",
+         "kind": "case",
+         "name": "tuition statement without the number.pdf"
+        },
+        {
          "expected": "L01",
          "kind": "irs",
          "name": "f1098t.pdf"
@@ -1198,126 +1529,15 @@
      ]
     }
    },
-   "rows_without_a_filing_document": [
-    "E01",
-    "G01"
-   ],
+   "rows_without_a_filing_document": [],
    "unreached": [
-    [
-     "D01",
-     "donation receipt"
-    ],
-    [
-     "D01",
-     "giving statement"
-    ],
-    [
-     "D01",
-     "giving record"
-    ],
-    [
-     "D01",
-     "donor statement"
-    ],
-    [
-     "D01",
-     "charitable contribution statement"
-    ],
-    [
-     "D01",
-     "charitable contributions statement"
-    ],
-    [
-     "D01",
-     "charitable giving"
-    ],
-    [
-     "D01",
-     "tax-deductible donation"
-    ],
-    [
-     "D01",
-     "tax-deductible gift"
-    ],
     [
      "D01",
      "receipt for your donation"
     ],
     [
-     "D01",
-     "acknowledge your donation"
-    ],
-    [
-     "E01",
-     "brokerage statement"
-    ],
-    [
-     "E02",
-     "retirement distribution"
-    ],
-    [
-     "G01",
-     "property tax statement"
-    ],
-    [
-     "G01",
-     "property tax bill"
-    ],
-    [
-     "G01",
-     "secured property tax"
-    ],
-    [
-     "G01",
-     "tax assessor"
-    ],
-    [
-     "G01",
-     "assessor"
-    ],
-    [
-     "G01",
-     "parcel number"
-    ],
-    [
-     "H01",
-     "estimated tax payment voucher 2"
-    ],
-    [
-     "H01",
-     "estimated tax payment voucher 3"
-    ],
-    [
-     "H01",
-     "estimated tax payment voucher for individuals"
-    ],
-    [
-     "H01",
-     "estimated tax voucher"
-    ],
-    [
-     "H01",
-     "estimated payments made"
-    ],
-    [
-     "I01",
-     "advance payment of premium tax credit"
-    ],
-    [
      "J01",
-     "childcare statement"
-    ],
-    [
-     "J01",
-     "daycare statement"
-    ],
-    [
-     "J01",
-     "childcare provider statement"
-    ],
-    [
-     "J01",
-     "daycare provider statement"
+     "day care provider statement"
     ],
     [
      "J01",
@@ -1325,99 +1545,110 @@
     ],
     [
      "J01",
-     "child care receipt"
-    ],
-    [
-     "J01",
-     "childcare receipt"
-    ],
-    [
-     "J01",
-     "daycare receipt"
-    ],
-    [
-     "J01",
      "child care tax statement"
     ],
     [
      "J01",
-     "childcare tax statement"
+     "statement of day care expenses"
     ],
     [
      "J01",
-     "statement of child care expenses"
-    ],
-    [
-     "J01",
-     "statement of childcare expenses"
-    ],
-    [
-     "J01",
-     "statement of daycare expenses"
-    ],
-    [
-     "J01",
-     "year-end child care"
-    ],
-    [
-     "J01",
-     "year-end childcare"
-    ],
-    [
-     "J01",
-     "year-end daycare"
-    ],
-    [
-     "K01",
-     "5498-esa"
-    ],
-    [
-     "K01",
-     "medicare advantage msa information"
+     "year-end day care"
     ]
    ]
   },
   "1041": {
    "reached_only_elsewhere": [],
-   "reached_without_expectation": [
-    [
-     "A02",
-     "assigned you an employer identification number"
-    ],
-    [
-     "B01",
-     "1099-oid"
-    ],
-    [
-     "B01",
-     "1099-r"
-    ],
-    [
-     "B02",
-     "realized gain and loss"
-    ],
-    [
-     "B02",
-     "year-end account statement"
-    ]
-   ],
+   "reached_without_expectation": [],
    "rows": {
     "A01": {
      "document": "Trust Instrument / Will & Amendments",
      "keywords": [
       {
-       "keyword": "trust agreement",
+       "keyword": "revocable trust agreement",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "A01",
+         "kind": "case",
+         "name": "revocable trust agreement.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "irrevocable trust agreement",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "declaration of trust",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "A01",
+         "kind": "case",
+         "name": "revocable trust agreement.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "certification of trust",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "A01",
+         "kind": "case",
+         "name": "certification of trust.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "trust instrument",
+       "reached_by": [],
+       "rule": "any"
+      },
+      {
+       "keyword": "amendment to the trust",
        "reached_by": [],
        "rule": "any"
       },
       {
        "keyword": "last will",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "A01",
+         "kind": "case",
+         "name": "first codicil.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A01",
+         "kind": "case",
+         "name": "last will and testament.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "codicil",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "A01",
+         "kind": "case",
+         "name": "first codicil.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A01",
+         "kind": "case",
+         "name": "last will and testament.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -1438,13 +1669,32 @@
          "decision": 63,
          "kind": "case",
          "name": "CP 575 in a corporation.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "CP 575 EIN letter.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "CP 575 in a corporation.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "ein assignment",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "EIN assignment letter reprint.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -1466,6 +1716,18 @@
          "decision": 63,
          "kind": "case",
          "name": "CP 575 in a corporation.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "CP 575 in a corporation.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "EIN assignment letter reprint.pdf"
         }
        ],
        "rule": "any"
@@ -1624,6 +1886,28 @@
          "name": "Vanguard consolidated 1099.pdf"
         },
         {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "broker cover then the 1099-INT.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "broker cover then the 1099-INT.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "substitute 1099-INT with a dash title.pdf"
+        },
+        {
          "expected": "B01",
          "kind": "irs",
          "name": "f1099int.pdf"
@@ -1656,6 +1940,12 @@
          "name": "Vanguard consolidated 1099.pdf"
         },
         {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
          "expected": "B01",
          "kind": "irs",
          "name": "f1099div.pdf"
@@ -1676,6 +1966,17 @@
          "decision": 68,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "1099-B Copy B.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
         }
        ],
        "rule": "any"
@@ -1684,6 +1985,7 @@
        "keyword": "1099-oid",
        "reached_by": [
         {
+         "expected": "B01",
          "kind": "irs",
          "name": "f1099oid.pdf"
         }
@@ -1699,6 +2001,13 @@
          "name": "fax cover then 1099-R.pdf"
         },
         {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "expected": "B01",
          "kind": "irs",
          "name": "f1099r.pdf"
         }
@@ -1710,6 +2019,12 @@
        "reached_by": [
         {
          "decision": 68,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
         },
@@ -1748,7 +2063,19 @@
      "keywords": [
       {
        "keyword": "brokerage statement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Schwab year-end brokerage statement.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "trust brokerage year-end statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -1758,17 +2085,28 @@
          "decision": 68,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "year-end account statement",
-       "reached_by": [
+        },
         {
-         "decision": 62,
+         "decision": 73,
          "kind": "case",
-         "name": "brokerage.pdf"
+         "name": "Fidelity realized gain and loss report.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Schwab year-end brokerage statement.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "trust brokerage year-end statement.pdf"
         }
        ],
        "rule": "any"
@@ -1780,17 +2118,26 @@
      "keywords": [
       {
        "keyword": "distributions to beneficiaries",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "distributions to beneficiaries.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "beneficiary distribution",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "distribution schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "beneficiary distribution letter.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -1800,12 +2147,26 @@
      "keywords": [
       {
        "keyword": "beneficiary information",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C02",
+         "kind": "case",
+         "name": "beneficiary information schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "beneficiary list",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C02",
+         "kind": "case",
+         "name": "beneficiary list.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -1820,22 +2181,62 @@
      "keywords": [
       {
        "keyword": "fiduciary fees paid",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "trustee fee statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "trustee fees",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "fees paid schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "trustee fee statement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "accounting fees paid",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "fees paid schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "legal fees paid",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "fees paid schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "law firm fee invoice.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -1845,7 +2246,14 @@
       },
       {
        "keyword": "fee invoice",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "law firm fee invoice.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -1855,22 +2263,62 @@
      "keywords": [
       {
        "keyword": "cost basis schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "cost basis schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "basis of assets sold",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "basis of assets sold memo.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "date acquired and date sold",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "basis of assets sold memo.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "purchase price and sale price",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "basis of assets sold memo.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "stepped-up basis",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "stepped-up basis schedule.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -1880,12 +2328,32 @@
      "keywords": [
       {
        "keyword": "rental income and expenses",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "property manager annual statement.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "rental income and expenses.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "rent roll",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "rent roll.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -1901,55 +2369,19 @@
      ]
     }
    },
-   "rows_without_a_filing_document": [
-    "A01",
-    "B02",
-    "C01",
-    "C02",
-    "D01",
-    "E01",
-    "F01"
-   ],
+   "rows_without_a_filing_document": [],
    "unreached": [
     [
      "A01",
-     "trust agreement"
+     "irrevocable trust agreement"
     ],
     [
      "A01",
-     "last will"
+     "trust instrument"
     ],
     [
      "A01",
-     "codicil"
-    ],
-    [
-     "A02",
-     "ein assignment"
-    ],
-    [
-     "B02",
-     "brokerage statement"
-    ],
-    [
-     "C01",
-     "distributions to beneficiaries"
-    ],
-    [
-     "C01",
-     "beneficiary distribution"
-    ],
-    [
-     "C01",
-     "distribution schedule"
-    ],
-    [
-     "C02",
-     "beneficiary information"
-    ],
-    [
-     "C02",
-     "beneficiary list"
+     "amendment to the trust"
     ],
     [
      "C02",
@@ -1957,51 +2389,7 @@
     ],
     [
      "D01",
-     "fiduciary fees paid"
-    ],
-    [
-     "D01",
-     "trustee fees"
-    ],
-    [
-     "D01",
-     "accounting fees paid"
-    ],
-    [
-     "D01",
-     "legal fees paid"
-    ],
-    [
-     "D01",
      "attorney fees paid"
-    ],
-    [
-     "D01",
-     "fee invoice"
-    ],
-    [
-     "E01",
-     "cost basis schedule"
-    ],
-    [
-     "E01",
-     "basis of assets sold"
-    ],
-    [
-     "E01",
-     "date acquired and date sold"
-    ],
-    [
-     "E01",
-     "purchase price and sale price"
-    ],
-    [
-     "F01",
-     "rental income and expenses"
-    ],
-    [
-     "F01",
-     "rent roll"
     ],
     [
      "F01",
@@ -2017,28 +2405,20 @@
    "reached_only_elsewhere": [],
    "reached_without_expectation": [
     [
-     "A03",
-     "trial balance"
-    ],
-    [
-     "A04",
-     "general ledger"
+     "B01",
+     "statement of activities"
     ],
     [
      "B01",
-     "balance sheet as of"
+     "statement of functional expenses"
     ],
     [
-     "B01",
-     "profit and loss"
+     "E01",
+     "loan agreement"
     ],
     [
-     "B02",
-     "deposits and other credits"
-    ],
-    [
-     "C01",
-     "cap table"
+     "E01",
+     "loan statement"
     ]
    ],
    "rows": {
@@ -2170,7 +2550,14 @@
      "keywords": [
       {
        "keyword": "partnership agreement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "partnership agreement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -2212,6 +2599,27 @@
          "decision": 66,
          "kind": "case",
          "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A03",
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "nonprofit trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "trial balance with a 1125-E memo.xlsx"
         }
        ],
        "rule": "any"
@@ -2226,6 +2634,22 @@
        "reached_by": [
         {
          "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A04",
          "kind": "case",
          "name": "QuickBooks general ledger.pdf"
         }
@@ -2244,6 +2668,43 @@
          "decision": 66,
          "kind": "case",
          "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 990.pdf"
         }
        ],
        "rule": "any"
@@ -2254,6 +2715,26 @@
         {
          "decision": 62,
          "expected": "B01",
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
          "kind": "case",
          "name": "nonprofit FS.pdf"
         }
@@ -2277,23 +2758,114 @@
          "decision": 62,
          "kind": "case",
          "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "P&L.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "statement of operations",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "statement of activities",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "statement of cash flows",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 990.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of functional expenses",
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "statement of functional expenses.xlsx"
+        },
+        {
+         "kind": "irs",
+         "name": "f990.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -2303,22 +2875,125 @@
      "keywords": [
       {
        "keyword": "bank statement",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "statement of account",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "checking summary",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "deposits and additions",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -2338,13 +3013,72 @@
          "decision": 66,
          "kind": "case",
          "name": "bank annual summary.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "checks paid",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -2354,7 +3088,29 @@
       },
       {
        "keyword": "bank reconciliation",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -2364,7 +3120,14 @@
      "keywords": [
       {
        "keyword": "partner list",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "partner list.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -2384,6 +3147,17 @@
          "decision": 66,
          "kind": "case",
          "name": "cap table.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "cap table.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "cap table.pdf"
         }
        ],
        "rule": "any"
@@ -2400,7 +3174,14 @@
      "keywords": [
       {
        "keyword": "capital account detail",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C02",
+         "kind": "case",
+         "name": "capital account detail.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -2420,7 +3201,14 @@
      "keywords": [
       {
        "keyword": "contributions and distributions by partner",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C03",
+         "kind": "case",
+         "name": "contributions and distributions by partner.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -2440,7 +3228,14 @@
      "keywords": [
       {
        "keyword": "guaranteed payment detail",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C04",
+         "kind": "case",
+         "name": "guaranteed payment detail.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -2455,7 +3250,24 @@
      "keywords": [
       {
        "keyword": "fixed asset schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fixed asset schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fixed asset schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "fixed asset schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -2480,27 +3292,100 @@
      "keywords": [
       {
        "keyword": "loan agreement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "shareholder loan agreement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "promissory note",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "amortization schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "loan amortization schedule.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "loan amortization schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "loan amortization schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "loan statement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "business loan statement December.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "principal balance",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "business loan statement December.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "shareholder loan agreement.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -2510,12 +3395,26 @@
      "keywords": [
       {
        "keyword": "special allocation",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "special allocation 704(b) support.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "section 704(b)",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "special allocation 704(b) support.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -2525,7 +3424,24 @@
      "keywords": [
       {
        "keyword": "apportionment schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "apportionment schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "apportionment schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "apportionment schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -2546,24 +3462,8 @@
      ]
     }
    },
-   "rows_without_a_filing_document": [
-    "A03",
-    "A04",
-    "B02",
-    "C01",
-    "C02",
-    "C03",
-    "C04",
-    "D01",
-    "E01",
-    "F01",
-    "G01"
-   ],
+   "rows_without_a_filing_document": [],
    "unreached": [
-    [
-     "A02",
-     "partnership agreement"
-    ],
     [
      "B01",
      "income statement"
@@ -2573,48 +3473,8 @@
      "statement of income"
     ],
     [
-     "B01",
-     "statement of operations"
-    ],
-    [
-     "B01",
-     "statement of activities"
-    ],
-    [
-     "B01",
-     "statement of cash flows"
-    ],
-    [
-     "B02",
-     "bank statement"
-    ],
-    [
-     "B02",
-     "statement of account"
-    ],
-    [
-     "B02",
-     "checking summary"
-    ],
-    [
-     "B02",
-     "deposits and additions"
-    ],
-    [
-     "B02",
-     "checks paid"
-    ],
-    [
      "B02",
      "withdrawals and other debits"
-    ],
-    [
-     "B02",
-     "bank reconciliation"
-    ],
-    [
-     "C01",
-     "partner list"
     ],
     [
      "C01",
@@ -2630,19 +3490,11 @@
     ],
     [
      "C02",
-     "capital account detail"
-    ],
-    [
-     "C02",
      "capital account statement"
     ],
     [
      "C02",
      "capital account analysis by partner"
-    ],
-    [
-     "C03",
-     "contributions and distributions by partner"
     ],
     [
      "C03",
@@ -2654,15 +3506,7 @@
     ],
     [
      "C04",
-     "guaranteed payment detail"
-    ],
-    [
-     "C04",
      "guaranteed payments by partner"
-    ],
-    [
-     "D01",
-     "fixed asset schedule"
     ],
     [
      "D01",
@@ -2675,38 +3519,6 @@
     [
      "D01",
      "asset additions and disposals"
-    ],
-    [
-     "E01",
-     "loan agreement"
-    ],
-    [
-     "E01",
-     "promissory note"
-    ],
-    [
-     "E01",
-     "amortization schedule"
-    ],
-    [
-     "E01",
-     "loan statement"
-    ],
-    [
-     "E01",
-     "principal balance"
-    ],
-    [
-     "F01",
-     "special allocation"
-    ],
-    [
-     "F01",
-     "section 704(b)"
-    ],
-    [
-     "G01",
-     "apportionment schedule"
     ],
     [
      "G01",
@@ -2723,40 +3535,19 @@
    ]
   },
   "1120": {
-   "reached_only_elsewhere": [
-    [
-     "E02",
-     "form 1125-e"
-    ]
-   ],
+   "reached_only_elsewhere": [],
    "reached_without_expectation": [
     [
-     "A03",
-     "general ledger"
+     "B01",
+     "statement of activities"
     ],
     [
      "B01",
-     "statement of financial position"
+     "statement of functional expenses"
     ],
     [
-     "B02",
-     "deposits and other credits"
-    ],
-    [
-     "E01",
-     "form w-3"
-    ],
-    [
-     "F01",
-     "estimated tax payment voucher 1"
-    ],
-    [
-     "F01",
-     "estimated tax payment voucher 4"
-    ],
-    [
-     "F01",
-     "amount of estimated tax you are paying"
+     "D01",
+     "loan agreement"
     ]
    ],
    "rows": {
@@ -2929,6 +3720,27 @@
          "decision": 66,
          "kind": "case",
          "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "nonprofit trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "trial balance with a 1125-E memo.xlsx"
         }
        ],
        "rule": "any"
@@ -2943,6 +3755,22 @@
        "reached_by": [
         {
          "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A03",
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        },
+        {
+         "decision": 73,
          "kind": "case",
          "name": "QuickBooks general ledger.pdf"
         }
@@ -2962,6 +3790,42 @@
          "expected": "B01",
          "kind": "case",
          "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 990.pdf"
         }
        ],
        "rule": "any"
@@ -2971,6 +3835,27 @@
        "reached_by": [
         {
          "decision": 62,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
          "kind": "case",
          "name": "nonprofit FS.pdf"
         }
@@ -2995,23 +3880,113 @@
          "expected": "B01",
          "kind": "case",
          "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "P&L.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "statement of operations",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "statement of activities",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "statement of cash flows",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 990.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of functional expenses",
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "statement of functional expenses.xlsx"
+        },
+        {
+         "kind": "irs",
+         "name": "f990.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -3021,22 +3996,125 @@
      "keywords": [
       {
        "keyword": "bank statement",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "statement of account",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "checking summary",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "deposits and additions",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3056,13 +4134,72 @@
          "decision": 66,
          "kind": "case",
          "name": "bank annual summary.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "checks paid",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3072,7 +4209,29 @@
       },
       {
        "keyword": "bank reconciliation",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -3082,7 +4241,24 @@
      "keywords": [
       {
        "keyword": "fixed asset schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "fixed asset schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fixed asset schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fixed asset schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3107,12 +4283,26 @@
      "keywords": [
       {
        "keyword": "depreciation schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C02",
+         "kind": "case",
+         "name": "depreciation schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "depreciation detail",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C02",
+         "kind": "case",
+         "name": "depreciation detail report.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3138,27 +4328,102 @@
      "keywords": [
       {
        "keyword": "loan agreement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "shareholder loan agreement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "promissory note",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "amortization schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "loan amortization schedule.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "loan amortization schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "loan amortization schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "loan statement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "business loan statement December.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "principal balance",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "business loan statement December.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "shareholder loan agreement.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -3180,6 +4445,11 @@
          "name": "941.pdf"
         },
         {
+         "decision": 73,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
          "expected": "E01",
          "kind": "irs",
          "name": "f941.pdf"
@@ -3197,6 +4467,11 @@
         },
         {
          "decision": 62,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "decision": 73,
          "kind": "case",
          "name": "941.pdf"
         },
@@ -3237,6 +4512,22 @@
          "decision": 62,
          "kind": "case",
          "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
         }
        ],
        "rule": "any"
@@ -3246,6 +4537,22 @@
        "reached_by": [
         {
          "decision": 62,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
          "kind": "case",
          "name": "W-3.pdf"
         },
@@ -3264,21 +4571,45 @@
      "keywords": [
       {
        "keyword": "officer compensation detail",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer W-2 compensation detail.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer and key employee compensation detail.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "E02",
+         "kind": "case",
+         "name": "officer compensation detail as a pdf.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer compensation detail as a pdf.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E02",
+         "kind": "case",
+         "name": "officer compensation detail.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "officer compensation schedule",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "form 1125-e",
        "reached_by": [
         {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1125e.pdf"
+         "decision": 73,
+         "expected": "E02",
+         "kind": "case",
+         "name": "officer comp schedule per 1125-E.xlsx"
         }
        ],
        "rule": "any"
@@ -3286,68 +4617,69 @@
      ]
     },
     "F01": {
-     "document": "Estimated Tax Payment Records",
+     "document": "Corporate Estimated Tax Payment Records",
      "keywords": [
       {
-       "keyword": "estimated tax payment voucher 1",
+       "keyword": "corporation estimated tax",
        "reached_by": [
         {
-         "decision": 62,
+         "decision": 73,
+         "expected": "F01",
          "kind": "case",
-         "name": "1040-ES voucher.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "estimated tax payment voucher 2",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "estimated tax payment voucher 3",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "estimated tax payment voucher 4",
-       "reached_by": [
-        {
-         "decision": 67,
-         "kind": "case",
-         "name": "paid voucher stub.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "estimated tax payment voucher for individuals",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "amount of estimated tax you are paying",
-       "reached_by": [
-        {
-         "decision": 67,
-         "kind": "case",
-         "name": "paid voucher stub.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040es_2025.pdf"
+         "name": "corporation estimated tax voucher.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "estimated tax voucher",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "corporation estimated tax voucher.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "estimated tax voucher 4th quarter.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "estimated payments made",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "corporate estimated payments made.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "estimated payments made schedule.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "estimated tax payments made",
+       "reached_by": [
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "organizer with every line.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "corporate estimated tax payments made.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -3357,12 +4689,31 @@
      "keywords": [
       {
        "keyword": "shareholder list",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "shareholder list.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "shareholder list.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "stock ledger",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "stock ledger.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3371,6 +4722,16 @@
         {
          "decision": 66,
          "expected": "G01",
+         "kind": "case",
+         "name": "cap table.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "cap table.pdf"
+        },
+        {
+         "decision": 73,
          "kind": "case",
          "name": "cap table.pdf"
         }
@@ -3389,7 +4750,24 @@
      "keywords": [
       {
        "keyword": "apportionment schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "apportionment schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "apportionment schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "apportionment schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3414,7 +4792,14 @@
      "keywords": [
       {
        "keyword": "book-tax difference",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "I01",
+         "kind": "case",
+         "name": "M-1 support schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3424,27 +4809,32 @@
       },
       {
        "keyword": "m-1 support",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "I01",
+         "kind": "case",
+         "name": "M-1 support schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "book to tax reconciliation",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "I01",
+         "kind": "case",
+         "name": "book to tax reconciliation memo.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
     }
    },
-   "rows_without_a_filing_document": [
-    "A03",
-    "B02",
-    "C01",
-    "D01",
-    "E02",
-    "F01",
-    "H01",
-    "I01"
-   ],
+   "rows_without_a_filing_document": [],
    "unreached": [
     [
      "B01",
@@ -3455,48 +4845,8 @@
      "statement of income"
     ],
     [
-     "B01",
-     "statement of operations"
-    ],
-    [
-     "B01",
-     "statement of activities"
-    ],
-    [
-     "B01",
-     "statement of cash flows"
-    ],
-    [
-     "B02",
-     "bank statement"
-    ],
-    [
-     "B02",
-     "statement of account"
-    ],
-    [
-     "B02",
-     "checking summary"
-    ],
-    [
-     "B02",
-     "deposits and additions"
-    ],
-    [
-     "B02",
-     "checks paid"
-    ],
-    [
      "B02",
      "withdrawals and other debits"
-    ],
-    [
-     "B02",
-     "bank reconciliation"
-    ],
-    [
-     "C01",
-     "fixed asset schedule"
     ],
     [
      "C01",
@@ -3512,79 +4862,11 @@
     ],
     [
      "C02",
-     "depreciation schedule"
-    ],
-    [
-     "C02",
-     "depreciation detail"
-    ],
-    [
-     "C02",
      "depreciation report"
-    ],
-    [
-     "D01",
-     "loan agreement"
-    ],
-    [
-     "D01",
-     "promissory note"
-    ],
-    [
-     "D01",
-     "amortization schedule"
-    ],
-    [
-     "D01",
-     "loan statement"
-    ],
-    [
-     "D01",
-     "principal balance"
-    ],
-    [
-     "E02",
-     "officer compensation detail"
-    ],
-    [
-     "E02",
-     "officer compensation schedule"
-    ],
-    [
-     "F01",
-     "estimated tax payment voucher 2"
-    ],
-    [
-     "F01",
-     "estimated tax payment voucher 3"
-    ],
-    [
-     "F01",
-     "estimated tax payment voucher for individuals"
-    ],
-    [
-     "F01",
-     "estimated tax voucher"
-    ],
-    [
-     "F01",
-     "estimated payments made"
-    ],
-    [
-     "G01",
-     "shareholder list"
-    ],
-    [
-     "G01",
-     "stock ledger"
     ],
     [
      "G01",
      "capitalization table"
-    ],
-    [
-     "H01",
-     "apportionment schedule"
     ],
     [
      "H01",
@@ -3600,64 +4882,37 @@
     ],
     [
      "I01",
-     "book-tax difference"
-    ],
-    [
-     "I01",
      "m-1 adjustment"
-    ],
-    [
-     "I01",
-     "m-1 support"
-    ],
-    [
-     "I01",
-     "book to tax reconciliation"
     ]
    ]
   },
   "1120S": {
-   "reached_only_elsewhere": [],
+   "reached_only_elsewhere": [
+    [
+     "C02",
+     "distribution detail by shareholder"
+    ],
+    [
+     "C03",
+     "stock and debt basis"
+    ]
+   ],
    "reached_without_expectation": [
     [
-     "A03",
-     "general ledger"
+     "B01",
+     "statement of activities"
     ],
     [
      "B01",
-     "balance sheet as of"
-    ],
-    [
-     "B01",
-     "statement of financial position"
-    ],
-    [
-     "B01",
-     "profit and loss"
-    ],
-    [
-     "B02",
-     "deposits and other credits"
+     "statement of functional expenses"
     ],
     [
      "C01",
-     "cap table"
+     "stock ledger"
     ],
     [
-     "E01",
-     "form 941"
-    ],
-    [
-     "E01",
-     "employer's quarterly federal tax return"
-    ],
-    [
-     "E01",
-     "form w-3"
-    ],
-    [
-     "E01",
-     "w-3 transmittal"
+     "G01",
+     "loan statement"
     ]
    ],
    "rows": {
@@ -3778,6 +5033,7 @@
          "name": "f940.pdf"
         },
         {
+         "expected": "E01",
          "kind": "irs",
          "name": "f941.pdf"
         },
@@ -3790,6 +5046,7 @@
          "name": "f990ez.pdf"
         },
         {
+         "expected": "E01",
          "kind": "irs",
          "name": "fw3.pdf"
         }
@@ -3824,6 +5081,26 @@
          "decision": 66,
          "kind": "case",
          "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "nonprofit trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "trial balance with a 1125-E memo.xlsx"
         }
        ],
        "rule": "any"
@@ -3838,6 +5115,22 @@
        "reached_by": [
         {
          "decision": 66,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A03",
+         "kind": "case",
+         "name": "QuickBooks general ledger.pdf"
+        },
+        {
+         "decision": 73,
          "kind": "case",
          "name": "QuickBooks general ledger.pdf"
         }
@@ -3856,6 +5149,43 @@
          "decision": 66,
          "kind": "case",
          "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 990.pdf"
         }
        ],
        "rule": "any"
@@ -3865,6 +5195,27 @@
        "reached_by": [
         {
          "decision": 62,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
          "kind": "case",
          "name": "nonprofit FS.pdf"
         }
@@ -3888,23 +5239,114 @@
          "decision": 62,
          "kind": "case",
          "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "P&L.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "statement of operations",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "statement of activities",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "statement of cash flows",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 990.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of functional expenses",
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "statement of functional expenses.xlsx"
+        },
+        {
+         "kind": "irs",
+         "name": "f990.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -3914,22 +5356,125 @@
      "keywords": [
       {
        "keyword": "bank statement",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "statement of account",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "checking summary",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "deposits and additions",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3949,13 +5494,72 @@
          "decision": 66,
          "kind": "case",
          "name": "bank annual summary.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "checks paid",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3965,7 +5569,29 @@
       },
       {
        "keyword": "bank reconciliation",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -3975,12 +5601,30 @@
      "keywords": [
       {
        "keyword": "shareholder list",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "shareholder list.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "shareholder list.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "stock ledger",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "stock ledger.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -3988,6 +5632,17 @@
        "reached_by": [
         {
          "decision": 66,
+         "kind": "case",
+         "name": "cap table.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "cap table.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "C01",
          "kind": "case",
          "name": "cap table.pdf"
         }
@@ -4006,7 +5661,14 @@
      "keywords": [
       {
        "keyword": "distributions by shareholder",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C02",
+         "kind": "case",
+         "name": "distributions by shareholder.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4016,7 +5678,14 @@
       },
       {
        "keyword": "distribution detail by shareholder",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "basis and distribution worksheet.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -4026,7 +5695,14 @@
      "keywords": [
       {
        "keyword": "shareholder basis schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C03",
+         "kind": "case",
+         "name": "shareholder basis schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4036,7 +5712,14 @@
       },
       {
        "keyword": "stock and debt basis",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "basis and distribution worksheet.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4051,7 +5734,34 @@
      "keywords": [
       {
        "keyword": "officer compensation detail",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "officer W-2 compensation detail.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer and key employee compensation detail.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer compensation detail as a pdf.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer compensation detail as a pdf.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer compensation detail.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4061,7 +5771,14 @@
       },
       {
        "keyword": "officer w-2",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "officer W-2 compensation detail.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -4071,17 +5788,38 @@
      "keywords": [
       {
        "keyword": "health insurance premiums paid",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D02",
+         "kind": "case",
+         "name": "2% shareholder premium letter.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "2% shareholder",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D02",
+         "kind": "case",
+         "name": "2% shareholder premium letter.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "shareholder health insurance premiums",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D02",
+         "kind": "case",
+         "name": "shareholder health insurance premiums.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -4103,6 +5841,13 @@
          "name": "941.pdf"
         },
         {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "expected": "E01",
          "kind": "irs",
          "name": "f941.pdf"
         }
@@ -4123,6 +5868,13 @@
          "name": "941.pdf"
         },
         {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
+         "expected": "E01",
          "kind": "irs",
          "name": "f941.pdf"
         }
@@ -4158,6 +5910,22 @@
          "decision": 62,
          "kind": "case",
          "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
         }
        ],
        "rule": "any"
@@ -4171,6 +5939,23 @@
          "name": "W-3.pdf"
         },
         {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "expected": "E01",
          "kind": "irs",
          "name": "fw3.pdf"
         }
@@ -4184,7 +5969,24 @@
      "keywords": [
       {
        "keyword": "fixed asset schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fixed asset schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "fixed asset schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fixed asset schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4209,22 +6011,102 @@
      "keywords": [
       {
        "keyword": "loan agreement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "shareholder loan agreement.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "promissory note",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "shareholder loan agreement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "promissory note.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "loan statement",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "business loan statement December.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "amortization schedule",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "loan amortization schedule.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "loan amortization schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "loan amortization schedule.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "principal balance",
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "business loan statement December.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "promissory note.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "shareholder loan agreement.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -4234,7 +6116,24 @@
      "keywords": [
       {
        "keyword": "apportionment schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "apportionment schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "apportionment schedule.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "apportionment schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4255,19 +6154,7 @@
      ]
     }
    },
-   "rows_without_a_filing_document": [
-    "A03",
-    "B01",
-    "B02",
-    "C01",
-    "C02",
-    "C03",
-    "D01",
-    "D02",
-    "F01",
-    "G01",
-    "H01"
-   ],
+   "rows_without_a_filing_document": [],
    "unreached": [
     [
      "B01",
@@ -4278,52 +6165,8 @@
      "statement of income"
     ],
     [
-     "B01",
-     "statement of operations"
-    ],
-    [
-     "B01",
-     "statement of activities"
-    ],
-    [
-     "B01",
-     "statement of cash flows"
-    ],
-    [
-     "B02",
-     "bank statement"
-    ],
-    [
-     "B02",
-     "statement of account"
-    ],
-    [
-     "B02",
-     "checking summary"
-    ],
-    [
-     "B02",
-     "deposits and additions"
-    ],
-    [
-     "B02",
-     "checks paid"
-    ],
-    [
      "B02",
      "withdrawals and other debits"
-    ],
-    [
-     "B02",
-     "bank reconciliation"
-    ],
-    [
-     "C01",
-     "shareholder list"
-    ],
-    [
-     "C01",
-     "stock ledger"
     ],
     [
      "C01",
@@ -4331,19 +6174,7 @@
     ],
     [
      "C02",
-     "distributions by shareholder"
-    ],
-    [
-     "C02",
      "shareholder distribution schedule"
-    ],
-    [
-     "C02",
-     "distribution detail by shareholder"
-    ],
-    [
-     "C03",
-     "shareholder basis schedule"
     ],
     [
      "C03",
@@ -4351,39 +6182,11 @@
     ],
     [
      "C03",
-     "stock and debt basis"
-    ],
-    [
-     "C03",
      "basis computation"
     ],
     [
      "D01",
-     "officer compensation detail"
-    ],
-    [
-     "D01",
      "shareholder w-2"
-    ],
-    [
-     "D01",
-     "officer w-2"
-    ],
-    [
-     "D02",
-     "health insurance premiums paid"
-    ],
-    [
-     "D02",
-     "2% shareholder"
-    ],
-    [
-     "D02",
-     "shareholder health insurance premiums"
-    ],
-    [
-     "F01",
-     "fixed asset schedule"
     ],
     [
      "F01",
@@ -4396,26 +6199,6 @@
     [
      "F01",
      "asset additions and disposals"
-    ],
-    [
-     "G01",
-     "loan agreement"
-    ],
-    [
-     "G01",
-     "promissory note"
-    ],
-    [
-     "G01",
-     "shareholder loan agreement"
-    ],
-    [
-     "G01",
-     "loan statement"
-    ],
-    [
-     "H01",
-     "apportionment schedule"
     ],
     [
      "H01",
@@ -4432,54 +6215,8 @@
    ]
   },
   "990": {
-   "reached_only_elsewhere": [
-    [
-     "C02",
-     "compensation of officers"
-    ],
-    [
-     "D01",
-     "schedule b"
-    ],
-    [
-     "E01",
-     "program service accomplishment"
-    ]
-   ],
-   "reached_without_expectation": [
-    [
-     "A02",
-     "trial balance"
-    ],
-    [
-     "B01",
-     "balance sheet as of"
-    ],
-    [
-     "B01",
-     "statement of financial position"
-    ],
-    [
-     "B01",
-     "profit and loss"
-    ],
-    [
-     "G01",
-     "form 940"
-    ],
-    [
-     "G01",
-     "employer's annual federal unemployment"
-    ],
-    [
-     "G01",
-     "form w-3"
-    ],
-    [
-     "G01",
-     "w-3 transmittal"
-    ]
-   ],
+   "reached_only_elsewhere": [],
+   "reached_without_expectation": [],
    "rows": {
     "A01": {
      "document": "Prior-Year Form 990 & State Filings",
@@ -4590,6 +6327,7 @@
          "name": "f8879.pdf"
         },
         {
+         "expected": "G01",
          "kind": "irs",
          "name": "f940.pdf"
         },
@@ -4609,6 +6347,7 @@
          "name": "f990ez.pdf"
         },
         {
+         "expected": "G01",
          "kind": "irs",
          "name": "fw3.pdf"
         }
@@ -4642,6 +6381,28 @@
          "decision": 66,
          "kind": "case",
          "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "QuickBooks trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "A02",
+         "kind": "case",
+         "name": "nonprofit trial balance.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "trial balance with a 1125-E memo.xlsx"
         }
        ],
        "rule": "any"
@@ -4658,6 +6419,43 @@
          "decision": 66,
          "kind": "case",
          "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "QuickBooks balance sheet.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 990.pdf"
         }
        ],
        "rule": "any"
@@ -4667,6 +6465,28 @@
        "reached_by": [
         {
          "decision": 62,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "nonprofit FS.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
          "kind": "case",
          "name": "nonprofit FS.pdf"
         }
@@ -4690,23 +6510,119 @@
          "decision": 62,
          "kind": "case",
          "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "P&L.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "P&L.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "statement of operations",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "statement of activities",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "statement of cash flows",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "financial statements 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "financial statements 990.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "statement of functional expenses",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "audited financial statements package.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "B01",
+         "kind": "case",
+         "name": "statement of functional expenses.xlsx"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f990.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -4716,22 +6632,125 @@
      "keywords": [
       {
        "keyword": "bank statement",
-       "reached_by": [],
-       "rule": "any"
-      },
-      {
-       "keyword": "statement of account",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "checking summary",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "deposits and additions",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4753,13 +6772,71 @@
          "decision": 66,
          "kind": "case",
          "name": "bank annual summary.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Dec 2025 bank.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "checks paid",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Chase December statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "Chase December statement 990.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1065.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "November bank statement 1120S.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "November bank statement 990.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4769,7 +6846,29 @@
       },
       {
        "keyword": "bank reconciliation",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "B02",
+         "kind": "case",
+         "name": "bank reconciliation.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -4779,7 +6878,14 @@
      "keywords": [
       {
        "keyword": "board of directors list",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "board of directors list.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4794,7 +6900,50 @@
       },
       {
        "keyword": "board minutes",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "board minutes.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "minutes of the",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "minutes of the annual meeting.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "board roster",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "board roster.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "directors and officers",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "C01",
+         "kind": "case",
+         "name": "board roster.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -4804,7 +6953,35 @@
      "keywords": [
       {
        "keyword": "officer compensation detail",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer W-2 compensation detail.xlsx"
+        },
+        {
+         "decision": 73,
+         "expected": "C02",
+         "kind": "case",
+         "name": "officer and key employee compensation detail.xlsx"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer compensation detail as a pdf.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "C02",
+         "kind": "case",
+         "name": "officer compensation detail as a pdf.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "officer compensation detail.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4813,34 +6990,13 @@
        "rule": "any"
       },
       {
-       "keyword": "compensation of officers",
+       "keyword": "directors and trustees",
        "reached_by": [
         {
-         "decision": 62,
+         "decision": 73,
+         "expected": "C02",
          "kind": "case",
-         "name": "2024 1120.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1125e.pdf"
-        },
-        {
-         "expected": "A01",
-         "kind": "irs",
-         "name": "f990.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f990pf.pdf"
+         "name": "compensation of officers schedule.xlsx"
         }
        ],
        "rule": "any"
@@ -4857,7 +7013,14 @@
       },
       {
        "keyword": "donor detail",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "donor detail.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4872,6 +7035,12 @@
          "decision": 63,
          "kind": "case",
          "name": "2024 1040 with schedules.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "D01",
+         "kind": "case",
+         "name": "schedule b support workbook.xlsx"
         },
         {
          "kind": "irs",
@@ -4891,10 +7060,6 @@
         },
         {
          "kind": "irs",
-         "name": "f1099int.pdf"
-        },
-        {
-         "kind": "irs",
          "name": "f1099oid.pdf"
         },
         {
@@ -4910,11 +7075,6 @@
          "expected": "A01",
          "kind": "irs",
          "name": "f990.pdf"
-        },
-        {
-         "expected": "A01",
-         "kind": "irs",
-         "name": "f990ez.pdf"
         }
        ],
        "rule": "any"
@@ -4926,7 +7086,26 @@
      "keywords": [
       {
        "keyword": "grants paid schedule",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D02",
+         "kind": "case",
+         "name": "grants paid schedule.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "grants made",
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "D02",
+         "kind": "case",
+         "name": "grants made detail.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4938,11 +7117,6 @@
        "keyword": "grantee list",
        "reached_by": [],
        "rule": "any"
-      },
-      {
-       "keyword": "grantee",
-       "reached_by": [],
-       "rule": "any"
       }
      ]
     },
@@ -4952,6 +7126,18 @@
       {
        "keyword": "program service accomplishment",
        "reached_by": [
+        {
+         "decision": 73,
+         "expected": null,
+         "kind": "case",
+         "name": "990 Part III page scanned.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "E01",
+         "kind": "case",
+         "name": "program service accomplishments narrative.pdf"
+        },
         {
          "expected": "A01",
          "kind": "irs",
@@ -4969,11 +7155,6 @@
        "keyword": "program accomplishments",
        "reached_by": [],
        "rule": "any"
-      },
-      {
-       "keyword": "program description",
-       "reached_by": [],
-       "rule": "any"
       }
      ]
     },
@@ -4982,7 +7163,14 @@
      "keywords": [
       {
        "keyword": "fundraising event detail",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "F01",
+         "kind": "case",
+         "name": "fundraising event detail.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -5014,6 +7202,11 @@
          "name": "941.pdf"
         },
         {
+         "decision": 73,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
          "expected": "G01",
          "kind": "irs",
          "name": "f941.pdf"
@@ -5035,6 +7228,11 @@
          "name": "941.pdf"
         },
         {
+         "decision": 73,
+         "kind": "case",
+         "name": "941.pdf"
+        },
+        {
          "expected": "G01",
          "kind": "irs",
          "name": "f941.pdf"
@@ -5046,6 +7244,7 @@
        "keyword": "form 940",
        "reached_by": [
         {
+         "expected": "G01",
          "kind": "irs",
          "name": "f940.pdf"
         }
@@ -5056,6 +7255,7 @@
        "keyword": "employer's annual federal unemployment",
        "reached_by": [
         {
+         "expected": "G01",
          "kind": "irs",
          "name": "f940.pdf"
         }
@@ -5067,6 +7267,22 @@
        "reached_by": [
         {
          "decision": 62,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "G01",
          "kind": "case",
          "name": "W-3.pdf"
         }
@@ -5082,6 +7298,23 @@
          "name": "W-3.pdf"
         },
         {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "decision": 73,
+         "expected": "G01",
+         "kind": "case",
+         "name": "W-3.pdf"
+        },
+        {
+         "expected": "G01",
          "kind": "irs",
          "name": "fw3.pdf"
         }
@@ -5095,12 +7328,26 @@
      "keywords": [
       {
        "keyword": "form 990-t",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "990-T for 2025.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
        "keyword": "unrelated business income detail",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 73,
+         "expected": "H01",
+         "kind": "case",
+         "name": "UBTI schedule.xlsx"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -5111,17 +7358,7 @@
      ]
     }
    },
-   "rows_without_a_filing_document": [
-    "A02",
-    "B01",
-    "C01",
-    "C02",
-    "D01",
-    "D02",
-    "E01",
-    "F01",
-    "H01"
-   ],
+   "rows_without_a_filing_document": [],
    "unreached": [
     [
      "B01",
@@ -5132,48 +7369,8 @@
      "statement of income"
     ],
     [
-     "B01",
-     "statement of operations"
-    ],
-    [
-     "B01",
-     "statement of activities"
-    ],
-    [
-     "B01",
-     "statement of cash flows"
-    ],
-    [
-     "B02",
-     "bank statement"
-    ],
-    [
-     "B02",
-     "statement of account"
-    ],
-    [
-     "B02",
-     "checking summary"
-    ],
-    [
-     "B02",
-     "deposits and additions"
-    ],
-    [
-     "B02",
-     "checks paid"
-    ],
-    [
      "B02",
      "withdrawals and other debits"
-    ],
-    [
-     "B02",
-     "bank reconciliation"
-    ],
-    [
-     "C01",
-     "board of directors list"
     ],
     [
      "C01",
@@ -5182,14 +7379,6 @@
     [
      "C01",
      "meeting minutes"
-    ],
-    [
-     "C01",
-     "board minutes"
-    ],
-    [
-     "C02",
-     "officer compensation detail"
     ],
     [
      "C02",
@@ -5201,15 +7390,7 @@
     ],
     [
      "D01",
-     "donor detail"
-    ],
-    [
-     "D01",
      "contributions by donor"
-    ],
-    [
-     "D02",
-     "grants paid schedule"
     ],
     [
      "D02",
@@ -5220,20 +7401,8 @@
      "grantee list"
     ],
     [
-     "D02",
-     "grantee"
-    ],
-    [
      "E01",
      "program accomplishments"
-    ],
-    [
-     "E01",
-     "program description"
-    ],
-    [
-     "F01",
-     "fundraising event detail"
     ],
     [
      "F01",
@@ -5245,14 +7414,6 @@
     ],
     [
      "H01",
-     "form 990-t"
-    ],
-    [
-     "H01",
-     "unrelated business income detail"
-    ],
-    [
-     "H01",
      "ubti schedule"
     ]
    ]
@@ -5261,15 +7422,15 @@
  "counts": {
   "catalogs": 6,
   "documents": {
-   "case": 95,
+   "case": 283,
    "irs": 50
   },
-  "keywords": 335,
-  "reached_only_elsewhere": 7,
-  "reached_without_expectation": 36,
+  "keywords": 327,
+  "reached_only_elsewhere": 2,
+  "reached_without_expectation": 11,
   "rows": 78,
-  "rows_without_a_filing_document": 48,
-  "unreached": 223
+  "rows_without_a_filing_document": 0,
+  "unreached": 70
  },
  "inputs": {
   "tests/irs/f1040.pdf": "3d31c226df0d189ced80e039d01cf0f8820c1019681a0f0ca6264de277b7e982",
@@ -5322,13 +7483,13 @@
   "tests/irs/f990pf.pdf": "999df73380009f180fcc741f778a47bc83a25de3116fb1a1cf8d03f6b24b39ba",
   "tests/irs/fw2.pdf": "61eca7c81f16d3965819fe1f31be4fe68c1b2887a81f51172f1d2ed2b2b9f087",
   "tests/irs/fw3.pdf": "2df15f40431bd52814cbac85d9843102b09a640b6fe558f201e5214ff1890656",
-  "tests/test_catalog.py": "095e6b5b97c1215a968c70e2cf08648367e498a63fb32bed31e2a562225b27bc",
-  "tests/test_irs_forms.py": "0335f63ef3e5cb8dbcd12e250b46e594a2e14f5956a20abd72f9f16db3e306c3",
+  "tests/test_catalog.py": "d02a06de01f44f3dd644564906c264a208d45e3459612237784e09da46efd437",
+  "tests/test_irs_forms.py": "bd770be57d0ca7474048d86cf4dd52d9fe40fd62aa076de4012329b310814dbb",
   "tests/test_real_corpus.py": "642ad7f2b445d4acac7a043bcfb4bdc2b31da1a44479b5b04f4c991d771ed671",
-  "tools/vocab_report.py": "0bd894810cc002b839cd40b60394ab0343fcb5ff065f20193caef75c349a405a",
-  "tracker/content_check.py": "e9ab87cd552e3d8975ef9c1ce156318973ed7f613efd9b23ed38680296ddfb1c",
-  "tracker/manifest.py": "b825a67691bd72c3576d689a41f5e7423004e2d7e7122fc3b4796011c1b84fa7",
-  "tracker/templates.py": "9077c2c7c2ac46fee2e001a421c44c106dcdf1407b30df2eeb4765521ca26adf"
+  "tools/vocab_report.py": "d10b5df1ecdc629030ef69e490cc7ba93d93da5633f470cc337443869c59bd91",
+  "tracker/content_check.py": "3a0b1ba25d1beb83bd08033f2651b116a747b244ba5cb7be463af79aba0beb7d",
+  "tracker/manifest.py": "c8a1fb796470ffdfef5f431f52fe42ef0c582617558e63a5e13758bb0f07679e",
+  "tracker/templates.py": "1ed77c50d7bfe15cb5d633fe600dc28c6521693d70d33cd6ae456229f835bbfe"
  },
  "note": "GENERATED by tools/vocab_report.py \u2014 do not edit by hand.",
  "schema": 1

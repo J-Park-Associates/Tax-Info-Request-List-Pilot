@@ -94,6 +94,28 @@ def test_a_document_from_the_firms_own_corpus_is_reported_beside_the_forms_and_t
     assert "- `w-2` (required) — fw2.pdf → **here**; redacted w-2.pdf → **here**" in text
 
 
+def test_a_workbook_case_reads_the_same_to_the_report_as_to_the_suite(tmp_path):
+    """The suite writes a workbook case to a real .xlsx and reads it back;
+    the report renders the rows instead. If the two readings differed, a
+    keyword a case reaches would be listed as unreached - or the other way
+    about, which is worse."""
+    from tests.samples import sheet_xlsx
+    from tracker.content_check import extract_text
+
+    rows = [["Willow Lane Inc."], ["Officer Compensation Detail - 2025"],
+            ["Officer", "Title", "Compensation"], ["John Reyes", "President", 240000]]
+    written = extract_text(sheet_xlsx(tmp_path / "officer comp.xlsx", rows))
+    assert vocab_report.as_a_sheet(rows) == written
+
+
+def test_the_workbook_cases_are_in_the_report_too():
+    """Half of every catalog asks for a schedule a client keeps in Excel."""
+    from tests.test_catalog import XLSX_CASES
+
+    names = {doc.name for doc in vocab_report.case_documents()}
+    assert {case[2] for case in XLSX_CASES} <= names
+
+
 def test_a_report_built_without_a_corpus_says_nothing_about_one():
     """The committed report is built on a machine with no corpus; CI has none either."""
     out = report({"1040": [row("A01", "W-2", required=["w-2"])]}, [])
