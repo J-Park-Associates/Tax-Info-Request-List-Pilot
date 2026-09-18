@@ -126,6 +126,16 @@ function render(state) {
   $("eng-form").textContent = engForm;
   $("eng-form").classList.toggle("hidden", !engForm);
 
+  // The read-only status workbook beside it: current, behind, or unknown.
+  // Both the label and the word are the API's — the page compares nothing
+  // and names no state — and the class is derived from the word, the same
+  // way a status chip's is.
+  const viewState = state.view ? state.view.state : "";
+  const chipEl = $("view-state");
+  chipEl.textContent = viewState ? `${vocab.view.label}: ${viewState}` : "";
+  chipEl.className = `eng-form view-${viewState}`;
+  chipEl.classList.toggle("hidden", !viewState);
+
   renderReview(state);
   renderUnfileList(state);
   renderLock(state);
@@ -769,6 +779,7 @@ $("btn-new").addEventListener("click", openWizard);
 $("btn-shared").addEventListener("click", () => paths && window.tracker.open(paths.shared));
 $("btn-excel").addEventListener("click", () => paths && window.tracker.open(paths.manifest));
 $("btn-index").addEventListener("click", () => paths && window.tracker.open(paths.index));
+$("btn-view").addEventListener("click", () => paths && window.tracker.open(paths.view));
 $("btn-status").addEventListener("click", () => paths && window.tracker.open(paths.status));
 $("eng-select").addEventListener("change", (e) => {
   active = e.target.value;

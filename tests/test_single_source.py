@@ -147,6 +147,16 @@ def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
     assert chips == {_slug(s) for s in Status.ALL} | {_slug(UNSCANNED_LABEL)}
 
 
+def test_the_stylesheet_has_a_class_for_every_view_state():
+    """Decision 89: the chip's class is derived from the word the API sends,
+    so a state with no class would show as unstyled text and a class with no
+    state would be a word the page invented."""
+    from tracker.view import VIEW_STATES
+
+    css = read("app/renderer/style.css")
+    assert set(re.findall(r"\.view-([a-z-]+)\s*\{", css)) == set(VIEW_STATES)
+
+
 def test_the_renderer_types_no_vocabulary_of_its_own():
     from tracker.api import _slug
     from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW, NOT_REQUESTED
@@ -343,11 +353,12 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
+    from tracker.view import VIEW_FILENAME
 
     owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
-             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
+             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, VIEW_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -548,11 +559,12 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
     from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
+    from tracker.view import VIEW_FILENAME
 
     owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
-             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
+             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, VIEW_FILENAME}
     for rel in DOCUMENTS:
         for line in read(rel).splitlines():
             if "──" not in line:
@@ -583,9 +595,11 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     )
     from tracker.scanner import CACHE_FILENAME
     from tracker.settings import SETTINGS_FILENAME
+    from tracker.view import VIEW_FILENAME
 
     values = {INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
               LOG_FILENAME, MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME, CACHE_FILENAME, SETTINGS_FILENAME,
+              VIEW_FILENAME,
               f"{SHARED_DIR_NAME}/", f"{PBC_DIR_NAME}/", f"{PREPARED_DIR_NAME}/"}
     quoted = {f"``{v}``" for v in set(Status.ALL) | set(Override.ALL)}
     for path in (REPO / "tracker").glob("*.py"):

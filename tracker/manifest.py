@@ -1308,7 +1308,10 @@ def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
 
 # --------------------------------------------------------------- template ----
 
-_COLUMN_WIDTHS = {
+#: How wide each column is drawn, by header. Public because the Requests
+#: sheet is drawn twice now - here, and by the view a pass regenerates -
+#: and a second copy of these numbers would drift.
+COLUMN_WIDTHS = {
     COL_IDENTIFIER: 11,
     COL_DOCUMENT: 38,
     COL_PERIOD: 12,
@@ -1360,7 +1363,7 @@ def create_template(
     for idx, header in enumerate(HEADERS, start=1):
         cell = ws.cell(row=1, column=idx, value=header)
         cell.font = Font(bold=True)
-        ws.column_dimensions[get_column_letter(idx)].width = _COLUMN_WIDTHS[header]
+        ws.column_dimensions[get_column_letter(idx)].width = COLUMN_WIDTHS[header]
     ws.freeze_panes = "A2"
 
     column = {header: index for index, header in enumerate(HEADERS, start=1)}

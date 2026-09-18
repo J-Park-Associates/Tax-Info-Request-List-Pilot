@@ -38,6 +38,22 @@ legacy workbook and never writes through the writers has nothing to agree
 with - and so is one whose index the tracker refuses to read, which is itself
 what that test is about.
 
+**And the view agrees with the readers** (decision 89). Wherever a test left
+a view behind, its Index sheet is compared with ``read_index()`` and its
+Requests sheet with ``load_manifest()``, cell for cell, through the same two
+row builders the writer uses (``view.index_row``, ``view.request_row``) so
+the comparison cannot drift into a second copy of those rules. Here the
+*live* readers are the right side to compare against: the view is a
+derivation of them, not another record of the same facts, and the whole
+claim is that what a person opens says what the readers say.
+
+A view ``view_state()`` does not call current is passed over, because that
+is exactly what a pass reports as ``view_stale``: somebody had the workbook
+open, the replace did not land, and the view on disk is honestly one pass
+behind. Passing it over is not a hole - the state itself is asserted by
+``tests/test_view.py``, including the Windows test that really holds the
+file the way Excel does.
+
 Looking changes nothing: the workbooks are read with ``quarantine=False``, so
 a sidecar this fixture cannot parse is reported and left exactly where the
 test put it.
@@ -45,11 +61,20 @@ test put it.
 
 from __future__ import annotations
 
-import pytest
+import io
 
-from tracker import ledger
-from tracker.filer import INDEX_FILENAME, FilingError, ledger_key, read_index_from_workbook
-from tracker.manifest import ManifestError, statuses_from_workbook
+import pytest
+from openpyxl import load_workbook
+
+from tracker import ledger, view
+from tracker.filer import (
+    INDEX_FILENAME,
+    FilingError,
+    ledger_key,
+    read_index,
+    read_index_from_workbook,
+)
+from tracker.manifest import HEADERS, SHEET_NAME, ManifestError, load_manifest, statuses_from_workbook
 from tracker.scaffold import MANIFEST_FILENAME
 
 #: Engagements the comparison passes over, by folder name, with the decision
@@ -127,9 +152,46 @@ def _check(engagement_dir) -> None:
             _compare_statuses(name, recorded, actual)
 
 
+def _sheet_rows(path, title):
+    """One sheet of the view as text, header row dropped. None if it is not there."""
+    wb = load_workbook(io.BytesIO(path.read_bytes()), data_only=True)
+    try:
+        if title not in wb.sheetnames:
+            return None
+        return [["" if cell is None else str(cell) for cell in row]
+                for row in wb[title].iter_rows(min_row=2, values_only=True)]
+    finally:
+        wb.close()
+
+
+def _check_view(engagement_dir) -> None:
+    """The view a test left behind says what the readers say, cell for cell."""
+    name = engagement_dir.name
+    if view.view_state(engagement_dir) != view.CURRENT:
+        return          # behind: the replace did not land, which is view_stale
+    path = view.path_for(engagement_dir)
+
+    entries = read_index(engagement_dir / INDEX_FILENAME, quarantine=False)
+    rows = _sheet_rows(path, view.INDEX_SHEET)
+    assert rows is not None, f"{name}: the view has no index sheet"
+    assert rows == [view.index_row(entry) for entry in entries], (
+        f"{name}: the view's index is not what the reader says"
+    )
+
+    items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+    rows = _sheet_rows(path, SHEET_NAME)
+    assert rows is not None, f"{name}: the view has no request sheet"
+    assert rows == [[view.request_row(item)[header] for header in HEADERS] for item in items], (
+        f"{name}: the view's requests are not what the reader says"
+    )
+
+
 @pytest.fixture(autouse=True)
 def the_record_agrees_with_the_workbooks(tmp_path):
-    """After every test: every engagement it wrote a record for still agrees."""
+    """After every test: every engagement it wrote a record for still agrees,
+    and every view it left behind says what the readers say."""
     yield
     for path in sorted(tmp_path.rglob(ledger.LEDGER_FILENAME)):
         _check(path.parent)
+    for path in sorted(tmp_path.rglob(view.VIEW_FILENAME)):
+        _check_view(path.parent)

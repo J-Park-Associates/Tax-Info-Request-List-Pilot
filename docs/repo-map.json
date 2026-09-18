@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 105,
-    "edges": 394,
-    "reused": 71
+    "nodes": 108,
+    "edges": 421,
+    "reused": 82
   },
   "node_types": [
     "artifact",
@@ -95,16 +95,16 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7e6dea3c9c8a3544",
-      "lines": 82,
+      "sha256": "2e5e8a3933c4de7c",
+      "lines": 83,
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs."
     },
     {
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0b64501f3b79d957",
-      "lines": 951,
+      "sha256": "f4cfc302d413bd94",
+      "lines": 965,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -144,7 +144,7 @@
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike. Decision 72: it bounds it through manifest.check_tax_year(), which the rollover's own flag now goes through too. Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends runner.append_log()'s line to the run log and redraws the status page from every engagement under the root, neither taking a lock nor being allowed to fail the pass that has already moved the files - and state reports the page's path, so the shell will open it for the app's Open Status button. Decision 76: dismiss records that no request asks for a parked document and does not re-scan - nothing was filed under a request, so no row's status can have changed. _vocab() carries the new decision under the key 'dismissed', not the word: the renderer may not hold the word 'Requested' in any form (it is manifest.UNSCANNED_LABEL, and the guard that keeps the app from typing a status reads the whole file), and review_labels carries the card's own labels so the renderer types none of them. Decision 77: unfile sends one filed document back for review and returns the rewritten row and state; the scan summary is state's, because summarize() over the rows the re-scan left has one home and a second copy in the payload would be a second answer. The re-scan itself belongs to filer.unfile_document(), not here: the status reverting is part of the correction, not part of being asked over JSON. Decision 82: state's index rows carry evidence as data, not as text - _evidence_payload() parses the cell with content_check.parse_evidence() and ships a record keyed by candidate identifier, so the renderer never splits a string of the tracker's on separators of its own; _vocab()['evidence'] carries EVIDENCE_RULES and EVIDENCE_PLACES, the two lists of words the app may label. Decision 84: state carries 'review' - tracker.review.triage() over the manifest rows and index entries state has already loaded, so each is read once for the whole screen, serialised by _triage_payload() as one entry per parked file joined to its index row by pbc_location, its shortlist in triage order, each suggestion carrying identifier, reason and rank. The reason ships whole, with its leading identifier, exactly as review.py wrote it: one owner for the sentence, and the identifier travels beside it as data because that is what assign is given. There is no review command - the card draws from the one state the app already reads. _vocab() owns every word that card shows: review_labels gained FILE_LABEL, SUGGESTED_HEADING and OTHER_REQUESTS_HEADING, and 'triage' carries review.NOTHING_SUGGESTED, review.IDENTIFIER_SEPARATOR, review.PLACE_WORDS and review.MAX_SUGGESTIONS from the module that owns them. Decision 86: create passes the wizard's catalog choice to create_template(form=...) so the Engagement sheet records which checklist the list was cut from, and _state() ships it with the rest of the sheet (_info_payload() is asdict() over EngagementInfo, so a field added there travels without a second edit). The app prints it beside the engagement picker exactly as the catalog keys it, so _vocab() gains no word for it."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike. Decision 72: it bounds it through manifest.check_tax_year(), which the rollover's own flag now goes through too. Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends runner.append_log()'s line to the run log and redraws the status page from every engagement under the root, neither taking a lock nor being allowed to fail the pass that has already moved the files - and state reports the page's path, so the shell will open it for the app's Open Status button. Decision 76: dismiss records that no request asks for a parked document and does not re-scan - nothing was filed under a request, so no row's status can have changed. _vocab() carries the new decision under the key 'dismissed', not the word: the renderer may not hold the word 'Requested' in any form (it is manifest.UNSCANNED_LABEL, and the guard that keeps the app from typing a status reads the whole file), and review_labels carries the card's own labels so the renderer types none of them. Decision 77: unfile sends one filed document back for review and returns the rewritten row and state; the scan summary is state's, because summarize() over the rows the re-scan left has one home and a second copy in the payload would be a second answer. The re-scan itself belongs to filer.unfile_document(), not here: the status reverting is part of the correction, not part of being asked over JSON. Decision 82: state's index rows carry evidence as data, not as text - _evidence_payload() parses the cell with content_check.parse_evidence() and ships a record keyed by candidate identifier, so the renderer never splits a string of the tracker's on separators of its own; _vocab()['evidence'] carries EVIDENCE_RULES and EVIDENCE_PLACES, the two lists of words the app may label. Decision 84: state carries 'review' - tracker.review.triage() over the manifest rows and index entries state has already loaded, so each is read once for the whole screen, serialised by _triage_payload() as one entry per parked file joined to its index row by pbc_location, its shortlist in triage order, each suggestion carrying identifier, reason and rank. The reason ships whole, with its leading identifier, exactly as review.py wrote it: one owner for the sentence, and the identifier travels beside it as data because that is what assign is given. There is no review command - the card draws from the one state the app already reads. _vocab() owns every word that card shows: review_labels gained FILE_LABEL, SUGGESTED_HEADING and OTHER_REQUESTS_HEADING, and 'triage' carries review.NOTHING_SUGGESTED, review.IDENTIFIER_SEPARATOR, review.PLACE_WORDS and review.MAX_SUGGESTIONS from the module that owns them. Decision 86: create passes the wizard's catalog choice to create_template(form=...) so the Engagement sheet records which checklist the list was cut from, and _state() ships it with the rest of the sheet (_info_payload() is asdict() over EngagementInfo, so a field added there travels without a second edit). The app prints it beside the engagement picker exactly as the catalog keys it, so _vocab() gains no word for it. Decision 89: _state() ships view: {state, path} from tracker.view.view_state() - a read that takes no lock and tolerates Excel holding the file - and paths gains 'view', because the shell opens only the paths this map names. _vocab() owns the label and the three state words; the app types none of them."
     },
     {
       "id": "tracker/content_check.py",
@@ -445,12 +445,13 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6612bb72743286fc",
-      "lines": 1392,
+      "sha256": "1042d12762b4f97f",
+      "lines": 1395,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
         "BARE_FORM_NUMBER_WARNING",
+        "COLUMN_WIDTHS",
         "COL_ALLOWED_EXTENSIONS",
         "COL_ANY_KEYWORDS",
         "COL_DATE_PATTERN",
@@ -507,7 +508,6 @@
         "YEAR_OUT_OF_RANGE",
         "YEAR_PATTERN",
         "YES",
-        "_COLUMN_WIDTHS",
         "_ILLEGAL_IDENTIFIER_CHARS",
         "_ILLEGAL_PUNCTUATION",
         "_MONTHS",
@@ -588,7 +588,7 @@
         "BARE_FORM_NUMBER_WARNING": "\"Row {row} ({identifier}): the keyword '{keyword}' matches only that form, not its variants such as {example}; list the forms this request means\""
       },
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
-      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check. Decision 55: check_manifest() warns when a keyword is a bare family number (FORM_FAMILIES). Decision 58: as_text() keeps a value written from data a string; an empty note replaces the old one; check_manifest() warns on a keyword with no letters or digits (EMPTY_KEYWORD_WARNING). Decision 59: atomic_replacement() never lets the temp's removal mask the write's own error; create_template() saves atomically. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 66: the Engagement sheet's text cells go through as_text() too. Decision 68: with_pending() matches identifiers without case, as load_manifest() does. Decision 72: csv_tuple() takes a list or tuple as the list it already is (a spec's [\"pdf\"] stringified to one extension called ['pdf'], and every document parked against that row), and tracker.templates reads spec fields through it; check_tax_year() is the one bound on a tax year (YEAR_OUT_OF_RANGE), used by the wizard and the rollover alike. Decision 86: the Engagement sheet gained a Form cell and EngagementInfo a form field - which catalog the request list was cut from, as the catalog keys it. ENGAGEMENT_FIELDS owns the label and the sheet is read by label, so the cell is added after the ones already there and an engagement made before it loads with a blank; create_template() takes form as an optional keyword and folds it into the info it writes, because it is one fact about the engagement and not a property of any row - every caller that hands over rows alone records a blank, and a blank never clears a form the info already carries. Nothing refuses a manifest for a blank one. Decision 87: write_statuses() appends a scanned event and add_any_keyword() a keyword_learned event to the engagement's own record (tracker/ledger.py), each after its own write and only while locking.lock_is_held() says the caller is a pass - a request list seeded into a workbook by a test or a tool is not a pass and records nothing, and the record's own bootstrap means the first real pass imports where those rows stood anyway. Only what changed is recorded, so a pass that found the engagement as it left it appends nothing; the statuses go through _update_to_json(), the same shape the pending sidecar stores, so there is one owner for it. A deferred write records too: every reader overlays the sidecar, so which file the statuses landed in is the workaround and not the fact. Decision 88: load_manifest() now takes each identifier's Status, Received Date, File Count and Validation Notes FROM THAT RECORD wherever it has ever recorded one (_recorded_statuses(), replayed through with_pending() so there is one rule for replacing a row's scanner columns and one for matching an identifier without case), and leaves the workbook's own columns for an identifier the record has never seen - per identifier, so an engagement scanned before the record and a row added to the list since both read exactly as they always did. The request itself is never the record's: the keywords, the periods, the extensions, Waived, Manual Override and Any Keywords are the person's and always come from the workbook. load_manifest_from_workbook() is the workbook's own reading and statuses_from_workbook() its scanner columns with the pending sidecar overlaid, both public because the scanned bootstrap imports from them and the agreement fixture checks the record against them; through load_manifest() it would be checking the record against itself. A record that does not read as one is said loudly with the engagement and the line, and the workbook answers instead."
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check. Decision 55: check_manifest() warns when a keyword is a bare family number (FORM_FAMILIES). Decision 58: as_text() keeps a value written from data a string; an empty note replaces the old one; check_manifest() warns on a keyword with no letters or digits (EMPTY_KEYWORD_WARNING). Decision 59: atomic_replacement() never lets the temp's removal mask the write's own error; create_template() saves atomically. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 66: the Engagement sheet's text cells go through as_text() too. Decision 68: with_pending() matches identifiers without case, as load_manifest() does. Decision 72: csv_tuple() takes a list or tuple as the list it already is (a spec's [\"pdf\"] stringified to one extension called ['pdf'], and every document parked against that row), and tracker.templates reads spec fields through it; check_tax_year() is the one bound on a tax year (YEAR_OUT_OF_RANGE), used by the wizard and the rollover alike. Decision 86: the Engagement sheet gained a Form cell and EngagementInfo a form field - which catalog the request list was cut from, as the catalog keys it. ENGAGEMENT_FIELDS owns the label and the sheet is read by label, so the cell is added after the ones already there and an engagement made before it loads with a blank; create_template() takes form as an optional keyword and folds it into the info it writes, because it is one fact about the engagement and not a property of any row - every caller that hands over rows alone records a blank, and a blank never clears a form the info already carries. Nothing refuses a manifest for a blank one. Decision 87: write_statuses() appends a scanned event and add_any_keyword() a keyword_learned event to the engagement's own record (tracker/ledger.py), each after its own write and only while locking.lock_is_held() says the caller is a pass - a request list seeded into a workbook by a test or a tool is not a pass and records nothing, and the record's own bootstrap means the first real pass imports where those rows stood anyway. Only what changed is recorded, so a pass that found the engagement as it left it appends nothing; the statuses go through _update_to_json(), the same shape the pending sidecar stores, so there is one owner for it. A deferred write records too: every reader overlays the sidecar, so which file the statuses landed in is the workaround and not the fact. Decision 88: load_manifest() now takes each identifier's Status, Received Date, File Count and Validation Notes FROM THAT RECORD wherever it has ever recorded one (_recorded_statuses(), replayed through with_pending() so there is one rule for replacing a row's scanner columns and one for matching an identifier without case), and leaves the workbook's own columns for an identifier the record has never seen - per identifier, so an engagement scanned before the record and a row added to the list since both read exactly as they always did. The request itself is never the record's: the keywords, the periods, the extensions, Waived, Manual Override and Any Keywords are the person's and always come from the workbook. load_manifest_from_workbook() is the workbook's own reading and statuses_from_workbook() its scanner columns with the pending sidecar overlaid, both public because the scanned bootstrap imports from them and the agreement fixture checks the record against them; through load_manifest() it would be checking the record against itself. A record that does not read as one is said loudly with the engagement and the line, and the workbook answers instead. Decision 89: _COLUMN_WIDTHS became COLUMN_WIDTHS - the Requests sheet is now drawn twice, here and by the view a pass regenerates, and a second copy of those numbers would drift."
     },
     {
       "id": "tracker/reasons.py",
@@ -835,8 +835,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "73725bdcd43513ac",
-      "lines": 851,
+      "sha256": "68a8899f10ba8224",
+      "lines": 893,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -868,6 +868,7 @@
         "STATUS_PAGE_FILENAME",
         "STATUS_PROBLEMS_HEADING",
         "STATUS_REVIEW_HEADING",
+        "VIEW_NOT_REGENERATED",
         "WEEKDAY_NAMES",
         "_DEFERRED_SEP",
         "_STATUS_STYLE",
@@ -897,6 +898,7 @@
         "RUNNER_MODE_FLAG": "'--run'",
         "NOTHING_OUTSTANDING": "'nothing outstanding; no reminder needed'",
         "MANIFEST_UNREADABLE": "'manifest could not be read: {problem}'",
+        "VIEW_NOT_REGENERATED": "'status workbook open (not regenerated)'",
         "STATUS_GENERATED": "'Generated {stamp}'",
         "STATUS_ENGAGEMENTS_HEADING": "'Engagements'",
         "STATUS_REVIEW_HEADING": "'Waiting for a person'",
@@ -910,7 +912,7 @@
         "REVIEW_COLUMNS": "('Received', 'Engagement', 'File the client sent', 'Reason', 'Candidates')"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57/60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) so it is neither stale nor a missed week. Decision 58: a draft day with nothing to chase retires the run's own unedited draft (_retire_stale_drafts()); an edited one is left as it is. Decision 60: _refresh_stale_draft() rewrites the run's own unedited draft on a quiet draft day. Decision 67: main() reconfigures stdout and stderr to replace what the console cannot encode, so a client's file name never turns a finished run into a traceback. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run - the practice on one page, drawn from a report rather than from a fresh pass. status_report() folds the runs just made into every engagement the registry found and reads the rest (manifest and sidecar, no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; write_status_page() escapes every value, fetches nothing and takes no lock, and reads each engagement's index for the review queue. skipped_because() is the one wording of why an engagement is passed over, shared with _worth_a_pass(); EngagementRun.last_pass is None on a row the page read rather than ran. Decision 87: the pass gained no call of its own on tracker/ledger.py - run_engagement() takes no lock (file_drops() and scan_engagement() each take their own) and has no run identifier, so what the pass did is recorded by the writers it calls, once per decision, and a second call here would be a second record of the same one."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57/60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) so it is neither stale nor a missed week. Decision 58: a draft day with nothing to chase retires the run's own unedited draft (_retire_stale_drafts()); an edited one is left as it is. Decision 60: _refresh_stale_draft() rewrites the run's own unedited draft on a quiet draft day. Decision 67: main() reconfigures stdout and stderr to replace what the console cannot encode, so a client's file name never turns a finished run into a traceback. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run - the practice on one page, drawn from a report rather than from a fresh pass. status_report() folds the runs just made into every engagement the registry found and reads the rest (manifest and sidecar, no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; write_status_page() escapes every value, fetches nothing and takes no lock, and reads each engagement's index for the review queue. skipped_because() is the one wording of why an engagement is passed over, shared with _worth_a_pass(); EngagementRun.last_pass is None on a row the page read rather than ran. Decision 87: the pass gained no call of its own on tracker/ledger.py - run_engagement() takes no lock (file_drops() and scan_engagement() each take their own) and has no run identifier, so what the pass did is recorded by the writers it calls, once per decision, and a second call here would be a second record of the same one. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates its read-only view (tracker/view.py). It follows the status page rather than the writers - drawn from what the readers now say, no lock, never on a dry run, and never able to fail a pass - and a view somebody had open leaves run.view_stale set (VIEW_NOT_REGENERATED in the summary line) on a run that still succeeds, because the view holds no fact of its own."
     },
     {
       "id": "tracker/scaffold.py",
@@ -946,7 +948,7 @@
         "REVIEW_DIR_NAME": "'00 - Needs Review'"
       },
       "role": "Turns a manifest into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/<folder_name_for(item)>/ plus 00 - Needs Review. Writes the client's _README.txt.",
-      "notes": "Also the home of the path constants every other module imports: MANIFEST_FILENAME, SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME. Runs on every scheduled pass now; the README is rewritten only when its text changed. The README contact comes from the Engagement sheet (firm, else sender) unless given. Decision 61: the README is written whole and a failure to refresh it is a log line, never the end of a pass."
+      "notes": "Also the home of the path constants every other module imports: MANIFEST_FILENAME, SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME. Runs on every scheduled pass now; the README is rewritten only when its text changed. The README contact comes from the Engagement sheet (firm, else sender) unless given. Decision 61: the README is written whole and a failure to refresh it is a log line, never the end of a pass. Decision 89: it is still the home of the folder and manifest names, but the view's own file name lives in tracker/view.py with the module that writes it, as the index's does in tracker/filer.py and the record's in tracker/ledger.py - one owner, the writer."
     },
     {
       "id": "tracker/scanner.py",
@@ -1175,6 +1177,63 @@
       "notes": "Never downloads a cloud-only placeholder \u2014 a stub must never be filed as if it were the document. A file that vanishes between listing and stat is reported pending_sync, never raised \u2014 a scheduled scan must not die on one replaced file. PdfVerdictCache is a run's memo of PDF readability (the router asks once per manifest row for one file; the scanner asks again): the filer and the scanner each make one and pass it down, so nothing is shared at module level between runs that might one day be concurrent. UNFINISHED_SUFFIXES is the one list of transfer-in-progress names (decision 56)."
     },
     {
+      "id": "tracker/view.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "180966b54b47b38e",
+      "lines": 445,
+      "cli": "python -m tracker.view",
+      "exports": [
+        "BEHIND",
+        "CURRENT",
+        "LABEL_ENGAGEMENT",
+        "LABEL_GENERATED",
+        "LABEL_INDEX_ROWS",
+        "LABEL_PARKED_ROWS",
+        "LABEL_RECORD_DIGEST",
+        "LABEL_REQUEST_ROWS",
+        "LABEL_RULES_DIGEST",
+        "NEEDS_REVIEW_FIELDS",
+        "SHEETS",
+        "SUMMARY_SHEET",
+        "UNKNOWN",
+        "VIEW_FILENAME",
+        "VIEW_LABEL",
+        "VIEW_NOTE",
+        "VIEW_STATES",
+        "ViewError",
+        "ViewResult",
+        "_SUMMARY_LABEL_WIDTH",
+        "_SUMMARY_VALUE_WIDTH",
+        "index_row",
+        "path_for",
+        "read_stamp",
+        "request_row",
+        "rules_digest",
+        "view_state",
+        "write_view"
+      ],
+      "constants": {
+        "VIEW_FILENAME": "'_status.xlsx'",
+        "SUMMARY_SHEET": "'Summary'",
+        "VIEW_NOTE": "'This workbook is regenerated every pass; edits here are lost.'",
+        "LABEL_ENGAGEMENT": "'Engagement folder'",
+        "LABEL_GENERATED": "'Generated (UTC)'",
+        "LABEL_RULES_DIGEST": "'Rules workbook SHA-256'",
+        "LABEL_RECORD_DIGEST": "'Record SHA-256'",
+        "LABEL_REQUEST_ROWS": "'Request rows'",
+        "LABEL_INDEX_ROWS": "'Index rows'",
+        "LABEL_PARKED_ROWS": "'Parked for a person'",
+        "CURRENT": "'current'",
+        "BEHIND": "'behind'",
+        "UNKNOWN": "'unknown'",
+        "VIEW_LABEL": "'Status workbook'",
+        "NEEDS_REVIEW_FIELDS": "('received', 'original_name', 'pbc_location', 'reason', 'candidates', 'evidence')"
+      },
+      "role": "The read-only workbook a person opens: VIEW_FILENAME, regenerated in the engagement folder at the end of every real pass from the readers (load_manifest() for the request rows and their statuses, read_index() for the originals), on four sheets - Summary, Requests, Index, Needs Review. Owns the file name, the Summary's labels, the three words a view's state is said in (CURRENT / BEHIND / UNKNOWN), write_view(), view_state(), read_stamp(), the two row builders (request_row(), index_row()) and the CLI that redraws one engagement and prints its state.",
+      "notes": "Decision 89, stage A step 3 - the step that completes stage A. IT HOLDS NO FACT, and that is the whole design: nothing reads it back, so the one failure every other workbook must survive costs nothing here. A view somebody has open in Excel is not replaced, the run carries view_stale and SUCCEEDS, the older view stands and the next pass lands one - no sidecar, no retry, no deferred rows. Written through manifest.save_workbook_atomically(), the same atomic replace the index uses; the read-only attribute is set afterwards and cleared under the same try before the next replace, because Windows refuses to replace a read-only file and an attribute this module set must never be what stops a view from landing. Every cell is text through one _text() and then manifest.as_text(): a client file called like a formula is a name, and nothing on a sheet is a number or a date a spreadsheet may re-type. view_state() compares the Summary's two stamps - the rules workbook's SHA-256 (validators.sha256_of, the one digest of bytes in the package) and ledger.head() - with those two things now; it takes no lock and opens the file from its bytes, so it answers while Excel holds it. Sheet names come from their owners (manifest.SHEET_NAME, filer.INDEX_SHEET, filer.NEEDS_REVIEW) and column widths from manifest.COLUMN_WIDTHS and filer.INDEX_LAYOUT, so the view invents no header and no width. Imports downwards only - ledger, manifest, filer, scaffold, validators - and only runner and api import it; writing the view is the last thing a pass does. tests/test_view.py holds the first real evidence in this suite of Excel's share modes: a Windows-only test that opens the file with CreateFileW, GENERIC_READ and FILE_SHARE_READ alone and proves a read still answers while a replace reports view_stale."
+    },
+    {
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
@@ -1209,17 +1268,17 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "5e785228a63d4530",
-      "lines": 846,
+      "sha256": "606e24f28297e054",
+      "lines": 857,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.",
-      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none."
+      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether the read-only status workbook still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the Open Status Workbook button opens state.paths.view through the same whitelisted opener the Open Status button uses."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "88495b873f3655b6",
-      "lines": 275,
+      "sha256": "11b243241a41c23d",
+      "lines": 283,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files."
     },
     {
@@ -1233,8 +1292,8 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "af2c7950ff784dd3",
-      "lines": 598,
+      "sha256": "4009717dedd4c69a",
+      "lines": 605,
       "role": "Desktop app styling."
     },
     {
@@ -1258,8 +1317,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7691a0357ef2e5b1",
-      "lines": 307,
+      "sha256": "cf2df2c611076038",
+      "lines": 308,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1276,8 +1335,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "debb30e23c05b674",
-      "lines": 638,
+      "sha256": "61afa4d4b58cdb9f",
+      "lines": 677,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1285,8 +1344,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6041834382dae9a4",
-      "lines": 296,
+      "sha256": "1fe945eb37d47295",
+      "lines": 318,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1294,7 +1353,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c5b0f8f386af9df4",
+      "sha256": "4d39176b5cb4cc5c",
       "lines": 7631,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -1479,6 +1538,12 @@
       "role": "The engagement's request list and its live status, plus the Engagement sheet (client, link, due, sender, firm, reminders, active, and the catalog form the list was cut from) the scheduled run reads. Sits OUTSIDE the client's shared scope \u2014 the accountant's file, not theirs."
     },
     {
+      "id": "artifact:_status.xlsx",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The workbook a person opens (decision 89), in the engagement folder beside the manifest and the index. Four sheets: Summary (the rules workbook's digest, the record's head, when it was drawn, and the sentence that says edits here are lost), Requests, Index and Needs Review. REGENERATED BY EVERY REAL PASS from the readers, never on a dry run, and READ-ONLY afterwards. It HOLDS NO FACT - every value on it is the record's or the manifest's - so nothing reads it back and anything typed into it is lost at the next pass. A view Excel holds open is simply not replaced: the run reports view_stale and succeeds, and the one on disk stays honestly behind. The app says current / behind / unknown beside the engagement's name (tracker.view.view_state) and opens it with the Open Status Workbook button; `python -m tracker.view <folder>` redraws one."
+    },
+    {
       "id": "artifact:reminder-draft.txt",
       "type": "artifact",
       "layer": "runtime",
@@ -1494,8 +1559,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "92919e6acb060027",
-      "lines": 136,
+      "sha256": "a9cdc69f60dfbbca",
+      "lines": 198,
       "exports": [
         "the_record_agrees_with_the_workbooks"
       ]
@@ -2546,8 +2611,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "81615f75fc9e8a16",
-      "lines": 603,
+      "sha256": "16d1396cb98dc531",
+      "lines": 617,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -2591,6 +2656,7 @@
         "test_the_standing_rules_are_worded_once_and_quoted_everywhere",
         "test_the_stub_and_staging_examples_docs_give_are_the_validators",
         "test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else",
+        "test_the_stylesheet_has_a_class_for_every_view_state",
         "test_the_version_and_package_name_have_one_home",
         "test_the_window_colour_is_read_from_the_stylesheet",
         "test_the_workflow_document_names_every_status_and_override",
@@ -2646,6 +2712,40 @@
         "test_the_pdf_verdict_cache_is_bounded",
         "test_valid_pdf_passes",
         "write_pdf"
+      ]
+    },
+    {
+      "id": "tests/test_view.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "147c15c6b82e4731",
+      "lines": 412,
+      "exports": [
+        "DAY1",
+        "ITEMS",
+        "REPO",
+        "a_pass",
+        "drop",
+        "engagement",
+        "rows_of",
+        "sheets",
+        "test_a_pass_regenerates_the_view_and_a_dry_run_writes_none",
+        "test_a_pass_whose_view_is_held_open_reports_it_and_still_succeeds",
+        "test_a_stamp_that_cannot_be_read_is_unknown_rather_than_believed",
+        "test_a_view_held_the_way_excel_holds_one_reads_and_does_not_replace",
+        "test_a_view_somebody_has_open_is_reported_stale_and_the_pass_still_succeeds",
+        "test_every_index_cell_is_the_readers_row_written_as_text",
+        "test_needs_review_lists_exactly_the_parked_rows",
+        "test_the_cli_writes_the_view_and_prints_its_state",
+        "test_the_file_is_read_only_afterwards_and_the_next_pass_replaces_it_anyway",
+        "test_the_registry_never_mistakes_the_view_for_an_engagement",
+        "test_the_requests_sheet_carries_a_learned_keyword_and_a_status_the_record_holds",
+        "test_the_stamp_changes_when_the_rules_change_and_when_the_record_grows",
+        "test_the_state_the_app_reads_carries_the_view_and_its_path",
+        "test_the_summary_carries_the_rules_digest_and_the_record_head",
+        "test_the_view_has_the_four_sheets_with_the_headers_their_owners_name",
+        "test_the_view_is_behind_after_a_person_edits_the_rules_and_after_a_new_event",
+        "test_there_is_no_view_until_one_is_written"
       ]
     },
     {
@@ -3069,6 +3169,12 @@
       "to": "tracker/__init__.py",
       "type": "documents",
       "source": "curated"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "pkg:openpyxl",
+      "type": "depends_on",
+      "source": "derived"
     },
     {
       "from": "tests/conftest.py",
@@ -4241,6 +4347,12 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_single_source.py",
+      "to": "tracker/view.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_templates.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -4292,6 +4404,72 @@
       "from": "tests/test_validators.py",
       "to": "tracker/validators.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "pkg:openpyxl",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tracker/scanner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tests/test_scanner.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -4563,6 +4741,18 @@
       "to": "tracker/templates.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "tracker/view.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "artifact:_status.xlsx",
+      "type": "reads",
+      "source": "curated"
     },
     {
       "from": "tracker/api.py",
@@ -5052,6 +5242,12 @@
     },
     {
       "from": "tracker/runner.py",
+      "to": "tracker/view.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
       "to": "artifact:_index.xlsx",
       "type": "reads",
       "source": "curated"
@@ -5253,6 +5449,72 @@
       "to": "tracker/scaffold.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "pkg:openpyxl",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "tracker/__init__.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "tracker/filer.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "tracker/scaffold.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "tracker/validators.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "artifact:_index.xlsx",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "artifact:_ledger.jsonl",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "artifact:_status.xlsx",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "artifact:_status.xlsx",
+      "type": "writes",
+      "source": "curated"
     }
   ]
 }

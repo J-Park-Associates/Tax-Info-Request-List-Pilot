@@ -142,6 +142,7 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     shift_item,
     template_items,
 )
+from tracker.view import VIEW_FILENAME, VIEW_LABEL, VIEW_STATES, view_state
 
 log = logging.getLogger("tracker.api")
 
@@ -329,6 +330,11 @@ def _vocab() -> dict:
             "task_name": TASK_NAME,
         },
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
+        # The read-only workbook a pass regenerates, and the three words
+        # that say whether the one on disk still describes the engagement.
+        # The app compares nothing itself: it shows the word the API sends
+        # and derives the chip's class from it, exactly as it does a status.
+        "view": {"label": VIEW_LABEL, "states": list(VIEW_STATES)},
     }
 
 
@@ -446,8 +452,13 @@ def _state(engagement: Path) -> dict:
     info = load_engagement_info(manifest_path)
     summary = summarize(items)
     entries = read_index(engagement / INDEX_FILENAME, quarantine=False)
+    view_path = engagement / VIEW_FILENAME
     return {
         "pending_statuses": len(deferred),
+        # The derived workbook, and whether it still describes this
+        # engagement. Reading the stamp takes no lock and tolerates Excel
+        # holding it, so showing the engagement stays a read.
+        "view": {"state": view_state(engagement), "path": str(view_path)},
         "engagement": _info_payload(info),
         "lock": _lock_payload(engagement),
         "summary": {
@@ -479,6 +490,9 @@ def _state(engagement: Path) -> dict:
             "prepared": str(engagement / PREPARED_DIR_NAME),
             "index": str(engagement / INDEX_FILENAME),
             "manifest": str(manifest_path),
+            # The one a person is meant to open. Named here as well as
+            # above because the shell opens only paths this map holds.
+            "view": str(view_path),
             # The practice's page, not this engagement's: it lives in the
             # clients root. Reported here because the shell opens only the
             # paths the API has named, and a person looking at one

@@ -19,6 +19,24 @@ synced engagement folder **is** the record: the manifest, the index, the
 originals, the working copies, the drafts and the engagement's own ledger
 all live in it. There is no database, no portal and no second copy anywhere.
 
+**The one to open is `_status.xlsx`.** Every pass regenerates it in the
+engagement folder from what the tool now knows: a **Summary** sheet, a
+**Requests** sheet (the list with each row's status and any keyword somebody
+taught it), an **Index** sheet (every original and where it went) and a
+**Needs Review** sheet (what is waiting for a person). Open that one rather
+than the index. It is read-only on purpose and it holds nothing of its own —
+every fact on it is the ledger's or the manifest's — so **anything typed into
+it is lost at the next pass**, and a copy left open in Excel simply is not
+refreshed until it is closed. The Summary says which rules and which ledger it
+was drawn from, and the app prints the answer beside the engagement's name:
+*current* (it still describes this engagement), *behind* (somebody has edited
+the request list, or the tool has decided something, since it was drawn) or
+*unknown* (there is none yet, or it cannot be read). The app's
+**Open Status Workbook** button opens it, and
+`python -m tracker.view "<engagement folder>"` redraws it and prints the state.
+The manifest is still where the request list is edited and the index is still
+the audit trail; neither has changed.
+
 `_ledger.jsonl` is that ledger: a line the tool appends every time it
 decides something about a document or writes a status, kept beside the
 workbooks so what the system did is not held only in files Excel can
@@ -87,7 +105,11 @@ same day, and the tool's card there prints that sentence.
    **Open Status** button opens it. The run log
    (`tracker.runner.LOG_FILENAME`), in the clients root beside the
    engagement folders, has the same, pass by pass, including passes made from
-   the app's button.
+   the app's button. For one client, open that engagement's
+   `tracker.view.VIEW_FILENAME` — the pass you just read about regenerated
+   it, so it is that engagement's list, index and review queue as of this
+   morning, and the app says beside the engagement's name whether it is
+   still current.
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document

@@ -236,6 +236,13 @@ body {
   padding: 5px 9px;
   white-space: nowrap;
 }
+/* The status workbook's state, beside the engagement. One class per word
+   the API sends (tracker.view.VIEW_STATES); the renderer derives the class
+   from the word and types none of them. */
+.view-current { border-color: #a7f3d0; color: #047857; }
+.view-behind  { border-color: #fde68a; color: #b45309; }
+.view-unknown { border-color: var(--border); color: var(--subtle); }
+
 .eng-picker select:hover { border-color: #cbd5e1; }
 .eng-picker select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
