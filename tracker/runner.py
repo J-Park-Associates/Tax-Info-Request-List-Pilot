@@ -322,7 +322,9 @@ def _worth_a_pass(run: EngagementRun) -> bool:
     if not checked.ok:
         run.error = "; ".join(checked.problems)
         return False
-    run.warnings = checked.warnings
+    run.warnings = list(checked.warnings)
+    if engagement.warning:
+        run.warnings.append(engagement.warning)
     return True
 
 
@@ -454,7 +456,10 @@ def append_log(path: Path | str, report: RunReport) -> Path:
     lines = [f"[{stamp}] {report.today.isoformat()} "
              f"reminders={report.reminders} dry_run={report.dry_run}"]
     lines += [f"    {run.summary()}" for run in report.runs]
-    with path.open("a", encoding="utf-8") as handle:
+    # A summary names client files, and a name NTFS holds is not always
+    # one UTF-8 can (a lone surrogate); the log takes what it can write
+    # rather than lose every engagement's line to one name.
+    with path.open("a", encoding="utf-8", errors="backslashreplace") as handle:
         handle.write("\n".join(lines) + "\n")
     return path
 

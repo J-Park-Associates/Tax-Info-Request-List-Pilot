@@ -345,6 +345,52 @@ CASES = [
         "2025 Form 1040-ES Estimated Tax for Individuals", "Purpose of This Package",
         "make a copy of one of your unused estimated tax payment vouchers, fill it in, and mail it with your payment",
     ], None),
+    # Round eleven. A broker's consolidated 1099 is one family's document: the
+    # interest-and-dividend one files, the one with a 1099-B is the rows' own
+    # tie. A receipt row keys on receipt wording, not on a pledge, a thank-you
+    # or the firm's own letter; a church's giving statement is a receipt. A
+    # state voucher is an estimated tax record; an FSA statement is not a
+    # childcare provider's statement.
+    ("1040", "Vanguard consolidated 1099.pdf", [
+        "Vanguard Brokerage Services", "2025 Consolidated Form 1099 - Account 8812-4455",
+        "Form 1099-INT   Interest Income", "Form 1099-DIV   Dividends and Distributions",
+        "1 Interest income 1,240.00", "1a Total ordinary dividends 3,400.00",
+    ], "A02"),
+    ("1041", "Vanguard consolidated 1099.pdf", [
+        "Vanguard Brokerage Services", "2025 Consolidated Form 1099 - Account 8812-4455",
+        "Form 1099-INT   Interest Income", "Form 1099-DIV   Dividends and Distributions",
+    ], "B01"),
+    ("1040", "Schwab consolidated 1099 with a B.pdf", [
+        "Charles Schwab", "2025 Consolidated Form 1099", "Form 1099-DIV Dividends and Distributions",
+        "Form 1099-INT Interest Income", "Form 1099-B Proceeds From Broker and Barter Exchange Transactions",
+        "Form 1099-MISC Miscellaneous Information", "Realized Gain and Loss",
+    ], None),
+    ("1040", "pledge acknowledgment.pdf", [
+        "State University Foundation", "We gratefully acknowledge your pledge of 10,000.00, payable over five years.",
+        "First installment due January 2026.",
+    ], None),
+    ("1040", "signed engagement letter.pdf", [
+        "J Park & Associates", "Engagement Letter for the 2025 tax year",
+        "We gratefully acknowledge the trust you place in us each year.", "Signed: Jane Smith",
+    ], None),
+    ("1040", "volunteer record.pdf", ["Helping Hands", "Thank you for your gift of time: 120 hours in 2025", "Mileage log"], None),
+    ("1040", "church contribution statement.pdf", [
+        "Grace Community Church", "EIN 95-1111111", "2025 Contribution Statement", "Total contributions for 2025: 1,500.00",
+        "No goods or services were provided in exchange for these contributions.",
+    ], "D01"),
+    ("1040", "statement of giving.pdf", ["First Baptist Church", "2025 Statement of Giving", "Total 2,400.00"], "D01"),
+    ("1040", "contribution record.pdf", ["St. Mary's Parish", "Contribution Record for 2025", "Envelope 214", "Total 900.00"], "D01"),
+    ("1040", "acknowledgment letter.pdf", [
+        "Red Cross", "We gratefully acknowledge your charitable contribution of $500 received on December 15, 2025.",
+    ], "D01"),
+    ("1040", "CA 540-ES voucher.pdf", [
+        "TAXABLE YEAR 2025 Estimated Tax for Individuals CALIFORNIA FORM 540-ES",
+        "Amount of payment 1,200.00", "Form 540-ES 2025",
+    ], "H01"),
+    ("1040", "dependent care FSA statement.pdf", [
+        "WageWorks Benefits Administration", "2025 Dependent Care Statement",
+        "Dependent Care FSA elected 5,000.00", "Claims reimbursed 5,000.00",
+    ], None),
 ]
 
 

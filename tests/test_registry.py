@@ -81,6 +81,31 @@ def test_a_year_level_above_the_client_never_retires_the_new_engagement_itself(t
     assert retired[str(Path("2026", "Smith", "1040"))] == "" and retired[str(Path("Chicago", "Smith", "1040"))] == ""
 
 
+def test_a_rolled_from_that_matches_nothing_is_a_warning_not_a_silence(tmp_path):
+    # The eleventh reading: a Rolled From that resolved to nothing and
+    # tail-matched nothing retired nothing and said nothing, and the
+    # scheduled run kept chasing last year's list.
+    from tracker.registry import ROLLED_FROM_UNMATCHED, engagement_from, mark_superseded
+
+    root = tmp_path / "Clients"
+    make(root, "Smith", "Smith - 2025")
+    make(root, "Smith", "Smith - 2026", info=EngagementInfo(rolled_from="Smith - 2025"))   # hand-typed, relative
+    found = [engagement_from(p) for p in engagement_dirs(root)]
+    marked = {e.path.name: e for e in mark_superseded(found)}
+    assert marked["Smith - 2025"].superseded_by == "" and marked["Smith - 2025"].warning == ""
+    assert marked["Smith - 2026"].warning == ROLLED_FROM_UNMATCHED.format(rolled_from="Smith - 2025")
+    assert marked["Smith - 2026"].active
+
+    # A folder the walk could not list is never taken as the prior: its
+    # report survives rather than becoming a benign skip.
+    unlisted = Engagement(path=root / "Jones" / "Jones - 2025", problem="could not be listed (Access is denied)")
+    successor = engagement_from(make(root, "Jones", "Jones - 2026",
+                                     info=EngagementInfo(rolled_from=str(unlisted.path))))
+    marked = {e.path.name: e for e in mark_superseded([unlisted, successor])}
+    assert marked["Jones - 2025"].superseded_by == "" and marked["Jones - 2025"].problem
+    assert marked["Jones - 2026"].warning
+
+
 def test_a_client_folder_the_walk_cannot_list_is_a_problem_row_not_a_silence(tmp_path):
     # The tenth reading: an ACL that denies the run's account made a whole
     # client vanish from the registry, and the run reported success.

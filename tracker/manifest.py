@@ -659,10 +659,12 @@ def pending_updates(
 def with_pending(
     items: Iterable[RequestItem], updates: Mapping[str, StatusUpdate]
 ) -> list[RequestItem]:
-    """``items`` with the scanner columns replaced by any deferred update."""
+    """``items`` with the scanner columns replaced by any deferred update.
+    Identifiers match as ``load_manifest`` compares them, without case."""
+    by_identifier = {identifier.lower(): update for identifier, update in updates.items()}
     out = []
     for item in items:
-        update = updates.get(item.identifier)
+        update = by_identifier.get(item.identifier.lower())
         if update is None:
             out.append(item)
         else:

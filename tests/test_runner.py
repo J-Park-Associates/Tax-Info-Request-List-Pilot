@@ -378,6 +378,22 @@ def test_a_weekday_report_says_why_there_are_no_drafts(tmp_path, samples):
     assert "0 draft(s) written" in text
 
 
+def test_the_log_takes_a_name_utf8_cannot_hold(tmp_path, samples):
+    # The eleventh reading: a lone surrogate in a client's file name is
+    # reported every pass by name, and the run log - the unattended run's
+    # only trace - died on it, losing every engagement's line.
+    from tracker.runner import EngagementRun, RunReport
+
+    engagement = build_engagement(tmp_path, samples)
+    run = EngagementRun(engagement=engagement)
+    run.error = "bank statement \ud83d.pdf: cannot be handled under this name"
+    report = RunReport(today=FRIDAY, reminders=REMINDERS_AUTO, dry_run=False, runs=[run])
+    log = tmp_path / LOG_FILENAME
+    append_log(log, report)
+    text = log.read_text(encoding="utf-8")
+    assert "bank statement" in text and "cannot be handled" in text
+
+
 def test_the_log_appends_rather_than_replaces(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
     registry = Registry(source=tmp_path, engagements=[engagement])

@@ -329,10 +329,12 @@ _REFERENCE_AFTER = re.compile(
     r"worksheet|for|with|at|by|filers?|must|may|should)\b"
 )
 #: The words a document prints before a form it is telling the reader
-#: about; a form never names itself after them.
+#: about; a form never names itself after them. On the same line: a
+#: page's footer names the form itself, whatever word the prose above
+#: happened to end on.
 _REFERENCE_BEFORE = re.compile(
     r"(?<![a-z0-9])(?:forms|attach|attached|see|file|files|filed|use|of|on|from|with|to|and|or|a|an|the|"
-    r"include|including|per|report|reported)\s+$"
+    rf"include|including|per|report|reported){_SAME_LINE}+$"
 )
 _BEFORE_CHARS = 12   # room for the longest word above and the space after it
 
@@ -402,21 +404,25 @@ def dominant_forms(text: str) -> set[str]:
     return {min((key for key, n in scores.items() if n == top), key=first.get)}
 
 
-#: A title that names this many forms in their own right is a list of
-#: forms - an organizer's checklist ("Form W-2 - Wage and Tax Statement",
-#: "Form 1098 - Mortgage Interest Statement", ...), a transmittal's
-#: "Enclosed: Form W-2 2025, Form 1098 2025, Form 1099-INT 2025" - and
-#: is none of them, as decision 63 says of a notice that lists three
-#: forms to file. A composite 1099 names two or three and parks on the
-#: rows' own tie.
+#: A title that names this many form families in their own right is a
+#: list of forms - an organizer's checklist ("Form W-2 - Wage and Tax
+#: Statement", "Form 1098 - Mortgage Interest Statement", "Form 1099-INT
+#: - Interest Income"), a transmittal's "Enclosed: Form W-2 2025, Form
+#: 1098 2025, Form 1099-INT 2025" - and is none of them, as decision 63
+#: says of a notice that lists three forms to file. Families, not
+#: numbers: a broker's consolidated 1099 names "Form 1099", "1099-INT",
+#: "1099-DIV" and "1099-B" and is one family's document, which the rows
+#: that ask for its parts then contest (the eleventh reading found it
+#: blinded, parked with no candidate at all).
 _LIST_OF_FORMS = 3
+_FAMILY = re.compile(r"[a-z]?\d{3,4}|w\d")
 
 
 def _title_forms(low: str) -> set[str]:
     """The form numbers the title (``_title``) of ``low`` (lower-cased
     text) names in their own right: a mention there that is not a
     sentence about another form. None when the title names
-    ``_LIST_OF_FORMS`` or more."""
+    ``_LIST_OF_FORMS`` families or more."""
     stop = len(_title(low))
     forms = set()
     for key, start, weight in _mentions(low):
@@ -424,7 +430,8 @@ def _title_forms(low: str) -> set[str]:
             break
         if weight > _REFERENCE_WEIGHT:
             forms.add(key)
-    return forms if len(forms) < _LIST_OF_FORMS else set()
+    families = {_FAMILY.match(key).group(0) for key in forms}
+    return forms if len(families) < _LIST_OF_FORMS else set()
 
 
 def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:

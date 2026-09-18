@@ -123,7 +123,12 @@ def set_clients_root(root: Path | str) -> Path:
     Creating it here would turn a typo into an empty "clients" folder that
     the run walks for ever and finds nothing in.
     """
-    root = Path(str(root).strip())
+    typed = str(root).strip()
+    if not typed:
+        # Path("") is the working folder, which is a folder: a cleared box
+        # would record the app's own folder and lose the real one.
+        raise SettingsError("no folder given")
+    root = Path(typed)
     if not root.is_dir():
         raise SettingsError(f"not a folder: {root}")
     if str(root).rstrip("/") == root.drive:       # "D:" is the drive's current folder to Windows

@@ -123,6 +123,7 @@ SHARED = {
     "estimated_tax": dict(document="Estimated Tax Payment Records",
                           any_keywords="estimated tax payment voucher 1, estimated tax payment voucher 2, "
                                        "estimated tax payment voucher 3, estimated tax payment voucher 4, "
+                                       "estimated tax payment voucher for individuals, form 540-es, "
                                        "amount of estimated tax you are paying, estimated tax voucher, "
                                        "estimated payments made",
                           extensions="pdf, xlsx"),
@@ -155,14 +156,14 @@ FORM_TEMPLATES = {
         _row("A02", "1099-INT / 1099-DIV - Interest & Dividend Income", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-oid", expected_count=3),
         _row("B01", "Prior-Year Federal & State Tax Returns", core=True, period=TY_PRIOR, required_keywords="individual income tax return, filing status, under penalties of perjury"),
         _row("C01", "Mortgage Interest Statement - Form 1098", core=True, required_keywords="1098, mortgage interest"),
-        _row("D01", "Charitable Contribution Receipts", core=True, extensions="pdf, xlsx", any_keywords="donation receipt, contribution receipt, giving statement, giving summary, donation summary, donated goods, no goods or services, thank you for your donation, thank you for your gift, gratefully acknowledge"),
+        _row("D01", "Charitable Contribution Receipts", core=True, extensions="pdf, xlsx", any_keywords="donation receipt, contribution receipt, giving statement, statement of giving, giving summary, giving record, contribution record, donation summary, donor statement, charitable contribution statement, tax-deductible contributions, donated goods, no goods or services, thank you for your donation, thank you for your contribution, receipt for your donation, receipt for your contribution, acknowledge your donation, acknowledge your contribution, acknowledge your charitable contribution"),
         _row("E01", "1099-B / Brokerage Year-End Statements", core=False, extensions="pdf, csv", any_keywords="1099-b, proceeds from broker, brokerage statement, realized gain and loss"),
         _row("E02", "1099-R Retirement Distributions", core=False, any_keywords="1099-r, retirement distribution"),
         _row("F01", "Schedule K-1s Received", core=False, any_keywords="partner's share of income, shareholder's share of income, beneficiary's share of income"),
         _row("G01", "Property Tax Statements", core=False, any_keywords="property tax statement, property tax bill, secured property tax, tax assessor, assessor, parcel number"),
         _shared("H01", "estimated_tax", core=False),
         _row("I01", "Form 1095-A - Marketplace Health Insurance", core=False, any_keywords="1095-a, marketplace identifier, monthly enrollment premium, advance payment of premium tax credit"),
-        _row("J01", "Childcare Provider Statements - Name, EIN, Amounts", core=False, extensions="pdf, xlsx", any_keywords="child care statement, childcare statement, daycare statement, dependent care statement, child care provider statement, childcare provider statement, daycare provider statement, dependent care provider statement, child care receipt, childcare receipt, daycare receipt, child care tax statement, childcare tax statement, statement of child care expenses, statement of childcare expenses, statement of daycare expenses, year-end child care, year-end childcare, year-end daycare"),
+        _row("J01", "Childcare Provider Statements - Name, EIN, Amounts", core=False, extensions="pdf, xlsx", any_keywords="child care statement, childcare statement, daycare statement, child care provider statement, childcare provider statement, daycare provider statement, dependent care provider statement, child care receipt, childcare receipt, daycare receipt, child care tax statement, childcare tax statement, statement of child care expenses, statement of childcare expenses, statement of daycare expenses, year-end child care, year-end childcare, year-end daycare"),
         _row("K01", "IRA / HSA Contribution Statements - Form 5498", core=False, any_keywords="5498, 5498-sa, 5498-esa, ira contribution information, medicare advantage msa information"),
         _row("L01", "Tuition Statements - Form 1098-T", core=False, any_keywords="1098-t, tuition statement, qualified tuition and related expenses"),
     ],

@@ -377,8 +377,15 @@ def test_a_title_that_lists_three_forms_names_none_of_them():
     assert not says(checklist, "1098") and not says(checklist, "1099-int")
     transmittal = "Enclosed please find: Form W-2 2025, Form 1098 2025, Form 1099-INT 2025"
     assert _title_forms(transmittal.lower()) == set()
-    # Two is a composite, and the rows' own tie parks it.
-    assert _title_forms("form 1099-int interest income 2025\nform 1099-b proceeds from broker 2025") == {"1099int", "1099b"}
+    # Families, not numbers: a broker's consolidated 1099 names the family and
+    # its parts and is one family's document, which the rows then contest.
+    composite = ("vanguard brokerage services\n2025 consolidated form 1099 - account 8812-4455\n"
+                 "form 1099-int   interest income\nform 1099-div   dividends and distributions\n"
+                 "form 1099-b   proceeds from broker and barter exchange transactions")
+    assert _title_forms(composite) == {"1099", "1099int", "1099div", "1099b"}
+    assert says(composite, "1099-int") and says(composite, "1099-b")
+    # A page footer names the form itself, whatever word the prose above ended on.
+    assert _title_forms("be sure to\nform 1040-es (2026) estimated tax for individuals") == {"1040es"}
 
 
 def test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right():

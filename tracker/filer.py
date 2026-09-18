@@ -519,7 +519,14 @@ def _read_index_workbook(path: Path) -> list[IndexEntry]:
     }
     entries = []
     for row in rows[1:]:
-        if not row or row[0] is None:
+        # A row is blank when none of the columns the index knows holds
+        # anything - not when its first physical cell is empty, which a
+        # column somebody inserted at A, or a cleared Received cell, would
+        # make of every row; read as [] the next write would then drop a
+        # person's filing along with everything else (the eleventh reading).
+        if not row or all(
+            (row[position] if position < len(row) else None) in (None, "") for position in by_field.values()
+        ):
             continue
         values: dict[str, object] = {}
         for name, position in by_field.items():
@@ -702,8 +709,15 @@ def unlistable_folders(shared_dir: Path) -> list[Path]:
         if exc.filename:
             failed.append(Path(exc.filename))
 
-    for _ in os.walk(shared_dir, onerror=onerror):
-        pass
+    # The same ground the other walks cover: not behind a link (os.walk
+    # descends a junction), not the preserved originals, not a sync
+    # client's staging folder.
+    for folder, subfolders, _files in os.walk(shared_dir, onerror=onerror):
+        subfolders[:] = [
+            name for name in subfolders
+            if not _is_link(Path(folder) / name) and not is_sync_staging(name)
+            and not (Path(folder) == shared_dir and name == PBC_DIR_NAME)
+        ]
     return sorted(failed)
 
 
@@ -782,34 +796,57 @@ def replaced_in_pbc(
     return replaced
 
 
-def _record_missing_digests(engagement_dir: Path, entries: list[IndexEntry]) -> int:
-    """Fill in the digest and size of every row that has none, from the
-    bytes the pass that wrote the row actually handled. Returns how many.
+#: The sentence a row recorded without its bytes gets when its working
+#: copy and its original no longer agree. Which is the client's document
+#: is not the filer's to guess: the copy may have been annotated, or its
+#: name taken by a later drop called the same; the original may have been
+#: replaced. Said every pass until a person has looked.
+UNTIED_IN_PBC = (
+    "{location} was recorded without its bytes on {received} and its working copy "
+    "{prepared} no longer matches it - a person should look"
+)
 
-    Those bytes are the row's working copy: the pass made it from the
-    original as it was then. The original in ``PBC_DIR_NAME/`` as it is
-    *now* is no evidence of that - the client may have replaced it since
-    (the tenth reading did exactly that, and a digest adopted from the
-    replacement made the index describe the working copy wrongly and hid
-    the replacement for ever). A row with no working copy left is left
-    with no digest: nobody's, as decision 65 says.
+
+def _record_missing_digests(
+    engagement_dir: Path, entries: list[IndexEntry]
+) -> tuple[int, list[tuple[Path, IndexEntry]]]:
+    """Fill in the digest and size of every row that has none, where the
+    bytes can be tied to the row. Returns how many, and the rows that
+    could not be.
+
+    A row with no digest (decision 65) is tied to its bytes only when its
+    working copy - what the pass made from the original - and the original
+    in ``PBC_DIR_NAME/`` still agree. The original alone is no evidence
+    (the client may have replaced it since; the tenth reading); the copy
+    alone is no evidence either (its name is the client's and a freed name
+    is taken by the next drop called the same, and a reviewer's PDF app
+    may have re-saved it; the eleventh reading). Where the two disagree,
+    nothing is adopted and the row is said out loud (``UNTIED_IN_PBC``).
+    A row with no working copy left stays nobody's.
     """
     filled = 0
+    untied: list[tuple[Path, IndexEntry]] = []
     for position, entry in enumerate(entries):
-        if entry.digest or not entry.prepared_location:
+        if entry.digest or not entry.prepared_location or not entry.pbc_location:
             continue
         copy = engagement_dir / entry.prepared_location
+        original = engagement_dir / entry.pbc_location
         if not copy.is_file() or is_cloud_placeholder(copy):
+            continue
+        if not original.is_file() or is_cloud_placeholder(original):
             continue
         try:
             digest = sha256_of(copy)
-            size_kb = round(copy.stat().st_size / 1024, 1)
+            if sha256_of(original) != digest:
+                untied.append((original, entry))
+                continue
+            size_kb = round(original.stat().st_size / 1024, 1)
         except OSError:
             continue                 # unreadable now; the next run looks again
         entries[position] = replace(entry, digest=digest, size_kb=size_kb)
         filled += 1
-        log.info("Recorded the bytes of %s from its working copy, preserved earlier but unread", entry.pbc_location)
-    return filled
+        log.info("Recorded the bytes of %s, preserved earlier but unread", entry.pbc_location)
+    return filled, untied
 
 
 def _prune_empty_dirs(shared_dir: Path, keep: Path) -> None:
@@ -870,8 +907,14 @@ def file_drops(
         # An original preserved by a pass that could not read it back has no
         # digest (decision 65). While it has none, a replacement is never
         # noticed and a person's filing of it is never honoured; a later
-        # pass that can read it records the bytes it holds.
-        recorded_digests = 0 if dry_run else _record_missing_digests(engagement_dir, entries)
+        # pass records the bytes where its copy and the original still agree,
+        # and says so where they do not.
+        recorded_digests, untied = (0, []) if dry_run else _record_missing_digests(engagement_dir, entries)
+        for path, earlier in untied:
+            report.errors.append(FileError(path.name, UNTIED_IN_PBC.format(
+                location=earlier.pbc_location, received=earlier.received,
+                prepared=earlier.prepared_location,
+            ), True))
         # The row that holds each document's bytes. A Duplicate row only
         # points at another row; letting it shadow the Filed row would hide
         # a working copy that has since been deleted, and a re-send that
@@ -1196,6 +1239,9 @@ def assign_review_file(
             raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
         digest, size_kb = entry.digest, entry.size_kb
         parked = engagement_dir / entry.prepared_location if entry.prepared_location else None
+        # The parked copy is only ever read when it is here and hydrated:
+        # hashing a dehydrated one would make the sync client download it.
+        parked_here = parked is not None and parked.is_file() and not is_cloud_placeholder(parked)
         if not digest:
             # The pass that preserved this original could not read it back
             # (decision 65) and recorded no digest. A row a person files
@@ -1205,7 +1251,7 @@ def assign_review_file(
             # - what the pass handled - and the original must still hold
             # them; the original alone is trusted only when no copy is
             # left to check it against.
-            evidence = parked if parked is not None and parked.is_file() else source
+            evidence = parked if parked_here else source
             try:
                 digest = sha256_of(evidence)
                 size_kb = round(evidence.stat().st_size / 1024, 1)
@@ -1216,8 +1262,9 @@ def assign_review_file(
                 ) from exc
             if replaced:
                 raise FilingError(
-                    f"the original {entry.pbc_location} no longer holds the bytes its parked copy "
-                    "was made from - it was replaced after it arrived; look at the file first"
+                    f"the original {entry.pbc_location} and its parked copy no longer hold the same "
+                    "bytes, and the row recorded none - one of them changed after it arrived; "
+                    "look at both files first"
                 )
         elif sha256_of(source) != entry.digest:
             # The client replaced the original after it was parked (the pass
@@ -1236,7 +1283,13 @@ def assign_review_file(
         target = dest_folder / filed_as
 
         moved = reused = False
-        if parked is not None and parked.is_file():
+        # The parked copy is moved only while it holds the row's bytes. Its
+        # name is the client's, and a freed name is taken by the next drop
+        # called the same: a person filing row A would otherwise carry
+        # document B into the request folder under A's canonical name (the
+        # eleventh reading). Anything else at that path is left alone and
+        # the copy is made from the original, which the check above proved.
+        if parked_here and sha256_of(parked) == digest:
             _move_whole(parked, target)   # keeps any notes a person made on it
             moved = True
         else:

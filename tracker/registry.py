@@ -41,6 +41,13 @@ from tracker.validators import OFFICE_LOCK_PREFIX, is_sync_staging
 
 #: How a superseded engagement is described, by the run and the app alike.
 SKIP_ROLLED_FORWARD = "rolled forward into {successor}"
+#: The warning an engagement carries when its Rolled From names no engagement
+#: under the root: the prior it was rolled from is not retired and, if it is
+#: still under the root by another name, is still chased.
+ROLLED_FROM_UNMATCHED = (
+    "Rolled From names {rolled_from!r}, which matches no engagement the run can read under this root; "
+    "whichever engagement that was is not retired"
+)
 
 #: How far below the root discovery looks: Clients/{Client}/{Engagement}
 #: is two; four leaves room for a year or office level above that.
@@ -64,6 +71,7 @@ class Engagement:
     info: EngagementInfo = EngagementInfo()
     problem: str = ""        # why the manifest could not be read, if it could not
     superseded_by: str = ""  # the engagement this one was rolled forward INTO
+    warning: str = ""        # what its sheet says that the registry could not act on
 
     def __getattr__(self, name: str):
         try:
@@ -190,13 +198,15 @@ def _prior_of(candidate: Engagement, index: int, engagements: list[Engagement]) 
     and ``2026/Smith/1040``) has two engagements sharing the last two
     names, and the third name decides; two that tie decide nothing.
     """
-    for position, prior in enumerate(engagements):
-        if position != index and _same_folder(candidate.rolled_from, prior.path):
+    # A folder the walk could not list, or whose manifest it could not
+    # read, is never taken as the prior: retiring it would turn its report
+    # into a benign skip.
+    readable = [(position, prior) for position, prior in enumerate(engagements)
+                if position != index and not prior.problem]
+    for position, prior in readable:
+        if _same_folder(candidate.rolled_from, prior.path):
             return position
-    tails = {
-        position: _shared_tail(candidate.rolled_from, prior.path)
-        for position, prior in enumerate(engagements) if position != index
-    }
+    tails = {position: _shared_tail(candidate.rolled_from, prior.path) for position, prior in readable}
     if not tails:
         return None
     longest = max(tails.values())
@@ -217,14 +227,20 @@ def mark_superseded(engagements: list[Engagement]) -> list[Engagement]:
     year's manifest and type "no".
     """
     successors: dict[int, str] = {}
+    unmatched: dict[int, str] = {}
     for index, candidate in enumerate(engagements):
         if not candidate.rolled_from:
             continue
         prior = _prior_of(candidate, index, engagements)
         if prior is not None:
             successors[prior] = candidate.label
+        else:
+            # Retiring nothing in silence is how last year's list stays
+            # chased; the engagement that names the prior carries the word.
+            unmatched[index] = ROLLED_FROM_UNMATCHED.format(rolled_from=candidate.rolled_from)
     return [
-        replace(e, superseded_by=successors[i]) if i in successors else e
+        replace(e, superseded_by=successors.get(i, ""), warning=unmatched.get(i, e.warning))
+        if i in successors or i in unmatched else e
         for i, e in enumerate(engagements)
     ]
 
@@ -280,6 +296,8 @@ if __name__ == "__main__":
             flags.append("no reminders")
         if engagement.problem:
             flags.append(f"MANIFEST PROBLEM: {engagement.problem}")
+        if engagement.warning:
+            flags.append(f"WARNING: {engagement.warning}")
         suffix = f"  ({', '.join(flags)})" if flags else ""
         print(f"  {engagement.label}{suffix}")
         print(f"      {engagement.path}")

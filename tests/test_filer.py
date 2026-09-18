@@ -1117,18 +1117,21 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
     assert later.digest == sha256_of(engagement / later.pbc_location) and later.size_kb > 0
 
 
-def test_bytes_recorded_after_the_fact_are_the_working_copys_and_a_replaced_original_is_said(engagement, monkeypatch):
+def test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded(engagement, monkeypatch):
     # The tenth reading: the digest filled in on a later pass came from the
     # original as it was THEN, so a client's replacement was adopted into
-    # the old row, the index described the working copy wrongly, and the
-    # replacement was never reported. The working copy is what the pass
-    # handled; that is the evidence.
+    # the old row. The eleventh: the working copy alone is no better - its
+    # name is the client's and a freed name is taken by the next drop
+    # called the same. A row is tied to its bytes only while its copy and
+    # its original still agree; where they do not, nothing is adopted and
+    # the row is said out loud, every pass.
     import tracker.filer as filer_module
-    from tracker.filer import REPLACED_IN_PBC, FilingError, assign_review_file
+    from tracker.filer import UNTIED_IN_PBC, FilingError, assign_review_file
     from tracker.validators import sha256_of
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    drop(engagement, "scan0013.pdf", "nothing the rules recognise either")
     real = filer_module.sha256_of
 
     def unreadable(path):
@@ -1138,24 +1141,89 @@ def test_bytes_recorded_after_the_fact_are_the_working_copys_and_a_replaced_orig
     monkeypatch.setattr(filer_module, "sha256_of", unreadable)
     report = file_drops(engagement, today=DAY1)
     monkeypatch.undo()
-    filed, parked = report.filed[0], report.review[0]
-    assert filed.digest == "" and parked.digest == ""
+    filed = report.filed[0]
+    parked = {r.original_name: r for r in report.review}
+    assert filed.digest == "" and all(r.digest == "" for r in parked.values())
     first_bytes = (engagement / filed.prepared_location).read_bytes()
 
-    # The client replaces both originals under their own names.
+    # The client replaces the W-2 under its own name; a reviewer's app re-saves scan0012's parked copy.
     text_pdf(pbc(engagement) / "w2.pdf", "Form W-2 Wage and Tax Statement 2025 corrected")
-    text_pdf(pbc(engagement) / "scan0012.pdf", "something else entirely")
+    text_pdf(engagement / parked["scan0012.pdf"].prepared_location, "nothing the rules recognise, annotated")
 
     report = file_drops(engagement, today=DAY2)
     rows = {r.original_name: r for r in read_index(engagement / INDEX_FILENAME)}
-    assert rows["w2.pdf"].digest == sha256_of(engagement / filed.prepared_location)      # the copy's bytes
+    assert rows["w2.pdf"].digest == "" and rows["scan0012.pdf"].digest == ""              # nothing adopted
+    assert rows["scan0013.pdf"].digest == sha256_of(pbc(engagement) / "scan0013.pdf")   # tied: copy and original agree
     assert (engagement / filed.prepared_location).read_bytes() == first_bytes            # untouched
-    said = [e.name for e in report.errors if e.error.startswith(REPLACED_IN_PBC.split("{")[0])]
-    assert sorted(said) == ["scan0012.pdf", "w2.pdf"]
+    said = sorted(e.name for e in report.errors if e.error.startswith(UNTIED_IN_PBC.split("{")[0]))
+    assert said == ["scan0012.pdf", "w2.pdf"]
+    assert all(e.left_in_place for e in report.errors)
 
-    # And a person cannot file the replaced parked one under the old row.
-    with pytest.raises(FilingError, match="replaced after it arrived"):
-        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    # A person cannot file either untied row under it; the tied one files and carries its bytes.
+    with pytest.raises(FilingError, match="look at both files first"):
+        assign_review_file(engagement, parked["scan0012.pdf"].pbc_location, "C01", today=DAY2)
+    result = assign_review_file(engagement, parked["scan0013.pdf"].pbc_location, "C01", today=DAY2)
+    assert result.entry.digest == rows["scan0013.pdf"].digest
+
+
+def test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_bytes(engagement):
+    # The eleventh reading: a parked name is the client's, so once row A's
+    # copy is gone the next drop called the same parks under that very
+    # path, and filing row A carried document B into the request folder
+    # under A's canonical name.
+    from tracker.filer import assign_review_file
+    from tracker.validators import sha256_of
+
+    drop(engagement, "Scan.pdf", "document A, nothing the rules recognise")
+    row_a = file_drops(engagement, today=DAY1).review[0]
+    (engagement / row_a.prepared_location).unlink()                  # a person took it away to read
+    drop(engagement, "Scan.pdf", "document B, unrelated")
+    row_b = file_drops(engagement, today=DAY2).review[0]
+    assert row_b.prepared_location == row_a.prepared_location         # the freed name, taken
+
+    result = assign_review_file(engagement, row_a.pbc_location, "C01", today=DAY2)
+    filed = engagement / result.entry.prepared_location
+    assert result.moved_review_copy is False
+    assert sha256_of(filed) == row_a.digest                            # document A, copied from its original
+    assert (engagement / row_b.prepared_location).exists()            # document B still waits for a person
+    assert sha256_of(engagement / row_b.prepared_location) == row_b.digest
+
+
+def test_a_column_inserted_into_the_index_does_not_read_as_no_rows(engagement):
+    # The eleventh reading: the blank-row test looked at the first physical
+    # cell, so one column a person inserted at A read every row as blank,
+    # and the next write dropped them all - a person's filing included.
+    from openpyxl import load_workbook
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    wb = load_workbook(engagement / INDEX_FILENAME)
+    wb[INDEX_SHEET].insert_cols(1)
+    wb[INDEX_SHEET]["A1"] = "Checked"
+    wb.save(engagement / INDEX_FILENAME)
+    wb.close()
+
+    assert [r.original_name for r in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+    report = file_drops(engagement, today=DAY2)
+    assert report.handled == 0
+    assert [r.original_name for r in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+
+
+def test_the_unlistable_walk_covers_the_same_ground_as_the_others(engagement, tmp_path):
+    from tracker.filer import unlistable_folders
+
+    shared = engagement / SHARED_DIR_NAME
+    (shared / PBC_DIR_NAME / "inside").mkdir(parents=True)
+    staging = shared / ".tmp.driveupload"
+    staging.mkdir()
+    assert unlistable_folders(shared) == []
+    if sys.platform == "win32":
+        import _winapi
+
+        outside = tmp_path / "outside" / "deep"
+        outside.mkdir(parents=True)
+        _winapi.CreateJunction(str(tmp_path / "outside"), str(shared / "link"))
+        assert unlistable_folders(shared) == []                       # never walks behind the junction
 
 
 def test_a_folder_the_run_cannot_list_is_reported_every_pass(engagement):
