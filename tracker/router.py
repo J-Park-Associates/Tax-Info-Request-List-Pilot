@@ -54,6 +54,15 @@ default. A lead of that kind never pre-empts a filing the way a
 required-keyword match does: it is read only when the file would otherwise
 be parked with no candidate at all.
 
+A decision also keeps *why* it was reached. ``Routing.evidence`` names the
+tier the decision rested on; ``Routing.evidence_record`` carries, per
+candidate, the keywords that matched and where in the document they were
+said (:class:`tracker.content_check.Evidence`), a by-name hit as the file's
+own title, and a tier-2 refusal as that Reason's code. It decides nothing -
+every verdict above is reached exactly as it was before there was a record
+- and it is what the index's Evidence column, and the person working the
+review queue, then read.
+
 Routing is read-only. Moving, renaming and indexing happen in
 :mod:`tracker.filer`, which uses the decisions made here. The verdicts the
 router reaches on the way are left in the engagement's content cache,
@@ -64,18 +73,23 @@ working copy's new name instead of reading the document a second time.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import reasons
 from tracker.content_check import (
+    RULE_FILENAME,
+    RULE_REFUSED,
+    WHERE_TITLE,
     ContentCache,
+    Evidence,
     Extraction,
     any_keyword_matched,
     contains_keyword,
     evaluate_rules,
     extract,
     extract_by_ocr,
+    format_evidence,
     rules_fingerprint,
     says,
 )
@@ -116,6 +130,12 @@ class Routing:
     reason: str                     # plain English, safe to show a client
     candidates: tuple[str, ...] = ()  # identifiers that accepted the file
     evidence: str = ""              # EVIDENCE_CONTENT | EVIDENCE_FILENAME | ""
+    #: What each candidate's evidence actually was, by identifier: the
+    #: keywords that matched, where they were said, the tier-2 reason that
+    #: refused the file. ``evidence`` above says which *tier* the decision
+    #: rested on and nothing more; this says why, and only for the
+    #: identifiers the decision names, so the index's cell stays readable.
+    evidence_record: dict[str, tuple[Evidence, ...]] = field(default_factory=dict)
     pending: bool = False           # still syncing; leave it where it is
 
     @property
@@ -123,20 +143,57 @@ class Routing:
         return self.identifier is not None
 
 
-def _filename_hit(path: Path, item: RequestItem) -> bool:
-    """True if a keyword from ``item`` appears in ``path``'s own name.
+def _filename_evidence(path: Path, item: RequestItem) -> tuple[Evidence, ...]:
+    """Every keyword from ``item`` that appears in ``path``'s own name.
 
     The same whole-token rule the content check uses (``contains_keyword``),
     over the name with its separators (``_``, ``.``) read as spaces: so
     ``1098`` matches ``Form 1098 Mortgage.pdf`` and ``smith_1098.pdf``, but
     neither ``ledger-10983.pdf`` nor ``1098-T.pdf`` - the tuition form is
     not the mortgage form, whichever side of the hyphen is read.
+
+    A file name is all title (``content_check.TITLE_CHARS``), and it has no
+    pages, so that is what the evidence says.
     """
     # Clients write "W2" for "W-2" and "1099INT" for "1099-INT": the keyword
     # pattern already reads a dash or a space as optional, and the same
     # rule keeps "Form1040-ES.pdf" from being last year's Form 1040.
     name = _SEPARATORS.sub(" ", path.stem.lower())
-    return any(contains_keyword(name, keyword) for keyword in (*item.required_keywords, *item.any_keywords))
+    return tuple(
+        Evidence(RULE_FILENAME, keyword, WHERE_TITLE)
+        for keyword in (*item.required_keywords, *item.any_keywords)
+        if contains_keyword(name, keyword)
+    )
+
+
+def _filename_hit(path: Path, item: RequestItem) -> bool:
+    """True if a keyword from ``item`` appears in ``path``'s own name."""
+    return bool(_filename_evidence(path, item))
+
+
+def _refusal_evidence(reason: str) -> tuple[Evidence, ...]:
+    """A tier-2 refusal as evidence: the Reason's code, not its sentence.
+
+    The sentence is written for a person and may be reworded; the code is
+    the cause's one name (:mod:`tracker.reasons`), which is what a later
+    reader compares. A refusal nothing in ALL recognises leaves no
+    evidence rather than a made-up code.
+    """
+    found = reasons.find(reason)
+    return (Evidence(RULE_REFUSED, found.code),) if found is not None else ()
+
+
+def _recorded_for(
+    record: dict[str, tuple[Evidence, ...]], identifiers
+) -> dict[str, tuple[Evidence, ...]]:
+    """The evidence record cut down to the identifiers a decision names.
+
+    Every row the router considered leaves something behind - a refusal, a
+    keyword that matched, a keyword that did not - and writing all of it
+    into one index cell would bury the two lines a person needs. What is
+    kept is what the decision itself points at.
+    """
+    return {identifier: record[identifier] for identifier in identifiers if record.get(identifier)}
 
 
 def _required_matched(text: str, item: RequestItem) -> bool:
@@ -167,14 +224,19 @@ def _considers(item: RequestItem) -> bool:
 CONTESTED_PREFIX = "looks like"
 
 
-def _contested(path: Path, near: list[tuple[str, str]]) -> Routing:
+def _contested(
+    path: Path, near: list[tuple[str, str]],
+    record: dict[str, tuple[Evidence, ...]] | None = None,
+) -> Routing:
     listed = "; ".join(f"{ident} ({why})" for ident, why in near)
+    candidates = tuple(ident for ident, _ in near)
     return Routing(
         path=path,
         identifier=None,
         reason=f"{CONTESTED_PREFIX} {listed} - a person should confirm",
-        candidates=tuple(ident for ident, _ in near),
+        candidates=candidates,
         evidence=EVIDENCE_CONTENT,
+        evidence_record=_recorded_for(record or {}, candidates),
     )
 
 
@@ -244,6 +306,10 @@ def route_file(
     by_name: list[str] = []     # no readable text; the filename is all we have
     blocked: list[tuple[str, str]] = []  # content fits, but tier 2 refused the file
     refusals: list[str] = []    # every tier-2 reason, for an honest "why not"
+    #: Why, per row: the keywords that matched and where, or the refusal.
+    #: Kept for every row considered and cut down at the end to the rows
+    #: the decision names (``_recorded_for``).
+    record: dict[str, tuple[Evidence, ...]] = {}
 
     for item in items:
         if not _considers(item):
@@ -251,11 +317,13 @@ def route_file(
         tier2 = check_file(path, item, pdf_cache=pdf_cache)
         if not tier2.ok:
             refusals.append(tier2.reason)
+            record[item.identifier] = _refusal_evidence(tier2.reason)
             if words and verdict_for(item).ok:
                 blocked.append((item.identifier, tier2.reason))
             continue
         if words:
             verdict = verdict_for(item)
+            record[item.identifier] = verdict.evidence
             if verdict.ok:
                 if _required_matched(words, item):
                     strong.append(item.identifier)
@@ -271,13 +339,14 @@ def route_file(
                 # never evidence (decision 40) - but it is the lead a person
                 # needs, and it is all this file is going to give them.
                 leads.append((item.identifier, verdict.reason))
-        elif _filename_hit(path, item):
+        elif named := _filename_evidence(path, item):
+            record[item.identifier] = named
             by_name.append(item.identifier)
 
     # A document that announces itself as one request's paperwork but fails
     # that request's other rules is contested — never file it somewhere else.
     if near and not strong:
-        return _contested(path, near)
+        return _contested(path, near, record)
 
     for hits, strength, how in (
         (strong, EVIDENCE_CONTENT, "content matched this request's required keywords"),
@@ -291,6 +360,7 @@ def route_file(
                 reason=how,
                 candidates=tuple(hits),
                 evidence=strength,
+                evidence_record=_recorded_for(record, hits),
             )
         if len(hits) > 1:
             return Routing(
@@ -299,6 +369,7 @@ def route_file(
                 reason=f"{AMBIGUOUS} ({', '.join(hits)}); a person should choose",
                 candidates=tuple(hits),
                 evidence=strength,
+                evidence_record=_recorded_for(record, hits),
             )
 
     # OCR's reading of the looser keywords is a lead for a person, not a
@@ -311,6 +382,7 @@ def route_file(
             reason=f"{OCR_ONLY} ({', '.join(ocr_only)}); a person should confirm",
             candidates=tuple(ocr_only),
             evidence=EVIDENCE_CONTENT,
+            evidence_record=_recorded_for(record, ocr_only),
         )
 
     # The content says which request this is, but the file itself was
@@ -318,7 +390,7 @@ def route_file(
     # person reviewing it - and the client, via the reminder - hears the
     # real reason instead of UNMATCHED.
     if blocked:
-        return _contested(path, blocked)
+        return _contested(path, blocked, record)
 
     # Nothing matched and every request refused the file for the same
     # reason: that reason is the story (a corrupt PDF, a locked PDF, a
@@ -348,7 +420,7 @@ def route_file(
     # at all, so the decision is exactly as it was and only the reason and
     # the candidates improve (the thirteenth reading).
     if leads:
-        return _contested(path, leads)
+        return _contested(path, leads, record)
 
     rule_less = [i.identifier for i in items if not _considers(i)
                  and i.manual_override != Override.WAIVED]
@@ -389,3 +461,5 @@ if __name__ == "__main__":
             print(f"       evidence: {decision.evidence}")
         if decision.candidates:
             print(f"       candidates: {', '.join(decision.candidates)}")
+        if decision.evidence_record:
+            print(f"       why: {format_evidence(decision.evidence_record)}")

@@ -538,3 +538,137 @@ def test_a_sheets_row_is_a_line_and_its_cells_are_set_apart(tmp_path):
     assert "Fixed Asset\tSchedule" in text
     assert contains_keyword(text, "fixed asset schedule")
     assert not contains_keyword(text, "distribution schedule")
+
+
+# --------------------------------------------------------------- evidence ----
+
+
+#: A W-2 as a reader meets it: its number and title at the top, its own
+#: number again at the foot of page 1 the way the IRS sets it, and a box
+#: label deep on page 2 that no footer and no title carries.
+_FILLER = "Wage and Tax Statement for the employee named below. " * 12
+TWO_PAGE_W2 = (
+    "Form W-2 (2025) Wage and Tax Statement\n" + _FILLER
+    + "\nemployer identification number 00-0000000\nForm W-2 (2025)\n"
+    + "\f" + "dependent care benefits paid in the year\n" + _FILLER
+    + "\nsafe harbor election\nCopy B to be filed with the return\n"
+)
+
+
+def test_a_title_self_mention_is_evidence_from_the_title():
+    from tracker.content_check import RULE_REQUIRED, WHERE_TITLE
+
+    result = evaluate_rules(TWO_PAGE_W2, item(required_keywords=("W-2", "wage and tax statement")))
+    assert result.ok
+    assert [(e.rule, e.term, e.where, e.page) for e in result.evidence] == [
+        (RULE_REQUIRED, "W-2", WHERE_TITLE, 1),
+        (RULE_REQUIRED, "wage and tax statement", WHERE_TITLE, 1),
+    ]
+
+
+def test_a_footer_hit_names_the_footer_and_the_page_it_was_on():
+    from tracker.content_check import WHERE_FOOTER
+
+    result = evaluate_rules(TWO_PAGE_W2, item(required_keywords=("safe harbor election",)))
+    assert result.ok
+    assert [(e.where, e.page) for e in result.evidence] == [(WHERE_FOOTER, 2)]
+    # Page 1's own footer is a footer too, not "the first page".
+    first = evaluate_rules(TWO_PAGE_W2, item(required_keywords=("employer identification number",)))
+    assert [(e.where, e.page) for e in first.evidence] == [(WHERE_FOOTER, 1)]
+
+
+def test_a_deep_any_keyword_says_it_was_deep_and_which_page():
+    from tracker.content_check import RULE_ANY, WHERE_DEEP
+
+    result = evaluate_rules(TWO_PAGE_W2, item(any_keywords=("dependent care benefits", "tips")))
+    assert result.ok
+    # Only the keyword that matched leaves evidence; "tips" said nothing.
+    assert [(e.rule, e.term, e.where, e.page) for e in result.evidence] == [
+        (RULE_ANY, "dependent care benefits", WHERE_DEEP, 2),
+    ]
+
+
+def test_the_date_rule_records_the_period_it_checked_never_the_document():
+    from tracker.content_check import RULE_DATE
+
+    rule = item(period="TY2025", date_pattern=r"(?i)\b2025\b",
+                required_keywords=("wage and tax statement",))
+    result = evaluate_rules(TWO_PAGE_W2, rule)
+    assert result.ok
+    dates = [e for e in result.evidence if e.rule == RULE_DATE]
+    # The row's own Period, which a person can read; the regex it derives is
+    # in the reason when the check fails, and no word of the document is here.
+    assert [e.term for e in dates] == ["TY2025"]
+
+
+def test_a_failing_verdict_keeps_what_did_match():
+    # The verdict and its sentence are untouched; what matched is the lead a
+    # person works the parked file from.
+    result = evaluate_rules(
+        TWO_PAGE_W2, item(required_keywords=("wage and tax statement", "1099-INT")),
+    )
+    assert not result.ok and "'1099-INT'" in result.reason
+    assert [e.term for e in result.evidence] == ["wage and tax statement"]
+
+
+def test_the_compact_evidence_parses_back_to_what_was_formatted():
+    from tracker.content_check import (
+        RULE_FILENAME,
+        WHERE_TITLE,
+        Evidence,
+        format_evidence,
+        parse_evidence,
+    )
+
+    record = {
+        "C01": evaluate_rules(TWO_PAGE_W2, item(
+            period="TY2025", date_pattern=r"(?i)\b2025\b",
+            required_keywords=("W-2", "safe harbor election"),
+            any_keywords=("dependent care benefits",),
+        )).evidence,
+        "L01": (Evidence(RULE_FILENAME, "1098-t", WHERE_TITLE),),
+    }
+    written = format_evidence(record)
+    assert "C01: W-2@title:1 required" in written
+    assert "L01: 1098-t@title filename" in written   # a name has no page
+    assert parse_evidence(written) == record
+    assert parse_evidence("") == {}
+
+
+def test_a_verdict_read_back_from_the_cache_brings_its_evidence(tmp_path):
+    from tracker.content_check import RULE_REQUIRED, WHERE_TITLE
+
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    rule = item(required_keywords=("Chase",))
+    cache = ContentCache(tmp_path / "cache.json")
+    assert check_content(pdf, rule, cache).ok
+    cache.save()
+
+    reopened = ContentCache(tmp_path / "cache.json")
+    hit = reopened.get(pdf, rules_fingerprint(rule))
+    assert hit is not None and hit.ok
+    assert [(e.rule, e.term, e.where) for e in hit.evidence] == [
+        (RULE_REQUIRED, "Chase", WHERE_TITLE),
+    ]
+
+
+def test_a_cache_written_before_the_evidence_was_kept_is_reset(tmp_path):
+    import json
+
+    from tracker.content_check import CACHE_VERSION
+
+    # Version 6 stored verdicts with no evidence at all; reading one back
+    # would say a verdict had no reason behind it, which is worse than
+    # re-extracting once.
+    assert CACHE_VERSION == 7
+    cache_file = tmp_path / "cache.json"
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    rule = item(required_keywords=("Chase",))
+    cache_file.write_text(json.dumps({
+        "version": 6, "files": {}, "verdicts": {"deadbeef": {rules_fingerprint(rule): {"ok": True}}},
+    }), encoding="utf-8")
+    cache = ContentCache(cache_file)
+    assert cache.get(pdf, rules_fingerprint(rule)) is None
+    assert check_content(pdf, rule, cache).evidence
+    cache.save()
+    assert json.loads(cache_file.read_text(encoding="utf-8"))["version"] == CACHE_VERSION

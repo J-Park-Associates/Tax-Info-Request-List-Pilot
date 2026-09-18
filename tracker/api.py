@@ -32,6 +32,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from tracker import STANDING_RULES
+from tracker.content_check import EVIDENCE_PLACES, EVIDENCE_RULES
 from tracker.filer import (
     _CANDIDATE_SEP,
     DUPLICATE,
@@ -40,6 +41,7 @@ from tracker.filer import (
     NEEDS_REVIEW,
     NOT_REQUESTED,
     FilingError,
+    IndexEntry,
     assign_review_file,
     dismiss_review_file,
     read_index,
@@ -283,6 +285,9 @@ def _vocab() -> dict:
         "origin_prior": ORIGIN_PRIOR,
         "unknown_year_label": UNKNOWN_YEAR_LABEL,
         "candidate_separator": _CANDIDATE_SEP,
+        # Every word an evidence line can carry, from the module that owns
+        # it: the app labels a rule and a place, and types neither.
+        "evidence": {"rules": list(EVIDENCE_RULES), "places": list(EVIDENCE_PLACES)},
         "year_note": YEAR_NOTE,
         "extension_default_note": EXTENSION_DEFAULT_NOTE,
         "carried_sheet": CARRIED_SHEET,
@@ -376,6 +381,17 @@ def _engagement_name(requested: str, fallback: str) -> str:
     return name if any(ch.isalnum() for ch in name) else sanitize_component(fallback)
 
 
+def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
+    """One index row's Evidence cell as JSON: candidate -> what was found.
+
+    Parsed here, by the one parser that owns the cell's shape
+    (:func:`tracker.content_check.parse_evidence`), so the renderer never
+    splits a string of the tracker's on separators of its own.
+    """
+    return {identifier: [asdict(evidence) for evidence in found]
+            for identifier, found in entry.evidence_record.items()}
+
+
 def _state(engagement: Path) -> dict:
     manifest_path = engagement / MANIFEST_FILENAME
     root = clients_root()
@@ -398,7 +414,11 @@ def _state(engagement: Path) -> dict:
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None}
             for i in items
         ],
-        "index": [asdict(e) | {"filed_as": e.filed_as, "candidates": e.candidate_list}
+        # The index's two packed cells travel as data, not as text the app
+        # would have to parse: the candidates as a list, the evidence as
+        # the record it was written from, keyed by candidate identifier.
+        "index": [asdict(e) | {"filed_as": e.filed_as, "candidates": e.candidate_list,
+                               "evidence": _evidence_payload(e)}
                   for e in read_index(engagement / INDEX_FILENAME, quarantine=False)],
         "paths": {
             "engagement": str(engagement),

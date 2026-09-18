@@ -29,10 +29,21 @@ the text layer first and OCR only when the file's name tells it nothing
 Keyword matching is case-insensitive. Date Pattern is applied to the raw
 text as-is, so authors control case sensitivity with inline flags (``(?i)``).
 
-Caching: :class:`ContentCache` stores only *verdicts* — pass/fail + reason —
-keyed by the file's **content digest** and the row's rules fingerprint, with
-a per-path memo of (size, mtime, digest) so an unchanged file is not
-re-hashed. Keyed on content, not path, because the same bytes are read
+**A verdict keeps its evidence.** ``ok`` and ``reason`` say *what* was
+decided; :class:`Evidence` says *why* — which rule found which of the row's
+own words, where in the document, on which page. The verdict is unchanged
+by it: nothing here reads the evidence back to decide anything, and the
+reason sentence is worded exactly as before. It exists because a person
+working the review queue needs "'1098' in the title, 'mortgage interest' on
+page 1", not "matched no request", and because a later layer ranks parked
+files from it. What is kept is the *firm's* words - the keyword the
+manifest row asked for, the Period it asked for - and never a word of the
+client's document, which is the same line :class:`ContentCache` draws.
+
+Caching: :class:`ContentCache` stores only *verdicts* — pass/fail, reason
+and evidence — keyed by the file's **content digest** and the row's rules
+fingerprint, with a per-path memo of (size, mtime, digest) so an unchanged
+file is not re-hashed. Keyed on content, not path, because the same bytes are read
 twice in this system: once as a drop the router routes, once as the
 working copy the scanner checks. A verdict the router reached is the
 verdict the scanner finds. Extracted client text is deliberately never
@@ -68,7 +79,8 @@ CACHE_FILENAME = "_content_cache.json"
 #: 4: says() changed what a keyword verdict means (a form number is title evidence).
 #: 5: a form number in the title is weighed by its shape too; a keyword's words sit on one line.
 #: 6: a keyword on a menu line, or one an ask-word asked for, is no longer said.
-CACHE_VERSION = 6
+#: 7: a verdict carries the evidence behind it (an Evidence per matched rule).
+CACHE_VERSION = 7
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -90,6 +102,128 @@ TEXT_EXTENSIONS = ("csv", "tsv", "txt")
 _MAX_OCR_PAGES = MAX_PAGES
 
 
+# ---------------------------------------------------------------- evidence ----
+
+#: Which of the manifest row's rules found the term. ``required`` and ``any``
+#: are the row's keyword lists, ``date`` its Period check, ``filename`` the
+#: router's by-name fallback and ``refused`` a tier-2 refusal travelling as
+#: evidence (the Reason's code). One list, named once, so the router, the
+#: index and the app's vocabulary all say the same words.
+RULE_REQUIRED = "required"
+RULE_ANY = "any"
+RULE_DATE = "date"
+RULE_FILENAME = "filename"
+RULE_REFUSED = "refused"
+EVIDENCE_RULES: tuple[str, ...] = (
+    RULE_REQUIRED, RULE_ANY, RULE_DATE, RULE_FILENAME, RULE_REFUSED,
+)
+
+#: Where in the document the term was said. ``title`` is within
+#: ``TITLE_CHARS`` of the start - a form printing its own name; ``footer``
+#: is the last ``_FOOTER_LINES`` non-blank lines of a page, where a form
+#: repeats its number on every copy; ``first_page`` is the rest of page 1
+#: and ``deep`` is anything further in, which is the weakest place a
+#: keyword can be said and the one a person most wants to see named.
+#: Evidence about a file's name or a refusal has no place and carries "".
+WHERE_TITLE = "title"
+WHERE_FIRST_PAGE = "first_page"
+WHERE_FOOTER = "footer"
+WHERE_DEEP = "deep"
+EVIDENCE_PLACES: tuple[str, ...] = (
+    WHERE_TITLE, WHERE_FIRST_PAGE, WHERE_FOOTER, WHERE_DEEP,
+)
+_FOOTER_LINES = 2
+
+
+@dataclass(frozen=True, slots=True)
+class Evidence:
+    """One reason a verdict went the way it did.
+
+    ``term`` is the firm's own word - a keyword off the manifest row, the
+    row's Period, a Reason's code - never a word read out of the client's
+    document. ``page`` is 1-based, counted from the page breaks
+    ``_extract_pdf`` writes, and 0 where a page means nothing (a file name,
+    a refusal).
+    """
+
+    rule: str
+    term: str
+    where: str = ""
+    page: int = 0
+
+
+#: How one Evidence is written into a single cell, and how the whole record
+#: for a decision is: ``A01: 1098@title:1 required, TY2025@first_page:1
+#: date; L01: 1098-t@title filename``. Compact because it shares one Excel
+#: column with every other candidate's evidence, and parsed back by
+#: :func:`parse_evidence` so the shape has one owner rather than a writer
+#: here and a reader in the app. The page is left off when it is 0. Terms
+#: are catalog words and file names, which carry none of these separators.
+_EVIDENCE_AT = "@"
+_EVIDENCE_PAGE = ":"
+_EVIDENCE_SEP = ", "
+_RECORD_SEP = "; "
+_RECORD_AT = ": "
+
+
+def format_evidence(record: dict[str, tuple[Evidence, ...]]) -> str:
+    """The evidence behind one decision, as the index's Evidence cell."""
+    return _RECORD_SEP.join(
+        identifier + _RECORD_AT + _EVIDENCE_SEP.join(_format_one(e) for e in found)
+        for identifier, found in record.items() if found
+    )
+
+
+def _format_one(evidence: Evidence) -> str:
+    page = f"{_EVIDENCE_PAGE}{evidence.page}" if evidence.page else ""
+    return f"{evidence.term}{_EVIDENCE_AT}{evidence.where}{page} {evidence.rule}"
+
+
+def parse_evidence(text: str) -> dict[str, tuple[Evidence, ...]]:
+    """An Evidence cell read back, exactly as :func:`format_evidence` wrote it.
+
+    Lenient about what it cannot understand: the index is an audit trail a
+    person may have typed into, and half a record read is better than a
+    row that will not load.
+    """
+    record: dict[str, tuple[Evidence, ...]] = {}
+    for group in (text or "").split(_RECORD_SEP):
+        identifier, _, listed = group.partition(_RECORD_AT)
+        identifier = identifier.strip()
+        if not identifier or not listed.strip():
+            continue
+        found = tuple(e for e in (_parse_one(part) for part in listed.split(_EVIDENCE_SEP))
+                      if e is not None)
+        if found:
+            record[identifier] = record.get(identifier, ()) + found
+    return record
+
+
+def _evidence_from_json(raw: object) -> tuple[Evidence, ...]:
+    """The evidence of a cached verdict, rebuilt from what ``asdict`` wrote.
+
+    Total, like everything that reads the cache: the cache is disposable,
+    so anything unrecognised costs a re-extraction, never an exception in
+    a scheduled run.
+    """
+    if not isinstance(raw, list):
+        return ()
+    return tuple(
+        Evidence(str(item.get("rule", "")), str(item.get("term", "")),
+                 str(item.get("where", "")), int(item.get("page", 0) or 0))
+        for item in raw if isinstance(item, dict)
+    )
+
+
+def _parse_one(part: str) -> Evidence | None:
+    body, _, rule = part.strip().rpartition(" ")
+    term, at, place = body.rpartition(_EVIDENCE_AT)
+    if not rule or not at or not term:
+        return None
+    where, _, page = place.partition(_EVIDENCE_PAGE)
+    return Evidence(rule, term, where, int(page) if page.isdigit() else 0)
+
+
 @dataclass(frozen=True, slots=True)
 class ContentResult:
     """Verdict of tier-3 rules for one file."""
@@ -101,6 +235,11 @@ class ContentResult:
     #: not installed, or it failed this once. Never cached - installing OCR
     #: or a second try must be able to change the answer.
     transient: bool = False
+    #: Why the verdict went this way: one Evidence per rule that found its
+    #: word, in the order the rules are applied. Collected on a failing
+    #: verdict too - what *did* match is the lead a person works from - and
+    #: read by nothing that decides anything.
+    evidence: tuple[Evidence, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -646,8 +785,9 @@ def _menu_tails(low: str) -> set[int]:
     return tails
 
 
-def _in_its_own_words(low: str, keyword: str) -> bool:
-    """Whether ``low`` says ``keyword`` the way a document says what it is.
+def _in_its_own_words_at(low: str, keyword: str) -> int | None:
+    """Where ``low`` first says ``keyword`` the way a document says what it
+    is, or None.
 
     An occurrence that is a menu line's title (``_menu_tails``) or what an
     ask-word asked for (``_asked_for``) is a page talking about a document
@@ -660,8 +800,78 @@ def _in_its_own_words(low: str, keyword: str) -> bool:
             tails = _menu_tails(low)
         if match.start() in tails or _asked_for(low, match.start()):
             continue
-        return True
-    return False
+        return match.start()
+    return None
+
+
+def _in_the_footer(low: str, at: int) -> bool:
+    """Whether ``at`` falls in the last ``_FOOTER_LINES`` non-blank lines of
+    its page - where a form repeats its own number on every copy."""
+    start = low.rfind(_PAGE_BREAK, 0, at) + 1
+    end = low.find(_PAGE_BREAK, at)
+    end = len(low) if end < 0 else end
+    spans: list[tuple[int, int]] = []
+    offset = start
+    for line in low[start:end].splitlines(keepends=True):
+        if line.strip():
+            spans.append((offset, offset + len(line)))
+        offset += len(line)
+    return any(left <= at < right for left, right in spans[-_FOOTER_LINES:])
+
+
+def _where_said(text: str, at: int) -> tuple[str, int]:
+    """The place and the 1-based page of the character at ``at``.
+
+    The title wins over everything - a form printing its own name at the
+    top is the strongest place a word can be said - then the footer, which
+    is a real place on page 1 as much as on page 7, and only then the rest
+    of the first page.
+    """
+    page = text.count(_PAGE_BREAK, 0, at) + 1
+    if at < len(_title(text)):
+        return WHERE_TITLE, page
+    if _in_the_footer(text, at):
+        return WHERE_FOOTER, page
+    return (WHERE_FIRST_PAGE if page == 1 else WHERE_DEEP), page
+
+
+def _first_said_at(low: str, keyword: str, within: int | None = None) -> int | None:
+    """Where ``low`` says ``keyword`` as a whole token, first or within the
+    first ``within`` characters; None if it does not."""
+    starts = (match.start() for match in _occurrences(low, keyword))
+    if within is None:
+        return next(starts, None)
+    return next((start for start in starts if start < within), None)
+
+
+def _says_where(text: str, keyword: str, dominant: set[str] | None = None) -> tuple[str, int] | None:
+    """Where ``text`` says ``keyword`` as content evidence - the place and
+    the page - or None where it does not say it at all.
+
+    The verdict is :func:`says`'s, unchanged: a form number counts only
+    where the title names it in its own right (``_title_forms``) or as the
+    document's own (dominant) number, and every other keyword counts where
+    the document says it in its own words (``_in_its_own_words_at``)
+    rather than on a menu line or after an ask. All this adds is *where*,
+    so an :class:`Evidence` can name it.
+    """
+    low = text.lower()
+    if not is_form_number(keyword):
+        at = _in_its_own_words_at(low, keyword)
+        return None if at is None else _where_said(low, at)
+    at = _first_said_at(low, keyword)
+    if at is None:
+        return None
+    bare = _DASHES.sub("", keyword.strip().lower())
+    key = bare[4:] if bare.startswith("form") else bare
+    if key in _title_forms(low):
+        # It is the title that accepted it, so it is the title's occurrence
+        # the evidence names, not whichever came first in a long document.
+        in_title = _first_said_at(low, keyword, within=len(_title(low)))
+        return _where_said(low, at if in_title is None else in_title)
+    if key in (dominant_forms(text) if dominant is None else dominant):
+        return _where_said(low, at)
+    return None
 
 
 def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
@@ -670,17 +880,11 @@ def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
     A form number counts only where the title names it in its own right
     (``_title_forms``) or as the document's own (dominant) number. Every
     other keyword counts where the document says it in its own words
-    (``_in_its_own_words``) rather than on a menu line or after an ask.
+    rather than on a menu line or after an ask. The thin wrapper over
+    :func:`_says_where` is deliberate: one reading of a document, whether
+    the caller wants the verdict or the evidence behind it.
     """
-    if not is_form_number(keyword):
-        return _in_its_own_words(text.lower(), keyword)
-    if not contains_keyword(text, keyword):
-        return False
-    bare = _DASHES.sub("", keyword.strip().lower())
-    key = bare[4:] if bare.startswith("form") else bare
-    if key in _title_forms(text.lower()):
-        return True
-    return key in (dominant_forms(text) if dominant is None else dominant)
+    return _says_where(text, keyword, dominant) is not None
 
 
 def any_keyword_matched(text: str, item: RequestItem) -> bool:
@@ -697,24 +901,55 @@ def any_keyword_matched(text: str, item: RequestItem) -> bool:
     return any(says(text, k, dominant) for k in item.any_keywords)
 
 
+def _found(rule: str, text: str, keyword: str, dominant: set[str]) -> Evidence | None:
+    """The Evidence for one of the row's words under one rule, or None."""
+    place = _says_where(text, keyword, dominant)
+    return None if place is None else Evidence(rule, keyword, place[0], place[1])
+
+
 def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
-    """Apply the manifest row's content rules to extracted text."""
+    """Apply the manifest row's content rules to extracted text.
+
+    The verdict and the reason are what they have always been; what is new
+    is that every rule that *did* find its word leaves an :class:`Evidence`
+    behind, on a failing verdict as much as on a passing one, because what
+    matched is the lead a person works a parked file from.
+    """
     dominant = dominant_forms(text)
-    missing = [k for k in item.required_keywords if not says(text, k, dominant)]
+    found: list[Evidence] = []
+    missing: list[str] = []
+    for keyword in item.required_keywords:
+        evidence = _found(RULE_REQUIRED, text, keyword, dominant)
+        if evidence is None:
+            missing.append(keyword)
+        else:
+            found.append(evidence)
     if missing:
         listed = ", ".join(f"'{k}'" for k in missing)
-        return ContentResult(ok=False, reason=reasons.WRONG_DOCUMENT.format(listed=listed))
+        return ContentResult(ok=False, reason=reasons.WRONG_DOCUMENT.format(listed=listed),
+                             evidence=tuple(found))
 
-    if item.any_keywords and not any(
-        says(text, k, dominant) for k in item.any_keywords
-    ):
-        listed = ", ".join(item.any_keywords)
-        return ContentResult(ok=False, reason=reasons.NO_EXPECTED_KEYWORD.format(listed=listed))
+    if item.any_keywords:
+        hits = [e for e in (_found(RULE_ANY, text, k, dominant) for k in item.any_keywords)
+                if e is not None]
+        if not hits:
+            listed = ", ".join(item.any_keywords)
+            return ContentResult(ok=False, reason=reasons.NO_EXPECTED_KEYWORD.format(listed=listed),
+                                 evidence=tuple(found))
+        found.extend(hits)
 
-    if item.date_pattern and not re.search(item.date_pattern, text):
-        return ContentResult(ok=False, reason=reasons.WRONG_PERIOD.format(pattern=item.date_pattern))
+    if item.date_pattern:
+        match = re.search(item.date_pattern, text)
+        if not match:
+            return ContentResult(ok=False,
+                                 reason=reasons.WRONG_PERIOD.format(pattern=item.date_pattern),
+                                 evidence=tuple(found))
+        # The row's Period, not the regex it derives and not a word of the
+        # document: what a person reading the index needs is "TY2025".
+        where, page = _where_said(text, match.start())
+        found.append(Evidence(RULE_DATE, item.period or item.date_pattern, where, page))
 
-    return ContentResult(ok=True)
+    return ContentResult(ok=True, evidence=tuple(found))
 
 
 # ------------------------------------------------------------- extraction ----
@@ -967,8 +1202,13 @@ class ContentCache:
         if entry is None:
             return None
         defaults = {f.name: f.default for f in fields(ContentResult)}
-        return ContentResult(**{name: entry.get(name, default) for name, default in defaults.items()
-                                if name in entry or default is not MISSING})
+        values = {name: entry.get(name, default) for name, default in defaults.items()
+                  if name in entry or default is not MISSING}
+        # asdict() flattened each Evidence on the way in; a verdict read back
+        # must be the verdict that was stored, evidence and all.
+        if "evidence" in values:
+            values["evidence"] = _evidence_from_json(values["evidence"])
+        return ContentResult(**values)
 
     def put(self, file: Path, fingerprint: str, result: ContentResult) -> None:
         digest = self.digest_of(file)

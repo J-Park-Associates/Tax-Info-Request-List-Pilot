@@ -793,6 +793,25 @@ def test_priors_carry_next_year_and_the_index_carries_candidates(capsys, demo_ro
     assert prior["year"] == BASE_YEAR and prior["next_year"] == BASE_YEAR + 1
 
 
+def test_the_state_carries_each_rows_evidence_as_data_not_as_a_string(capsys, demo_root, tmp_path):
+    from tracker.content_check import EVIDENCE_PLACES, EVIDENCE_RULES, RULE_REQUIRED, WHERE_TITLE
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    # Parsed by the tracker, never split by the renderer: a record keyed by
+    # candidate, each entry naming its rule, its term and where it was said.
+    assert [(e["rule"], e["term"], e["where"]) for e in parked["evidence"]["A01"]][:1] == [
+        (RULE_REQUIRED, "W-2", WHERE_TITLE),
+    ]
+    assert all(e["rule"] in EVIDENCE_RULES for e in parked["evidence"]["A01"])
+    code, listed = run(capsys, "list")
+    vocab = listed["vocab"]["evidence"]
+    assert vocab["rules"] == list(EVIDENCE_RULES) and vocab["places"] == list(EVIDENCE_PLACES)
+    assert RULE_REQUIRED in vocab["rules"] and WHERE_TITLE in vocab["places"]
+
+
 def test_install_schedule_defaults_come_from_scheduling(capsys, demo_root, monkeypatch):
     import tracker.api as api_module
     from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START

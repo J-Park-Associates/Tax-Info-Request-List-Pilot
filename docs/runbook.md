@@ -132,6 +132,18 @@ became, and — when it was not filed — why not.
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. |
 | `router.PENDING` | A cloud placeholder, still copying down. | Nothing. The next pass picks it up. |
 
+Beside the Reason sits the Evidence column, which says what the decision
+was actually made on, per candidate request: which of that request's own
+keywords the document said, and where it said them — in the title, in a
+page footer, on the first page, or deep inside. A cell reading
+`A01: W-2@title:1 required` says "the keyword W-2, in the title, on page 1,
+off A01's required list"; the number after the place is the page, and a
+keyword found in the file's *name* has no page. A row parked for you
+carries it as much as a filed one, and it is usually the fastest way to see
+why the rules did or did not reach the answer you would have. The words in
+it are ours — the keywords on the request list, the period asked for, the
+file's own name — never a word out of the client's document.
+
 Two more appear as warnings on the run rather than as index rows:
 
 | The run warns | In plain words | What you do |
