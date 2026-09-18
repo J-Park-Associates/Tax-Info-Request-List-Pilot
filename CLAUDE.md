@@ -104,6 +104,39 @@ committed, redacted or not: client documents do not enter the repo, and a
 report built with them names files the firm's clients can be read out of,
 so `check` refuses one.
 
+## The backtest: the firm's own documents score the router
+
+[`docs/backtest-baseline.json`](docs/backtest-baseline.json) holds one
+number — how often the router files the firm's own already-sorted
+documents where a person filed them — and `tools/backtest.py` measures it.
+The fifty IRS forms and the typed cases are blank paperwork nobody sent;
+the documents a client actually sent sit on the office file server, sorted
+by hand over years, and they are the only corpus that can say whether the
+routing rules work on real mail. The tool routes them against the shipped
+catalogs and reports the agreement, the confusions (expected this row,
+filed that one), the per-row table, the parked and no-text shares, and the
+time each document took. Each document is routed through a hard link under
+one neutral name (`NEUTRAL_STEM`), so the router's by-name fallback can
+never read the client's name off the file: what is scored is the rules,
+not the firm's file naming.
+
+```
+python tools/backtest.py collect <folder>    # a skeleton expectations file for a person to fill in
+python tools/backtest.py run <folder>        # route the corpus, score it, time it
+python tools/backtest.py record              # make that report's agreement the baseline
+python tools/backtest.py check               # exit 1 when a report is below the baseline
+```
+
+The corpus, its expectations.csv and the report are the firm's: they never
+enter the repository, and the tool refuses to write either file into the
+tree. Nothing identifying comes back either — the report and the console
+carry counts, catalog identifiers and a document's row number in the
+expectations file, never a file name, never a folder name below the corpus
+root, never a word of a document. The baseline ships unrecorded and `check`
+says so plainly rather than passing quietly: an unknown baseline is not a
+met one. Once the owner has run the backtest at the office and recorded it,
+no routing change may lower that number.
+
 ## The standing rules
 
 These are not style preferences. They are why the system is trusted with

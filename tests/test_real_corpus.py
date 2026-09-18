@@ -52,9 +52,15 @@ from tracker.templates import template_items
 Expectation = tuple[str, str, int, str | None]
 
 
-def read_expectations(folder: Path) -> list[Expectation]:
-    """The folder's expectations file, as rows, in the order it lists them."""
-    path = folder / EXPECTATIONS_FILENAME
+def read_expectations(path: Path) -> list[Expectation]:
+    """One expectations file, as rows, in the order it lists them.
+
+    Named by its path rather than by its folder because the corpus is not
+    the only caller: ``tools/backtest.py`` scores a folder against an
+    expectations file a person keeps wherever they keep it, and the
+    contract - the columns, the blank that means "parks", the year that
+    must be there - has to have exactly one reader.
+    """
     with path.open(encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         missing = [c for c in EXPECTATIONS_COLUMNS if c not in (reader.fieldnames or ())]
@@ -82,7 +88,7 @@ def real_corpus() -> tuple[Path | None, list[Expectation]]:
     folder = real_corpus_dir()
     if folder is None or not (folder / EXPECTATIONS_FILENAME).is_file():
         return None, []
-    return folder, read_expectations(folder)
+    return folder, read_expectations(folder / EXPECTATIONS_FILENAME)
 
 
 def catalog_rows(workspace: Path, form: str, year: int, built: dict) -> list[RequestItem]:

@@ -121,9 +121,21 @@
       "role": "Generates the vocabulary coverage report: which keyword in each catalog is reached by which IRS form in tests/irs/ or case in tests/test_catalog.py, tested with content_check.says() the way the router reads, and which keywords nothing in the suite defends.",
       "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the loader, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`, the harness's expectations giving each one's placement) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a sheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached."
     },
+    "tools/backtest.py": {
+      "role": "Routes the firm's own already-sorted documents at the office and scores the router against them: the agreement with where a person filed each one, the confusion pairs, the per-row table, the parked and no-text shares, and the time a real pass takes.",
+      "notes": "Decision 74. The measure the fifty blank IRS forms and the typed cases cannot be - decision 70's report leaves most keywords and most rows defended by nothing - and the only corpus made of documents a client actually sent. Each document is routed through a hard link (a copy where the file system refuses one) under one neutral name, so the router's by-name fallback can never read the client's name off the file and the score is the routing rules' rather than the firm's naming discipline; the link is the same bytes, so every tier-2 check still sees the real document. A document with no text layer is its own category, because the only evidence left for it would be the name being hidden - unless OCR is allowed, when nothing is handed over and the router does its own reading under its own stricter rule for OCR words. Catalogs are built the way tests/test_irs_forms.py builds them, with the size floor and the year check lifted. Nothing identifying comes back: counts, catalog identifiers and a row's number in the expectations file, never a file name, a folder name below the corpus root or a word of a document; the corpus, its expectations file and the report stay outside the repository and the tool refuses to write into the tree."
+    },
+    "docs/backtest-baseline.json": {
+      "role": "The one number the backtest commits: how often the router filed the firm's own sorted documents where a person filed them, the count it was measured over, and the day it was measured.",
+      "notes": "Decision 74. Owned by tools/backtest.py; `record` writes it and `check` fails a report below it. It ships with no agreement recorded, and `check` then says plainly that the owner has not yet run the backtest at the office and exits 0 - an unknown baseline is never reported as a met one. It holds a number and a date and nothing a client could be read out of."
+    },
+    "tests/test_backtest.py": {
+      "role": "Guards the backtest: a document is routed by its text and never by its name, a file with no text layer is counted apart rather than parked, the report and the console carry no file or folder name, the skeleton is blank with the request folder as the hint and is never overwritten, and an unrecorded baseline is said rather than passed.",
+      "notes": "Decision 74. The corpus it scores is built with tests/samples.py in a temporary folder, because no client document is in the repository or ever will be. It also pins the two things the hiding rests on: the neutral name reaches no keyword in any shipped catalog, and a whole pass writes nothing under the repository root."
+    },
     "tests/test_real_corpus.py": {
       "role": "The harness for the firm's own redacted documents: every row of the expectations file beside them routed against a shipped catalog the way tests/test_irs_forms.py routes the IRS's forms, and asserted to file where the firm says or to park.",
-      "notes": "Decision 71. The corpus is outside the repository, in the folder TRACKER_REAL_CORPUS names, and is never committed; with no corpus the routing case skips by name and the harness's own tests - the reading, the routing and the skip - still run on a scratch folder, so the file is exercised on every machine. It owns read_expectations() and real_corpus(), which tools/vocab_report.py imports, so the report and the test cannot disagree about what an expectation means."
+      "notes": "Decision 71. The corpus is outside the repository, in the folder TRACKER_REAL_CORPUS names, and is never committed; with no corpus the routing case skips by name and the harness's own tests - the reading, the routing and the skip - still run on a scratch folder, so the file is exercised on every machine. It owns read_expectations() and real_corpus(), which tools/vocab_report.py imports, so the report and the test cannot disagree about what an expectation means. Decision 74: read_expectations() takes the file's path rather than its folder, because tools/backtest.py scores an expectations file a person keeps wherever they keep it and the contract has to have one reader."
     },
     "tests/test_vocab_report.py": {
       "role": "Guards the coverage report: reach is says(), not a substring; the four headline lists are computed as claimed on small catalogs; the committed report matches its inputs by hash.",
@@ -483,6 +495,16 @@
       "from": ".github/workflows/ci.yml",
       "to": "tools/vocab_report.py",
       "type": "runs"
+    },
+    {
+      "from": "CLAUDE.md",
+      "to": "tools/backtest.py",
+      "type": "documents"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "docs/backtest-baseline.json",
+      "type": "writes"
     },
     {
       "from": ".github/workflows/ci.yml",

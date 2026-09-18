@@ -252,6 +252,22 @@ routes a file only on a request's *required* keywords; a looser match on
 OCR text goes to review with the lead noted, because a misread word is how
 a document lands under the wrong request.
 
+#### What the routing is measured against
+
+Blank IRS forms and reconstructed cases are paperwork nobody sent. The
+firm's own documents are the measure: years of them, already sorted by
+hand, sitting on the office file server. `tools/backtest.py` routes them
+there against the shipped catalogs and scores how often the router lands
+where the person did, with the confusions, the share still parked for a
+person, and the time a real pass takes. That agreement is recorded in
+`docs/backtest-baseline.json`, and no routing change may lower it. Every
+document is routed under one neutral name, so the by-name fallback cannot
+read the client's name off the file and the score is the rules' and not
+the firm's filing habits'. Nothing identifying comes back: the report
+carries counts, request identifiers and row numbers, never a file name, a
+folder name or a word of a document — and the documents never leave the
+office.
+
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward

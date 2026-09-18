@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 89,
-    "edges": 298,
-    "reused": 66
+    "nodes": 92,
+    "edges": 313,
+    "reused": 68
   },
   "node_types": [
     "artifact",
@@ -1017,8 +1017,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a7cba8d8f5d8aa4d",
-      "lines": 155,
+      "sha256": "21ff03342a4aaa88",
+      "lines": 188,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -1026,25 +1026,34 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "aa87bc2f7a04ce50",
-      "lines": 287,
+      "sha256": "a1a44cbfa8e9553a",
+      "lines": 303,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b4cb5424a509b864",
-      "lines": 276,
+      "sha256": "a19b40c0095f5644",
+      "lines": 277,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
+    },
+    {
+      "id": "docs/backtest-baseline.json",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "13d881dc43bff282",
+      "lines": 7,
+      "role": "The one number the backtest commits: how often the router filed the firm's own sorted documents where a person filed them, the count it was measured over, and the day it was measured.",
+      "notes": "Decision 74. Owned by tools/backtest.py; `record` writes it and `check` fails a report below it. It ships with no agreement recorded, and `check` then says plainly that the owner has not yet run the backtest at the office and exits 0 - an unknown baseline is never reported as a met one. It holds a number and a date and nothing a client could be read out of."
     },
     {
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6c0fb967c33f08e3",
-      "lines": 494,
+      "sha256": "3494972a5edccf11",
+      "lines": 516,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1052,7 +1061,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ef87af611b658e16",
+      "sha256": "2ca078cf38362c7f",
       "lines": 7497,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -1318,6 +1327,55 @@
         "test_runner_mode_runs_a_pass_without_importing_the_api_layer",
         "test_without_the_flag_the_entry_is_the_api"
       ]
+    },
+    {
+      "id": "tests/test_backtest.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "32c805f15551bd2f",
+      "lines": 300,
+      "exports": [
+        "CLIENT_FOLDER",
+        "EMPLOYEE",
+        "EMPLOYER",
+        "PARKING_FILE",
+        "REPO",
+        "SECRETS",
+        "W2_FILE",
+        "YEAR",
+        "_UNWATCHED",
+        "a_report",
+        "expectations_for",
+        "repository_snapshot",
+        "run",
+        "test_a_disagreement_is_reported_as_the_pair_it_is",
+        "test_a_document_is_routed_by_its_text_and_never_by_its_own_name",
+        "test_a_document_with_no_text_layer_is_counted_apart_and_is_not_parked",
+        "test_a_row_naming_a_document_that_is_not_there_is_reported_by_its_number",
+        "test_check_fails_below_the_baseline_and_passes_at_or_above_it",
+        "test_check_says_plainly_that_nobody_has_measured_when_no_baseline_is_recorded",
+        "test_collect_refuses_to_overwrite_an_expectations_file",
+        "test_collect_writes_a_skeleton_with_a_blank_answer_and_the_folder_as_the_hint",
+        "test_collect_writes_only_documents_a_catalog_would_look_at",
+        "test_documents_filed_where_the_router_would_file_them_score_full_agreement",
+        "test_record_writes_the_agreement_as_the_number_to_beat",
+        "test_the_committed_baseline_records_no_agreement_until_the_office_run",
+        "test_the_name_documents_are_routed_under_reaches_no_keyword_in_any_catalog",
+        "test_the_report_and_the_console_name_no_file_and_no_folder",
+        "test_the_slowest_documents_are_named_by_row_number_and_nothing_else",
+        "test_the_tool_writes_nothing_under_the_repository_root",
+        "two_documents"
+      ],
+      "constants": {
+        "YEAR": "2025",
+        "CLIENT_FOLDER": "'Aardvark Holdings LLC'",
+        "W2_FILE": "'Zebediah W-2 2025.pdf'",
+        "PARKING_FILE": "'Zebediah extension 2025.pdf'",
+        "EMPLOYER": "'Aardvark Holdings LLC'",
+        "EMPLOYEE": "'Zebediah Quill'"
+      },
+      "role": "Guards the backtest: a document is routed by its text and never by its name, a file with no text layer is counted apart rather than parked, the report and the console carry no file or folder name, the skeleton is blank with the request folder as the hint and is never overwritten, and an unrecorded baseline is said rather than passed.",
+      "notes": "Decision 74. The corpus it scores is built with tests/samples.py in a temporary folder, because no client document is in the repository or ever will be. It also pins the two things the hiding rests on: the neutral name reaches no keyword in any shipped catalog, and a whole pass writes nothing under the repository root."
     },
     {
       "id": "tests/test_catalog.py",
@@ -1597,8 +1655,8 @@
       "id": "tests/test_real_corpus.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "642ad7f2b445d4ac",
-      "lines": 188,
+      "sha256": "e23951bd250960ac",
+      "lines": 194,
       "exports": [
         "catalog_rows",
         "catalogs",
@@ -1612,7 +1670,7 @@
         "test_the_firms_own_documents_file_where_they_belong_or_park"
       ],
       "role": "The harness for the firm's own redacted documents: every row of the expectations file beside them routed against a shipped catalog the way tests/test_irs_forms.py routes the IRS's forms, and asserted to file where the firm says or to park.",
-      "notes": "Decision 71. The corpus is outside the repository, in the folder TRACKER_REAL_CORPUS names, and is never committed; with no corpus the routing case skips by name and the harness's own tests - the reading, the routing and the skip - still run on a scratch folder, so the file is exercised on every machine. It owns read_expectations() and real_corpus(), which tools/vocab_report.py imports, so the report and the test cannot disagree about what an expectation means."
+      "notes": "Decision 71. The corpus is outside the repository, in the folder TRACKER_REAL_CORPUS names, and is never committed; with no corpus the routing case skips by name and the harness's own tests - the reading, the routing and the skip - still run on a scratch folder, so the file is exercised on every machine. It owns read_expectations() and real_corpus(), which tools/vocab_report.py imports, so the report and the test cannot disagree about what an expectation means. Decision 74: read_expectations() takes the file's path rather than its folder, because tools/backtest.py scores an expectations file a person keeps wherever they keep it and the contract has to have one reader."
     },
     {
       "id": "tests/test_reasons.py",
@@ -2134,6 +2192,77 @@
       "notes": "test_the_committed_report_is_current fails the suite if a keyword, a case or the matcher changed without `python tools/vocab_report.py build`. Decision 73: a workbook case must read the same to the report as to the suite, so the rendering and a real round trip through openpyxl are asserted equal."
     },
     {
+      "id": "tools/backtest.py",
+      "type": "tool",
+      "layer": "tooling",
+      "sha256": "68abf81f35ec848a",
+      "lines": 617,
+      "cli": "python -m tools.backtest",
+      "exports": [
+        "AT_BASELINE",
+        "BASELINE_NOTE",
+        "BASELINE_PATH",
+        "BELOW_BASELINE",
+        "BacktestError",
+        "CATALOGS",
+        "CATALOG_FLAG",
+        "COLLECT_COLUMNS",
+        "EXPECTATIONS_FLAG",
+        "HINT_COLUMN",
+        "NEUTRAL_STEM",
+        "NOTHING_ROUTED",
+        "NO_BASELINE",
+        "OCR_FLAG",
+        "OUT_FLAG",
+        "Outcome",
+        "PARKS",
+        "RECORDED",
+        "REPORT_FLAG",
+        "REPORT_NOTE",
+        "ROOT",
+        "SCHEMA_VERSION",
+        "SLOWEST_COUNT",
+        "UNMEASURED_NOTE",
+        "YEAR_FLAG",
+        "accepted_extensions",
+        "check",
+        "collectable",
+        "load_baseline",
+        "load_report",
+        "main",
+        "print_summary",
+        "record",
+        "route_corpus",
+        "route_one",
+        "score",
+        "write_json",
+        "write_skeleton"
+      ],
+      "constants": {
+        "SCHEMA_VERSION": "1",
+        "NEUTRAL_STEM": "'document'",
+        "PARKS": "'parks'",
+        "SLOWEST_COUNT": "10",
+        "HINT_COLUMN": "'hint'",
+        "REPORT_FLAG": "'--report'",
+        "EXPECTATIONS_FLAG": "'--expectations'",
+        "OUT_FLAG": "'--out'",
+        "OCR_FLAG": "'--ocr'",
+        "CATALOG_FLAG": "'--catalog'",
+        "YEAR_FLAG": "'--year'",
+        "REPORT_NOTE": "\"How often the router files the firm's own documents where a person already filed them. No file name, no folder name and no word of any document is recorded here.\"",
+        "BASELINE_NOTE": "\"The agreement the firm's own sorted documents scored, measured at the office. No routing change may lower it.\"",
+        "UNMEASURED_NOTE": "\"No backtest has been run against the firm's own documents yet, so there is no agreement to hold a routing change to. Run the backtest at the office and record it.\"",
+        "NO_BASELINE": "'No agreement is recorded: the owner has not yet run the backtest at the office. There is no baseline to hold this report to, and an unknown baseline is not a passing one.'",
+        "NOTHING_ROUTED": "'This report routed no document at all, so it cannot be held to the recorded baseline.'",
+        "BELOW_BASELINE": "'Agreement is BELOW the baseline: {agreement} now, {baseline} recorded.'",
+        "AT_BASELINE": "'Agreement holds: {agreement} now, {baseline} recorded.'",
+        "RECORDED": "'Recorded {agreement} over {documents} document(s) in {path}.'"
+      },
+      "role": "Routes the firm's own already-sorted documents at the office and scores the router against them: the agreement with where a person filed each one, the confusion pairs, the per-row table, the parked and no-text shares, and the time a real pass takes.",
+      "notes": "Decision 74. The measure the fifty blank IRS forms and the typed cases cannot be - decision 70's report leaves most keywords and most rows defended by nothing - and the only corpus made of documents a client actually sent. Each document is routed through a hard link (a copy where the file system refuses one) under one neutral name, so the router's by-name fallback can never read the client's name off the file and the score is the routing rules' rather than the firm's naming discipline; the link is the same bytes, so every tier-2 check still sees the real document. A document with no text layer is its own category, because the only evidence left for it would be the name being hidden - unless OCR is allowed, when nothing is handed over and the router does its own reading under its own stricter rule for OCR words. Catalogs are built the way tests/test_irs_forms.py builds them, with the size floor and the year check lifted. Nothing identifying comes back: counts, catalog identifiers and a row's number in the expectations file, never a file name, a folder name below the corpus root or a word of a document; the corpus, its expectations file and the report stay outside the repository and the tool refuses to write into the tree."
+    },
+    {
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
@@ -2251,6 +2380,12 @@
       "from": "Build App.bat",
       "to": "api_entry.py",
       "type": "freezes",
+      "source": "curated"
+    },
+    {
+      "from": "CLAUDE.md",
+      "to": "tools/backtest.py",
+      "type": "documents",
       "source": "curated"
     },
     {
@@ -2503,6 +2638,42 @@
       "from": "tests/test_api_entry.py",
       "to": "tracker/settings.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tools/backtest.py",
+      "type": "tests",
       "source": "derived"
     },
     {
@@ -3320,6 +3491,54 @@
       "to": "tools/vocab_report.py",
       "type": "tests",
       "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tests/test_real_corpus.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/router.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/settings.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/templates.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/validators.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "docs/backtest-baseline.json",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tools/repo_map.py",
