@@ -530,6 +530,7 @@ body {
 .review .r-keyword { grid-area: keyword; width: 190px; }
 .review .r-note { grid-area: note; width: 190px; }
 .review .r-file { grid-area: file; }
+.review .r-unfile { grid-area: file; }
 .review .r-dismiss { grid-area: dismiss; }
 .review select:focus-visible, .review input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 

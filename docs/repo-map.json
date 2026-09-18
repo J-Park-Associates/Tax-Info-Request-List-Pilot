@@ -14,7 +14,7 @@
   ],
   "counts": {
     "nodes": 93,
-    "edges": 322,
+    "edges": 323,
     "reused": 53
   },
   "node_types": [
@@ -93,8 +93,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "dc5b041471c74c73",
-      "lines": 833,
+      "sha256": "9ad2054e1888b119",
+      "lines": 875,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -102,11 +102,14 @@
         "DISMISS_LABEL",
         "DISMISS_NOTE_HINT",
         "ENGAGEMENT_FLAG",
+        "FILED_HEADING",
         "FILE_ANYWAY_LABEL",
         "NAME_PATTERN",
         "NEW_CLIENT_PLACEHOLDER",
         "REPO_ROOT",
         "ROLLOVER_NAME_PATTERN",
+        "UNFILE_LABEL",
+        "UNFILE_NOTE_HINT",
         "default_engagement_name",
         "form_label",
         "main",
@@ -119,10 +122,13 @@
         "DISMISS_NOTE_HINT": "'why nothing asks for it (optional)'",
         "DISMISSED_HEADING": "'Not requested ({n})'",
         "FILE_ANYWAY_LABEL": "'File it anyway'",
+        "UNFILE_LABEL": "'Unfile'",
+        "UNFILE_NOTE_HINT": "'why it is coming back (optional)'",
+        "FILED_HEADING": "'Filed documents ({n})'",
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike. Decision 72: it bounds it through manifest.check_tax_year(), which the rollover's own flag now goes through too. Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends runner.append_log()'s line to the run log and redraws the status page from every engagement under the root, neither taking a lock nor being allowed to fail the pass that has already moved the files - and state reports the page's path, so the shell will open it for the app's Open Status button. Decision 76: dismiss records that no request asks for a parked document and does not re-scan - nothing was filed under a request, so no row's status can have changed. _vocab() carries the new decision under the key 'dismissed', not the word: the renderer may not hold the word 'Requested' in any form (it is manifest.UNSCANNED_LABEL, and the guard that keeps the app from typing a status reads the whole file), and review_labels carries the card's own labels so the renderer types none of them."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike. Decision 72: it bounds it through manifest.check_tax_year(), which the rollover's own flag now goes through too. Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends runner.append_log()'s line to the run log and redraws the status page from every engagement under the root, neither taking a lock nor being allowed to fail the pass that has already moved the files - and state reports the page's path, so the shell will open it for the app's Open Status button. Decision 76: dismiss records that no request asks for a parked document and does not re-scan - nothing was filed under a request, so no row's status can have changed. _vocab() carries the new decision under the key 'dismissed', not the word: the renderer may not hold the word 'Requested' in any form (it is manifest.UNSCANNED_LABEL, and the guard that keeps the app from typing a status reads the whole file), and review_labels carries the card's own labels so the renderer types none of them. Decision 77: unfile sends one filed document back for review and returns the rewritten row and state; the scan summary is state's, because summarize() over the rows the re-scan left has one home and a second copy in the payload would be a second answer. The re-scan itself belongs to filer.unfile_document(), not here: the status reverting is part of the correction, not part of being asked over JSON."
     },
     {
       "id": "tracker/content_check.py",
@@ -203,8 +209,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "97606910925c2140",
-      "lines": 1836,
+      "sha256": "2f13e73dfefcb303",
+      "lines": 2039,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -222,13 +228,18 @@
         "INDEX_SHEET",
         "INDEX_SIDECAR_VERSION",
         "IndexEntry",
+        "LEFT_FILED",
         "MISSING_IN_PBC",
         "MOVED_FROM_IN_PBC",
         "MOVED_IN_PBC",
         "NEEDS_REVIEW",
         "NOT_REQUESTED",
         "REPLACED_IN_PBC",
+        "RESCAN_DEFERRED",
+        "RESCAN_REFUSED",
+        "UNFILED_BY_PERSON",
         "UNTIED_IN_PBC",
+        "UnfileResult",
         "_CANDIDATE_SEP",
         "_HEADER_WITHIN",
         "_LINK_TAGS",
@@ -249,6 +260,7 @@
         "read_index",
         "replaced_in_pbc",
         "request_folder",
+        "unfile_document",
         "unfinished_drops",
         "unlistable_folders",
         "unreachable_drops",
@@ -265,14 +277,18 @@
         "NOT_REQUESTED": "'Not Requested'",
         "ASSIGNED_BY_PERSON": "'assigned by a person'",
         "DISMISSED_BY_PERSON": "'not requested, by a person'",
+        "UNFILED_BY_PERSON": "'unfiled by a person'",
         "REPLACED_IN_PBC": "'{location} no longer holds the bytes recorded on {received}; its working copy {prepared} was made from the earlier file - a person should look'",
         "MISSING_IN_PBC": "'the original recorded at {location} on {received} is no longer there - deleted, renamed or moved after it was preserved; a person should look'",
         "MOVED_IN_PBC": "'the original recorded at {location} is now at {now} - the client renamed or moved it and the bytes are the same, so the row follows it'",
         "MOVED_FROM_IN_PBC": "'the client moved it from {location}, noticed on {found}'",
-        "UNTIED_IN_PBC": "'{location} was recorded without its bytes on {received} and its working copy {prepared} no longer matches it - a person should look'"
+        "UNTIED_IN_PBC": "'{location} was recorded without its bytes on {received} and its working copy {prepared} no longer matches it - a person should look'",
+        "LEFT_FILED": "'the working copy {location} no longer holds the bytes this row recorded (annotated, or re-saved) and was left there; {parked} went back to review from the original'",
+        "RESCAN_DEFERRED": "'the manifest is open in Excel; the status went to the sidecar and lands on the next pass'",
+        "RESCAN_REFUSED": "'the status was not put back now ({why}); the next pass does it'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row. Decision 67: bytes recorded late are the working copy's, never the original's as it is now (_record_missing_digests(); assign refuses a replaced original by the parked copy's bytes); a name UTF-8 cannot hold is reported and never sorted (_storable(), in PBC too); write_index() retries and snapshots on any OSError; a link is a mount point or a symlink by reparse tag (_LINK_TAGS), a cloud placeholder is not one; unlistable_folders() reports a folder the run cannot list; PBC is not walked through a link; a failed rollback inside assign is logged and the write's error raised. Decision 68: a row recorded without its bytes is tied to them only while its working copy and its original agree (UNTIED_IN_PBC says the rest every pass); assign moves the parked copy only while it holds the row's bytes; a row is blank when no known column holds anything; unlistable_folders() prunes links, PBC and staging. Decision 69: _read_index_workbook() finds the header row (_MANDATORY_COLUMNS, _HEADER_WITHIN) and refuses a sheet with rows and no header; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's (_copy_taken_by_a_later_row); assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so (AssignResult.left_in_review); unlistable_folders() walks PBC. Decision 72: the rows above the header row are data too (a sort with 'my data has headers' unchecked puts the header last or in the middle, and everything above it was dropped in silence) - only a row with no mandatory column filled is a typed title, and a pass that found rows above the header logs how many; the index's sheet is chosen by the header, not wb.active (_sheet_with_the_header(); a renamed tab beside a person's own empty tab read as no rows and the next write rebuilt the workbook over both), and _index_workbook() rewrites only that sheet in the workbook already there, so a sheet a person added survives; a recorded original that has left PBC/ is reported every pass (missing_in_pbc(), MISSING_IN_PBC) and, where a stray carries its bytes, the row follows the file instead of a Duplicate row being written (_follow_moved_originals(), MOVED_IN_PBC; a row with no digest is never relocated); _storable() also refuses a name openpyxl cannot write (a control character, reachable on POSIX); the tidy-up (the content cache, _prune_empty_dirs()) runs on a pass with nothing to sort, and the sort loop is _sort_all(); the assign rollback puts back a parked copy a reused attempt's copy stood in for. Decision 76: dismiss_review_file() is the other thing a person may do to a parked row - it rewrites it NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing at all, because a document the client sent is never deleted over a decision about the request list. _find_parked() takes a dismissed row too, so filing it is the undo and there is no second path; known (the duplicate test) already held it, so the same bytes sent again are a Duplicate rather than a second review item; _by_a_person() is the one reading of who decided a row, and read_index()'s snapshot merge keeps either decision over a workbook Excel saved stale."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row. Decision 67: bytes recorded late are the working copy's, never the original's as it is now (_record_missing_digests(); assign refuses a replaced original by the parked copy's bytes); a name UTF-8 cannot hold is reported and never sorted (_storable(), in PBC too); write_index() retries and snapshots on any OSError; a link is a mount point or a symlink by reparse tag (_LINK_TAGS), a cloud placeholder is not one; unlistable_folders() reports a folder the run cannot list; PBC is not walked through a link; a failed rollback inside assign is logged and the write's error raised. Decision 68: a row recorded without its bytes is tied to them only while its working copy and its original agree (UNTIED_IN_PBC says the rest every pass); assign moves the parked copy only while it holds the row's bytes; a row is blank when no known column holds anything; unlistable_folders() prunes links, PBC and staging. Decision 69: _read_index_workbook() finds the header row (_MANDATORY_COLUMNS, _HEADER_WITHIN) and refuses a sheet with rows and no header; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's (_copy_taken_by_a_later_row); assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so (AssignResult.left_in_review); unlistable_folders() walks PBC. Decision 72: the rows above the header row are data too (a sort with 'my data has headers' unchecked puts the header last or in the middle, and everything above it was dropped in silence) - only a row with no mandatory column filled is a typed title, and a pass that found rows above the header logs how many; the index's sheet is chosen by the header, not wb.active (_sheet_with_the_header(); a renamed tab beside a person's own empty tab read as no rows and the next write rebuilt the workbook over both), and _index_workbook() rewrites only that sheet in the workbook already there, so a sheet a person added survives; a recorded original that has left PBC/ is reported every pass (missing_in_pbc(), MISSING_IN_PBC) and, where a stray carries its bytes, the row follows the file instead of a Duplicate row being written (_follow_moved_originals(), MOVED_IN_PBC; a row with no digest is never relocated); _storable() also refuses a name openpyxl cannot write (a control character, reachable on POSIX); the tidy-up (the content cache, _prune_empty_dirs()) runs on a pass with nothing to sort, and the sort loop is _sort_all(); the assign rollback puts back a parked copy a reused attempt's copy stood in for. Decision 76: dismiss_review_file() is the other thing a person may do to a parked row - it rewrites it NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing at all, because a document the client sent is never deleted over a decision about the request list. _find_parked() takes a dismissed row too, so filing it is the undo and there is no second path; known (the duplicate test) already held it, so the same bytes sent again are a Duplicate rather than a second review item; _by_a_person() is the one reading of who decided a row, and read_index()'s snapshot merge keeps either decision over a workbook Excel saved stale. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with no identifier and the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself) so the request reverts with its regression note; the alternative people had was dragging the file in Explorer, which the index never learns. A working copy that is no longer the row's bytes is left in the request folder and said out loud (LEFT_FILED), the way assign leaves an annotated parked copy. _the_later_row() is how the snapshot merge tells which of two rows for one original was written last - the later one carries the other's whole Reason inside its own - because an unfiled row is parked again and 'the workbook still shows it parked' had stopped meaning 'before the decision'."
     },
     {
       "id": "tracker/locking.py",
@@ -1035,17 +1051,17 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "6f31af5cc2cfa846",
-      "lines": 758,
+      "sha256": "4e89e8bdd30872db",
+      "lines": 808,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.",
-      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back."
+      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "9c331e03e4bf0d12",
-      "lines": 264,
+      "sha256": "5851ff4a969d652c",
+      "lines": 271,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files."
     },
     {
@@ -1059,8 +1075,8 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "a9e38d995148eddc",
-      "lines": 572,
+      "sha256": "e36f16d3d1d08b23",
+      "lines": 573,
       "role": "Desktop app styling."
     },
     {
@@ -1084,8 +1100,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ee16ae13a74fb35c",
-      "lines": 279,
+      "sha256": "b755f81ab5fd85db",
+      "lines": 280,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1102,7 +1118,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "96fa625e0744b929",
+      "sha256": "cce1fb5dbb8fd79c",
       "lines": 541,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1128,8 +1144,8 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "983e0693d859ce4d",
-      "lines": 103,
+      "sha256": "02b322e3b4b60dff",
+      "lines": 116,
       "role": "How the day-to-day workflow runs."
     },
     {
@@ -1321,8 +1337,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2b89aa0d975b330f",
-      "lines": 763,
+      "sha256": "a221d40d730a17c8",
+      "lines": 805,
       "exports": [
         "demo_root",
         "run",
@@ -1372,6 +1388,8 @@
         "test_the_packaged_app_installs_a_schedule_against_its_own_executable",
         "test_the_renderer_gets_its_vocabulary_from_the_api",
         "test_the_tax_year_is_within_the_bounds_the_wizard_shows",
+        "test_unfile_refuses_what_is_not_filed",
+        "test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it",
         "test_unknown_command_is_a_json_error",
         "test_without_a_root_the_app_is_told_to_set_one"
       ]
@@ -1531,8 +1549,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9ab3d129d7a7f9f2",
-      "lines": 1854,
+      "sha256": "e810037024ba3923",
+      "lines": 2057,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1542,6 +1560,7 @@
         "excel_sorted",
         "pbc",
         "prepared",
+        "review_dir",
         "test_a_bare_list_sidecar_from_an_older_version_is_appended_once",
         "test_a_cloud_placeholder_is_not_a_link",
         "test_a_column_inserted_into_the_index_does_not_read_as_no_rows",
@@ -1553,6 +1572,7 @@
         "test_a_duplicate_rows_own_original_is_watched_like_every_other",
         "test_a_failed_index_write_puts_back_a_parked_copy_a_reused_one_stood_in_for",
         "test_a_failed_index_write_puts_the_filed_copy_back_where_the_index_says",
+        "test_a_failed_index_write_puts_the_unfiled_copy_back_where_the_index_says",
         "test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed",
         "test_a_file_dropped_straight_into_pbc_is_filed_and_indexed",
         "test_a_file_named_like_a_formula_is_recorded_as_its_name",
@@ -1579,6 +1599,8 @@
         "test_a_sidecar_that_cannot_be_read_stops_the_run_rather_than_being_guessed_past",
         "test_a_snapshot_the_workbook_has_outlived_does_not_hide_the_workbooks_rows",
         "test_a_workbook_with_rows_and_no_header_on_any_sheet_is_refused_by_name",
+        "test_a_working_copy_somebody_re_saved_is_left_where_it_is_and_said_so",
+        "test_after_unfiling_the_request_is_not_received_and_the_note_says_why",
         "test_an_annotated_parked_copy_is_left_behind_and_said_so",
         "test_an_empty_folder_is_cleared_by_a_pass_with_nothing_to_sort",
         "test_an_index_whose_header_row_moved_is_read_from_it_and_one_with_none_is_refused",
@@ -1590,6 +1612,7 @@
         "test_an_original_the_client_renamed_in_pbc_is_followed_not_filed_again",
         "test_an_original_the_sync_client_dehydrated_is_not_called_gone",
         "test_an_original_the_sync_client_dehydrated_is_not_downloaded_to_be_checked",
+        "test_an_unfiling_excel_kept_out_of_the_workbook_is_not_lost",
         "test_assigning_a_parked_file_moves_it_under_the_canonical_name",
         "test_assigning_a_replaced_original_is_refused_not_recorded_under_the_old_bytes",
         "test_assigning_copies_from_pbc_when_the_review_copy_is_gone",
@@ -1608,6 +1631,7 @@
         "test_every_unfinished_transfer_name_is_reported_as_waiting",
         "test_file_is_sorted_renamed_and_indexed",
         "test_filing_a_dismissed_document_is_how_the_decision_is_undone",
+        "test_filing_an_unfiled_document_puts_it_under_the_canonical_name_again",
         "test_filing_leaves_verdicts_the_scan_reuses",
         "test_index_workbook_is_readable_in_excel",
         "test_mixed_append_and_edit_survive_a_locked_index",
@@ -1623,10 +1647,13 @@
         "test_the_filer_holds_the_engagement_lock",
         "test_the_filer_reads_nothing_before_it_holds_the_lock",
         "test_the_index_is_read_from_the_sheet_carrying_its_header_not_the_selected_one",
+        "test_the_next_pass_leaves_an_unfiled_original_where_the_row_says",
         "test_the_pending_index_is_a_versioned_snapshot_of_every_row",
         "test_the_routers_candidates_travel_as_data_in_the_index",
         "test_the_same_document_sent_again_after_a_dismissal_is_a_duplicate",
         "test_the_unlistable_walk_covers_the_same_ground_as_the_others",
+        "test_unfiling_puts_the_working_copy_back_under_the_clients_own_name",
+        "test_unfiling_something_that_is_not_filed_says_what_it_is",
         "test_unroutable_file_is_preserved_and_parked",
         "test_what_lies_behind_a_junction_is_not_a_drop"
       ]
@@ -3889,6 +3916,12 @@
     {
       "from": "tracker/filer.py",
       "to": "tracker/scaffold.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "tracker/scanner.py",
       "type": "imports",
       "source": "derived"
     },

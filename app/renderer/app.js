@@ -118,6 +118,7 @@ function render(state) {
   $("summary").textContent = summary.filter(Boolean).join("   ·   ");
 
   renderReview(state);
+  renderUnfileList(state);
   renderLock(state);
 }
 
@@ -211,6 +212,27 @@ async function assignParked(li) {
   }
 }
 
+// ── The way back, so nobody corrects a filing in Explorer ────────────────
+
+// Folded away by default. It is a list of what is already right, there for
+// the one row that is not, and the index is the only thing that knows where
+// a working copy went: a correction made in Explorer is one it never learns.
+function renderUnfileList(state) {
+  const filed = (state.index || []).filter((e) => e.decision === vocab.decisions.filed);
+  $("filed-card").classList.toggle("hidden", filed.length === 0);
+  $("filed-heading").textContent = fill(vocab.review_labels.filed_heading, { n: filed.length });
+  show("filed-list", filed.map((e) =>
+    el("li", { dataset: { original: e.pbc_location } },
+      el("span", { className: "r-name" }, e.original_name),
+      el("span", { className: "r-why" }, `${e.identifier} — ${e.filed_as}`),
+      el("input", {
+        type: "text", className: "r-note", placeholder: vocab.review_labels.unfile_note,
+        "aria-label": vocab.review_labels.unfile_note,
+      }),
+      el("button", { className: "btn r-unfile" }, vocab.review_labels.unfile),
+    )));
+}
+
 // Nothing is deleted and nothing is moved: the row is rewritten, so the
 // banner says what the row now reads and the file is still where it was.
 async function dismissParked(li) {
@@ -226,6 +248,30 @@ async function dismissParked(li) {
     const notes = [`${d.original_name}: ${d.decision}`, d.reason];
     if (d.index_deferred) notes.push(INDEX_DEFERRED_NOTE);
     banner(notes.join(". ") + ".", d.index_deferred ? "warn" : "ok");
+  } catch (err) {
+    toast(err.message);
+    btn.disabled = false;
+  }
+}
+
+// The copy goes back under the client's own name and the request reverts in
+// the same breath, so the banner says where the document is now, not what
+// it stopped being.
+async function unfileDocument(li) {
+  const btn = li.querySelector(".r-unfile");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("unfile"), {
+      original: li.dataset.original,
+      note: typed(li, ".r-note"),
+    });
+    render(result.state);
+    const u = result.unfiled;
+    const notes = [`${u.original_name}: ${u.decision}`];
+    if (u.left_filed) notes.push(u.left_filed);
+    if (u.index_deferred) notes.push(INDEX_DEFERRED_NOTE);
+    if (u.scan_note) notes.push(u.scan_note);
+    banner(notes.join(". ") + ".", u.left_filed || u.index_deferred || u.scan_note ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
     btn.disabled = false;
@@ -741,6 +787,10 @@ $("review-list").addEventListener("click", (e) => {
 $("dismissed-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".r-file");
   if (btn) assignParked(btn.closest("li"));
+});
+$("filed-list").addEventListener("click", (e) => {
+  const btn = e.target.closest(".r-unfile");
+  if (btn) unfileDocument(btn.closest("li"));
 });
 $("cu-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".cu-remove");

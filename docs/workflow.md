@@ -70,7 +70,7 @@ The scanner owns the status column; people own the override column.
   `tracker/templates.py` and commit it; the test suite checks every row can
   recognise its own document.
 
-## Three things a person still does in the app
+## Four things a person still does in the app
 
 - **Check Manifest** runs the same validation the scheduled job runs before
   it touches a file: a bad regex or a non-number typed in Excel is named
@@ -94,6 +94,19 @@ The scanner owns the status column; people own the override column.
   again is a duplicate rather than a second thing to look at, and a person
   who was wrong files it from the folded-away list, which is the only undo
   there is.
+- **Unfile**, on anything in the folded-away *Filed documents* list: the
+  working copy goes back to `00 - Needs Review` under the client's own name,
+  the index row is rewritten `tracker.filer.NEEDS_REVIEW` as unfiled by a
+  person with what it said before, and the engagement is re-scanned, so the
+  request the document was answering goes back to what it is without it,
+  with the regression note that pass would have written. Do this rather than
+  dragging the file in Explorer: the index is what says where a working copy
+  went, and it never learns about a drag. Refiling is unfiling and then
+  **File it**; a working copy somebody annotated is left where it is and
+  said so, because the notes are work and which file the firm wants is not
+  the tracker's to decide. The keyword the request learned when it was filed
+  is not unlearned — it is a rule about documents, and the request still
+  wants it.
 
 ## Collaboration
 

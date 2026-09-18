@@ -17,7 +17,7 @@ import pytest
 
 import tracker.api as api
 from tests.samples import PRIOR_YEAR, col, row
-from tracker.filer import NEEDS_REVIEW
+from tracker.filer import FILED, NEEDS_REVIEW
 from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
     COL_ALLOWED_EXTENSIONS,
@@ -414,6 +414,46 @@ def test_dismiss_records_that_nothing_asks_for_a_parked_document(capsys, demo_ro
     assert api._vocab()["decisions"]["dismissed"] == NOT_REQUESTED
 
 
+def test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it(capsys, demo_root, tmp_path):
+    # The correction people used to make by dragging in Explorer, which the
+    # index never learned: the row and the request both follow the file.
+    from tracker.filer import UNFILED_BY_PERSON
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    request = next(i for i in payload["state"]["items"] if i["identifier"] == filed["identifier"])
+    assert request["status"] == Status.RECEIVED
+
+    code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "note": "wrong request"})
+    assert code == 0, payload
+    unfiled = payload["unfiled"]
+    assert unfiled["decision"] == NEEDS_REVIEW
+    assert unfiled["reason"].startswith(UNFILED_BY_PERSON) and "wrong request" in unfiled["reason"]
+    assert unfiled["moved_working_copy"] is True
+    assert unfiled["left_filed"] == "" and unfiled["scan_note"] == ""
+    # The working copy is parked under the client's own name...
+    parked = engagement / unfiled["prepared_location"]
+    assert parked.is_file() and parked.name == filed["original_name"]
+    assert not (engagement / filed["prepared_location"]).exists()
+    # ...and the request it was answering is not Received any more.
+    request = next(i for i in payload["state"]["items"] if i["identifier"] == filed["identifier"])
+    assert request["status"] != Status.RECEIVED
+    assert payload["state"]["summary"]["received"] == 0
+
+
+def test_unfile_refuses_what_is_not_filed(capsys, demo_root, tmp_path):
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
+    code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": "ghost.pdf"})
+    assert code == 1
+    assert "nothing in the index is called 'ghost.pdf'" in payload["error"]
+    code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement), stdin={})
+    assert code == 1 and payload["error"]
+
+
 def test_dismiss_refuses_a_file_the_index_does_not_know(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
     code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
@@ -714,6 +754,8 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert vocab["review_labels"] == {
         "dismiss": api.DISMISS_LABEL, "dismiss_note": api.DISMISS_NOTE_HINT,
         "dismissed_heading": api.DISMISSED_HEADING, "file_anyway": api.FILE_ANYWAY_LABEL,
+        "unfile": api.UNFILE_LABEL, "unfile_note": api.UNFILE_NOTE_HINT,
+        "filed_heading": api.FILED_HEADING,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert vocab["carried_sheet"] == CARRIED_SHEET

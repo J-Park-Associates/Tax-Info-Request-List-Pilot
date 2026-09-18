@@ -1851,3 +1851,206 @@ def test_dismissing_takes_the_engagement_lock(engagement):
     result = dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
     assert result.entry.decision == NOT_REQUESTED
     assert not (engagement / LOCK_FILENAME).exists()
+
+
+# ----------------------- a filed document goes back for review (d77) ----
+
+
+def review_dir(engagement):
+    return engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+
+
+def test_unfiling_puts_the_working_copy_back_under_the_clients_own_name(engagement):
+    """The parked name is the client's, whichever direction the document travels."""
+    from tracker.filer import UNFILED_BY_PERSON, unfile_document
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    working = engagement / filed.prepared_location
+    assert working.is_file()
+
+    result = unfile_document(engagement, filed.pbc_location, "wrong client", today=DAY2)
+
+    assert result.moved_working_copy is True and result.left_filed == ""
+    assert not working.exists()
+    parked = engagement / result.entry.prepared_location
+    assert parked.name == "w2 john.pdf" and parked.parent == review_dir(engagement)
+    assert parked.read_bytes() == (engagement / filed.pbc_location).read_bytes()
+    assert (engagement / filed.pbc_location).is_file()          # the original is untouched
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NEEDS_REVIEW and row.identifier == ""
+    assert row.reason == (
+        f"{UNFILED_BY_PERSON} on {DAY2.isoformat()} (wrong client); was: {filed.reason}"
+    )
+
+
+def test_filing_an_unfiled_document_puts_it_under_the_canonical_name_again(engagement):
+    """Refiling is unfiling and then filing; there is no third path to keep honest."""
+    from tracker.filer import (
+        ASSIGNED_BY_PERSON,
+        UNFILED_BY_PERSON,
+        assign_review_file,
+        unfile_document,
+    )
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    unfile_document(engagement, filed.pbc_location, today=DAY2)
+
+    result = assign_review_file(engagement, filed.pbc_location, "C01", today=DAY2)
+
+    assert result.moved_review_copy is True
+    assert result.entry.filed_as == "C01 - Mortgage Interest Statement - TY2025.pdf"
+    assert not list(review_dir(engagement).iterdir())
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == FILED and row.identifier == "C01"
+    assert row.reason.startswith(
+        f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: {UNFILED_BY_PERSON}"
+    )
+
+
+def test_unfiling_something_that_is_not_filed_says_what_it_is(engagement):
+    """Each of the other decisions needs a different answer, so none of them is guessed."""
+    from tracker.filer import (
+        NOT_REQUESTED,
+        FilingError,
+        dismiss_review_file,
+        unfile_document,
+    )
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    with pytest.raises(FilingError, match=rf"is not filed \(it is {NEEDS_REVIEW}\)"):
+        unfile_document(engagement, parked.pbc_location, today=DAY2)
+
+    dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
+    with pytest.raises(FilingError, match=rf"is not filed \(it is {NOT_REQUESTED}\)"):
+        unfile_document(engagement, parked.pbc_location, today=DAY2)
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
+    duplicate = file_drops(engagement, today=DAY2).duplicates[0]
+    with pytest.raises(FilingError, match=rf"is not filed \(it is {DUPLICATE}\)"):
+        unfile_document(engagement, duplicate.pbc_location, today=DAY2)
+
+    with pytest.raises(FilingError, match="nothing in the index is called"):
+        unfile_document(engagement, "ghost.pdf", today=DAY2)
+
+
+def test_a_working_copy_somebody_re_saved_is_left_where_it_is_and_said_so(engagement):
+    """A reviewer's notes are work. Which of the two files the firm wants is not ours."""
+    from tracker.filer import LEFT_FILED, unfile_document
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    working = engagement / filed.prepared_location
+    working.write_bytes(working.read_bytes() + b"% a reviewer's note\n")
+
+    result = unfile_document(engagement, filed.pbc_location, today=DAY2)
+
+    assert result.moved_working_copy is False
+    assert working.is_file()                                   # the notes are not thrown away
+    parked = engagement / result.entry.prepared_location
+    assert parked.is_file()
+    assert parked.read_bytes() == (engagement / filed.pbc_location).read_bytes()
+    assert result.left_filed == LEFT_FILED.format(
+        location=filed.prepared_location, parked=parked.name)
+
+
+def test_after_unfiling_the_request_is_not_received_and_the_note_says_why(engagement):
+    """The status is put back in the same breath; nothing waits for the next pass."""
+    from tracker.filer import unfile_document
+    from tracker.manifest import Status, load_manifest
+    from tracker.scanner import REGRESSION_FILES_CHANGED, REGRESSION_NOTE, scan_engagement
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025 John")
+    drop(engagement, "w2 jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
+    filed = file_drops(engagement, today=DAY1).filed
+    assert {e.identifier for e in filed} == {"A01"}            # the row expects two
+    scan_engagement(engagement, today=DAY1)
+    a01 = next(i for i in load_manifest(engagement / MANIFEST_FILENAME) if i.identifier == "A01")
+    assert a01.status == Status.RECEIVED
+
+    result = unfile_document(engagement, filed[0].pbc_location, today=DAY2)
+
+    assert result.scan_note == ""
+    a01 = next(i for i in load_manifest(engagement / MANIFEST_FILENAME) if i.identifier == "A01")
+    assert a01.status == Status.PARTIAL
+    assert REGRESSION_NOTE.format(
+        status=Status.RECEIVED, date=DAY1.isoformat(), why=REGRESSION_FILES_CHANGED,
+    ) in a01.validation_notes
+
+
+def test_the_next_pass_leaves_an_unfiled_original_where_the_row_says(engagement):
+    """It is still in PBC with a row, so it is nobody's stray and no second copy is made."""
+    from tracker.filer import unfile_document
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    unfile_document(engagement, filed.pbc_location, today=DAY2)
+    parked = sorted(p.name for p in review_dir(engagement).iterdir())
+
+    report = file_drops(engagement, today=DAY2)
+
+    assert report.handled == 0 and report.errors == [] and report.attention == []
+    assert sorted(p.name for p in review_dir(engagement).iterdir()) == parked
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NEEDS_REVIEW
+
+    # And the same document sent again is what a re-send of a parked one is.
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
+    again = file_drops(engagement, today=DAY2)
+    assert [e.original_name for e in again.duplicates] == ["w2 again.pdf"]
+    assert sorted(p.name for p in review_dir(engagement).iterdir()) == parked
+
+
+def test_an_unfiling_excel_kept_out_of_the_workbook_is_not_lost(engagement, monkeypatch):
+    """The copy has already moved, so the row that says where it is cannot be."""
+    from tracker.filer import UNFILED_BY_PERSON, unfile_document
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    sidecar = engagement / INDEX_PENDING_FILENAME
+
+    _lock_the_index(monkeypatch)
+    result = unfile_document(engagement, filed.pbc_location, today=DAY2)
+    assert result.index_deferred is True and sidecar.exists()
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NEEDS_REVIEW
+
+    monkeypatch.undo()                            # Excel closed - having saved
+    _age(sidecar, 60)
+    os.utime(engagement / INDEX_FILENAME, None)   # the workbook is newer, and stale
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NEEDS_REVIEW and row.reason.startswith(UNFILED_BY_PERSON)
+
+    assert file_drops(engagement, today=DAY2).index_deferred is False
+    assert not sidecar.exists()
+    [row] = read_index(engagement / INDEX_FILENAME)       # the workbook alone now
+    assert row.decision == NEEDS_REVIEW and row.reason.startswith(UNFILED_BY_PERSON)
+
+
+def test_a_failed_index_write_puts_the_unfiled_copy_back_where_the_index_says(engagement, monkeypatch):
+    """A retry does this once, not twice: the file goes where the index on disk says."""
+    import tracker.filer as filer_module
+    from tracker.filer import unfile_document
+
+    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    working = engagement / filed.prepared_location
+
+    def disk_full(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(filer_module, "_save_index", disk_full)
+    monkeypatch.setattr(filer_module, "_save_pending_index", disk_full)
+    monkeypatch.setattr(filer_module.time, "sleep", lambda _: None)
+    with pytest.raises(OSError):
+        unfile_document(engagement, filed.pbc_location, today=DAY2)
+    monkeypatch.undo()
+
+    assert working.is_file()
+    assert not list(review_dir(engagement).iterdir())
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == FILED and row.prepared_location == filed.prepared_location

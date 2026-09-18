@@ -39,6 +39,12 @@ Guarantees:
 - **A working copy that went missing is replaced.** A re-sent document
   whose earlier copy is no longer in ``PREPARED_DIR_NAME/`` is filed again rather
   than dismissed as a duplicate; the original was always safe in ``PBC_DIR_NAME/``.
+- **A filed document can go back for review, on the record.**
+  ``unfile_document()`` moves the working copy back to ``REVIEW_DIR_NAME``
+  under the client's own name and rewrites the row, so the correction people
+  used to make by dragging in Explorer - which the index never learned - is
+  one the index knows about. The request is re-scanned straight after, and
+  goes back to what it is without the document.
 - **A document no request asks for is said so, never erased.**
   ``dismiss_review_file()`` rewrites the row as ``NOT_REQUESTED`` and moves
   nothing: an agency notice or an extra statement stays where the client's
@@ -159,12 +165,18 @@ NOT_REQUESTED = "Not Requested"
 ASSIGNED_BY_PERSON = "assigned by a person"
 #: Reason prefix on index rows a person said no request asks for.
 DISMISSED_BY_PERSON = "not requested, by a person"
+#: Reason prefix on index rows a person sent back to REVIEW_DIR_NAME.
+UNFILED_BY_PERSON = "unfiled by a person"
 
-#: Every decision a person makes on a parked row, with the reason prefix it
+#: Every decision a person makes on a row by hand, with the reason prefix it
 #: is written under. A snapshot's row wins over a workbook that still shows
-#: the row as the machine left it when it carries one of these: only Excel
-#: saving a stale workbook could have undone it.
-_PERSONS_DECISIONS = ((FILED, ASSIGNED_BY_PERSON), (NOT_REQUESTED, DISMISSED_BY_PERSON))
+#: the row as it was before the decision when it carries one of these: only
+#: Excel saving a stale workbook could have undone it.
+_PERSONS_DECISIONS = (
+    (FILED, ASSIGNED_BY_PERSON),
+    (NOT_REQUESTED, DISMISSED_BY_PERSON),
+    (NEEDS_REVIEW, UNFILED_BY_PERSON),
+)
 
 #: The decisions that leave a document waiting in ``REVIEW_DIR_NAME`` for a
 #: person, and which a person may therefore act on: one nobody has looked at
@@ -491,6 +503,22 @@ def _by_a_person(entry: IndexEntry) -> bool:
     )
 
 
+def _the_later_row(snapshot: IndexEntry, workbook: IndexEntry) -> IndexEntry:
+    """Of two rows for one original, the one written last.
+
+    A row rewritten after another keeps what it said before it - a person's
+    decision puts it after "was:", a pass that followed a moved original
+    appends its own note - so a row carrying the other's whole Reason inside
+    its own was written after it. Where neither carries the other, the
+    snapshot is the later: it is written only because the workbook could not
+    be, and a workbook that has since outlived it was saved from Excel over a
+    row the snapshot already knew about.
+    """
+    if workbook.reason != snapshot.reason and snapshot.reason in workbook.reason:
+        return workbook
+    return snapshot
+
+
 def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     """Every index row, oldest first. Empty if there is no index yet.
 
@@ -506,8 +534,10 @@ def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     exceptions that never lose what only the snapshot knows - a row for an
     original the workbook does not list (it has been moved; it is never
     forgotten over a timestamp), and a decision a person made
-    (``_PERSONS_DECISIONS``) on a row the workbook still shows as the machine
-    left it, which only Excel saving a stale workbook could have undone.
+    (``_PERSONS_DECISIONS``) on a row the workbook still shows as it was
+    before them, which only Excel saving a stale workbook could have undone.
+    Which of the two is the later is read from the rows themselves
+    (``_the_later_row``), never from the file times: the rows are in one file.
 
     ``quarantine=False`` is for readers and dry runs: an unreadable sidecar
     is reported and skipped, never moved - looking changes nothing. A
@@ -526,12 +556,8 @@ def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
         recorded = {e.pbc_location for e in workbook if e.pbc_location}
         return workbook + [e for e in pending.entries if e.pbc_location not in recorded]
     decided = {e.pbc_location: e for e in pending.entries if e.pbc_location and _by_a_person(e)}
-    # The workbook's row wins wherever it carries a person's decision too -
-    # it is then the newer of the two, and a later decision (filing what was
-    # dismissed) is not undone by the snapshot that came before it.
     merged = [
-        decided[e.pbc_location]
-        if e.pbc_location in decided and not _by_a_person(e) else e
+        _the_later_row(decided[e.pbc_location], e) if e.pbc_location in decided else e
         for e in workbook
     ]
     recorded = {e.pbc_location for e in workbook if e.pbc_location}
@@ -1740,6 +1766,12 @@ def _find_parked(entries: list[IndexEntry], original: str) -> int:
 # ---------------------------------------------------------- not requested ----
 
 
+def _said(note: str) -> str:
+    """A person's note, in the one shape a rewritten Reason carries it."""
+    note = note.strip()
+    return f" ({note})" if note else ""
+
+
 @dataclass(frozen=True, slots=True)
 class DismissResult:
     """What saying one parked document is not requested did."""
@@ -1783,11 +1815,10 @@ def dismiss_review_file(
         entries = read_index(index_path)
         position = _find_parked(entries, original)
         entry = entries[position]
-        said = f" ({note.strip()})" if note.strip() else ""
         new_entry = replace(
             entry,
             decision=NOT_REQUESTED,
-            reason=f"{DISMISSED_BY_PERSON} on {today.isoformat()}{said}; was: {entry.reason}",
+            reason=f"{DISMISSED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}",
         )
         entries[position] = new_entry
         # Nothing was moved, so there is nothing to put back: a write that
@@ -1795,6 +1826,178 @@ def dismiss_review_file(
         # the row as the index on disk still has it.
         deferred = not write_index(index_path, entries)
     return DismissResult(entry=new_entry, index_deferred=deferred)
+
+
+# ----------------------------------------------------------------- unfile ----
+
+
+#: What an unfiling says about a working copy whose bytes are not the ones
+#: the row recorded. A reviewer's notes are work, and which of the two files
+#: the firm wants is not the filer's to decide: the copy stays in the
+#: request folder, a fresh one goes back to review, and a person is told so
+#: they can keep or discard it - and knows the row is still counted until
+#: they do.
+LEFT_FILED = (
+    "the working copy {location} no longer holds the bytes this row recorded (annotated, "
+    "or re-saved) and was left there; {parked} went back to review from the original"
+)
+#: What an unfiling says when the re-scan could not write the manifest. The
+#: row is rewritten and the file is back in review either way; it is the
+#: request's status that waits.
+RESCAN_DEFERRED = "the manifest is open in Excel; the status went to the sidecar and lands on the next pass"
+RESCAN_REFUSED = "the status was not put back now ({why}); the next pass does it"
+
+
+@dataclass(frozen=True, slots=True)
+class UnfileResult:
+    """What taking one filed document back for review did."""
+
+    entry: IndexEntry            # the rewritten index row
+    moved_working_copy: bool     # True: the working copy itself went back to REVIEW_DIR_NAME
+    left_filed: str = ""         # a working copy that was not the row's bytes, and stayed
+    index_deferred: bool = False
+    scan_note: str = ""          # why the re-scan did not land, when it did not
+
+
+def unfile_document(
+    engagement_dir: Path | str,
+    original: str,
+    note: str = "",
+    *,
+    today: dt.date | None = None,
+) -> UnfileResult:
+    """Take one filed document back to ``REVIEW_DIR_NAME``, on the record.
+
+    ``original`` names the index row the way :func:`assign_review_file` takes
+    it: its PBC location, or failing that its original name among the rows
+    the index says are ``FILED`` - whether a pass filed it or a person did.
+
+    The working copy goes back under the client's own name, the name a parked
+    copy has always had, and the row is rewritten ``NEEDS_REVIEW`` with no
+    identifier, the reason attributed to a person and what the row said
+    before kept after it. Then the engagement is re-scanned, so the request
+    the document was answering goes back to what it is without it, with the
+    regression note that pass would have written; nothing else waits for the
+    scheduled run to notice.
+
+    This is the correction that had no home. A document the router filed
+    under the wrong request, or a person filed in a hurry, was put right by
+    dragging it in Explorer - which the index never learns, so it went on
+    saying Filed at a path that holds nothing and the scan went on counting a
+    file that had moved. The keyword a person taught the request when they
+    filed it is *not* unlearned: it is a rule about documents, the request
+    still wants it, and guessing which keyword to take back would be
+    guessing. Refiling is unfiling and then filing.
+
+    The engagement lock is held for the move and the row, as everywhere else;
+    the re-scan takes it again on its own, exactly as the app's filing does.
+    """
+    engagement_dir = Path(engagement_dir)
+    today = today or dt.date.today()
+    index_path = engagement_dir / INDEX_FILENAME
+    review_dir = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+
+    with engagement_lock(engagement_dir):
+        entries = read_index(index_path)
+        position = _find_filed(entries, original)
+        entry = entries[position]
+        source = engagement_dir / entry.pbc_location
+        working = engagement_dir / entry.prepared_location if entry.prepared_location else None
+        # The working copy is only this row's while it is here, hydrated, not
+        # claimed by a later row, and still the bytes the row recorded. Any
+        # other file at that path is somebody else's document and is not
+        # carried back to review under this row's name.
+        here = (
+            working is not None and working.is_file() and not is_cloud_placeholder(working)
+            and not _copy_taken_by_a_later_row(entries, position)
+        )
+        still_the_rows = here and bool(entry.digest) and sha256_of(working) == entry.digest
+        if not still_the_rows:
+            # Nothing else can be parked but a copy of the original, so the
+            # original has to be here before anything is moved or written.
+            if not source.is_file():
+                raise FilingError(
+                    f"the working copy is not the one this row recorded and the original "
+                    f"{entry.pbc_location} is no longer in {PBC_DIR_NAME}; there is nothing to put back"
+                )
+            if is_cloud_placeholder(source):
+                raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
+
+        review_dir.mkdir(parents=True, exist_ok=True)
+        parked = _unique_path(review_dir, entry.original_name)
+        left_filed = ""
+        if still_the_rows:
+            _move_whole(working, parked)      # keeps any notes a person made on it
+        else:
+            if here:
+                left_filed = LEFT_FILED.format(location=entry.prepared_location, parked=parked.name)
+            _copy_whole(source, parked)
+
+        new_entry = replace(
+            entry,
+            identifier="",
+            prepared_location=prepared_location(review_dir, parked.name),
+            decision=NEEDS_REVIEW,
+            reason=f"{UNFILED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}",
+        )
+        entries[position] = new_entry
+        try:
+            deferred = not write_index(index_path, entries)
+        except BaseException:
+            # The same rule as filing: leave the file where the index on disk
+            # says it is, so a retry does this once rather than twice.
+            if not _index_records(index_path, new_entry):
+                try:
+                    if still_the_rows:
+                        _move_whole(parked, working)
+                    else:
+                        parked.unlink(missing_ok=True)
+                except OSError as undo:
+                    log.error("Could not put %s back after the index write failed: %s", parked.name, undo)
+            raise
+
+    # Outside the lock: the scan takes it for itself. A pass that slips in
+    # between reads the index this one has already written, so it sees the
+    # document in review, as this scan will.
+    return UnfileResult(
+        entry=new_entry, moved_working_copy=still_the_rows, left_filed=left_filed,
+        index_deferred=deferred, scan_note=_rescan(engagement_dir, today),
+    )
+
+
+def _rescan(engagement_dir: Path, today: dt.date) -> str:
+    """Put the request's status back now, and say so if it could not be."""
+    # The scan reads the index this module writes and this module asks for
+    # the scan: the cycle is deliberate and is imported where it is used, so
+    # neither module has to exist before the other at import time.
+    from tracker.scanner import ScanLockedError, scan_engagement
+
+    try:
+        if not scan_engagement(engagement_dir, today=today).written:
+            return RESCAN_DEFERRED
+    except ScanLockedError as exc:
+        return RESCAN_REFUSED.format(why=exc)
+    return ""
+
+
+def _find_filed(entries: list[IndexEntry], original: str) -> int:
+    """Index of the row ``original`` names; the newest ``FILED`` row wins a name.
+
+    ``_find_parked``'s shape over the other decision: what a person may
+    unfile is what the index says is filed, whoever filed it. A row that is
+    anything else names what it is in the refusal, because the answer to
+    "this is in the wrong place" is different for each of them.
+    """
+    wanted = original.replace("\\", "/").strip()
+    for position in range(len(entries) - 1, -1, -1):
+        entry = entries[position]
+        if entry.pbc_location == wanted or entry.original_name == wanted:
+            if entry.decision == FILED:
+                return position
+            if entry.decision == DUPLICATE and entry.original_name == wanted:
+                continue          # a re-send under the same name; the filed row is older
+            raise FilingError(f"{entry.original_name} is not filed (it is {entry.decision})")
+    raise FilingError(f"nothing in the index is called {original!r}")
 
 
 # -------------------------------------------------------------------- CLI ----

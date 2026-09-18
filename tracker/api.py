@@ -14,6 +14,7 @@ Commands:
   scan      one pass, exactly as the scheduled run makes it (no draft)
   assign    file one Needs Review document under a request (a person's call)
   dismiss   record that no request asks for one Needs Review document
+  unfile    send one filed document back to Needs Review (a person's call)
   check     check_manifest() on demand, problems named by row
   settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
@@ -42,6 +43,7 @@ from tracker.filer import (
     assign_review_file,
     dismiss_review_file,
     read_index,
+    unfile_document,
 )
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker.manifest import (
@@ -159,12 +161,16 @@ def _root() -> Path:
 ENGAGEMENT_FLAG = "--engagement"
 #: What a new client is called in the name preview before a name is typed.
 NEW_CLIENT_PLACEHOLDER = "New"
-#: What the Needs Review card calls the decisions a person makes there, and
-#: what it asks them for. The renderer shows these; it types none of them.
+#: What the Needs Review card calls the decisions a person makes there and
+#: on what is already filed, and what it asks them for. The renderer shows
+#: these; it types none of them.
 DISMISS_LABEL = "Not requested"
 DISMISS_NOTE_HINT = "why nothing asks for it (optional)"
 DISMISSED_HEADING = "Not requested ({n})"
 FILE_ANYWAY_LABEL = "File it anyway"
+UNFILE_LABEL = "Unfile"
+UNFILE_NOTE_HINT = "why it is coming back (optional)"
+FILED_HEADING = "Filed documents ({n})"
 
 
 def _new_engagement_dir(name: str) -> Path:
@@ -268,7 +274,9 @@ def _vocab() -> dict:
         "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE,
                       "dismissed": NOT_REQUESTED},
         "review_labels": {"dismiss": DISMISS_LABEL, "dismiss_note": DISMISS_NOTE_HINT,
-                          "dismissed_heading": DISMISSED_HEADING, "file_anyway": FILE_ANYWAY_LABEL},
+                          "dismissed_heading": DISMISSED_HEADING, "file_anyway": FILE_ANYWAY_LABEL,
+                          "unfile": UNFILE_LABEL, "unfile_note": UNFILE_NOTE_HINT,
+                          "filed_heading": FILED_HEADING},
         "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
         "expected_pattern": EXPECTED_PATTERN,
         "period_pattern": PERIOD_PATTERN,
@@ -729,6 +737,39 @@ def _cmd_dismiss(argv: list[str]) -> dict:
     }
 
 
+def _cmd_unfile(argv: list[str]) -> dict:
+    """Send one filed document back to Needs Review, by a person's decision.
+
+    JSON spec on stdin: {"original": "<PBC location or original name>",
+                         "note": "optional"}
+    The working copy goes back under the client's own name, the index row is
+    rewritten Needs Review (attributed to a person, with what it said
+    before), and the filer re-scans, so the request the document was
+    answering reverts with a regression note in the same breath. The scan
+    summary comes back in ``state`` - it is summarize() over the rows the
+    re-scan has just left, and there is nowhere else it lives.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    original = str(spec.get("original", "")).strip()
+    if not original:
+        raise ManifestError("Pick the document to send back for review")
+    result = unfile_document(engagement, original, str(spec.get("note", "") or ""))
+    return {
+        "unfiled": {
+            "original_name": result.entry.original_name,
+            "decision": result.entry.decision,
+            "reason": result.entry.reason,
+            "prepared_location": result.entry.prepared_location,
+            "moved_working_copy": result.moved_working_copy,
+            "left_filed": result.left_filed,
+            "index_deferred": result.index_deferred,
+            "scan_note": result.scan_note,
+        },
+        "state": _state(engagement),
+    }
+
+
 def _cmd_settings(argv: list[str]) -> dict:
     """Where the clients live, and where that is written down."""
     root = clients_root()
@@ -804,6 +845,7 @@ COMMANDS = {
     "create": _cmd_create,
     "assign": _cmd_assign,
     "dismiss": _cmd_dismiss,
+    "unfile": _cmd_unfile,
     "check": _cmd_check,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,
