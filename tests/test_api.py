@@ -152,8 +152,9 @@ def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_r
     created = demo_root / payload["created"]
     assert created.parent == demo_root and (created / MANIFEST_FILENAME).is_file()
     assert not (demo_root.parent.parent / "escaped TY2025 Form 1040").exists()
-    with pytest.raises(api.ManifestError, match="not a folder name"):
-        api._new_engagement_dir("..\\outside")
+    for outside in ("../outside", "sub/child"):          # a separator either platform reads
+        with pytest.raises(api.ManifestError, match="not a folder name"):
+            api._new_engagement_dir(outside)
 
 
 def test_the_tax_year_is_within_the_bounds_the_wizard_shows(capsys, demo_root):

@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 84,
     "edges": 274,
-    "reused": 61
+    "reused": 60
   },
   "node_types": [
     "artifact",
@@ -458,8 +458,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "791cf1a22d65bcef",
-      "lines": 304,
+      "sha256": "97af9cf80fc99cca",
+      "lines": 306,
       "cli": "python -m tracker.registry",
       "exports": [
         "Engagement",
@@ -1194,8 +1194,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "09cd0d3efa386595",
-      "lines": 679,
+      "sha256": "c57b999496117deb",
+      "lines": 680,
       "exports": [
         "demo_root",
         "run",

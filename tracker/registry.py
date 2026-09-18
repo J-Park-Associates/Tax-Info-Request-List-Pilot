@@ -129,12 +129,14 @@ def _walk_engagements(root: Path, max_depth: int) -> tuple[list[Path], list[tupl
     unlisted: list[tuple[Path, str]] = []
 
     def walk(folder: Path, depth: int) -> None:
-        if (folder / MANIFEST_FILENAME).is_file():
-            found.append(folder)
-            return
-        if depth >= max_depth:
-            return
         try:
+            # A folder that denies the account raises here on POSIX (no
+            # search permission) and only on listing on Windows.
+            if (folder / MANIFEST_FILENAME).is_file():
+                found.append(folder)
+                return
+            if depth >= max_depth:
+                return
             children = sorted(p for p in folder.iterdir() if p.is_dir())
         except OSError as exc:
             unlisted.append((folder, f"could not be listed ({exc.strerror or exc})"))
