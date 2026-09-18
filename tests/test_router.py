@@ -541,9 +541,32 @@ def test_a_tier_two_refusal_travels_as_the_reasons_own_code(tmp_path):
     assert routing.candidates == ("A01",)
     # The code, not the sentence: the sentence is written for a person and
     # may be reworded; reasons.TOO_SMALL.code is the cause's one name.
-    assert [(e.rule, e.term) for e in routing.evidence_record["A01"]] == [
+    assert [(e.rule, e.term) for e in routing.evidence_record["A01"] if e.rule == RULE_REFUSED] == [
         (RULE_REFUSED, reasons.TOO_SMALL.code),
     ]
+
+
+def test_a_blocked_file_keeps_the_request_it_looked_like_beside_the_refusal(tmp_path):
+    """The refusal says which rule said no; only the keyword says which request."""
+    from tracker.content_check import RULE_REFUSED, RULE_REQUIRED, WHERE_TITLE
+
+    strict = RequestItem(
+        identifier="A01", document="W-2 Wage Statements", allowed_extensions=("pdf",),
+        min_size_kb=50, required_keywords=("W-2",),
+    )
+    f = text_pdf(tmp_path / "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    routing = route_file(f, [strict])
+
+    # The content fit the row and the file itself was refused: both halves
+    # are on the record, so a reader knows what it looked like and why it
+    # was not filed. The verdict was already read to decide that; keeping
+    # what it found costs no second reading.
+    assert [(e.rule, e.term, e.where) for e in routing.evidence_record["A01"]] == [
+        (RULE_REQUIRED, "W-2", WHERE_TITLE),
+        (RULE_REFUSED, reasons.TOO_SMALL.code, ""),
+    ]
+    assert routing.identifier is None, "a blocked file is still never filed"
 
 
 def test_a_contested_file_keeps_the_keywords_that_did_match(tmp_path):

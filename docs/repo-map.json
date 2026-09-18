@@ -14,8 +14,8 @@
   ],
   "counts": {
     "nodes": 101,
-    "edges": 365,
-    "reused": 72
+    "edges": 367,
+    "reused": 69
   },
   "node_types": [
     "artifact",
@@ -103,8 +103,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0086e43115dc2f3c",
-      "lines": 895,
+      "sha256": "18c365ceb8e6f1b3",
+      "lines": 947,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -114,10 +114,13 @@
         "ENGAGEMENT_FLAG",
         "FILED_HEADING",
         "FILE_ANYWAY_LABEL",
+        "FILE_LABEL",
         "NAME_PATTERN",
         "NEW_CLIENT_PLACEHOLDER",
+        "OTHER_REQUESTS_HEADING",
         "REPO_ROOT",
         "ROLLOVER_NAME_PATTERN",
+        "SUGGESTED_HEADING",
         "UNFILE_LABEL",
         "UNFILE_NOTE_HINT",
         "default_engagement_name",
@@ -131,14 +134,17 @@
         "DISMISS_LABEL": "'Not requested'",
         "DISMISS_NOTE_HINT": "'why nothing asks for it (optional)'",
         "DISMISSED_HEADING": "'Not requested ({n})'",
+        "FILE_LABEL": "'File it'",
         "FILE_ANYWAY_LABEL": "'File it anyway'",
         "UNFILE_LABEL": "'Unfile'",
         "UNFILE_NOTE_HINT": "'why it is coming back (optional)'",
         "FILED_HEADING": "'Filed documents ({n})'",
+        "SUGGESTED_HEADING": "'Suggested'",
+        "OTHER_REQUESTS_HEADING": "'Other requests'",
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike. Decision 72: it bounds it through manifest.check_tax_year(), which the rollover's own flag now goes through too. Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends runner.append_log()'s line to the run log and redraws the status page from every engagement under the root, neither taking a lock nor being allowed to fail the pass that has already moved the files - and state reports the page's path, so the shell will open it for the app's Open Status button. Decision 76: dismiss records that no request asks for a parked document and does not re-scan - nothing was filed under a request, so no row's status can have changed. _vocab() carries the new decision under the key 'dismissed', not the word: the renderer may not hold the word 'Requested' in any form (it is manifest.UNSCANNED_LABEL, and the guard that keeps the app from typing a status reads the whole file), and review_labels carries the card's own labels so the renderer types none of them. Decision 77: unfile sends one filed document back for review and returns the rewritten row and state; the scan summary is state's, because summarize() over the rows the re-scan left has one home and a second copy in the payload would be a second answer. The re-scan itself belongs to filer.unfile_document(), not here: the status reverting is part of the correction, not part of being asked over JSON. Decision 82: state's index rows carry evidence as data, not as text - _evidence_payload() parses the cell with content_check.parse_evidence() and ships a record keyed by candidate identifier, so the renderer never splits a string of the tracker's on separators of its own; _vocab()['evidence'] carries EVIDENCE_RULES and EVIDENCE_PLACES, the two lists of words the app may label."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike. Decision 72: it bounds it through manifest.check_tax_year(), which the rollover's own flag now goes through too. Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends runner.append_log()'s line to the run log and redraws the status page from every engagement under the root, neither taking a lock nor being allowed to fail the pass that has already moved the files - and state reports the page's path, so the shell will open it for the app's Open Status button. Decision 76: dismiss records that no request asks for a parked document and does not re-scan - nothing was filed under a request, so no row's status can have changed. _vocab() carries the new decision under the key 'dismissed', not the word: the renderer may not hold the word 'Requested' in any form (it is manifest.UNSCANNED_LABEL, and the guard that keeps the app from typing a status reads the whole file), and review_labels carries the card's own labels so the renderer types none of them. Decision 77: unfile sends one filed document back for review and returns the rewritten row and state; the scan summary is state's, because summarize() over the rows the re-scan left has one home and a second copy in the payload would be a second answer. The re-scan itself belongs to filer.unfile_document(), not here: the status reverting is part of the correction, not part of being asked over JSON. Decision 82: state's index rows carry evidence as data, not as text - _evidence_payload() parses the cell with content_check.parse_evidence() and ships a record keyed by candidate identifier, so the renderer never splits a string of the tracker's on separators of its own; _vocab()['evidence'] carries EVIDENCE_RULES and EVIDENCE_PLACES, the two lists of words the app may label. Decision 84: state carries 'review' - tracker.review.triage() over the manifest rows and index entries state has already loaded, so each is read once for the whole screen, serialised by _triage_payload() as one entry per parked file joined to its index row by pbc_location, its shortlist in triage order, each suggestion carrying identifier, reason and rank. The reason ships whole, with its leading identifier, exactly as review.py wrote it: one owner for the sentence, and the identifier travels beside it as data because that is what assign is given. There is no review command - the card draws from the one state the app already reads. _vocab() owns every word that card shows: review_labels gained FILE_LABEL, SUGGESTED_HEADING and OTHER_REQUESTS_HEADING, and 'triage' carries review.NOTHING_SUGGESTED, review.IDENTIFIER_SEPARATOR, review.PLACE_WORDS and review.MAX_SUGGESTIONS from the module that owns them."
     },
     {
       "id": "tracker/content_check.py",
@@ -720,8 +726,8 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "59bea58f465c4c29",
-      "lines": 466,
+      "sha256": "39a5923d0dfd34a0",
+      "lines": 475,
       "cli": "python -m tracker.router",
       "exports": [
         "AMBIGUOUS",
@@ -748,7 +754,7 @@
         "CONTESTED_PREFIX": "'looks like'"
       },
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only), then OCR on required keywords only.",
-      "notes": "Reads the document through content_check.extract() - the scanner's reading - and leaves its per-row verdicts in the content cache keyed by content, so the scan finds them under the working copy's name. A scan whose name routes it is not OCR'd; one whose name says nothing is, and OCR text routes only on required keywords - an any-keyword match on OCR text is OCR_ONLY, a lead for a person, because a misread word is how a document lands under the wrong request. One PdfVerdictCache per file (or the caller's) so a PDF is parsed once, not once per row. The CLI (python -m tracker.router <engagement> <files>) says where each file would go and why, moving nothing. Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched. Decision 55: _filename_hit() is contains_keyword() over the name; a text layer extract() marked needs_ocr is no text at all, so a multi-page scan routes by its name. Decision 58: no run-together fallback; the keyword pattern already reads a dash or space as optional. Decision 73: a row whose any-keywords all matched and whose year alone failed is remembered as a lead, and a file that would otherwise be parked with 'matched no request' is parked as 'looks like J01 (expected period not found ...)' with J01 as its candidate - the sentence a contested file gets, so the reminder asks the client about the period. A lead pre-empts no filing, unlike a required-keyword match, so the decision is exactly as it was; only the reason and the candidates improve. Decision 82: Routing.evidence_record is why, beside Routing.evidence, which stays what it always was - the tier the decision rested on (EVIDENCE_CONTENT | EVIDENCE_FILENAME). Keyed by candidate identifier: the content check's own Evidence tuple for a row that was read, _filename_evidence() for a by-name hit (a name is all title and has no page), and _refusal_evidence() for a tier-2 refusal, which travels as reasons.Reason.code rather than the sentence a person reads. _recorded_for() cuts it down to the identifiers the decision names, because every row considered leaves something behind and one index cell must not carry the whole manifest's workings. It decides nothing: every verdict is reached exactly as it was before there was a record."
+      "notes": "Reads the document through content_check.extract() - the scanner's reading - and leaves its per-row verdicts in the content cache keyed by content, so the scan finds them under the working copy's name. A scan whose name routes it is not OCR'd; one whose name says nothing is, and OCR text routes only on required keywords - an any-keyword match on OCR text is OCR_ONLY, a lead for a person, because a misread word is how a document lands under the wrong request. One PdfVerdictCache per file (or the caller's) so a PDF is parsed once, not once per row. The CLI (python -m tracker.router <engagement> <files>) says where each file would go and why, moving nothing. Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched. Decision 55: _filename_hit() is contains_keyword() over the name; a text layer extract() marked needs_ocr is no text at all, so a multi-page scan routes by its name. Decision 58: no run-together fallback; the keyword pattern already reads a dash or space as optional. Decision 73: a row whose any-keywords all matched and whose year alone failed is remembered as a lead, and a file that would otherwise be parked with 'matched no request' is parked as 'looks like J01 (expected period not found ...)' with J01 as its candidate - the sentence a contested file gets, so the reminder asks the client about the period. A lead pre-empts no filing, unlike a required-keyword match, so the decision is exactly as it was; only the reason and the candidates improve. Decision 82: Routing.evidence_record is why, beside Routing.evidence, which stays what it always was - the tier the decision rested on (EVIDENCE_CONTENT | EVIDENCE_FILENAME). Keyed by candidate identifier: the content check's own Evidence tuple for a row that was read, _filename_evidence() for a by-name hit (a name is all title and has no page), and _refusal_evidence() for a tier-2 refusal, which travels as reasons.Reason.code rather than the sentence a person reads. _recorded_for() cuts it down to the identifiers the decision names, because every row considered leaves something behind and one index cell must not carry the whole manifest's workings. It decides nothing: every verdict is reached exactly as it was before there was a record. Decision 84: a blocked file - content fits a row, the same row's tier-2 rules refused the file - keeps the verdict's evidence beside the refusal in record, because the refusal alone says which rule said no and never which request the document looked like. The verdict was already read there to decide the file was blocked, so nothing is computed twice and no placement moves."
     },
     {
       "id": "tracker/runner.py",
@@ -1128,10 +1134,10 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "4e89e8bdd30872db",
-      "lines": 808,
+      "sha256": "0ce2264cef1f71b8",
+      "lines": 837,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.",
-      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file."
+      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none."
     },
     {
       "id": "app/renderer/index.html",
@@ -1152,8 +1158,8 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "e36f16d3d1d08b23",
-      "lines": 573,
+      "sha256": "f3c0e719c29dc74f",
+      "lines": 588,
       "role": "Desktop app styling."
     },
     {
@@ -1177,8 +1183,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "75f292270e5a81fe",
-      "lines": 292,
+      "sha256": "268bfd05c77f38b0",
+      "lines": 293,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1195,7 +1201,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8d87fa18dfd2c6d5",
+      "sha256": "87d2138b8a3a3274",
       "lines": 609,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1204,8 +1210,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ffeb1cb17377db1d",
-      "lines": 267,
+      "sha256": "2effb09c8cfd7237",
+      "lines": 270,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1440,8 +1446,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0d6119b157a0cd45",
-      "lines": 824,
+      "sha256": "7a947cf571349eea",
+      "lines": 964,
       "exports": [
         "demo_root",
         "run",
@@ -1450,10 +1456,12 @@
         "test_a_manifest_problem_is_a_json_error_not_a_traceback",
         "test_a_name_of_only_illegal_characters_falls_back",
         "test_a_new_client_engagement_is_named_from_client_year_and_form",
+        "test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing",
         "test_a_rollover_takes_its_prior_only_from_under_the_root",
         "test_an_unplugged_clients_root_is_not_a_licence_to_read_anywhere",
         "test_assign_files_a_parked_document_and_rescans",
         "test_assign_refuses_a_bad_request_with_a_sentence",
+        "test_assigning_a_shortlisted_request_files_it_and_the_queue_drops_it",
         "test_check_reports_problems_and_warnings_with_rows",
         "test_create_builds_manifest_and_folders",
         "test_create_refuses_a_duplicate_identifier",
@@ -1466,6 +1474,7 @@
         "test_create_writes_the_engagement_sheet_the_scheduled_run_reads",
         "test_dismiss_records_that_nothing_asks_for_a_parked_document",
         "test_dismiss_refuses_a_file_the_index_does_not_know",
+        "test_dismissing_a_file_takes_it_out_of_the_review_queue",
         "test_every_chip_class_the_vocabulary_implies_exists_in_the_stylesheet",
         "test_install_schedule_defaults_come_from_scheduling",
         "test_install_schedule_uses_the_same_root_as_the_app",
@@ -1491,11 +1500,14 @@
         "test_the_packaged_app_installs_a_schedule_against_its_own_executable",
         "test_the_renderer_gets_its_vocabulary_from_the_api",
         "test_the_state_carries_each_rows_evidence_as_data_not_as_a_string",
+        "test_the_state_triages_each_parked_file_best_first_with_the_reason_behind_each",
         "test_the_tax_year_is_within_the_bounds_the_wizard_shows",
+        "test_the_vocabulary_carries_every_word_the_review_card_shows",
         "test_unfile_refuses_what_is_not_filed",
         "test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it",
         "test_unknown_command_is_a_json_error",
-        "test_without_a_root_the_app_is_told_to_set_one"
+        "test_without_a_root_the_app_is_told_to_set_one",
+        "triage_engagement"
       ]
     },
     {
@@ -2157,14 +2169,15 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d243941588a162ef",
-      "lines": 559,
+      "sha256": "1ef6c046a7aaf3af",
+      "lines": 582,
       "exports": [
         "DONATIONS",
         "INT_DIV",
         "ITEMS",
         "MORTGAGE",
         "W2",
+        "test_a_blocked_file_keeps_the_request_it_looked_like_beside_the_refusal",
         "test_a_clients_hyphenated_file_name_still_routes",
         "test_a_contested_file_keeps_the_keywords_that_did_match",
         "test_a_corrupt_pdf_is_a_review_reason_not_a_crash",
@@ -2989,6 +3002,12 @@
     },
     {
       "from": "tests/test_api.py",
+      "to": "tracker/review.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
       "to": "tracker/rollover.py",
       "type": "exercises",
       "source": "derived"
@@ -3032,6 +3051,12 @@
     {
       "from": "tests/test_api.py",
       "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tests/test_scanner.py",
       "type": "imports",
       "source": "derived"
     },

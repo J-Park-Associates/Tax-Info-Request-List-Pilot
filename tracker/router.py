@@ -58,10 +58,13 @@ A decision also keeps *why* it was reached. ``Routing.evidence`` names the
 tier the decision rested on; ``Routing.evidence_record`` carries, per
 candidate, the keywords that matched and where in the document they were
 said (:class:`tracker.content_check.Evidence`), a by-name hit as the file's
-own title, and a tier-2 refusal as that Reason's code. It decides nothing -
-every verdict above is reached exactly as it was before there was a record
-- and it is what the index's Evidence column, and the person working the
-review queue, then read.
+own title, and a tier-2 refusal as that Reason's code. A *blocked* file -
+one whose content fits a request and whose file the same request's tier-2
+rules then refused - keeps both, because the refusal alone says which rule
+said no and never which request the document looked like, and that is the
+half a person needs. It decides nothing - every verdict above is reached
+exactly as it was before there was a record - and it is what the index's
+Evidence column, and the person working the review queue, then read.
 
 Routing is read-only. Moving, renaming and indexing happen in
 :mod:`tracker.filer`, which uses the decisions made here. The verdicts the
@@ -317,9 +320,15 @@ def route_file(
         tier2 = check_file(path, item, pdf_cache=pdf_cache)
         if not tier2.ok:
             refusals.append(tier2.reason)
-            record[item.identifier] = _refusal_evidence(tier2.reason)
-            if words and verdict_for(item).ok:
+            refused = _refusal_evidence(tier2.reason)
+            record[item.identifier] = refused
+            # The verdict was already read to know whether this is a
+            # blocked file; keeping its evidence beside the refusal costs
+            # nothing and is the only thing that says which request the
+            # document looked like. Nothing is filed differently for it.
+            if words and (verdict := verdict_for(item)).ok:
                 blocked.append((item.identifier, tier2.reason))
+                record[item.identifier] = verdict.evidence + refused
             continue
         if words:
             verdict = verdict_for(item)

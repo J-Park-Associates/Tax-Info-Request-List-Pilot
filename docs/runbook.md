@@ -83,16 +83,19 @@ same day, and the tool's card there prints that sentence.
    sent back to the review folder with **Unfile**, on the record, and filed
    again from there.
 
-   To see which request each parked file most likely belongs to, run
-   `python -m tracker.review` against the engagement folder. It prints, per
-   parked file, up to three requests best-first with the one line that says
-   why each is on the list — which of that request's keywords the document
-   said, where it said it, and the rule that refused it. It is a shortlist
-   and never a filing: it moves nothing, changes no status and takes no
-   lock, so **File it** is still what files anything, and a request the firm
-   has waived is never offered. A file whose evidence says nothing gets no
-   suggestion at all rather than a guess — an empty shortlist means read the
-   document.
+   The card does not leave you to find the request yourself. Each parked
+   file carries a shortlist: up to three requests, best first, at the head
+   of its picker under *Suggested*, with every other request below them
+   under *Other requests*, and under the row the one line that says why each
+   is on the list — which of that request's keywords the document said,
+   where it said it, and the rule that refused it. It is a shortlist and
+   never a filing: nothing is moved, no status changes and no lock is taken
+   until you press **File it**, the picker is still the whole list so you
+   may file to anything on it, and a request the firm has waived is never
+   offered. A file whose evidence says nothing gets no suggestion at all
+   rather than a guess — where the card says so, read the document. The
+   same answer is on the command line, without the app:
+   `python -m tracker.review` against the engagement folder prints it.
 3. **A locked engagement.** The app shows a notice when a run holds one. If
    it says a run is still going, leave it — **Sort & Scan** waits for it.
    If it says a run left its lock behind, a **Clear lock** button appears;
