@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 97,
+    "nodes": 98,
     "edges": 345,
-    "reused": 46
+    "reused": 73
   },
   "node_types": [
     "artifact",
@@ -1092,8 +1092,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "69199ae81839b623",
-      "lines": 202,
+      "sha256": "b1a9d1f4fc0c019e",
+      "lines": 209,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -1101,16 +1101,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8cef42d4ec95b85c",
-      "lines": 328,
+      "sha256": "39371a475a28c5d7",
+      "lines": 332,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "312cbd4120f7e9e6",
-      "lines": 282,
+      "sha256": "55cc6c003739d862",
+      "lines": 288,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1127,10 +1127,19 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d51fb3cbe99708ff",
-      "lines": 582,
+      "sha256": "1734d9ff5cac3f3e",
+      "lines": 586,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
+    },
+    {
+      "id": "docs/runbook.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "fe53db0dde19fead",
+      "lines": 241,
+      "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
+      "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
     {
       "id": "docs/vocab-coverage.json",
@@ -2248,8 +2257,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9221f95d4cdfa358",
-      "lines": 586,
+      "sha256": "f4213a8f1c61087e",
+      "lines": 587,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -2299,7 +2308,7 @@
         "test_tree_diagrams_show_catalog_folders_as_the_scaffold_names_them"
       ],
       "constants": {
-        "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'CLAUDE.md')"
+        "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'CLAUDE.md')"
       }
     },
     {

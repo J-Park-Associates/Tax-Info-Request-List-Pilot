@@ -176,6 +176,13 @@ the knowledge map quoting them exactly:
 look arbitrary are the way they are. Read it before changing behaviour that
 seems odd; the odd choice is usually load-bearing.
 
+[`docs/runbook.md`](docs/runbook.md) is the same system from the operator's
+side, written for a person rather than an agent: which machine runs the
+schedule and why only one may, what someone does each morning and on the
+draft day, what every index reason and validation note means, and how the
+firm moves to another machine. Change how any of that behaves and the
+runbook is part of the change.
+
 ## Working on this repo
 
 ```

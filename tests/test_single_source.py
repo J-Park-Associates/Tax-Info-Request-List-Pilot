@@ -296,7 +296,8 @@ def test_the_roadmap_schema_table_matches_the_manifest_headers():
         assert f"| {header} |" in roadmap, header
 
 
-DOCUMENTS = ("README.md", "docs/ROADMAP.md", "docs/workflow.md", "CLAUDE.md")
+DOCUMENTS = ("README.md", "docs/ROADMAP.md", "docs/workflow.md", "docs/runbook.md",
+             "CLAUDE.md")
 
 
 def test_prose_names_no_weekday_but_the_draft_day():

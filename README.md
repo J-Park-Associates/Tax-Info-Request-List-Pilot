@@ -188,6 +188,10 @@ scanning running through the day without touching that.
 `reminder-draft.txt` into the engagement folder; a person opens it, edits it
 and sends it. Nothing in the scheduled path sends email.
 
+How a season is actually run on the firm's one machine — the morning pass,
+the draft day, what the index's reasons mean, and what to do if that machine
+dies — is [docs/runbook.md](docs/runbook.md).
+
 The schedule is a default, not a cage:
 
 | | |

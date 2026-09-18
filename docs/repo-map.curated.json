@@ -192,6 +192,10 @@
     "docs/workflow.md": {
       "role": "How the day-to-day workflow runs."
     },
+    "docs/runbook.md": {
+      "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
+      "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
+    },
     "README.md": {
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
