@@ -282,6 +282,10 @@ class EngagementInfo:
     reminders: bool = True
     active: bool = True
     rolled_from: str = ""
+    #: Which catalog the request list was cut from, as the catalog keys it.
+    #: Blank on an engagement made before it was recorded, and blank is
+    #: unknown to every reader - nothing refuses a manifest for it.
+    form: str = ""
 
 
 #: Row labels on the Engagement sheet, in the order they are written.
@@ -309,6 +313,10 @@ ENGAGEMENT_FIELDS = (
     ("Reminders", "reminders"),
     ("Active", "active"),
     ("Rolled From", "rolled_from"),
+    # Added last so an engagement made before it existed keeps every cell
+    # where its reader and its owner left them; the sheet is read by label
+    # (_engagement_from_sheet), so a missing row is simply a blank value.
+    ("Form", "form"),
 )
 #: field name -> the sheet's label, for messages that name a cell.
 ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
@@ -326,6 +334,7 @@ ENGAGEMENT_HELP = {
     "due": "the date the reminder asks the client to send things by",
     "sender": "who the reminder is from",
     "firm": "the sign-off line and the client README's contact (typed once at setup)",
+    "form": "which catalog the request list was cut from; blank if it was never recorded",
     **ENGAGEMENT_NOTES,
 }
 
@@ -1185,6 +1194,8 @@ def create_template(
     path: Path | str,
     items: Iterable[RequestItem] = (),
     info: EngagementInfo | None = None,
+    *,
+    form: str = "",
 ) -> Path:
     """Create a fresh manifest workbook at ``path``, optionally seeded with rows.
 
@@ -1192,6 +1203,16 @@ def create_template(
     the person opening the workbook sees where the client's details go.
     Refuses to overwrite an existing file — a live manifest carries scanner
     state and must never be clobbered by a re-run.
+
+    ``form`` is the catalog the rows were cut from, recorded on the
+    Engagement sheet. It is a keyword rather than something carried by the
+    rows because it is one fact about the engagement, not a property of any
+    request: putting it on every row would be a copy per row and a column on
+    the Requests sheet nobody edits. Optional, so every caller that hands
+    over rows alone - the suite, the rollover, and the reports that build a
+    catalog the way an engagement gets it, ``create_template(path,
+    template_items(form, year=year))`` - is unchanged and records a blank.
+    A blank never clears a form ``info`` already carries.
     """
     path = Path(path)
     if path.exists():
@@ -1225,7 +1246,8 @@ def create_template(
         for header, value in cells.items():
             as_text(ws.cell(row=row, column=column[header], value=value))
 
-    _write_engagement_sheet(wb, info or EngagementInfo())
+    info = info or EngagementInfo()
+    _write_engagement_sheet(wb, replace(info, form=form) if form else info)
     wb.active = 0
     path.parent.mkdir(parents=True, exist_ok=True)
     save_workbook_atomically(wb, path)

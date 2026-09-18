@@ -178,6 +178,19 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     assert 'min="' not in html and 'max="' not in html
 
 
+def test_the_renderer_names_no_catalog_of_its_own():
+    """Decision 86: the app prints the engagement's form from the state, as
+    the catalog keys it. A catalog id typed into the page would be a second
+    list of return types to keep in step with tracker.templates."""
+    from tracker.templates import FORM_TEMPLATES
+
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    for form in FORM_TEMPLATES:
+        assert form not in js and form not in html, form
+    assert "state.engagement ? state.engagement.form" in js
+
+
 def test_the_standing_rules_are_worded_once_and_quoted_everywhere():
     """The package words each rule; the app renders it; the documents quote it."""
     import tracker.api as api

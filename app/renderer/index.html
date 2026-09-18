@@ -27,6 +27,10 @@
           <span class="visually-hidden">Active engagement</span>
           <select id="eng-select" aria-label="Active engagement"></select>
         </label>
+        <!-- The catalog this engagement was cut from, as the Engagement
+             sheet records it. Blank on one made before it was recorded,
+             and then this says nothing at all rather than guessing. -->
+        <span id="eng-form" class="eng-form hidden"></span>
         <button id="btn-new" class="btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
           New Engagement

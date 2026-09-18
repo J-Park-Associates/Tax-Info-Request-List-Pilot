@@ -117,6 +117,15 @@ function render(state) {
   }
   $("summary").textContent = summary.filter(Boolean).join("   ·   ");
 
+  // The catalog the engagement was cut from, beside its name in the
+  // toolbar. It is shown exactly as the sheet records it — the catalog's
+  // own key is how a person names the return — so the app carries no word
+  // of its own for it, and an engagement made before it was recorded shows
+  // nothing rather than a guess.
+  const engForm = state.engagement ? state.engagement.form : "";
+  $("eng-form").textContent = engForm;
+  $("eng-form").classList.toggle("hidden", !engForm);
+
   renderReview(state);
   renderUnfileList(state);
   renderLock(state);

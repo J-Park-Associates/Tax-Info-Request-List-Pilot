@@ -595,7 +595,8 @@ def _cmd_create(argv: list[str]) -> dict:
      "due": <ISO_DATE_HINT>, "items": [{identifier, document, extensions, ...}, ...]}
     year defaults to the most recently ended year; catalog rows are shifted to it.
     client/link/due land on the manifest's Engagement sheet, which is all the
-    scheduled run needs - there is no registry to add the engagement to.
+    scheduled run needs - there is no registry to add the engagement to, and
+    the catalog the rows came from is recorded there beside them.
     """
     spec = json.loads(sys.stdin.read() or "{}")
     form = str(spec.get("form", "")).strip()
@@ -619,7 +620,10 @@ def _cmd_create(argv: list[str]) -> dict:
     info = _info_from_spec(spec)
     engagement.mkdir(parents=True)
     try:
-        create_template(engagement / MANIFEST_FILENAME, items, info)
+        # The catalog the wizard chose is recorded on the sheet: an
+        # engagement that cannot say which checklist it came from cannot be
+        # checked against it later.
+        create_template(engagement / MANIFEST_FILENAME, items, info, form=form)
         scaffold_engagement(engagement)  # validates the manifest too
     except Exception:
         shutil.rmtree(engagement, ignore_errors=True)  # never leave a half-built one

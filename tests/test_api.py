@@ -630,6 +630,35 @@ def test_create_writes_the_engagement_sheet_the_scheduled_run_reads(capsys, demo
     assert found.name == ""          # the folder is the name; nothing to drift
 
 
+def test_create_records_the_catalog_the_wizard_chose_and_state_carries_it(capsys, demo_root):
+    """Decision 86: the engagement says which checklist it was cut from, on
+    the sheet a person opens and in the state the app draws from."""
+    from tracker.manifest import load_engagement_info
+
+    spec = {"name": "Willow Inc 2025", "form": "1120S", "client": "Willow Inc",
+            "items": [t for t in api.FORM_TEMPLATES["1120S"] if t["core"]]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["form"] == "1120S"
+    assert load_engagement_info(demo_root / "Willow Inc 2025" / MANIFEST_FILENAME).form == "1120S"
+
+
+def test_an_engagement_created_without_a_form_says_nothing_rather_than_guessing(capsys, demo_root):
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["form"] == ""
+
+
+def test_rollover_carries_the_catalog_the_prior_was_cut_from(capsys, demo_root):
+    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["form"] == "1040"
+
+
 def test_rollover_carries_the_client_but_not_last_years_link_or_due(capsys, demo_root):
     spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
             "link": "https://drive.example/old", "due": "2026-04-15", "sender": "Jason",
