@@ -322,7 +322,9 @@ def _worth_a_pass(run: EngagementRun) -> bool:
     if not checked.ok:
         run.error = "; ".join(checked.problems)
         return False
-    run.warnings = checked.warnings
+    run.warnings = list(checked.warnings)
+    if engagement.warning:
+        run.warnings.append(engagement.warning)
     return True
 
 
@@ -454,7 +456,10 @@ def append_log(path: Path | str, report: RunReport) -> Path:
     lines = [f"[{stamp}] {report.today.isoformat()} "
              f"reminders={report.reminders} dry_run={report.dry_run}"]
     lines += [f"    {run.summary()}" for run in report.runs]
-    with path.open("a", encoding="utf-8") as handle:
+    # A summary names client files, and a name NTFS holds is not always
+    # one UTF-8 can (a lone surrogate); the log takes what it can write
+    # rather than lose every engagement's line to one name.
+    with path.open("a", encoding="utf-8", errors="backslashreplace") as handle:
         handle.write("\n".join(lines) + "\n")
     return path
 
@@ -467,6 +472,14 @@ def main(argv: list[str] | None = None) -> int:
     Returns the exit code - non-zero if any engagement failed, so the
     scheduler shows a red run."""
     import argparse
+    import sys
+
+    # The report names client files, and the scheduler's console is not
+    # UTF-8: a name it cannot encode must not turn a finished run into a
+    # traceback after every original has been moved (the tenth reading).
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.runner",

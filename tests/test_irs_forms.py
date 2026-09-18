@@ -42,8 +42,9 @@ EXPECT = [
     ("f1040.pdf", "1040", 2026, "B01"), ("f1040x.pdf", "1040", 2026, "B01"), ("f1040nr.pdf", "1040", 2026, None),
     ("f1040s.pdf", "1040", 2026, None), ("f1040sa.pdf", "1040", 2026, None), ("f1040sb.pdf", "1040", 2026, None),
     ("f1040sd.pdf", "1040", 2026, None), ("f1040s1.pdf", "1040", 2026, None),
-    # The whole 1040-ES package (worksheet and vouchers) names four rows' words; it parks.
-    ("f1040es.pdf", "1040", 2026, None), ("f1040es_2025.pdf", "1040", 2025, "H01"),
+    # The 1040-ES booklet's instructions say "estimated tax payment voucher" in prose, which is not
+    # a voucher; the 2025 package's vouchers are within the pages read and say what a voucher says.
+    ("f1040es.pdf", "1040", 2026, None), ("f1040es_2025.pdf", "1040", 2025, "H01"), ("f1040es.pdf", "1120", 2026, None),
     ("f4868.pdf", "1040", 2026, None), ("f8879.pdf", "1040", 2026, None), ("f1096.pdf", "1040", 2025, None),
     ("f1096.pdf", "1120", 2025, None), ("f1096.pdf", "1041", 2025, None),
     ("f1120.pdf", "1120", 2026, "A01"), ("f1120h.pdf", "1120", 2026, None), ("f1120s.pdf", "1120", 2026, None),
@@ -57,6 +58,15 @@ EXPECT = [
     ("f940.pdf", "1120", 2025, "E01"), ("f941.pdf", "1120", 2025, "E01"), ("f940.pdf", "1120S", 2025, "E01"),
     ("f941.pdf", "990", 2025, "G01"), ("f941.pdf", "1040", 2025, None), ("f940.pdf", "1041", 2025, None),
     ("f4562.pdf", "1120", 2025, "C02"), ("f1125e.pdf", "1120", 2025, None),
+    # The ninth reading: the IRS "Attention" page ahead of every information
+    # return names Form 1099-NEC by way of example, and is not a 1099; a
+    # return's own lines ("dividends and distributions in exchange for
+    # stock", "the ownership percentage (by vote or value)", "D-Donation")
+    # are not a 1099-DIV, a shareholder list or a charitable receipt.
+    ("f5498.pdf", "1041", 2025, None), ("f1098t.pdf", "1041", 2025, None), ("f1099g.pdf", "1041", 2025, None),
+    ("f1099k.pdf", "1041", 2025, None), ("f1099s.pdf", "1041", 2025, None),
+    ("f1120.pdf", "1040", 2026, None), ("f1120.pdf", "1120S", 2026, None), ("f1120.pdf", "1065", 2026, None),
+    ("f1065.pdf", "1120", 2026, None), ("f1065.pdf", "1120S", 2026, None), ("f990pf.pdf", "1040", 2026, None),
 ]
 
 

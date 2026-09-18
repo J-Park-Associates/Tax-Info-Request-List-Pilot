@@ -38,6 +38,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
     COL_DOCUMENT,
@@ -243,9 +244,12 @@ def roll_forward(
             )
         )
 
-    seen = {p.identifier for p in prior_items}
+    # By the identifier as load_manifest() compares it - without case - or
+    # a template row differing from a prior's only in case would be written
+    # beside it and the new manifest refused as a duplicate.
+    seen = {p.identifier.upper() for p in prior_items}
     for spec in template:
-        if spec.identifier in seen:
+        if spec.identifier.upper() in seen:
             continue
         offer = RolledItem(
             item=shift_item(spec, tmpl_delta),
@@ -313,8 +317,8 @@ def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
         for cells in ws.iter_rows():
             for cell in cells:
                 as_text(cell)         # a client's file name in the unfiled list is a name
-        for column, width in zip(ws.column_dimensions, CARRIED_LAYOUT.values(), strict=False):
-            ws.column_dimensions[column].width = width
+        for index, width in enumerate(CARRIED_LAYOUT.values(), start=1):
+            ws.column_dimensions[get_column_letter(index)].width = width
         ws.freeze_panes = "A2"
         save_workbook_atomically(wb, path)
     finally:

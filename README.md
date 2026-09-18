@@ -233,6 +233,18 @@ row's other rules — last year's W-2, say — is **not** filed anywhere else.
 Everything unclear lands in `00 - Needs Review` with the reason recorded in
 the index, because misfiling a tax document is worse than not filing it.
 
+A keyword is the document's own title, or a phrase only it carries — never
+a word another form prints about it. Its words sit on one line, or wrap as
+a heading does: two words or more from the start of a line, the rest on
+the next. A keyword that is a form's
+number counts in a document's text only where a form prints its own: in
+the title, or as the number the document names most often — and only a
+form *naming itself* counts, "Form 1040 (2025)" or "Form 1099-DIV (Rev.
+January 2024)", never a form quoted in a sentence, "(Form 1040)", "attach
+Form 1098", "Forms W-2", "such as Form 1099-NEC". A request whose Period
+names a month (`Dec 2025`) also checks that the document prints that
+month.
+
 A scan with no text layer is routed by its file name when the name says
 which request it is. When the name says nothing it is read by OCR (if OCR
 is installed), the same reading the scanner makes later — and OCR text

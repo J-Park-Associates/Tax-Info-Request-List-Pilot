@@ -13,6 +13,7 @@ The demo is gone; the suite still needs the pile.
 from __future__ import annotations
 
 import shutil
+from contextlib import contextmanager
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -206,3 +207,34 @@ def build_samples(samples: Path) -> None:
     (samples / f"W-2 Jane Smith {YEAR}.pdf.tmp.driveupload").write_bytes(b"\x00" * 4096)
 
     (samples / "vacation photo.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"J" * 9000)
+
+
+@contextmanager
+def listing_denied(folder: Path):
+    """``folder`` made unlistable for the running account, the way an ACL a
+    client's folder carried in from elsewhere denies a scheduled run - a
+    real denial, because ``rglob`` and ``os.walk`` reach the file system
+    by different calls and a monkeypatch of one proves nothing about the
+    other. Skips where the account cannot be denied (root on POSIX)."""
+    import os
+    import subprocess
+    import sys
+
+    import pytest
+
+    if sys.platform == "win32":
+        user = os.environ.get("USERNAME", "")
+        if subprocess.run(["icacls", str(folder), "/deny", f"{user}:(RD)"], capture_output=True).returncode:
+            pytest.skip("icacls could not deny the folder")
+        try:
+            yield
+        finally:
+            subprocess.run(["icacls", str(folder), "/remove:d", user], capture_output=True)
+    else:
+        if os.geteuid() == 0:
+            pytest.skip("root cannot be denied a folder")
+        folder.chmod(0)
+        try:
+            yield
+        finally:
+            folder.chmod(0o700)

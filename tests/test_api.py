@@ -142,6 +142,36 @@ def test_create_builds_manifest_and_folders(capsys, demo_root):
     assert [i["identifier"] for i in payload["state"]["items"]][-1] == "X01"
 
 
+def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_root):
+    # The tenth reading: a blank name fell back to the raw client field, and
+    # a client called "..\\..\\escaped" wrote the engagement above the root,
+    # where discovery never finds it and nobody is chased.
+    spec = {"name": "", "client": "..\\..\\escaped", "form": "1040", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    created = demo_root / payload["created"]
+    assert created.parent == demo_root and (created / MANIFEST_FILENAME).is_file()
+    assert not (demo_root.parent.parent / "escaped TY2025 Form 1040").exists()
+    for outside in ("../outside", "sub/child"):          # a separator either platform reads
+        with pytest.raises(api.ManifestError, match="not a folder name"):
+            api._new_engagement_dir(outside)
+
+
+def test_the_tax_year_is_within_the_bounds_the_wizard_shows(capsys, demo_root):
+    from tracker.manifest import YEAR_MAX, YEAR_MIN
+
+    for year in (1000000000, YEAR_MIN - 1, YEAR_MAX + 1):
+        code, payload = run(capsys, "create", stdin={"name": "Bad", "form": "1040", "year": year,
+                                                     "items": [{"identifier": "A01", "document": "W-2"}]})
+        assert code == 1 and f"between {YEAR_MIN} and {YEAR_MAX}" in payload["error"], year
+        assert not (demo_root / "Bad").exists()
+    code, payload = run(capsys, "create", stdin={"name": "Prior", "form": "1040",
+                                                 "items": [{"identifier": "A01", "document": "W-2"}]})
+    assert code == 0, payload
+    code, payload = run(capsys, "rollover", stdin={"prior": payload["created"], "year": "abc"})
+    assert code == 1 and "whole number" in payload["error"]
+
+
 def test_create_refuses_an_identifier_that_cannot_name_a_folder(capsys, demo_root):
     spec = {"name": "Bad", "items": [{"identifier": "A:01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)

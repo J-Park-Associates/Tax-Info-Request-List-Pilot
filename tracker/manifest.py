@@ -659,10 +659,12 @@ def pending_updates(
 def with_pending(
     items: Iterable[RequestItem], updates: Mapping[str, StatusUpdate]
 ) -> list[RequestItem]:
-    """``items`` with the scanner columns replaced by any deferred update."""
+    """``items`` with the scanner columns replaced by any deferred update.
+    Identifiers match as ``load_manifest`` compares them, without case."""
+    by_identifier = {identifier.lower(): update for identifier, update in updates.items()}
     out = []
     for item in items:
-        update = updates.get(item.identifier)
+        update = by_identifier.get(item.identifier.lower())
         if update is None:
             out.append(item)
         else:
@@ -1085,7 +1087,7 @@ def _write_engagement_sheet(wb: Workbook, info: EngagementInfo) -> None:
             cell = ws.cell(row=row, column=2, value=value)
             cell.number_format = DATE_FORMAT
             continue
-        ws.cell(row=row, column=2, value=value or None)
+        as_text(ws.cell(row=row, column=2, value=value or None))   # a client called "=1+1" is a name (decision 58)
     note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1, value=engagement_sheet_note())
     note.font = Font(italic=True, color="666666")
 

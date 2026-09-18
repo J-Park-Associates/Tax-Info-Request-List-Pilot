@@ -143,8 +143,12 @@ NEW_CLIENT_PLACEHOLDER = "New"
 
 
 def _new_engagement_dir(name: str) -> Path:
-    """Where a new engagement goes, refused if the folder is already there."""
-    engagement = _root() / name
+    """Where a new engagement goes, refused if the folder is already there
+    or if ``name`` would put it anywhere but straight under the root."""
+    root = _root()
+    engagement = root / name
+    if engagement.resolve().parent != root.resolve():
+        raise ManifestError(f"'{name}' is not a folder name")
     if engagement.exists():
         raise ManifestError(f"An engagement named '{name}' already exists")
     return engagement
@@ -312,10 +316,25 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None) -> Engag
     )
 
 
+def _tax_year(given, default: int | None = None) -> int | None:
+    """The tax year a spec asks for: a whole number within the bounds the
+    wizard shows (``YEAR_MIN``..``YEAR_MAX``), or ``default`` when none
+    was given. The renderer's number box only suggests the bounds."""
+    if given in (None, ""):
+        return default
+    try:
+        year = int(given)
+    except (TypeError, ValueError):
+        raise ManifestError(f"Tax year must be a whole number, got {given!r}") from None
+    if not YEAR_MIN <= year <= YEAR_MAX:
+        raise ManifestError(f"Tax year must be between {YEAR_MIN} and {YEAR_MAX}, got {year}")
+    return year
+
+
 def _engagement_name(requested: str, fallback: str) -> str:
     """A folder name from what the user typed, or the fallback if nothing usable is left."""
     name = sanitize_component(requested.strip())
-    return name if any(ch.isalnum() for ch in name) else fallback
+    return name if any(ch.isalnum() for ch in name) else sanitize_component(fallback)
 
 
 def _state(engagement: Path) -> dict:
@@ -434,10 +453,7 @@ def _cmd_create(argv: list[str]) -> dict:
         require_form(form)
     client = str(spec.get("client", "") or "").strip()
     # The engagement's tax year: the calendar's default unless chosen.
-    try:
-        year = int(spec.get("year") or default_tax_year())
-    except (TypeError, ValueError):
-        raise ManifestError(f"Tax year must be a whole number, got {spec.get('year')!r}") from None
+    year = _tax_year(spec.get("year"), default_tax_year())
     name = _engagement_name(str(spec.get("name", "")), default_engagement_name(client, year, form))
     engagement = _new_engagement_dir(name)
 
@@ -518,7 +534,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
 
     report = roll_forward(
         prior,
-        target_year=spec.get("year") or None,
+        target_year=_tax_year(spec.get("year")),
         template=template,
         include_new=bool(spec.get("include_new")),
     )

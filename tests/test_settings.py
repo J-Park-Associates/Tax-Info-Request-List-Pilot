@@ -47,6 +47,16 @@ def test_a_folder_that_does_not_exist_is_refused(beside_the_app):
     assert clients_root() is None
 
 
+def test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder(beside_the_app):
+    # The eleventh reading: Path("") is the working folder, which is a
+    # folder, so a cleared box recorded the app's own folder as the clients
+    # root and the real one was gone from the settings.
+    for typed in ("", "   "):
+        with pytest.raises(SettingsError, match="no folder given"):
+            set_clients_root(typed)
+    assert clients_root() is None
+
+
 def test_the_settings_file_is_swapped_in_whole(beside_the_app):
     from tracker.manifest import TEMP_SUFFIX
 

@@ -169,7 +169,9 @@ def test_ambiguous_match_goes_to_review(tmp_path):
         identifier="E01", document="Brokerage Year-End",
         allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-b",),
     )
-    f = text_pdf(tmp_path / "combined.pdf", "Form 1099-INT and 1099-B combined 2025")
+    # A composite prints each form's title on its own line; "1099-INT and
+    # 1099-B" in one sentence would be a document talking about both.
+    f = text_pdf(tmp_path / "combined.pdf", "Form 1099-INT Interest Income 2025\nForm 1099-B Proceeds From Broker 2025")
     routing = route_file(f, [INT_DIV, both])
     assert routing.identifier is None
     assert routing.reason.startswith(AMBIGUOUS)
