@@ -242,6 +242,16 @@ parks anything it cannot be sure of, because misfiling a tax document is
 worse than not filing it, and every file a person files teaches the row a
 keyword.
 
+Two things a person will notice changed this season. A W-2 printed one copy
+to the page — which is how the 2024 and 2025 revisions print, and how a
+client's own copy usually arrives — is recognised now; it used to park with
+"matched no request" because its only mention of its own number is the line
+at the foot of the form. And the brokerage row (1040 E01) takes a workbook
+as well as a PDF or a CSV, because a broker's realized gain/loss export is
+sent as an `.xlsx` at least as often; a file that used to come back
+"extension .xlsx not allowed" now files. The trust's 1099 row (1041 B01)
+reads that export as the 1099-B it stands in for.
+
 What turns that from an impression into a number is the backtest
 (`tools/backtest.py`): the firm's own already-sorted documents routed
 against the catalogs at the office, under neutral names, measuring where the

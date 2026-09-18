@@ -1269,6 +1269,114 @@ _DECISION_73_XLSX = [
     ], "J01"),
 ]
 
+_DECISION_85 = [
+    # Round fourteen. The 2024 and 2025 W-2 revisions print one copy to the
+    # page, so Copy B says "W-2" exactly once, at the foot, followed by its
+    # own printed title and then the year. That line is the dated
+    # self-mention "W-2 2025" is; before decision 85 it weighed 1 and the
+    # form said nothing about itself.
+    ("1040", "W-2 2025 Copy B one to a page.pdf", [
+        "a Employee's social security number",
+        "OMB No. 1545-0029",
+        "b Employer identification number (EIN) 1 Wages, tips, other compensation 2 Federal income tax withheld",
+        "c Employer's name, address, and ZIP code 3 Social security wages 4 Social security tax withheld",
+        "5 Medicare wages and tips 6 Medicare tax withheld",
+        "7 Social security tips 8 Allocated tips",
+        "d Control number 9 10 Dependent care benefits",
+        "e Employee's first name and initial Last name Suff. 11 Nonqualified plans 12a",
+        "13 Statutory Retirement Third-party 12b",
+        "employee plan sick pay",
+        "14 Other 12c",
+        "f Employee's address and ZIP code",
+        "15 State Employer's state ID number 16 State wages, tips, etc. 17 State income tax "
+        "18 Local wages, tips, etc. 19 Local income tax 20 Locality name",
+        "W-2 Wage and Tax Statement 2025 Department of the Treasury-Internal Revenue Service",
+        "Form",
+        "Copy B-To Be Filed With Employee's FEDERAL Tax Return.",
+    ], "A01"),
+    # The same line, for a form no 1040 row asks for: the rule names the
+    # form, and naming it is not filing it.
+    ("1040", "1099-NEC 2025 Copy B one to a page.pdf", [
+        "PAYER'S name, street address, city or town, state or province, country, ZIP",
+        "or foreign postal code, and telephone no.",
+        "PAYER'S TIN RECIPIENT'S TIN",
+        "RECIPIENT'S name",
+        "Street address (including apt. no.)",
+        "City or town, state or province, country, and ZIP or foreign postal code",
+        "Account number (see instructions)",
+        "1 Nonemployee compensation 78,400.00",
+        "2 Payer made direct sales totaling $5,000 or more of consumer products to recipient for resale",
+        "4 Federal income tax withheld 5 State tax withheld 6 State/Payer's state no. 7 State income",
+        "1099-NEC Nonemployee Compensation 2025 Department of the Treasury - Internal Revenue Service",
+        "Form",
+        "Copy B For Recipient",
+    ], None),
+    # A menu is still a menu when it sets no title off with a dash: three
+    # lines, each a form with its own title and the year, is the firm's
+    # checklist and is none of them, as decision 73 says of the dashed one.
+    # Without the menu rule the first line would make the page a 1095-A.
+    ("1040", "2025 tax document checklist.pdf", [
+        "J Park & Associates  2025 Tax Document Checklist",
+        "1095-A Health Insurance Marketplace Statement 2025",
+        "1098-T Tuition Statement 2025",
+        "1099-R Distributions From Pensions and Annuities 2025",
+        "Please send us each of these when they arrive.",
+    ], None),
+    # 1040 E01 / 1041 B01: a broker heads the export "Realized Gain/Loss".
+    # The firm's own wording, `realized gain and loss`, never reached it.
+    ("1040", "realized gain loss export.pdf", [
+        "Sterling Cove Securities",
+        "Realized Gain/Loss for account ****7806 as of 12/31/2025",
+        "Symbol  Name  Closed Date  Opened Date  Quantity  Proceeds  Cost Basis  Gain/Loss  Term",
+        "SLST  Solstice Hospitality Group  08/24/2025  03/12/2021  810  74,066.01  48,043.78  26,022.23  Long Term",
+    ], "E01"),
+    ("1041", "realized gain loss export.pdf", [
+        "Sterling Cove Securities",
+        "Realized Gain/Loss for account ****7806 as of 12/31/2025",
+        "Symbol  Name  Closed Date  Opened Date  Quantity  Proceeds  Cost Basis  Gain/Loss  Term",
+        "SLST  Solstice Hospitality Group  08/24/2025  03/12/2021  810  74,066.01  48,043.78  26,022.23  Long Term",
+    ], "B01"),
+    # Another custodian heads the same export without the slash, and the
+    # trust's row takes it as the 1099-B it stands in for.
+    ("1041", "realized gain loss report.pdf", [
+        "Harborline Trust Services",
+        "Realized Gain Loss Report - account ****7806 - 01/01/2025 to 12/31/2025",
+        "Symbol  Description  Closed  Opened  Proceeds  Cost basis  Gain or loss  Term",
+        "SLST  Solstice Hospitality Group  08/24/2025  03/12/2021  74,066.01  48,043.78  26,022.23  Long",
+    ], "B01"),
+    # The confusable: the same broker's open positions. An unrealized gain
+    # is not a realized one, and the whole-token rule is what says so.
+    ("1040", "unrealized gain loss by position.pdf", [
+        "Sterling Cove Securities",
+        "Unrealized Gain/Loss by Position as of 12/31/2025",
+        "Symbol  Quantity  Cost Basis  Market Value  Unrealized Gain/Loss",
+        "IRNW  1,400  171.45  264.27  129,948.00",
+    ], None),
+    ("1041", "unrealized gain loss by position.pdf", [
+        "Sterling Cove Securities",
+        "Unrealized Gain/Loss by Position as of 12/31/2025",
+        "Symbol  Quantity  Cost Basis  Market Value  Unrealized Gain/Loss",
+        "IRNW  1,400  171.45  264.27  129,948.00",
+    ], None),
+]
+
+_DECISION_85_XLSX = [
+    # 1040 E01 takes the workbook a broker exports, and the sheet's own
+    # name runs the words together the way an export does.
+    ("1040", "realized gain loss.xlsx", [
+        ["Realized GainLoss"], ["Realized Gain/Loss"],
+        ["Account: Individual - TOD ****2566   Period: 01/01/2025 to 12/31/2025"],
+        ["Symbol", "Description", "Quantity", "Date sold", "Proceeds", "Cost basis", "Gain/Loss", "Term"],
+        ["IRNW", "IRONWOOD PROPERTIES INC COM", 339, "07/23/2025", 19878.84, 22110.05, -2231.21, "Short"],
+    ], "E01"),
+    ("1040", "unrealized gain loss.xlsx", [
+        ["Unrealized GainLoss"], ["Unrealized Gain/Loss by Position"],
+        ["Account: Individual - TOD ****2566   As of 12/31/2025"],
+        ["Symbol", "Description", "Quantity", "Cost basis", "Market value", "Gain/Loss"],
+        ["IRNW", "IRONWOOD PROPERTIES INC COM", 1400, 240030.00, 369978.00, 129948.00],
+    ], None),
+]
+
 
 #: (decision, form, file name, lines, expected) - every case, tagged with the
 #: decision that introduced it. tools/vocab_report.py reads this list too.
@@ -1277,6 +1385,7 @@ CASES = [
     for decision, block in (
         (62, _DECISION_62), (63, _DECISION_63), (65, _DECISION_65), (66, _DECISION_66),
         (67, _DECISION_67), (68, _DECISION_68), (69, _DECISION_69), (73, _DECISION_73),
+        (85, _DECISION_85),
     )
     for case in block
 ]
@@ -1284,7 +1393,7 @@ CASES = [
 #: (decision, form, file name, rows, expected) - the workbook cases, in the
 #: same shape with a sheet's rows in place of a page's lines. The report
 #: reads this list too, rendering the rows the way a sheet is read.
-XLSX_CASES = [(73, *case) for case in _DECISION_73_XLSX]
+XLSX_CASES = [(73, *case) for case in _DECISION_73_XLSX] + [(85, *case) for case in _DECISION_85_XLSX]
 
 
 @pytest.mark.parametrize("decision, form, name, lines, expected", CASES, ids=[f"d{c[0]}-{c[2]}" for c in CASES])

@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 78 rows · 327 keywords · **70 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 50 IRS forms · 283 cases
+6 catalogs · 78 rows · 331 keywords · **70 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 52 IRS forms · 293 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -114,9 +114,9 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — W-2 Wage Statements - All Employers
 
-- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; fw2.pdf → **here**; fw3.pdf → parks
-- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; fw2.pdf → **here**; fw3.pdf → parks
-- `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; fw2.pdf → **here**
+- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; W-2 2025 Copy B one to a page.pdf (d85) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw3.pdf → parks
+- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw3.pdf → parks
+- `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**
 
 ### A02 — 1099-INT / 1099-DIV - Interest & Dividend Income
 
@@ -159,6 +159,8 @@ Reached, but proven nothing: the cheapest placements to add.
 - `proceeds from broker` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; 1099-B Copy B.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?
 - `brokerage statement` (any) — Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?
 - `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → parks; Fidelity realized gain and loss report.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?; Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?
+- `realized gain/loss` (any) — realized gain loss export.pdf (d85) → **here**; realized gain loss export.pdf (d85) → ?; realized gain loss.xlsx (d85) → **here**
+- `realized gain loss` (any) — realized gain loss report.pdf (d85) → ?; realized gain loss.xlsx (d85) → **here**
 
 ### E02 — 1099-R Retirement Distributions
 
@@ -257,7 +259,9 @@ Reached, but proven nothing: the cheapest placements to add.
 - `1099-oid` (any) — f1099oid.pdf → **here**
 - `1099-r` (any) — fax cover then 1099-R.pdf (d66) → ?; fax cover then 1099-R.pdf (d73) → **here**; f1099r.pdf → **here**
 - `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks; f1099msc.pdf → **here**
-- `1099-nec` (any) — 1099-NEC.pdf (d62) → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
+- `1099-nec` (any) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
+- `realized gain/loss` (any) — realized gain loss export.pdf (d85) → ?; realized gain loss export.pdf (d85) → **here**; realized gain loss.xlsx (d85) → ?
+- `realized gain loss` (any) — realized gain loss report.pdf (d85) → **here**; realized gain loss.xlsx (d85) → ?
 
 ### B02 — Brokerage Year-End Statements
 

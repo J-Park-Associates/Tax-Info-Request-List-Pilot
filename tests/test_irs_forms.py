@@ -1,9 +1,10 @@
 """The shipped catalogs against the IRS's own forms.
 
-``tests/irs/`` holds fifty forms as the IRS publishes them (irs.gov, public
-domain, fetched 2026-09-17): the blank Copy B with its Instructions for
-Recipient, a return with its schedules, a K-1 of each flavour, the
-notices and transmittals that mention forms they are not. Each is routed
+``tests/irs/`` holds fifty-two forms as the IRS publishes them (irs.gov,
+public domain, fetched 2026-09-17; the two W-2 revisions 2026-09-18): the
+blank Copy B with its Instructions for Recipient, a return with its
+schedules, a K-1 of each flavour, the notices and transmittals that mention
+forms they are not, and the prior revisions whose layout changed. Each is routed
 against a shipped catalog the way an engagement routes it - through
 create_template() and load_manifest() - and must land where it belongs,
 or park. A reconstruction typed from memory omits the instruction page
@@ -30,7 +31,11 @@ IRS = Path(__file__).parent / "irs"
 
 #: (form as the IRS names its file, catalog, engagement year, where it belongs)
 EXPECT = [
-    ("fw2.pdf", "1040", 2025, "A01"), ("fw3.pdf", "1040", 2025, None), ("fw3.pdf", "1120", 2025, "E01"),
+    # The 2026 revision prints two copies to the page and says "W-2 2026"; the
+    # 2024 and 2025 revisions print one copy, whose only "W-2" is the foot's
+    # "W-2 Wage and Tax Statement 2025 Department of the Treasury" (decision 85).
+    ("fw2.pdf", "1040", 2025, "A01"), ("fw2_2024.pdf", "1040", 2025, "A01"), ("fw2_2025.pdf", "1040", 2025, "A01"),
+    ("fw3.pdf", "1040", 2025, None), ("fw3.pdf", "1120", 2025, "E01"),
     ("f1099int.pdf", "1040", 2025, "A02"), ("f1099div.pdf", "1040", 2025, "A02"), ("f1099oid.pdf", "1040", 2025, "A02"),
     ("f1099int.pdf", "1041", 2025, "B01"), ("f1099div.pdf", "1041", 2025, "B01"), ("f1099nec.pdf", "1041", 2025, "B01"),
     ("f1099msc.pdf", "1041", 2025, "B01"), ("f1099r.pdf", "1040", 2025, "E02"),

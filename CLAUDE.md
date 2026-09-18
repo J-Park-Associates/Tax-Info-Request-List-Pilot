@@ -123,7 +123,7 @@ already places.
 [`docs/backtest-baseline.json`](docs/backtest-baseline.json) holds one
 number — how often the router files the firm's own already-sorted
 documents where a person filed them — and `tools/backtest.py` measures it.
-The fifty IRS forms and the typed cases are blank paperwork nobody sent;
+The fifty-two IRS forms and the typed cases are blank paperwork nobody sent;
 the documents a client actually sent sit on the office file server, sorted
 by hand over years, and they are the only corpus that can say whether the
 routing rules work on real mail. The tool routes them against the shipped

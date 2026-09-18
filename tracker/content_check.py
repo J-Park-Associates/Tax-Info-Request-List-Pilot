@@ -80,7 +80,9 @@ CACHE_FILENAME = "_content_cache.json"
 #: 5: a form number in the title is weighed by its shape too; a keyword's words sit on one line.
 #: 6: a keyword on a menu line, or one an ask-word asked for, is no longer said.
 #: 7: a verdict carries the evidence behind it (an Evidence per matched rule).
-CACHE_VERSION = 7
+#: 8: a form heading its line with its own printed title and its year names
+#:    itself, so a one-copy W-2 says "W-2" where it said nothing before.
+CACHE_VERSION = 8
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -571,7 +573,7 @@ def _mention_span(low: str, match: re.Match[str]) -> tuple[str, str | None, int]
     return number, variant, end
 
 
-#: A menu lists. Two or more forms set off from their titles by a dash
+#: A menu lists. Two or more forms heading a line of their own title
 #: within the title window is a checklist ("Form 1099-INT - Interest
 #: Income", "Form 1099-DIV - Dividends and Distributions", ...); one such
 #: line is a payer's own substitute form printing its title the way it
@@ -605,8 +607,10 @@ def _line_of(low: str, start: int, end: int) -> tuple[int, int]:
 def _titles_its_own_line(low: str, start: int, end: int) -> bool:
     """A form number at the head of its line with a year beside it, before
     or after: "2025 Form 1099-INT - Interest Income", "Form 1098 -
-    Mortgage Interest Statement 2025". That is how a payer prints its own
-    substitute form, and the only shape a dash-set-off number is not a
+    Mortgage Interest Statement 2025", "W-2 Wage and Tax Statement 2025
+    Department of the Treasury". That is how a payer prints its own
+    substitute form and how the IRS prints the foot of a one-copy
+    information return, and the only shape a dash-set-off number is not a
     checklist's line in."""
     left, right = _line_of(low, start, end)
     if not _HEADS_ITS_LINE.fullmatch(low, left, start):
@@ -614,16 +618,53 @@ def _titles_its_own_line(low: str, start: int, end: int) -> bool:
     return bool(_A_YEAR.search(low, left, start) or _A_YEAR.search(low, end, right))
 
 
+#: A form's own printed title between its number and its year, with
+#: nothing to set it off: "W-2 Wage and Tax Statement 2025", "1099-DIV
+#: Dividends and Distributions 2025", "Form 1040 U.S. Individual Income
+#: Tax Return 2025". The IRS prints that line at the foot of every copy of
+#: an information return, and the 2024 and 2025 W-2 revisions print one
+#: copy to the page, so Copy B says "W-2" exactly once and says it that
+#: way. Words only, on the form's own line, and the year is a year rather
+#: than the tail of a date - "Form 941 04/30/2025" on a CP 575 is a filing
+#: deadline, and the notice is not a 941. A title is short.
+_TITLE_WORDS = 8
+_SELF_TITLED = re.compile(
+    rf"(?:{_SAME_LINE}+[a-z][a-z&/.{re.escape(_APOSTROPHES)}{re.escape(_DASH_CHARS)}]*){{1,{_TITLE_WORDS}}}"
+    rf"{_SAME_LINE}+\(?(?:19|20)\d{{2}}(?![0-9])"
+)
+
+
+def _names_itself(low: str, start: int, end: int, shape: str) -> bool:
+    """Whether the mention at ``low[start:end]`` is a form printing its own
+    name on a line of its own, in either shape a printed title wears: a
+    dash between the number and the title, with a year beside them
+    (``_titles_its_own_line``), or nothing between them and the year after
+    the title (``_SELF_TITLED``). Both shapes head their line, because
+    "2025 Consolidated Form 1099 - Account 8812-4455" is a broker's
+    sentence about a family, not a form.
+    """
+    if shape == _BY_DASH:
+        return _titles_its_own_line(low, start, end)
+    if shape != _BY_NOTHING:
+        return False
+    left, _right = _line_of(low, start, end)
+    return (_HEADS_ITS_LINE.fullmatch(low, left, start) is not None
+            and _SELF_TITLED.match(low, end) is not None)
+
+
 def _lists_forms(low: str) -> bool:
-    """Whether the title window sets ``_FORMS_IN_A_MENU`` forms or more off
-    from their titles with a dash: a menu of forms, not a form."""
+    """Whether the title window heads ``_FORMS_IN_A_MENU`` lines or more
+    with a form naming itself (``_names_itself``): a menu of forms, not a
+    form. A dash-set-off number counts wherever it stands, as decision 69
+    counted it."""
     stop = len(_title(low))
     listed = 0
     for match in _FORM_MENTION.finditer(low, 0, stop):
         span = _mention_span(low, match)
         if span is None:
             continue
-        if _weigh_mention(low, match, span[2])[1] == _BY_DASH:
+        shape = _weigh_mention(low, match, span[2])[1]
+        if shape == _BY_DASH or _names_itself(low, match.start(), span[2], shape):
             listed += 1
             if listed >= _FORMS_IN_A_MENU:
                 return True
@@ -632,7 +673,15 @@ def _lists_forms(low: str) -> bool:
 
 def _scan(low: str):
     """Every form number ``low`` (lower-cased text) mentions, as
-    ``(key, start, end, weight, shape)``."""
+    ``(key, start, end, weight, shape)``.
+
+    A form heading its own title line with its year beside it names
+    itself (``_titles_its_own_line``), whether a dash sets the title off
+    or nothing does: "W-2 Wage and Tax Statement 2025" is the dated
+    self-mention "W-2 2025" is, printed the way the IRS prints a one-copy
+    return's foot. A page that heads two such lines is a menu, and the
+    mention that is not the first on the page is not the page's own.
+    """
     menu = _lists_forms(low)
     first = True
     for match in _FORM_MENTION.finditer(low):
@@ -641,9 +690,9 @@ def _scan(low: str):
             continue
         number, variant, end = span
         weight, shape = _weigh_mention(low, match, end)
-        if (shape == _BY_DASH and first and not menu
+        if (first and not menu
                 and not _asked_for(low, match.start())
-                and _titles_its_own_line(low, match.start(), end)):
+                and _names_itself(low, match.start(), end, shape)):
             weight, shape = _SELF_WEIGHT, _BY_YEAR
         first = False
         yield _form_key(number, variant), match.start(), end, weight, shape

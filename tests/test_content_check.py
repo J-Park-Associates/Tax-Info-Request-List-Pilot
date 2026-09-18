@@ -659,8 +659,11 @@ def test_a_cache_written_before_the_evidence_was_kept_is_reset(tmp_path):
 
     # Version 6 stored verdicts with no evidence at all; reading one back
     # would say a verdict had no reason behind it, which is worse than
-    # re-extracting once.
-    assert CACHE_VERSION == 7
+    # re-extracting once. Version 7 was read before decision 85 taught
+    # says() that a form heading its line with its printed title and its
+    # year names itself, so a version-7 verdict would say a one-copy W-2
+    # is nobody's form.
+    assert CACHE_VERSION == 8
     cache_file = tmp_path / "cache.json"
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
     rule = item(required_keywords=("Chase",))

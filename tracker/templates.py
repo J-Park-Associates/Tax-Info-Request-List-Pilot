@@ -190,7 +190,11 @@ FORM_TEMPLATES = {
         # keys on receipt wording only; a per-row refusal ("not
         # tax-deductible") is the structural fix and waits for Phase C.
         _row("D01", "Charitable Contribution Receipts", core=True, extensions="pdf, xlsx", any_keywords="donation receipt, giving statement, statement of giving, giving summary, giving record, donor statement, charitable contribution statement, charitable giving, tax-deductible donation, tax-deductible gift, donated goods, no goods or services, receipt for your donation, acknowledge your donation, acknowledge your charitable contribution"),
-        _row("E01", "1099-B / Brokerage Year-End Statements", core=False, extensions="pdf, csv", any_keywords="1099-b, proceeds from broker, brokerage statement, realized gain and loss"),
+        # `realized gain and loss` is the firm's own wording; a broker heads
+        # the export itself "Realized Gain/Loss" (Schwab) or "Realized
+        # GainLoss" (a workbook's sheet name), and sends it as a workbook as
+        # often as a CSV (decision 85). No IRS form in tests/irs/ says either.
+        _row("E01", "1099-B / Brokerage Year-End Statements", core=False, extensions="pdf, csv, xlsx", any_keywords="1099-b, proceeds from broker, brokerage statement, realized gain and loss, realized gain/loss, realized gain loss"),
         _row("E02", "1099-R Retirement Distributions", core=False, any_keywords="1099-r, retirement distribution"),
         _row("F01", "Schedule K-1s Received", core=False, any_keywords="partner's share of income, shareholder's share of income, beneficiary's share of income"),
         # The bill's own titles. `assessor` and `parcel number` are printed
@@ -272,7 +276,11 @@ FORM_TEMPLATES = {
         _row("A01", "Trust Instrument / Will & Amendments", core=True, period="Current", any_keywords="revocable trust agreement, irrevocable trust agreement, declaration of trust, certification of trust, trust instrument, amendment to the trust, last will, codicil"),
         _row("A02", "IRS EIN Assignment Letter", core=False, period="Current", any_keywords="cp 575, ein assignment, assigned you employer identification number, assigned you an employer identification number"),
         _row("A03", "Prior-Year Fiduciary Returns", core=True, period=TY_PRIOR, required_keywords="income tax return for estates and trusts, under penalties of perjury"),
-        _row("B01", "1099s for Trust / Estate Accounts", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-b, 1099-oid, 1099-r, 1099-misc, 1099-nec", expected_count=3),
+        # A broker's realized gain/loss export is the trust's 1099-B by
+        # another name: the trust reports the same lots, and the export is
+        # what arrives where the consolidated 1099 does not (decision 85).
+        # Decision 68's composite is untouched - it never prints the words.
+        _row("B01", "1099s for Trust / Estate Accounts", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-b, 1099-oid, 1099-r, 1099-misc, 1099-nec, realized gain/loss, realized gain loss", expected_count=3),
         # `year-end account statement` is a bank's heading as much as a
         # broker's, and a bank's year-end statement is not the brokerage
         # statement this row asks for; a document titled only that parks.

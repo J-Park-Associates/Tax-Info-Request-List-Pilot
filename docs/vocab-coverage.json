@@ -34,9 +34,25 @@
          "name": "firm transmittal.pdf"
         },
         {
+         "decision": 85,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2 2025 Copy B one to a page.pdf"
+        },
+        {
          "expected": "A01",
          "kind": "irs",
          "name": "fw2.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2_2024.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2_2025.pdf"
         },
         {
          "expected": null,
@@ -88,9 +104,25 @@
          "name": "W-3.pdf"
         },
         {
+         "decision": 85,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2 2025 Copy B one to a page.pdf"
+        },
+        {
          "expected": "A01",
          "kind": "irs",
          "name": "fw2.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2_2024.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2_2025.pdf"
         },
         {
          "expected": null,
@@ -121,9 +153,25 @@
          "name": "scanner cover then W-2.pdf"
         },
         {
+         "decision": 85,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2 2025 Copy B one to a page.pdf"
+        },
+        {
          "expected": "A01",
          "kind": "irs",
          "name": "fw2.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2_2024.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2_2025.pdf"
         }
        ],
        "rule": "required"
@@ -890,6 +938,46 @@
          "decision": 73,
          "kind": "case",
          "name": "trust brokerage year-end statement.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "realized gain/loss",
+       "reached_by": [
+        {
+         "decision": 85,
+         "expected": "E01",
+         "kind": "case",
+         "name": "realized gain loss export.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "realized gain loss export.pdf"
+        },
+        {
+         "decision": 85,
+         "expected": "E01",
+         "kind": "case",
+         "name": "realized gain loss.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "realized gain loss",
+       "reached_by": [
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "realized gain loss report.pdf"
+        },
+        {
+         "decision": 85,
+         "expected": "E01",
+         "kind": "case",
+         "name": "realized gain loss.xlsx"
         }
        ],
        "rule": "any"
@@ -2045,6 +2133,11 @@
          "name": "1099-NEC.pdf"
         },
         {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
          "expected": "B01",
          "kind": "irs",
          "name": "f1099nec.pdf"
@@ -2052,6 +2145,45 @@
         {
          "kind": "irs",
          "name": "f1099nec_2024.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "realized gain/loss",
+       "reached_by": [
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "realized gain loss export.pdf"
+        },
+        {
+         "decision": 85,
+         "expected": "B01",
+         "kind": "case",
+         "name": "realized gain loss export.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "realized gain loss.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "realized gain loss",
+       "reached_by": [
+        {
+         "decision": 85,
+         "expected": "B01",
+         "kind": "case",
+         "name": "realized gain loss report.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "realized gain loss.xlsx"
         }
        ],
        "rule": "any"
@@ -7422,10 +7554,10 @@
  "counts": {
   "catalogs": 6,
   "documents": {
-   "case": 283,
-   "irs": 50
+   "case": 293,
+   "irs": 52
   },
-  "keywords": 327,
+  "keywords": 331,
   "reached_only_elsewhere": 2,
   "reached_without_expectation": 11,
   "rows": 78,
@@ -7482,14 +7614,16 @@
   "tests/irs/f990ez.pdf": "290b3f9018ae12837b0ffdc32a8cb7beca78917caffdaf313c85d17d4e73a27c",
   "tests/irs/f990pf.pdf": "999df73380009f180fcc741f778a47bc83a25de3116fb1a1cf8d03f6b24b39ba",
   "tests/irs/fw2.pdf": "61eca7c81f16d3965819fe1f31be4fe68c1b2887a81f51172f1d2ed2b2b9f087",
+  "tests/irs/fw2_2024.pdf": "318af9431e372ef7b92c478ef76355312de70f09ac92072d48cdd025080ef526",
+  "tests/irs/fw2_2025.pdf": "6a52ad63693de54220a3326b22c4d0fb34f4c25084366537087312975a55ae96",
   "tests/irs/fw3.pdf": "2df15f40431bd52814cbac85d9843102b09a640b6fe558f201e5214ff1890656",
-  "tests/test_catalog.py": "d02a06de01f44f3dd644564906c264a208d45e3459612237784e09da46efd437",
-  "tests/test_irs_forms.py": "bd770be57d0ca7474048d86cf4dd52d9fe40fd62aa076de4012329b310814dbb",
-  "tests/test_real_corpus.py": "e23951bd250960acc2547ffbe5428e56e9794469e3f223ea94b8733b88d1112d",
+  "tests/test_catalog.py": "6b15b7d5ae3c489c76dd4167f0e66121bda492f5a8121c723155cc28dc989e9b",
+  "tests/test_irs_forms.py": "f9d8ad4e53aa532dcb17ce4e6da34d08d9bb57d3faf9772d0a3242ad6679944b",
+  "tests/test_real_corpus.py": "32c0f2def2439259f3265350e03cc9acf83c7047894609db60881b826784c08d",
   "tools/vocab_report.py": "d10b5df1ecdc629030ef69e490cc7ba93d93da5633f470cc337443869c59bd91",
-  "tracker/content_check.py": "1a0fbeb43641e54dce143b27bf1305fee6a752e3be4fddec8909a1605385c584",
+  "tracker/content_check.py": "2167980abbad90dc27e1a1e962f1369d8420bc15b9c7fa7d4e9406cdda30db73",
   "tracker/manifest.py": "b825a67691bd72c3576d689a41f5e7423004e2d7e7122fc3b4796011c1b84fa7",
-  "tracker/templates.py": "bb7eb141d3e228a62fd587a0275595acc849f8457bd616fcaac1e2b9221da015"
+  "tracker/templates.py": "1a19dcaf69b35c6ba1f349b50a35dfa13f775aa6455ffb112d1b1fd7032c6a06"
  },
  "note": "GENERATED by tools/vocab_report.py \u2014 do not edit by hand.",
  "schema": 1
