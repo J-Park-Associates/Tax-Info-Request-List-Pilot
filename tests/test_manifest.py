@@ -386,6 +386,17 @@ def test_reading_pending_updates_leaves_a_corrupt_sidecar_where_it_is(manifest, 
 # --------------------------------------------------------- engagement sheet ----
 
 
+def test_the_engagement_sheet_keeps_a_name_typed_like_a_formula_a_name(tmp_path):
+    # Decision 58's rule - every cell the tracker fills from data is text -
+    # had a hole on this sheet (the ninth reading).
+    from tracker.manifest import EngagementInfo, load_engagement_info, write_engagement_info
+
+    path = create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS, EngagementInfo(client="=1+1"))
+    assert load_engagement_info(path).client == "=1+1"
+    write_engagement_info(path, EngagementInfo(client="Jane", sender="=CMD|' /C calc'!A0"))
+    assert load_engagement_info(path).sender == "=CMD|' /C calc'!A0"
+
+
 def test_the_engagement_sheet_round_trips(tmp_path):
     from tracker.manifest import EngagementInfo, load_engagement_info, write_engagement_info
 

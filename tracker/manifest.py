@@ -1085,7 +1085,7 @@ def _write_engagement_sheet(wb: Workbook, info: EngagementInfo) -> None:
             cell = ws.cell(row=row, column=2, value=value)
             cell.number_format = DATE_FORMAT
             continue
-        ws.cell(row=row, column=2, value=value or None)
+        as_text(ws.cell(row=row, column=2, value=value or None))   # a client called "=1+1" is a name (decision 58)
     note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1, value=engagement_sheet_note())
     note.font = Font(italic=True, color="666666")
 

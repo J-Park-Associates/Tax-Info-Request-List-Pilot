@@ -313,3 +313,97 @@ def test_only_the_first_pages_of_a_pdf_are_read(tmp_path):
     assert "W-2 early" in text
     assert "1098 late" not in text
     assert "page 10 filler" in text and "page 11 filler" not in text
+
+
+# ------------------------------------------------ a form's own number ----
+
+
+@pytest.mark.parametrize("text, own", [
+    ("Form 1040 (2025)", "1040"), ("Form 1099-DIV (Rev. January 2024)", "1099div"), ("941 for 2026:", "941"),
+    ("Form W-2 Wage and Tax Statement 2025", "w2"),        # plain: nothing quotes it, it is named in its own right
+])
+def test_a_form_names_itself_with_its_year_or_revision(text, own):
+    from tracker.content_check import _PLAIN_WEIGHT, _mentions
+
+    (key, _, weight), = list(_mentions(text.lower()))
+    assert key == own and weight >= _PLAIN_WEIGHT
+
+
+@pytest.mark.parametrize("text", [
+    "(Form 1040)", "Form 1040 or 1040-SR", "Form 1040 instructions", "Form 1040, line 8", "Form 1040 for individuals",
+    "attach Form 1098", "Forms W-2", "reported on Form 1099-INT", "a 1098 - for my return", "see Form 1099-NEC, to use",
+    "such as Form 1040)", "Interest and dividends: attach Forms 1099-INT and 1099-DIV",
+])
+def test_a_form_quoted_in_a_sentence_is_a_reference(text):
+    from tracker.content_check import _REFERENCE_WEIGHT, _mentions
+
+    assert all(weight == _REFERENCE_WEIGHT for _, _, weight in _mentions(text.lower()))
+
+
+def test_the_dominant_form_is_the_heaviest_then_the_first_mentioned():
+    from tracker.content_check import dominant_forms
+
+    # A W-2's instructions name Form 1040 many times; the W-2 names itself with its year.
+    assert dominant_forms("Form W-2 (2025) " + "see Form 1040 line 1. " * 30) == {"w2"}
+    # Two forms named in their own right, equally: the first mentioned.
+    assert dominant_forms("Form 1099-INT (2025) Interest Income\nForm 1099-DIV (2025) Dividends") == {"1099int"}
+    # Once in passing, beside another form: nobody's.
+    assert dominant_forms("You must file Form 941, Form 940 and Form W-2.") == set()
+    # A number that is not a known family counts only after "Form", and takes a variant only by a dash.
+    assert dominant_forms("Form 4562 (2025) Depreciation and Amortization") == {"4562"}
+    assert dominant_forms("4562 4562 4562 (2025)") == set()
+    assert dominant_forms("Form 1125-E (Rev. October 2016) Compensation of Officers") == {"1125e"}
+    assert dominant_forms("Form 4562 depreciation\nForm 4562 depreciation") == {"4562"}   # "4562 depreciation" is not 4562-DEPR
+
+
+def test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right():
+    from tracker.content_check import says
+
+    attention = ("Attention: Which Revision To Use for Which Year. For all forms that we do not issue annually "
+                 "(such as Form 1099-NEC), we issue the revision to use for the next calendar year. ")
+    assert not says(attention + "Form 1098-T Tuition Statement 2025", "1099-nec")
+    assert says(attention + "Form 1098-T Tuition Statement 2025", "1098-t")
+    assert not says("2025 Tax Organizer\nMortgage interest: attach Form 1098\nRetirement: attach Forms 1099-R", "1098")
+    assert says("Form 1098 Mortgage Interest Statement 2025", "1098")
+    assert says("Attached: Form 1099-INT, Form 1098 and W-2 for 2025 tax prep\nForm W-2 Wage and Tax Statement", "w-2")
+    assert not says("Subject: Your 2025 Form 1099-R is ready\nForm 5498 IRA Contribution Information 2025", "1099-r")
+
+
+# ------------------------------------------------ a keyword's words on one line ----
+
+
+def test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading():
+    from tracker.content_check import contains_keyword
+
+    # Two labels on two lines are not one phrase.
+    assert not contains_keyword("19 Distributions\nSchedule K-1 (Form 1065) 2025", "distribution schedule")
+    assert not contains_keyword("16 Items affecting shareholder basis\nSchedule K-1 (Form 1120-S)", "shareholder basis schedule")
+    # A heading wraps from the start of its line, two words or more on the first.
+    assert contains_keyword("Balance Sheet\nAs of December 31, 2025", "balance sheet as of")
+    assert contains_keyword("  Fixed Asset\n  Schedule", "fixed asset schedule")
+    assert contains_keyword("Statement of\nFinancial Position", "statement of financial position")
+    # One word over another is two labels; the 1098's one-word-per-line title is known by its number.
+    assert not contains_keyword("Mortgage\nInterest\nStatement", "mortgage interest statement")
+    assert not contains_keyword("Distributions\nSchedule", "distribution schedule")
+    # A phrase that begins mid-line and runs on is a sentence, not a heading.
+    assert not contains_keyword("the items affecting shareholder basis\nschedule", "shareholder basis schedule")
+    # One line, as before: spaces, tabs, a no-break space, a dash.
+    assert contains_keyword("Fixed\xa0Asset\tSchedule", "fixed asset schedule")
+    assert contains_keyword("fixed-asset-schedule.pdf", "fixed asset schedule")
+    assert not contains_keyword("W\n2", "w-2")
+
+
+def test_a_sheets_row_is_a_line_and_its_cells_are_set_apart(tmp_path):
+    from tracker.content_check import contains_keyword
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Fixed Asset", "Schedule"])
+    ws.append(["Distributions"])
+    ws.append(["Schedule"])
+    path = tmp_path / "book.xlsx"
+    wb.save(path)
+    text = extract_text(path)
+    assert "Fixed Asset\tSchedule" in text
+    assert contains_keyword(text, "fixed asset schedule")
+    assert not contains_keyword(text, "distribution schedule")

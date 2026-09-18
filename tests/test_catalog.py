@@ -224,6 +224,88 @@ CASES = [
         "Trial Balance As of December 31, 2025", "Checking Account 12,000.00 Savings Account 30,000.00",
         "Accumulated Depreciation -4,000.00 Shareholder Distributions 10,000.00",
     ], "A02"),
+    # Round nine. A form number in the title counts only when the title
+    # names the form in its own right: the IRS's "Attention" page, a
+    # scanner's or an email's cover, an organizer's lines and a bank's
+    # letter all quote forms they are not.
+    ("1041", "1098-T behind the Attention page.pdf", [
+        "Attention:", "Which Revision To Use for Which Year. We issue information returns up to a year in advance of when issuers will first file them.",
+        "For all forms that we do not issue annually (such as Form 1099-NEC), we issue the revision to use for the next calendar year.",
+        "For example, we issued an April 2025 revision of Form 1099-NEC, Nonemployee Compensation, to use first to report amounts for calendar year 2025.",
+        "", "Form 1098-T Tuition Statement 2025", "OMB No. 1545-1574", "FILER'S name State University",
+        "1 Payments received for qualified tuition and related expenses 12,000.00", "Form 1098-T (2025)",
+    ], None),
+    ("1041", "scanner cover then W-2.pdf", [
+        "Scanned by CamScanner", "Scan date 02/01/2026 Pages 2", "Attached: Form 1099-INT, Form 1098 and W-2 for 2025 tax prep", "",
+        "a Employee's social security number 123-45-6789 OMB No. 1545-0008",
+        "Form W-2 Wage and Tax Statement 2025 Copy B To Be Filed With Employee's FEDERAL Tax Return.",
+    ], None),
+    ("1041", "email print then 5498.pdf", [
+        "From: Fidelity <noreply@fidelity.com>", "Subject: Your 2025 Form 1099-R is ready", "Date: January 20, 2026", "",
+        "Form 5498 IRA Contribution Information 2025", "OMB No. 1545-0747", "TRUSTEE'S or ISSUER'S name",
+        "1 IRA contributions (other than amounts in boxes 2-4, 8-10, 13a, and 14a) 7,000.00", "Form 5498 (2025)",
+    ], None),
+    ("1040", "email print then 5498.pdf", [
+        "From: Fidelity <noreply@fidelity.com>", "Subject: Your 2025 Form 1099-R is ready", "Date: January 20, 2026", "",
+        "Form 5498 IRA Contribution Information 2025", "OMB No. 1545-0747", "TRUSTEE'S or ISSUER'S name",
+        "1 IRA contributions (other than amounts in boxes 2-4, 8-10, 13a, and 14a) 7,000.00", "Form 5498 (2025)",
+    ], "K01"),
+    ("1040", "fax cover then 1099-R.pdf", [
+        "FAX COVER SHEET", "To: J Park & Associates From: Jane Smith Date: 02/01/2026 Pages: 3",
+        "Re: Forms 1099-INT and 1099-DIV, plus a 1098 - for my 2025 return", "",
+        "Form 1099-R Distributions From Pensions, Annuities, Retirement or Profit-Sharing Plans, IRAs, Insurance Contracts, etc. 2025",
+        "OMB No. 1545-0119", "1 Gross distribution 20,000.00", "Instructions for Recipient", "Form 1099-R (2025)",
+    ], "E02"),
+    ("1040", "bank annual summary.pdf", [
+        "First National Bank", "Annual Account Summary January 1, 2025 - December 31, 2025",
+        "Total deposits and other credits 48,000.00", "Total interest paid 12.50 (reported on Form 1099-INT)",
+    ], None),
+    ("1041", "bank annual summary.pdf", [
+        "First National Bank", "Annual Account Summary January 1, 2025 - December 31, 2025",
+        "Total interest paid 12.50 (reported on Form 1099-INT)",
+    ], None),
+    ("1040", "organizer with every line.pdf", [
+        "2025 Individual Income Tax Organizer", "Please complete and return with your documents",
+        "Wages: attach all Forms W-2", "Interest and dividends: attach Forms 1099-INT and 1099-DIV", "Mortgage interest: attach Form 1098",
+        "Retirement: attach Forms 1099-R", "Filing Status: Single Married filing jointly", "Charitable contributions: list donations and attach receipts",
+        "Child care provider name, EIN, amount paid", "Estimated tax payments made for 2025: Q1 Q2 Q3 Q4", "Tuition: attach Form 1098-T", "Property tax paid",
+    ], None),
+    ("1041", "organizer with every line.pdf", [
+        "2025 Individual Income Tax Organizer", "Interest and dividends: attach Forms 1099-INT and 1099-DIV",
+    ], None),
+    # A keyword's words are on one line, or wrap as a heading from the start of one.
+    ("1041", "K-1 with its footer under box 19.pdf", [
+        "Schedule K-1 (Form 1065) 2025 Department of the Treasury Internal Revenue Service", "For calendar year 2025",
+        "Partner's Share of Income, Deductions, Credits, etc. See separate instructions.",
+        "1 Ordinary business income (loss) 12,000", "19 Distributions", "Schedule K-1 (Form 1065) 2025",
+    ], None),
+    ("1120S", "K-1 with its footer under box 16.pdf", [
+        "Schedule K-1 (Form 1120-S) 2025 Department of the Treasury Internal Revenue Service",
+        "Shareholder's Share of Income, Deductions, Credits, etc. See separate instructions.",
+        "1 Ordinary business income (loss) 12,000", "16 Items affecting shareholder basis", "Schedule K-1 (Form 1120-S) 2025",
+    ], None),
+    ("1120", "QuickBooks balance sheet.pdf", [
+        "Smith Holdings LLC", "Balance Sheet", "As of December 31, 2025", "ASSETS", "Checking 12,000.00", "Fixed Assets 60,000.00",
+    ], "B01"),
+    # A return's own lines, and a bookkeeping export's account names, are not another row's document.
+    ("1040", "QuickBooks general ledger.pdf", [
+        "Smith Holdings LLC", "General Ledger", "January - December 2025",
+        "Charitable Contributions 12/15/2025 Check 1042 Red Cross donation 500.00",
+    ], None),
+    ("1040", "QuickBooks trial balance.pdf", [
+        "Smith Holdings LLC", "Trial Balance", "As of December 31, 2025", "Shareholder Distributions 10,000.00", "Donation Expense 500.00",
+    ], None),
+    ("1040", "donation receipt.pdf", [
+        "Red Cross", "Thank you for your donation of $500.00 received December 15, 2025",
+        "No goods or services were provided in exchange for this contribution.",
+    ], "D01"),
+    ("1120", "cap table.pdf", ["Smith Holdings Inc. Cap Table as of December 31, 2025", "Shareholder Shares Percent", "J Smith 600 60%"], "G01"),
+    ("1040", "childcare statement.pdf", [
+        "Little Stars Daycare", "2025 Child Care Statement", "Provider EIN 12-3456789", "Total paid for Emma Smith 8,400.00",
+    ], "J01"),
+    ("1040", "1099-DIV.pdf", [
+        "Form 1099-DIV Dividends and Distributions 2025", "OMB No. 1545-0110", "1a Total ordinary dividends 300.00", "Form 1099-DIV (Rev. January 2024)",
+    ], "A02"),
 ]
 
 

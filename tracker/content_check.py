@@ -66,7 +66,8 @@ CACHE_FILENAME = "_content_cache.json"
 #: 3: verdicts that were the machine's (no OCR, OCR failed) are no longer
 #: stored; a cache written before that carried them for ever.
 #: 4: says() changed what a keyword verdict means (a form number is title evidence).
-CACHE_VERSION = 4
+#: 5: a form number in the title is weighed by its shape too; a keyword's words sit on one line.
+CACHE_VERSION = 5
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -161,11 +162,26 @@ FORM_VARIANTS: dict[str, tuple[str, ...]] = {
     "w3": ("c", "ss", "pr"),
 }
 #: What may sit between a number and its variant, or between a keyword's
-#: words: nothing ("1098T"), spaces, or any dash a PDF or a keyboard yields.
+#: words: nothing ("1098T"), spaces, or any dash a PDF or a keyboard yields
+#: - not a line break, unless the phrase is a heading that wraps. A
+#: keyword names one thing, and its words are printed together; a line
+#: break is where one label ends and the next begins. A K-1's box "19
+#: Distributions" above its footer "Schedule K-1" is not a distribution
+#: schedule, and "Items affecting shareholder basis" above the same
+#: footer is not a shareholder basis schedule. A heading set in its own
+#: box wraps - "Balance Sheet" over "As of December 31, 2025" - and a
+#: heading begins its line with two words or more; a phrase that begins
+#: mid-line and runs on to the next is a sentence, and one word over
+#: another is two labels. (The IRS sets the 1098's title one word per
+#: line, "Mortgage / Interest / Statement"; that form is known by its
+#: number, as every form in tests/irs/ is.)
 _DASH_CHARS = "".join(("-", chr(0x2010), chr(0x2011), chr(0x2012), chr(0x2013), chr(0x2014), chr(0x2212), chr(0xAD)))   # hyphen, the Unicode dashes, minus, soft hyphen
 #: An apostrophe as a keyboard types it, as a PDF prints it, and as OCR reads it.
 _APOSTROPHES = "".join(("'", chr(0x2019), chr(0x2018), chr(0x02BC), chr(0x60)))
-_JOINER = rf"[\s{re.escape(_DASH_CHARS)}]*"
+_SAME_LINE = r"[^\S\r\n\f\v]"   # whitespace that is not a line break (a no-break space included)
+_JOINER = rf"(?:{_SAME_LINE}|[{re.escape(_DASH_CHARS)}])*"
+_WRAPPING_JOINER = rf"[\s{re.escape(_DASH_CHARS)}]*"
+_LINE_START = rf"(?:^|(?<=[\r\n\f\v])){_SAME_LINE}*"
 _DASHES = re.compile(rf"[\s{re.escape(_DASH_CHARS)}]")
 
 
@@ -180,13 +196,17 @@ def _joined_to_a_variant(text: str, keyword: str, match: re.Match[str]) -> bool:
     return tail.match(text, match.end()) is not None
 
 
-def keyword_pattern(keyword: str) -> str | None:
+def keyword_pattern(keyword: str, *, wrapping: bool = False) -> str | None:
     """The regular expression one keyword is looked for with, or None if blank.
 
     Whole tokens only. Between a keyword's words, and on either side of a
     dash inside a word, anything a dash can become: ``interest income``
     matches "interest-income" in a file name, ``w-2`` matches "W2" and
-    "W–2", ``1099-int`` matches "1099INT".
+    "W–2", ``1099-int`` matches "1099INT". A keyword's words are on one
+    line (``_JOINER``); the ``wrapping`` pattern is the other reading, a
+    heading that begins its line with two words or more of the keyword
+    and wraps the rest on to the next, and is None for a keyword that
+    cannot wrap. Two one-word lines are two labels, not one phrase.
     """
     # Only the letters and digits are the keyword; a "-" or "$" typed into
     # a keyword cell is nothing to look for, and must not match everything.
@@ -195,7 +215,12 @@ def keyword_pattern(keyword: str) -> str | None:
         return None
     words = [_JOINER.join(_seams(part) for part in _DASHES.split(w) if part) for w in keyword.split()]
     words = [w for w in words if w]
-    return rf"(?<![a-z0-9]){_JOINER.join(words)}(?![a-z0-9])"
+    if not wrapping:
+        return rf"(?<![a-z0-9]){_JOINER.join(words)}(?![a-z0-9])"
+    if len(words) < 3:
+        return None
+    first_line = _JOINER.join(words[:2])
+    return rf"{_LINE_START}(?<![a-z0-9]){first_line}{_WRAPPING_JOINER}{_WRAPPING_JOINER.join(words[2:])}(?![a-z0-9])"
 
 
 def _seams(part: str) -> str:
@@ -231,11 +256,13 @@ def contains_keyword(text: str, keyword: str) -> bool:
     document gets filed, so a coincidental substring must never count as
     evidence.
     """
-    pattern = keyword_pattern(keyword)
-    if pattern is None:
-        return False
     text = text.lower()
-    return any(not _joined_to_a_variant(text, keyword, m) for m in re.finditer(pattern, text))
+    for pattern in (keyword_pattern(keyword), keyword_pattern(keyword, wrapping=True)):
+        if pattern is None:
+            continue
+        if any(not _joined_to_a_variant(text, keyword, m) for m in re.finditer(pattern, text)):
+            return True
+    return False
 
 
 #: A form number a keyword names is content evidence only where a form
@@ -244,8 +271,13 @@ def contains_keyword(text: str, keyword: str) -> bool:
 #: page's footer (a W-2 prints its title at the foot of the form, below
 #: the boxes). Every 1040 says "Attach Form(s) W-2", every 1095-C's
 #: instructions name "Form 1095-A", every 1099's say "Form 1040-ES", and
-#: those are single mentions of other forms, not the form this is. A file
-#: name is read whole: it is all title.
+#: those are single mentions of other forms, not the form this is. In the
+#: title as everywhere, a mention counts only when its shape is a form
+#: naming itself, not a sentence about another form (``_mention_weight``):
+#: the IRS prints an "Attention" page ahead of every information return
+#: that names Form 1099-NEC by way of example, an organizer's first lines
+#: say "attach Form 1098", a bank's letter says "reported on Form
+#: 1099-INT". A file name is read whole: it is all title.
 TITLE_CHARS = 400
 _FORM_NUMBER = re.compile(r"^(?:form\s+)?([a-z]?\d{3,4}|w\d)(?:[a-z]{1,4})?$")
 _FORM_MENTION = re.compile(
@@ -281,26 +313,65 @@ def _title(text: str) -> str:
 #: is followed by its year or revision - "Form 1040 (2025)", "Form 1099-DIV
 #: (Rev. January 2024)", "941 for 2026:" - on the title and on every page's
 #: footer. Another form's number is quoted: "(Form 1040)", "Form 1040 or
-#: 1040-SR", "Form 1040 instructions", "Form 1040, line 8". The two shapes
-#: are told apart here, because a W-2's instruction pages name Form 1040
-#: thirty times and the W-2 itself a dozen.
+#: 1040-SR", "Form 1040 instructions", "Form 1040, line 8" - or told to
+#: the reader: "attach Form 1098", "Forms W-2", "reported on Form
+#: 1099-INT", "a 1098". The two shapes are told apart here, because a
+#: W-2's instruction pages name Form 1040 thirty times and the W-2 itself
+#: a dozen. A self-mention's year is on the same line as its number.
 _SELF_WEIGHT, _PLAIN_WEIGHT, _REFERENCE_WEIGHT = 3, 1, 0
-_SELF_AFTER = re.compile(r"[ \t]*(?:\([ \t]*)?(?:rev\b|(?:19|20)\d{2}\b)|[ \t]+for[ \t]+(?:19|20)\d{2}\b")
+_SELF_AFTER = re.compile(
+    rf"{_SAME_LINE}*(?:\({_SAME_LINE}*)?(?:rev\b|(?:19|20)\d{{2}}\b)|{_SAME_LINE}+for{_SAME_LINE}+(?:19|20)\d{{2}}\b"
+)
 _REFERENCE_AFTER = re.compile(
     r"\s*[,.;)]|\s+(?:or|and|line|lines|instructions?|to|if|is|are|was|were|schedule|box|boxes|page|"
     r"worksheet|for|with|at|by|filers?|must|may|should)\b"
 )
+#: The words a document prints before a form it is telling the reader
+#: about; a form never names itself after them.
+_REFERENCE_BEFORE = re.compile(
+    r"(?<![a-z0-9])(?:forms|attach|attached|see|file|files|filed|use|of|on|from|with|to|and|or|a|an|the|"
+    r"include|including|per|report|reported)\s+$"
+)
+_BEFORE_CHARS = 12   # room for the longest word above and the space after it
 
 
 def _mention_weight(text: str, match: re.Match[str], end: int) -> int:
     """``end`` is where the form number (with its real variant) stops."""
-    if match.start() > 0 and text[match.start() - 1] == "(":
+    start = match.start()
+    if start > 0 and text[start - 1] == "(":
         return _REFERENCE_WEIGHT
     if _SELF_AFTER.match(text, end):
         return _SELF_WEIGHT
+    if _REFERENCE_BEFORE.search(text, max(0, start - _BEFORE_CHARS), start):
+        return _REFERENCE_WEIGHT
     if _REFERENCE_AFTER.match(text, end):
         return _REFERENCE_WEIGHT
     return _PLAIN_WEIGHT
+
+
+def _mentions(low: str):
+    """Every form number ``low`` (lower-cased text) mentions, as
+    ``(key, start, weight)``.
+
+    A known family (``FORM_VARIANTS``) is a mention bare or after "Form":
+    "W-2", "941 for 2026", "Form 1099-DIV". Any other number is one only
+    after "Form" and takes a variant only joined by a dash - "Form 4562",
+    "Form 1125-E" - because a bare 4562 is as likely a year, an OMB number
+    or an amount, and "Form 4562 line" is not Form 4562-LINE.
+    """
+    for match in _FORM_MENTION.finditer(low):
+        number, variant = match.group(1), match.group(2)
+        base = _DASHES.sub("", number)
+        end = match.end()
+        if base in FORM_VARIANTS:
+            if variant and variant not in FORM_VARIANTS[base]:
+                variant, end = None, match.end(1)   # "1040 line" is Form 1040, not a variant
+        else:
+            if not match.group(0).startswith("form"):
+                continue
+            if variant and low[match.start(2) - 1].isspace():
+                variant, end = None, match.end(1)
+        yield _form_key(number, variant), match.start(), _mention_weight(low, match, end)
 
 
 def dominant_forms(text: str) -> set[str]:
@@ -314,20 +385,11 @@ def dominant_forms(text: str) -> set[str]:
     only once in passing is nobody's - an IRS notice that lists three
     forms to file is about none of them.
     """
-    low = text.lower()
     scores: dict[str, int] = {}
     first: dict[str, int] = {}
-    for match in _FORM_MENTION.finditer(low):
-        number, variant = match.group(1), match.group(2)
-        base = _DASHES.sub("", number)
-        if base not in FORM_VARIANTS:
-            continue
-        end = match.end()
-        if variant and variant not in FORM_VARIANTS[base]:
-            variant, end = None, match.end(1)   # "1040 line" is Form 1040, not a variant
-        key = _form_key(number, variant)
-        scores[key] = scores.get(key, 0) + _mention_weight(low, match, end)
-        first.setdefault(key, match.start())
+    for key, start, weight in _mentions(text.lower()):
+        scores[key] = scores.get(key, 0) + weight
+        first.setdefault(key, start)
     if not scores:
         return set()
     top = max(scores.values())
@@ -336,17 +398,31 @@ def dominant_forms(text: str) -> set[str]:
     return {min((key for key, n in scores.items() if n == top), key=first.get)}
 
 
+def _title_forms(text: str) -> set[str]:
+    """The form numbers the title (``_title``) names in their own right: a
+    mention there that is not a sentence about another form."""
+    stop = len(_title(text))
+    forms = set()
+    for key, start, weight in _mentions(text.lower()):
+        if start >= stop:
+            break
+        if weight > _REFERENCE_WEIGHT:
+            forms.add(key)
+    return forms
+
+
 def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
-    """``contains_keyword`` as content evidence: a form number counts only in
-    the title or as the document's own (dominant) number."""
+    """``contains_keyword`` as content evidence: a form number counts only
+    where the title names it in its own right (``_title_forms``) or as the
+    document's own (dominant) number."""
     if not is_form_number(keyword):
         return contains_keyword(text, keyword)
-    if contains_keyword(_title(text), keyword):
-        return True
     if not contains_keyword(text, keyword):
         return False
     bare = _DASHES.sub("", keyword.strip().lower())
     key = bare[4:] if bare.startswith("form") else bare
+    if key in _title_forms(text):
+        return True
     return key in (dominant_forms(text) if dominant is None else dominant)
 
 
@@ -388,21 +464,27 @@ def _extract_xlsx(path: Path) -> str:
 
     from openpyxl import load_workbook
 
+    # A sheet's row is a line and its cells are set apart by a tab: a
+    # keyword's words may run across a row's cells ("Fixed Asset" beside
+    # "Schedule") and never down its rows.
     parts: list[str] = []
     wb = load_workbook(path, read_only=True, data_only=True)
     try:
         for ws in wb.worksheets:
             parts.append(str(ws.title))
             for row in ws.iter_rows(values_only=True):
+                cells: list[str] = []
                 for value in row:
                     if value is None:
                         continue
                     if isinstance(value, (dt.datetime, dt.date)):
                         # Both forms, so ISO- and US-style patterns match.
                         d = value.date() if isinstance(value, dt.datetime) else value
-                        parts.append(f"{d.isoformat()} {d.month}/{d.day}/{d.year}")
+                        cells.append(f"{d.isoformat()} {d.month}/{d.day}/{d.year}")
                     else:
-                        parts.append(str(value))
+                        cells.append(str(value))
+                if cells:
+                    parts.append("\t".join(cells))
     finally:
         wb.close()
     return "\n".join(parts)

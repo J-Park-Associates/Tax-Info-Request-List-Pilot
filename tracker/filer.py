@@ -57,7 +57,9 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import os
 import shutil
+import stat
 import time
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, fields, replace
@@ -310,6 +312,21 @@ def _copy_whole(source: Path, target: Path) -> None:
         raise
 
 
+def _move_whole(source: Path, target: Path) -> None:
+    """Move by rename, and only by rename.
+
+    ``shutil.move`` falls back to copy-and-delete when the rename is
+    refused, and on Windows a file another program holds open (a scanner
+    utility still writing it, a download in progress) refuses the rename
+    but not the copy: the copy lands - truncated to whatever has been
+    written so far - and the delete fails, so the caller hears "left in
+    place" while a phantom sits in the target folder under the client's
+    own name. A rename moves the whole file or nothing; the folders this
+    moves between are in one engagement, on one volume.
+    """
+    os.rename(source, target)
+
+
 def _unique_path(folder: Path, name: str) -> Path:
     """A free path in ``folder`` for ``name``, never overwriting anything."""
     target = folder / name
@@ -517,9 +534,11 @@ def _save_index(path: Path, entries: list[IndexEntry]) -> None:
     ws = wb.active
     ws.title = INDEX_SHEET
     ws.append(list(INDEX_COLUMNS))
-    for entry in entries:
+    # The row is counted, not asked for: openpyxl finds max_row by walking
+    # every cell, which made writing the index quadratic in its rows.
+    for row_number, entry in enumerate(entries, start=2):
         ws.append(entry.as_row())
-        for cell in ws[ws.max_row]:
+        for cell in ws[row_number]:
             as_text(cell)             # a file called "=SUM scan.pdf" is a name, not a formula
     for index, (_, width) in enumerate(INDEX_LAYOUT.values(), start=1):
         ws.column_dimensions[get_column_letter(index)].width = width
@@ -591,7 +610,7 @@ def iter_drops(shared_dir: Path) -> list[Path]:
     pbc = shared_dir / PBC_DIR_NAME
     drops = []
     for path in sorted(shared_dir.rglob("*")):
-        if not path.is_file() or is_ignored(path):
+        if not path.is_file() or is_ignored(path) or _through_a_link(path, shared_dir):
             continue
         if path == shared_dir / README_NAME:
             continue
@@ -599,6 +618,46 @@ def iter_drops(shared_dir: Path) -> list[Path]:
             continue
         drops.append(path)
     return drops
+
+
+def _is_link(path: Path) -> bool:
+    """A symlink, or on Windows a junction or any other reparse point."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
+def _through_a_link(path: Path, root: Path) -> bool:
+    """True when ``path`` is reached through a link below ``root``.
+
+    ``rglob`` follows a junction, and a junction a client (or a sync
+    client) leaves in the drop folder points anywhere: at a folder outside
+    the engagement whose files would then be *moved* into PBC as the
+    client's originals. What lies behind a link is not a drop.
+    """
+    for part in (path, *path.parents):
+        if part == root:
+            return False
+        if _is_link(part):
+            return True
+    return False
+
+
+def unreachable_drops(shared_dir: Path) -> list[Path]:
+    """Names under ``SHARED_DIR_NAME/`` that are listed but cannot be
+    opened as files: on Windows a name ending in a dot or a space, or a
+    device name (``nul``), which a Mac or a sync client can deliver.
+    Reported, so a document that can never be sorted is not a silence."""
+    if not shared_dir.is_dir():
+        return []
+    pbc = shared_dir / PBC_DIR_NAME
+    return sorted(
+        path for path in shared_dir.rglob("*")
+        if not path.is_file() and not path.is_dir() and not _is_link(path)
+        and pbc not in path.parents and path != pbc
+    )
 
 
 def unfinished_drops(shared_dir: Path) -> list[Path]:
@@ -673,6 +732,27 @@ def replaced_in_pbc(
     return replaced
 
 
+def _record_missing_digests(engagement_dir: Path, entries: list[IndexEntry]) -> int:
+    """Fill in the digest and size of every row that has none and whose
+    original in ``PBC_DIR_NAME/`` can be read now. Returns how many were filled."""
+    filled = 0
+    for position, entry in enumerate(entries):
+        if entry.digest or not entry.pbc_location:
+            continue
+        original = engagement_dir / entry.pbc_location
+        if not original.is_file() or is_cloud_placeholder(original):
+            continue
+        try:
+            digest = sha256_of(original)
+            size_kb = round(original.stat().st_size / 1024, 1)
+        except OSError:
+            continue                 # still unreadable; the next run looks again
+        entries[position] = replace(entry, digest=digest, size_kb=size_kb)
+        filled += 1
+        log.info("Recorded the bytes of %s, preserved earlier but unread", entry.pbc_location)
+    return filled
+
+
 def _prune_empty_dirs(shared_dir: Path, keep: Path) -> None:
     """Remove folders the client dragged in that are empty now their files
     have moved to PBC_DIR_NAME/. Deepest first; anything that is not empty, is the
@@ -687,6 +767,8 @@ def _prune_empty_dirs(shared_dir: Path, keep: Path) -> None:
             continue
         if any(is_sync_staging(part) for part in folder.parts):
             continue
+        if _through_a_link(folder, shared_dir):
+            continue        # rmdir on a junction removes the junction, whatever it points at
         try:
             folder.rmdir()  # only succeeds when empty
         except OSError:
@@ -726,6 +808,11 @@ def file_drops(
         items = load_manifest(engagement_dir / MANIFEST_FILENAME)
         by_id = {i.identifier: i for i in items}
         entries = read_index(index_path, quarantine=not dry_run)
+        # An original preserved by a pass that could not read it back has no
+        # digest (decision 65). While it has none, a replacement is never
+        # noticed and a person's filing of it is never honoured; a later
+        # pass that can read it records the bytes it holds.
+        recorded_digests = 0 if dry_run else _record_missing_digests(engagement_dir, entries)
         # The row that holds each document's bytes. A Duplicate row only
         # points at another row; letting it shadow the Filed row would hide
         # a working copy that has since been deleted, and a re-send that
@@ -733,13 +820,18 @@ def file_drops(
         known = {e.digest: e for e in entries if e.digest and e.decision != DUPLICATE}
         # Rows a locked Excel deferred last time still belong in the workbook -
         # fold them in as soon as it is free, whether or not this run sorts anything.
-        sidecar_waiting = _pending_index_path(index_path).exists()
+        sidecar_waiting = _pending_index_path(index_path).exists() or recorded_digests > 0
 
         drops = iter_drops(shared_dir)
         # A file still being written (a sync client's or a browser's
         # ``TEMP_SUFFIX`` name) is not sorted, and is not passed over in
         # silence either: it is reported as waiting, like a placeholder.
         report.waiting.extend(unfinished_drops(shared_dir))
+        for path in unreachable_drops(shared_dir):
+            report.errors.append(FileError(
+                path.name, "cannot be opened under this name (a name Windows refuses); rename it", True
+            ))
+            log.warning("Left %s in place: the name cannot be opened", path.name)
         strays = unrecorded_in_pbc(pbc_dir, engagement_dir, entries) if pbc_dir.is_dir() else []
         # An original replaced under its own name is said loudly, every run,
         # until a person has looked; it is not sorted again and not guessed.
@@ -798,7 +890,7 @@ def file_drops(
                 else:
                     try:
                         pbc_target = _unique_path(pbc_dir, drop.name)
-                        shutil.move(str(drop), pbc_target)
+                        _move_whole(drop, pbc_target)
                     except OSError as exc:
                         report.errors.append(FileError(
                             drop.name,
@@ -1038,7 +1130,21 @@ def assign_review_file(
             )
         if is_cloud_placeholder(source):
             raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
-        if entry.digest and sha256_of(source) != entry.digest:
+        digest, size_kb = entry.digest, entry.size_kb
+        if not digest:
+            # The pass that preserved this original could not read it back
+            # (decision 65) and recorded no digest. The bytes are readable
+            # now, and a row a person files must carry them: the scanner
+            # honours the person's filing only while the copy holds the
+            # bytes the row recorded, and a row with none is honoured never.
+            try:
+                digest = sha256_of(source)
+                size_kb = round(source.stat().st_size / 1024, 1)
+            except OSError as exc:
+                raise FilingError(
+                    f"the original {entry.pbc_location} could not be read ({exc}); try again when it can"
+                ) from exc
+        elif sha256_of(source) != entry.digest:
             # The client replaced the original after it was parked (the pass
             # reports it as REPLACED_IN_PBC). Filing the new bytes under the
             # old row's record would be a lie in the audit trail; a person
@@ -1057,13 +1163,13 @@ def assign_review_file(
         parked = engagement_dir / entry.prepared_location if entry.prepared_location else None
         moved = reused = False
         if parked is not None and parked.is_file():
-            shutil.move(str(parked), target)   # keeps any notes a person made on it
+            _move_whole(parked, target)   # keeps any notes a person made on it
             moved = True
         else:
             # The parked copy is gone: a run killed after an earlier attempt
             # moved it, or a person did. A copy with these bytes already in
             # the folder is that attempt's, and is reused rather than doubled.
-            existing = _existing_copy(dest_folder, source, entry.digest) if entry.digest else None
+            existing = _existing_copy(dest_folder, source, digest)
             if existing is not None:
                 filed_as, target = existing.name, existing
                 reused = True
@@ -1072,6 +1178,8 @@ def assign_review_file(
 
         new_entry = replace(
             entry,
+            digest=digest,
+            size_kb=size_kb,
             identifier=item.identifier,
             prepared_location=prepared_location(dest_folder, filed_as),
             decision=FILED,
@@ -1090,7 +1198,7 @@ def assign_review_file(
             # sidecar's removal was interrupted.
             if not _index_records(index_path, new_entry):
                 if moved:
-                    shutil.move(str(target), parked)
+                    _move_whole(target, parked)
                 elif not reused:          # a copy that was already there stays
                     target.unlink(missing_ok=True)
             raise

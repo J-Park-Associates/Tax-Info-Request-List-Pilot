@@ -7,6 +7,7 @@ decision is written to the index, and running twice changes nothing.
 
 import datetime as dt
 import os
+import sys
 
 import pytest
 from openpyxl import load_workbook
@@ -563,24 +564,29 @@ def test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed(engagemen
 
 
 def test_a_drop_still_held_open_is_left_for_the_next_run(engagement, monkeypatch):
-    import shutil
+    import os
 
     drop(engagement, "a-w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     drop(engagement, "b-mortgage.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    real_move = shutil.move
+    real_rename = os.rename
 
     def held_open(src, dst, *args, **kwargs):
+        # What Windows does to a rename while another program has the file
+        # open: refuses it. A copy of the same file would be allowed, and
+        # is exactly what must not happen (the ninth reading found
+        # shutil.move copying a half-written drop into PBC on this refusal).
         if "a-w2" in str(src):
             raise PermissionError("[WinError 32] used by another process")
-        return real_move(src, dst, *args, **kwargs)
+        return real_rename(src, dst, *args, **kwargs)
 
-    monkeypatch.setattr(shutil, "move", held_open)
+    monkeypatch.setattr(os, "rename", held_open)
     report = file_drops(engagement, today=DAY1)
 
     assert [e.original_name for e in report.filed] == ["b-mortgage.pdf"]
     assert [e.name for e in report.errors] == ["a-w2.pdf"]
     assert report.errors[0].left_in_place is True
     assert (engagement / SHARED_DIR_NAME / "a-w2.pdf").exists()  # untouched
+    assert not any("a-w2" in p.name for p in (engagement / SHARED_DIR_NAME / PBC_DIR_NAME).iterdir())
     assert {e.original_name for e in read_index(engagement / INDEX_FILENAME)} == {
         "b-mortgage.pdf",
     }
@@ -1065,6 +1071,76 @@ def test_assigning_reuses_a_copy_an_earlier_attempt_left_and_leaves_no_half_copy
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     monkeypatch.undo()
     assert [p.name for p in c01.iterdir()] == [earlier.name]     # no half copy beside it
+
+
+def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them(engagement, monkeypatch):
+    # Decision 65 records an original the pass could not read back with no
+    # digest. The ninth reading found that row carried through a person's
+    # filing with no digest still, so the scanner never honoured the person
+    # and the client was asked again. Assign records the bytes; and a later
+    # pass that can read the original records them too.
+    import tracker.filer as filer_module
+    from tracker.filer import assign_review_file
+    from tracker.validators import sha256_of
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    real = filer_module.sha256_of
+
+    def unreadable_once(path):
+        if path.parent == pbc(engagement):
+            raise PermissionError("held by the sync client")
+        return real(path)
+    monkeypatch.setattr(filer_module, "sha256_of", unreadable_once)
+    parked = file_drops(engagement, today=DAY1).review[0]
+    monkeypatch.undo()
+    assert parked.digest == "" and parked.size_kb == 0.0
+
+    result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    original = engagement / parked.pbc_location
+    assert result.entry.digest == sha256_of(original) and result.entry.size_kb > 0
+    (row,) = read_index(engagement / INDEX_FILENAME)
+    assert row.digest == result.entry.digest
+
+    # And a pass, with nothing to sort, fills in the row the earlier pass could not.
+    drop(engagement, "scan0013.pdf", "nothing the rules recognise either")
+    monkeypatch.setattr(filer_module, "sha256_of", unreadable_once)
+    file_drops(engagement, today=DAY2)
+    monkeypatch.undo()
+    assert [r.digest for r in read_index(engagement / INDEX_FILENAME) if r.original_name == "scan0013.pdf"] == [""]
+    file_drops(engagement, today=DAY2)
+    later = next(r for r in read_index(engagement / INDEX_FILENAME) if r.original_name == "scan0013.pdf")
+    assert later.digest == sha256_of(engagement / later.pbc_location) and later.size_kb > 0
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="names Windows cannot open")
+def test_a_name_windows_cannot_open_is_reported_not_passed_over(engagement):
+    shared = engagement / SHARED_DIR_NAME
+    # A Mac or a sync client can deliver these; only the \\?\ form creates them here.
+    for name in ("dotted.pdf.", "spaced.pdf "):
+        with open("\\\\?\\" + str(shared / name), "wb") as handle:
+            handle.write(b"%PDF-1.4 not openable by its plain name")
+    report = file_drops(engagement, today=DAY1)
+    assert sorted(e.name for e in report.errors) == ["dotted.pdf.", "spaced.pdf "]
+    assert all(e.left_in_place and "rename it" in e.error for e in report.errors)
+    assert report.filed == [] and report.review == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions")
+def test_what_lies_behind_a_junction_is_not_a_drop(engagement, tmp_path):
+    import _winapi
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "theirs.pdf").write_bytes(b"%PDF-1.4 somebody else's file")
+    _winapi.CreateJunction(str(outside), str(engagement / SHARED_DIR_NAME / "link"))
+    drop(engagement, "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    report = file_drops(engagement, today=DAY1)
+
+    assert [e.original_name for e in report.filed] == ["scan0012.pdf"]
+    assert (outside / "theirs.pdf").exists()                     # never moved
+    assert (engagement / SHARED_DIR_NAME / "link").exists()      # never removed as an "empty folder"
+    assert [p.name for p in pbc(engagement).iterdir()] == ["scan0012.pdf"]
 
 
 def test_a_file_named_like_a_formula_is_recorded_as_its_name(engagement):

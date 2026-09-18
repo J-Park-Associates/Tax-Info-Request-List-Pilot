@@ -145,10 +145,21 @@ def engagement_from(folder: Path) -> Engagement:
 
 
 def _same_folder(a: str, b: Path) -> bool:
+    """Whether the folder ``Rolled From`` names (``a``) is the engagement
+    folder ``b``. By the resolved path first; failing that, by the last
+    two names of each - the client's folder and the engagement's - because
+    Rolled From is written absolute, and a clients root that has since
+    moved to another drive would otherwise bring every retired prior back
+    to life, and the draft day would chase last year's lists."""
     try:
-        return Path(a).resolve() == b.resolve()
+        if Path(a).resolve() == b.resolve():
+            return True
     except OSError:
+        pass
+    named, folder = Path(a), Path(b)
+    if len(named.parts) < 2 or len(folder.parts) < 2:
         return False
+    return Path(*named.parts[-2:]) == Path(*folder.parts[-2:])
 
 
 def mark_superseded(engagements: list[Engagement]) -> list[Engagement]:
