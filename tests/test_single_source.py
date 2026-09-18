@@ -127,13 +127,14 @@ def test_ci_tests_the_python_floor_pyproject_declares():
 
 def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME
+    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
 
     ignored = [line.strip() for line in read(".gitignore").splitlines()
                if line.strip() and not line.startswith("#")]
-    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME, LOG_FILENAME, SCHEDULE_XML_FILENAME, SETTINGS_FILENAME):
+    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME,
+                 SCHEDULE_XML_FILENAME, SETTINGS_FILENAME):
         assert ignored.count(name) == 1, name
 
 
@@ -148,7 +149,7 @@ def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
 
 def test_the_renderer_types_no_vocabulary_of_its_own():
     from tracker.api import _slug
-    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW
+    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.manifest import (
         DEFAULT_EXTENSIONS,
         EXPECTED_PATTERN,
@@ -165,7 +166,8 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
 
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
-    for literal in (*Status.ALL, *Override.ALL, FILED, NEEDS_REVIEW, DUPLICATE, DEFAULT_START,
+    for literal in (*Status.ALL, *Override.ALL, FILED, NEEDS_REVIEW, DUPLICATE, NOT_REQUESTED,
+                    DEFAULT_START,
                     ", ".join(DEFAULT_EXTENSIONS), "looks like", UNSCANNED_LABEL,
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
@@ -294,7 +296,8 @@ def test_the_roadmap_schema_table_matches_the_manifest_headers():
         assert f"| {header} |" in roadmap, header
 
 
-DOCUMENTS = ("README.md", "docs/ROADMAP.md", "docs/workflow.md", "CLAUDE.md")
+DOCUMENTS = ("README.md", "docs/ROADMAP.md", "docs/workflow.md", "docs/runbook.md",
+             "CLAUDE.md")
 
 
 def test_prose_names_no_weekday_but_the_draft_day():
@@ -321,7 +324,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import pending_path
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME
+    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import MANIFEST_FILENAME, README_NAME
     from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
@@ -329,7 +332,8 @@ def test_documents_name_only_runtime_files_the_code_owns():
 
     owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-             LOG_FILENAME, MANIFEST_FILENAME, README_NAME, SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
+             LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
+             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -524,7 +528,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import pending_path
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
-    from tracker.runner import LOG_FILENAME
+    from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import MANIFEST_FILENAME, README_NAME
     from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
@@ -532,7 +536,8 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 
     owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-             LOG_FILENAME, MANIFEST_FILENAME, README_NAME, SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
+             LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
+             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME}
     for rel in DOCUMENTS:
         for line in read(rel).splitlines():
             if "──" not in line:

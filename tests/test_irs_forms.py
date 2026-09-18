@@ -67,6 +67,14 @@ EXPECT = [
     ("f1099k.pdf", "1041", 2025, None), ("f1099s.pdf", "1041", 2025, None),
     ("f1120.pdf", "1040", 2026, None), ("f1120.pdf", "1120S", 2026, None), ("f1120.pdf", "1065", 2026, None),
     ("f1065.pdf", "1120", 2026, None), ("f1065.pdf", "1120S", 2026, None), ("f990pf.pdf", "1040", 2026, None),
+    # The thirteenth reading: placements the corpus already held and no
+    # catalog was asked for, and the one the split of the estimated-tax row
+    # settles - an individual's 1040-ES package is not a corporation's
+    # estimated tax record, whichever catalog it is dropped into.
+    ("f1099oid.pdf", "1041", 2025, "B01"), ("f1099r.pdf", "1041", 2025, "B01"),
+    ("f941.pdf", "1120S", 2025, "E01"), ("fw3.pdf", "1120S", 2025, "E01"),
+    ("f940.pdf", "990", 2025, "G01"), ("fw3.pdf", "990", 2025, "G01"),
+    ("f1040es_2025.pdf", "1120", 2025, None),
 ]
 
 

@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 78 rows · 335 keywords · **223 unreached** · 7 reached only elsewhere · 36 reached without an expectation · 48 rows without a filing document · 50 IRS forms · 95 cases
+6 catalogs · 78 rows · 327 keywords · **70 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 50 IRS forms · 283 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -12,346 +12,116 @@ A hit reads *document → where the suite files it in this catalog*: **here** is
 
 Said by no corpus form and no case. Nothing defends them.
 
-- **1040 D01** `donation receipt`
-- **1040 D01** `giving statement`
-- **1040 D01** `giving record`
-- **1040 D01** `donor statement`
-- **1040 D01** `charitable contribution statement`
-- **1040 D01** `charitable contributions statement`
-- **1040 D01** `charitable giving`
-- **1040 D01** `tax-deductible donation`
-- **1040 D01** `tax-deductible gift`
 - **1040 D01** `receipt for your donation`
-- **1040 D01** `acknowledge your donation`
-- **1040 E01** `brokerage statement`
-- **1040 E02** `retirement distribution`
-- **1040 G01** `property tax statement`
-- **1040 G01** `property tax bill`
-- **1040 G01** `secured property tax`
-- **1040 G01** `tax assessor`
-- **1040 G01** `assessor`
-- **1040 G01** `parcel number`
-- **1040 H01** `estimated tax payment voucher 2`
-- **1040 H01** `estimated tax payment voucher 3`
-- **1040 H01** `estimated tax payment voucher for individuals`
-- **1040 H01** `estimated tax voucher`
-- **1040 H01** `estimated payments made`
-- **1040 I01** `advance payment of premium tax credit`
-- **1040 J01** `childcare statement`
-- **1040 J01** `daycare statement`
-- **1040 J01** `childcare provider statement`
-- **1040 J01** `daycare provider statement`
+- **1040 J01** `day care provider statement`
 - **1040 J01** `dependent care provider statement`
-- **1040 J01** `child care receipt`
-- **1040 J01** `childcare receipt`
-- **1040 J01** `daycare receipt`
 - **1040 J01** `child care tax statement`
-- **1040 J01** `childcare tax statement`
-- **1040 J01** `statement of child care expenses`
-- **1040 J01** `statement of childcare expenses`
-- **1040 J01** `statement of daycare expenses`
-- **1040 J01** `year-end child care`
-- **1040 J01** `year-end childcare`
-- **1040 J01** `year-end daycare`
-- **1040 K01** `5498-esa`
-- **1040 K01** `medicare advantage msa information`
-- **1041 A01** `trust agreement`
-- **1041 A01** `last will`
-- **1041 A01** `codicil`
-- **1041 A02** `ein assignment`
-- **1041 B02** `brokerage statement`
-- **1041 C01** `distributions to beneficiaries`
-- **1041 C01** `beneficiary distribution`
-- **1041 C01** `distribution schedule`
-- **1041 C02** `beneficiary information`
-- **1041 C02** `beneficiary list`
+- **1040 J01** `statement of day care expenses`
+- **1040 J01** `year-end day care`
+- **1041 A01** `irrevocable trust agreement`
+- **1041 A01** `trust instrument`
+- **1041 A01** `amendment to the trust`
 - **1041 C02** `beneficiary names`
-- **1041 D01** `fiduciary fees paid`
-- **1041 D01** `trustee fees`
-- **1041 D01** `accounting fees paid`
-- **1041 D01** `legal fees paid`
 - **1041 D01** `attorney fees paid`
-- **1041 D01** `fee invoice`
-- **1041 E01** `cost basis schedule`
-- **1041 E01** `basis of assets sold`
-- **1041 E01** `date acquired and date sold`
-- **1041 E01** `purchase price and sale price`
-- **1041 F01** `rental income and expenses`
-- **1041 F01** `rent roll`
 - **1041 F01** `schedule e detail`
 - **1041 F01** `schedule c detail`
-- **1065 A02** `partnership agreement`
 - **1065 B01** `income statement`
 - **1065 B01** `statement of income`
-- **1065 B01** `statement of operations`
-- **1065 B01** `statement of activities`
-- **1065 B01** `statement of cash flows`
-- **1065 B02** `bank statement`
-- **1065 B02** `statement of account`
-- **1065 B02** `checking summary`
-- **1065 B02** `deposits and additions`
-- **1065 B02** `checks paid`
 - **1065 B02** `withdrawals and other debits`
-- **1065 B02** `bank reconciliation`
-- **1065 C01** `partner list`
 - **1065 C01** `partner roster`
 - **1065 C01** `member list`
 - **1065 C01** `capitalization table`
-- **1065 C02** `capital account detail`
 - **1065 C02** `capital account statement`
 - **1065 C02** `capital account analysis by partner`
-- **1065 C03** `contributions and distributions by partner`
 - **1065 C03** `partner contribution detail`
 - **1065 C03** `partner distribution detail`
-- **1065 C04** `guaranteed payment detail`
 - **1065 C04** `guaranteed payments by partner`
-- **1065 D01** `fixed asset schedule`
 - **1065 D01** `fixed asset listing`
 - **1065 D01** `fixed asset additions`
 - **1065 D01** `asset additions and disposals`
-- **1065 E01** `loan agreement`
-- **1065 E01** `promissory note`
-- **1065 E01** `amortization schedule`
-- **1065 E01** `loan statement`
-- **1065 E01** `principal balance`
-- **1065 F01** `special allocation`
-- **1065 F01** `section 704(b)`
-- **1065 G01** `apportionment schedule`
 - **1065 G01** `apportionment data`
 - **1065 G01** `sales by state`
 - **1065 G01** `payroll by state`
 - **1120 B01** `income statement`
 - **1120 B01** `statement of income`
-- **1120 B01** `statement of operations`
-- **1120 B01** `statement of activities`
-- **1120 B01** `statement of cash flows`
-- **1120 B02** `bank statement`
-- **1120 B02** `statement of account`
-- **1120 B02** `checking summary`
-- **1120 B02** `deposits and additions`
-- **1120 B02** `checks paid`
 - **1120 B02** `withdrawals and other debits`
-- **1120 B02** `bank reconciliation`
-- **1120 C01** `fixed asset schedule`
 - **1120 C01** `fixed asset listing`
 - **1120 C01** `fixed asset additions`
 - **1120 C01** `asset additions and disposals`
-- **1120 C02** `depreciation schedule`
-- **1120 C02** `depreciation detail`
 - **1120 C02** `depreciation report`
-- **1120 D01** `loan agreement`
-- **1120 D01** `promissory note`
-- **1120 D01** `amortization schedule`
-- **1120 D01** `loan statement`
-- **1120 D01** `principal balance`
-- **1120 E02** `officer compensation detail`
-- **1120 E02** `officer compensation schedule`
-- **1120 F01** `estimated tax payment voucher 2`
-- **1120 F01** `estimated tax payment voucher 3`
-- **1120 F01** `estimated tax payment voucher for individuals`
-- **1120 F01** `estimated tax voucher`
-- **1120 F01** `estimated payments made`
-- **1120 G01** `shareholder list`
-- **1120 G01** `stock ledger`
 - **1120 G01** `capitalization table`
-- **1120 H01** `apportionment schedule`
 - **1120 H01** `apportionment data`
 - **1120 H01** `sales by state`
 - **1120 H01** `payroll by state`
-- **1120 I01** `book-tax difference`
 - **1120 I01** `m-1 adjustment`
-- **1120 I01** `m-1 support`
-- **1120 I01** `book to tax reconciliation`
 - **1120S B01** `income statement`
 - **1120S B01** `statement of income`
-- **1120S B01** `statement of operations`
-- **1120S B01** `statement of activities`
-- **1120S B01** `statement of cash flows`
-- **1120S B02** `bank statement`
-- **1120S B02** `statement of account`
-- **1120S B02** `checking summary`
-- **1120S B02** `deposits and additions`
-- **1120S B02** `checks paid`
 - **1120S B02** `withdrawals and other debits`
-- **1120S B02** `bank reconciliation`
-- **1120S C01** `shareholder list`
-- **1120S C01** `stock ledger`
 - **1120S C01** `capitalization table`
-- **1120S C02** `distributions by shareholder`
 - **1120S C02** `shareholder distribution schedule`
-- **1120S C02** `distribution detail by shareholder`
-- **1120S C03** `shareholder basis schedule`
 - **1120S C03** `stock basis schedule`
-- **1120S C03** `stock and debt basis`
 - **1120S C03** `basis computation`
-- **1120S D01** `officer compensation detail`
 - **1120S D01** `shareholder w-2`
-- **1120S D01** `officer w-2`
-- **1120S D02** `health insurance premiums paid`
-- **1120S D02** `2% shareholder`
-- **1120S D02** `shareholder health insurance premiums`
-- **1120S F01** `fixed asset schedule`
 - **1120S F01** `fixed asset listing`
 - **1120S F01** `fixed asset additions`
 - **1120S F01** `asset additions and disposals`
-- **1120S G01** `loan agreement`
-- **1120S G01** `promissory note`
-- **1120S G01** `shareholder loan agreement`
-- **1120S G01** `loan statement`
-- **1120S H01** `apportionment schedule`
 - **1120S H01** `apportionment data`
 - **1120S H01** `sales by state`
 - **1120S H01** `payroll by state`
 - **990 B01** `income statement`
 - **990 B01** `statement of income`
-- **990 B01** `statement of operations`
-- **990 B01** `statement of activities`
-- **990 B01** `statement of cash flows`
-- **990 B02** `bank statement`
-- **990 B02** `statement of account`
-- **990 B02** `checking summary`
-- **990 B02** `deposits and additions`
-- **990 B02** `checks paid`
 - **990 B02** `withdrawals and other debits`
-- **990 B02** `bank reconciliation`
-- **990 C01** `board of directors list`
 - **990 C01** `list of directors`
 - **990 C01** `meeting minutes`
-- **990 C01** `board minutes`
-- **990 C02** `officer compensation detail`
 - **990 C02** `key employee compensation`
 - **990 D01** `donor list`
-- **990 D01** `donor detail`
 - **990 D01** `contributions by donor`
-- **990 D02** `grants paid schedule`
 - **990 D02** `schedule of grants`
 - **990 D02** `grantee list`
-- **990 D02** `grantee`
 - **990 E01** `program accomplishments`
-- **990 E01** `program description`
-- **990 F01** `fundraising event detail`
 - **990 F01** `special event revenue`
 - **990 F01** `event revenue and expense`
-- **990 H01** `form 990-t`
-- **990 H01** `unrelated business income detail`
 - **990 H01** `ubti schedule`
 
 ## Keywords reached only by documents that file elsewhere or park
 
 The row's other rules are all that keep those documents out.
 
-- **1040 E01** `1099-b`
-- **1040 E01** `proceeds from broker`
-- **1040 E01** `realized gain and loss`
-- **1120 E02** `form 1125-e`
-- **990 C02** `compensation of officers`
-- **990 D01** `schedule b`
-- **990 E01** `program service accomplishment`
+- **1120S C02** `distribution detail by shareholder`
+- **1120S C03** `stock and debt basis`
 
 ## Keywords reached only by documents the suite never routes against this catalog
 
 Reached, but proven nothing: the cheapest placements to add.
 
-- **1041 A02** `assigned you an employer identification number`
-- **1041 B01** `1099-oid`
-- **1041 B01** `1099-r`
-- **1041 B02** `realized gain and loss`
-- **1041 B02** `year-end account statement`
-- **1065 A03** `trial balance`
-- **1065 A04** `general ledger`
-- **1065 B01** `balance sheet as of`
-- **1065 B01** `profit and loss`
-- **1065 B02** `deposits and other credits`
-- **1065 C01** `cap table`
-- **1120 A03** `general ledger`
-- **1120 B01** `statement of financial position`
-- **1120 B02** `deposits and other credits`
-- **1120 E01** `form w-3`
-- **1120 F01** `estimated tax payment voucher 1`
-- **1120 F01** `estimated tax payment voucher 4`
-- **1120 F01** `amount of estimated tax you are paying`
-- **1120S A03** `general ledger`
-- **1120S B01** `balance sheet as of`
-- **1120S B01** `statement of financial position`
-- **1120S B01** `profit and loss`
-- **1120S B02** `deposits and other credits`
-- **1120S C01** `cap table`
-- **1120S E01** `form 941`
-- **1120S E01** `employer's quarterly federal tax return`
-- **1120S E01** `form w-3`
-- **1120S E01** `w-3 transmittal`
-- **990 A02** `trial balance`
-- **990 B01** `balance sheet as of`
-- **990 B01** `statement of financial position`
-- **990 B01** `profit and loss`
-- **990 G01** `form 940`
-- **990 G01** `employer's annual federal unemployment`
-- **990 G01** `form w-3`
-- **990 G01** `w-3 transmittal`
+- **1065 B01** `statement of activities`
+- **1065 B01** `statement of functional expenses`
+- **1065 E01** `loan agreement`
+- **1065 E01** `loan statement`
+- **1120 B01** `statement of activities`
+- **1120 B01** `statement of functional expenses`
+- **1120 D01** `loan agreement`
+- **1120S B01** `statement of activities`
+- **1120S B01** `statement of functional expenses`
+- **1120S C01** `stock ledger`
+- **1120S G01** `loan statement`
 
 ## Rows the suite never files a document into
 
-- **1040 E01** — 1099-B / Brokerage Year-End Statements
-- **1040 G01** — Property Tax Statements
-- **1041 A01** — Trust Instrument / Will & Amendments
-- **1041 B02** — Brokerage Year-End Statements
-- **1041 C01** — Distributions to Beneficiaries - Dates & Amounts
-- **1041 C02** — Beneficiary Names, Addresses & Tax IDs
-- **1041 D01** — Fiduciary, Attorney & Accounting Fees Paid
-- **1041 E01** — Cost Basis for Assets Sold During the Year
-- **1041 F01** — Rental / Business Income & Expense Detail
-- **1065 A03** — Trial Balance - Year-End
-- **1065 A04** — General Ledger Detail
-- **1065 B02** — December Bank Statements & Year-End Reconciliations
-- **1065 C01** — Partner List with Ownership % & Changes
-- **1065 C02** — Partner Capital Account Detail
-- **1065 C03** — Contributions & Distributions by Partner
-- **1065 C04** — Guaranteed Payment Detail
-- **1065 D01** — Fixed Asset Additions & Disposals Detail
-- **1065 E01** — Loan Agreements & Year-End Balances
-- **1065 F01** — Special Allocation Support - Section 704(b)
-- **1065 G01** — State Apportionment Data - Sales, Payroll, Property by State
-- **1120 A03** — General Ledger Detail
-- **1120 B02** — December Bank Statements & Year-End Reconciliations
-- **1120 C01** — Fixed Asset Additions & Disposals Detail
-- **1120 D01** — Loan Agreements & Year-End Balances
-- **1120 E02** — Officer Compensation Detail
-- **1120 F01** — Estimated Tax Payment Records
-- **1120 H01** — State Apportionment Data - Sales, Payroll, Property by State
-- **1120 I01** — Book-Tax Difference Support - Schedule M-1 Items
-- **1120S A03** — General Ledger Detail
-- **1120S B01** — Year-End Financial Statements
-- **1120S B02** — December Bank Statements & Year-End Reconciliations
-- **1120S C01** — Shareholder List with Ownership % & Changes
-- **1120S C02** — Distributions by Shareholder
-- **1120S C03** — Shareholder Basis Schedules
-- **1120S D01** — Officer / Shareholder W-2 Compensation Detail
-- **1120S D02** — Health Insurance Premiums for >2% Shareholders
-- **1120S F01** — Fixed Asset Additions & Disposals Detail
-- **1120S G01** — Loan Agreements & Shareholder Loan Activity
-- **1120S H01** — State Apportionment Data - Sales, Payroll, Property by State
-- **990 A02** — Trial Balance - Year-End
-- **990 B01** — Year-End Financial Statements
-- **990 C01** — Board of Directors List & Meeting Minutes
-- **990 C02** — Officer & Key Employee Compensation Detail
-- **990 D01** — Contribution / Donor Detail - Schedule B Support
-- **990 D02** — Grants Made - Recipients & Amounts
-- **990 E01** — Program Service Accomplishment Descriptions
-- **990 F01** — Fundraising Event Revenue & Expense Detail
-- **990 H01** — Unrelated Business Income Detail
+- none
 
 ## 1040
 
 ### A01 — W-2 Wage Statements - All Employers
 
 - `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; fw2.pdf → **here**; fw3.pdf → parks
-- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; organizer checklist.pdf (d67) → parks; fw2.pdf → **here**; fw3.pdf → parks
+- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; fw2.pdf → **here**; fw3.pdf → parks
 - `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; fw2.pdf → **here**
 
 ### A02 — 1099-INT / 1099-DIV - Interest & Dividend Income
 
-- `1099-int` (any) — 1099-INT.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; Vanguard consolidated 1099.pdf (d68) → **here**; Vanguard consolidated 1099.pdf (d68) → ?; f1099int.pdf → **here**
-- `1099-div` (any) — 1099-DIV.pdf (d66) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → parks; Vanguard consolidated 1099.pdf (d68) → **here**; Vanguard consolidated 1099.pdf (d68) → ?; f1099div.pdf → **here**
+- `1099-int` (any) — 1099-INT.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; Vanguard consolidated 1099.pdf (d68) → **here**; Vanguard consolidated 1099.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → ?; broker cover then the 1099-INT.pdf (d73) → **here**; broker cover then the 1099-INT.pdf (d73) → ?; substitute 1099-INT with a dash title.pdf (d73) → **here**; f1099int.pdf → **here**
+- `1099-div` (any) — 1099-DIV.pdf (d66) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → parks; Vanguard consolidated 1099.pdf (d68) → **here**; Vanguard consolidated 1099.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → ?; f1099div.pdf → **here**
 - `1099-oid` (any) — f1099oid.pdf → **here**
 
 ### B01 — Prior-Year Federal & State Tax Returns
@@ -362,40 +132,38 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### C01 — Mortgage Interest Statement - Form 1098
 
-- `1098` (required) — f1098.pdf → **here**
-- `mortgage interest` (required) — 2024 return with Schedule A.pdf (d62) → B01; 2024 1040 with schedules.pdf (d63) → B01; organizer with every line.pdf (d66) → parks; escrow letter.pdf (d67) → parks; organizer checklist.pdf (d67) → parks; organizer homeowners section.pdf (d67) → parks; escrow letter wrapped.pdf (d69) → parks; organizer deductions page.pdf (d69) → parks; organizer homeowners wrapped.pdf (d69) → parks; f1040sa.pdf → parks; f1098.pdf → **here**
+- `1098` (required) — substitute 1098 with a dash title.pdf (d73) → **here**; f1098.pdf → **here**
+- `mortgage interest` (required) — 2024 return with Schedule A.pdf (d62) → B01; 2024 1040 with schedules.pdf (d63) → B01; organizer with every line.pdf (d66) → parks; escrow letter.pdf (d67) → parks; organizer homeowners section.pdf (d67) → parks; escrow letter wrapped.pdf (d69) → parks; organizer deductions page.pdf (d69) → parks; organizer homeowners wrapped.pdf (d69) → parks; substitute 1098 with a dash title.pdf (d73) → **here**; f1040sa.pdf → parks; f1098.pdf → **here**
 
 ### D01 — Charitable Contribution Receipts
 
-- `donation receipt` (any) — *unreached*
-- `giving statement` (any) — *unreached*
+- `donation receipt` (any) — Goodwill donation receipt.pdf (d73) → **here**
+- `giving statement` (any) — church giving statement.pdf (d73) → **here**
 - `statement of giving` (any) — statement of giving.pdf (d68) → **here**
 - `giving summary` (any) — giving summary.pdf (d67) → **here**
-- `giving record` (any) — *unreached*
-- `donor statement` (any) — *unreached*
-- `charitable contribution statement` (any) — *unreached*
-- `charitable contributions statement` (any) — *unreached*
-- `charitable giving` (any) — *unreached*
-- `tax-deductible donation` (any) — *unreached*
-- `tax-deductible gift` (any) — *unreached*
-- `donated goods` (any) — goodwill receipt.pdf (d67) → **here**
-- `no goods or services` (any) — donation receipt.pdf (d66) → **here**; church contribution statement.pdf (d68) → **here**
-- `thank you for your donation` (any) — donation receipt.pdf (d66) → **here**
+- `giving record` (any) — donor advised fund giving record.pdf (d73) → **here**
+- `donor statement` (any) — food bank donor statement.pdf (d73) → **here**
+- `charitable contribution statement` (any) — humane society contribution statement.pdf (d73) → **here**
+- `charitable giving` (any) — donor advised fund giving record.pdf (d73) → **here**; food bank donor statement.pdf (d73) → **here**
+- `tax-deductible donation` (any) — humane society contribution statement.pdf (d73) → **here**
+- `tax-deductible gift` (any) — museum membership renewal.pdf (d73) → **here**
+- `donated goods` (any) — goodwill receipt.pdf (d67) → **here**; Goodwill donation receipt.pdf (d73) → **here**
+- `no goods or services` (any) — donation receipt.pdf (d66) → **here**; church contribution statement.pdf (d68) → **here**; church giving statement.pdf (d73) → **here**; university acknowledgment letter.pdf (d73) → **here**
 - `receipt for your donation` (any) — *unreached*
-- `acknowledge your donation` (any) — *unreached*
+- `acknowledge your donation` (any) — university acknowledgment letter.pdf (d73) → **here**
 - `acknowledge your charitable contribution` (any) — acknowledgment letter.pdf (d67) → **here**; acknowledgment letter.pdf (d68) → **here**
 
 ### E01 — 1099-B / Brokerage Year-End Statements
 
-- `1099-b` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks
-- `proceeds from broker` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks
-- `brokerage statement` (any) — *unreached*
-- `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → parks
+- `1099-b` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; 1099-B Copy B.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?
+- `proceeds from broker` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; 1099-B Copy B.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?
+- `brokerage statement` (any) — Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?
+- `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → parks; Fidelity realized gain and loss report.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?; Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?
 
 ### E02 — 1099-R Retirement Distributions
 
-- `1099-r` (any) — fax cover then 1099-R.pdf (d66) → **here**; f1099r.pdf → **here**
-- `retirement distribution` (any) — *unreached*
+- `1099-r` (any) — fax cover then 1099-R.pdf (d66) → **here**; fax cover then 1099-R.pdf (d73) → ?; f1099r.pdf → **here**
+- `retirement distribution` (any) — RMD notice for next year.pdf (d73) → parks; pension retirement distribution summary.pdf (d73) → **here**
 
 ### F01 — Schedule K-1s Received
 
@@ -405,79 +173,76 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### G01 — Property Tax Statements
 
-- `property tax statement` (any) — *unreached*
-- `property tax bill` (any) — *unreached*
-- `secured property tax` (any) — *unreached*
-- `tax assessor` (any) — *unreached*
-- `assessor` (any) — *unreached*
-- `parcel number` (any) — *unreached*
+- `secured property tax bill` (any) — county secured property tax bill.pdf (d73) → **here**
+- `annual secured property tax` (any) — county secured property tax bill.pdf (d73) → **here**
+- `property tax statement` (any) — property tax statement.pdf (d73) → **here**
+- `real estate tax bill` (any) — real estate tax bill.pdf (d73) → **here**
+- `property tax notice` (any) — property tax notice.pdf (d73) → **here**
 
 ### H01 — Estimated Tax Payment Records
 
-- `estimated tax payment voucher 1` (any) — 1040-ES voucher.pdf (d62) → **here**
-- `estimated tax payment voucher 2` (any) — *unreached*
-- `estimated tax payment voucher 3` (any) — *unreached*
-- `estimated tax payment voucher 4` (any) — paid voucher stub.pdf (d67) → **here**
-- `estimated tax payment voucher for individuals` (any) — *unreached*
-- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → **here**; f1040es_2025.pdf → **here**
-- `estimated tax voucher` (any) — *unreached*
-- `estimated payments made` (any) — *unreached*
+- `estimated tax payment voucher 1` (any) — 1040-ES voucher.pdf (d62) → **here**; 1040-ES voucher in a corporation.pdf (d73) → ?
+- `estimated tax payment voucher 2` (any) — 1040-ES voucher 2.pdf (d73) → **here**
+- `estimated tax payment voucher 3` (any) — 1040-ES voucher 3.pdf (d73) → **here**
+- `estimated tax payment voucher 4` (any) — paid voucher stub.pdf (d67) → **here**; paid voucher stub in a corporation.pdf (d73) → ?
+- `estimated tax payment voucher for individuals` (any) — NY IT-2105 voucher.pdf (d73) → **here**
+- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → **here**; 1040-ES voucher 2.pdf (d73) → **here**; paid voucher stub in a corporation.pdf (d73) → ?; f1040es_2025.pdf → **here**
+- `estimated tax voucher` (any) — corporation estimated tax voucher.pdf (d73) → ?; estimated tax voucher 4th quarter.pdf (d73) → **here**
+- `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → ?; estimated payments made schedule.xlsx (d73) → **here**
 
 ### I01 — Form 1095-A - Marketplace Health Insurance
 
-- `1095-a` (any) — f1095a.pdf → **here**
-- `marketplace identifier` (any) — f1095a.pdf → **here**
-- `monthly enrollment premium` (any) — 2024 1040 with schedules.pdf (d63) → B01; f1095a.pdf → **here**
-- `advance payment of premium tax credit` (any) — *unreached*
+- `1095-a` (any) — 1095-A filled.pdf (d73) → **here**; f1095a.pdf → **here**
+- `marketplace identifier` (any) — 1095-A filled.pdf (d73) → **here**; f1095a.pdf → **here**
+- `monthly enrollment premium` (any) — 2024 1040 with schedules.pdf (d63) → B01; 1095-A filled.pdf (d73) → **here**; f1095a.pdf → **here**
 
 ### J01 — Childcare Provider Statements - Name, EIN, Amounts
 
-- `child care statement` (any) — childcare statement.pdf (d66) → **here**
-- `childcare statement` (any) — *unreached*
-- `daycare statement` (any) — *unreached*
-- `child care provider statement` (any) — childcare provider statement.pdf (d67) → **here**
-- `childcare provider statement` (any) — *unreached*
-- `daycare provider statement` (any) — *unreached*
+- `child care statement` (any) — childcare statement.pdf (d66) → **here**; daycare year-end statement.pdf (d73) → **here**; year-end child care summary.pdf (d73) → **here**
+- `day care statement` (any) — day care statement.pdf (d73) → **here**
+- `child care provider statement` (any) — childcare provider statement.pdf (d67) → **here**; childcare provider statement workbook.xlsx (d73) → **here**
+- `day care provider statement` (any) — *unreached*
 - `dependent care provider statement` (any) — *unreached*
-- `child care receipt` (any) — *unreached*
-- `childcare receipt` (any) — *unreached*
-- `daycare receipt` (any) — *unreached*
+- `child care receipt` (any) — day camp receipt.pdf (d73) → **here**
+- `day care receipt` (any) — home daycare receipt.pdf (d73) → **here**
 - `child care tax statement` (any) — *unreached*
-- `childcare tax statement` (any) — *unreached*
-- `statement of child care expenses` (any) — *unreached*
-- `statement of childcare expenses` (any) — *unreached*
-- `statement of daycare expenses` (any) — *unreached*
-- `year-end child care` (any) — *unreached*
-- `year-end childcare` (any) — *unreached*
-- `year-end daycare` (any) — *unreached*
+- `statement of child care expenses` (any) — preschool statement of child care expenses.pdf (d73) → **here**
+- `statement of day care expenses` (any) — *unreached*
+- `year-end child care` (any) — year-end child care summary.pdf (d73) → **here**
+- `year-end day care` (any) — *unreached*
 
 ### K01 — IRA / HSA Contribution Statements - Form 5498
 
 - `5498` (any) — email print then 5498.pdf (d66) → ?; email print then 5498.pdf (d66) → **here**; f5498.pdf → **here**
-- `5498-sa` (any) — f5498sa.pdf → **here**
-- `5498-esa` (any) — *unreached*
+- `5498-sa` (any) — 5498-SA filled.pdf (d73) → **here**; f5498sa.pdf → **here**
+- `5498-esa` (any) — 5498-ESA.pdf (d73) → **here**
 - `ira contribution information` (any) — email print then 5498.pdf (d66) → ?; email print then 5498.pdf (d66) → **here**
-- `medicare advantage msa information` (any) — *unreached*
+- `medicare advantage msa information` (any) — 5498-SA filled.pdf (d73) → **here**
 
 ### L01 — Tuition Statements - Form 1098-T
 
 - `1098-t` (any) — 1098-T behind the Attention page.pdf (d66) → ?; f1098t.pdf → **here**
-- `qualified tuition and related expenses` (any) — 1098-T behind the Attention page.pdf (d66) → ?; f1098t.pdf → **here**
+- `qualified tuition and related expenses` (any) — 1098-T behind the Attention page.pdf (d66) → ?; tuition statement without the number.pdf (d73) → **here**; f1098t.pdf → **here**
 
 ## 1041
 
 ### A01 — Trust Instrument / Will & Amendments
 
-- `trust agreement` (any) — *unreached*
-- `last will` (any) — *unreached*
-- `codicil` (any) — *unreached*
+- `revocable trust agreement` (any) — revocable trust agreement.pdf (d73) → **here**
+- `irrevocable trust agreement` (any) — *unreached*
+- `declaration of trust` (any) — revocable trust agreement.pdf (d73) → **here**
+- `certification of trust` (any) — certification of trust.pdf (d73) → **here**
+- `trust instrument` (any) — *unreached*
+- `amendment to the trust` (any) — *unreached*
+- `last will` (any) — first codicil.pdf (d73) → **here**; last will and testament.pdf (d73) → **here**
+- `codicil` (any) — first codicil.pdf (d73) → **here**; last will and testament.pdf (d73) → **here**
 
 ### A02 — IRS EIN Assignment Letter
 
-- `cp 575` (any) — CP 575.pdf (d62) → **here**; CP 575 in a corporation.pdf (d63) → ?
-- `ein assignment` (any) — *unreached*
+- `cp 575` (any) — CP 575.pdf (d62) → **here**; CP 575 in a corporation.pdf (d63) → ?; CP 575 EIN letter.pdf (d73) → **here**; CP 575 in a corporation.pdf (d73) → **here**
+- `ein assignment` (any) — EIN assignment letter reprint.pdf (d73) → **here**
 - `assigned you employer identification number` (any) — CP 575.pdf (d62) → **here**
-- `assigned you an employer identification number` (any) — CP 575 in a corporation.pdf (d63) → ?
+- `assigned you an employer identification number` (any) — CP 575 in a corporation.pdf (d63) → ?; CP 575 in a corporation.pdf (d73) → **here**; EIN assignment letter reprint.pdf (d73) → **here**
 
 ### A03 — Prior-Year Fiduciary Returns
 
@@ -486,52 +251,51 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### B01 — 1099s for Trust / Estate Accounts
 
-- `1099-int` (any) — 1099-INT.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → **here**; f1099int.pdf → **here**
-- `1099-div` (any) — 1099-DIV.pdf (d66) → ?; Schwab consolidated 1099 with a B.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → **here**; f1099div.pdf → **here**
-- `1099-b` (any) — 1099-B.pdf (d62) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → ?
-- `1099-oid` (any) — f1099oid.pdf → ?
-- `1099-r` (any) — fax cover then 1099-R.pdf (d66) → ?; f1099r.pdf → ?
-- `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; f1099msc.pdf → **here**
+- `1099-int` (any) — 1099-INT.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → parks; broker cover then the 1099-INT.pdf (d73) → ?; broker cover then the 1099-INT.pdf (d73) → **here**; substitute 1099-INT with a dash title.pdf (d73) → ?; f1099int.pdf → **here**
+- `1099-div` (any) — 1099-DIV.pdf (d66) → ?; Schwab consolidated 1099 with a B.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → parks; f1099div.pdf → **here**
+- `1099-b` (any) — 1099-B.pdf (d62) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → ?; 1099-B Copy B.pdf (d73) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks
+- `1099-oid` (any) — f1099oid.pdf → **here**
+- `1099-r` (any) — fax cover then 1099-R.pdf (d66) → ?; fax cover then 1099-R.pdf (d73) → **here**; f1099r.pdf → **here**
+- `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks; f1099msc.pdf → **here**
 - `1099-nec` (any) — 1099-NEC.pdf (d62) → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
 
 ### B02 — Brokerage Year-End Statements
 
-- `brokerage statement` (any) — *unreached*
-- `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?
-- `year-end account statement` (any) — brokerage.pdf (d62) → ?
+- `brokerage statement` (any) — Schwab year-end brokerage statement.pdf (d73) → ?; trust brokerage year-end statement.pdf (d73) → **here**
+- `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Fidelity realized gain and loss report.pdf (d73) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks; Schwab year-end brokerage statement.pdf (d73) → ?; trust brokerage year-end statement.pdf (d73) → **here**
 
 ### C01 — Distributions to Beneficiaries - Dates & Amounts
 
-- `distributions to beneficiaries` (any) — *unreached*
-- `beneficiary distribution` (any) — *unreached*
-- `distribution schedule` (any) — *unreached*
+- `distributions to beneficiaries` (any) — distributions to beneficiaries.xlsx (d73) → **here**
+- `beneficiary distribution` (any) — beneficiary distribution letter.pdf (d73) → **here**
 
 ### C02 — Beneficiary Names, Addresses & Tax IDs
 
-- `beneficiary information` (any) — *unreached*
-- `beneficiary list` (any) — *unreached*
+- `beneficiary information` (any) — beneficiary information schedule.xlsx (d73) → **here**
+- `beneficiary list` (any) — beneficiary list.pdf (d73) → **here**
 - `beneficiary names` (any) — *unreached*
 
 ### D01 — Fiduciary, Attorney & Accounting Fees Paid
 
-- `fiduciary fees paid` (any) — *unreached*
-- `trustee fees` (any) — *unreached*
-- `accounting fees paid` (any) — *unreached*
-- `legal fees paid` (any) — *unreached*
+- `fiduciary fees paid` (any) — trustee fee statement.pdf (d73) → **here**
+- `trustee fees` (any) — fees paid schedule.xlsx (d73) → **here**; trustee fee statement.pdf (d73) → **here**
+- `accounting fees paid` (any) — fees paid schedule.xlsx (d73) → **here**
+- `legal fees paid` (any) — fees paid schedule.xlsx (d73) → **here**; law firm fee invoice.pdf (d73) → **here**
 - `attorney fees paid` (any) — *unreached*
-- `fee invoice` (any) — *unreached*
+- `fee invoice` (any) — law firm fee invoice.pdf (d73) → **here**
 
 ### E01 — Cost Basis for Assets Sold During the Year
 
-- `cost basis schedule` (any) — *unreached*
-- `basis of assets sold` (any) — *unreached*
-- `date acquired and date sold` (any) — *unreached*
-- `purchase price and sale price` (any) — *unreached*
+- `cost basis schedule` (any) — cost basis schedule.xlsx (d73) → **here**
+- `basis of assets sold` (any) — basis of assets sold memo.pdf (d73) → **here**
+- `date acquired and date sold` (any) — basis of assets sold memo.pdf (d73) → **here**
+- `purchase price and sale price` (any) — basis of assets sold memo.pdf (d73) → **here**
+- `stepped-up basis` (any) — stepped-up basis schedule.pdf (d73) → **here**
 
 ### F01 — Rental / Business Income & Expense Detail
 
-- `rental income and expenses` (any) — *unreached*
-- `rent roll` (any) — *unreached*
+- `rental income and expenses` (any) — property manager annual statement.pdf (d73) → **here**; rental income and expenses.xlsx (d73) → **here**
+- `rent roll` (any) — rent roll.xlsx (d73) → **here**
 - `schedule e detail` (any) — *unreached*
 - `schedule c detail` (any) — *unreached*
 
@@ -544,87 +308,87 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A02 — Partnership Agreement & Amendments
 
-- `partnership agreement` (any) — *unreached*
+- `partnership agreement` (any) — partnership agreement.pdf (d73) → **here**
 - `operating agreement` (any) — operating agreement.pdf (d62) → **here**
 
 ### A03 — Trial Balance - Year-End
 
-- `trial balance` (any) — trial balance.pdf (d62) → ?; trial balance.pdf (d62) → ?; QuickBooks trial balance.pdf (d65) → ?; QuickBooks trial balance.pdf (d66) → ?
+- `trial balance` (any) — trial balance.pdf (d62) → ?; trial balance.pdf (d62) → ?; QuickBooks trial balance.pdf (d65) → ?; QuickBooks trial balance.pdf (d66) → ?; QuickBooks trial balance.pdf (d73) → **here**; QuickBooks trial balance.pdf (d73) → ?; nonprofit trial balance.pdf (d73) → ?; trial balance with a 1125-E memo.xlsx (d73) → ?
 
 ### A04 — General Ledger Detail
 
-- `general ledger` (any) — QuickBooks general ledger.pdf (d66) → ?
+- `general ledger` (any) — QuickBooks general ledger.pdf (d66) → ?; QuickBooks general ledger.pdf (d73) → ?; QuickBooks general ledger.pdf (d73) → ?; QuickBooks general ledger.pdf (d73) → **here**
 
 ### B01 — Year-End Financial Statements
 
-- `balance sheet as of` (any) — QuickBooks balance sheet.pdf (d66) → ?
-- `statement of financial position` (any) — nonprofit FS.pdf (d62) → **here**
+- `balance sheet as of` (any) — QuickBooks balance sheet.pdf (d66) → ?; QuickBooks balance sheet.pdf (d73) → **here**; QuickBooks balance sheet.pdf (d73) → ?; QuickBooks balance sheet.pdf (d73) → ?; financial statements 1065.pdf (d73) → **here**; financial statements 1120.pdf (d73) → ?; financial statements 1120S.pdf (d73) → ?; financial statements 990.pdf (d73) → ?
+- `statement of financial position` (any) — nonprofit FS.pdf (d62) → **here**; audited financial statements package.xlsx (d73) → ?; nonprofit FS.pdf (d73) → ?; nonprofit FS.pdf (d73) → ?; nonprofit FS.pdf (d73) → ?
 - `income statement` (any) — *unreached*
 - `statement of income` (any) — *unreached*
-- `profit and loss` (any) — P&L.pdf (d62) → ?
-- `statement of operations` (any) — *unreached*
-- `statement of activities` (any) — *unreached*
-- `statement of cash flows` (any) — *unreached*
+- `profit and loss` (any) — P&L.pdf (d62) → ?; P&L.pdf (d73) → **here**; P&L.pdf (d73) → ?; P&L.pdf (d73) → ?
+- `statement of operations` (any) — financial statements 1065.pdf (d73) → **here**; financial statements 1120.pdf (d73) → ?; financial statements 1120S.pdf (d73) → ?; financial statements 990.pdf (d73) → ?
+- `statement of activities` (any) — audited financial statements package.xlsx (d73) → ?
+- `statement of cash flows` (any) — audited financial statements package.xlsx (d73) → ?; financial statements 1065.pdf (d73) → **here**; financial statements 1120.pdf (d73) → ?; financial statements 1120S.pdf (d73) → ?; financial statements 990.pdf (d73) → ?
+- `statement of functional expenses` (any) — audited financial statements package.xlsx (d73) → ?; statement of functional expenses.xlsx (d73) → ?; f990.pdf → ?
 
 ### B02 — December Bank Statements & Year-End Reconciliations
 
-- `bank statement` (any) — *unreached*
-- `statement of account` (any) — *unreached*
-- `checking summary` (any) — *unreached*
-- `deposits and additions` (any) — *unreached*
-- `deposits and other credits` (any) — Dec 2025 bank.pdf (d62) → ?; Nov 2025 bank.pdf (d62) → ?; bank annual summary.pdf (d66) → ?
-- `checks paid` (any) — *unreached*
+- `bank statement` (any) — bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → **here**; bank reconciliation.xlsx (d73) → ?
+- `checking summary` (any) — Chase December statement 1065.pdf (d73) → **here**; Chase December statement 1120.pdf (d73) → ?; Chase December statement 1120S.pdf (d73) → ?; Chase December statement 990.pdf (d73) → ?; November bank statement 1065.pdf (d73) → parks; November bank statement 1120.pdf (d73) → ?; November bank statement 1120S.pdf (d73) → ?; November bank statement 990.pdf (d73) → ?
+- `deposits and additions` (any) — Chase December statement 1065.pdf (d73) → **here**; Chase December statement 1120.pdf (d73) → ?; Chase December statement 1120S.pdf (d73) → ?; Chase December statement 990.pdf (d73) → ?; November bank statement 1065.pdf (d73) → parks; November bank statement 1120.pdf (d73) → ?; November bank statement 1120S.pdf (d73) → ?; November bank statement 990.pdf (d73) → ?
+- `deposits and other credits` (any) — Dec 2025 bank.pdf (d62) → ?; Nov 2025 bank.pdf (d62) → ?; bank annual summary.pdf (d66) → ?; Dec 2025 bank.pdf (d73) → **here**; Dec 2025 bank.pdf (d73) → ?; Dec 2025 bank.pdf (d73) → ?
+- `checks paid` (any) — Chase December statement 1065.pdf (d73) → **here**; Chase December statement 1120.pdf (d73) → ?; Chase December statement 1120S.pdf (d73) → ?; Chase December statement 990.pdf (d73) → ?; November bank statement 1065.pdf (d73) → parks; November bank statement 1120.pdf (d73) → ?; November bank statement 1120S.pdf (d73) → ?; November bank statement 990.pdf (d73) → ?
 - `withdrawals and other debits` (any) — *unreached*
-- `bank reconciliation` (any) — *unreached*
+- `bank reconciliation` (any) — bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → **here**; bank reconciliation.xlsx (d73) → ?
 
 ### C01 — Partner List with Ownership % & Changes
 
-- `partner list` (any) — *unreached*
+- `partner list` (any) — partner list.xlsx (d73) → **here**
 - `partner roster` (any) — *unreached*
 - `member list` (any) — *unreached*
-- `cap table` (any) — cap table.pdf (d66) → ?
+- `cap table` (any) — cap table.pdf (d66) → ?; cap table.pdf (d73) → **here**; cap table.pdf (d73) → ?
 - `capitalization table` (any) — *unreached*
 
 ### C02 — Partner Capital Account Detail
 
-- `capital account detail` (any) — *unreached*
+- `capital account detail` (any) — capital account detail.xlsx (d73) → **here**
 - `capital account statement` (any) — *unreached*
 - `capital account analysis by partner` (any) — *unreached*
 
 ### C03 — Contributions & Distributions by Partner
 
-- `contributions and distributions by partner` (any) — *unreached*
+- `contributions and distributions by partner` (any) — contributions and distributions by partner.xlsx (d73) → **here**
 - `partner contribution detail` (any) — *unreached*
 - `partner distribution detail` (any) — *unreached*
 
 ### C04 — Guaranteed Payment Detail
 
-- `guaranteed payment detail` (any) — *unreached*
+- `guaranteed payment detail` (any) — guaranteed payment detail.xlsx (d73) → **here**
 - `guaranteed payments by partner` (any) — *unreached*
 
 ### D01 — Fixed Asset Additions & Disposals Detail
 
-- `fixed asset schedule` (any) — *unreached*
+- `fixed asset schedule` (any) — fixed asset schedule.xlsx (d73) → ?; fixed asset schedule.xlsx (d73) → ?; fixed asset schedule.xlsx (d73) → **here**
 - `fixed asset listing` (any) — *unreached*
 - `fixed asset additions` (any) — *unreached*
 - `asset additions and disposals` (any) — *unreached*
 
 ### E01 — Loan Agreements & Year-End Balances
 
-- `loan agreement` (any) — *unreached*
-- `promissory note` (any) — *unreached*
-- `amortization schedule` (any) — *unreached*
-- `loan statement` (any) — *unreached*
-- `principal balance` (any) — *unreached*
+- `loan agreement` (any) — shareholder loan agreement.pdf (d73) → ?
+- `promissory note` (any) — promissory note.pdf (d73) → ?; promissory note.pdf (d73) → **here**; promissory note.pdf (d73) → ?
+- `amortization schedule` (any) — loan amortization schedule.pdf (d73) → ?; loan amortization schedule.xlsx (d73) → ?; loan amortization schedule.xlsx (d73) → **here**
+- `loan statement` (any) — business loan statement December.pdf (d73) → ?
+- `principal balance` (any) — business loan statement December.pdf (d73) → ?; promissory note.pdf (d73) → ?; promissory note.pdf (d73) → **here**; promissory note.pdf (d73) → ?; shareholder loan agreement.pdf (d73) → ?
 
 ### F01 — Special Allocation Support - Section 704(b)
 
-- `special allocation` (any) — *unreached*
-- `section 704(b)` (any) — *unreached*
+- `special allocation` (any) — special allocation 704(b) support.xlsx (d73) → **here**
+- `section 704(b)` (any) — special allocation 704(b) support.xlsx (d73) → **here**
 
 ### G01 — State Apportionment Data - Sales, Payroll, Property by State
 
-- `apportionment schedule` (any) — *unreached*
+- `apportionment schedule` (any) — apportionment schedule.xlsx (d73) → ?; apportionment schedule.xlsx (d73) → ?; apportionment schedule.xlsx (d73) → **here**
 - `apportionment data` (any) — *unreached*
 - `sales by state` (any) — *unreached*
 - `payroll by state` (any) — *unreached*
@@ -638,198 +402,194 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A02 — Trial Balance - Year-End
 
-- `trial balance` (any) — trial balance.pdf (d62) → ?; trial balance.pdf (d62) → ?; QuickBooks trial balance.pdf (d65) → **here**; QuickBooks trial balance.pdf (d66) → ?
+- `trial balance` (any) — trial balance.pdf (d62) → ?; trial balance.pdf (d62) → ?; QuickBooks trial balance.pdf (d65) → **here**; QuickBooks trial balance.pdf (d66) → ?; QuickBooks trial balance.pdf (d73) → ?; QuickBooks trial balance.pdf (d73) → ?; nonprofit trial balance.pdf (d73) → ?; trial balance with a 1125-E memo.xlsx (d73) → **here**
 
 ### A03 — General Ledger Detail
 
-- `general ledger` (any) — QuickBooks general ledger.pdf (d66) → ?
+- `general ledger` (any) — QuickBooks general ledger.pdf (d66) → ?; QuickBooks general ledger.pdf (d73) → **here**; QuickBooks general ledger.pdf (d73) → ?; QuickBooks general ledger.pdf (d73) → ?
 
 ### B01 — Year-End Financial Statements
 
-- `balance sheet as of` (any) — QuickBooks balance sheet.pdf (d66) → **here**
-- `statement of financial position` (any) — nonprofit FS.pdf (d62) → ?
+- `balance sheet as of` (any) — QuickBooks balance sheet.pdf (d66) → **here**; QuickBooks balance sheet.pdf (d73) → ?; QuickBooks balance sheet.pdf (d73) → ?; QuickBooks balance sheet.pdf (d73) → ?; financial statements 1065.pdf (d73) → ?; financial statements 1120.pdf (d73) → **here**; financial statements 1120S.pdf (d73) → ?; financial statements 990.pdf (d73) → ?
+- `statement of financial position` (any) — nonprofit FS.pdf (d62) → ?; audited financial statements package.xlsx (d73) → ?; nonprofit FS.pdf (d73) → **here**; nonprofit FS.pdf (d73) → ?; nonprofit FS.pdf (d73) → ?
 - `income statement` (any) — *unreached*
 - `statement of income` (any) — *unreached*
-- `profit and loss` (any) — P&L.pdf (d62) → **here**
-- `statement of operations` (any) — *unreached*
-- `statement of activities` (any) — *unreached*
-- `statement of cash flows` (any) — *unreached*
+- `profit and loss` (any) — P&L.pdf (d62) → **here**; P&L.pdf (d73) → ?; P&L.pdf (d73) → ?; P&L.pdf (d73) → ?
+- `statement of operations` (any) — financial statements 1065.pdf (d73) → ?; financial statements 1120.pdf (d73) → **here**; financial statements 1120S.pdf (d73) → ?; financial statements 990.pdf (d73) → ?
+- `statement of activities` (any) — audited financial statements package.xlsx (d73) → ?
+- `statement of cash flows` (any) — audited financial statements package.xlsx (d73) → ?; financial statements 1065.pdf (d73) → ?; financial statements 1120.pdf (d73) → **here**; financial statements 1120S.pdf (d73) → ?; financial statements 990.pdf (d73) → ?
+- `statement of functional expenses` (any) — audited financial statements package.xlsx (d73) → ?; statement of functional expenses.xlsx (d73) → ?; f990.pdf → ?
 
 ### B02 — December Bank Statements & Year-End Reconciliations
 
-- `bank statement` (any) — *unreached*
-- `statement of account` (any) — *unreached*
-- `checking summary` (any) — *unreached*
-- `deposits and additions` (any) — *unreached*
-- `deposits and other credits` (any) — Dec 2025 bank.pdf (d62) → ?; Nov 2025 bank.pdf (d62) → ?; bank annual summary.pdf (d66) → ?
-- `checks paid` (any) — *unreached*
+- `bank statement` (any) — bank reconciliation.xlsx (d73) → **here**; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?
+- `checking summary` (any) — Chase December statement 1065.pdf (d73) → ?; Chase December statement 1120.pdf (d73) → **here**; Chase December statement 1120S.pdf (d73) → ?; Chase December statement 990.pdf (d73) → ?; November bank statement 1065.pdf (d73) → ?; November bank statement 1120.pdf (d73) → parks; November bank statement 1120S.pdf (d73) → ?; November bank statement 990.pdf (d73) → ?
+- `deposits and additions` (any) — Chase December statement 1065.pdf (d73) → ?; Chase December statement 1120.pdf (d73) → **here**; Chase December statement 1120S.pdf (d73) → ?; Chase December statement 990.pdf (d73) → ?; November bank statement 1065.pdf (d73) → ?; November bank statement 1120.pdf (d73) → parks; November bank statement 1120S.pdf (d73) → ?; November bank statement 990.pdf (d73) → ?
+- `deposits and other credits` (any) — Dec 2025 bank.pdf (d62) → ?; Nov 2025 bank.pdf (d62) → ?; bank annual summary.pdf (d66) → ?; Dec 2025 bank.pdf (d73) → ?; Dec 2025 bank.pdf (d73) → **here**; Dec 2025 bank.pdf (d73) → ?
+- `checks paid` (any) — Chase December statement 1065.pdf (d73) → ?; Chase December statement 1120.pdf (d73) → **here**; Chase December statement 1120S.pdf (d73) → ?; Chase December statement 990.pdf (d73) → ?; November bank statement 1065.pdf (d73) → ?; November bank statement 1120.pdf (d73) → parks; November bank statement 1120S.pdf (d73) → ?; November bank statement 990.pdf (d73) → ?
 - `withdrawals and other debits` (any) — *unreached*
-- `bank reconciliation` (any) — *unreached*
+- `bank reconciliation` (any) — bank reconciliation.xlsx (d73) → **here**; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?
 
 ### C01 — Fixed Asset Additions & Disposals Detail
 
-- `fixed asset schedule` (any) — *unreached*
+- `fixed asset schedule` (any) — fixed asset schedule.xlsx (d73) → **here**; fixed asset schedule.xlsx (d73) → ?; fixed asset schedule.xlsx (d73) → ?
 - `fixed asset listing` (any) — *unreached*
 - `fixed asset additions` (any) — *unreached*
 - `asset additions and disposals` (any) — *unreached*
 
 ### C02 — Depreciation Schedules
 
-- `depreciation schedule` (any) — *unreached*
-- `depreciation detail` (any) — *unreached*
+- `depreciation schedule` (any) — depreciation schedule.xlsx (d73) → **here**
+- `depreciation detail` (any) — depreciation detail report.pdf (d73) → **here**
 - `depreciation report` (any) — *unreached*
 - `form 4562` (any) — f4562.pdf → **here**
 
 ### D01 — Loan Agreements & Year-End Balances
 
-- `loan agreement` (any) — *unreached*
-- `promissory note` (any) — *unreached*
-- `amortization schedule` (any) — *unreached*
-- `loan statement` (any) — *unreached*
-- `principal balance` (any) — *unreached*
+- `loan agreement` (any) — shareholder loan agreement.pdf (d73) → ?
+- `promissory note` (any) — promissory note.pdf (d73) → **here**; promissory note.pdf (d73) → ?; promissory note.pdf (d73) → ?
+- `amortization schedule` (any) — loan amortization schedule.pdf (d73) → ?; loan amortization schedule.xlsx (d73) → **here**; loan amortization schedule.xlsx (d73) → ?
+- `loan statement` (any) — business loan statement December.pdf (d73) → **here**
+- `principal balance` (any) — business loan statement December.pdf (d73) → **here**; promissory note.pdf (d73) → **here**; promissory note.pdf (d73) → ?; promissory note.pdf (d73) → ?; shareholder loan agreement.pdf (d73) → ?
 
 ### E01 — Payroll Tax Returns - Forms 941 & W-3
 
-- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; f941.pdf → **here**
-- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; f941.pdf → **here**
+- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**
+- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**
 - `form 940` (any) — f940.pdf → **here**
 - `employer's annual federal unemployment` (any) — f940.pdf → **here**
-- `form w-3` (any) — W-3.pdf (d62) → ?
-- `w-3 transmittal` (any) — W-3.pdf (d62) → ?; fw3.pdf → **here**
+- `form w-3` (any) — W-3.pdf (d62) → ?; W-3.pdf (d73) → **here**; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?
+- `w-3 transmittal` (any) — W-3.pdf (d62) → ?; W-3.pdf (d73) → **here**; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; fw3.pdf → **here**
 
 ### E02 — Officer Compensation Detail
 
-- `officer compensation detail` (any) — *unreached*
-- `officer compensation schedule` (any) — *unreached*
-- `form 1125-e` (any) — f1125e.pdf → parks
+- `officer compensation detail` (any) — officer W-2 compensation detail.xlsx (d73) → ?; officer and key employee compensation detail.xlsx (d73) → ?; officer compensation detail as a pdf.pdf (d73) → **here**; officer compensation detail as a pdf.pdf (d73) → ?; officer compensation detail.xlsx (d73) → **here**
+- `officer compensation schedule` (any) — officer comp schedule per 1125-E.xlsx (d73) → **here**
 
-### F01 — Estimated Tax Payment Records
+### F01 — Corporate Estimated Tax Payment Records
 
-- `estimated tax payment voucher 1` (any) — 1040-ES voucher.pdf (d62) → ?
-- `estimated tax payment voucher 2` (any) — *unreached*
-- `estimated tax payment voucher 3` (any) — *unreached*
-- `estimated tax payment voucher 4` (any) — paid voucher stub.pdf (d67) → ?
-- `estimated tax payment voucher for individuals` (any) — *unreached*
-- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → ?; f1040es_2025.pdf → ?
-- `estimated tax voucher` (any) — *unreached*
-- `estimated payments made` (any) — *unreached*
+- `corporation estimated tax` (any) — corporation estimated tax voucher.pdf (d73) → **here**
+- `estimated tax voucher` (any) — corporation estimated tax voucher.pdf (d73) → **here**; estimated tax voucher 4th quarter.pdf (d73) → ?
+- `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → **here**; estimated payments made schedule.xlsx (d73) → ?
+- `estimated tax payments made` (any) — organizer with every line.pdf (d66) → ?; corporate estimated tax payments made.xlsx (d73) → **here**
 
 ### G01 — Shareholder List & Ownership Changes
 
-- `shareholder list` (any) — *unreached*
-- `stock ledger` (any) — *unreached*
-- `cap table` (any) — cap table.pdf (d66) → **here**
+- `shareholder list` (any) — shareholder list.xlsx (d73) → **here**; shareholder list.xlsx (d73) → ?
+- `stock ledger` (any) — stock ledger.xlsx (d73) → **here**
+- `cap table` (any) — cap table.pdf (d66) → **here**; cap table.pdf (d73) → ?; cap table.pdf (d73) → ?
 - `capitalization table` (any) — *unreached*
 
 ### H01 — State Apportionment Data - Sales, Payroll, Property by State
 
-- `apportionment schedule` (any) — *unreached*
+- `apportionment schedule` (any) — apportionment schedule.xlsx (d73) → **here**; apportionment schedule.xlsx (d73) → ?; apportionment schedule.xlsx (d73) → ?
 - `apportionment data` (any) — *unreached*
 - `sales by state` (any) — *unreached*
 - `payroll by state` (any) — *unreached*
 
 ### I01 — Book-Tax Difference Support - Schedule M-1 Items
 
-- `book-tax difference` (any) — *unreached*
+- `book-tax difference` (any) — M-1 support schedule.xlsx (d73) → **here**
 - `m-1 adjustment` (any) — *unreached*
-- `m-1 support` (any) — *unreached*
-- `book to tax reconciliation` (any) — *unreached*
+- `m-1 support` (any) — M-1 support schedule.xlsx (d73) → **here**
+- `book to tax reconciliation` (any) — book to tax reconciliation memo.pdf (d73) → **here**
 
 ## 1120S
 
 ### A01 — Prior-Year Federal & State S-Corp Returns
 
 - `income tax return for an s corporation` (required) — 2024 1120-S.pdf (d62) → **here**; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1120s.pdf → **here**
-- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → **here**; 2024 1120.pdf (d62) → ?; 2024 990.pdf (d62) → ?; 2024 return with Schedule A.pdf (d62) → ?; 2024 1040 with schedules.pdf (d63) → ?; 2024 1120 with schedules.pdf (d63) → ?; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1040.pdf → ?; f1040nr.pdf → ?; f1040s.pdf → ?; f1040x.pdf → ?; f1041.pdf → ?; f1065.pdf → parks; f1096.pdf → ?; f1120.pdf → parks; f1120h.pdf → ?; f1120s.pdf → **here**; f8879.pdf → ?; f940.pdf → E01; f941.pdf → ?; f990.pdf → ?; f990ez.pdf → ?; fw3.pdf → ?
+- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → **here**; 2024 1120.pdf (d62) → ?; 2024 990.pdf (d62) → ?; 2024 return with Schedule A.pdf (d62) → ?; 2024 1040 with schedules.pdf (d63) → ?; 2024 1120 with schedules.pdf (d63) → ?; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1040.pdf → ?; f1040nr.pdf → ?; f1040s.pdf → ?; f1040x.pdf → ?; f1041.pdf → ?; f1065.pdf → parks; f1096.pdf → ?; f1120.pdf → parks; f1120h.pdf → ?; f1120s.pdf → **here**; f8879.pdf → ?; f940.pdf → E01; f941.pdf → E01; f990.pdf → ?; f990ez.pdf → ?; fw3.pdf → E01
 
 ### A02 — Trial Balance - Year-End
 
-- `trial balance` (any) — trial balance.pdf (d62) → **here**; trial balance.pdf (d62) → ?; QuickBooks trial balance.pdf (d65) → ?; QuickBooks trial balance.pdf (d66) → ?
+- `trial balance` (any) — trial balance.pdf (d62) → **here**; trial balance.pdf (d62) → ?; QuickBooks trial balance.pdf (d65) → ?; QuickBooks trial balance.pdf (d66) → ?; QuickBooks trial balance.pdf (d73) → ?; QuickBooks trial balance.pdf (d73) → ?; nonprofit trial balance.pdf (d73) → ?; trial balance with a 1125-E memo.xlsx (d73) → ?
 
 ### A03 — General Ledger Detail
 
-- `general ledger` (any) — QuickBooks general ledger.pdf (d66) → ?
+- `general ledger` (any) — QuickBooks general ledger.pdf (d66) → ?; QuickBooks general ledger.pdf (d73) → ?; QuickBooks general ledger.pdf (d73) → **here**; QuickBooks general ledger.pdf (d73) → ?
 
 ### B01 — Year-End Financial Statements
 
-- `balance sheet as of` (any) — QuickBooks balance sheet.pdf (d66) → ?
-- `statement of financial position` (any) — nonprofit FS.pdf (d62) → ?
+- `balance sheet as of` (any) — QuickBooks balance sheet.pdf (d66) → ?; QuickBooks balance sheet.pdf (d73) → ?; QuickBooks balance sheet.pdf (d73) → **here**; QuickBooks balance sheet.pdf (d73) → ?; financial statements 1065.pdf (d73) → ?; financial statements 1120.pdf (d73) → ?; financial statements 1120S.pdf (d73) → **here**; financial statements 990.pdf (d73) → ?
+- `statement of financial position` (any) — nonprofit FS.pdf (d62) → ?; audited financial statements package.xlsx (d73) → ?; nonprofit FS.pdf (d73) → ?; nonprofit FS.pdf (d73) → **here**; nonprofit FS.pdf (d73) → ?
 - `income statement` (any) — *unreached*
 - `statement of income` (any) — *unreached*
-- `profit and loss` (any) — P&L.pdf (d62) → ?
-- `statement of operations` (any) — *unreached*
-- `statement of activities` (any) — *unreached*
-- `statement of cash flows` (any) — *unreached*
+- `profit and loss` (any) — P&L.pdf (d62) → ?; P&L.pdf (d73) → ?; P&L.pdf (d73) → **here**; P&L.pdf (d73) → ?
+- `statement of operations` (any) — financial statements 1065.pdf (d73) → ?; financial statements 1120.pdf (d73) → ?; financial statements 1120S.pdf (d73) → **here**; financial statements 990.pdf (d73) → ?
+- `statement of activities` (any) — audited financial statements package.xlsx (d73) → ?
+- `statement of cash flows` (any) — audited financial statements package.xlsx (d73) → ?; financial statements 1065.pdf (d73) → ?; financial statements 1120.pdf (d73) → ?; financial statements 1120S.pdf (d73) → **here**; financial statements 990.pdf (d73) → ?
+- `statement of functional expenses` (any) — audited financial statements package.xlsx (d73) → ?; statement of functional expenses.xlsx (d73) → ?; f990.pdf → ?
 
 ### B02 — December Bank Statements & Year-End Reconciliations
 
-- `bank statement` (any) — *unreached*
-- `statement of account` (any) — *unreached*
-- `checking summary` (any) — *unreached*
-- `deposits and additions` (any) — *unreached*
-- `deposits and other credits` (any) — Dec 2025 bank.pdf (d62) → ?; Nov 2025 bank.pdf (d62) → ?; bank annual summary.pdf (d66) → ?
-- `checks paid` (any) — *unreached*
+- `bank statement` (any) — bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → **here**; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?
+- `checking summary` (any) — Chase December statement 1065.pdf (d73) → ?; Chase December statement 1120.pdf (d73) → ?; Chase December statement 1120S.pdf (d73) → **here**; Chase December statement 990.pdf (d73) → ?; November bank statement 1065.pdf (d73) → ?; November bank statement 1120.pdf (d73) → ?; November bank statement 1120S.pdf (d73) → parks; November bank statement 990.pdf (d73) → ?
+- `deposits and additions` (any) — Chase December statement 1065.pdf (d73) → ?; Chase December statement 1120.pdf (d73) → ?; Chase December statement 1120S.pdf (d73) → **here**; Chase December statement 990.pdf (d73) → ?; November bank statement 1065.pdf (d73) → ?; November bank statement 1120.pdf (d73) → ?; November bank statement 1120S.pdf (d73) → parks; November bank statement 990.pdf (d73) → ?
+- `deposits and other credits` (any) — Dec 2025 bank.pdf (d62) → ?; Nov 2025 bank.pdf (d62) → ?; bank annual summary.pdf (d66) → ?; Dec 2025 bank.pdf (d73) → ?; Dec 2025 bank.pdf (d73) → ?; Dec 2025 bank.pdf (d73) → **here**
+- `checks paid` (any) — Chase December statement 1065.pdf (d73) → ?; Chase December statement 1120.pdf (d73) → ?; Chase December statement 1120S.pdf (d73) → **here**; Chase December statement 990.pdf (d73) → ?; November bank statement 1065.pdf (d73) → ?; November bank statement 1120.pdf (d73) → ?; November bank statement 1120S.pdf (d73) → parks; November bank statement 990.pdf (d73) → ?
 - `withdrawals and other debits` (any) — *unreached*
-- `bank reconciliation` (any) — *unreached*
+- `bank reconciliation` (any) — bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → **here**; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?
 
 ### C01 — Shareholder List with Ownership % & Changes
 
-- `shareholder list` (any) — *unreached*
-- `stock ledger` (any) — *unreached*
-- `cap table` (any) — cap table.pdf (d66) → ?
+- `shareholder list` (any) — shareholder list.xlsx (d73) → ?; shareholder list.xlsx (d73) → **here**
+- `stock ledger` (any) — stock ledger.xlsx (d73) → ?
+- `cap table` (any) — cap table.pdf (d66) → ?; cap table.pdf (d73) → ?; cap table.pdf (d73) → **here**
 - `capitalization table` (any) — *unreached*
 
 ### C02 — Distributions by Shareholder
 
-- `distributions by shareholder` (any) — *unreached*
+- `distributions by shareholder` (any) — distributions by shareholder.xlsx (d73) → **here**
 - `shareholder distribution schedule` (any) — *unreached*
-- `distribution detail by shareholder` (any) — *unreached*
+- `distribution detail by shareholder` (any) — basis and distribution worksheet.xlsx (d73) → parks
 
 ### C03 — Shareholder Basis Schedules
 
-- `shareholder basis schedule` (any) — *unreached*
+- `shareholder basis schedule` (any) — shareholder basis schedule.xlsx (d73) → **here**
 - `stock basis schedule` (any) — *unreached*
-- `stock and debt basis` (any) — *unreached*
+- `stock and debt basis` (any) — basis and distribution worksheet.xlsx (d73) → parks
 - `basis computation` (any) — *unreached*
 
 ### D01 — Officer / Shareholder W-2 Compensation Detail
 
-- `officer compensation detail` (any) — *unreached*
+- `officer compensation detail` (any) — officer W-2 compensation detail.xlsx (d73) → **here**; officer and key employee compensation detail.xlsx (d73) → ?; officer compensation detail as a pdf.pdf (d73) → ?; officer compensation detail as a pdf.pdf (d73) → ?; officer compensation detail.xlsx (d73) → ?
 - `shareholder w-2` (any) — *unreached*
-- `officer w-2` (any) — *unreached*
+- `officer w-2` (any) — officer W-2 compensation detail.xlsx (d73) → **here**
 
 ### D02 — Health Insurance Premiums for >2% Shareholders
 
-- `health insurance premiums paid` (any) — *unreached*
-- `2% shareholder` (any) — *unreached*
-- `shareholder health insurance premiums` (any) — *unreached*
+- `health insurance premiums paid` (any) — 2% shareholder premium letter.pdf (d73) → **here**
+- `2% shareholder` (any) — 2% shareholder premium letter.pdf (d73) → **here**
+- `shareholder health insurance premiums` (any) — shareholder health insurance premiums.xlsx (d73) → **here**
 
 ### E01 — Payroll Tax Returns - Forms 941 & W-3
 
-- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; f941.pdf → ?
-- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; f941.pdf → ?
+- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → **here**; f941.pdf → **here**
+- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → **here**; f941.pdf → **here**
 - `form 940` (any) — f940.pdf → **here**
 - `employer's annual federal unemployment` (any) — f940.pdf → **here**
-- `form w-3` (any) — W-3.pdf (d62) → ?
-- `w-3 transmittal` (any) — W-3.pdf (d62) → ?; fw3.pdf → ?
+- `form w-3` (any) — W-3.pdf (d62) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → **here**; W-3.pdf (d73) → ?
+- `w-3 transmittal` (any) — W-3.pdf (d62) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → **here**; W-3.pdf (d73) → ?; fw3.pdf → **here**
 
 ### F01 — Fixed Asset Additions & Disposals Detail
 
-- `fixed asset schedule` (any) — *unreached*
+- `fixed asset schedule` (any) — fixed asset schedule.xlsx (d73) → ?; fixed asset schedule.xlsx (d73) → **here**; fixed asset schedule.xlsx (d73) → ?
 - `fixed asset listing` (any) — *unreached*
 - `fixed asset additions` (any) — *unreached*
 - `asset additions and disposals` (any) — *unreached*
 
 ### G01 — Loan Agreements & Shareholder Loan Activity
 
-- `loan agreement` (any) — *unreached*
-- `promissory note` (any) — *unreached*
-- `shareholder loan agreement` (any) — *unreached*
-- `loan statement` (any) — *unreached*
+- `loan agreement` (any) — shareholder loan agreement.pdf (d73) → **here**
+- `promissory note` (any) — promissory note.pdf (d73) → ?; promissory note.pdf (d73) → ?; promissory note.pdf (d73) → **here**
+- `loan statement` (any) — business loan statement December.pdf (d73) → ?
+- `amortization schedule` (any) — loan amortization schedule.pdf (d73) → **here**; loan amortization schedule.xlsx (d73) → ?; loan amortization schedule.xlsx (d73) → ?
+- `principal balance` (any) — business loan statement December.pdf (d73) → ?; promissory note.pdf (d73) → ?; promissory note.pdf (d73) → ?; promissory note.pdf (d73) → **here**; shareholder loan agreement.pdf (d73) → **here**
 
 ### H01 — State Apportionment Data - Sales, Payroll, Property by State
 
-- `apportionment schedule` (any) — *unreached*
+- `apportionment schedule` (any) — apportionment schedule.xlsx (d73) → ?; apportionment schedule.xlsx (d73) → **here**; apportionment schedule.xlsx (d73) → ?
 - `apportionment data` (any) — *unreached*
 - `sales by state` (any) — *unreached*
 - `payroll by state` (any) — *unreached*
@@ -839,84 +599,86 @@ Reached, but proven nothing: the cheapest placements to add.
 ### A01 — Prior-Year Form 990 & State Filings
 
 - `return of organization exempt from income tax` (required) — 2024 990.pdf (d62) → **here**; f990.pdf → **here**; f990ez.pdf → **here**
-- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → ?; 2024 1120.pdf (d62) → ?; 2024 990.pdf (d62) → **here**; 2024 return with Schedule A.pdf (d62) → ?; 2024 1040 with schedules.pdf (d63) → ?; 2024 1120 with schedules.pdf (d63) → ?; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1040.pdf → ?; f1040nr.pdf → ?; f1040s.pdf → ?; f1040x.pdf → ?; f1041.pdf → ?; f1065.pdf → ?; f1096.pdf → ?; f1120.pdf → ?; f1120h.pdf → ?; f1120s.pdf → ?; f8879.pdf → ?; f940.pdf → ?; f941.pdf → G01; f990.pdf → **here**; f990ez.pdf → **here**; fw3.pdf → ?
+- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → ?; 2024 1120.pdf (d62) → ?; 2024 990.pdf (d62) → **here**; 2024 return with Schedule A.pdf (d62) → ?; 2024 1040 with schedules.pdf (d63) → ?; 2024 1120 with schedules.pdf (d63) → ?; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1040.pdf → ?; f1040nr.pdf → ?; f1040s.pdf → ?; f1040x.pdf → ?; f1041.pdf → ?; f1065.pdf → ?; f1096.pdf → ?; f1120.pdf → ?; f1120h.pdf → ?; f1120s.pdf → ?; f8879.pdf → ?; f940.pdf → G01; f941.pdf → G01; f990.pdf → **here**; f990ez.pdf → **here**; fw3.pdf → G01
 
 ### A02 — Trial Balance - Year-End
 
-- `trial balance` (any) — trial balance.pdf (d62) → ?; trial balance.pdf (d62) → ?; QuickBooks trial balance.pdf (d65) → ?; QuickBooks trial balance.pdf (d66) → ?
+- `trial balance` (any) — trial balance.pdf (d62) → ?; trial balance.pdf (d62) → ?; QuickBooks trial balance.pdf (d65) → ?; QuickBooks trial balance.pdf (d66) → ?; QuickBooks trial balance.pdf (d73) → ?; QuickBooks trial balance.pdf (d73) → **here**; nonprofit trial balance.pdf (d73) → **here**; trial balance with a 1125-E memo.xlsx (d73) → ?
 
 ### B01 — Year-End Financial Statements
 
-- `balance sheet as of` (any) — QuickBooks balance sheet.pdf (d66) → ?
-- `statement of financial position` (any) — nonprofit FS.pdf (d62) → ?
+- `balance sheet as of` (any) — QuickBooks balance sheet.pdf (d66) → ?; QuickBooks balance sheet.pdf (d73) → ?; QuickBooks balance sheet.pdf (d73) → ?; QuickBooks balance sheet.pdf (d73) → **here**; financial statements 1065.pdf (d73) → ?; financial statements 1120.pdf (d73) → ?; financial statements 1120S.pdf (d73) → ?; financial statements 990.pdf (d73) → **here**
+- `statement of financial position` (any) — nonprofit FS.pdf (d62) → ?; audited financial statements package.xlsx (d73) → **here**; nonprofit FS.pdf (d73) → ?; nonprofit FS.pdf (d73) → ?; nonprofit FS.pdf (d73) → **here**
 - `income statement` (any) — *unreached*
 - `statement of income` (any) — *unreached*
-- `profit and loss` (any) — P&L.pdf (d62) → ?
-- `statement of operations` (any) — *unreached*
-- `statement of activities` (any) — *unreached*
-- `statement of cash flows` (any) — *unreached*
+- `profit and loss` (any) — P&L.pdf (d62) → ?; P&L.pdf (d73) → ?; P&L.pdf (d73) → ?; P&L.pdf (d73) → **here**
+- `statement of operations` (any) — financial statements 1065.pdf (d73) → ?; financial statements 1120.pdf (d73) → ?; financial statements 1120S.pdf (d73) → ?; financial statements 990.pdf (d73) → **here**
+- `statement of activities` (any) — audited financial statements package.xlsx (d73) → **here**
+- `statement of cash flows` (any) — audited financial statements package.xlsx (d73) → **here**; financial statements 1065.pdf (d73) → ?; financial statements 1120.pdf (d73) → ?; financial statements 1120S.pdf (d73) → ?; financial statements 990.pdf (d73) → **here**
+- `statement of functional expenses` (any) — audited financial statements package.xlsx (d73) → **here**; statement of functional expenses.xlsx (d73) → **here**; f990.pdf → A01
 
 ### B02 — December Bank Statements & Year-End Reconciliations
 
-- `bank statement` (any) — *unreached*
-- `statement of account` (any) — *unreached*
-- `checking summary` (any) — *unreached*
-- `deposits and additions` (any) — *unreached*
-- `deposits and other credits` (any) — Dec 2025 bank.pdf (d62) → **here**; Nov 2025 bank.pdf (d62) → parks; bank annual summary.pdf (d66) → ?
-- `checks paid` (any) — *unreached*
+- `bank statement` (any) — bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → **here**
+- `checking summary` (any) — Chase December statement 1065.pdf (d73) → ?; Chase December statement 1120.pdf (d73) → ?; Chase December statement 1120S.pdf (d73) → ?; Chase December statement 990.pdf (d73) → **here**; November bank statement 1065.pdf (d73) → ?; November bank statement 1120.pdf (d73) → ?; November bank statement 1120S.pdf (d73) → ?; November bank statement 990.pdf (d73) → parks
+- `deposits and additions` (any) — Chase December statement 1065.pdf (d73) → ?; Chase December statement 1120.pdf (d73) → ?; Chase December statement 1120S.pdf (d73) → ?; Chase December statement 990.pdf (d73) → **here**; November bank statement 1065.pdf (d73) → ?; November bank statement 1120.pdf (d73) → ?; November bank statement 1120S.pdf (d73) → ?; November bank statement 990.pdf (d73) → parks
+- `deposits and other credits` (any) — Dec 2025 bank.pdf (d62) → **here**; Nov 2025 bank.pdf (d62) → parks; bank annual summary.pdf (d66) → ?; Dec 2025 bank.pdf (d73) → ?; Dec 2025 bank.pdf (d73) → ?; Dec 2025 bank.pdf (d73) → ?
+- `checks paid` (any) — Chase December statement 1065.pdf (d73) → ?; Chase December statement 1120.pdf (d73) → ?; Chase December statement 1120S.pdf (d73) → ?; Chase December statement 990.pdf (d73) → **here**; November bank statement 1065.pdf (d73) → ?; November bank statement 1120.pdf (d73) → ?; November bank statement 1120S.pdf (d73) → ?; November bank statement 990.pdf (d73) → parks
 - `withdrawals and other debits` (any) — *unreached*
-- `bank reconciliation` (any) — *unreached*
+- `bank reconciliation` (any) — bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → ?; bank reconciliation.xlsx (d73) → **here**
 
 ### C01 — Board of Directors List & Meeting Minutes
 
-- `board of directors list` (any) — *unreached*
+- `board of directors list` (any) — board of directors list.xlsx (d73) → **here**
 - `list of directors` (any) — *unreached*
 - `meeting minutes` (any) — *unreached*
-- `board minutes` (any) — *unreached*
+- `board minutes` (any) — board minutes.pdf (d73) → **here**
+- `minutes of the` (any) — minutes of the annual meeting.pdf (d73) → **here**
+- `board roster` (any) — board roster.xlsx (d73) → **here**
+- `directors and officers` (any) — board roster.xlsx (d73) → **here**
 
 ### C02 — Officer & Key Employee Compensation Detail
 
-- `officer compensation detail` (any) — *unreached*
+- `officer compensation detail` (any) — officer W-2 compensation detail.xlsx (d73) → ?; officer and key employee compensation detail.xlsx (d73) → **here**; officer compensation detail as a pdf.pdf (d73) → ?; officer compensation detail as a pdf.pdf (d73) → **here**; officer compensation detail.xlsx (d73) → ?
 - `key employee compensation` (any) — *unreached*
-- `compensation of officers` (any) — 2024 1120.pdf (d62) → ?; f1120.pdf → ?; f1120s.pdf → ?; f1125e.pdf → ?; f990.pdf → A01; f990pf.pdf → parks
+- `directors and trustees` (any) — compensation of officers schedule.xlsx (d73) → **here**
 
 ### D01 — Contribution / Donor Detail - Schedule B Support
 
 - `donor list` (any) — *unreached*
-- `donor detail` (any) — *unreached*
+- `donor detail` (any) — donor detail.xlsx (d73) → **here**
 - `contributions by donor` (any) — *unreached*
-- `schedule b` (any) — 2024 1040 with schedules.pdf (d63) → ?; f1040sb.pdf → ?; f1041.pdf → ?; f1065.pdf → ?; f1099div.pdf → ?; f1099int.pdf → ?; f1099oid.pdf → ?; f1120s.pdf → ?; f941.pdf → G01; f990.pdf → A01; f990ez.pdf → A01
+- `schedule b` (any) — 2024 1040 with schedules.pdf (d63) → ?; schedule b support workbook.xlsx (d73) → **here**; f1040sb.pdf → ?; f1041.pdf → ?; f1065.pdf → ?; f1099div.pdf → ?; f1099oid.pdf → ?; f1120s.pdf → ?; f941.pdf → G01; f990.pdf → A01
 
 ### D02 — Grants Made - Recipients & Amounts
 
-- `grants paid schedule` (any) — *unreached*
+- `grants paid schedule` (any) — grants paid schedule.xlsx (d73) → **here**
+- `grants made` (any) — grants made detail.xlsx (d73) → **here**
 - `schedule of grants` (any) — *unreached*
 - `grantee list` (any) — *unreached*
-- `grantee` (any) — *unreached*
 
 ### E01 — Program Service Accomplishment Descriptions
 
-- `program service accomplishment` (any) — f990.pdf → A01; f990ez.pdf → A01
+- `program service accomplishment` (any) — 990 Part III page scanned.pdf (d73) → parks; program service accomplishments narrative.pdf (d73) → **here**; f990.pdf → A01; f990ez.pdf → A01
 - `program accomplishments` (any) — *unreached*
-- `program description` (any) — *unreached*
 
 ### F01 — Fundraising Event Revenue & Expense Detail
 
-- `fundraising event detail` (any) — *unreached*
+- `fundraising event detail` (any) — fundraising event detail.xlsx (d73) → **here**
 - `special event revenue` (any) — *unreached*
 - `event revenue and expense` (any) — *unreached*
 
 ### G01 — Payroll Tax Returns - Forms 941 & W-3
 
-- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; f941.pdf → **here**
-- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; f941.pdf → **here**
-- `form 940` (any) — f940.pdf → ?
-- `employer's annual federal unemployment` (any) — f940.pdf → ?
-- `form w-3` (any) — W-3.pdf (d62) → ?
-- `w-3 transmittal` (any) — W-3.pdf (d62) → ?; fw3.pdf → ?
+- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**
+- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**
+- `form 940` (any) — f940.pdf → **here**
+- `employer's annual federal unemployment` (any) — f940.pdf → **here**
+- `form w-3` (any) — W-3.pdf (d62) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → **here**
+- `w-3 transmittal` (any) — W-3.pdf (d62) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → **here**; fw3.pdf → **here**
 
 ### H01 — Unrelated Business Income Detail
 
-- `form 990-t` (any) — *unreached*
-- `unrelated business income detail` (any) — *unreached*
+- `form 990-t` (any) — 990-T for 2025.pdf (d73) → **here**
+- `unrelated business income detail` (any) — UBTI schedule.xlsx (d73) → **here**
 - `ubti schedule` (any) — *unreached*

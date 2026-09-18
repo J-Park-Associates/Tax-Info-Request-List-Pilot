@@ -107,7 +107,12 @@ accountant instead:
 
 And if files are still sitting in `00 - Needs Review`, the CLI says so before
 you send: those are documents the client *has* already sent, so a reminder
-over the top of them risks asking for something already in hand.
+over the top of them risks asking for something already in hand. A file a
+person has marked `NOT_REQUESTED` — an agency notice, an extra statement no
+row asks for — is not counted. Its copy stays where it is and nothing is
+deleted; what stops is the warning, which is there for documents nobody has
+decided about. One that stood for the rest of the engagement would be the
+warning people learn to send past.
 
 ### Running it unattended
 
@@ -144,6 +149,14 @@ an engagement in the app is all it takes for the next run to include it —
 `python -m tracker.registry "D:\OneDrive\Clients"` lists what the run would
 find and flags any manifest it cannot read.
 
+Every real pass also writes `tracker.runner.STATUS_PAGE_FILENAME` into that
+same clients folder: the whole practice on one page — every engagement with
+what it still owes and what is still syncing, every file waiting for a person
+across all of them (newest first, with the reason it was parked), and
+everything that errored. It is one self-contained file that opens in any
+browser with nothing installed and nothing fetched; the app's **Open Status**
+button opens that same page, and the app's own pass rewrites it too.
+
 Generate the job itself with:
 
 ```
@@ -174,6 +187,10 @@ scanning running through the day without touching that.
 **Reminders are weekly, on Saturday, and always just drafts.** The run writes
 `reminder-draft.txt` into the engagement folder; a person opens it, edits it
 and sends it. Nothing in the scheduled path sends email.
+
+How a season is actually run on the firm's one machine — the morning pass,
+the draft day, what the index's reasons mean, and what to do if that machine
+dies — is [docs/runbook.md](docs/runbook.md).
 
 The schedule is a default, not a cage:
 
@@ -252,6 +269,28 @@ routes a file only on a request's *required* keywords; a looser match on
 OCR text goes to review with the lead noted, because a misread word is how
 a document lands under the wrong request.
 
+When a person files something out of `00 - Needs Review` they can type a
+keyword, and it is learned by that one engagement's manifest and nowhere
+else; `python tools/learned_keywords.py` lists every keyword taught that way
+across all your engagements, grouped by request, so the ones several clients
+needed become catalog rows the test suite then defends.
+
+#### What the routing is measured against
+
+Blank IRS forms and reconstructed cases are paperwork nobody sent. The
+firm's own documents are the measure: years of them, already sorted by
+hand, sitting on the office file server. `tools/backtest.py` routes them
+there against the shipped catalogs and scores how often the router lands
+where the person did, with the confusions, the share still parked for a
+person, and the time a real pass takes. That agreement is recorded in
+`docs/backtest-baseline.json`, and no routing change may lower it. Every
+document is routed under one neutral name, so the by-name fallback cannot
+read the client's name off the file and the score is the rules' and not
+the firm's filing habits'. Nothing identifying comes back: the report
+carries counts, request identifiers and row numbers, never a file name, a
+folder name or a word of a document — and the documents never leave the
+office.
+
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward
@@ -279,7 +318,13 @@ machine with neither. Both are reproducible from the commit: the Python
 packages are pinned in `requirements.txt` and `requirements-build.txt`, the
 Electron packages in `app/package-lock.json` (installed with `npm ci`), and
 the freeze is the committed `api_entry.spec`; a build-info text file in the
-package records the commit and the tool versions that made it. On first launch the app asks where your clients live
+package records the commit and the tool versions that made it. You do not have
+to run the build yourself: `build.yml` builds the same package on demand (the
+Actions tab, *Run workflow*, or a `v*` tag), runs the frozen executable to
+prove it answers, and leaves the package to download as the run's artifact for
+seven days. It builds and tests on the interpreter `[tool.office]` in
+`pyproject.toml` names — the one the firm's machine runs — so the package is
+proved on the interpreter it ships under. On first launch the app asks where your clients live
 and writes that to `settings.json` beside itself; everything else follows
 from that one folder. Who does what, and the life of a request, is in
 [docs/workflow.md](docs/workflow.md); the decision log is

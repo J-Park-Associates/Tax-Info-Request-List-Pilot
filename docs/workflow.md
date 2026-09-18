@@ -9,7 +9,11 @@ people side.
 - **Engagement lead** — owns the engagement's request list: picks the return
   type or rolls last year's list forward, trims and extends it, and fills in
   the client, share link and due date in the wizard (they land on the
-  manifest's Engagement sheet; nothing else needs registering).
+  manifest's Engagement sheet; nothing else needs registering). Starts the
+  morning on `tracker.runner.STATUS_PAGE_FILENAME` — the whole practice on one
+  page, written into the clients folder by every pass and opened by the app's
+  **Open Status** button: what each engagement still owes, what is waiting for
+  a person across all of them, and what failed overnight.
 - **Preparer / staff** — works the `Prepared/` tree, files anything in
   `00 - Needs Review` with the app's *File it* action, sets `Manual Override`
   when their judgment beats the rules, and sends the drafted reminders.
@@ -64,9 +68,11 @@ The scanner owns the status column; people own the override column.
   it, send it yourself. An edited draft is never overwritten.
 - **Catalog changes affect every future engagement.** Edit
   `tracker/templates.py` and commit it; the test suite checks every row can
-  recognise its own document.
+  recognise its own document. The keywords staff have taught one engagement
+  at a time are listed together by `python tools/learned_keywords.py`, once a
+  season — that list is what the next catalog commit is made of.
 
-## Two things a person still does in the app
+## Four things a person still does in the app
 
 - **Check Manifest** runs the same validation the scheduled job runs before
   it touches a file: a bad regex or a non-number typed in Excel is named
@@ -81,6 +87,28 @@ The scanner owns the status column; people own the override column.
   assigned by a person, learns the keyword and re-scans. If a run has
   died, its lock is shown with its start time and can be cleared once it
   is older than `tracker.locking.STALE_LOCK_SECONDS`.
+- **Not requested**, on anything in Needs Review no row asks for: an agency
+  notice, an extra statement. The index row is rewritten
+  `tracker.filer.NOT_REQUESTED`, with an optional note saying why and what
+  the row said before kept after it. Nothing moves — the copy stays parked
+  and the client's original is untouched — so the file is out of the way,
+  not gone: the weekly draft stops warning about it, the same document sent
+  again is a duplicate rather than a second thing to look at, and a person
+  who was wrong files it from the folded-away list, which is the only undo
+  there is.
+- **Unfile**, on anything in the folded-away *Filed documents* list: the
+  working copy goes back to `00 - Needs Review` under the client's own name,
+  the index row is rewritten `tracker.filer.NEEDS_REVIEW` as unfiled by a
+  person with what it said before, and the engagement is re-scanned, so the
+  request the document was answering goes back to what it is without it,
+  with the regression note that pass would have written. Do this rather than
+  dragging the file in Explorer: the index is what says where a working copy
+  went, and it never learns about a drag. Refiling is unfiling and then
+  **File it**; a working copy somebody annotated is left where it is and
+  said so, because the notes are work and which file the firm wants is not
+  the tracker's to decide. The keyword the request learned when it was filed
+  is not unlearned — it is a rule about documents, and the request still
+  wants it.
 
 ## Collaboration
 

@@ -312,6 +312,19 @@ def test_a_roll_into_the_same_or_an_earlier_year_is_refused(prior):
             roll_forward(prior, target_year=year)
 
 
+def test_a_target_year_outside_the_bounds_is_refused_here_as_in_the_wizard(prior):
+    # The thirteenth reading: decision 68 bounded the year the wizard takes
+    # and left the rollover's flag unbounded, so --year 20265 shifted every
+    # Period and every document name by eighteen thousand years and wrote
+    # the folders under those names.
+    from tracker.manifest import YEAR_MAX, YEAR_MIN, ManifestError
+
+    for year in (YEAR_MIN - 1, YEAR_MAX + 1, 20265):
+        with pytest.raises(ManifestError, match=f"between {YEAR_MIN} and {YEAR_MAX}"):
+            roll_forward(prior, target_year=year)
+    assert rolled_by_id(roll_forward(prior, target_year=YEAR_MAX))["A01"].item.period == f"TY{YEAR_MAX}"
+
+
 # --------------------------------------------------------------- the workbook ----
 
 

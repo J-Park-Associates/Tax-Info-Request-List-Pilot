@@ -6,11 +6,13 @@ stops another client's run, and nothing is ever sent.
 """
 
 import datetime as dt
+import html
 from pathlib import Path
 
 import pytest
 
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, YEAR, build_samples, col, row
+from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry, read_index, write_index
 from tracker.manifest import (
     COL_ALLOWED_EXTENSIONS,
     COL_ANY_KEYWORDS,
@@ -33,11 +35,16 @@ from tracker.reminder import DRAFT_BANNER, DRAFT_FILENAME, NEW_DRAFT_FILENAME
 from tracker.runner import (
     DRAFT_WEEKDAY,
     LOG_FILENAME,
+    MANIFEST_UNREADABLE,
     NOTHING_OUTSTANDING,
     REMINDERS_ALWAYS,
     REMINDERS_AUTO,
     REMINDERS_NEVER,
+    STATUS_GENERATED,
+    STATUS_PAGE_FILENAME,
     WEEKDAY_NAMES,
+    EngagementRun,
+    RunReport,
     append_log,
     format_report,
     is_draft_day,
@@ -45,8 +52,16 @@ from tracker.runner import (
     run_engagement,
     run_registry,
     should_draft,
+    write_status_page,
 )
-from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME, scaffold_engagement
+from tracker.scaffold import (
+    MANIFEST_FILENAME,
+    PBC_DIR_NAME,
+    PREPARED_DIR_NAME,
+    SHARED_DIR_NAME,
+    scaffold_engagement,
+)
+from tracker.settings import product_name
 
 DRAFT_DAY = WEEKDAY_NAMES[DRAFT_WEEKDAY]
 
@@ -382,8 +397,6 @@ def test_the_log_takes_a_name_utf8_cannot_hold(tmp_path, samples):
     # The eleventh reading: a lone surrogate in a client's file name is
     # reported every pass by name, and the run log - the unattended run's
     # only trace - died on it, losing every engagement's line.
-    from tracker.runner import EngagementRun, RunReport
-
     engagement = build_engagement(tmp_path, samples)
     run = EngagementRun(engagement=engagement)
     run.error = "bank statement \ud83d.pdf: cannot be handled under this name"
@@ -533,3 +546,160 @@ def test_strays_in_prepared_reach_the_run_report(tmp_path, samples):
     run = run_engagement(engagement, today=FRIDAY)
     assert run.ok
     assert any(f"loose.txt is loose in {PREPARED_DIR_NAME}/" in w for w in run.warnings)
+
+
+# ----------------------------------------------------- the practice on a page ----
+
+
+def test_a_real_pass_writes_the_status_page_into_the_root_and_a_dry_run_does_not(tmp_path, samples, capsys):
+    """The page is the pass's standing answer, so a pass that changed nothing
+    on disk must not leave one - a dry run writes nothing, this included."""
+    build_engagement(tmp_path, samples)
+    page = tmp_path / STATUS_PAGE_FILENAME
+
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat(), "--dry-run"]) == 0
+    assert not page.exists()
+
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 0
+    text = page.read_text(encoding="utf-8")
+    assert product_name() in text
+    assert STATUS_GENERATED.split("{")[0].strip() in text
+    assert "Smith TY2025" in text
+    assert "<script" not in text and "http" not in text, "one file, nothing fetched to render it"
+    capsys.readouterr()
+
+
+def test_the_page_lists_every_engagement_the_registry_finds_including_an_unreadable_one(
+    tmp_path, samples, capsys
+):
+    """An engagement missing from the page is an engagement nobody chases. One
+    whose manifest cannot be read is on it by name, and named as a problem."""
+    clients = tmp_path / "Clients"
+    build_engagement(clients, samples, name="Good TY2025")
+    bad = clients / "Bad TY2025"
+    bad.mkdir(parents=True)
+    (bad / MANIFEST_FILENAME).write_bytes(b"not a workbook")
+
+    assert main([str(clients), "--date", FRIDAY.isoformat()]) == 1
+    text = (clients / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+
+    assert "Good TY2025" in text
+    assert text.count("Bad TY2025") >= 2            # its row, and the problems list
+    assert MANIFEST_UNREADABLE.split("{")[0] in text
+    capsys.readouterr()
+
+
+def test_the_review_queue_lists_parked_files_newest_first_with_their_reasons(tmp_path, samples):
+    """One queue across the practice, because the work is one queue: the file
+    that arrived last night is at the top, whichever client sent it."""
+    older = build_engagement(tmp_path, samples, drops=("vacation photo.jpg",), name="Older TY2025")
+    newer = build_engagement(tmp_path, samples, drops=("Mortgage Notes.docx",), name="Newer TY2025")
+    first = run_engagement(older, today=FRIDAY, reminders=REMINDERS_NEVER)
+    second = run_engagement(newer, today=SATURDAY, reminders=REMINDERS_NEVER)
+    assert first.review == 1 and second.review == 1
+
+    page = write_status_page(tmp_path, RunReport(today=SATURDAY, runs=[first, second]))
+    text = page.read_text(encoding="utf-8")
+
+    assert text.index("Mortgage Notes.docx") < text.index("vacation photo.jpg")
+    assert SATURDAY.isoformat() in text and FRIDAY.isoformat() in text
+    for engagement in (older, newer):
+        parked = [e for e in read_index(engagement.path / INDEX_FILENAME)
+                  if e.decision == NEEDS_REVIEW]
+        assert parked
+        for entry in parked:
+            assert html.escape(entry.reason) in text, entry.reason
+
+
+def test_a_file_named_like_markup_is_shown_as_a_name_not_rendered(tmp_path):
+    """Every value on the page goes through html.escape. The name cannot be
+    made on Windows, so it arrives the way it would in life: an index row
+    written elsewhere, from a client's folder that is not this machine's."""
+    folder = tmp_path / "Evil TY2025"
+    folder.mkdir()
+    create_template(folder / MANIFEST_FILENAME, DEMO_ITEMS)
+    name = "<b>evil</b>.pdf"
+    reason = "<i>nothing matched</i>"
+    write_index(folder / INDEX_FILENAME, [IndexEntry(
+        received=FRIDAY.isoformat(), original_name=name, size_kb=1.0, digest="0" * 8,
+        identifier="", prepared_location="",
+        pbc_location=f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/{name}",
+        decision=NEEDS_REVIEW, reason=reason,
+    )])
+
+    report = RunReport(today=FRIDAY, runs=[EngagementRun(engagement=Engagement(path=folder))])
+    text = write_status_page(tmp_path, report).read_text(encoding="utf-8")
+
+    assert name not in text and reason not in text
+    assert "&lt;b&gt;evil&lt;/b&gt;.pdf" in text
+    assert "&lt;i&gt;nothing matched&lt;/i&gt;" in text
+
+
+def test_the_page_is_written_even_when_an_engagements_pass_failed(tmp_path, samples, capsys):
+    """The pass that errored is exactly the one a person has to find out about,
+    so the page it would have been written by is still written, with the error."""
+    from openpyxl import load_workbook
+
+    build_engagement(tmp_path, samples, name="Good TY2025")
+    broken = build_engagement(tmp_path, samples, name="Broken TY2025")
+    manifest = broken.path / MANIFEST_FILENAME
+    wb = load_workbook(manifest)
+    wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="(unclosed")
+    wb.save(manifest)
+
+    assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
+    text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
+
+    assert "Good TY2025" in text and text.count("Broken TY2025") >= 2
+    assert f"Row 2: {COL_DATE_PATTERN}" in text
+    capsys.readouterr()
+
+
+def test_the_page_still_has_a_heading_where_nothing_can_say_what_the_product_is_called(
+    tmp_path, monkeypatch
+):
+    """The packaged app's scheduled job runs without the Electron shell, which
+    is the only thing that knows the product's name there. A pass that has
+    already moved the client's files must not end in a traceback over a
+    heading, so the firm's name - and then the folder - stand in."""
+    from tracker.settings import SettingsError
+
+    def unknown():
+        raise SettingsError("no shell, no package.json")
+
+    folder = tmp_path / "Clients"
+    folder.mkdir()
+    report = RunReport(today=FRIDAY, runs=[])
+
+    monkeypatch.setattr("tracker.runner.product_name", unknown)
+    monkeypatch.setattr("tracker.runner.firm", lambda: "J Park & Associates, CPA")
+    assert "J Park &amp; Associates, CPA" in write_status_page(folder, report).read_text(encoding="utf-8")
+
+    monkeypatch.setattr("tracker.runner.firm", lambda: "")
+    assert folder.name in write_status_page(folder, report).read_text(encoding="utf-8")
+
+
+def test_an_engagement_nobody_passed_is_read_rather_than_run(tmp_path, samples):
+    """The app scans one engagement; the page is still about the practice. The
+    others are read - manifest and sidecar, no lock, no scaffold, no scan -
+    and say so by carrying no pass time."""
+    from tracker.registry import discover_engagements
+    from tracker.runner import STATUS_NOT_PASSED, status_report
+
+    clients = tmp_path / "Clients"
+    scanned = build_engagement(clients, samples, name="Scanned TY2025")
+    untouched = build_engagement(clients, samples, name="Untouched TY2025")
+    earlier = run_engagement(untouched, today=FRIDAY, reminders=REMINDERS_NEVER)
+    run = run_engagement(scanned, today=FRIDAY, reminders=REMINDERS_NEVER)
+
+    report = status_report(discover_engagements(clients), passed=[run])
+    rows = {r.engagement.path.name: r for r in report.runs}
+    assert set(rows) == {"Scanned TY2025", "Untouched TY2025"}
+    assert rows["Scanned TY2025"].last_pass is not None
+    # Read back from the manifest its own earlier pass wrote, without a pass.
+    assert rows["Untouched TY2025"].outstanding == earlier.outstanding > 0
+    assert rows["Untouched TY2025"].statuses == earlier.statuses
+    assert rows["Untouched TY2025"].last_pass is None
+
+    text = write_status_page(clients, report).read_text(encoding="utf-8")
+    assert STATUS_NOT_PASSED in text

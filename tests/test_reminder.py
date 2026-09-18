@@ -193,6 +193,36 @@ def test_needs_review_count_is_zero_without_the_folder(tmp_path):
     assert count_needs_review(engagement(tmp_path)) == 0
 
 
+def test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft(tmp_path):
+    """The warning stops a person asking for a document nobody has looked at.
+
+    They have looked at a dismissed one, so counting it would leave the
+    warning standing for the rest of the engagement and teach them to send
+    the draft over the top of it. The count is still the folder's, though:
+    a file dragged in by hand has no row and is nobody's decision yet.
+    """
+    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, NOT_REQUESTED, IndexEntry, write_index
+
+    folder = engagement(tmp_path)
+    review = folder / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    review.mkdir(parents=True)
+    for name in ("irs-notice.pdf", "scan0012.pdf", "dragged in by hand.pdf"):
+        (review / name).write_bytes(b"x" * 10)
+
+    def row(name, decision):
+        return IndexEntry(
+            received="2026-02-01", original_name=name, size_kb=0.1, digest=name,
+            identifier="", prepared_location=f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/{name}",
+            pbc_location=f"pbc/{name}", decision=decision, reason="unrecognized",
+        )
+
+    write_index(folder / INDEX_FILENAME, [
+        row("irs-notice.pdf", NOT_REQUESTED), row("scan0012.pdf", NEEDS_REVIEW),
+    ])
+    assert count_needs_review(folder) == 2
+    assert draft_reminder(folder).needs_review_files == 2
+
+
 # ----------------------------------------------------------------- drafting ----
 
 

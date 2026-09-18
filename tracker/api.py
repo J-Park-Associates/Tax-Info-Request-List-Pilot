@@ -13,6 +13,8 @@ Commands:
   rollover  build next year's list from a returning client's prior year
   scan      one pass, exactly as the scheduled run makes it (no draft)
   assign    file one Needs Review document under a request (a person's call)
+  dismiss   record that no request asks for one Needs Review document
+  unfile    send one filed document back to Needs Review (a person's call)
   check     check_manifest() on demand, problems named by row
   settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import shutil
 import sys
 from dataclasses import asdict, replace
@@ -35,9 +38,12 @@ from tracker.filer import (
     FILED,
     INDEX_FILENAME,
     NEEDS_REVIEW,
+    NOT_REQUESTED,
     FilingError,
     assign_review_file,
+    dismiss_review_file,
     read_index,
+    unfile_document,
 )
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker.manifest import (
@@ -52,6 +58,7 @@ from tracker.manifest import (
     Override,
     Status,
     check_manifest,
+    check_tax_year,
     create_template,
     load_engagement_info,
     load_manifest,
@@ -72,7 +79,19 @@ from tracker.rollover import (
     roll_forward,
     write_rollover_manifest,
 )
-from tracker.runner import DRAFT_WEEKDAY, REMINDERS_NEVER, WEEKDAY_NAMES, run_engagement
+from tracker.runner import (
+    DRAFT_WEEKDAY,
+    LOG_FILENAME,
+    REMINDERS_NEVER,
+    STATUS_PAGE_FILENAME,
+    WEEKDAY_NAMES,
+    EngagementRun,
+    RunReport,
+    append_log,
+    run_engagement,
+    status_report,
+    write_status_page,
+)
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PBC_DIR_NAME,
@@ -121,6 +140,8 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     template_items,
 )
 
+log = logging.getLogger("tracker.api")
+
 #: The folder the app runs from (the repository from source, beside the
 #: executable when frozen) - the same answer tracker.settings gives.
 REPO_ROOT = settings_dir()
@@ -140,6 +161,16 @@ def _root() -> Path:
 ENGAGEMENT_FLAG = "--engagement"
 #: What a new client is called in the name preview before a name is typed.
 NEW_CLIENT_PLACEHOLDER = "New"
+#: What the Needs Review card calls the decisions a person makes there and
+#: on what is already filed, and what it asks them for. The renderer shows
+#: these; it types none of them.
+DISMISS_LABEL = "Not requested"
+DISMISS_NOTE_HINT = "why nothing asks for it (optional)"
+DISMISSED_HEADING = "Not requested ({n})"
+FILE_ANYWAY_LABEL = "File it anyway"
+UNFILE_LABEL = "Unfile"
+UNFILE_NOTE_HINT = "why it is coming back (optional)"
+FILED_HEADING = "Filed documents ({n})"
 
 
 def _new_engagement_dir(name: str) -> Path:
@@ -235,7 +266,17 @@ def _vocab() -> dict:
         "unscanned_label": UNSCANNED_LABEL,
         "unscanned_key": _slug(UNSCANNED_LABEL),
         "overrides": {"accepted": Override.ACCEPTED, "waived": Override.WAIVED},
-        "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE},
+        # The key a decision is looked up by is the app's handle on it, not
+        # the word: NOT_REQUESTED is keyed by the action that writes it,
+        # because the renderer may not carry the word "Requested" in any
+        # form - it is UNSCANNED_LABEL, a status, and the guard that keeps
+        # the app from typing a status of its own reads the whole file.
+        "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE,
+                      "dismissed": NOT_REQUESTED},
+        "review_labels": {"dismiss": DISMISS_LABEL, "dismiss_note": DISMISS_NOTE_HINT,
+                          "dismissed_heading": DISMISSED_HEADING, "file_anyway": FILE_ANYWAY_LABEL,
+                          "unfile": UNFILE_LABEL, "unfile_note": UNFILE_NOTE_HINT,
+                          "filed_heading": FILED_HEADING},
         "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
         "expected_pattern": EXPECTED_PATTERN,
         "period_pattern": PERIOD_PATTERN,
@@ -326,9 +367,7 @@ def _tax_year(given, default: int | None = None) -> int | None:
         year = int(given)
     except (TypeError, ValueError):
         raise ManifestError(f"Tax year must be a whole number, got {given!r}") from None
-    if not YEAR_MIN <= year <= YEAR_MAX:
-        raise ManifestError(f"Tax year must be between {YEAR_MIN} and {YEAR_MAX}, got {year}")
-    return year
+    return check_tax_year(year)
 
 
 def _engagement_name(requested: str, fallback: str) -> str:
@@ -339,6 +378,7 @@ def _engagement_name(requested: str, fallback: str) -> str:
 
 def _state(engagement: Path) -> dict:
     manifest_path = engagement / MANIFEST_FILENAME
+    root = clients_root()
     # Showing the engagement is a read: nothing is moved, not even a sidecar
     # that cannot be parsed - the next real run is what moves it aside.
     deferred = pending_updates(manifest_path, quarantine=False)
@@ -367,6 +407,11 @@ def _state(engagement: Path) -> dict:
             "prepared": str(engagement / PREPARED_DIR_NAME),
             "index": str(engagement / INDEX_FILENAME),
             "manifest": str(manifest_path),
+            # The practice's page, not this engagement's: it lives in the
+            # clients root. Reported here because the shell opens only the
+            # paths the API has named, and a person looking at one
+            # engagement is one click from the whole practice.
+            "status": str(root / STATUS_PAGE_FILENAME) if root else "",
         },
     }
 
@@ -375,16 +420,49 @@ def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
 
+def _record_pass(run: EngagementRun) -> None:
+    """Leave the record the scheduled run leaves: a line in the run log and
+    the practice's status page, both in the clients root.
+
+    The app's button makes the same pass as the job, so it must leave the
+    same trace - a pass with no record is a pass nobody can check
+    afterwards, and a page that is a night old is one nobody believes. The
+    page is redrawn from every engagement under the root, because it is
+    about the practice and not about the engagement that was just run.
+
+    Neither takes a lock or touches an engagement, and neither failing is
+    allowed to fail the pass: the files have already been moved and the
+    manifest written, so the person is told what happened either way.
+    """
+    root = clients_root()
+    if root is None or not root.is_dir():
+        return
+    # Broadly, both of them: the pass has already moved the client's files
+    # and written the manifest, so nothing about recording it afterwards may
+    # turn a finished pass into an error message in the app.
+    try:
+        append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(),
+                                                  reminders=REMINDERS_NEVER, runs=[run]))
+    except Exception as exc:
+        log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
+    try:
+        write_status_page(root, status_report(discover_engagements(root), passed=[run]))
+    except Exception as exc:
+        log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
+
+
 def _cmd_scan(argv: list[str]) -> dict:
     """One pass over this engagement - the same pass the scheduled job makes.
 
     Scaffold, check, file, scan, in that order, with the same lock, the same
     error isolation and the same warnings; only the weekly draft is left
     to the scheduled run (or `python -m tracker.reminder`). There is one
-    definition of a pass, in tracker.runner, and this is it.
+    definition of a pass, in tracker.runner, and this is it - including the
+    record it leaves behind (:func:`_record_pass`).
     """
     engagement = _engagement_dir(argv)
     run = run_engagement(engagement_from(engagement), reminders=REMINDERS_NEVER)
+    _record_pass(run)
     payload = {
         "run": {
             "ok": run.ok,
@@ -628,6 +706,70 @@ def _cmd_assign(argv: list[str]) -> dict:
     }
 
 
+def _cmd_dismiss(argv: list[str]) -> dict:
+    """Record that no request asks for one parked document, by a person's decision.
+
+    JSON spec on stdin: {"original": "<PBC location or original name>",
+                         "note": "optional"}
+    The index row is rewritten as Not Requested (attributed to a person) and
+    nothing moves: the working copy stays where it is and the client's
+    original is untouched. Filing it afterwards is how the decision is undone.
+
+    There is no re-scan. The document was never filed under a request, so no
+    row's status can change; re-scanning would take the lock again and read
+    every working copy to prove that.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    original = str(spec.get("original", "")).strip()
+    if not original:
+        raise ManifestError("Pick the file no request asks for")
+    result = dismiss_review_file(engagement, original, str(spec.get("note", "") or ""))
+    return {
+        "dismissed": {
+            "original_name": result.entry.original_name,
+            "decision": result.entry.decision,
+            "reason": result.entry.reason,
+            "prepared_location": result.entry.prepared_location,
+            "index_deferred": result.index_deferred,
+        },
+        "state": _state(engagement),
+    }
+
+
+def _cmd_unfile(argv: list[str]) -> dict:
+    """Send one filed document back to Needs Review, by a person's decision.
+
+    JSON spec on stdin: {"original": "<PBC location or original name>",
+                         "note": "optional"}
+    The working copy goes back under the client's own name, the index row is
+    rewritten Needs Review (attributed to a person, with what it said
+    before), and the filer re-scans, so the request the document was
+    answering reverts with a regression note in the same breath. The scan
+    summary comes back in ``state`` - it is summarize() over the rows the
+    re-scan has just left, and there is nowhere else it lives.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    original = str(spec.get("original", "")).strip()
+    if not original:
+        raise ManifestError("Pick the document to send back for review")
+    result = unfile_document(engagement, original, str(spec.get("note", "") or ""))
+    return {
+        "unfiled": {
+            "original_name": result.entry.original_name,
+            "decision": result.entry.decision,
+            "reason": result.entry.reason,
+            "prepared_location": result.entry.prepared_location,
+            "moved_working_copy": result.moved_working_copy,
+            "left_filed": result.left_filed,
+            "index_deferred": result.index_deferred,
+            "scan_note": result.scan_note,
+        },
+        "state": _state(engagement),
+    }
+
+
 def _cmd_settings(argv: list[str]) -> dict:
     """Where the clients live, and where that is written down."""
     root = clients_root()
@@ -702,6 +844,8 @@ COMMANDS = {
     "list": _cmd_list,
     "create": _cmd_create,
     "assign": _cmd_assign,
+    "dismiss": _cmd_dismiss,
+    "unfile": _cmd_unfile,
     "check": _cmd_check,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,

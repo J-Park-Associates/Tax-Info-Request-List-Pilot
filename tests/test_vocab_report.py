@@ -6,6 +6,7 @@ The pure ``report()`` is exercised on small catalogs of our own; the
 committed report is checked against its inputs by hash, as the map is.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from tracker.manifest import RequestItem
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import vocab_report  # noqa: E402
-from vocab_report import CASE, IRS, Document, render_markdown, report  # noqa: E402
+from vocab_report import CASE, IRS, REAL, Document, render_markdown, report  # noqa: E402
 
 
 def row(identifier, document, *, required=(), any_keywords=()):
@@ -76,6 +77,61 @@ def test_hits_are_ordered_corpus_first_then_by_decision_and_name():
     ]
     hits = one(report(catalog, docs))["rows"]["A01"]["keywords"][0]["reached_by"]
     assert [h["name"] for h in hits] == ["z.pdf", "a.pdf", "b.pdf", "fw2.pdf"]
+
+
+def test_a_document_from_the_firms_own_corpus_is_reported_beside_the_forms_and_the_cases():
+    """The thirteenth reading is briefed from the report, so it must see the real ones too."""
+    catalog = {"1040": [row("A01", "W-2", required=["w-2"])]}
+    docs = [Document(IRS, "fw2.pdf", "Form W-2 2025", {"1040": "A01"}),
+            Document(REAL, "redacted w-2.pdf", "Form W-2 Wage and Tax Statement 2025", {"1040": "A01"})]
+    out = report(catalog, docs)
+    hits = one(out)["rows"]["A01"]["keywords"][0]["reached_by"]
+    assert hits == [{"kind": IRS, "name": "fw2.pdf", "expected": "A01"},
+                    {"kind": REAL, "name": "redacted w-2.pdf", "expected": "A01"}]
+    assert out["counts"]["documents"] == {IRS: 1, CASE: 0, REAL: 1}
+    text = render_markdown(out)
+    assert "1 real documents" in text
+    assert "- `w-2` (required) — fw2.pdf → **here**; redacted w-2.pdf → **here**" in text
+
+
+def test_a_workbook_case_reads_the_same_to_the_report_as_to_the_suite(tmp_path):
+    """The suite writes a workbook case to a real .xlsx and reads it back;
+    the report renders the rows instead. If the two readings differed, a
+    keyword a case reaches would be listed as unreached - or the other way
+    about, which is worse."""
+    from tests.samples import sheet_xlsx
+    from tracker.content_check import extract_text
+
+    rows = [["Willow Lane Inc."], ["Officer Compensation Detail - 2025"],
+            ["Officer", "Title", "Compensation"], ["John Reyes", "President", 240000]]
+    written = extract_text(sheet_xlsx(tmp_path / "officer comp.xlsx", rows))
+    assert vocab_report.as_a_sheet(rows) == written
+
+
+def test_the_workbook_cases_are_in_the_report_too():
+    """Half of every catalog asks for a schedule a client keeps in Excel."""
+    from tests.test_catalog import XLSX_CASES
+
+    names = {doc.name for doc in vocab_report.case_documents()}
+    assert {case[2] for case in XLSX_CASES} <= names
+
+
+def test_a_report_built_without_a_corpus_says_nothing_about_one():
+    """The committed report is built on a machine with no corpus; CI has none either."""
+    out = report({"1040": [row("A01", "W-2", required=["w-2"])]}, [])
+    assert out["counts"]["documents"] == {IRS: 0, CASE: 0}
+    assert "real" not in render_markdown(out).split("## ")[0]
+    assert vocab_report.real_documents_in(out) == 0
+
+
+def test_a_committed_report_naming_the_firms_own_documents_is_refused(tmp_path, monkeypatch, capsys):
+    """Committing one would put client file names in the repository."""
+    data = vocab_report.load_report()
+    data["counts"]["documents"][REAL] = 2
+    monkeypatch.setattr(vocab_report, "REPORT_PATH", tmp_path / "vocab-coverage.json")
+    vocab_report.REPORT_PATH.write_text(json.dumps(data), encoding="utf-8")
+    assert vocab_report.main(["check"]) == 1
+    assert vocab_report.ENV_REAL_CORPUS in capsys.readouterr().out
 
 
 def test_the_counts_add_up_across_catalogs():

@@ -4,6 +4,16 @@ version = "1.1.0"
 description = "Deterministic tax-document request tracking for a CPA firm"
 requires-python = ">=3.11"
 
+# The interpreter the firm's Windows machine runs, written down once. The
+# floor above says what the code may use; this says what the portable package
+# actually IS, because "Build App.bat" freezes with whatever `python` the
+# machine it runs on has, and the package is what goes to the office on a USB
+# stick. CI builds the package on this version and runs the suite on it beside
+# the floor, so what ships was proved on the interpreter it ships under
+# (decision 78). tests/test_build.py pins both workflows to this line.
+[tool.office]
+python-version = "3.14"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

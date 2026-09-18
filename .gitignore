@@ -32,6 +32,13 @@ app/node_modules/
 # lockfile and api_entry.spec are tracked: they are what makes it reproducible.
 build-portable/
 
+# The firm's own redacted documents and their expectations file live
+# outside the repository (TRACKER_REAL_CORPUS names the folder). This is
+# for the day someone drops them inside the tree anyway: redaction is a
+# person's judgement, not a guarantee, and a client document in the repo
+# is in every clone and every build.
+real-corpus/
+
 # Client-provided files are sensitive — never commit actual documents.
 # Track only the manifest/metadata, not the files themselves.
 client-files/**
@@ -43,10 +50,12 @@ client-files/**
 *.qbb
 *.tlg
 
-# Scheduled-run artifacts. Drafts quote real clients' outstanding documents
-# and the run log names them. Neither belongs in the repo: the log lives in
-# the clients root, the drafts beside each engagement.
+# Scheduled-run artifacts. Drafts quote real clients' outstanding documents,
+# and the run log and the status page name them. None of it belongs in the
+# repo: the log and the page live in the clients root, the drafts beside
+# each engagement.
 runs.log
+status.html
 # The clients root, written once by the app (or python -m tracker.settings).
 settings.json
 tax-tracker.xml

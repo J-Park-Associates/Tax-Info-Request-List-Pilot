@@ -67,7 +67,8 @@ CACHE_FILENAME = "_content_cache.json"
 #: stored; a cache written before that carried them for ever.
 #: 4: says() changed what a keyword verdict means (a form number is title evidence).
 #: 5: a form number in the title is weighed by its shape too; a keyword's words sit on one line.
-CACHE_VERSION = 5
+#: 6: a keyword on a menu line, or one an ask-word asked for, is no longer said.
+CACHE_VERSION = 6
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -244,6 +245,22 @@ def _seams(part: str) -> str:
     return _JOINER.join(out)
 
 
+def _occurrences(low: str, keyword: str):
+    """Every place ``low`` (lower-cased text) says ``keyword`` as a whole token.
+
+    Both readings of the keyword - its words on one line, and the heading
+    that wraps - in the order they are written, so a caller that weighs
+    *where* a keyword is said (:func:`says`) sees each occurrence.
+    """
+    for wrapping in (False, True):
+        pattern = keyword_pattern(keyword, wrapping=wrapping)
+        if pattern is None:
+            continue
+        for match in re.finditer(pattern, low):
+            if not _joined_to_a_variant(low, keyword, match):
+                yield match
+
+
 def contains_keyword(text: str, keyword: str) -> bool:
     """True if ``keyword`` appears in ``text`` as a whole token.
 
@@ -257,14 +274,12 @@ def contains_keyword(text: str, keyword: str) -> bool:
     Keywords drive both status and — via :mod:`tracker.router` — where a
     document gets filed, so a coincidental substring must never count as
     evidence.
+
+    This is the plain reading: the words are there. Whether they are the
+    document's own words is :func:`says`, which the routing and status
+    rules use; a file name, being all title, is read with this one.
     """
-    text = text.lower()
-    for pattern in (keyword_pattern(keyword), keyword_pattern(keyword, wrapping=True)):
-        if pattern is None:
-            continue
-        if any(not _joined_to_a_variant(text, keyword, m) for m in re.finditer(pattern, text)):
-            return True
-    return False
+    return next(_occurrences(text.lower(), keyword), None) is not None
 
 
 #: A form number a keyword names is content evidence only where a form
@@ -275,7 +290,7 @@ def contains_keyword(text: str, keyword: str) -> bool:
 #: instructions name "Form 1095-A", every 1099's say "Form 1040-ES", and
 #: those are single mentions of other forms, not the form this is. In the
 #: title as everywhere, a mention counts only when its shape is a form
-#: naming itself, not a sentence about another form (``_mention_weight``):
+#: naming itself, not a sentence about another form (``_weigh_mention``):
 #: the IRS prints an "Attention" page ahead of every information return
 #: that names Form 1099-NEC by way of example, an organizer's first lines
 #: say "attach Form 1098", a bank's letter says "reported on Form
@@ -327,9 +342,9 @@ _SELF_AFTER = re.compile(
 )
 #: A form's number set off from what follows by a dash - "Form 1098 -
 #: Mortgage Interest Statement", "Form 1099-INT - Interest Income" - is
-#: a checklist's line, a menu of forms; no form prints its own title that
-#: way (the title follows its number on the same line or the next, and a
-#: dated footer names the number with its year).
+#: a checklist's line where the page is a menu of forms. A payer's own
+#: substitute form prints its title that way too, so the shape alone is
+#: not the answer: see ``_lists_forms`` and ``_year_beside``.
 _REFERENCE_AFTER = re.compile(
     rf"\s*[,.;)]|{_SAME_LINE}+[{re.escape(_DASH_CHARS)}]{_SAME_LINE}+|"
     r"\s+(?:or|and|line|lines|instructions?|to|if|is|are|was|were|schedule|box|boxes|page|"
@@ -341,33 +356,61 @@ _REFERENCE_AFTER = re.compile(
 #: attach" / "Form 1098 (2025) from each lender", the twelfth reading).
 #: A page footer whose prose above ends in one of these words is read as
 #: a reference too; that costs nothing the corpus shows, since a footer
-#: repeats on every page and the others count.
+#: repeats on every page and the others count. A colon may stand between
+#: the word and the form, because that is how a cover writes it:
+#: "Enclosed: Form 1099-INT", "Re: Forms 1099-INT and 1099-DIV".
 _REFERENCE_BEFORE = re.compile(
     r"(?<![a-z0-9])(?:forms|attach|attached|see|file|files|filed|use|of|on|from|with|to|and|or|a|an|the|"
-    r"include|including|per|report|reported)\s+$"
+    r"include|including|per|report|reported|enclosed|enclosure|enclosures|re)\s*:?\s+$"
 )
-_BEFORE_CHARS = 12   # room for the longest word above and the space after it
+#: A form number that continues a list - ", Form 5498", ", 5498" - is one
+#: of the forms a cover names rather than the form the page is. The last
+#: item of "Enclosed: Form 1099-INT, Form 1098, Form 5498" carries no
+#: punctuation after it, and was read as named in its own right, which
+#: blinded the 1099-INT printed behind it (the thirteenth reading).
+_LIST_CONTINUES = re.compile(rf",{_SAME_LINE}*$")
+_BEFORE_CHARS = 14   # room for the longest word above, its colon and the space after it
+
+#: What decided a mention's weight. The number alone is enough to weigh a
+#: document's forms; the shape is what tells a menu's line from a payer's
+#: own title, and where that line's title begins (``_menu_tails``).
+_BY_PAREN, _BY_TOLD, _BY_LIST, _BY_YEAR = "paren", "told", "list", "year"
+_BY_DASH, _BY_COMMA, _BY_WORD, _BY_NOTHING = "dash", "comma", "word", ""
 
 
-def _mention_weight(text: str, match: re.Match[str], end: int) -> int:
-    """``end`` is where the form number (with its real variant) stops."""
+def _weigh_mention(text: str, match: re.Match[str], end: int) -> tuple[int, str]:
+    """A mention's weight and the shape that decided it.
+
+    ``end`` is where the form number (with its real variant) stops.
+    """
     start = match.start()
     if start > 0 and text[start - 1] == "(":
-        return _REFERENCE_WEIGHT
+        return _REFERENCE_WEIGHT, _BY_PAREN
     # What comes before is read first: "attach Form 1098 (2025)" is told to
     # the reader, year or no year (the tenth reading added the year).
     if _REFERENCE_BEFORE.search(text, max(0, start - _BEFORE_CHARS), start):
-        return _REFERENCE_WEIGHT
+        return _REFERENCE_WEIGHT, _BY_TOLD
+    if _LIST_CONTINUES.search(text, max(0, start - _BEFORE_CHARS), start):
+        return _REFERENCE_WEIGHT, _BY_LIST
     if _SELF_AFTER.match(text, end):
-        return _SELF_WEIGHT
-    if _REFERENCE_AFTER.match(text, end):
-        return _REFERENCE_WEIGHT
-    return _PLAIN_WEIGHT
+        return _SELF_WEIGHT, _BY_YEAR
+    separator = _REFERENCE_AFTER.match(text, end)
+    if separator:
+        return _REFERENCE_WEIGHT, _shape_after(separator.group(0))
+    return _PLAIN_WEIGHT, _BY_NOTHING
 
 
-def _mentions(low: str):
-    """Every form number ``low`` (lower-cased text) mentions, as
-    ``(key, start, weight)``.
+def _shape_after(separator: str) -> str:
+    """Which of ``_REFERENCE_AFTER``'s shapes matched: a dash, a comma, a word."""
+    stripped = separator.strip()
+    if len(stripped) == 1 and stripped in _DASH_CHARS:
+        return _BY_DASH
+    return _BY_COMMA if stripped == "," else _BY_WORD
+
+
+def _mention_span(low: str, match: re.Match[str]) -> tuple[str, str | None, int] | None:
+    """The number, its real variant and where it stops; None for a match
+    that is no mention at all.
 
     A known family (``FORM_VARIANTS``) is a mention bare or after "Form":
     "W-2", "941 for 2026", "Form 1099-DIV". Any other number is one only
@@ -375,26 +418,109 @@ def _mentions(low: str):
     "Form 1125-E" - because a bare 4562 is as likely a year, an OMB number
     or an amount, and "Form 4562 line" is not Form 4562-LINE.
     """
+    number, variant = match.group(1), match.group(2)
+    base = _DASHES.sub("", number)
+    end = match.end()
+    if base in FORM_VARIANTS:
+        if variant and variant not in FORM_VARIANTS[base]:
+            variant, end = None, match.end(1)   # "1040 line" is Form 1040, not a variant
+    else:
+        if not match.group(0).startswith("form"):
+            return None
+        if variant and low[match.start(2) - 1].isspace():
+            variant, end = None, match.end(1)
+    return number, variant, end
+
+
+#: A menu lists. Two or more forms set off from their titles by a dash
+#: within the title window is a checklist ("Form 1099-INT - Interest
+#: Income", "Form 1099-DIV - Dividends and Distributions", ...); one such
+#: line is a payer's own substitute form printing its title the way it
+#: always has, and a year beside the number on its line is that form's
+#: evidence, as a year after the number is (``_SELF_AFTER``). Decision
+#: 69's dash rule alone parked "2025 Form 1099-INT - Interest Income".
+_FORMS_IN_A_MENU = 2
+_LINE_BREAKS = "\r\n\f\v"
+_BREAK_RUN = re.compile(rf"[{re.escape(_LINE_BREAKS)}]+")
+_A_YEAR = re.compile(r"(?<![0-9])(?:19|20)\d{2}(?![0-9])")
+_SPACES = re.compile(rf"{_SAME_LINE}*")
+#: What may stand between the start of a line and a form naming itself: a
+#: bullet or a rule, its own year, and the word "Form" where the year ate
+#: it (``_FORM_MENTION`` reads "2025 form" as a number and its would-be
+#: variant, so the mention that follows begins at the number). A form
+#: prints its number at the head of its title line; "2025 Consolidated
+#: Form 1099 - Account 8812" is a broker's sentence about a family.
+_HEADS_ITS_LINE = re.compile(
+    rf"(?:{_SAME_LINE}|[{re.escape(_DASH_CHARS)}•*|_])*"
+    rf"(?:(?:19|20)\d{{2}}{_SAME_LINE}+)?(?:forms?{_SAME_LINE}+)?"
+)
+
+
+def _line_of(low: str, start: int, end: int) -> tuple[int, int]:
+    """Where the line holding ``low[start:end]`` begins and ends."""
+    left = max(low.rfind(ch, 0, start) for ch in _LINE_BREAKS) + 1
+    right = min((i for i in (low.find(ch, end) for ch in _LINE_BREAKS) if i >= 0), default=len(low))
+    return left, right
+
+
+def _titles_its_own_line(low: str, start: int, end: int) -> bool:
+    """A form number at the head of its line with a year beside it, before
+    or after: "2025 Form 1099-INT - Interest Income", "Form 1098 -
+    Mortgage Interest Statement 2025". That is how a payer prints its own
+    substitute form, and the only shape a dash-set-off number is not a
+    checklist's line in."""
+    left, right = _line_of(low, start, end)
+    if not _HEADS_ITS_LINE.fullmatch(low, left, start):
+        return False
+    return bool(_A_YEAR.search(low, left, start) or _A_YEAR.search(low, end, right))
+
+
+def _lists_forms(low: str) -> bool:
+    """Whether the title window sets ``_FORMS_IN_A_MENU`` forms or more off
+    from their titles with a dash: a menu of forms, not a form."""
+    stop = len(_title(low))
+    listed = 0
+    for match in _FORM_MENTION.finditer(low, 0, stop):
+        span = _mention_span(low, match)
+        if span is None:
+            continue
+        if _weigh_mention(low, match, span[2])[1] == _BY_DASH:
+            listed += 1
+            if listed >= _FORMS_IN_A_MENU:
+                return True
+    return False
+
+
+def _scan(low: str):
+    """Every form number ``low`` (lower-cased text) mentions, as
+    ``(key, start, end, weight, shape)``."""
+    menu = _lists_forms(low)
+    first = True
     for match in _FORM_MENTION.finditer(low):
-        number, variant = match.group(1), match.group(2)
-        base = _DASHES.sub("", number)
-        end = match.end()
-        if base in FORM_VARIANTS:
-            if variant and variant not in FORM_VARIANTS[base]:
-                variant, end = None, match.end(1)   # "1040 line" is Form 1040, not a variant
-        else:
-            if not match.group(0).startswith("form"):
-                continue
-            if variant and low[match.start(2) - 1].isspace():
-                variant, end = None, match.end(1)
-        yield _form_key(number, variant), match.start(), _mention_weight(low, match, end)
+        span = _mention_span(low, match)
+        if span is None:
+            continue
+        number, variant, end = span
+        weight, shape = _weigh_mention(low, match, end)
+        if (shape == _BY_DASH and first and not menu
+                and not _asked_for(low, match.start())
+                and _titles_its_own_line(low, match.start(), end)):
+            weight, shape = _SELF_WEIGHT, _BY_YEAR
+        first = False
+        yield _form_key(number, variant), match.start(), end, weight, shape
+
+
+def _mentions(low: str):
+    """Every form number ``low`` mentions, as ``(key, start, weight)``."""
+    for key, start, _end, weight, _shape in _scan(low):
+        yield key, start, weight
 
 
 def dominant_forms(text: str) -> set[str]:
     """The form number ``text`` is about, normalised (``w2``, ``1099int``),
     as a set of at most one.
 
-    Mentions are weighed by their shape (``_mention_weight``): a form's
+    Mentions are weighed by their shape (``_weigh_mention``): a form's
     own number, dated, on the title and every footer outweighs the other
     forms its instructions quote. The heaviest is its own; among equals,
     the first mentioned. A number that never appears in its own right and
@@ -444,12 +570,110 @@ def _title_forms(low: str) -> set[str]:
     return forms if len(families) < _LIST_OF_FORMS else set()
 
 
+#: The words a document asks for a document with. What one of them
+#: introduces is what the page wants, not what the page is: the firm's own
+#: organizer prints "If yes, attach your brokerage statement and any
+#: realized gain and loss report", and a row that keys on a broker's words
+#: filed the organizer as the client's brokerage statement (the thirteenth
+#: reading). An ask governs the rest of its own sentence, because one ask
+#: names several documents, and the line below it when the ask is what
+#: that line ends with - a request wraps where it will.
+_ASK_WORDS = ("attached", "attach", "provide", "send", "include", "enclosed", "enclose",
+              "upload", "submit", "bring", "list", "see", "copies of", "copy of")
+#: What may stand between an ask and the document it asks for and still
+#: leave the two joined ("attach your", "see the latest", "copies of all").
+_ASK_FILLER = ("most recent", "applicable", "either", "latest", "each", "both", "your",
+               "and", "any", "all", "the", "an", "or", "of", "a")
+_ASKED_FOR = re.compile(rf"(?<![a-z0-9])(?:{'|'.join(_ASK_WORDS)})(?![a-z0-9])")
+#: An ask that ends the line above, with nothing but filler after it: the
+#: request wrapped, and what begins the next line is what it asked for.
+_ASK_WRAPPED = re.compile(
+    rf"(?<![a-z0-9])(?:{'|'.join(_ASK_WORDS)})(?![a-z0-9])(?:\s+(?:{'|'.join(_ASK_FILLER)})(?![a-z0-9]))*\s*$"
+)
+#: Where the sentence an ask began ends. A colon is not an end: it is how
+#: a page introduces what it is asking for ("Please send the following:").
+_SENTENCE_END = re.compile(r"[.?!;]")
+#: How far back an ask is looked for: within its own sentence on its own
+#: line (so a "see" earlier in a form's dense column is not one), and, for
+#: the wrapped shape, the words the line above ends with.
+_ASK_WITHIN = 200
+_WRAP_WITHIN = 40
+
+
+def _ask_window(low: str, start: int) -> int:
+    """Where to start looking back from ``start`` for an ask-word: at most
+    ``_ASK_WITHIN`` characters, no further back than this line, and never
+    past the end of an earlier sentence."""
+    edge = max(0, start - _ASK_WITHIN, _line_of(low, start, start)[0])
+    ends = list(_SENTENCE_END.finditer(low, edge, start))
+    return ends[-1].end() if ends else edge
+
+
+def _asked_for(low: str, start: int) -> bool:
+    """True when what begins at ``start`` is what an ask-word asked for.
+
+    On its own line the ask governs the rest of its sentence, because one
+    ask names several documents; across a line break it governs only the
+    wrap - the ask and its filler ending the line above - because a line
+    further up is another label, not the rest of this request. A tax
+    return's "Attach Forms W-2G and 1099-R if tax was withheld" two lines
+    above its jurat asks for nothing on the jurat's line.
+    """
+    if _ASKED_FOR.search(low, _ask_window(low, start), start):
+        return True
+    return _ASK_WRAPPED.search(low, max(0, start - _WRAP_WITHIN), start) is not None
+
+
+def _menu_tails(low: str) -> set[int]:
+    """Where each menu line's title begins: just past a form number set off
+    from what follows by a dash or a comma.
+
+    A checklist's "Form 1099-B - Proceeds From Broker and Barter Exchange
+    Transactions" names the form and prints its title, and the whole line
+    is the one reference: a keyword that starts there is the menu's word,
+    not a word the document says about itself.
+    """
+    tails = set()
+    for _key, _start, end, weight, shape in _scan(low):
+        if weight != _REFERENCE_WEIGHT or shape not in (_BY_DASH, _BY_COMMA):
+            continue
+        separator = _REFERENCE_AFTER.match(low, end)
+        if separator is None:                      # the shape says it matched
+            continue
+        tail = _SPACES.match(low, separator.end()).end()
+        if not _BREAK_RUN.search(low, end, tail):  # the title is on the form's own line
+            tails.add(tail)
+    return tails
+
+
+def _in_its_own_words(low: str, keyword: str) -> bool:
+    """Whether ``low`` says ``keyword`` the way a document says what it is.
+
+    An occurrence that is a menu line's title (``_menu_tails``) or what an
+    ask-word asked for (``_asked_for``) is a page talking about a document
+    rather than being one. One occurrence that is neither is enough: a
+    document prints its own words plainly somewhere.
+    """
+    tails = None
+    for match in _occurrences(low, keyword):
+        if tails is None:                          # only worth scanning if it is said at all
+            tails = _menu_tails(low)
+        if match.start() in tails or _asked_for(low, match.start()):
+            continue
+        return True
+    return False
+
+
 def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
-    """``contains_keyword`` as content evidence: a form number counts only
-    where the title names it in its own right (``_title_forms``) or as the
-    document's own (dominant) number."""
+    """``contains_keyword`` as content evidence.
+
+    A form number counts only where the title names it in its own right
+    (``_title_forms``) or as the document's own (dominant) number. Every
+    other keyword counts where the document says it in its own words
+    (``_in_its_own_words``) rather than on a menu line or after an ask.
+    """
     if not is_form_number(keyword):
-        return contains_keyword(text, keyword)
+        return _in_its_own_words(text.lower(), keyword)
     if not contains_keyword(text, keyword):
         return False
     bare = _DASHES.sub("", keyword.strip().lower())
@@ -457,6 +681,20 @@ def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
     if key in _title_forms(text.lower()):
         return True
     return key in (dominant_forms(text) if dominant is None else dominant)
+
+
+def any_keyword_matched(text: str, item: RequestItem) -> bool:
+    """Whether the row's any-keywords accept ``text``, apart from every other rule.
+
+    The year a Period implies is a *check* on a document a keyword already
+    matched, never evidence on its own (decision 40). When only that check
+    fails, the row is still the lead a person needs, and this is how
+    :mod:`tracker.router` asks for it without reading a verdict's sentence.
+    """
+    if not item.any_keywords:
+        return False
+    dominant = dominant_forms(text)
+    return any(says(text, k, dominant) for k in item.any_keywords)
 
 
 def evaluate_rules(text: str, item: RequestItem) -> ContentResult:

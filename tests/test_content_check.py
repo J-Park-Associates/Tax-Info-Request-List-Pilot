@@ -375,8 +375,13 @@ def test_a_title_that_lists_three_forms_names_none_of_them():
                  "Form 1099-INT - Interest Income\nForm 1099-DIV - Dividends and Distributions")
     assert _title_forms(checklist.lower()) == set()
     assert not says(checklist, "1098") and not says(checklist, "1099-int")
+    # A transmittal lists its forms with commas, and every form after one
+    # continues the list (the thirteenth reading), which leaves the first
+    # naming itself - and the firm's letter is still none of the rows'
+    # documents, because none of them asks for a W-2 by its number alone.
     transmittal = "Enclosed please find: Form W-2 2025, Form 1098 2025, Form 1099-INT 2025"
-    assert _title_forms(transmittal.lower()) == set()
+    assert _title_forms(transmittal.lower()) == {"w2"}
+    assert not says(transmittal, "1098") and not says(transmittal, "1099-int")
     # Families, not numbers: a broker's consolidated 1099 names the family and
     # its parts and is one family's document, which the rows then contest.
     composite = ("vanguard brokerage services\n2025 consolidated form 1099 - account 8812-4455\n"
@@ -404,6 +409,95 @@ def test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right():
     assert says("Form 1098 Mortgage Interest Statement 2025", "1098")
     assert says("Attached: Form 1099-INT, Form 1098 and W-2 for 2025 tax prep\nForm W-2 Wage and Tax Statement", "w-2")
     assert not says("Subject: Your 2025 Form 1099-R is ready\nForm 5498 IRA Contribution Information 2025", "1099-r")
+
+
+def test_a_single_dash_set_off_form_beside_its_year_names_itself():
+    # Decision 69 made a dash after a form number a checklist's line, which
+    # parked a payer's own substitute form: "2025 Form 1099-INT - Interest
+    # Income" is how a bank prints its title. A menu *lists* - two such
+    # lines or more in the title window - and a single one, dated on its
+    # own line, is a form naming itself.
+    from tracker.content_check import _title_forms, says
+
+    assert says("2025 Form 1099-INT - Interest Income\nAlly Bank  1 Interest income 1,842.55", "1099-int")
+    assert says("Form 1098 - Mortgage Interest Statement  2025\n1 Mortgage interest received 14,220.19", "1098")
+    menu = ("2025 Individual Income Tax Organizer - Interest and Dividend Income\n"
+            "Form 1099-INT - Interest Income\nForm 1099-DIV - Dividends and Distributions")
+    assert _title_forms(menu.lower()) == set()
+    # No year beside it: a checklist's line, as before.
+    assert not says("Income Documents\nForm 1099-INT - Interest Income\nPayer  Amount", "1099-int")
+    # An ask before it is an ask, year or no year.
+    assert not says("2025 Organizer\nPlease attach Form 1098 - Mortgage Interest Statement 2025", "1098")
+
+
+def test_a_form_after_a_comma_continues_a_list():
+    # A cover's last form carries no punctuation after it, so it was read as
+    # named in its own right and blinded the form printed behind it.
+    from tracker.content_check import says
+
+    cover = ("Charles Schwab  2025 Tax Reporting Package\n"
+             "Enclosed: Form 1099-INT, Form 1098, Form 5498\n"
+             "Form 1099-INT Interest Income 2025\n1 Interest income 1,842.55")
+    assert not says(cover, "5498") and not says(cover, "1098")
+    assert says(cover, "1099-int")
+
+
+def test_a_menu_line_names_neither_the_form_nor_its_title():
+    # The form and its title on a checklist line are one reference: the
+    # firm's organizer sets "Form 1099-B" off from "Proceeds From Broker
+    # and Barter Exchange Transactions" with a dash, and the row that keys
+    # on the broker's words filed the organizer page as the client's 1099-B.
+    from tracker.content_check import says
+
+    page = ("2025 Individual Income Tax Organizer - Investment Income\n"
+            "Form 1099-B - Proceeds From Broker and Barter Exchange Transactions\n"
+            "Form 1099-DIV - Dividends and Distributions\n"
+            "Please list every brokerage account below.  Broker  Account number")
+    assert not says(page, "1099-b")
+    assert not says(page, "proceeds from broker")
+    # A comma sets a form off from its title the same way.
+    assert not says("Form 1099-INT, Interest Income\nPayer  Amount", "interest income")
+    # The form's own page is not a menu, so its title is its own.
+    assert says("Form 1099-B Proceeds From Broker and Barter Exchange Transactions 2025\n"
+                "1d Proceeds 24,318.55", "proceeds from broker")
+
+
+def test_a_document_does_not_ask_for_itself():
+    # An ask governs the rest of its sentence, because one ask names several
+    # documents; across a line break it governs only the wrap.
+    from tracker.content_check import says
+
+    organizer = ("2025 Individual Income Tax Organizer - Investment Income\n"
+                 "Did you sell any stocks, bonds or mutual funds in 2025?\n"
+                 "If yes, attach your brokerage statement and any realized gain and loss report.")
+    assert not says(organizer, "brokerage statement")
+    assert not says(organizer, "realized gain and loss")
+    fiduciary = ("2025 Fiduciary Organizer - Investment Income\n"
+                 "Attach the year-end account statement for each brokerage account.\n"
+                 "Attach the realized gain and loss report for the year.")
+    assert not says(fiduciary, "year-end account statement")
+    assert not says(fiduciary, "realized gain and loss")
+    assert not says("Mortgage interest: please attach\nyour brokerage statement", "brokerage statement")
+    # The broker's own statement says it plainly, and a line further up than
+    # the wrap is another label, not the rest of a request: a return's
+    # "Attach Forms W-2G and 1099-R if tax was withheld" two lines above its
+    # jurat asks for nothing on the jurat's line.
+    assert says("Charles Schwab & Co., Inc.\nYear-End Brokerage Statement January 1, 2025 - December 31, 2025\n"
+                "Realized Gain and Loss Summary", "brokerage statement")
+    assert says("Attach Forms W-2G and 1099-R if tax was withheld\n1e Taxable dependent care benefits\n"
+                "Sign Here Under penalties of perjury, I declare", "under penalties of perjury")
+
+
+def test_the_any_keywords_are_read_apart_from_every_other_rule():
+    # The year a Period implies is a check on a document a keyword already
+    # matched, so the router can ask which rows a document's words fit
+    # without reading a verdict's sentence back.
+    from tracker.content_check import any_keyword_matched
+
+    childcare = item(any_keywords=("child care statement",), date_pattern=r"(?i)\b2025\b")
+    assert any_keyword_matched("2024 Child Care Statement", childcare)
+    assert not any_keyword_matched("2024 Tuition Statement", childcare)
+    assert not any_keyword_matched("anything at all", item(required_keywords=("w-2",)))
 
 
 # ------------------------------------------------ a keyword's words on one line ----

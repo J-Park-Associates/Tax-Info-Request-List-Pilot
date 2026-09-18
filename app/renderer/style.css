@@ -505,8 +505,8 @@ body {
 .review { list-style: none; padding: 0 18px 14px; }
 .review li {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  grid-template-areas: "name select keyword button" "why select keyword button";
+  grid-template-columns: 1fr auto auto auto auto;
+  grid-template-areas: "name select keyword file dismiss" "why select note file dismiss";
   column-gap: 10px;
   row-gap: 2px;
   align-items: center;
@@ -527,9 +527,23 @@ body {
   color: var(--text);
 }
 .review select { grid-area: select; max-width: 300px; }
-.review input { grid-area: keyword; width: 190px; }
-.review .r-file { grid-area: button; }
+.review .r-keyword { grid-area: keyword; width: 190px; }
+.review .r-note { grid-area: note; width: 190px; }
+.review .r-file { grid-area: file; }
+.review .r-unfile { grid-area: file; }
+.review .r-dismiss { grid-area: dismiss; }
 .review select:focus-visible, .review input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+/* Set aside, not gone: folded away under its own count, and re-openable. */
+.dismissed { padding: 0 18px 12px; }
+.dismissed > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: var(--subtle);
+  font-size: 12.5px;
+}
+.dismissed > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.dismissed .review { padding: 0; }
 
 /* ── Lock notice + small buttons ─────────────────────────────────────── */
 

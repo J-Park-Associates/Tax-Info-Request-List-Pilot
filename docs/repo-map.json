@@ -13,9 +13,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 88,
-    "edges": 285,
-    "reused": 57
+    "nodes": 98,
+    "edges": 345,
+    "reused": 73
   },
   "node_types": [
     "artifact",
@@ -49,13 +49,22 @@
   ],
   "nodes": [
     {
+      "id": ".github/workflows/build.yml",
+      "type": "workflow",
+      "layer": "ci",
+      "sha256": "1b65dc375ccdcf48",
+      "lines": 148,
+      "role": "Builds the portable package on demand (workflow_dispatch or a `v*` tag) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file and uploads the package as the run's artifact for seven days.",
+      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost."
+    },
+    {
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "905dd83da35b91a3",
-      "lines": 84,
-      "role": "CI: runs the test suite, `repo_map.py check` and `node --check` on the three Electron files, on Linux and Windows, on every push to main and every pull request.",
-      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is in the matrix because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version line is pinned to pyproject's floor by a guard."
+      "sha256": "fd2c5e5f32bb0608",
+      "lines": 100,
+      "role": "CI: runs the test suite, `repo_map.py check`, the vocabulary check, the linter and `node --check` on the three Electron files, on Linux and Windows and on two interpreters, on every push to main and every pull request.",
+      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is in the matrix because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version line is pinned to pyproject's floor by a guard. Decision 78: the matrix carries the interpreter the office runs beside that floor, because the package is frozen on the office's Python and a suite that has never run there proves nothing about it; the four rows are written out one at a time rather than crossed so the floor stays one readable literal for the guard that pins it."
     },
     {
       "id": "rule:no-AI-on-client-documents",
@@ -93,16 +102,23 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9702ab659f30a717",
-      "lines": 731,
+      "sha256": "9ad2054e1888b119",
+      "lines": 875,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
+        "DISMISSED_HEADING",
+        "DISMISS_LABEL",
+        "DISMISS_NOTE_HINT",
         "ENGAGEMENT_FLAG",
+        "FILED_HEADING",
+        "FILE_ANYWAY_LABEL",
         "NAME_PATTERN",
         "NEW_CLIENT_PLACEHOLDER",
         "REPO_ROOT",
         "ROLLOVER_NAME_PATTERN",
+        "UNFILE_LABEL",
+        "UNFILE_NOTE_HINT",
         "default_engagement_name",
         "form_label",
         "main",
@@ -111,17 +127,24 @@
       "constants": {
         "ENGAGEMENT_FLAG": "'--engagement'",
         "NEW_CLIENT_PLACEHOLDER": "'New'",
+        "DISMISS_LABEL": "'Not requested'",
+        "DISMISS_NOTE_HINT": "'why nothing asks for it (optional)'",
+        "DISMISSED_HEADING": "'Not requested ({n})'",
+        "FILE_ANYWAY_LABEL": "'File it anyway'",
+        "UNFILE_LABEL": "'Unfile'",
+        "UNFILE_NOTE_HINT": "'why it is coming back (optional)'",
+        "FILED_HEADING": "'Filed documents ({n})'",
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike. Decision 72: it bounds it through manifest.check_tax_year(), which the rollover's own flag now goes through too. Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends runner.append_log()'s line to the run log and redraws the status page from every engagement under the root, neither taking a lock nor being allowed to fail the pass that has already moved the files - and state reports the page's path, so the shell will open it for the app's Open Status button. Decision 76: dismiss records that no request asks for a parked document and does not re-scan - nothing was filed under a request, so no row's status can have changed. _vocab() carries the new decision under the key 'dismissed', not the word: the renderer may not hold the word 'Requested' in any form (it is manifest.UNSCANNED_LABEL, and the guard that keeps the app from typing a status reads the whole file), and review_labels carries the card's own labels so the renderer types none of them. Decision 77: unfile sends one filed document back for review and returns the rewritten row and state; the scan summary is state's, because summarize() over the rows the re-scan left has one home and a second copy in the payload would be a second answer. The re-scan itself belongs to filer.unfile_document(), not here: the status reverting is part of the correction, not part of being asked over JSON."
     },
     {
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e9ab87cd552e3d89",
-      "lines": 797,
+      "sha256": "3a0b1ba25d1beb83",
+      "lines": 1035,
       "cli": "python -m tracker.content_check",
       "exports": [
         "CACHE_FILENAME",
@@ -135,14 +158,25 @@
         "TITLE_CHARS",
         "XLSX_EXTENSIONS",
         "_APOSTROPHES",
+        "_ASKED_FOR",
+        "_ASK_FILLER",
+        "_ASK_WITHIN",
+        "_ASK_WORDS",
+        "_ASK_WRAPPED",
+        "_A_YEAR",
         "_BEFORE_CHARS",
+        "_BREAK_RUN",
         "_DASHES",
         "_DASH_CHARS",
         "_FAMILY",
+        "_FORMS_IN_A_MENU",
         "_FORM_MENTION",
         "_FORM_NUMBER",
+        "_HEADS_ITS_LINE",
         "_JOINER",
+        "_LINE_BREAKS",
         "_LINE_START",
+        "_LIST_CONTINUES",
         "_LIST_OF_FORMS",
         "_MAX_OCR_PAGES",
         "_MIN_TEXT_CHARS",
@@ -151,7 +185,11 @@
         "_REFERENCE_BEFORE",
         "_SAME_LINE",
         "_SELF_AFTER",
+        "_SENTENCE_END",
+        "_SPACES",
         "_WRAPPING_JOINER",
+        "_WRAP_WITHIN",
+        "any_keyword_matched",
         "check_content",
         "contains_keyword",
         "dominant_forms",
@@ -167,26 +205,28 @@
       ],
       "constants": {
         "CACHE_FILENAME": "'_content_cache.json'",
-        "CACHE_VERSION": "5",
+        "CACHE_VERSION": "6",
         "MAX_PAGES": "10",
         "XLSX_EXTENSIONS": "('xlsx', 'xlsm')",
         "TEXT_EXTENSIONS": "('csv', 'tsv', 'txt')",
         "TITLE_CHARS": "400"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache (CACHE_FILENAME) keeps the verdicts.",
-      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again."
+      "notes": "The cache stores pass/fail only. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again. Decision 73: says() weighs where a plain keyword is said, not only that it is there - an occurrence that is a menu line's title (_menu_tails: a form number and the title a dash or a comma sets off from it are one reference) or what an ask-word asked for (_asked_for: attach, provide, send, see and their kin, governing the rest of their own sentence and the line a request wraps on to) is the page talking about a document rather than being one, and one occurrence that is neither is enough. A dash-set-off form that heads its line with a year beside it, where the title window holds no second such line and no ask precedes it, names itself (_titles_its_own_line), so a payer's substitute form is not read as a checklist. A form number after a comma continues a list (_LIST_CONTINUES), and enclosed/enclosure/enclosures/re: join _REFERENCE_BEFORE, which now reads a colon between the word and the form. any_keyword_matched() answers the router's question 'did this row's keywords match, apart from the year?'. CACHE_VERSION 6."
     },
     {
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3259659bd46735ce",
-      "lines": 1469,
+      "sha256": "2f13e73dfefcb303",
+      "lines": 2039,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
         "AssignResult",
+        "DISMISSED_BY_PERSON",
         "DUPLICATE",
+        "DismissResult",
         "FILED",
         "FileError",
         "FileReport",
@@ -197,25 +237,39 @@
         "INDEX_SHEET",
         "INDEX_SIDECAR_VERSION",
         "IndexEntry",
+        "LEFT_FILED",
+        "MISSING_IN_PBC",
+        "MOVED_FROM_IN_PBC",
+        "MOVED_IN_PBC",
         "NEEDS_REVIEW",
+        "NOT_REQUESTED",
         "REPLACED_IN_PBC",
+        "RESCAN_DEFERRED",
+        "RESCAN_REFUSED",
+        "UNFILED_BY_PERSON",
         "UNTIED_IN_PBC",
+        "UnfileResult",
         "_CANDIDATE_SEP",
         "_HEADER_WITHIN",
         "_LINK_TAGS",
         "_MANDATORY_COLUMNS",
         "_MAX_STEM",
+        "_PARKED",
+        "_PERSONS_DECISIONS",
         "_SIDECAR_ENTRIES_KEY",
         "_SIDECAR_VERSION_KEY",
         "assign_review_file",
+        "dismiss_review_file",
         "file_drops",
         "iter_drops",
+        "missing_in_pbc",
         "numbered",
         "prepared_location",
         "prepared_name_for",
         "read_index",
         "replaced_in_pbc",
         "request_folder",
+        "unfile_document",
         "unfinished_drops",
         "unlistable_folders",
         "unreachable_drops",
@@ -229,12 +283,21 @@
         "FILED": "'Filed'",
         "NEEDS_REVIEW": "'Needs Review'",
         "DUPLICATE": "'Duplicate'",
+        "NOT_REQUESTED": "'Not Requested'",
         "ASSIGNED_BY_PERSON": "'assigned by a person'",
+        "DISMISSED_BY_PERSON": "'not requested, by a person'",
+        "UNFILED_BY_PERSON": "'unfiled by a person'",
         "REPLACED_IN_PBC": "'{location} no longer holds the bytes recorded on {received}; its working copy {prepared} was made from the earlier file - a person should look'",
-        "UNTIED_IN_PBC": "'{location} was recorded without its bytes on {received} and its working copy {prepared} no longer matches it - a person should look'"
+        "MISSING_IN_PBC": "'the original recorded at {location} on {received} is no longer there - deleted, renamed or moved after it was preserved; a person should look'",
+        "MOVED_IN_PBC": "'the original recorded at {location} is now at {now} - the client renamed or moved it and the bytes are the same, so the row follows it'",
+        "MOVED_FROM_IN_PBC": "'the client moved it from {location}, noticed on {found}'",
+        "UNTIED_IN_PBC": "'{location} was recorded without its bytes on {received} and its working copy {prepared} no longer matches it - a person should look'",
+        "LEFT_FILED": "'the working copy {location} no longer holds the bytes this row recorded (annotated, or re-saved) and was left there; {parked} went back to review from the original'",
+        "RESCAN_DEFERRED": "'the manifest is open in Excel; the status went to the sidecar and lands on the next pass'",
+        "RESCAN_REFUSED": "'the status was not put back now ({why}); the next pass does it'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row. Decision 67: bytes recorded late are the working copy's, never the original's as it is now (_record_missing_digests(); assign refuses a replaced original by the parked copy's bytes); a name UTF-8 cannot hold is reported and never sorted (_storable(), in PBC too); write_index() retries and snapshots on any OSError; a link is a mount point or a symlink by reparse tag (_LINK_TAGS), a cloud placeholder is not one; unlistable_folders() reports a folder the run cannot list; PBC is not walked through a link; a failed rollback inside assign is logged and the write's error raised. Decision 68: a row recorded without its bytes is tied to them only while its working copy and its original agree (UNTIED_IN_PBC says the rest every pass); assign moves the parked copy only while it holds the row's bytes; a row is blank when no known column holds anything; unlistable_folders() prunes links, PBC and staging. Decision 69: _read_index_workbook() finds the header row (_MANDATORY_COLUMNS, _HEADER_WITHIN) and refuses a sheet with rows and no header; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's (_copy_taken_by_a_later_row); assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so (AssignResult.left_in_review); unlistable_folders() walks PBC."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row. Decision 67: bytes recorded late are the working copy's, never the original's as it is now (_record_missing_digests(); assign refuses a replaced original by the parked copy's bytes); a name UTF-8 cannot hold is reported and never sorted (_storable(), in PBC too); write_index() retries and snapshots on any OSError; a link is a mount point or a symlink by reparse tag (_LINK_TAGS), a cloud placeholder is not one; unlistable_folders() reports a folder the run cannot list; PBC is not walked through a link; a failed rollback inside assign is logged and the write's error raised. Decision 68: a row recorded without its bytes is tied to them only while its working copy and its original agree (UNTIED_IN_PBC says the rest every pass); assign moves the parked copy only while it holds the row's bytes; a row is blank when no known column holds anything; unlistable_folders() prunes links, PBC and staging. Decision 69: _read_index_workbook() finds the header row (_MANDATORY_COLUMNS, _HEADER_WITHIN) and refuses a sheet with rows and no header; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's (_copy_taken_by_a_later_row); assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so (AssignResult.left_in_review); unlistable_folders() walks PBC. Decision 72: the rows above the header row are data too (a sort with 'my data has headers' unchecked puts the header last or in the middle, and everything above it was dropped in silence) - only a row with no mandatory column filled is a typed title, and a pass that found rows above the header logs how many; the index's sheet is chosen by the header, not wb.active (_sheet_with_the_header(); a renamed tab beside a person's own empty tab read as no rows and the next write rebuilt the workbook over both), and _index_workbook() rewrites only that sheet in the workbook already there, so a sheet a person added survives; a recorded original that has left PBC/ is reported every pass (missing_in_pbc(), MISSING_IN_PBC) and, where a stray carries its bytes, the row follows the file instead of a Duplicate row being written (_follow_moved_originals(), MOVED_IN_PBC; a row with no digest is never relocated); _storable() also refuses a name openpyxl cannot write (a control character, reachable on POSIX); the tidy-up (the content cache, _prune_empty_dirs()) runs on a pass with nothing to sort, and the sort loop is _sort_all(); the assign rollback puts back a parked copy a reused attempt's copy stood in for. Decision 76: dismiss_review_file() is the other thing a person may do to a parked row - it rewrites it NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing at all, because a document the client sent is never deleted over a decision about the request list. _find_parked() takes a dismissed row too, so filing it is the undo and there is no second path; known (the duplicate test) already held it, so the same bytes sent again are a Duplicate rather than a second review item; _by_a_person() is the one reading of who decided a row, and read_index()'s snapshot merge keeps either decision over a workbook Excel saved stale. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with no identifier and the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself) so the request reverts with its regression note; the alternative people had was dragging the file in Explorer, which the index never learns. A working copy that is no longer the row's bytes is left in the request folder and said out loud (LEFT_FILED), the way assign leaves an annotated parked copy. _the_later_row() is how the snapshot merge tells which of two rows for one original was written last - the later one carries the other's whole Reason inside its own - because an unfiled row is parked again and 'the workbook still shows it parked' had stopped meaning 'before the decision'."
     },
     {
       "id": "tracker/locking.py",
@@ -275,8 +338,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c8a1fb796470ffdf",
-      "lines": 1211,
+      "sha256": "b825a67691bd72c3",
+      "lines": 1234,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -334,6 +397,7 @@
         "WINDOWS_ILLEGAL_CHARS_TEXT",
         "YEAR_MAX",
         "YEAR_MIN",
+        "YEAR_OUT_OF_RANGE",
         "YEAR_PATTERN",
         "YES",
         "_COLUMN_WIDTHS",
@@ -346,7 +410,9 @@
         "as_text",
         "atomic_replacement",
         "check_manifest",
+        "check_tax_year",
         "create_template",
+        "csv_tuple",
         "derived_date_pattern",
         "detect_year",
         "engagement_sheet_note",
@@ -394,6 +460,7 @@
         "NO_DATE_CHECK": "'*'",
         "YEAR_MIN": "1900",
         "YEAR_MAX": "2099",
+        "YEAR_OUT_OF_RANGE": "'Tax year must be between {minimum} and {maximum}, got {year}'",
         "DATE_FORMAT": "'yyyy-mm-dd'",
         "ISO_DATE_HINT": "'YYYY-MM-DD'",
         "UNSCANNED_LABEL": "'Requested'",
@@ -412,7 +479,7 @@
         "BARE_FORM_NUMBER_WARNING": "\"Row {row} ({identifier}): the keyword '{keyword}' matches only that form, not its variants such as {example}; list the forms this request means\""
       },
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
-      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check. Decision 55: check_manifest() warns when a keyword is a bare family number (FORM_FAMILIES). Decision 58: as_text() keeps a value written from data a string; an empty note replaces the old one; check_manifest() warns on a keyword with no letters or digits (EMPTY_KEYWORD_WARNING). Decision 59: atomic_replacement() never lets the temp's removal mask the write's own error; create_template() saves atomically. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 66: the Engagement sheet's text cells go through as_text() too. Decision 68: with_pending() matches identifiers without case, as load_manifest() does."
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check. Decision 55: check_manifest() warns when a keyword is a bare family number (FORM_FAMILIES). Decision 58: as_text() keeps a value written from data a string; an empty note replaces the old one; check_manifest() warns on a keyword with no letters or digits (EMPTY_KEYWORD_WARNING). Decision 59: atomic_replacement() never lets the temp's removal mask the write's own error; create_template() saves atomically. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 66: the Engagement sheet's text cells go through as_text() too. Decision 68: with_pending() matches identifiers without case, as load_manifest() does. Decision 72: csv_tuple() takes a list or tuple as the list it already is (a spec's [\"pdf\"] stringified to one extension called ['pdf'], and every document parked against that row), and tracker.templates reads spec fields through it; check_tax_year() is the one bound on a tax year (YEAR_OUT_OF_RANGE), used by the wizard and the rollover alike."
     },
     {
       "id": "tracker/reasons.py",
@@ -488,8 +555,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "47d7a92326d91505",
-      "lines": 596,
+      "sha256": "55cc23765e17d107",
+      "lines": 631,
       "cli": "python -m tracker.reminder",
       "exports": [
         "BOTH_DRAFTS_EDITED",
@@ -546,14 +613,14 @@
         "SECTION_FAILED": "'RECEIVED, BUT WE COULD NOT USE IT'"
       },
       "role": "Drafts the client chase email from a scanned manifest. Draft only \u2014 there is no SMTP anywhere in this module.",
-      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Overlays pending_updates() from the manifest sidecar before triaging, so a scan that Excel kept from writing still stops the draft asking for a document that arrived. Reads the Engagement sheet itself for client, link, due, sender and firm; keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing. Decision 62: EXTENSION_ASK names the row's own file types; --write preserves edits."
+      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Overlays pending_updates() from the manifest sidecar before triaging, so a scan that Excel kept from writing still stops the draft asking for a document that arrived. Reads the Engagement sheet itself for client, link, due, sender and firm; keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing. Decision 62: EXTENSION_ASK names the row's own file types; --write preserves edits. Decision 76: count_needs_review() is still the folder's count (a file dragged in by hand has no row and is nobody's decision yet) less the working copies whose newest index row is filer.NOT_REQUESTED - the warning is there for documents nobody has looked at, and a person has looked at those. An index it cannot read leaves every file counted."
     },
     {
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3a227b4f64d601c0",
-      "lines": 409,
+      "sha256": "59a80b067918f64c",
+      "lines": 417,
       "cli": "python -m tracker.rollover",
       "exports": [
         "CARRIED_HEADERS",
@@ -579,14 +646,14 @@
         "UNFILED_HEADING": "'Sent last year but never filed \u2014 check these are covered:'"
       },
       "role": "Builds a returning client's next-year request list from their prior engagement. Prior-year data always wins; the template may only fill blanks.",
-      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other. Derived year checks are left blank in the new manifest; the shifted Period derives them again. Decision 56: reads the prior year's manifest with_pending(), quarantining nothing. Decision 61: every Carried Forward cell is text. Decision 67: a template row is the prior's row whatever its case (load_manifest() compares identifiers without it); the Carried Forward widths are set by column letter. Decision 69: roll_forward() refuses a target year not after the prior's."
+      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api no longer import each other. Derived year checks are left blank in the new manifest; the shifted Period derives them again. Decision 56: reads the prior year's manifest with_pending(), quarantining nothing. Decision 61: every Carried Forward cell is text. Decision 67: a template row is the prior's row whatever its case (load_manifest() compares identifiers without it); the Carried Forward widths are set by column letter. Decision 69: roll_forward() refuses a target year not after the prior's. Decision 72: and one outside YEAR_MIN..YEAR_MAX, through manifest.check_tax_year(), as the wizard's box does."
     },
     {
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b33897221c4cef6b",
-      "lines": 370,
+      "sha256": "2df4c0f865858ba8",
+      "lines": 392,
       "cli": "python -m tracker.router",
       "exports": [
         "AMBIGUOUS",
@@ -613,30 +680,48 @@
         "CONTESTED_PREFIX": "'looks like'"
       },
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, then filename (text-less scans only), then OCR on required keywords only.",
-      "notes": "Reads the document through content_check.extract() - the scanner's reading - and leaves its per-row verdicts in the content cache keyed by content, so the scan finds them under the working copy's name. A scan whose name routes it is not OCR'd; one whose name says nothing is, and OCR text routes only on required keywords - an any-keyword match on OCR text is OCR_ONLY, a lead for a person, because a misread word is how a document lands under the wrong request. One PdfVerdictCache per file (or the caller's) so a PDF is parsed once, not once per row. The CLI (python -m tracker.router <engagement> <files>) says where each file would go and why, moving nothing. Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched. Decision 55: _filename_hit() is contains_keyword() over the name; a text layer extract() marked needs_ocr is no text at all, so a multi-page scan routes by its name. Decision 58: no run-together fallback; the keyword pattern already reads a dash or space as optional."
+      "notes": "Reads the document through content_check.extract() - the scanner's reading - and leaves its per-row verdicts in the content cache keyed by content, so the scan finds them under the working copy's name. A scan whose name routes it is not OCR'd; one whose name says nothing is, and OCR text routes only on required keywords - an any-keyword match on OCR text is OCR_ONLY, a lead for a person, because a misread word is how a document lands under the wrong request. One PdfVerdictCache per file (or the caller's) so a PDF is parsed once, not once per row. The CLI (python -m tracker.router <engagement> <files>) says where each file would go and why, moving nothing. Extension alone never routes. A document matching one row's required keywords but failing its other rules is contested and blocks its own filing \u2014 misfiling a tax document is worse than not filing it. When nothing routes, the reason is the most useful one available: a document whose content fits a row that refused the file (size floor, type, unreadable PDF) is reported as CONTESTED_PREFIX, and a file every row refused for the same reason carries that reason. The filename fallback also accepts the run-together spelling (W2 for W-2) as a whole token. Eligibility is has_routing_rules(): keywords or a typed year; a year derived from Period only checks a document a keyword already matched. Decision 55: _filename_hit() is contains_keyword() over the name; a text layer extract() marked needs_ocr is no text at all, so a multi-page scan routes by its name. Decision 58: no run-together fallback; the keyword pattern already reads a dash or space as optional. Decision 73: a row whose any-keywords all matched and whose year alone failed is remembered as a lead, and a file that would otherwise be parked with 'matched no request' is parked as 'looks like J01 (expected period not found ...)' with J01 as its candidate - the sentence a contested file gets, so the reminder asks the client about the period. A lead pre-empts no filing, unlike a required-keyword match, so the decision is exactly as it was; only the reason and the candidates improve."
     },
     {
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c8d4d7638f7c92dd",
-      "lines": 544,
+      "sha256": "73725bdcd43513ac",
+      "lines": 851,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
+        "DEFERRED_INDEX",
+        "DEFERRED_STATUSES",
         "DRAFT_DAY_NAME",
         "DRAFT_WEEKDAY",
         "EngagementRun",
         "LOG_FILENAME",
         "LOG_FLAG",
+        "MANIFEST_UNREADABLE",
         "NOTHING_OUTSTANDING",
+        "ParkedFile",
         "REMINDERS_ALWAYS",
         "REMINDERS_AUTO",
         "REMINDERS_NEVER",
         "REMINDER_MODES",
+        "REVIEW_COLUMNS",
         "RUNNER_MODE_FLAG",
         "RunReport",
+        "SKIP_INACTIVE",
+        "STATUS_COLUMNS",
+        "STATUS_ENGAGEMENTS_HEADING",
+        "STATUS_GENERATED",
+        "STATUS_INDEX_UNREADABLE",
+        "STATUS_NOTHING_PARKED",
+        "STATUS_NOT_PASSED",
+        "STATUS_NO_PROBLEMS",
+        "STATUS_PAGE_FILENAME",
+        "STATUS_PROBLEMS_HEADING",
+        "STATUS_REVIEW_HEADING",
         "WEEKDAY_NAMES",
+        "_DEFERRED_SEP",
+        "_STATUS_STYLE",
         "append_log",
         "format_report",
         "is_draft_day",
@@ -645,7 +730,10 @@
         "main",
         "run_engagement",
         "run_registry",
-        "should_draft"
+        "should_draft",
+        "skipped_because",
+        "status_report",
+        "write_status_page"
       ],
       "constants": {
         "DRAFT_WEEKDAY": "5",
@@ -654,13 +742,26 @@
         "REMINDERS_ALWAYS": "'always'",
         "REMINDERS_NEVER": "'never'",
         "LOG_FILENAME": "'runs.log'",
+        "STATUS_PAGE_FILENAME": "'status.html'",
         "LOG_FLAG": "'--log'",
         "DATE_FLAG": "'--date'",
         "RUNNER_MODE_FLAG": "'--run'",
-        "NOTHING_OUTSTANDING": "'nothing outstanding; no reminder needed'"
+        "NOTHING_OUTSTANDING": "'nothing outstanding; no reminder needed'",
+        "MANIFEST_UNREADABLE": "'manifest could not be read: {problem}'",
+        "STATUS_GENERATED": "'Generated {stamp}'",
+        "STATUS_ENGAGEMENTS_HEADING": "'Engagements'",
+        "STATUS_REVIEW_HEADING": "'Waiting for a person'",
+        "STATUS_PROBLEMS_HEADING": "'Problems'",
+        "STATUS_NOTHING_PARKED": "'Nothing is waiting for a person.'",
+        "STATUS_NO_PROBLEMS": "'Nothing failed.'",
+        "STATUS_NOT_PASSED": "'not this pass'",
+        "STATUS_INDEX_UNREADABLE": "'{label}: the index could not be read ({error})'",
+        "DEFERRED_INDEX": "'index rows'",
+        "DEFERRED_STATUSES": "'statuses'",
+        "REVIEW_COLUMNS": "('Received', 'Engagement', 'File the client sent', 'Reason', 'Candidates')"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57/60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) so it is neither stale nor a missed week. Decision 58: a draft day with nothing to chase retires the run's own unedited draft (_retire_stale_drafts()); an edited one is left as it is. Decision 60: _refresh_stale_draft() rewrites the run's own unedited draft on a quiet draft day. Decision 67: main() reconfigures stdout and stderr to replace what the console cannot encode, so a client's file name never turns a finished run into a traceback. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57/60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) so it is neither stale nor a missed week. Decision 58: a draft day with nothing to chase retires the run's own unedited draft (_retire_stale_drafts()); an edited one is left as it is. Decision 60: _refresh_stale_draft() rewrites the run's own unedited draft on a quiet draft day. Decision 67: main() reconfigures stdout and stderr to replace what the console cannot encode, so a client's file name never turns a finished run into a traceback. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run - the practice on one page, drawn from a report rather than from a fresh pass. status_report() folds the runs just made into every engagement the registry found and reads the rest (manifest and sidecar, no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; write_status_page() escapes every value, fetches nothing and takes no lock, and reads each engagement's index for the review queue. skipped_because() is the one wording of why an engagement is passed over, shared with _worth_a_pass(); EngagementRun.last_pass is None on a row the page read rather than ran."
     },
     {
       "id": "tracker/scaffold.py",
@@ -800,13 +901,20 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "014cabbdf8d5bc75",
-      "lines": 163,
+      "sha256": "0356af6641b34de4",
+      "lines": 199,
       "cli": "python -m tracker.settings",
       "exports": [
+        "COLUMN_CATALOG",
+        "COLUMN_EXPECTED",
+        "COLUMN_FILE",
+        "COLUMN_YEAR",
         "ENV_PRODUCT_NAME",
+        "ENV_REAL_CORPUS",
         "ENV_SETTINGS_DIR",
         "EXAMPLE_ROOT",
+        "EXPECTATIONS_COLUMNS",
+        "EXPECTATIONS_FILENAME",
         "KEY_CLIENTS_ROOT",
         "KEY_FIRM",
         "PACKAGE_JSON",
@@ -816,6 +924,7 @@
         "clients_root",
         "firm",
         "product_name",
+        "real_corpus_dir",
         "set_clients_root",
         "set_firm",
         "settings_dir",
@@ -828,17 +937,23 @@
         "SET_ROOT_HINT": "'python -m tracker.settings <folder>'",
         "EXAMPLE_ROOT": "'D:\\\\OneDrive\\\\Clients'",
         "ENV_SETTINGS_DIR": "'TRACKER_SETTINGS_DIR'",
-        "ENV_PRODUCT_NAME": "'TRACKER_PRODUCT_NAME'"
+        "ENV_PRODUCT_NAME": "'TRACKER_PRODUCT_NAME'",
+        "ENV_REAL_CORPUS": "'TRACKER_REAL_CORPUS'",
+        "EXPECTATIONS_FILENAME": "'expectations.csv'",
+        "COLUMN_FILE": "'file'",
+        "COLUMN_CATALOG": "'catalog'",
+        "COLUMN_YEAR": "'year'",
+        "COLUMN_EXPECTED": "'expected'"
       },
-      "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root and the firm are kept. clients_root()/set_clients_root(), firm()/set_firm(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is.",
-      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through manifest.write_json_atomically(): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root."
+      "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root and the firm are kept. clients_root()/set_clients_root(), firm()/set_firm(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is. ENV_REAL_CORPUS and real_corpus_dir() name the other folder outside the repository: the firm's own redacted documents, with the expectations file's name and columns beside them.",
+      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through manifest.write_json_atomically(): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement."
     },
     {
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ea0badb31196b6cd",
-      "lines": 362,
+      "sha256": "bb7eb141d3e228a6",
+      "lines": 430,
       "exports": [
         "AS_OF_YEAR_END",
         "BASE_YEAR",
@@ -867,7 +982,7 @@
         "KEYWORD_DEFAULT_NOTE": "'defaults to the document name'"
       },
       "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword rules that recognise each document. The ONLY source of truth for the checklists; the wizard and the rollover read it directly.",
-      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check. Decision 60: a catalog keyword is the form's own title or a phrase only it carries, never a word other forms print about it (a 1040 says W-2; a 1095-C says Marketplace). Decision 62: every catalog row keys on the document's own title phrase; tests/test_catalog.py routes reconstructions of the real forms against every catalog. Decision 63: the prior-year return rows require their form number and title, so a return wins over its schedules' lines. Decision 64: the return rows require their title phrase, not their number; the K-1 row keys on the K-1's title; tests/irs/ (the IRS's own forms) and tests/test_irs_forms.py route them all. Decision 65: every prior-year return row requires the jurat; schedule rows key on their titles, not on account names. Decision 66: no row keys on a line every return prints (dividends and distributions, ownership percentage, donation) or the organizer asks (child care provider); the receipt, list and childcare rows key on those documents' own titles. Decision 67: the receipt row does not key on contribution statement (an IRA's, a 529's); the childcare row knows the provider's statement; the estimated tax row keys on a voucher's own lines (its numbered heading, the amount line), not the booklet's prose. Decision 68: the receipt row keys on receipt wording only (a pledge, a thank-you and the firm's letter are not receipts); the estimated tax row knows the state voucher; the childcare row does not take an FSA administrator's statement. Decision 69: the receipt row keys on words only a charity prints; no form 540-es; L01 has no tuition statement (a checklist's line, a university's bill)."
+      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check. Decision 60: a catalog keyword is the form's own title or a phrase only it carries, never a word other forms print about it (a 1040 says W-2; a 1095-C says Marketplace). Decision 62: every catalog row keys on the document's own title phrase; tests/test_catalog.py routes reconstructions of the real forms against every catalog. Decision 63: the prior-year return rows require their form number and title, so a return wins over its schedules' lines. Decision 64: the return rows require their title phrase, not their number; the K-1 row keys on the K-1's title; tests/irs/ (the IRS's own forms) and tests/test_irs_forms.py route them all. Decision 65: every prior-year return row requires the jurat; schedule rows key on their titles, not on account names. Decision 66: no row keys on a line every return prints (dividends and distributions, ownership percentage, donation) or the organizer asks (child care provider); the receipt, list and childcare rows key on those documents' own titles. Decision 67: the receipt row does not key on contribution statement (an IRA's, a 529's); the childcare row knows the provider's statement; the estimated tax row keys on a voucher's own lines (its numbered heading, the amount line), not the booklet's prose. Decision 68: the receipt row keys on receipt wording only (a pledge, a thank-you and the firm's letter are not receipts); the estimated tax row knows the state voucher; the childcare row does not take an FSA administrator's statement. Decision 69: the receipt row keys on words only a charity prints; no form 540-es; L01 has no tuition statement (a checklist's line, a university's bill). Decision 72: item_from_spec() reads a spec's lists through manifest.csv_tuple(), the one parser, rather than a copy of it. Decision 73: the shared estimated-tax row is two rows, because an individual's 1040-ES voucher is not a corporation's record (business_estimated_tax keys on corporation estimated tax, estimated tax voucher, estimated payments made); the December bank row does not key on statement of account (a credit-card issuer's and a broker's heading) and takes a workbook, as the reconciliation it asks for arrives; the property tax row keys on the bill's own titles, not on assessor, parcel number or property tax bill (an assessor's notice and a servicer's escrow analysis print those); D01 drops thank you for your donation (every fundraiser's salutation); I01 drops advance payment of premium tax credit (a marketplace notice's sentence); J01 keys on child care/day care spellings with the run-together copies deleted, since the matcher reads the space as optional; 1041 A01 names the kind of trust (an IRA custodian's paperwork is a Trust Agreement too), B02 drops year-end account statement (a bank's heading), C01 drops distribution schedule (a mutual fund's), E01 knows stepped-up basis; 990 C02 keys on the schedule's own title rather than compensation of officers (Part VII's line and the Statement of Functional Expenses', which is now a financial statement's title), D02 on grants made rather than a bare grantee (a letter the charity received) or grants paid (the 990-PF's line 25), E01 without program description (a grant proposal's); the xlsx-only rows and the loans row take the format a client really sends, and officer_comp drops form 1125-e with it (the blank IRS form parks)."
     },
     {
       "id": "tracker/validators.py",
@@ -945,17 +1060,17 @@
       "id": "app/renderer/app.js",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "f12d44cc1dcc2d63",
-      "lines": 700,
+      "sha256": "4e89e8bdd30872db",
+      "lines": 808,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.",
-      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns."
+      "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file."
     },
     {
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "52aca3086f299045",
-      "lines": 256,
+      "sha256": "5851ff4a969d652c",
+      "lines": 271,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files."
     },
     {
@@ -969,16 +1084,16 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "97cf645d57cde7b7",
-      "lines": 559,
+      "sha256": "e36f16d3d1d08b23",
+      "lines": 573,
       "role": "Desktop app styling."
     },
     {
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2eea862d26339099",
-      "lines": 142,
+      "sha256": "b1a9d1f4fc0c019e",
+      "lines": 209,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -986,42 +1101,60 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "aa87bc2f7a04ce50",
-      "lines": 287,
+      "sha256": "39371a475a28c5d7",
+      "lines": 332,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7a8c238cd1ff65ba",
-      "lines": 273,
+      "sha256": "55cc6c003739d862",
+      "lines": 288,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
+    },
+    {
+      "id": "docs/backtest-baseline.json",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "13d881dc43bff282",
+      "lines": 7,
+      "role": "The one number the backtest commits: how often the router filed the firm's own sorted documents where a person filed them, the count it was measured over, and the day it was measured.",
+      "notes": "Decision 74. Owned by tools/backtest.py; `record` writes it and `check` fails a report below it. It ships with no agreement recorded, and `check` then says plainly that the owner has not yet run the backtest at the office and exits 0 - an unknown baseline is never reported as a met one. It holds a number and a date and nothing a client could be read out of."
     },
     {
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0604d11baf729359",
-      "lines": 486,
+      "sha256": "1734d9ff5cac3f3e",
+      "lines": 586,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
+    },
+    {
+      "id": "docs/runbook.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "fe53db0dde19fead",
+      "lines": 241,
+      "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
+      "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
     {
       "id": "docs/vocab-coverage.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2c57b923b27af235",
-      "lines": 5335,
+      "sha256": "2ca078cf38362c7f",
+      "lines": 7497,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
     {
       "id": "docs/vocab-coverage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "07d419f5546d2501",
-      "lines": 923,
+      "sha256": "18bf663edb110d15",
+      "lines": 685,
       "role": "The vocabulary coverage report as people read it: the unreached keywords, the keywords reached only by documents that file elsewhere, the rows nothing files into, then every catalog row by row. Generated by tools/vocab_report.py; never edited by hand.",
       "notes": "Rebuilt with `python tools/vocab_report.py build` in the same commit as a catalog, matcher or case change."
     },
@@ -1029,8 +1162,8 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4a5082c6a6da37cb",
-      "lines": 90,
+      "sha256": "66eb22820387a3f4",
+      "lines": 118,
       "role": "How the day-to-day workflow runs."
     },
     {
@@ -1104,10 +1237,10 @@
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "7136ce5da10643c4",
-      "lines": 87,
+      "sha256": "c2df60dced58e76b",
+      "lines": 101,
       "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements-build.txt, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
-      "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block."
+      "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block. Decision 78: every exit goes through one `:wait` label, which pauses for the person who double-clicked unless TRACKER_BUILD_NONINTERACTIVE is set - the one switch, named in this file's header and read nowhere else, and what lets .github/workflows/build.yml run this file rather than a copy of it."
     },
     {
       "id": "Start App.bat",
@@ -1188,16 +1321,26 @@
       "role": "The drafted chase email, waiting for a person to read, edit and send. Carries a fingerprint so the weekly job can tell whether it has been edited."
     },
     {
+      "id": "artifact:status.html",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The practice on one page, in the clients root beside the run log: every engagement with what it owes, the review queue across all of them newest first, and everything that failed. Written by every real pass (STATUS_PAGE_FILENAME in tracker/runner.py) and by the app's own pass; read by a person, who opens it from the clients folder or with the app's Open Status button. One self-contained file - no script, nothing fetched - because it names client files. Never on a dry run."
+    },
+    {
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1a79c5d4c0f08f5e",
-      "lines": 241,
+      "sha256": "e7b71910916c8021",
+      "lines": 296,
       "exports": [
         "DEMO_ITEMS",
         "PRIOR_YEAR",
+        "SCRATCH_CLIENT",
+        "SCRATCH_ENGAGEMENT",
+        "SCRATCH_FIRM",
         "YEAR",
         "build_samples",
+        "build_scratch_root",
         "col",
         "donations_xlsx",
         "form_1098_lines",
@@ -1205,16 +1348,23 @@
         "listing_denied",
         "prior_return_lines",
         "row",
+        "sheet_xlsx",
         "text_pdf",
         "w2_lines"
-      ]
+      ],
+      "constants": {
+        "SCRATCH_CLIENT": "'John A. Smith'",
+        "SCRATCH_FIRM": "'Example CPA'"
+      },
+      "role": "The pile of client documents the suite starts from, built from nothing: text_pdf() prints lines to a real one-page PDF, sheet_xlsx() writes rows to a real workbook, and build_samples() assembles the drop folder a client would leave (a duplicate, last year's form, a Word file, a Google Sheets shortcut, a photo, a half-uploaded temp file).",
+      "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift."
     },
     {
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c57b999496117deb",
-      "lines": 680,
+      "sha256": "a221d40d730a17c8",
+      "lines": 805,
       "exports": [
         "demo_root",
         "run",
@@ -1237,6 +1387,8 @@
         "test_create_will_not_overwrite_an_existing_engagement",
         "test_create_with_no_name_builds_one_that_stays_under_the_root",
         "test_create_writes_the_engagement_sheet_the_scheduled_run_reads",
+        "test_dismiss_records_that_nothing_asks_for_a_parked_document",
+        "test_dismiss_refuses_a_file_the_index_does_not_know",
         "test_every_chip_class_the_vocabulary_implies_exists_in_the_stylesheet",
         "test_install_schedule_defaults_come_from_scheduling",
         "test_install_schedule_uses_the_same_root_as_the_app",
@@ -1247,18 +1399,23 @@
         "test_rollover_refuses_a_missing_prior",
         "test_rollover_retires_the_prior_in_the_priors_list",
         "test_set_root_records_the_folder_the_job_will_walk",
+        "test_state_carries_the_path_of_the_practices_status_page",
         "test_state_reads_a_corrupt_sidecar_without_moving_it",
         "test_state_shows_statuses_a_locked_excel_deferred",
         "test_state_shows_the_lock_and_unlock_clears_only_a_stale_one",
         "test_templates_carries_the_calendars_default_year",
         "test_templates_lists_every_form_with_its_checklist",
+        "test_the_apps_pass_appends_the_line_the_scheduled_run_appends",
         "test_the_apps_pass_is_the_runners_pass",
+        "test_the_apps_pass_regenerates_the_practices_status_page",
         "test_the_engagement_flag_needs_a_folder_under_the_root",
         "test_the_firm_is_typed_once_in_settings_and_signs_every_engagement",
         "test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label",
         "test_the_packaged_app_installs_a_schedule_against_its_own_executable",
         "test_the_renderer_gets_its_vocabulary_from_the_api",
         "test_the_tax_year_is_within_the_bounds_the_wizard_shows",
+        "test_unfile_refuses_what_is_not_filed",
+        "test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it",
         "test_unknown_command_is_a_json_error",
         "test_without_a_root_the_app_is_told_to_set_one"
       ]
@@ -1277,14 +1434,101 @@
       ]
     },
     {
+      "id": "tests/test_backtest.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "32c805f15551bd2f",
+      "lines": 300,
+      "exports": [
+        "CLIENT_FOLDER",
+        "EMPLOYEE",
+        "EMPLOYER",
+        "PARKING_FILE",
+        "REPO",
+        "SECRETS",
+        "W2_FILE",
+        "YEAR",
+        "_UNWATCHED",
+        "a_report",
+        "expectations_for",
+        "repository_snapshot",
+        "run",
+        "test_a_disagreement_is_reported_as_the_pair_it_is",
+        "test_a_document_is_routed_by_its_text_and_never_by_its_own_name",
+        "test_a_document_with_no_text_layer_is_counted_apart_and_is_not_parked",
+        "test_a_row_naming_a_document_that_is_not_there_is_reported_by_its_number",
+        "test_check_fails_below_the_baseline_and_passes_at_or_above_it",
+        "test_check_says_plainly_that_nobody_has_measured_when_no_baseline_is_recorded",
+        "test_collect_refuses_to_overwrite_an_expectations_file",
+        "test_collect_writes_a_skeleton_with_a_blank_answer_and_the_folder_as_the_hint",
+        "test_collect_writes_only_documents_a_catalog_would_look_at",
+        "test_documents_filed_where_the_router_would_file_them_score_full_agreement",
+        "test_record_writes_the_agreement_as_the_number_to_beat",
+        "test_the_committed_baseline_records_no_agreement_until_the_office_run",
+        "test_the_name_documents_are_routed_under_reaches_no_keyword_in_any_catalog",
+        "test_the_report_and_the_console_name_no_file_and_no_folder",
+        "test_the_slowest_documents_are_named_by_row_number_and_nothing_else",
+        "test_the_tool_writes_nothing_under_the_repository_root",
+        "two_documents"
+      ],
+      "constants": {
+        "YEAR": "2025",
+        "CLIENT_FOLDER": "'Aardvark Holdings LLC'",
+        "W2_FILE": "'Zebediah W-2 2025.pdf'",
+        "PARKING_FILE": "'Zebediah extension 2025.pdf'",
+        "EMPLOYER": "'Aardvark Holdings LLC'",
+        "EMPLOYEE": "'Zebediah Quill'"
+      },
+      "role": "Guards the backtest: a document is routed by its text and never by its name, a file with no text layer is counted apart rather than parked, the report and the console carry no file or folder name, the skeleton is blank with the request folder as the hint and is never overwritten, and an unrecorded baseline is said rather than passed.",
+      "notes": "Decision 74. The corpus it scores is built with tests/samples.py in a temporary folder, because no client document is in the repository or ever will be. It also pins the two things the hiding rests on: the neutral name reaches no keyword in any shipped catalog, and a whole pass writes nothing under the repository root."
+    },
+    {
+      "id": "tests/test_build.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "9beed4df23116fb4",
+      "lines": 147,
+      "exports": [
+        "BUILD_SCRIPT",
+        "BUILD_WORKFLOW",
+        "REPO",
+        "commands",
+        "fired_at_the_frozen_executable",
+        "office_python",
+        "read",
+        "test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk",
+        "test_both_workflows_name_the_one_interpreter_the_office_runs",
+        "test_the_build_workflow_is_never_run_per_commit",
+        "test_the_build_workflow_runs_the_repositorys_own_build_script",
+        "test_the_smoke_checks_drive_the_frozen_entry_by_the_flags_the_code_owns",
+        "test_the_smoke_checks_pass_the_environment_the_electron_shell_passes",
+        "test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads",
+        "test_the_workflow_types_no_path_the_build_script_or_the_shell_owns",
+        "workflow"
+      ],
+      "constants": {
+        "BUILD_WORKFLOW": "'build.yml'",
+        "BUILD_SCRIPT": "'Build App.bat'"
+      },
+      "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down.",
+      "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can."
+    },
+    {
       "id": "tests/test_catalog.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "095e6b5b97c1215a",
-      "lines": 477,
+      "sha256": "d02a06de01f44f3d",
+      "lines": 1303,
       "exports": [
         "CASES",
         "NL",
+        "XLSX_CASES",
+        "_APPORTIONMENT",
+        "_BANK_DEC",
+        "_BANK_RECONCILIATION",
+        "_BROKER_COVER",
+        "_BS_QB",
+        "_CAP_TABLE",
         "_DECISION_62",
         "_DECISION_63",
         "_DECISION_65",
@@ -1292,27 +1536,50 @@
         "_DECISION_67",
         "_DECISION_68",
         "_DECISION_69",
+        "_DECISION_73",
+        "_DECISION_73_XLSX",
+        "_DEC_BANK_SHORT",
+        "_ES_VOUCHER_1",
+        "_ES_VOUCHER_4",
+        "_F941",
+        "_FIXED_ASSETS",
+        "_FS_PDF",
+        "_GL_QB",
+        "_LOAN_AMORTIZATION",
+        "_NONPROFIT_FS",
+        "_NOV_BANK",
+        "_OFFICER_COMP",
+        "_PL",
+        "_PROMISSORY",
+        "_SHAREHOLDER_LIST",
+        "_TB_QB",
+        "_W3",
         "shipped_rows",
-        "test_every_shipped_catalog_files_real_forms_where_they_belong"
+        "test_every_shipped_catalog_files_real_forms_where_they_belong",
+        "test_every_shipped_catalog_files_the_workbooks_clients_send"
       ]
     },
     {
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e87d3a32da3068e5",
-      "lines": 447,
+      "sha256": "c9b0d9b56cd48e79",
+      "lines": 541,
       "exports": [
         "counting_extractor",
         "item",
         "test_a_cache_in_an_older_layout_is_reset",
         "test_a_cache_save_leaves_no_temp_file_and_survives_a_crash",
+        "test_a_document_does_not_ask_for_itself",
+        "test_a_form_after_a_comma_continues_a_list",
         "test_a_form_names_itself_with_its_year_or_revision",
         "test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right",
         "test_a_form_quoted_in_a_sentence_is_a_reference",
         "test_a_form_told_to_the_reader_is_a_reference_whatever_follows_it",
         "test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading",
+        "test_a_menu_line_names_neither_the_form_nor_its_title",
         "test_a_sheets_row_is_a_line_and_its_cells_are_set_apart",
+        "test_a_single_dash_set_off_form_beside_its_year_names_itself",
         "test_a_title_that_lists_three_forms_names_none_of_them",
         "test_any_keywords",
         "test_cache_corrupt_resets_silently",
@@ -1327,6 +1594,7 @@
         "test_ocr_text_used_when_available",
         "test_only_the_first_pages_of_a_pdf_are_read",
         "test_required_keywords",
+        "test_the_any_keywords_are_read_apart_from_every_other_rule",
         "test_the_cache_is_keyed_on_content_not_path",
         "test_the_dominant_form_is_the_heaviest_then_the_first_mentioned",
         "test_unsupported_extension",
@@ -1338,24 +1606,30 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "708d02f655baf5c4",
-      "lines": 1417,
+      "sha256": "e810037024ba3923",
+      "lines": 2057,
       "exports": [
         "DAY1",
         "DAY2",
         "ITEMS",
         "drop",
         "engagement",
+        "excel_sorted",
         "pbc",
         "prepared",
+        "review_dir",
         "test_a_bare_list_sidecar_from_an_older_version_is_appended_once",
         "test_a_cloud_placeholder_is_not_a_link",
         "test_a_column_inserted_into_the_index_does_not_read_as_no_rows",
         "test_a_copy_that_fails_half_way_leaves_no_truncated_working_copy",
+        "test_a_dismissal_excel_kept_out_of_the_workbook_is_not_lost",
         "test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder",
         "test_a_drop_still_held_open_is_left_for_the_next_run",
         "test_a_dry_run_never_quarantines_a_corrupt_index_sidecar",
+        "test_a_duplicate_rows_own_original_is_watched_like_every_other",
+        "test_a_failed_index_write_puts_back_a_parked_copy_a_reused_one_stood_in_for",
         "test_a_failed_index_write_puts_the_filed_copy_back_where_the_index_says",
+        "test_a_failed_index_write_puts_the_unfiled_copy_back_where_the_index_says",
         "test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed",
         "test_a_file_dropped_straight_into_pbc_is_filed_and_indexed",
         "test_a_file_named_like_a_formula_is_recorded_as_its_name",
@@ -1365,24 +1639,37 @@
         "test_a_locked_index_keeps_a_persons_filing_decision",
         "test_a_locked_index_never_orphans_files_already_moved",
         "test_a_name_the_index_cannot_hold_is_reported_not_allowed_to_take_the_index_down",
+        "test_a_name_the_workbook_cannot_hold_is_refused_like_one_utf8_cannot",
         "test_a_name_windows_cannot_open_is_reported_not_passed_over",
         "test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone",
         "test_a_persons_decision_survives_excel_saving_the_stale_workbook",
+        "test_a_persons_filing_above_a_sorted_header_is_not_undone",
         "test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_bytes",
         "test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them",
         "test_a_persons_keyword_is_learned_under_the_lock",
         "test_a_resend_is_refiled_when_the_working_copy_was_deleted",
+        "test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file",
         "test_a_run_killed_after_copying_does_not_leave_a_second_copy_behind",
         "test_a_same_size_replacement_with_an_old_date_is_still_noticed",
+        "test_a_sheet_sorted_until_the_header_is_last_keeps_every_row_above_it",
         "test_a_sidecar_of_an_unknown_version_is_quarantined_not_guessed",
         "test_a_sidecar_that_cannot_be_read_stops_the_run_rather_than_being_guessed_past",
         "test_a_snapshot_the_workbook_has_outlived_does_not_hide_the_workbooks_rows",
+        "test_a_workbook_with_rows_and_no_header_on_any_sheet_is_refused_by_name",
+        "test_a_working_copy_somebody_re_saved_is_left_where_it_is_and_said_so",
+        "test_after_unfiling_the_request_is_not_received_and_the_note_says_why",
         "test_an_annotated_parked_copy_is_left_behind_and_said_so",
+        "test_an_empty_folder_is_cleared_by_a_pass_with_nothing_to_sort",
         "test_an_index_whose_header_row_moved_is_read_from_it_and_one_with_none_is_refused",
         "test_an_index_written_with_older_columns_still_reads",
         "test_an_interrupt_after_the_index_landed_does_not_undo_the_filing",
+        "test_an_original_deleted_from_pbc_is_said_every_pass",
         "test_an_original_replaced_under_its_own_name_is_said_out_loud_every_run",
+        "test_an_original_the_client_moved_into_a_subfolder_of_pbc_is_followed",
+        "test_an_original_the_client_renamed_in_pbc_is_followed_not_filed_again",
+        "test_an_original_the_sync_client_dehydrated_is_not_called_gone",
         "test_an_original_the_sync_client_dehydrated_is_not_downloaded_to_be_checked",
+        "test_an_unfiling_excel_kept_out_of_the_workbook_is_not_lost",
         "test_assigning_a_parked_file_moves_it_under_the_canonical_name",
         "test_assigning_a_replaced_original_is_refused_not_recorded_under_the_old_bytes",
         "test_assigning_copies_from_pbc_when_the_review_copy_is_gone",
@@ -1392,11 +1679,16 @@
         "test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded",
         "test_client_subfolders_are_flattened",
         "test_deferred_rows_are_folded_in_even_when_the_only_drop_is_still_syncing",
+        "test_dismissing_a_parked_file_rewrites_its_row_and_moves_nothing",
+        "test_dismissing_something_that_is_not_parked_says_what_it_is",
+        "test_dismissing_takes_the_engagement_lock",
         "test_dry_run_moves_nothing",
         "test_dry_run_previews_real_numbering",
         "test_empty_client_folders_are_cleared_after_sorting",
         "test_every_unfinished_transfer_name_is_reported_as_waiting",
         "test_file_is_sorted_renamed_and_indexed",
+        "test_filing_a_dismissed_document_is_how_the_decision_is_undone",
+        "test_filing_an_unfiled_document_puts_it_under_the_canonical_name_again",
         "test_filing_leaves_verdicts_the_scan_reuses",
         "test_index_workbook_is_readable_in_excel",
         "test_mixed_append_and_edit_survive_a_locked_index",
@@ -1411,9 +1703,14 @@
         "test_sync_junk_is_ignored",
         "test_the_filer_holds_the_engagement_lock",
         "test_the_filer_reads_nothing_before_it_holds_the_lock",
+        "test_the_index_is_read_from_the_sheet_carrying_its_header_not_the_selected_one",
+        "test_the_next_pass_leaves_an_unfiled_original_where_the_row_says",
         "test_the_pending_index_is_a_versioned_snapshot_of_every_row",
         "test_the_routers_candidates_travel_as_data_in_the_index",
+        "test_the_same_document_sent_again_after_a_dismissal_is_a_duplicate",
         "test_the_unlistable_walk_covers_the_same_ground_as_the_others",
+        "test_unfiling_puts_the_working_copy_back_under_the_clients_own_name",
+        "test_unfiling_something_that_is_not_filed_says_what_it_is",
         "test_unroutable_file_is_preserved_and_parked",
         "test_what_lies_behind_a_junction_is_not_a_drop"
       ]
@@ -1422,14 +1719,50 @@
       "id": "tests/test_irs_forms.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0335f63ef3e5cb8d",
-      "lines": 92,
+      "sha256": "bd770be57d0ca747",
+      "lines": 100,
       "exports": [
         "EXPECT",
         "IRS",
         "catalogs",
         "test_the_irs_forms_file_where_they_belong_or_park"
       ]
+    },
+    {
+      "id": "tests/test_learned_keywords.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "2fcf080e502adfef",
+      "lines": 263,
+      "exports": [
+        "CARRIED",
+        "REPO",
+        "SAID_BY_A_FORM",
+        "SAID_BY_NOTHING",
+        "engagement",
+        "line_for",
+        "taught",
+        "test_a_keyword_on_a_row_no_catalog_knows_is_a_custom_row",
+        "test_a_keyword_the_catalog_already_carries_on_that_row_is_not_learned",
+        "test_a_report_that_was_not_linted_says_so",
+        "test_a_root_neither_given_nor_configured_is_named_not_guessed",
+        "test_a_root_that_is_not_a_folder_is_the_registrys_own_refusal",
+        "test_a_row_is_compared_against_every_catalog_that_holds_it",
+        "test_an_engagement_the_run_would_not_chase_is_still_read_and_is_flagged",
+        "test_an_engagement_whose_manifest_cannot_be_read_is_a_problem_line_not_a_silence",
+        "test_lint_marks_a_keyword_that_would_misfile_a_corpus_form_and_leaves_the_rest_alone",
+        "test_the_default_output_counts_engagements_and_the_flag_names_them",
+        "test_the_out_path_is_resolved_against_the_working_folder",
+        "test_the_report_writes_nothing_under_the_repository_and_refuses_an_out_path_inside_it",
+        "test_two_engagements_that_taught_the_same_keyword_report_it_once_with_the_count"
+      ],
+      "constants": {
+        "CARRIED": "'wage and tax statement'",
+        "SAID_BY_A_FORM": "'qualified tuition and related expenses'",
+        "SAID_BY_NOTHING": "'willow lane payroll recap'"
+      },
+      "role": "Guards the learned-keyword report: two engagements that taught one keyword are one row with a count of two, a keyword the catalog already carries is not reported, a hand-added row is a custom row, an unreadable manifest is a problem line, the default output holds no folder name, nothing under the repository is written and a path inside it is refused, and a keyword an IRS form says is marked as one that would misfile it.",
+      "notes": "Decision 79. The clients roots are scratch trees under tmp_path, built the way tests/test_registry.py builds one: create_template() writes the shipped catalog and add_any_keyword() teaches the keyword, so what the report compares is a real manifest rather than a stand-in. The corpus case reads the fifty IRS forms and takes about half a minute."
     },
     {
       "id": "tests/test_locking.py",
@@ -1458,8 +1791,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b3343953cb77dc12",
-      "lines": 656,
+      "sha256": "53eec9eb145383b7",
+      "lines": 673,
       "exports": [
         "SAMPLE_ITEMS",
         "manifest",
@@ -1471,6 +1804,7 @@
         "test_a_manifest_without_the_sheet_loads_as_defaults",
         "test_a_period_with_a_year_implies_the_year_check",
         "test_a_second_corrupt_sidecar_never_overwrites_the_first",
+        "test_a_spec_that_gives_its_extensions_as_a_list_gets_those_extensions",
         "test_a_star_in_date_pattern_means_no_year_check",
         "test_accepting_any_file_type_has_to_be_said_with_a_star",
         "test_add_any_keyword_appends_once_and_names_a_missing_row",
@@ -1503,6 +1837,27 @@
         "test_write_unknown_identifier_dropped",
         "test_yes_no_cells_are_forgiving_but_not_guessing"
       ]
+    },
+    {
+      "id": "tests/test_real_corpus.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "e23951bd250960ac",
+      "lines": 194,
+      "exports": [
+        "catalog_rows",
+        "catalogs",
+        "read_expectations",
+        "real_corpus",
+        "scratch_corpus",
+        "test_a_blank_expected_column_means_the_document_must_park",
+        "test_a_corpus_is_read_and_routed_the_way_the_shipped_catalogs_route",
+        "test_an_expectations_file_missing_a_column_is_named_not_guessed",
+        "test_no_corpus_is_no_failure_only_nothing_to_route",
+        "test_the_firms_own_documents_file_where_they_belong_or_park"
+      ],
+      "role": "The harness for the firm's own redacted documents: every row of the expectations file beside them routed against a shipped catalog the way tests/test_irs_forms.py routes the IRS's forms, and asserted to file where the firm says or to park.",
+      "notes": "Decision 71. The corpus is outside the repository, in the folder TRACKER_REAL_CORPUS names, and is never committed; with no corpus the routing case skips by name and the harness's own tests - the reading, the routing and the skip - still run on a scratch folder, so the file is exercised on every machine. It owns read_expectations() and real_corpus(), which tools/vocab_report.py imports, so the report and the test cannot disagree about what an expectation means. Decision 74: read_expectations() takes the file's path rather than its folder, because tools/backtest.py scores an expectations file a person keeps wherever they keep it and the contract has to have one reader."
     },
     {
       "id": "tests/test_reasons.py",
@@ -1549,12 +1904,13 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "359cda9b9335b60f",
-      "lines": 350,
+      "sha256": "3180534743b66ab9",
+      "lines": 380,
       "exports": [
         "SCANNED",
         "engagement",
         "item",
+        "test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft",
         "test_a_missing_request_folder_is_our_problem_not_the_clients",
         "test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients",
         "test_an_ocr_failure_is_the_firms_to_retry_not_the_clients_to_resend",
@@ -1634,8 +1990,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2a640a06acdc5fd0",
-      "lines": 443,
+      "sha256": "a955043b4a4356aa",
+      "lines": 456,
       "exports": [
         "PRIOR",
         "TEMPLATE",
@@ -1646,6 +2002,7 @@
         "test_a_roll_into_the_same_or_an_earlier_year_is_refused",
         "test_a_rollover_learns_from_the_prior_years_deferred_scan_too",
         "test_a_rollover_reads_the_prior_year_without_moving_anything_in_it",
+        "test_a_target_year_outside_the_bounds_is_refused_here_as_in_the_wizard",
         "test_a_template_row_differing_from_a_priors_only_in_case_is_the_same_row",
         "test_accepted_does_not_carry",
         "test_counts_are_never_lowered",
@@ -1676,8 +2033,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e2957c4f3b3198d4",
-      "lines": 453,
+      "sha256": "60014322923f9f0a",
+      "lines": 495,
       "exports": [
         "DONATIONS",
         "INT_DIV",
@@ -1687,8 +2044,10 @@
         "test_a_clients_hyphenated_file_name_still_routes",
         "test_a_corrupt_pdf_is_a_review_reason_not_a_crash",
         "test_a_derived_year_never_routes_on_its_own_but_still_contests",
+        "test_a_document_whose_year_alone_failed_names_the_row_it_looks_like",
         "test_a_file_type_nobody_accepts_is_named_as_such",
         "test_a_keyword_with_nothing_in_it_matches_nothing",
+        "test_a_lead_never_takes_a_filing_from_the_row_that_accepted_the_file",
         "test_a_matching_document_the_row_refuses_says_why",
         "test_a_multi_page_scan_with_no_text_layer_still_routes_by_its_name",
         "test_a_run_together_form_number_is_still_its_own_variant",
@@ -1720,8 +2079,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0a178a01773b1760",
-      "lines": 536,
+      "sha256": "9c4e23a5282046ce",
+      "lines": 706,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -1734,9 +2093,11 @@
         "test_a_draft_day_the_machine_missed_is_caught_up_on_the_next_pass",
         "test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft",
         "test_a_dry_run_writes_nothing_at_all",
+        "test_a_file_named_like_markup_is_shown_as_a_name_not_rendered",
         "test_a_manual_run_drafts_on_a_weekday",
         "test_a_missing_folder_is_recorded_not_raised",
         "test_a_pass_after_a_missed_saturday_writes_the_weeks_draft",
+        "test_a_real_pass_writes_the_status_page_into_the_root_and_a_dry_run_does_not",
         "test_a_rolled_forward_engagement_is_retired_by_its_successor",
         "test_a_row_added_in_excel_has_its_folder_by_the_next_run",
         "test_a_weekday_report_says_why_there_are_no_drafts",
@@ -1744,6 +2105,7 @@
         "test_always_mode_drafts_on_any_day",
         "test_an_edited_draft_survives_the_next_weekly_run",
         "test_an_edited_second_draft_is_never_clobbered_by_the_next_repeat",
+        "test_an_engagement_nobody_passed_is_read_rather_than_run",
         "test_an_engagement_whose_manifest_cannot_be_read_fails_alone",
         "test_an_unknown_reminder_mode_fails_loudly",
         "test_an_unreadable_manifest_is_recorded_not_raised",
@@ -1761,7 +2123,11 @@
         "test_the_draft_day_can_be_moved",
         "test_the_log_appends_rather_than_replaces",
         "test_the_log_takes_a_name_utf8_cannot_hold",
+        "test_the_page_is_written_even_when_an_engagements_pass_failed",
+        "test_the_page_lists_every_engagement_the_registry_finds_including_an_unreadable_one",
+        "test_the_page_still_has_a_heading_where_nothing_can_say_what_the_product_is_called",
         "test_the_report_says_what_day_it_is_and_never_claims_a_send",
+        "test_the_review_queue_lists_parked_files_newest_first_with_their_reasons",
         "test_the_run_names_a_manifest_typo_with_its_row_before_touching_files",
         "test_the_runner_has_a_main_the_frozen_entry_can_call",
         "test_the_saturday_run_writes_a_draft",
@@ -1798,8 +2164,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "65e1b57cae3e0ad2",
-      "lines": 493,
+      "sha256": "053e202142595fb5",
+      "lines": 520,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1809,6 +2175,7 @@
         "statuses",
         "test_a_deferred_scan_is_what_the_next_scan_measures_from",
         "test_a_document_a_person_filed_is_not_second_guessed_by_the_rules",
+        "test_a_document_a_person_said_nothing_asks_for_is_not_a_warning_either",
         "test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan",
         "test_a_persons_acceptance_covers_only_the_bytes_they_filed",
         "test_a_received_file_the_sync_client_dehydrated_is_not_a_regression",
@@ -1872,14 +2239,15 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d6096a2b47853ae6",
-      "lines": 91,
+      "sha256": "ff7562b49150cb09",
+      "lines": 110,
       "exports": [
         "beside_the_app",
         "test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder",
         "test_a_folder_that_does_not_exist_is_refused",
         "test_an_unreadable_settings_file_is_an_error_not_a_default",
         "test_nothing_set_means_none_not_a_guess",
+        "test_the_real_corpus_is_a_folder_outside_the_repo_or_it_is_nothing",
         "test_the_root_is_stored_absolute_and_a_bare_drive_is_its_root",
         "test_the_root_is_written_once_and_read_back",
         "test_the_settings_file_is_swapped_in_whole"
@@ -1889,8 +2257,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4909e058fab37c6d",
-      "lines": 582,
+      "sha256": "f4213a8f1c61087e",
+      "lines": 587,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -1940,7 +2308,7 @@
         "test_tree_diagrams_show_catalog_folders_as_the_scaffold_names_them"
       ],
       "constants": {
-        "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'CLAUDE.md')"
+        "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'CLAUDE.md')"
       }
     },
     {
@@ -1994,25 +2362,147 @@
       "id": "tests/test_vocab_report.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "de1248cd44fcc27c",
-      "lines": 135,
+      "sha256": "0162fcb5c314dd06",
+      "lines": 191,
       "exports": [
         "one",
         "row",
         "test_a_changed_input_is_reported_by_name",
+        "test_a_committed_report_naming_the_firms_own_documents_is_refused",
+        "test_a_document_from_the_firms_own_corpus_is_reported_beside_the_forms_and_the_cases",
         "test_a_form_number_quoted_in_a_sentence_does_not_reach_its_keyword",
         "test_a_keyword_a_filing_document_says_is_reached_here_and_an_unsaid_one_is_unreached",
         "test_a_keyword_said_only_by_documents_that_park_or_file_elsewhere_is_named_apart",
         "test_a_keyword_said_only_by_documents_the_suite_never_routes_here_is_reached_without_expectation",
+        "test_a_report_built_without_a_corpus_says_nothing_about_one",
+        "test_a_workbook_case_reads_the_same_to_the_report_as_to_the_suite",
         "test_hits_are_ordered_corpus_first_then_by_decision_and_name",
         "test_show_prints_a_catalog_and_names_an_unknown_one",
         "test_the_committed_report_is_current",
         "test_the_corpus_forms_are_inputs_too",
         "test_the_counts_add_up_across_catalogs",
-        "test_the_markdown_leads_with_the_generated_note_and_names_every_list"
+        "test_the_markdown_leads_with_the_generated_note_and_names_every_list",
+        "test_the_workbook_cases_are_in_the_report_too"
       ],
       "role": "Guards the coverage report: reach is says(), not a substring; the four headline lists are computed as claimed on small catalogs; the committed report matches its inputs by hash.",
-      "notes": "test_the_committed_report_is_current fails the suite if a keyword, a case or the matcher changed without `python tools/vocab_report.py build`."
+      "notes": "test_the_committed_report_is_current fails the suite if a keyword, a case or the matcher changed without `python tools/vocab_report.py build`. Decision 73: a workbook case must read the same to the report as to the suite, so the rendering and a real round trip through openpyxl are asserted equal."
+    },
+    {
+      "id": "tools/backtest.py",
+      "type": "tool",
+      "layer": "tooling",
+      "sha256": "68abf81f35ec848a",
+      "lines": 617,
+      "cli": "python -m tools.backtest",
+      "exports": [
+        "AT_BASELINE",
+        "BASELINE_NOTE",
+        "BASELINE_PATH",
+        "BELOW_BASELINE",
+        "BacktestError",
+        "CATALOGS",
+        "CATALOG_FLAG",
+        "COLLECT_COLUMNS",
+        "EXPECTATIONS_FLAG",
+        "HINT_COLUMN",
+        "NEUTRAL_STEM",
+        "NOTHING_ROUTED",
+        "NO_BASELINE",
+        "OCR_FLAG",
+        "OUT_FLAG",
+        "Outcome",
+        "PARKS",
+        "RECORDED",
+        "REPORT_FLAG",
+        "REPORT_NOTE",
+        "ROOT",
+        "SCHEMA_VERSION",
+        "SLOWEST_COUNT",
+        "UNMEASURED_NOTE",
+        "YEAR_FLAG",
+        "accepted_extensions",
+        "check",
+        "collectable",
+        "load_baseline",
+        "load_report",
+        "main",
+        "print_summary",
+        "record",
+        "route_corpus",
+        "route_one",
+        "score",
+        "write_json",
+        "write_skeleton"
+      ],
+      "constants": {
+        "SCHEMA_VERSION": "1",
+        "NEUTRAL_STEM": "'document'",
+        "PARKS": "'parks'",
+        "SLOWEST_COUNT": "10",
+        "HINT_COLUMN": "'hint'",
+        "REPORT_FLAG": "'--report'",
+        "EXPECTATIONS_FLAG": "'--expectations'",
+        "OUT_FLAG": "'--out'",
+        "OCR_FLAG": "'--ocr'",
+        "CATALOG_FLAG": "'--catalog'",
+        "YEAR_FLAG": "'--year'",
+        "REPORT_NOTE": "\"How often the router files the firm's own documents where a person already filed them. No file name, no folder name and no word of any document is recorded here.\"",
+        "BASELINE_NOTE": "\"The agreement the firm's own sorted documents scored, measured at the office. No routing change may lower it.\"",
+        "UNMEASURED_NOTE": "\"No backtest has been run against the firm's own documents yet, so there is no agreement to hold a routing change to. Run the backtest at the office and record it.\"",
+        "NO_BASELINE": "'No agreement is recorded: the owner has not yet run the backtest at the office. There is no baseline to hold this report to, and an unknown baseline is not a passing one.'",
+        "NOTHING_ROUTED": "'This report routed no document at all, so it cannot be held to the recorded baseline.'",
+        "BELOW_BASELINE": "'Agreement is BELOW the baseline: {agreement} now, {baseline} recorded.'",
+        "AT_BASELINE": "'Agreement holds: {agreement} now, {baseline} recorded.'",
+        "RECORDED": "'Recorded {agreement} over {documents} document(s) in {path}.'"
+      },
+      "role": "Routes the firm's own already-sorted documents at the office and scores the router against them: the agreement with where a person filed each one, the confusion pairs, the per-row table, the parked and no-text shares, and the time a real pass takes.",
+      "notes": "Decision 74. The measure the fifty blank IRS forms and the typed cases cannot be - decision 70's report leaves most keywords and most rows defended by nothing - and the only corpus made of documents a client actually sent. Each document is routed through a hard link (a copy where the file system refuses one) under one neutral name, so the router's by-name fallback can never read the client's name off the file and the score is the routing rules' rather than the firm's naming discipline; the link is the same bytes, so every tier-2 check still sees the real document. A document with no text layer is its own category, because the only evidence left for it would be the name being hidden - unless OCR is allowed, when nothing is handed over and the router does its own reading under its own stricter rule for OCR words. Catalogs are built the way tests/test_irs_forms.py builds them, with the size floor and the year check lifted. Nothing identifying comes back: counts, catalog identifiers and a row's number in the expectations file, never a file name, a folder name below the corpus root or a word of a document; the corpus, its expectations file and the report stay outside the repository and the tool refuses to write into the tree."
+    },
+    {
+      "id": "tools/learned_keywords.py",
+      "type": "tool",
+      "layer": "tooling",
+      "sha256": "2d87e470115fbef8",
+      "lines": 448,
+      "cli": "python -m tools.learned_keywords",
+      "exports": [
+        "CARRIED_BY",
+        "CUSTOM_ROW",
+        "FILES_AS",
+        "FLAG_INACTIVE",
+        "IN_CATALOGS",
+        "LearnedKeywordsError",
+        "MISFILE",
+        "NONE",
+        "PARKS",
+        "ROOT",
+        "Report",
+        "Row",
+        "SAID_BY",
+        "catalog_index",
+        "chosen_root",
+        "collect",
+        "keywords_of",
+        "lint",
+        "main",
+        "manifest_rows",
+        "out_path",
+        "render",
+        "summary_line"
+      ],
+      "constants": {
+        "FLAG_INACTIVE": "'inactive'",
+        "CARRIED_BY": "'{n} engagement(s)'",
+        "MISFILE": "'would misfile: {form} {placement}'",
+        "FILES_AS": "'files as {identifier} in the {catalog} catalog'",
+        "PARKS": "'parks in the {catalog} catalog'",
+        "SAID_BY": "'said by: {forms}'",
+        "CUSTOM_ROW": "'no catalog holds this row'",
+        "IN_CATALOGS": "'in the {catalogs} catalog(s)'",
+        "NONE": "'- none'"
+      },
+      "role": "Lists what the staff taught the router: every keyword a person typed into one engagement's manifest that no catalog row with the same identifier and document carries, across every engagement under the clients root, grouped by request row with the number of engagements that typed it.",
+      "notes": "Decision 79. A keyword learned through manifest.add_any_keyword() lives in that one manifest, so fifty engagements hold fifty private vocabularies and the catalog is the only one tests/test_catalog.py and tests/test_irs_forms.py defend; this is the season's list of candidates to promote. Read-only in the strong sense: no lock is taken, no manifest is written, the readers' quarantine=False is passed so looking never moves a sidecar, and a report path inside the repository is refused - an engagement folder name is a client's name and the report names them on request. The Engagement sheet does not record which form type an engagement was created from, so a row is compared against every catalog holding it and the report says which matched; a row no catalog holds is a custom request, listed apart with all its keywords. An engagement whose manifest could not be read is a problem line, never a silent skip. It borrows shipped_catalogs() and corpus_documents() from tools/vocab_report.py, so the catalogs it compares against and the corpus a candidate can be run over are the coverage report's."
     },
     {
       "id": "tools/repo_map.py",
@@ -2071,8 +2561,8 @@
       "id": "tools/vocab_report.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "515db060717036f3",
-      "lines": 411,
+      "sha256": "d10b5df1ecdc6290",
+      "lines": 507,
       "cli": "python -m tools.vocab_report",
       "exports": [
         "Document",
@@ -2084,12 +2574,16 @@
         "ROOT",
         "ReportError",
         "SCHEMA_VERSION",
+        "_SHEET_NAME",
+        "as_a_sheet",
         "build",
         "case_documents",
         "corpus_documents",
         "input_hashes",
         "load_report",
         "main",
+        "real_documents",
+        "real_documents_in",
         "render_markdown",
         "report",
         "shipped_catalogs",
@@ -2099,13 +2593,31 @@
       "constants": {
         "SCHEMA_VERSION": "1",
         "GENERATED_NOTE": "'GENERATED by tools/vocab_report.py \u2014 do not edit by hand.'",
-        "INPUT_PATHS": "('tracker/templates.py', 'tracker/content_check.py', 'tracker/manifest.py', 'tests/test_catalog.py', 'tests/test_irs_forms.py', 'tools/vocab_report.py')"
+        "INPUT_PATHS": "('tracker/templates.py', 'tracker/content_check.py', 'tracker/manifest.py', 'tests/test_catalog.py', 'tests/test_irs_forms.py', 'tests/test_real_corpus.py', 'tools/vocab_report.py')"
       },
       "role": "Generates the vocabulary coverage report: which keyword in each catalog is reached by which IRS form in tests/irs/ or case in tests/test_catalog.py, tested with content_check.says() the way the router reads, and which keywords nothing in the suite defends.",
-      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the loader, the cases, the corpus and this file - so it costs nothing and CI runs it. Never reads a client document: the corpus is the IRS's own blank forms and text the suite typed. The report names the unreached keywords first; a review round starts there."
+      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the loader, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`, the harness's expectations giving each one's placement) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a sheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached."
     }
   ],
   "edges": [
+    {
+      "from": ".github/workflows/build.yml",
+      "to": "Build App.bat",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
+      "from": ".github/workflows/build.yml",
+      "to": "api_entry.py",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
+      "from": ".github/workflows/build.yml",
+      "to": "tests/samples.py",
+      "type": "runs",
+      "source": "curated"
+    },
     {
       "from": ".github/workflows/ci.yml",
       "to": "requirements.txt",
@@ -2128,6 +2640,18 @@
       "from": "Build App.bat",
       "to": "api_entry.py",
       "type": "freezes",
+      "source": "curated"
+    },
+    {
+      "from": "CLAUDE.md",
+      "to": "tools/backtest.py",
+      "type": "documents",
+      "source": "curated"
+    },
+    {
+      "from": "CLAUDE.md",
+      "to": "tools/learned_keywords.py",
+      "type": "documents",
       "source": "curated"
     },
     {
@@ -2258,6 +2782,12 @@
     },
     {
       "from": "tests/samples.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
       "to": "tracker/templates.py",
       "type": "exercises",
       "source": "derived"
@@ -2383,6 +2913,66 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_backtest.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_backtest.py",
+      "to": "tools/backtest.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_catalog.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -2410,6 +3000,12 @@
       "from": "tests/test_catalog.py",
       "to": "tracker/templates.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_catalog.py",
+      "to": "tests/samples.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -2557,6 +3153,42 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tools/learned_keywords.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_locking.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -2594,6 +3226,12 @@
     },
     {
       "from": "tests/test_manifest.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_manifest.py",
       "to": "tracker/validators.py",
       "type": "exercises",
       "source": "derived"
@@ -2608,6 +3246,42 @@
       "from": "tests/test_manifest.py",
       "to": "tracker/manifest.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
+      "to": "tracker/router.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
+      "to": "tests/test_scanner.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -2678,6 +3352,12 @@
     },
     {
       "from": "tests/test_reminder.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
       "source": "derived"
@@ -2828,6 +3508,12 @@
     },
     {
       "from": "tests/test_runner.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
       "source": "derived"
@@ -2847,6 +3533,12 @@
     {
       "from": "tests/test_runner.py",
       "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
+      "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -3122,8 +3814,26 @@
     },
     {
       "from": "tests/test_vocab_report.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_vocab_report.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_vocab_report.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_vocab_report.py",
+      "to": "tests/test_catalog.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -3131,6 +3841,96 @@
       "to": "tools/vocab_report.py",
       "type": "tests",
       "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tests/test_real_corpus.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/router.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/settings.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/templates.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "tracker/validators.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/backtest.py",
+      "to": "docs/backtest-baseline.json",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tools/vocab_report.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/registry.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/scaffold.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "tracker/settings.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/learned_keywords.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads",
+      "source": "curated"
     },
     {
       "from": "tools/repo_map.py",
@@ -3152,6 +3952,12 @@
     },
     {
       "from": "tools/vocab_report.py",
+      "to": "tests/test_real_corpus.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/vocab_report.py",
       "to": "tracker/content_check.py",
       "type": "imports",
       "source": "derived"
@@ -3159,6 +3965,12 @@
     {
       "from": "tools/vocab_report.py",
       "to": "tracker/manifest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/vocab_report.py",
+      "to": "tracker/settings.py",
       "type": "imports",
       "source": "derived"
     },
@@ -3263,6 +4075,12 @@
       "to": "tracker/templates.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "artifact:status.html",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tracker/content_check.py",
@@ -3374,6 +4192,12 @@
     },
     {
       "from": "tracker/filer.py",
+      "to": "tracker/scanner.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/filer.py",
       "to": "tracker/validators.py",
       "type": "imports",
       "source": "derived"
@@ -3471,6 +4295,12 @@
     {
       "from": "tracker/reminder.py",
       "to": "tracker/__init__.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "tracker/filer.py",
       "type": "imports",
       "source": "derived"
     },
@@ -3629,6 +4459,30 @@
       "to": "tracker/scanner.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "tracker/settings.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "artifact:_index.xlsx",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "artifact:_manifest.xlsx",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "artifact:status.html",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tracker/scaffold.py",

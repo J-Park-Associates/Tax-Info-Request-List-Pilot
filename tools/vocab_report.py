@@ -28,15 +28,27 @@ Four lists matter, per catalog:
 
 Like the repository map, the report is derived and committed, and
 ``check`` says whether the committed one still matches its inputs: the
-catalog, the matcher, the loader, the corpus and the case list, each by
-its SHA-256, so the check costs nothing and a change to any of them
-turns it red until ``build`` runs again. It never reads a client
-document: the corpus is the IRS's own blank forms (public domain) and
-the text the suite typed.
+catalog, the matcher, the loader, the corpus, the case list and the
+harnesses that carry their placements, each by its SHA-256, so the check
+costs nothing and a change to any of them turns it red until ``build``
+runs again.
+
+The committed report never reads a client document: the corpus is the
+IRS's own blank forms (public domain) and the text the suite typed. When
+``ENV_REAL_CORPUS`` names the firm's own redacted documents, ``build``
+reads those too, so a review round sees which keywords the documents a
+client actually sends reach - but that report names files nobody
+redacted the names of, so it is a local reading and not the committed
+one: ``check`` refuses a committed report built with them, and the
+corpus itself is never in the repository to be hashed.
 
 A case's text is read as typed; the suite prints it to a PDF and reads
 it back, which preserves its lines, so the two readings agree on every
-keyword the report has been checked against.
+keyword the report has been checked against. A workbook case is rendered
+the way ``content_check._extract_xlsx`` renders a sheet (``as_a_sheet``),
+for the same reason: half of every catalog asks for a schedule a client
+keeps in Excel, and a sheet is read as rows of tab-separated cells, not
+as prose.
 
 ::
 
@@ -61,6 +73,7 @@ if str(ROOT) not in sys.path:
 
 from tracker.content_check import dominant_forms, extract_text, says  # noqa: E402
 from tracker.manifest import RequestItem, create_template, load_manifest  # noqa: E402
+from tracker.settings import ENV_REAL_CORPUS, EXPECTATIONS_FILENAME  # noqa: E402
 from tracker.templates import FORM_TEMPLATES, template_items  # noqa: E402
 
 REPORT_PATH = ROOT / "docs" / "vocab-coverage.json"
@@ -76,10 +89,11 @@ INPUT_PATHS = (
     "tracker/manifest.py",        # the loader's defaults
     "tests/test_catalog.py",      # the cases
     "tests/test_irs_forms.py",    # the corpus's expected placements
+    "tests/test_real_corpus.py",  # how the firm's own documents are read
     "tools/vocab_report.py",      # this generator
 )
 
-IRS, CASE = "irs", "case"
+IRS, CASE, REAL = "irs", "case", "real"
 REQUIRED, ANY = "required", "any"
 
 
@@ -89,9 +103,9 @@ class ReportError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class Document:
-    """One document the report routes: a corpus form or a typed case."""
+    """One document the report routes: a corpus form, a typed case, or a real one."""
 
-    kind: str                 # IRS or CASE
+    kind: str                 # IRS, CASE or REAL
     name: str
     text: str
     #: catalog -> where the suite says it belongs there (an identifier, or
@@ -124,16 +138,28 @@ def shipped_catalogs() -> dict[str, list[RequestItem]]:
     return catalogs
 
 
+def _placements(rows: list[tuple[str, str, int, str | None]]) -> dict[str, dict[str, str | None]]:
+    """``(name, catalog, year, where)`` rows as document -> catalog -> placement.
+
+    One document is routed against several catalogs and must be expected
+    in the same place each time it is; a row that contradicts an earlier
+    one is the expectation file disagreeing with itself, and is raised
+    rather than resolved.
+    """
+    expected: dict[str, dict[str, str | None]] = {}
+    for name, form, _year, where in rows:
+        known = expected.setdefault(name, {})
+        if form in known and known[form] != where:
+            raise ReportError(f"{name} is expected at both {known[form]} and {where} in the {form} catalog")
+        known[form] = where
+    return expected
+
+
 def corpus_documents() -> list[Document]:
     """The IRS forms, read as the router reads them, with the suite's placements."""
     from tests.test_irs_forms import EXPECT
 
-    expected: dict[str, dict[str, str | None]] = {}
-    for pdf, form, _year, where in EXPECT:
-        known = expected.setdefault(pdf, {})
-        if form in known and known[form] != where:
-            raise ReportError(f"{pdf} is expected at both {known[form]} and {where} in the {form} catalog")
-        known[form] = where
+    expected = _placements(EXPECT)
     documents = []
     for path in sorted(IRS_DIR.glob("*.pdf")):
         text = extract_text(path) or ""
@@ -141,14 +167,66 @@ def corpus_documents() -> list[Document]:
     return documents
 
 
-def case_documents() -> list[Document]:
-    """The reconstructed cases, each expected somewhere in the catalog it was written for."""
-    from tests.test_catalog import CASES
+def real_documents() -> list[Document]:
+    """The firm's own redacted documents, when ``ENV_REAL_CORPUS`` names them.
 
-    return [
+    The harness owns the reading, so the report and the test cannot
+    disagree about what an expectation means. Nothing here is committed:
+    with no corpus this is an empty list, which is what CI and the
+    committed report are built from.
+    """
+    from tests.test_real_corpus import real_corpus
+
+    folder, rows = real_corpus()
+    if folder is None:
+        return []
+    documents = []
+    for name, expected in sorted(_placements(rows).items()):
+        path = folder / name
+        if not path.is_file():
+            raise ReportError(f"{EXPECTATIONS_FILENAME} names {name}, which is not in {folder}")
+        documents.append(Document(REAL, name, extract_text(path) or "", expected))
+    return documents
+
+
+#: The sheet name openpyxl gives a new workbook, which ``_extract_xlsx``
+#: reads as the sheet's first line.
+_SHEET_NAME = "Sheet"
+
+
+def as_a_sheet(rows: list[list]) -> str:
+    """A workbook case as ``content_check._extract_xlsx`` renders it: the
+    sheet's name, then one line per row with its cells set apart by a tab.
+
+    The suite writes these cases to a real .xlsx and reads them back; the
+    report renders them instead, so that both see the same text and a
+    keyword that spans two cells is reached in both.
+    """
+    lines = [_SHEET_NAME]
+    for row in rows:
+        cells = [str(value) for value in row if value is not None]
+        if cells:
+            lines.append("\t".join(cells))
+    return "\n".join(lines)
+
+
+def case_documents() -> list[Document]:
+    """The reconstructed cases, each expected somewhere in the catalog it was written for.
+
+    Both kinds: the pages typed as lines, and the workbooks typed as rows
+    (half of every catalog asks for a schedule a client keeps in Excel).
+    """
+    from tests.test_catalog import CASES, XLSX_CASES
+
+    documents = [
         Document(CASE, name, "\n".join(lines), {form: where}, decision)
         for decision, form, name, lines, where in CASES
     ]
+    documents += [
+        Document(CASE, name, as_a_sheet(rows), {form: where}, decision)
+        for decision, form, name, rows, where in XLSX_CASES
+    ]
+    return documents
 
 
 # ------------------------------------------------------------------ report ----
@@ -209,18 +287,26 @@ def report(catalogs: dict[str, list[RequestItem]], documents: list[Document]) ->
         totals["reached_only_elsewhere"] += len(only_elsewhere)
         totals["reached_without_expectation"] += len(no_expectation)
         totals["rows_without_a_filing_document"] += len(no_filing)
+    counted = {kind: sum(d.kind == kind for d in documents) for kind in (IRS, CASE, REAL)}
     out["counts"] = totals | {
         "catalogs": len(catalogs),
-        "documents": {IRS: sum(d.kind == IRS for d in documents), CASE: sum(d.kind == CASE for d in documents)},
+        # The real corpus is absent from a report built without one, so the
+        # committed report says nothing about documents it never read.
+        "documents": {kind: n for kind, n in counted.items() if n or kind != REAL},
     }
     return out
 
 
 def build() -> dict:
-    """The report over the real catalog, corpus and cases, with its input hashes."""
-    result = report(shipped_catalogs(), corpus_documents() + case_documents())
+    """The report over the shipped catalogs, the corpus, the cases and any real documents."""
+    result = report(shipped_catalogs(), corpus_documents() + case_documents() + real_documents())
     result["inputs"] = input_hashes()
     return result
+
+
+def real_documents_in(data: dict) -> int:
+    """How many of the firm's own documents a report was built from."""
+    return int(data.get("counts", {}).get("documents", {}).get(REAL, 0))
 
 
 # ---------------------------------------------------------------- markdown ----
@@ -240,6 +326,7 @@ def _hit_label(hit: dict) -> str:
 
 def render_markdown(data: dict) -> str:
     counts = data["counts"]
+    real = real_documents_in(data)
     lines = [
         "# Vocabulary coverage",
         "",
@@ -254,7 +341,8 @@ def render_markdown(data: dict) -> str:
         f"**{counts['unreached']} unreached** · {counts['reached_only_elsewhere']} reached only elsewhere · "
         f"{counts['reached_without_expectation']} reached without an expectation · "
         f"{counts['rows_without_a_filing_document']} rows without a filing document · "
-        f"{counts['documents'][IRS]} IRS forms · {counts['documents'][CASE]} cases",
+        f"{counts['documents'][IRS]} IRS forms · {counts['documents'][CASE]} cases"
+        + (f" · {real} real documents" if real else ""),
         "",
         "A hit reads *document → where the suite files it in this catalog*: **here** is this row, "
         "*parks* is Needs Review, another identifier is another row, and `?` means the suite has "
@@ -352,11 +440,19 @@ def _cmd_build(_ns: argparse.Namespace) -> int:
     c = data["counts"]
     print(f"Built {REPORT_PATH.relative_to(ROOT)}: {c['keywords']} keywords in {c['rows']} rows, "
           f"{c['unreached']} unreached, {c['reached_only_elsewhere']} reached only elsewhere")
+    if real := real_documents_in(data):
+        print(f"It names {real} document(s) from {ENV_REAL_CORPUS}: read it, do not commit it.")
     return 0
 
 
 def _cmd_check(_ns: argparse.Namespace) -> int:
     data = load_report()
+    if real := real_documents_in(data):
+        # A report built on a machine with a corpus names the firm's own
+        # files; committing it would put client names in the repository.
+        print(f"Report is STALE — it names {real} document(s) from {ENV_REAL_CORPUS}, which are never committed."
+              f"\n\nRebuild it with the variable unset: python tools/vocab_report.py build")
+        return 1
     stale = stale_inputs(data)
     if not stale and MARKDOWN_PATH.exists() and MARKDOWN_PATH.read_text(encoding="utf-8") == render_markdown(data):
         c = data["counts"]
