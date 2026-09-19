@@ -51,6 +51,17 @@ Two things deliberately do *not* route a file:
   anywhere, even if some other row would accept it. It looks like a W-2, so
   it must not be filed as a prior-year return; a person gets it, with the
   failed rule quoted.
+- **A document whose issuer the list does not know.** A person holding
+  several Schedule K-1s gets one row per issuing entity (decision 93, the
+  owner's), each an ordinary row carrying the entity's name in Required
+  Keywords. The two tiers above already settle which row wins — an issuer
+  row that finds its name is required-keyword-strong and the generic K-1
+  row, having no required keywords, never can be, so the issuer row takes
+  it without a rule of its own. What needed a rule is the K-1 from an
+  issuer nobody listed: the generic row accepts it, no issuer row does,
+  and filing it there would put two entities' K-1s in one folder. It
+  parks with ``reasons.ISSUER_NOT_NAMED``, the issuer rows named, for a
+  person to file or to add the missing row.
 
 When a file is not routed, the reason says why in the most useful terms
 available: a document whose content fits a request but which that request
@@ -106,7 +117,7 @@ from tracker.content_check import (
     rules_fingerprint,
     says,
 )
-from tracker.manifest import Override, RequestItem, has_routing_rules
+from tracker.manifest import Override, RequestItem, has_routing_rules, narrowing_rows
 from tracker.validators import (
     PdfVerdictCache,
     check_file,
@@ -133,6 +144,9 @@ PENDING = reasons.PENDING_SYNC.format()
 UNREADABLE = reasons.NO_READABLE_TEXT.format()
 #: Every request refused the file type: said once, checked by tests by name.
 NO_REQUEST_ACCEPTS = "no request accepts .{extension} files"
+#: The list asks for this document one row per issuer and the document
+#: names none of them. Worded once, in :mod:`tracker.reasons`.
+ISSUER_NOT_NAMED = reasons.ISSUER_NOT_NAMED
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 #: What a file name uses between words, read as spaces; a hyphen stays,
@@ -377,6 +391,32 @@ def route_file(
     # that request's other rules is contested — never file it somewhere else.
     if near and not strong:
         return _contested(path, near, record)
+
+    # The list asks for this document one row per issuer (decision 93): the
+    # broad row accepted it on its looser words, every issuer row wanted a
+    # name this document does not say, and nothing required-keyword-strong
+    # claimed it. It parks. Filing it on the broad row would put two
+    # entities' K-1s in one folder, which is what the issuer rows exist to
+    # stop; taking whichever issuer row is left over would be guessing by
+    # elimination, and a document is filed only when exactly one request
+    # accepts it. The shortlist leads with the row that did accept it and
+    # names the issuer rows after it, so a person sees both what the
+    # document is and which issuers the list already knows.
+    if medium and not strong:
+        narrowed = narrowing_rows(i for i in items if _considers(i))
+        issuer_rows = tuple(dict.fromkeys(
+            row for ident in medium for row in narrowed.get(ident, ())
+        ))
+        if issuer_rows:
+            shortlist = (*medium, *issuer_rows)
+            return Routing(
+                path=path,
+                identifier=None,
+                reason=ISSUER_NOT_NAMED.format(listed=", ".join(issuer_rows)),
+                candidates=shortlist,
+                evidence=EVIDENCE_CONTENT,
+                evidence_record=_recorded_for(record, shortlist),
+            )
 
     for hits, strength, how in (
         (strong, EVIDENCE_CONTENT, "content matched this request's required keywords"),

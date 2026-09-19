@@ -201,6 +201,7 @@ became, and — when it was not filed — why not.
 | `router.CONTESTED_PREFIX` | It looks like a named request but failed one of that request's own rules — last year's W-2, say. | Read the named rule. Usually it is the wrong year or the wrong client. |
 | `router.OCR_ONLY` | A scan with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan with no text layer and no OCR on this machine, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it, or install OCR (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
+| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | File it to the right row, or add a row for that issuer (§8) and it files itself next pass. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. |
 | `router.PENDING` | A cloud placeholder, still copying down. | Nothing. The next pass picks it up. |
 
@@ -245,9 +246,10 @@ the last one, that the request has no folder and the next pass makes it.
 `reasons.NO_PAGES`, `reasons.UNREADABLE_PDF`,
 `reasons.EXTRACTION_FAILED`.
 
-One reason in that file is not a validation note at all:
-`reasons.NO_READABLE_TEXT` is the router's, and it appears in the index's
-Reason column (§4) rather than against a request.
+Two reasons in that file are not validation notes at all:
+`reasons.NO_READABLE_TEXT` and `reasons.ISSUER_NOT_NAMED` are the router's,
+and they appear in the index's Reason column (§4) rather than against a
+request. Both are ours: the client sent the right document either way.
 
 The note itself is never pasted into an email. It names keywords, size
 floors and our own folders, and a client should never see any of that.
@@ -341,7 +343,61 @@ is ever sent — are worded once in the package, shown in the app and quoted
 in [../README.md](../README.md) and [../CLAUDE.md](../CLAUDE.md). Read them
 there rather than here.
 
-## 8. Who to ask, and where the record is
+## 8. K-1s by issuer
+
+A client can be a partner in three partnerships and a shareholder in two
+S corporations, and all five Schedule K-1s answer the one row `F01 -
+Schedule K-1s Received`. One folder with five K-1s in it is a folder
+nobody can work from, so the rule (the owner's, 2026-09-18) is **one row
+per issuing entity**. The catalog cannot do this for you: which entities a
+client is in is a fact about that client.
+
+**Adding one.** Open `_manifest.xlsx`, Requests sheet, and copy the `F01`
+row down.
+
+| Column | What to put |
+|---|---|
+| Identifier | The next free one in F's block — `F02`, then `F03`. Leave `F01` where it is. |
+| Document | `Schedule K-1 - ` and the entity, e.g. `Schedule K-1 - Ashford Holdings LP`. This becomes the folder and the filed name. |
+| Any Keywords | Exactly what `F01` has. Copy the cell. |
+| **Required Keywords** | **The entity's name**, and nothing else. |
+| Period, Allowed Extensions, Min Size KB | Copy `F01`'s. |
+
+Leave the Status, Received Date, File Count and Validation Notes cells
+empty; the next pass fills them. The next scheduled pass makes the
+folder; nothing else has to be done by hand.
+
+**How to write the name.** No commas — the keyword cells are
+comma-separated, so `Ashford Holdings, L.P.` is read as two separate
+requirements and the row stops matching. Type the distinctive words and
+leave the legal suffix off: `Ashford Holdings`, not `Ashford Holdings,
+L.P.`. The suffix is the part whose punctuation differs between your
+typing and the form's printing, and the match is on whole words. Two
+issuer rows must not have one name inside the other — `Ashford` and
+`Ashford Holdings` would both claim the same K-1 — and the manifest is
+refused, by name, the next time anything reads it if they do.
+
+**What then happens.**
+
+- A K-1 that prints one issuer row's name files on that row. It beats
+  `F01` outright: naming the entity is the stronger evidence, and `F01`
+  asks for no name at all.
+- The **federal and the California K-1 from the same entity land in the
+  same row** — California's Schedule K-1 (568) heads itself "Member's
+  Share of Income" and `F01` asks for that too.
+- A K-1 from an entity **no row names** parks in `00 - Needs Review`,
+  and the reason names the issuer rows you do have. File it in the app,
+  or add the row for that issuer and the next pass files it. It is not
+  put on `F01`, and it is not guessed onto whichever issuer row has not
+  had a K-1 yet.
+- `F01` stays. A client with one K-1 and no issuer rows files on it as
+  before.
+
+**Next year.** The rollover carries the issuer rows like any other row,
+with their names, statuses cleared. A partnership the client left is a row
+you delete or waive; a new one is a new row, added the same way.
+
+## 9. Who to ask, and where the record is
 
 - **Who does what**, and the life of a request: [workflow.md](workflow.md).
 - **Why something odd is the way it is**: the decision log in

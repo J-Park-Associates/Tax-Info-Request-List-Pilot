@@ -8,14 +8,23 @@ the year it is written for follows the calendar rather than a person.
 import pytest
 
 from tracker.content_check import has_content_rules
-from tracker.manifest import ManifestError, create_template, load_manifest
+from tracker.manifest import (
+    ManifestError,
+    create_template,
+    load_manifest,
+    narrowing_rows,
+)
 from tracker.scaffold import MANIFEST_FILENAME
 from tracker.templates import (
     BASE_YEAR,
     FORM_TEMPLATES,
     FORM_TYPES,
+    K1_CATALOG,
+    K1_IDENTIFIER,
     TY,
+    issuer_row,
     item_from_spec,
+    k1_row,
     template_items,
 )
 
@@ -103,3 +112,61 @@ def test_the_catalogs_year_is_one_constant():
     years = {int(y) for rows in FORM_TEMPLATES.values() for row in rows
              for y in re.findall(r"(?:19|20)\d{2}", row["period"])}
     assert years == {BASE_YEAR, BASE_YEAR - 1}
+
+
+# ------------------------------------------- a row per issuer (decision 93) ----
+
+
+def test_the_catalog_keeps_exactly_one_k_1_row():
+    """The owner's decision: one K-1 row, and the issuers are an engagement's
+    own business. A second catalog row would be a fact about one client."""
+    k1_rows = [
+        (form, spec["identifier"])
+        for form, specs in FORM_TEMPLATES.items()
+        for spec in specs
+        if "k-1" in spec["document"].lower()
+    ]
+    assert k1_rows == [(K1_CATALOG, K1_IDENTIFIER)]
+
+
+def test_the_k_1_row_asks_for_the_state_k_1_too():
+    """California heads Schedule K-1 (568) "Member's Share of Income"."""
+    assert "member's share of income" in k1_row()["any_keywords"]
+
+
+def test_an_issuer_row_is_the_k_1_row_named_for_an_entity():
+    row = issuer_row("F02", "Ashford Holdings, L.P.")
+    source = k1_row()
+
+    assert row["document"] == "Schedule K-1 - Ashford Holdings LP"
+    assert row["required_keywords"] == "Ashford Holdings LP"
+    assert row["any_keywords"] == source["any_keywords"]
+    assert row["extensions"] == source["extensions"] and row["period"] == source["period"]
+    # Nothing new in the schema: it loads as any other row does.
+    assert item_from_spec(row).identifier == "F02"
+
+
+def test_an_issuer_row_needs_an_entity():
+    with pytest.raises(ManifestError):
+        issuer_row("F02", " , . ")
+
+
+@pytest.mark.parametrize("form", sorted(FORM_TEMPLATES))
+def test_no_shipped_catalog_row_narrows_another(form):
+    """The evidence for leaving the tiers alone: the issuer rule can only
+    fire on a row a person added, so no shipped placement can move."""
+    assert narrowing_rows(template_items(form)) == {}
+
+
+@pytest.mark.parametrize("form", sorted(FORM_TEMPLATES))
+def test_no_shipped_catalog_row_requires_a_subset_of_anothers_words(form):
+    """No two rows where one's required keywords are all of another's and
+    more: nothing in the catalog is a special case of anything else."""
+    rows = template_items(form)
+    for one in rows:
+        for other in rows:
+            if one.identifier == other.identifier:
+                continue
+            mine = {k.lower() for k in one.required_keywords}
+            theirs = {k.lower() for k in other.required_keywords}
+            assert not (mine and theirs and mine <= theirs), (one.identifier, other.identifier)

@@ -287,6 +287,21 @@ file's shortlist offers the request its name points at, at the weakest
 rank there is, beside a document the person then opens. The cost is
 known — until Tesseract is installed, every scanned PDF parks.
 
+**One request can be split by who issued the document.** A person holds
+Schedule K-1s from several partnerships, and one folder with all of them in
+it is a folder nobody can work from. So a request list may carry one K-1 row
+per issuing entity: an ordinary row, named `Schedule K-1 - Ashford Holdings
+LP`, with the entity's name in **Required Keywords** and the K-1 row's own
+Any Keywords. Nothing is added to the schema and no rule was needed to make
+it win — a required keyword is the strongest evidence there is and the
+generic K-1 row has none — so the K-1 that prints its issuer's name files on
+that issuer's row, and the federal and the California K-1 from one entity
+land together. What did need a rule is the K-1 whose issuer nobody listed:
+with issuer rows present it parks (`tracker.reasons.ISSUER_NOT_NAMED`) with
+those rows named, rather than joining everybody else's on the generic row or
+being guessed onto whichever row is left over. `docs/runbook.md` §8 is how a
+person adds one.
+
 When a person files something out of `00 - Needs Review` they can type a
 keyword, and it is learned by that one engagement's manifest and nowhere
 else; `python tools/learned_keywords.py` lists every keyword taught that way

@@ -214,3 +214,21 @@ def test_a_readme_the_client_side_holds_does_not_stop_the_scaffold(engagement, m
     monkeypatch.setattr(scaffold_module, "write_text_atomically", refused)
     result = scaffold_engagement(engagement)
     assert result.prepared_dir is not None and readme.is_dir()
+
+
+def test_each_issuer_gets_its_own_client_folder(tmp_path):
+    """An issuer row is an ordinary row, so the client sees one folder per
+    issuing entity and the filed copy carries the entity's name (decision 93)."""
+    from tracker.templates import issuer_row, item_from_spec
+
+    eng = tmp_path / "TY2025 1040"
+    eng.mkdir()
+    rows = [item_from_spec(issuer_row("F02", "Ashford Holdings, L.P.")),
+            item_from_spec(issuer_row("F03", "Birch Lane Partners"))]
+    create_template(eng / MANIFEST_FILENAME, rows)
+
+    scaffold_engagement(eng)
+
+    names = {f.name for f in (eng / PREPARED_DIR_NAME).iterdir() if f.is_dir()}
+    assert "F02 - Schedule K-1 - Ashford Holdings LP" in names
+    assert "F03 - Schedule K-1 - Birch Lane Partners" in names

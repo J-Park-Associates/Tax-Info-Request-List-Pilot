@@ -495,3 +495,43 @@ def test_a_file_named_like_a_formula_is_a_name_on_the_carried_sheet(prior, tmp_p
     write_rollover_manifest(target / MANIFEST_FILENAME, roll_forward(prior))
     ws = load_workbook(target / MANIFEST_FILENAME, data_only=True)[CARRIED_SHEET]
     assert any("=SUM scan.pdf" in str(c.value) for row in ws.iter_rows() for c in row if c.value)
+
+
+# ------------------------------------------- a row per issuer (decision 93) ----
+
+
+def test_the_rollover_carries_a_row_per_issuer(tmp_path):
+    """Issuer rows are ordinary rows, so nothing in the rollover knows about
+    them - and that is the claim: a client who was a partner in two
+    partnerships last year is asked for both again, by name."""
+    from tracker.manifest import load_manifest
+    from tracker.templates import issuer_row, item_from_spec, template_items
+
+    eng = tmp_path / "Smith Family 2025"
+    eng.mkdir()
+    k1 = next(i for i in template_items("1040", year=2025) if i.identifier == "F01")
+    create_template(eng / MANIFEST_FILENAME, [
+        k1,
+        item_from_spec(issuer_row("F02", "Ashford Holdings LP")),
+        item_from_spec(issuer_row("F03", "Birch Lane Partners")),
+    ])
+    write_statuses(eng / MANIFEST_FILENAME, {
+        "F02": StatusUpdate(status=Status.RECEIVED, file_count=1,
+                            received_date=dt.date(2026, 3, 1)),
+    })
+
+    rolled = rolled_by_id(roll_forward(eng))
+
+    assert set(rolled) == {"F01", "F02", "F03"}
+    assert rolled["F02"].item.document == "Schedule K-1 - Ashford Holdings LP"
+    assert rolled["F02"].item.required_keywords == ("Ashford Holdings LP",)
+    assert rolled["F03"].item.required_keywords == ("Birch Lane Partners",)
+    assert rolled["F02"].item.period == "TY2026"
+    # Last year's judgement of last year's files is not carried (decision 10).
+    assert rolled["F02"].item.status == "" and rolled["F02"].item.received_date is None
+
+    # And the list it writes reads back as a list: nesting names would be
+    # refused here, these are not.
+    written = write_rollover_manifest(tmp_path / "Smith Family 2026" / MANIFEST_FILENAME,
+                                      roll_forward(eng))
+    assert [i.identifier for i in load_manifest(written)] == ["F01", "F02", "F03"]

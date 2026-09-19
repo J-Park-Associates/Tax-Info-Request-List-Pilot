@@ -35,8 +35,11 @@ from tracker.manifest import (
     RequestItem,
     Status,
     StatusUpdate,
+    check_narrowing_names,
     create_template,
+    entity_keyword,
     load_manifest,
+    narrowing_rows,
     pending_path,
     pending_updates,
     temp_path_for,
@@ -728,3 +731,90 @@ def test_a_formula_in_the_keyword_cell_is_refused_not_rewritten(manifest):
     with pytest.raises(ManifestError, match="holds a formula"):
         add_any_keyword(manifest, "A01", "wages")
     assert load_workbook(manifest)[SHEET_NAME].cell(row=2, column=headers.index(COL_ANY_KEYWORDS) + 1).value == "=B2"
+
+
+# ------------------------------------------- a row per issuer (decision 93) ----
+
+K1_WORDS = ("partner's share of income", "member's share of income")
+
+
+def k1_rows(*issuers):
+    """The generic K-1 row and one row per (identifier, entity) after it."""
+    rows = [RequestItem(identifier="F01", document="Schedule K-1s Received",
+                        allowed_extensions=("pdf",), any_keywords=K1_WORDS)]
+    rows += [RequestItem(identifier=identifier, document=f"Schedule K-1 - {entity}",
+                         allowed_extensions=("pdf",), required_keywords=(entity,),
+                         any_keywords=K1_WORDS)
+             for identifier, entity in issuers]
+    return rows
+
+
+@pytest.mark.parametrize("typed, expected", [
+    ("Ashford Holdings, L.P.", "Ashford Holdings LP"),
+    ("Ashford Holdings LP", "Ashford Holdings LP"),
+    ("  Ashford   Holdings  ", "Ashford Holdings"),
+    ("Ashford Holdings | Birch Lane", "Ashford Holdings Birch Lane"),
+    ("Ashford + Birch", "Ashford Birch"),
+    ("O'Hara & Sons, Inc.", "O'Hara & Sons Inc"),
+])
+def test_an_entity_name_becomes_one_keyword_a_cell_can_hold(typed, expected):
+    """A comma would split the cell into two required keywords; the grammar's
+    own two characters would turn a name into alternatives."""
+    assert entity_keyword(typed) == expected
+
+
+def test_two_typings_of_one_entity_make_one_row():
+    assert entity_keyword("Ashford Holdings, L.P.") == entity_keyword("Ashford Holdings LP")
+
+
+def test_an_issuer_name_typed_with_commas_loads_as_one_keyword(tmp_path):
+    """The point of normalising before the cell is written: read back, the
+    row asks for one name and not for two."""
+    from tracker.templates import issuer_row, item_from_spec
+
+    path = create_template(tmp_path / MANIFEST_FILENAME,
+                           [*k1_rows(), item_from_spec(issuer_row("F02", "Ashford Holdings, L.P."))])
+    loaded = {i.identifier: i for i in load_manifest(path)}
+
+    assert loaded["F02"].required_keywords == ("Ashford Holdings LP",)
+    assert loaded["F02"].document == "Schedule K-1 - Ashford Holdings LP"
+
+
+def test_an_issuer_row_narrows_the_generic_row():
+    assert narrowing_rows(k1_rows(("F02", "Ashford Holdings"), ("F03", "Birch Lane"))) == {
+        "F01": ("F02", "F03"),
+    }
+
+
+def test_a_row_sharing_no_word_with_the_generic_row_narrows_nothing():
+    rows = [*k1_rows(), RequestItem(identifier="C01", document="Mortgage Interest",
+                                    required_keywords=("1098",), any_keywords=("1098",))]
+    assert narrowing_rows(rows) == {}
+
+
+def test_two_issuer_rows_whose_names_nest_are_refused_when_the_manifest_is_read(tmp_path):
+    """Both accept the same K-1, so every one of them would park with
+    nothing said about why. The person renames one."""
+    path = create_template(tmp_path / MANIFEST_FILENAME,
+                           k1_rows(("F02", "Ashford"), ("F03", "Ashford Holdings")))
+
+    with pytest.raises(ManifestError) as caught:
+        load_manifest(path)
+
+    assert "F02" in str(caught.value) and "F03" in str(caught.value)
+    assert "F01" in str(caught.value), "the row they both narrow is named too"
+
+
+def test_two_issuer_names_that_merely_share_a_word_are_allowed():
+    check_narrowing_names(k1_rows(("F02", "Ashford Holdings"), ("F03", "Birch Holdings")))
+
+
+def test_two_unrelated_rows_may_share_a_name(tmp_path):
+    """Only rows narrowing the *same* row are compared: an ordinary request
+    whose keywords sit inside another's is nobody's issuer."""
+    rows = [
+        RequestItem(identifier="A01", document="W-2", required_keywords=("Ashford",)),
+        RequestItem(identifier="A02", document="1099", required_keywords=("Ashford Holdings",)),
+    ]
+    path = create_template(tmp_path / MANIFEST_FILENAME, rows)
+    assert len(load_manifest(path)) == 2

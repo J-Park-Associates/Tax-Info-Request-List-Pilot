@@ -1558,6 +1558,38 @@ _DECISION_90_XLSX = [
 ]
 
 
+
+# The owner's F3 answer (decision 93): a state K-1 files on the same K-1
+# row as a federal one. California heads Schedule K-1 (568) "Member's
+# Share of Income, Deductions, Credits, etc." - the LLC member's version
+# of the three lines the row already carried.
+_DECISION_93 = [
+    ("1040", "CA Schedule K-1 568 2025.pdf", [
+        "TAXABLE YEAR Member's Share of Income, CALIFORNIA SCHEDULE",
+        "2025 Deductions, Credits, etc. K-1 (568)",
+        "For calendar year 2025, or fiscal year beginning and ending .",
+        "Member's name Member's identifying number",
+        "LLC's FEIN California Secretary of State file number",
+        "LLC's name",
+        "Pinehurst Freight Systems LLC",
+        "A What type of entity is this member? See instructions.",
+        "C Enter member's percentage (without regard to special allocations) of:",
+        "D Member's share of liabilities: (i)Beginning (ii)Ending",
+        "For Privacy Notice, get FTB 1131 EN-SP. Schedule K-1 (568) 2025 Side 1",
+    ], "F01"),
+    # The same document in a catalog with no K-1 row: the new phrase is
+    # the 1040 row's and reaches nothing in the trust's checklist.
+    ("1041", "CA Schedule K-1 568 2025.pdf", [
+        "TAXABLE YEAR Member's Share of Income, CALIFORNIA SCHEDULE",
+        "2025 Deductions, Credits, etc. K-1 (568)",
+        "Member's name Member's identifying number",
+        "LLC's name",
+        "Pinehurst Freight Systems LLC",
+        "D Member's share of liabilities: (i)Beginning (ii)Ending",
+    ], None),
+]
+
+
 #: (decision, form, file name, lines, expected) - every case, tagged with the
 #: decision that introduced it. tools/vocab_report.py reads this list too.
 CASES = [
@@ -1565,7 +1597,7 @@ CASES = [
     for decision, block in (
         (62, _DECISION_62), (63, _DECISION_63), (65, _DECISION_65), (66, _DECISION_66),
         (67, _DECISION_67), (68, _DECISION_68), (69, _DECISION_69), (73, _DECISION_73),
-        (85, _DECISION_85), (90, _DECISION_90),
+        (85, _DECISION_85), (90, _DECISION_90), (93, _DECISION_93),
     )
     for case in block
 ]

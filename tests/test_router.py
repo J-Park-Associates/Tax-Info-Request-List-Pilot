@@ -25,6 +25,8 @@ from tracker.router import (
 )
 from tracker.scaffold import MANIFEST_FILENAME
 
+NL = chr(10)
+
 
 def no_ocr(monkeypatch):
     """This machine has no Tesseract engine - the owner's stated cost of
@@ -652,3 +654,133 @@ def test_a_contested_file_keeps_the_keywords_that_did_match(tmp_path):
     assert [(e.rule, e.term) for e in routing.evidence_record["A01"]] == [
         (RULE_REQUIRED, "W-2"),
     ]
+
+
+# ------------------------------------------- a row per issuer (decision 93) ----
+
+#: The three phrases the catalog's K-1 row carries, federal and state.
+K1_WORDS = ("partner's share of income", "shareholder's share of income",
+            "beneficiary's share of income", "member's share of income")
+
+K1 = RequestItem(
+    identifier="F01", document="Schedule K-1s Received", period="TY2025",
+    allowed_extensions=("pdf",), min_size_kb=0, any_keywords=K1_WORDS,
+)
+
+
+def issuer(identifier: str, entity: str) -> RequestItem:
+    """An issuer row as a person makes one: the K-1 row, named for an entity."""
+    return RequestItem(
+        identifier=identifier, document=f"Schedule K-1 - {entity}", period="TY2025",
+        allowed_extensions=("pdf",), min_size_kb=0,
+        required_keywords=(entity,), any_keywords=K1_WORDS,
+    )
+
+
+def federal_k1(entity: str) -> str:
+    """A Schedule K-1 (Form 1065) page, with the partnership named in Part I."""
+    return NL.join([
+        "Schedule K-1 2025 Part III Partner's Share of Current Year Income,",
+        "(Form 1065) Deductions, Credits, and Other Items",
+        "Partner's Share of Income, Deductions, Credits, etc.",
+        "Part I Information About the Partnership",
+        "A Partnership's employer identification number",
+        "B Partnership's name, address, city, state, and ZIP code",
+        entity,
+        "1180 Mill Road, Suite 4",
+    ])
+
+
+def california_k1(entity: str) -> str:
+    """A California Schedule K-1 (568), with the LLC named the way 568 names it."""
+    return NL.join([
+        "TAXABLE YEAR Member's Share of Income, CALIFORNIA SCHEDULE",
+        "2025 Deductions, Credits, etc. K-1 (568)",
+        "Member's name Member's identifying number",
+        "LLC's FEIN California Secretary of State file number",
+        "LLC's name",
+        entity,
+        "1180 Mill Road, Suite 4",
+    ])
+
+
+def test_a_state_k_1_files_on_the_k_1_row_when_no_issuer_row_exists(tmp_path):
+    """The owner's F3 answer: a CA Schedule K-1 (568) is a K-1, not its own row."""
+    f = text_pdf(tmp_path / "ca k-1.pdf", california_k1("Ashford Holdings LP"))
+    assert route_file(f, [K1]).identifier == "F01"
+
+
+def test_a_k_1_files_on_the_row_naming_its_issuer(tmp_path):
+    rows = [K1, issuer("F02", "Ashford Holdings"), issuer("F03", "Birch Lane")]
+    f = text_pdf(tmp_path / "k-1.pdf", federal_k1("Ashford Holdings LP"))
+
+    routing = route_file(f, rows)
+
+    # No new rule decides this: a required keyword is the strongest
+    # evidence there is and the generic row has none, so the issuer row
+    # wins on the tier it was always going to win on.
+    assert routing.identifier == "F02"
+    assert routing.candidates == ("F02",)
+    assert routing.evidence == EVIDENCE_CONTENT
+
+
+def test_the_federal_and_the_state_k_1_of_one_issuer_land_together(tmp_path):
+    """The owner's rule: federal and California K-1s share the issuer's row."""
+    rows = [K1, issuer("F02", "Ashford Holdings"), issuer("F03", "Birch Lane")]
+
+    federal = text_pdf(tmp_path / "k-1 federal.pdf", federal_k1("Ashford Holdings LP"))
+    state = text_pdf(tmp_path / "k-1 california.pdf", california_k1("Ashford Holdings LP"))
+
+    assert route_file(federal, rows).identifier == "F02"
+    assert route_file(state, rows).identifier == "F02"
+
+
+def test_each_issuer_gets_its_own_row(tmp_path):
+    rows = [K1, issuer("F02", "Ashford Holdings"), issuer("F03", "Birch Lane")]
+    f = text_pdf(tmp_path / "k-1.pdf", federal_k1("Birch Lane Partners"))
+    assert route_file(f, rows).identifier == "F03"
+
+
+def test_a_k_1_from_an_issuer_nobody_listed_parks(tmp_path):
+    """Not filed on the generic row, and not guessed by elimination either."""
+    rows = [K1, issuer("F02", "Ashford Holdings"), issuer("F03", "Birch Lane")]
+    f = text_pdf(tmp_path / "k-1.pdf", federal_k1("Dunmore Capital Group"))
+
+    routing = route_file(f, rows)
+
+    assert routing.identifier is None
+    assert reasons.ISSUER_NOT_NAMED.matches(routing.reason)
+    assert "F02, F03" in routing.reason
+    # The row that did accept it leads the shortlist: it says what the
+    # document is. The issuer rows follow, so a person sees which
+    # issuers the list already knows before adding another.
+    assert routing.candidates == ("F01", "F02", "F03")
+    assert routing.evidence == EVIDENCE_CONTENT
+
+
+def test_a_k_1_naming_two_issuer_rows_is_contested(tmp_path):
+    """Nesting names are refused when a manifest is read; handed straight to
+    the router they are what refusing them prevents - every K-1 parking."""
+    rows = [K1, issuer("F02", "Ashford"), issuer("F03", "Ashford Holdings")]
+    f = text_pdf(tmp_path / "k-1.pdf", federal_k1("Ashford Holdings LP"))
+
+    routing = route_file(f, rows)
+
+    assert routing.identifier is None
+    assert AMBIGUOUS in routing.reason
+    assert routing.candidates == ("F02", "F03")
+
+
+def test_the_issuer_rule_is_silent_when_no_issuer_row_exists(tmp_path):
+    """A client with one unnamed K-1 keeps the generic row and files on it."""
+    f = text_pdf(tmp_path / "k-1.pdf", federal_k1("Dunmore Capital Group"))
+    assert route_file(f, [K1]).identifier == "F01"
+
+
+def test_a_waived_issuer_row_does_not_park_anybody_elses_k_1(tmp_path):
+    """Waived rows want nothing, so they are not issuers the list is asking about."""
+    from dataclasses import replace as _replace
+
+    rows = [K1, _replace(issuer("F02", "Ashford Holdings"), manual_override=Override.WAIVED)]
+    f = text_pdf(tmp_path / "k-1.pdf", federal_k1("Dunmore Capital Group"))
+    assert route_file(f, rows).identifier == "F01"
