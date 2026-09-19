@@ -76,13 +76,10 @@ from pathlib import Path
 
 from tracker import ledger, review
 from tracker.filer import (
-    INDEX_COLUMNS,
     INDEX_FILENAME,
-    INDEX_LAYOUT,
     INDEX_SHEET,
     NEEDS_REVIEW,
     FilingError,
-    IndexEntry,
     read_index,
 )
 from tracker.manifest import (
@@ -111,6 +108,7 @@ from tracker.manifest import (
     write_text_atomically,
 )
 from tracker.page import Cell, Row, esc, page_text, slug, table, unesc
+from tracker.records import INDEX_COLUMNS, INDEX_LAYOUT, IndexEntry
 from tracker.scaffold import MANIFEST_FILENAME
 from tracker.validators import sha256_of
 
@@ -504,7 +502,7 @@ def render_page(
     """
     engagement_dir = Path(engagement_dir)
     items, entries = _readers(engagement_dir, items, entries)
-    triaged = review.triage(engagement_dir, items=items, entries=entries)
+    triaged = review.triage(engagement_dir, entries, items=items)
     parked = [one.entry for one in triaged]
     stamp = _stamp(engagement_dir, items, entries, parked, now)
     return _page(engagement_dir, items, entries, triaged, stamp)
@@ -534,7 +532,7 @@ def write_view(
     engagement_dir = Path(engagement_dir)
     path = engagement_dir / VIEW_FILENAME
     items, entries = _readers(engagement_dir, items, entries)
-    triaged = review.triage(engagement_dir, items=items, entries=entries)
+    triaged = review.triage(engagement_dir, entries, items=items)
     parked = [one.entry for one in triaged]
     stamp = _stamp(engagement_dir, items, entries, parked, now)
     result = ViewResult(path=path, requests=len(items), rows=len(entries),

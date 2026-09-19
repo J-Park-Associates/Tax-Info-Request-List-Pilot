@@ -26,10 +26,15 @@ half is not worth a module of its own until that call can move.
 
 **Rule 7, amended** (from the implementation plan's rules for every step):
 ``ledger`` and ``locking`` import nothing of the package but each other;
-``manifest`` imports ``ledger`` and ``locking`` and nothing else; ``runner``
-never imports ``scheduling`` or ``api``; the package's ``__init__`` imports
-nothing at load time (decision 99 removed thirteen re-exports no file
-consumed, and with them the one load-time cycle the map used to name).
+``manifest`` imports ``ledger``, ``locking`` and ``records`` and nothing
+else; ``runner`` never imports ``scheduling`` or ``api``; the package's
+``__init__`` imports nothing at load time (decision 99 removed thirteen
+re-exports no file consumed, and with them the one load-time cycle the map
+used to name).
+
+``manifest`` -> ``records`` is the in-layer edge decision 100 added: the
+record types moved out of the modules that write them, ``records`` imports
+nothing of the package at all, and the manifest names the shapes it loads.
 """
 
 from __future__ import annotations
@@ -43,7 +48,8 @@ PACKAGE = REPO / "tracker"
 #: Layer -> the modules in it. Every file in tracker/ is in exactly one.
 LAYERS: dict[int, frozenset[str]] = {
     0: frozenset({"__init__", "reasons", "locking", "page"}),
-    1: frozenset({"ledger", "manifest", "scaffold", "templates", "validators", "settings"}),
+    1: frozenset({"ledger", "manifest", "records", "scaffold", "templates", "validators",
+                  "settings"}),
     2: frozenset({"content_check", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     4: frozenset({"runner", "scheduling"}),
@@ -149,7 +155,7 @@ def test_the_bottom_two_import_nothing_of_the_package_but_each_other():
 
 def test_the_manifest_imports_the_record_and_the_lock_and_nothing_else():
     load, _ = import_edges()
-    assert load["manifest"] == {"ledger", "locking"}, load["manifest"]
+    assert load["manifest"] == {"ledger", "locking", "records"}, load["manifest"]
 
 
 def test_the_package_init_imports_nothing_at_load_time():

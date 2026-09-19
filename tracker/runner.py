@@ -68,11 +68,8 @@ from pathlib import Path
 
 from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, file_drops, read_index
 from tracker.manifest import (
-    ENGAGEMENT_LABELS,
     ENGAGEMENT_SHEET_NAME,
     ISO_DATE_HINT,
-    NO,
-    YES,
     ManifestError,
     check_manifest,
     load_manifest,
@@ -82,6 +79,7 @@ from tracker.manifest import (
     write_text_atomically,
 )
 from tracker.page import esc, page_text, table
+from tracker.records import ENGAGEMENT_LABELS, NO, YES
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
     Engagement,

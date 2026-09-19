@@ -44,13 +44,13 @@ from tracker.manifest import (
     Override,
     RequestItem,
     Status,
-    StatusUpdate,
     load_manifest,
     pending_updates,
     summarize,
     with_pending,
     write_statuses,
 )
+from tracker.records import StatusUpdate
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PREPARED_DIR_NAME,

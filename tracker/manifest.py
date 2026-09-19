@@ -17,6 +17,14 @@ disk exactly as it found it.
 This module never touches client files — only the manifest workbook and its
 sidecar. All values are validated on load and fail loudly with row context so
 a malformed manifest can never silently produce wrong statuses.
+
+The *records* it loads and writes back - :class:`EngagementInfo`,
+:class:`StatusUpdate`, the Engagement sheet's field table and the yes/no
+spellings - live in :mod:`tracker.records` since decision 100, and are
+imported back here so every existing ``from tracker.manifest import ...``
+still reads. :class:`RequestItem` stays: it is the schema of the sheet a
+person edits, not a record of what the machine decided, and it means nothing
+away from the cells it is parsed from.
 """
 
 from __future__ import annotations
@@ -40,6 +48,24 @@ from openpyxl.utils import get_column_letter
 from tracker import ledger
 from tracker.locking import lock_is_held
 
+# The records this module loads and writes back live in tracker/records.py
+# (decision 100): they are the shapes, this is the workbook. An in-layer
+# import, and the only one that way round - nothing in records imports the
+# manifest. ENGAGEMENT_HELP is re-exported so that
+# `from tracker.manifest import ENGAGEMENT_HELP` still resolves to the same
+# dict; kept for one release; import from tracker.records.
+from tracker.records import (
+    COL_IDENTIFIER,
+    ENGAGEMENT_FIELDS,
+    ENGAGEMENT_HELP,  # noqa: F401
+    ENGAGEMENT_LABELS,
+    ENGAGEMENT_NOTES,
+    NO,
+    YES,
+    EngagementInfo,
+    StatusUpdate,
+)
+
 log = logging.getLogger("tracker.manifest")
 
 SHEET_NAME = "Requests"
@@ -50,7 +76,6 @@ ENGAGEMENT_SHEET_NAME = "Engagement"
 
 # ---------------------------------------------------------------- schema ----
 
-COL_IDENTIFIER = "Identifier"
 COL_DOCUMENT = "Document"
 COL_PERIOD = "Period"
 COL_EXPECTED_COUNT = "Expected Count"
@@ -157,11 +182,6 @@ UNSCANNED_LABEL = "Requested"
 SUMMARY_SEPARATOR = " · "
 SUMMARY_EMPTY = "no requests"
 
-#: The Engagement sheet's yes/no cells, as written; ``_parse_yes_no`` also
-#: reads the usual spellings a person types.
-YES = "yes"
-NO = "no"
-
 #: Sidecars beside a workbook: rows waiting because Excel held it, an
 #: unreadable sidecar kept as evidence, and the temp file an atomic save
 #: lands in first.
@@ -267,31 +287,6 @@ def detect_year(items: Iterable[RequestItem]) -> int | None:
     return max(year for year, count in years.items() if count == best)
 
 
-@dataclass(frozen=True, slots=True)
-class EngagementInfo:
-    """The Engagement sheet: who this is for and how the run should treat it.
-
-    Every field is optional. A manifest without the sheet (one made before
-    it existed) loads as all defaults and is still processed.
-    """
-
-    # What each field is for is said once, in ENGAGEMENT_HELP below.
-    client: str = ""
-    name: str = ""
-    link: str = ""
-    due: dt.date | None = None
-    sender: str = ""
-    firm: str = ""
-    reminders: bool = True
-    active: bool = True
-    rolled_from: str = ""
-    #: Which catalog the request list was cut from, as the catalog keys it.
-    #: Blank on an engagement made before it was recorded, and blank is
-    #: unknown to every reader - nothing refuses a manifest for it.
-    form: str = ""
-
-
-#: Row labels on the Engagement sheet, in the order they are written.
 #: How a request's parts are joined into one name: the README line, the
 #: request folder and the working copy all use it.
 LABEL_SEPARATOR = " - "
@@ -306,41 +301,6 @@ def label_for(*parts: str) -> str:
 #: the app's wizard preview).
 EXPECTED_PATTERN = "{n} files expected"
 
-ENGAGEMENT_FIELDS = (
-    ("Client", "client"),
-    ("Engagement Name", "name"),
-    ("Share Link", "link"),
-    ("Due Date", "due"),
-    ("Sender", "sender"),
-    ("Firm", "firm"),
-    ("Reminders", "reminders"),
-    ("Active", "active"),
-    ("Rolled From", "rolled_from"),
-    # Added last so an engagement made before it existed keeps every cell
-    # where its reader and its owner left them; the sheet is read by label
-    # (_engagement_from_sheet), so a missing row is simply a blank value.
-    ("Form", "form"),
-)
-#: field name -> the sheet's label, for messages that name a cell.
-ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
-#: What each cell is for, as the README tells it.
-#: What the yes/no and Rolled From cells mean, said on the sheet and in the README.
-ENGAGEMENT_NOTES = {
-    "reminders": f"{NO} = this client is not chased by email",
-    "active": f"{NO} = the scheduled run skips this folder",
-    "rolled_from": "written by the rollover; the engagement it names is no longer chased",
-}
-ENGAGEMENT_HELP = {
-    "client": "greeting name in the reminder",
-    "name": "label; the folder name if blank",
-    "link": "pasted into the reminder",
-    "due": "the date the reminder asks the client to send things by",
-    "sender": "who the reminder is from",
-    "firm": "the sign-off line and the client README's contact (typed once at setup)",
-    "form": "which catalog the request list was cut from; blank if it was never recorded",
-    **ENGAGEMENT_NOTES,
-}
-
 
 def engagement_sheet_note() -> str:
     """The italic line under the Engagement sheet, built from the notes."""
@@ -349,16 +309,6 @@ def engagement_sheet_note() -> str:
         else f"{ENGAGEMENT_LABELS[field]} is {note}"
         for field, note in ENGAGEMENT_NOTES.items()
     ) + "."
-
-
-@dataclass(frozen=True, slots=True)
-class StatusUpdate:
-    """Scanner output for one identifier, destined for the scanner columns."""
-
-    status: str
-    file_count: int = 0
-    received_date: dt.date | None = None
-    validation_notes: str = ""
 
 
 # --------------------------------------------------------------- parsing ----

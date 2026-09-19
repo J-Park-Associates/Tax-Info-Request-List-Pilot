@@ -2,6 +2,7 @@
 
 See docs/ROADMAP.md for the build plan. Component modules:
 
+- records       : the record types every layer names - the index row, the evidence, the routing decision, the engagement - and each one's own serialisation
 - manifest      : the manifest workbook's schema, load/validate, status write-back
 - scaffold      : folder scaffolding from the manifest
 - validators    : tier 1-2 file checks + dry-run preview CLI

@@ -33,16 +33,13 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from tracker import STANDING_RULES, review
-from tracker.content_check import EVIDENCE_PLACES, EVIDENCE_RULES
 from tracker.filer import (
-    _CANDIDATE_SEP,
     DUPLICATE,
     FILED,
     INDEX_FILENAME,
     NEEDS_REVIEW,
     NOT_REQUESTED,
     FilingError,
-    IndexEntry,
     assign_review_file,
     dismiss_review_file,
     read_index,
@@ -56,7 +53,6 @@ from tracker.manifest import (
     UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
-    EngagementInfo,
     ManifestError,
     Override,
     Status,
@@ -72,6 +68,13 @@ from tracker.manifest import (
     write_text_atomically,
 )
 from tracker.page import slug
+from tracker.records import (
+    CANDIDATE_SEP,
+    EVIDENCE_PLACES,
+    EVIDENCE_RULES,
+    EngagementInfo,
+    IndexEntry,
+)
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
 from tracker.rollover import (
     CARRIED_SHEET,
@@ -315,7 +318,7 @@ def _vocab() -> dict:
         "period_pattern": PERIOD_PATTERN,
         "origin_prior": ORIGIN_PRIOR,
         "unknown_year_label": UNKNOWN_YEAR_LABEL,
-        "candidate_separator": _CANDIDATE_SEP,
+        "candidate_separator": CANDIDATE_SEP,
         # Every word an evidence line can carry, from the module that owns
         # it: the app labels a rule and a place, and types neither.
         "evidence": {"rules": list(EVIDENCE_RULES), "places": list(EVIDENCE_PLACES)},
@@ -497,7 +500,7 @@ def _state(engagement: Path) -> dict:
         # the app already reads - and the manifest and the index are handed
         # to triage() so each is read once for the whole screen.
         "review": [_triage_payload(t)
-                   for t in review.triage(engagement, items=items, entries=entries)],
+                   for t in review.triage(engagement, entries, items=items)],
         "paths": {
             "engagement": str(engagement),
             "shared": str(engagement / SHARED_DIR_NAME),

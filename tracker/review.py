@@ -5,7 +5,7 @@ in one sentence. For a person working that queue in March, "matched no
 request" is where the work starts, not where it ends: they open the
 document, read the request list, and decide. This module does the
 reading-back part. It turns the evidence a verdict kept
-(:class:`tracker.content_check.Evidence`, written into the index's Evidence
+(:class:`tracker.records.Evidence`, written into the index's Evidence
 column) into a short ranked list of the requests a parked document most
 plausibly belongs to, each with the sentence that says why it is on the
 list.
@@ -60,7 +60,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tracker import reasons
-from tracker.content_check import (
+from tracker.filer import NEEDS_REVIEW
+from tracker.manifest import Override, RequestItem, load_manifest
+from tracker.records import (
     RULE_ANY,
     RULE_DATE,
     RULE_FILENAME,
@@ -71,9 +73,8 @@ from tracker.content_check import (
     WHERE_FOOTER,
     WHERE_TITLE,
     Evidence,
+    IndexEntry,
 )
-from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry, read_index
-from tracker.manifest import Override, RequestItem, load_manifest
 from tracker.scaffold import MANIFEST_FILENAME
 
 #: How many requests one parked file is offered. Past three a shortlist
@@ -277,23 +278,26 @@ def shortlist_for(entry: IndexEntry, items: list[RequestItem]) -> tuple[Suggesti
 
 def triage(
     engagement_dir: Path | str,
+    entries: list[IndexEntry],
     *,
     items: list[RequestItem] | None = None,
-    entries: list[IndexEntry] | None = None,
 ) -> list[Triage]:
     """Every parked file in one engagement, with its shortlist, oldest first.
 
-    ``items`` and ``entries`` are for a caller that has already loaded the
-    manifest and the index (the desktop app loads both to draw one screen);
-    left out, they are read here. Either way this is a read: the index is
-    read without moving a sidecar aside, no lock is taken, and nothing is
-    written. Only rows the filer parked as ``NEEDS_REVIEW`` are triaged.
+    ``entries`` is the index as the caller has already read it, and it is
+    **required**: this module suggests and never reads, and an argument a
+    caller may leave out is an argument that quietly opens the engagement's
+    index behind them. Every caller has read it already to draw the screen
+    it is drawing. ``items`` may still be left out and is then read here,
+    once, from the manifest.
+
+    Either way this is a read: no lock is taken, no sidecar is moved aside
+    and nothing is written. Only rows the filer parked as ``NEEDS_REVIEW``
+    are triaged.
     """
     engagement_dir = Path(engagement_dir)
     if items is None:
         items = load_manifest(engagement_dir / MANIFEST_FILENAME)
-    if entries is None:
-        entries = read_index(engagement_dir / INDEX_FILENAME, quarantine=False)
     return [
         Triage(entry, shortlist_for(entry, items))
         for entry in entries
@@ -313,8 +317,11 @@ if __name__ == "__main__":
     parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
     ns = parser.parse_args()
 
-    parked = triage(ns.engagement_dir)
-    print(f"{len(parked)} file(s) parked for a person in {Path(ns.engagement_dir)}\n")
+    from tracker.filer import INDEX_FILENAME, read_index
+
+    engagement = Path(ns.engagement_dir)
+    parked = triage(engagement, read_index(engagement / INDEX_FILENAME, quarantine=False))
+    print(f"{len(parked)} file(s) parked for a person in {engagement}\n")
     for triaged in parked:
         print(f"  {triaged.entry.original_name}  ({triaged.entry.reason})")
         for suggestion in triaged.shortlist:

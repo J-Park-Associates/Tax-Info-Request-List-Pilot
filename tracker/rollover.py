@@ -43,7 +43,6 @@ from openpyxl.utils import get_column_letter
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
     COL_DOCUMENT,
     COL_IDENTIFIER,
-    EngagementInfo,
     ManifestError,
     Override,
     RequestItem,
@@ -59,6 +58,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     shift_years,
     with_pending,
 )
+from tracker.records import EngagementInfo
 from tracker.scaffold import MANIFEST_FILENAME
 
 #: Why a row is on the new list. Written to the Carried Forward sheet.

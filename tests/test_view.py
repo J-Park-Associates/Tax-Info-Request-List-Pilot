@@ -235,7 +235,7 @@ def test_a_parked_file_carries_the_shortlist_the_app_would_show(engagement):
     view.write_view(engagement)
     page = page_of(engagement)
 
-    triaged = review.triage(engagement)
+    triaged = review.triage(engagement, read_index(engagement / INDEX_FILENAME, quarantine=False))
     assert len(triaged) == 1 and triaged[0].shortlist
     assert review_table(engagement)[1:] == [
         [str(getattr(one.entry, name)) for name in view.NEEDS_REVIEW_FIELDS]

@@ -35,7 +35,8 @@ import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from tracker.manifest import EngagementInfo, ManifestError, load_engagement_info
+from tracker.manifest import ManifestError, load_engagement_info
+from tracker.records import EngagementInfo
 from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
 from tracker.validators import OFFICE_LOCK_PREFIX, is_sync_staging
 
