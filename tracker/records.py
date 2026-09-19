@@ -44,16 +44,30 @@ change in the commit that moved them. They are marked in each module, and
 the release that follows removes them.
 
 **What this is for.** The store of decision 101 reads and writes these
-records; it will import them from here and never from
-:mod:`tracker.filer`, because a store that had to import the filer to name
-a row would import the workbook writer it is meant to replace.
+records; it imports them from here and never from :mod:`tracker.filer`,
+because a store that had to import the filer to name a row would import
+the workbook writer it is meant to replace.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
+
+# ------------------------------------------------------------ derivations ----
+
+#: The three words a derivation of the record may be described in. A
+#: derivation is never simply "there": a person, and the app, have to know
+#: whether the thing in front of them still describes what is recorded. The
+#: page (:func:`tracker.view.view_state`) says it of itself, and the store
+#: (:func:`tracker.store.state`) says it of one engagement's rows; they are
+#: the same three answers about the same two stamps, so the words live here
+#: rather than in either of them. Decision 101 moved them out of the view.
+CURRENT = "current"
+BEHIND = "behind"
+UNKNOWN = "unknown"
+STATES = (CURRENT, BEHIND, UNKNOWN)
 
 # ---------------------------------------------------------------- evidence ----
 
@@ -170,6 +184,23 @@ def _parse_one(part: str) -> Evidence | None:
 #: second copy of the word would let one sheet drift from the other;
 #: :mod:`tracker.manifest` imports it and lists it first in ``HEADERS``.
 COL_IDENTIFIER = "Identifier"
+
+
+def identifier_key(identifier: str) -> str:
+    """The identity two readings of one request are matched on.
+
+    Without case, because a request's identifier becomes the prefix of a
+    Windows folder name and Windows folder names are case-insensitive: a
+    list holding both spellings would have two rows claiming one folder.
+    Every reading that joins a status to a request folds it this way - the
+    manifest matching a deferred update to its row, the manifest refusing a
+    duplicate row, and the store deciding whether the engagement's record
+    has already answered for an identifier the workbook also carries - so
+    the rule is worded once here rather than as a ``.lower()`` at each of
+    them.
+    """
+    return identifier.strip().lower()
+
 
 #: How candidate identifiers are joined in the Candidates cell, and the
 #: other working copies in Also Filed.
@@ -439,3 +470,38 @@ class StatusUpdate:
     file_count: int = 0
     received_date: dt.date | None = None
     validation_notes: str = ""
+
+
+def status_to_json(update: StatusUpdate) -> dict:
+    """One identifier's scanner columns as they are stored: its fields, the
+    date as text.
+
+    The one shape for it, as :func:`entry_to_json` is the one shape for an
+    index row. The manifest's deferred-update sidecar writes it, the
+    engagement's record writes it inside a ``scanned`` event, and the store
+    reads both back through :func:`status_from_json`, so a field added
+    above is carried by all three without another edit.
+    """
+    payload = asdict(update)
+    payload["received_date"] = update.received_date.isoformat() if update.received_date else None
+    # A blank File Count cell reaches here as nothing at all, and no files
+    # is a number. Coerced on the way out as well as on the way in, so
+    # that reading a stored status back gives the record it was made from
+    # and two readings of one blank cell cannot differ.
+    payload["file_count"] = int(update.file_count or 0)
+    return payload
+
+
+def status_from_json(raw: dict) -> StatusUpdate:
+    """A StatusUpdate from a stored one, tolerant of a field it does not carry.
+
+    A status is only ever read back to decide what a client still owes, and
+    a sidecar written by an older version - or an event from one - must not
+    be thrown away over a column that version did not have. The status
+    itself is the one value with no sensible default: a stored update
+    without one is not a status.
+    """
+    values = {f.name: raw.get(f.name, f.default) for f in fields(StatusUpdate) if f.name != "status"}
+    values["received_date"] = dt.date.fromisoformat(raw["received_date"]) if raw.get("received_date") else None
+    values["file_count"] = int(values["file_count"] or 0)
+    return StatusUpdate(status=raw["status"], **values)

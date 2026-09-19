@@ -108,7 +108,15 @@ from tracker.manifest import (
     write_text_atomically,
 )
 from tracker.page import Cell, Row, esc, page_text, slug, table, unesc
-from tracker.records import INDEX_COLUMNS, INDEX_LAYOUT, IndexEntry
+from tracker.records import (
+    BEHIND,
+    CURRENT,
+    INDEX_COLUMNS,
+    INDEX_LAYOUT,
+    STATES,
+    UNKNOWN,
+    IndexEntry,
+)
 from tracker.scaffold import MANIFEST_FILENAME
 from tracker.validators import sha256_of
 
@@ -158,10 +166,11 @@ _META_PATTERN = re.compile(r'<meta name="([^"]+)" content="([^"]*)">')
 #: What the app says about a view, and the three words it may say. The view
 #: is a derivation of two things that both move, so "there is one" is not an
 #: answer: a person has to know whether it still describes what is there.
-CURRENT = "current"
-BEHIND = "behind"
-UNKNOWN = "unknown"
-VIEW_STATES = (CURRENT, BEHIND, UNKNOWN)
+#: The words themselves are :mod:`tracker.records`' since decision 101,
+#: because the store answers about an engagement's rows in the same three;
+#: they are re-exported here so every caller that had them from this module
+#: still gets the same objects.
+VIEW_STATES = STATES
 #: What the chip beside the engagement calls it, and what the button that
 #: opens it says. Both are the API's vocabulary; the app types neither.
 VIEW_LABEL = "Status report"

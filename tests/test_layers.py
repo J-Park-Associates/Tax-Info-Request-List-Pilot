@@ -35,6 +35,14 @@ used to name).
 ``manifest`` -> ``records`` is the in-layer edge decision 100 added: the
 record types moved out of the modules that write them, ``records`` imports
 nothing of the package at all, and the manifest names the shapes it loads.
+
+``store`` joins L1 with decision 101 and is deliberately narrower than its
+layer allows: it imports ``records``, ``ledger`` and ``locking`` and
+nothing else of the package, not even the in-layer ``manifest``. What it
+needs from the workbooks is handed to it as records, so the database that
+will one day answer for the readers never depends on the modules that open
+the workbooks it is replacing; its command line imports them at call time,
+which is where a cycle is allowed to close.
 """
 
 from __future__ import annotations
@@ -48,8 +56,8 @@ PACKAGE = REPO / "tracker"
 #: Layer -> the modules in it. Every file in tracker/ is in exactly one.
 LAYERS: dict[int, frozenset[str]] = {
     0: frozenset({"__init__", "reasons", "locking", "page"}),
-    1: frozenset({"ledger", "manifest", "records", "scaffold", "templates", "validators",
-                  "settings"}),
+    1: frozenset({"ledger", "manifest", "records", "scaffold", "store", "templates",
+                  "validators", "settings"}),
     2: frozenset({"content_check", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     4: frozenset({"runner", "scheduling"}),
@@ -151,6 +159,13 @@ def test_the_bottom_two_import_nothing_of_the_package_but_each_other():
     load, _ = import_edges()
     assert load["locking"] == set(), load["locking"]
     assert load["ledger"] <= {"locking"}, load["ledger"]
+
+
+def test_the_store_imports_only_the_record_the_journal_and_the_lock():
+    """Decision 101: narrower than its layer, on purpose - the store must
+    not depend on what opens a workbook, or it cannot replace it."""
+    load, _ = import_edges()
+    assert load["store"] == {"ledger", "locking", "records"}, load["store"]
 
 
 def test_the_manifest_imports_the_record_and_the_lock_and_nothing_else():

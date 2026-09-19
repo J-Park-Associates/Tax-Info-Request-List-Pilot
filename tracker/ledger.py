@@ -41,13 +41,16 @@ one protocol rather than two. :func:`append` refuses when this process does
 not hold it, because a silent append outside the lock is exactly the row that
 goes missing later.
 
-**Not a database.** SQLite was the obvious answer and is the wrong one here:
-the engagement folders are synced by a cloud client between the office
-machine and the drive, and a synced database file is a corrupted database
-file. One database per clients root would be worse still - every client's
-history in one file, which is the opposite of the rule that an engagement
-folder carries everything about that engagement and nothing about anyone
-else's. A text file that only ever grows is what a sync client can carry.
+**Not a database, here.** SQLite was the obvious answer and is the wrong
+one *in the engagement folder*: the folders are synced by a cloud client
+between the office machine and the drive, and a synced database file is a
+corrupted database file. A text file that only ever grows is what a sync
+client can carry. Decision 101 adds the database the other side of that
+line - :mod:`tracker.store`, one file per clients root on the designated
+machine's own disk, never synced and never in a folder - and it is built
+*from* this file: the journal is what is written first and what survives,
+the store is what is rebuilt. Together they are the record; this file
+alone is the ledger.
 
 **Plain dicts, and no imports above this module.** The events are dicts of
 JSON values, so this module sits at the bottom beside :mod:`tracker.locking`
@@ -64,6 +67,7 @@ import hashlib
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker.locking import lock_is_held
@@ -85,6 +89,11 @@ ROW_KEY = "row"
 WAS_KEY = "was"
 #: What a ``SCANNED`` event carries: identifier -> the scanner columns applied.
 STATUSES_KEY = "statuses"
+#: What a ``KEYWORD_LEARNED`` event carries: the request a person's filing
+#: taught, and the word it was taught. Named here beside the other event
+#: keys so the writer and every reader of the record spell them once.
+IDENTIFIER_KEY = "identifier"
+KEYWORD_KEY = "keyword"
 
 #: One original was preserved and its record says where it now is. A pass
 #: that sorts a drop decides and preserves in one row, so it appends one of
@@ -149,10 +158,18 @@ def new(name: str, **payload: object) -> dict:
     """
     if name not in EVENTS:
         raise LedgerError(f"{name!r} is not an event this version writes ({', '.join(sorted(EVENTS))})")
-    return {EVENT_KEY: name, AT_KEY: _now(), **payload}
+    return {EVENT_KEY: name, AT_KEY: stamp(), **payload}
 
 
-def _now() -> str:
+def stamp() -> str:
+    """Now, as everything the record stamps says it: UTC, to the second.
+
+    UTC because the office machine's clock is local and a daylight-saving
+    hour would otherwise put two passes out of order. Public because the
+    store (:func:`tracker.store.rebuild_engagement`) stamps when it built
+    its rows, and two stamps in one record written two ways would be two
+    formats to read back.
+    """
     return dt.datetime.now(dt.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
@@ -290,24 +307,7 @@ def fold(events: list[dict]) -> dict[str, dict]:
     that refuses what it does not know cannot read a record written by the
     run after it.
     """
-    rows: dict[str, dict] = {}
-    for event in events:
-        if event.get(EVENT_KEY) not in ROW_EVENTS:
-            continue
-        key = event.get(KEY_KEY)
-        if key is None:
-            raise LedgerError(f"an index-shaped {event[EVENT_KEY]!r} event carries no {KEY_KEY!r}")
-        was = event.get(WAS_KEY)
-        if was and was != key:
-            if was in rows and key not in rows:
-                # Renamed where it stands: a dict cannot re-key in place, so
-                # the row order is rebuilt around it rather than the row
-                # being dropped and appended at the end.
-                rows = {(key if held == was else held): row for held, row in rows.items()}
-            else:
-                rows.pop(was, None)
-        rows[key] = event[ROW_KEY]
-    return rows
+    return replay(events).rows
 
 
 def statuses(events: list[dict]) -> dict[str, dict]:
@@ -316,11 +316,74 @@ def statuses(events: list[dict]) -> dict[str, dict]:
     A pass appends only what it changed, so the answer is built up across
     every ``SCANNED`` event rather than read off the last one.
     """
-    out: dict[str, dict] = {}
+    return replay(events).statuses
+
+
+@dataclass
+class Folded:
+    """What the record adds up to so far: the index, and the statuses.
+
+    A plain pair rather than two answers, because :func:`apply` folds one
+    event into both and a reader replaying the record line by line
+    (:mod:`tracker.store`) needs to carry both between lines.
+    """
+
+    rows: dict[str, dict] = field(default_factory=dict)
+    statuses: dict[str, dict] = field(default_factory=dict)
+
+
+def apply(state: Folded, event: dict) -> Folded:
+    """One event folded into what the record said before it. Returns ``state``.
+
+    **The whole of both fold rules, in one place.** :func:`fold` and
+    :func:`statuses` are this function over a whole file, and the store of
+    decision 101 is this function over the lines it has not applied yet -
+    so an index that is replayed a line at a time and one that is folded
+    from the start cannot come out different. Anything that has to change
+    about what an event means changes here.
+
+    ``state.rows`` is mutated where it can be; a row that arrived from
+    another identity is the one case that cannot be, because a dict cannot
+    re-key in place and the row keeps the place the one it left held, so
+    the mapping is rebuilt around it and assigned back.
+
+    An event whose name this version does not know as index-shaped and is
+    not a scan is passed over rather than refused: a later version may
+    write one, and a reader that refuses what it does not know cannot read
+    a record written by the run after it.
+    """
+    name = event.get(EVENT_KEY)
+    if name == SCANNED:
+        state.statuses.update(event.get(STATUSES_KEY) or {})
+        return state
+    if name not in ROW_EVENTS:
+        return state
+    key = event.get(KEY_KEY)
+    if key is None:
+        raise LedgerError(f"an index-shaped {name!r} event carries no {KEY_KEY!r}")
+    was = event.get(WAS_KEY)
+    if was and was != key:
+        if was in state.rows and key not in state.rows:
+            # Renamed where it stands: a dict cannot re-key in place, so
+            # the row order is rebuilt around it rather than the row
+            # being dropped and appended at the end.
+            state.rows = {(key if held == was else held): row for held, row in state.rows.items()}
+        else:
+            state.rows.pop(was, None)
+    state.rows[key] = event[ROW_KEY]
+    return state
+
+
+def replay(events: list[dict]) -> Folded:
+    """Every event folded, oldest first: the index and the statuses together.
+
+    One walk for a caller that wants both, and the definition :func:`fold`
+    and :func:`statuses` are each one half of.
+    """
+    state = Folded()
     for event in events:
-        if event.get(EVENT_KEY) == SCANNED:
-            out.update(event.get(STATUSES_KEY) or {})
-    return out
+        apply(state, event)
+    return state
 
 
 def head(engagement_dir: Path | str) -> str:
