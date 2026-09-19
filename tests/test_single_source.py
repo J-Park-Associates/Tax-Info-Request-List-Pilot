@@ -274,6 +274,17 @@ def test_the_scan_button_label_is_typed_once():
             assert phrase == label, (rel, phrase)
 
 
+def test_the_words_for_the_engagements_page_are_pythons_alone():
+    """Decision 91: the chip's label and the button that opens the page are
+    the API's vocabulary; the renderer shows them and types neither."""
+    from tracker.view import VIEW_LABEL, VIEW_OPEN_LABEL
+
+    for rel in ("app/renderer/index.html", "app/renderer/app.js", "app/renderer/style.css"):
+        text = read(rel)
+        assert VIEW_OPEN_LABEL not in text, rel
+        assert VIEW_LABEL not in text, rel
+
+
 def test_the_example_root_is_the_same_everywhere():
     from tracker.settings import EXAMPLE_ROOT
 
@@ -414,12 +425,17 @@ def test_the_roadmap_names_every_status_in_bold():
 
 def test_documents_name_buttons_by_their_labels():
     """A doc may say 'the X button' only for a button the page actually has."""
+    from tracker.view import VIEW_OPEN_LABEL
+
     html = read("app/renderer/index.html")
     labels = {re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m)).strip()
               for m in re.findall(r"<button[^>]*>(.*?)</button>", html, re.S)}
     js = read("app/renderer/app.js")
     labels |= set(re.findall(r'<button[^>]*>([^<]+)</button>', js))
     labels.add(re.search(r'const SCAN_LABEL = "([^"]+)";', js).group(1))
+    # Two buttons are filled in at runtime from a label Python owns: the
+    # scan button's, above, and the one that opens the engagement's page.
+    labels.add(VIEW_OPEN_LABEL)
     labels = {label for label in labels if label and "${" not in label}
     for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
         text = read(rel)

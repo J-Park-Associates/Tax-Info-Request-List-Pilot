@@ -71,6 +71,7 @@ from tracker.manifest import (
     write_engagement_info,
     write_text_atomically,
 )
+from tracker.page import slug
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
 from tracker.rollover import (
     CARRIED_SHEET,
@@ -142,7 +143,13 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     shift_item,
     template_items,
 )
-from tracker.view import VIEW_FILENAME, VIEW_LABEL, VIEW_STATES, view_state
+from tracker.view import (
+    VIEW_FILENAME,
+    VIEW_LABEL,
+    VIEW_OPEN_LABEL,
+    VIEW_STATES,
+    view_state,
+)
 
 log = logging.getLogger("tracker.api")
 
@@ -249,8 +256,10 @@ def default_engagement_name(client: str, year: int, form: str) -> str:
                                form=form_label(form)).strip()
 
 
-def _slug(text: str) -> str:
-    return "".join(ch if ch.isalnum() else "-" for ch in text.lower()).strip("-")
+#: A word as a class name, from the module that owns how the firm's pages
+#: spell one, so a status chip in the app and a status badge on the view
+#: are classed the same way by the same code.
+_slug = slug
 
 
 def standing_rules() -> list[dict]:
@@ -330,11 +339,12 @@ def _vocab() -> dict:
             "task_name": TASK_NAME,
         },
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
-        # The read-only workbook a pass regenerates, and the three words
-        # that say whether the one on disk still describes the engagement.
-        # The app compares nothing itself: it shows the word the API sends
-        # and derives the chip's class from it, exactly as it does a status.
-        "view": {"label": VIEW_LABEL, "states": list(VIEW_STATES)},
+        # The page a pass regenerates, the three words that say whether the
+        # one on disk still describes the engagement, and what the button
+        # that opens it says. The app compares nothing itself and types
+        # neither label: it shows the words the API sends and derives the
+        # chip's class from one of them, exactly as it does a status.
+        "view": {"label": VIEW_LABEL, "open": VIEW_OPEN_LABEL, "states": list(VIEW_STATES)},
     }
 
 
@@ -455,8 +465,8 @@ def _state(engagement: Path) -> dict:
     view_path = engagement / VIEW_FILENAME
     return {
         "pending_statuses": len(deferred),
-        # The derived workbook, and whether it still describes this
-        # engagement. Reading the stamp takes no lock and tolerates Excel
+        # The derived page, and whether it still describes this engagement.
+        # Reading the stamp takes no lock and tolerates another program
         # holding it, so showing the engagement stays a read.
         "view": {"state": view_state(engagement), "path": str(view_path)},
         "engagement": _info_payload(info),

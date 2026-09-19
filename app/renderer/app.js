@@ -126,7 +126,7 @@ function render(state) {
   $("eng-form").textContent = engForm;
   $("eng-form").classList.toggle("hidden", !engForm);
 
-  // The read-only status workbook beside it: current, behind, or unknown.
+  // The engagement's own page beside it: current, behind, or unknown.
   // Both the label and the word are the API's — the page compares nothing
   // and names no state — and the class is derived from the word, the same
   // way a status chip's is.
@@ -400,6 +400,7 @@ function applyVocabulary() {
   document.title = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;
   $("brand-product").textContent = vocab.product;
   $("scan-label").textContent = SCAN_LABEL;
+  $("view-label").textContent = vocab.view.open;
   $("root-input").placeholder = `e.g. ${vocab.example_root}`;
   $("ro-include-note").textContent =
     `Also add checklist rows this client has never had (otherwise they are listed as offers on the ${vocab.carried_sheet} sheet)`;

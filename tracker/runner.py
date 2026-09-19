@@ -42,12 +42,13 @@ opened, because a page about the firm's clients must not reach the network
 to render, and it is written from a report rather than from a lock: drawing
 the page never changes what it describes.
 
-**Every real pass leaves one workbook a person may open.** The last thing
-each engagement's pass does is regenerate its view (``VIEW_FILENAME``,
-:mod:`tracker.view`) from what the readers now say. It is derived and
-read-only: a person opens that one rather than the index, and a view
-somebody already had open is simply not replaced - the run carries
-``view_stale`` and succeeds, because the view holds no fact of its own.
+**Every real pass leaves one page per engagement.** The last thing each
+engagement's pass does is regenerate its view (``VIEW_FILENAME``,
+:mod:`tracker.view`) from what the readers now say - the same kind of
+self-contained page as the practice's, about one engagement. A person
+opens that rather than the index, and a view whose replace does not land
+is simply not replaced: the run carries ``view_stale`` and succeeds,
+because the view holds no fact of its own.
 
 One engagement's failure never stops the others. An unreadable manifest, a
 scan already running, a drop that would not sort — each is recorded against
@@ -59,7 +60,6 @@ if anything failed, so the scheduler shows a red run instead of a silent one.
 from __future__ import annotations
 
 import datetime as dt
-import html
 import logging
 import traceback
 from collections.abc import Iterable
@@ -81,6 +81,7 @@ from tracker.manifest import (
     with_pending,
     write_text_atomically,
 )
+from tracker.page import esc, page_text, table
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
     Engagement,
@@ -140,9 +141,9 @@ NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
 #: same engagement.
 SKIP_INACTIVE = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
 MANIFEST_UNREADABLE = "manifest could not be read: {problem}"
-#: What a pass says about a view somebody had open. Not an error: the view
-#: carries no fact, so the old one standing costs a person one pass.
-VIEW_NOT_REGENERATED = "status workbook open (not regenerated)"
+#: What a pass says about a view whose replace did not land. Not an error:
+#: the view carries no fact, so the old one standing costs a person one pass.
+VIEW_NOT_REGENERATED = "status report open (not regenerated)"
 
 
 @dataclass(slots=True)
@@ -356,7 +357,7 @@ def run_engagement(
 
 
 def _view_step(run: EngagementRun) -> None:
-    """Regenerate the engagement's read-only view: the last thing a pass does.
+    """Regenerate the engagement's own page: the last thing a pass does.
 
     After the statuses and after the draft, because the view is drawn from
     what the pass has already written and a view drawn halfway through would
@@ -661,20 +662,6 @@ def _page_title(root: Path) -> str:
     return root.name
 
 
-def _escaped(value: object) -> str:
-    """One value as page text. Every value on the page goes through here:
-    a client's file name is a name, whatever characters it contains."""
-    return html.escape(str(value))
-
-
-def _cells(values: Iterable[object], tag: str = "td") -> str:
-    return "<tr>" + "".join(f"<{tag}>{_escaped(value)}</{tag}>" for value in values) + "</tr>"
-
-
-def _table(columns: Iterable[object], rows: Iterable[Iterable[object]]) -> list[str]:
-    return ["<table>", _cells(columns, "th"), *(_cells(row) for row in rows), "</table>"]
-
-
 def _engagement_cells(run: EngagementRun, parked: list[ParkedFile]) -> tuple:
     """One engagement's row, in ``STATUS_COLUMNS`` order."""
     deferred = [name for name, held in ((DEFERRED_INDEX, run.index_deferred),
@@ -700,8 +687,8 @@ def write_status_page(root: Path | str, report: RunReport, *,
     One self-contained file: no script, no style sheet, no image, nothing
     fetched when it is opened. It names client files, which is why it is
     written into the firm's own clients folder and never into the
-    repository, and why every value on it goes through :func:`_escaped` -
-    a document called like a tag is shown as its name, not rendered as one.
+    repository, and why every value on it goes through :func:`tracker.page.esc`
+    - a document called like a tag is shown as its name, not rendered as one.
 
     Drawn from ``report``, never from a fresh pass: the caller decides what
     was run and what was only read (see :func:`status_report`), so nothing
@@ -725,33 +712,29 @@ def write_status_page(root: Path | str, report: RunReport, *,
         '<html lang="en">',
         "<head>",
         '<meta charset="utf-8">',
-        f"<title>{_escaped(title)}</title>",
+        f"<title>{esc(title)}</title>",
         f"<style>{_STATUS_STYLE}</style>",
         "</head>",
         "<body>",
-        f"<h1>{_escaped(title)}</h1>",
-        f'<p class="stamp">{_escaped(STATUS_GENERATED.format(stamp=stamp))}</p>',
-        f"<h2>{_escaped(STATUS_ENGAGEMENTS_HEADING)} ({len(report.runs)})</h2>",
-        *_table(STATUS_COLUMNS,
-                (_engagement_cells(run, parked.get(run.engagement.path, []))
-                 for run in report.runs)),
-        f"<h2>{_escaped(STATUS_REVIEW_HEADING)} ({len(queue)})</h2>",
-        *(_table(REVIEW_COLUMNS,
-                 ((f.received, f.engagement, f.original_name, f.reason, f.candidates)
-                  for f in queue))
-          if queue else [f"<p>{_escaped(STATUS_NOTHING_PARKED)}</p>"]),
-        f"<h2>{_escaped(STATUS_PROBLEMS_HEADING)} ({len(problems)})</h2>",
-        *(["<ul>", *(f"<li>{_escaped(problem)}</li>" for problem in problems), "</ul>"]
-          if problems else [f"<p>{_escaped(STATUS_NO_PROBLEMS)}</p>"]),
+        f"<h1>{esc(title)}</h1>",
+        f'<p class="stamp">{esc(STATUS_GENERATED.format(stamp=stamp))}</p>',
+        f"<h2>{esc(STATUS_ENGAGEMENTS_HEADING)} ({len(report.runs)})</h2>",
+        *table(STATUS_COLUMNS,
+               (_engagement_cells(run, parked.get(run.engagement.path, []))
+                for run in report.runs)),
+        f"<h2>{esc(STATUS_REVIEW_HEADING)} ({len(queue)})</h2>",
+        *(table(REVIEW_COLUMNS,
+                ((f.received, f.engagement, f.original_name, f.reason, f.candidates)
+                 for f in queue))
+          if queue else [f"<p>{esc(STATUS_NOTHING_PARKED)}</p>"]),
+        f"<h2>{esc(STATUS_PROBLEMS_HEADING)} ({len(problems)})</h2>",
+        *(["<ul>", *(f"<li>{esc(problem)}</li>" for problem in problems), "</ul>"]
+          if problems else [f"<p>{esc(STATUS_NO_PROBLEMS)}</p>"]),
         "</body>",
         "</html>",
     ]
-    # A name NTFS holds is not always one UTF-8 can (a lone surrogate); the
-    # page takes what it can write rather than lose the whole practice's
-    # view to one client's file name, exactly as the log does.
-    text = "\n".join(lines).encode("utf-8", "backslashreplace").decode("utf-8") + "\n"
     path = root / STATUS_PAGE_FILENAME
-    write_text_atomically(path, text)
+    write_text_atomically(path, page_text(lines))
     return path
 
 
