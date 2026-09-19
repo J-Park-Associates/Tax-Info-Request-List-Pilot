@@ -17,18 +17,28 @@ Evidence, strongest first:
    full of shared boilerplate: a real W-2 carries the line "To Be Filed
    With Employee's FEDERAL Tax Return", which a prior-year-returns row
    would otherwise happily claim.
-3. **Filename** — a request's keyword appears in the file's name. Used only
-   when the file has no readable text, which rescues the common case of a
-   scanned PDF with no text layer.
 
-A scan with no text layer and a name that says nothing is read by OCR, if
-OCR is installed - the same reading the scanner would make of it later
+There is no third tier. **A file name is not evidence** (owner,
+2026-09-18): the client chose it, the form did not, and a document nobody
+here can read is filed by nobody. A scan with no text layer that OCR
+cannot rescue parks with ``reasons.NO_READABLE_TEXT``, and the keywords
+its name does carry go with it as evidence for the person who will open
+it (:func:`_filename_evidence`) - a shortlist to read the document
+against, at the weakest tier :mod:`tracker.review` ranks, and never a
+filing. The cost is known and was accepted: until the Tesseract engine is
+installed, every scanned PDF parks.
+
+A scan with no text layer is read by OCR, if OCR is installed - the same
+reading the scanner would make of it later
 (:func:`tracker.content_check.extract`), so the two never disagree about
-what the file says. But OCR text is read *more strictly* than a text layer:
-it routes a file only on a request's **required** keywords. OCR misreads
-words, and the looser any-keyword tier is exactly where a misread "1099"
-would file a document under the wrong request; those matches go to a
-person instead (``OCR_ONLY``).
+what the file says. Its name no longer excuses that reading: OCR is now
+the only thing that can still file a scan, and the scan whose name says
+"W-2" is exactly the one whose content has to be read. But OCR text is
+read *more strictly* than a text layer: it routes a file only on a
+request's **required** keywords. OCR misreads words, and the looser
+any-keyword tier is exactly where a misread "1099" would file a document
+under the wrong request; those matches go to a person instead
+(``OCR_ONLY``).
 
 Two things deliberately do *not* route a file:
 
@@ -55,10 +65,11 @@ required-keyword match does: it is read only when the file would otherwise
 be parked with no candidate at all.
 
 A decision also keeps *why* it was reached. ``Routing.evidence`` names the
-tier the decision rested on; ``Routing.evidence_record`` carries, per
+tier the decision rested on - ``EVIDENCE_CONTENT`` or nothing, since no
+decision rests on a name any more; ``Routing.evidence_record`` carries, per
 candidate, the keywords that matched and where in the document they were
-said (:class:`tracker.content_check.Evidence`), a by-name hit as the file's
-own title, and a tier-2 refusal as that Reason's code. A *blocked* file -
+said (:class:`tracker.content_check.Evidence`), a name's keywords as the
+file's own title, and a tier-2 refusal as that Reason's code. A *blocked* file -
 one whose content fits a request and whose file the same request's tier-2
 rules then refused - keeps both, because the refusal alone says which rule
 said no and never which request the document looked like, and that is the
@@ -91,7 +102,6 @@ from tracker.content_check import (
     contains_keyword,
     evaluate_rules,
     extract,
-    extract_by_ocr,
     format_evidence,
     rules_fingerprint,
     says,
@@ -111,10 +121,16 @@ UNMATCHED = "matched no request"
 AMBIGUOUS = "matched more than one request"
 #: OCR text matched a request's looser keywords only; not enough to file on.
 OCR_ONLY = "matched only by OCR text"
-#: What a routing decision rested on.
+#: What a routing decision rested on. There is one: the document's own
+#: words. A file name was a tier of its own until decision 92 and is not
+#: one any more, because nothing is filed on a name - what the name says
+#: is kept as evidence for a person (``content_check.RULE_FILENAME``,
+#: which is what an index row carries and is untouched), never as a tier.
 EVIDENCE_CONTENT = "content"
-EVIDENCE_FILENAME = "filename"
 PENDING = reasons.PENDING_SYNC.format()
+#: No word of the document could be read, so nothing but its name is left
+#: and a name files nothing. Worded once, in :mod:`tracker.reasons`.
+UNREADABLE = reasons.NO_READABLE_TEXT.format()
 #: Every request refused the file type: said once, checked by tests by name.
 NO_REQUEST_ACCEPTS = "no request accepts .{extension} files"
 
@@ -132,7 +148,7 @@ class Routing:
     identifier: str | None          # None → needs human review
     reason: str                     # plain English, safe to show a client
     candidates: tuple[str, ...] = ()  # identifiers that accepted the file
-    evidence: str = ""              # EVIDENCE_CONTENT | EVIDENCE_FILENAME | ""
+    evidence: str = ""              # EVIDENCE_CONTENT | ""
     #: What each candidate's evidence actually was, by identifier: the
     #: keywords that matched, where they were said, the tier-2 reason that
     #: refused the file. ``evidence`` above says which *tier* the decision
@@ -148,6 +164,12 @@ class Routing:
 
 def _filename_evidence(path: Path, item: RequestItem) -> tuple[Evidence, ...]:
     """Every keyword from ``item`` that appears in ``path``'s own name.
+
+    **Nothing is filed on this.** It is what a person is handed when the
+    document itself could not be read: "A01 - the file name says W-2", at
+    the weakest tier :mod:`tracker.review` ranks, beside a document they
+    then open. The client chose that name and the form did not, so it can
+    start a reader off and it can never end the matter.
 
     The same whole-token rule the content check uses (``contains_keyword``),
     over the name with its separators (``_``, ``.``) read as spaces: so
@@ -167,11 +189,6 @@ def _filename_evidence(path: Path, item: RequestItem) -> tuple[Evidence, ...]:
         for keyword in (*item.required_keywords, *item.any_keywords)
         if contains_keyword(name, keyword)
     )
-
-
-def _filename_hit(path: Path, item: RequestItem) -> bool:
-    """True if a keyword from ``item`` appears in ``path``'s own name."""
-    return bool(_filename_evidence(path, item))
 
 
 def _refusal_evidence(reason: str) -> tuple[Evidence, ...]:
@@ -243,20 +260,19 @@ def _contested(
     )
 
 
-def _read(path: Path, items: list[RequestItem], text: str | None) -> Extraction:
+def _read(path: Path, text: str | None) -> Extraction:
     """The document's words, the way the scanner will read them.
 
-    The text layer first. A scan whose name already says which request it
-    is (``_filename_hit``) is not OCR'd - the name routes it, cheaply and
-    exactly as before OCR was part of routing; one whose name says nothing
-    is OCR'd, because that is the only evidence left.
+    The text layer first; a scan with none is read by OCR, if OCR is
+    installed. The file's own name used to excuse that reading - a scan
+    whose name said which request it was routed on the name, cheaply -
+    and since decision 92 it does not: nothing is filed on a name, so OCR
+    is the only thing that can still file a scan, and the scan whose name
+    says "W-2" is exactly the one whose content has to be read. It is the
+    same reading the scanner makes of the same bytes later, so the two
+    never disagree about what the file says.
     """
-    if text is not None:
-        return Extraction(text)
-    reading = extract(path, ocr=False)
-    if reading.needs_ocr and not any(_filename_hit(path, i) for i in items if _considers(i)):
-        return extract_by_ocr(path)
-    return reading
+    return Extraction(text) if text is not None else extract(path)
 
 
 def route_file(
@@ -285,12 +301,14 @@ def route_file(
         return Routing(path=path, identifier=None, reason=stub)
 
     pdf_cache = pdf_cache or PdfVerdictCache()
-    reading = _read(path, items, text)
+    reading = _read(path, text)
     # A text layer below _MIN_TEXT_CHARS (a scanned form's page breaks, a
-    # "Page 1 of 2" stamp) is no reading: the name, or OCR, is the evidence.
+    # "Page 1 of 2" stamp) is no reading at all, and neither is a scan OCR
+    # could not rescue: with no words there is no candidate, and the file
+    # parks for a person (UNREADABLE) rather than being filed on its name.
     words = "" if reading.needs_ocr else (reading.text or "")
-    # The scanner's verdict is the verdict on the *whole* reading; a scan
-    # rescued by its name was never fully read, so nothing is remembered.
+    # The scanner's verdict is the verdict on the *whole* reading; a file
+    # nothing could be read out of was never read, so nothing is remembered.
     remember = cache is not None and reading.text is not None and not reading.needs_ocr
     if remember and digest is None:
         digest = cache.digest_of(path)
@@ -306,7 +324,10 @@ def route_file(
     ocr_only: list[str] = []    # passed on any_keywords, but the text is OCR's word for it
     near: list[tuple[str, str]] = []   # looks like this request but fails a rule
     leads: list[tuple[str, str]] = []  # its keywords matched and only the year did not
-    by_name: list[str] = []     # no readable text; the filename is all we have
+    #: Nothing could be read, and the file's *name* carries this row's
+    #: keywords. Never filed on (decision 92) and never a candidate: it is
+    #: the shortlist a person gets beside a document they must open.
+    named: list[str] = []
     blocked: list[tuple[str, str]] = []  # content fits, but tier 2 refused the file
     refusals: list[str] = []    # every tier-2 reason, for an honest "why not"
     #: Why, per row: the keywords that matched and where, or the refusal.
@@ -348,9 +369,9 @@ def route_file(
                 # never evidence (decision 40) - but it is the lead a person
                 # needs, and it is all this file is going to give them.
                 leads.append((item.identifier, verdict.reason))
-        elif named := _filename_evidence(path, item):
-            record[item.identifier] = named
-            by_name.append(item.identifier)
+        elif said_by_the_name := _filename_evidence(path, item):
+            record[item.identifier] = said_by_the_name
+            named.append(item.identifier)
 
     # A document that announces itself as one request's paperwork but fails
     # that request's other rules is contested — never file it somewhere else.
@@ -360,7 +381,6 @@ def route_file(
     for hits, strength, how in (
         (strong, EVIDENCE_CONTENT, "content matched this request's required keywords"),
         (medium, EVIDENCE_CONTENT, "content matched this request's keywords"),
-        (by_name, EVIDENCE_FILENAME, "file name matched this request's keywords"),
     ):
         if len(hits) == 1:
             return Routing(
@@ -420,6 +440,23 @@ def route_file(
             path=path,
             identifier=None,
             reason=f"{UNMATCHED}; could not read it ({reading.error})",
+        )
+
+    # No word of the document could be read - a scan with no text layer and
+    # no OCR on this machine, an image-only PDF, a sheet with nothing in
+    # it. The owner's rule (2026-09-18): a document nobody can read is
+    # filed by nobody. So no row is a candidate, nothing is filed, and what
+    # the file's *name* pointed at travels with the parked row as evidence
+    # for the person who will open the document - a place to start reading,
+    # never a decision. "Matched no request" would be a lie here: nothing
+    # was matched against anything, and the fix is OCR or a person rather
+    # than another keyword.
+    if not words:
+        return Routing(
+            path=path,
+            identifier=None,
+            reason=UNREADABLE,
+            evidence_record=_recorded_for(record, named),
         )
 
     # Nothing accepted the file, and a row's keywords all matched but its

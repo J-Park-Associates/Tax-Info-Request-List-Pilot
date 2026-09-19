@@ -106,8 +106,11 @@ SCHEMA_VERSION = 1
 #: Every catalog a row of the expectations file may name.
 CATALOGS = tuple(entry["id"] for entry in FORM_TYPES)
 
-#: The name every document is routed under, so the router's by-name
-#: fallback can never read the client's name off the file.
+#: The name every document is routed under, so the client's own naming
+#: never reaches the router with the document. Nothing is filed on a name
+#: any more (decision 92), but a name still leaves evidence for the person
+#: reviewing, and evidence quoting a client's file name is not what this
+#: tool should be scoring - or writing down.
 NEUTRAL_STEM = "document"
 #: How a blank ``expected`` column reads in the report: the document is
 #: meant for a person, not for a request.
@@ -228,9 +231,10 @@ def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | 
     The text is read once, without OCR, and handed to the router; that is
     the reading the scanner makes of the same bytes later, so the two can
     never disagree. A scan is not routed unless OCR is allowed, because
-    the only evidence left for it is the file name this tool hides - and
-    when OCR is allowed nothing is handed over, so the router does its own
-    reading and applies its own stricter rule to OCR's words.
+    with no words there is nothing to route on - the router itself parks
+    it (decision 92) - and when OCR is allowed nothing is handed over, so
+    the router does its own reading and applies its own stricter rule to
+    OCR's words.
     """
     reading = extract(path, ocr=False)
     if reading.needs_ocr:

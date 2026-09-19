@@ -144,6 +144,15 @@ same day, and the tool's card there prints that sentence.
    rather than a guess — where the card says so, read the document. The
    same answer is on the command line, without the app:
    `python -m tracker.review` against the engagement folder prints it.
+
+   **Until OCR is installed on this machine, every scanned PDF is in that
+   queue.** Nothing is filed on a file name (owner, 2026-09-18): a client
+   called the file "W2 2025.pdf", the form did not, and a document nobody
+   here can read is filed by nobody. What the name says is not thrown
+   away — it is the bottom line of the shortlist, *the file name says
+   W-2* — but it is a place to start reading, never the answer. Install
+   Tesseract (§6, step 5) and those scans are read and filed like any
+   other document.
 3. **A locked engagement.** The app shows a notice when a run holds one. If
    it says a run is still going, leave it — **Sort & Scan** waits for it.
    If it says a run left its lock behind, a **Clear lock** button appears;
@@ -191,6 +200,7 @@ became, and — when it was not filed — why not.
 | `router.AMBIGUOUS` | More than one request accepted it. | Pick the right one. |
 | `router.CONTESTED_PREFIX` | It looks like a named request but failed one of that request's own rules — last year's W-2, say. | Read the named rule. Usually it is the wrong year or the wrong client. |
 | `router.OCR_ONLY` | A scan with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
+| `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan with no text layer and no OCR on this machine, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it, or install OCR (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. |
 | `router.PENDING` | A cloud placeholder, still copying down. | Nothing. The next pass picks it up. |
 
@@ -235,6 +245,10 @@ the last one, that the request has no folder and the next pass makes it.
 `reasons.NO_PAGES`, `reasons.UNREADABLE_PDF`,
 `reasons.EXTRACTION_FAILED`.
 
+One reason in that file is not a validation note at all:
+`reasons.NO_READABLE_TEXT` is the router's, and it appears in the index's
+Reason column (§4) rather than against a request.
+
 The note itself is never pasted into an email. It names keywords, size
 floors and our own folders, and a client should never see any of that.
 
@@ -264,9 +278,13 @@ itself, and the Tesseract OCR engine if it was installed.
    the same folder, the synced one.
 4. Press **Install Schedule**.
 5. If the firm's scans need OCR, install the Tesseract engine and the
-   optional packages `requirements.txt` names. Without them a scan with no
-   text layer is flagged for a person instead of being read; nothing
-   breaks.
+   optional packages `requirements.txt` names. **Without them every scan
+   with no text layer parks for a person** — it is not filed on what its
+   file name says, because the client wrote that name and the form did
+   not (owner, 2026-09-18). Nothing breaks and nothing is lost: the
+   originals are filed in the shared folder as always, the shortlist on
+   each parked file says which request its name points at, and installing
+   Tesseract later means the next pass reads those scans itself.
 6. Run one pass — **Sort & Scan** on a single engagement — and read the run
    log before trusting the schedule.
 

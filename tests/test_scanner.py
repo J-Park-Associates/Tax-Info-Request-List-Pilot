@@ -501,9 +501,16 @@ def test_a_document_a_person_filed_is_not_second_guessed_by_the_rules(engagement
 
 
 def test_a_persons_acceptance_covers_only_the_bytes_they_filed(engagement):
-    # A person filed one document; they deleted it; a later drop the filer
-    # routed by name took the same canonical name. The acceptance was for
-    # the person's bytes, not the name: the new file faces the rules.
+    # A person filed one document, and then a different one came to sit
+    # under the canonical name theirs had. The acceptance was for their
+    # bytes, not for that name: the newcomer faces the rules.
+    #
+    # Until decision 92 the newcomer arrived the way a client sends one -
+    # a blank scan called "Chase scan.pdf", which the router filed on its
+    # name. Nothing is filed on a name any more, and anything the rules
+    # do route into that folder passes the same rules the scan applies, so
+    # the only way a stranger reaches that name is a person putting it
+    # there. That is what this writes, and the claim is unchanged.
     from tracker.filer import assign_review_file, file_drops
     from tracker.scaffold import SHARED_DIR_NAME
 
@@ -511,9 +518,7 @@ def test_a_persons_acceptance_covers_only_the_bytes_they_filed(engagement):
     parked = file_drops(engagement, today=DAY1).review[0]
     filed = assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1).entry
     (engagement / filed.prepared_location).unlink()
-    text_pdf(engagement / SHARED_DIR_NAME / "Chase scan.pdf", "")     # routes by name, same canonical name
-    report = file_drops(engagement, today=DAY2)
-    assert report.filed[0].prepared_location == filed.prepared_location
+    text_pdf(engagement / filed.prepared_location, "Some other bank's statement for 2025")
     scan_engagement(engagement, today=DAY2)
     row = statuses(engagement)["A01"]
     assert row.status != Status.RECEIVED and "filed here by a person" not in row.validation_notes

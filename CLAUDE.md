@@ -130,9 +130,10 @@ routing rules work on real mail. The tool routes them against the shipped
 catalogs and reports the agreement, the confusions (expected this row,
 filed that one), the per-row table, the parked and no-text shares, and the
 time each document took. Each document is routed through a hard link under
-one neutral name (`NEUTRAL_STEM`), so the router's by-name fallback can
-never read the client's name off the file: what is scored is the rules,
-not the firm's file naming.
+one neutral name (`NEUTRAL_STEM`), so the client's own file naming never
+reaches the router with the document: nothing is filed on a name (decision
+92), but a name still leaves evidence for the person reviewing, and what
+is scored — and written down — should be the rules, not the firm's naming.
 
 ```
 python tools/backtest.py collect <folder>    # a skeleton expectations file for a person to fill in
