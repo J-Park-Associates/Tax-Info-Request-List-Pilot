@@ -62,7 +62,12 @@ from dataclasses import MISSING, asdict, dataclass, fields
 from pathlib import Path
 
 from tracker import reasons
-from tracker.manifest import RequestItem, has_routing_rules, write_json_atomically
+from tracker.manifest import (
+    RequestItem,
+    has_routing_rules,
+    keyword_alternatives,
+    write_json_atomically,
+)
 from tracker.validators import PDF_EXTENSION, extension_of, sha256_of
 
 log = logging.getLogger("tracker.content_check")
@@ -82,7 +87,10 @@ CACHE_FILENAME = "_content_cache.json"
 #: 7: a verdict carries the evidence behind it (an Evidence per matched rule).
 #: 8: a form heading its line with its own printed title and its year names
 #:    itself, so a one-copy W-2 says "W-2" where it said nothing before.
-CACHE_VERSION = 8
+#: 9: a keyword may name alternatives ("|") and join the phrases one of
+#:    them wants together ("+"), so a row can accept either of two
+#:    documents; a verdict cached before that read the characters as words.
+CACHE_VERSION = 9
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -416,11 +424,18 @@ def contains_keyword(text: str, keyword: str) -> bool:
     document gets filed, so a coincidental substring must never count as
     evidence.
 
+    A keyword that names alternatives is there when one of them is, and
+    an alternative that joins phrases is there when every phrase is
+    (``keyword_alternatives``); a plain keyword is one phrase and reads
+    exactly as it always did.
+
     This is the plain reading: the words are there. Whether they are the
     document's own words is :func:`says`, which the routing and status
     rules use; a file name, being all title, is read with this one.
     """
-    return next(_occurrences(text.lower(), keyword), None) is not None
+    low = text.lower()
+    return any(all(next(_occurrences(low, phrase), None) is not None for phrase in alternative)
+               for alternative in keyword_alternatives(keyword))
 
 
 #: A form number a keyword names is content evidence only where a form
@@ -894,7 +909,27 @@ def _first_said_at(low: str, keyword: str, within: int | None = None) -> int | N
 
 
 def _says_where(text: str, keyword: str, dominant: set[str] | None = None) -> tuple[str, int] | None:
-    """Where ``text`` says ``keyword`` as content evidence - the place and
+    """Where ``text`` says ``keyword`` as content evidence, reading the
+    keyword's alternatives (``keyword_alternatives``): the first
+    alternative whose every phrase is said, placed where its first phrase
+    is. A plain keyword is one alternative of one phrase, so this is
+    :func:`_one_says_where` for every keyword written before decision 90.
+
+    The place named is the leading phrase's because that is the row's own
+    order - the phrase the accountant wrote first is the one that says
+    what the document is, and the others confirm it.
+    """
+    if dominant is None:
+        dominant = dominant_forms(text)
+    for alternative in keyword_alternatives(keyword):
+        places = [_one_says_where(text, phrase, dominant) for phrase in alternative]
+        if all(place is not None for place in places):
+            return places[0]
+    return None
+
+
+def _one_says_where(text: str, keyword: str, dominant: set[str]) -> tuple[str, int] | None:
+    """Where ``text`` says one phrase as content evidence - the place and
     the page - or None where it does not say it at all.
 
     The verdict is :func:`says`'s, unchanged: a form number counts only
@@ -918,7 +953,7 @@ def _says_where(text: str, keyword: str, dominant: set[str] | None = None) -> tu
         # the evidence names, not whichever came first in a long document.
         in_title = _first_said_at(low, keyword, within=len(_title(low)))
         return _where_said(low, at if in_title is None else in_title)
-    if key in (dominant_forms(text) if dominant is None else dominant):
+    if key in dominant:
         return _where_said(low, at)
     return None
 
@@ -929,9 +964,11 @@ def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
     A form number counts only where the title names it in its own right
     (``_title_forms``) or as the document's own (dominant) number. Every
     other keyword counts where the document says it in its own words
-    rather than on a menu line or after an ask. The thin wrapper over
-    :func:`_says_where` is deliberate: one reading of a document, whether
-    the caller wants the verdict or the evidence behind it.
+    rather than on a menu line or after an ask. A keyword naming
+    alternatives is said when one of them is, every phrase of it
+    (``keyword_alternatives``). The thin wrapper over :func:`_says_where`
+    is deliberate: one reading of a document, whether the caller wants
+    the verdict or the evidence behind it.
     """
     return _says_where(text, keyword, dominant) is not None
 

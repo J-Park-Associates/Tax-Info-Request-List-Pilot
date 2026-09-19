@@ -15,7 +15,7 @@
   "counts": {
     "nodes": 108,
     "edges": 421,
-    "reused": 82
+    "reused": 80
   },
   "node_types": [
     "artifact",
@@ -150,8 +150,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2167980abbad90dc",
-      "lines": 1324,
+      "sha256": "860610877b6dd342",
+      "lines": 1361,
       "cli": "python -m tracker.content_check",
       "exports": [
         "CACHE_FILENAME",
@@ -232,7 +232,7 @@
       ],
       "constants": {
         "CACHE_FILENAME": "'_content_cache.json'",
-        "CACHE_VERSION": "8",
+        "CACHE_VERSION": "9",
         "MAX_PAGES": "10",
         "XLSX_EXTENSIONS": "('xlsx', 'xlsm')",
         "TEXT_EXTENSIONS": "('csv', 'tsv', 'txt')",
@@ -248,7 +248,7 @@
         "TITLE_CHARS": "400"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache (CACHE_FILENAME) keeps the verdicts.",
-      "notes": "The cache stores verdicts only - pass/fail, the reason, and the Evidence behind them, all of it the firm's own words. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again. Decision 73: says() weighs where a plain keyword is said, not only that it is there - an occurrence that is a menu line's title (_menu_tails: a form number and the title a dash or a comma sets off from it are one reference) or what an ask-word asked for (_asked_for: attach, provide, send, see and their kin, governing the rest of their own sentence and the line a request wraps on to) is the page talking about a document rather than being one, and one occurrence that is neither is enough. A dash-set-off form that heads its line with a year beside it, where the title window holds no second such line and no ask precedes it, names itself (_titles_its_own_line), so a payer's substitute form is not read as a checklist. A form number after a comma continues a list (_LIST_CONTINUES), and enclosed/enclosure/enclosures/re: join _REFERENCE_BEFORE, which now reads a colon between the word and the form. any_keyword_matched() answers the router's question 'did this row's keywords match, apart from the year?'. CACHE_VERSION 6. Decision 82: a verdict keeps the evidence behind it. Evidence(rule, term, where, page) is the one shape - EVIDENCE_RULES (required, any, date, filename, refused) and EVIDENCE_PLACES (title, first_page, footer, deep) are the named values, imported by the router, the index and the app's vocabulary and retyped nowhere. says() became a thin wrapper over _says_where(), which reaches the same verdict by the same reading and also says where the word was found (_where_said(): the title window first, then a page's last _FOOTER_LINES non-blank lines, then the rest of page 1, then deep), so no placement moved. evaluate_rules() puts an Evidence per matched rule on ContentResult.evidence, on a failing verdict too, and the reason sentence is untouched; the date rule records the row's Period, not the regex it derives and not a word of the document. format_evidence()/parse_evidence() are the one owner of the index cell's compact form (term@where:page rule, candidates joined by '; '), and the page is left off when it is 0. CACHE_VERSION 7, because a version-6 verdict read back would claim a verdict with no reason behind it. Decision 85: a form heading its own line with its printed title after its number and its year after the title names itself, at the weight a bare number-then-year mention carries - _names_itself() is the one predicate, and it holds both shapes a printed title wears (a dash between number and title, decision 69/73's; or nothing between them, _SELF_TITLED). The IRS's 2024 and 2025 W-2 revisions print one copy to the page, so Copy B's only \"W-2\" is the foot's \"W-2 Wage and Tax Statement 2025 Department of the Treasury\" and the form said nothing about itself before this. The year must be a year and not a date's tail (\"Form 941 04/30/2025\" on a CP 575 is a filing deadline), and a page heading two such lines is a menu, as it is for the dashed shape - _lists_forms() counts both. CACHE_VERSION 8, because a cached verdict from before it would say a one-copy W-2 is nobody's form."
+      "notes": "The cache stores verdicts only - pass/fail, the reason, and the Evidence behind them, all of it the firm's own words. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION; an older layout is reset), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. The cache file is saved through manifest.write_json_atomically(), so a scan killed mid-save leaves the previous cache rather than an empty one that re-extracts everything. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again. Decision 73: says() weighs where a plain keyword is said, not only that it is there - an occurrence that is a menu line's title (_menu_tails: a form number and the title a dash or a comma sets off from it are one reference) or what an ask-word asked for (_asked_for: attach, provide, send, see and their kin, governing the rest of their own sentence and the line a request wraps on to) is the page talking about a document rather than being one, and one occurrence that is neither is enough. A dash-set-off form that heads its line with a year beside it, where the title window holds no second such line and no ask precedes it, names itself (_titles_its_own_line), so a payer's substitute form is not read as a checklist. A form number after a comma continues a list (_LIST_CONTINUES), and enclosed/enclosure/enclosures/re: join _REFERENCE_BEFORE, which now reads a colon between the word and the form. any_keyword_matched() answers the router's question 'did this row's keywords match, apart from the year?'. CACHE_VERSION 6. Decision 82: a verdict keeps the evidence behind it. Evidence(rule, term, where, page) is the one shape - EVIDENCE_RULES (required, any, date, filename, refused) and EVIDENCE_PLACES (title, first_page, footer, deep) are the named values, imported by the router, the index and the app's vocabulary and retyped nowhere. says() became a thin wrapper over _says_where(), which reaches the same verdict by the same reading and also says where the word was found (_where_said(): the title window first, then a page's last _FOOTER_LINES non-blank lines, then the rest of page 1, then deep), so no placement moved. evaluate_rules() puts an Evidence per matched rule on ContentResult.evidence, on a failing verdict too, and the reason sentence is untouched; the date rule records the row's Period, not the regex it derives and not a word of the document. format_evidence()/parse_evidence() are the one owner of the index cell's compact form (term@where:page rule, candidates joined by '; '), and the page is left off when it is 0. CACHE_VERSION 7, because a version-6 verdict read back would claim a verdict with no reason behind it. Decision 85: a form heading its own line with its printed title after its number and its year after the title names itself, at the weight a bare number-then-year mention carries - _names_itself() is the one predicate, and it holds both shapes a printed title wears (a dash between number and title, decision 69/73's; or nothing between them, _SELF_TITLED). The IRS's 2024 and 2025 W-2 revisions print one copy to the page, so Copy B's only \"W-2\" is the foot's \"W-2 Wage and Tax Statement 2025 Department of the Treasury\" and the form said nothing about itself before this. The year must be a year and not a date's tail (\"Form 941 04/30/2025\" on a CP 575 is a filing deadline), and a page heading two such lines is a menu, as it is for the dashed shape - _lists_forms() counts both. CACHE_VERSION 8, because a cached verdict from before it would say a one-copy W-2 is nobody's form. Decision 90: a keyword may name alternatives and join the phrases one of them wants together, read through manifest.keyword_alternatives() - says() takes the first alternative whose every phrase is said and places the evidence at its leading phrase, contains_keyword() reads a file name the same way, and a keyword holding neither character is one phrase exactly as before. CACHE_VERSION 9, because a verdict cached before it read the '|' and the '+' as words to look for."
     },
     {
       "id": "tracker/filer.py",
@@ -445,8 +445,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1042d12762b4f97f",
-      "lines": 1395,
+      "sha256": "42e1db3371a4f0a8",
+      "lines": 1433,
       "exports": [
         "ACCOUNTANT_COLUMNS",
         "ANY_EXTENSION",
@@ -482,6 +482,8 @@
         "FORM_FAMILIES",
         "HEADERS",
         "ISO_DATE_HINT",
+        "KEYWORD_ALL_OF",
+        "KEYWORD_ANY_OF",
         "LABEL_SEPARATOR",
         "LOCK_RETRIES",
         "LOCK_RETRY_DELAY",
@@ -525,6 +527,7 @@
         "engagement_sheet_note",
         "has_routing_rules",
         "identifier_problem",
+        "keyword_alternatives",
         "label_for",
         "load_engagement_info",
         "load_manifest",
@@ -584,11 +587,13 @@
         "LOCK_RETRY_DELAY": "0.5",
         "LABEL_SEPARATOR": "' - '",
         "EXPECTED_PATTERN": "'{n} files expected'",
+        "KEYWORD_ANY_OF": "'|'",
+        "KEYWORD_ALL_OF": "'+'",
         "EMPTY_KEYWORD_WARNING": "\"Row {row} ({identifier}): the keyword '{keyword}' has no letters or digits and matches nothing; leave the cell blank instead\"",
         "BARE_FORM_NUMBER_WARNING": "\"Row {row} ({identifier}): the keyword '{keyword}' matches only that form, not its variants such as {example}; list the forms this request means\""
       },
       "role": "The _manifest.xlsx schema and every read/write of it. Owns RequestItem, Status, Override, load_manifest(), write_statuses() (lock-retry, then a pending-JSON sidecar merged on the next write) and create_template().",
-      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check. Decision 55: check_manifest() warns when a keyword is a bare family number (FORM_FAMILIES). Decision 58: as_text() keeps a value written from data a string; an empty note replaces the old one; check_manifest() warns on a keyword with no letters or digits (EMPTY_KEYWORD_WARNING). Decision 59: atomic_replacement() never lets the temp's removal mask the write's own error; create_template() saves atomically. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 66: the Engagement sheet's text cells go through as_text() too. Decision 68: with_pending() matches identifiers without case, as load_manifest() does. Decision 72: csv_tuple() takes a list or tuple as the list it already is (a spec's [\"pdf\"] stringified to one extension called ['pdf'], and every document parked against that row), and tracker.templates reads spec fields through it; check_tax_year() is the one bound on a tax year (YEAR_OUT_OF_RANGE), used by the wizard and the rollover alike. Decision 86: the Engagement sheet gained a Form cell and EngagementInfo a form field - which catalog the request list was cut from, as the catalog keys it. ENGAGEMENT_FIELDS owns the label and the sheet is read by label, so the cell is added after the ones already there and an engagement made before it loads with a blank; create_template() takes form as an optional keyword and folds it into the info it writes, because it is one fact about the engagement and not a property of any row - every caller that hands over rows alone records a blank, and a blank never clears a form the info already carries. Nothing refuses a manifest for a blank one. Decision 87: write_statuses() appends a scanned event and add_any_keyword() a keyword_learned event to the engagement's own record (tracker/ledger.py), each after its own write and only while locking.lock_is_held() says the caller is a pass - a request list seeded into a workbook by a test or a tool is not a pass and records nothing, and the record's own bootstrap means the first real pass imports where those rows stood anyway. Only what changed is recorded, so a pass that found the engagement as it left it appends nothing; the statuses go through _update_to_json(), the same shape the pending sidecar stores, so there is one owner for it. A deferred write records too: every reader overlays the sidecar, so which file the statuses landed in is the workaround and not the fact. Decision 88: load_manifest() now takes each identifier's Status, Received Date, File Count and Validation Notes FROM THAT RECORD wherever it has ever recorded one (_recorded_statuses(), replayed through with_pending() so there is one rule for replacing a row's scanner columns and one for matching an identifier without case), and leaves the workbook's own columns for an identifier the record has never seen - per identifier, so an engagement scanned before the record and a row added to the list since both read exactly as they always did. The request itself is never the record's: the keywords, the periods, the extensions, Waived, Manual Override and Any Keywords are the person's and always come from the workbook. load_manifest_from_workbook() is the workbook's own reading and statuses_from_workbook() its scanner columns with the pending sidecar overlaid, both public because the scanned bootstrap imports from them and the agreement fixture checks the record against them; through load_manifest() it would be checking the record against itself. A record that does not read as one is said loudly with the engagement and the line, and the workbook answers instead. Decision 89: _COLUMN_WIDTHS became COLUMN_WIDTHS - the Requests sheet is now drawn twice, here and by the view a pass regenerates, and a second copy of those numbers would drift."
+      "notes": "Every other module goes through this to touch the manifest. create_template() writes ONLY the accountant's columns \u2014 scanner state is written separately by write_statuses(), which is why seeding a test fixture takes both calls. Workbook saves go through save_workbook_atomically() (write beside, os.replace) so a crash mid-save never leaves a manifest Excel cannot open; atomic_replacement() / write_text_atomically() / write_json_atomically() are the same guarantee for every sidecar, the content cache, settings.json and the schedule XML, with a temp name (temp_path_for) unique per process and write but still ending in TEMP_SUFFIX so the validators ignore it. quarantine_sidecar() never overwrites an earlier corrupt file and does nothing with quarantine=False, which is what every reader and dry run passes. identifier_problem() refuses identifiers that could not survive as a folder-name prefix (illegal characters, trailing dot); duplicates are compared case-insensitively because Windows folders are. pending_updates()/with_pending() let readers that must not act on stale statuses (reminder, api state) see what a locked Excel deferred. The Engagement sheet (EngagementInfo, load/write_engagement_info) carries what the old registry held; create_template() always writes it. add_any_keyword() is how a person's filing decision teaches the router. A blank Allowed Extensions loads as DEFAULT_EXTENSIONS and '*' as anything; create_template writes '*' for an item with none. check_manifest() is the app's Check Manifest button and the top of every scheduled pass: the loader's problems, plus warnings for rows the rules cannot act on. summarize() is the one count of where an engagement stands (waived outside every figure, Accepted = Received); the Unfiled sheet is no longer written. A blank Date Pattern on a row whose Period names a year derives that year's check (date_pattern_derived=True, never written back, never routing evidence - see has_routing_rules); '*' means no year check. Decision 55: check_manifest() warns when a keyword is a bare family number (FORM_FAMILIES). Decision 58: as_text() keeps a value written from data a string; an empty note replaces the old one; check_manifest() warns on a keyword with no letters or digits (EMPTY_KEYWORD_WARNING). Decision 59: atomic_replacement() never lets the temp's removal mask the write's own error; create_template() saves atomically. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 66: the Engagement sheet's text cells go through as_text() too. Decision 68: with_pending() matches identifiers without case, as load_manifest() does. Decision 72: csv_tuple() takes a list or tuple as the list it already is (a spec's [\"pdf\"] stringified to one extension called ['pdf'], and every document parked against that row), and tracker.templates reads spec fields through it; check_tax_year() is the one bound on a tax year (YEAR_OUT_OF_RANGE), used by the wizard and the rollover alike. Decision 86: the Engagement sheet gained a Form cell and EngagementInfo a form field - which catalog the request list was cut from, as the catalog keys it. ENGAGEMENT_FIELDS owns the label and the sheet is read by label, so the cell is added after the ones already there and an engagement made before it loads with a blank; create_template() takes form as an optional keyword and folds it into the info it writes, because it is one fact about the engagement and not a property of any row - every caller that hands over rows alone records a blank, and a blank never clears a form the info already carries. Nothing refuses a manifest for a blank one. Decision 87: write_statuses() appends a scanned event and add_any_keyword() a keyword_learned event to the engagement's own record (tracker/ledger.py), each after its own write and only while locking.lock_is_held() says the caller is a pass - a request list seeded into a workbook by a test or a tool is not a pass and records nothing, and the record's own bootstrap means the first real pass imports where those rows stood anyway. Only what changed is recorded, so a pass that found the engagement as it left it appends nothing; the statuses go through _update_to_json(), the same shape the pending sidecar stores, so there is one owner for it. A deferred write records too: every reader overlays the sidecar, so which file the statuses landed in is the workaround and not the fact. Decision 88: load_manifest() now takes each identifier's Status, Received Date, File Count and Validation Notes FROM THAT RECORD wherever it has ever recorded one (_recorded_statuses(), replayed through with_pending() so there is one rule for replacing a row's scanner columns and one for matching an identifier without case), and leaves the workbook's own columns for an identifier the record has never seen - per identifier, so an engagement scanned before the record and a row added to the list since both read exactly as they always did. The request itself is never the record's: the keywords, the periods, the extensions, Waived, Manual Override and Any Keywords are the person's and always come from the workbook. load_manifest_from_workbook() is the workbook's own reading and statuses_from_workbook() its scanner columns with the pending sidecar overlaid, both public because the scanned bootstrap imports from them and the agreement fixture checks the record against them; through load_manifest() it would be checking the record against itself. A record that does not read as one is said loudly with the engagement and the line, and the workbook answers instead. Decision 89: _COLUMN_WIDTHS became COLUMN_WIDTHS - the Requests sheet is now drawn twice, here and by the view a pass regenerates, and a second copy of those numbers would drift. Decision 90: keyword_alternatives() lives here, beside csv_tuple(), because this module owns how a keyword cell is read - one keyword may name alternatives with '|' and join the phrases one of them wants together with '+', so a row can say 'these three words, or this one' where a column of ANDs and a column of ORs cannot; templates.py writes cells in that shape and content_check.py reads them, and neither owns it."
     },
     {
       "id": "tracker/reasons.py",
@@ -1103,8 +1108,8 @@
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1a19dcaf69b35c6b",
-      "lines": 438,
+      "sha256": "f74982ebab5dae2b",
+      "lines": 519,
       "exports": [
         "AS_OF_YEAR_END",
         "BASE_YEAR",
@@ -1113,6 +1118,7 @@
         "FORM_LABEL_PATTERN",
         "FORM_TEMPLATES",
         "FORM_TYPES",
+        "JURAT",
         "KEYWORD_DEFAULT_NOTE",
         "PERIOD_PATTERN",
         "SHARED",
@@ -1129,11 +1135,12 @@
         "FORM_LABEL_PATTERN": "'Form {form}'",
         "BASE_YEAR": "2025",
         "PERIOD_PATTERN": "'TY{year}'",
+        "JURAT": "'under penalties of perjury'",
         "YEAR_NOTE": "\"Defaults to the most recently ended year; the checklist's periods follow it\"",
         "KEYWORD_DEFAULT_NOTE": "'defaults to the document name'"
       },
       "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword rules that recognise each document. The ONLY source of truth for the checklists; the wizard and the rollover read it directly.",
-      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check. Decision 60: a catalog keyword is the form's own title or a phrase only it carries, never a word other forms print about it (a 1040 says W-2; a 1095-C says Marketplace). Decision 62: every catalog row keys on the document's own title phrase; tests/test_catalog.py routes reconstructions of the real forms against every catalog. Decision 63: the prior-year return rows require their form number and title, so a return wins over its schedules' lines. Decision 64: the return rows require their title phrase, not their number; the K-1 row keys on the K-1's title; tests/irs/ (the IRS's own forms) and tests/test_irs_forms.py route them all. Decision 65: every prior-year return row requires the jurat; schedule rows key on their titles, not on account names. Decision 66: no row keys on a line every return prints (dividends and distributions, ownership percentage, donation) or the organizer asks (child care provider); the receipt, list and childcare rows key on those documents' own titles. Decision 67: the receipt row does not key on contribution statement (an IRA's, a 529's); the childcare row knows the provider's statement; the estimated tax row keys on a voucher's own lines (its numbered heading, the amount line), not the booklet's prose. Decision 68: the receipt row keys on receipt wording only (a pledge, a thank-you and the firm's letter are not receipts); the estimated tax row knows the state voucher; the childcare row does not take an FSA administrator's statement. Decision 69: the receipt row keys on words only a charity prints; no form 540-es; L01 has no tuition statement (a checklist's line, a university's bill). Decision 72: item_from_spec() reads a spec's lists through manifest.csv_tuple(), the one parser, rather than a copy of it. Decision 73: the shared estimated-tax row is two rows, because an individual's 1040-ES voucher is not a corporation's record (business_estimated_tax keys on corporation estimated tax, estimated tax voucher, estimated payments made); the December bank row does not key on statement of account (a credit-card issuer's and a broker's heading) and takes a workbook, as the reconciliation it asks for arrives; the property tax row keys on the bill's own titles, not on assessor, parcel number or property tax bill (an assessor's notice and a servicer's escrow analysis print those); D01 drops thank you for your donation (every fundraiser's salutation); I01 drops advance payment of premium tax credit (a marketplace notice's sentence); J01 keys on child care/day care spellings with the run-together copies deleted, since the matcher reads the space as optional; 1041 A01 names the kind of trust (an IRA custodian's paperwork is a Trust Agreement too), B02 drops year-end account statement (a bank's heading), C01 drops distribution schedule (a mutual fund's), E01 knows stepped-up basis; 990 C02 keys on the schedule's own title rather than compensation of officers (Part VII's line and the Statement of Functional Expenses', which is now a financial statement's title), D02 on grants made rather than a bare grantee (a letter the charity received) or grants paid (the 990-PF's line 25), E01 without program description (a grant proposal's); the xlsx-only rows and the loans row take the format a client really sends, and officer_comp drops form 1125-e with it (the blank IRS form parks). Decision 85: 1040 E01 knows the wording a broker actually exports - realized gain/loss and the run-together realized gain loss beside the firm's own realized gain and loss - and takes a workbook, since that export arrives as an .xlsx as often as a CSV; 1041 B01 takes the same two, because the trust's realized gain/loss export is its 1099-B by another name. No IRS form in tests/irs/ says either word, and decision 68's consolidated 1099 never prints them, so the composite's placements are untouched."
+      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check. Decision 60: a catalog keyword is the form's own title or a phrase only it carries, never a word other forms print about it (a 1040 says W-2; a 1095-C says Marketplace). Decision 62: every catalog row keys on the document's own title phrase; tests/test_catalog.py routes reconstructions of the real forms against every catalog. Decision 63: the prior-year return rows require their form number and title, so a return wins over its schedules' lines. Decision 64: the return rows require their title phrase, not their number; the K-1 row keys on the K-1's title; tests/irs/ (the IRS's own forms) and tests/test_irs_forms.py route them all. Decision 65: every prior-year return row requires the jurat; schedule rows key on their titles, not on account names. Decision 66: no row keys on a line every return prints (dividends and distributions, ownership percentage, donation) or the organizer asks (child care provider); the receipt, list and childcare rows key on those documents' own titles. Decision 67: the receipt row does not key on contribution statement (an IRA's, a 529's); the childcare row knows the provider's statement; the estimated tax row keys on a voucher's own lines (its numbered heading, the amount line), not the booklet's prose. Decision 68: the receipt row keys on receipt wording only (a pledge, a thank-you and the firm's letter are not receipts); the estimated tax row knows the state voucher; the childcare row does not take an FSA administrator's statement. Decision 69: the receipt row keys on words only a charity prints; no form 540-es; L01 has no tuition statement (a checklist's line, a university's bill). Decision 72: item_from_spec() reads a spec's lists through manifest.csv_tuple(), the one parser, rather than a copy of it. Decision 73: the shared estimated-tax row is two rows, because an individual's 1040-ES voucher is not a corporation's record (business_estimated_tax keys on corporation estimated tax, estimated tax voucher, estimated payments made); the December bank row does not key on statement of account (a credit-card issuer's and a broker's heading) and takes a workbook, as the reconciliation it asks for arrives; the property tax row keys on the bill's own titles, not on assessor, parcel number or property tax bill (an assessor's notice and a servicer's escrow analysis print those); D01 drops thank you for your donation (every fundraiser's salutation); I01 drops advance payment of premium tax credit (a marketplace notice's sentence); J01 keys on child care/day care spellings with the run-together copies deleted, since the matcher reads the space as optional; 1041 A01 names the kind of trust (an IRA custodian's paperwork is a Trust Agreement too), B02 drops year-end account statement (a bank's heading), C01 drops distribution schedule (a mutual fund's), E01 knows stepped-up basis; 990 C02 keys on the schedule's own title rather than compensation of officers (Part VII's line and the Statement of Functional Expenses', which is now a financial statement's title), D02 on grants made rather than a bare grantee (a letter the charity received) or grants paid (the 990-PF's line 25), E01 without program description (a grant proposal's); the xlsx-only rows and the loans row take the format a client really sends, and officer_comp drops form 1125-e with it (the blank IRS form parks). Decision 85: 1040 E01 knows the wording a broker actually exports - realized gain/loss and the run-together realized gain loss beside the firm's own realized gain and loss - and takes a workbook, since that export arrives as an .xlsx as often as a CSV; 1041 B01 takes the same two, because the trust's realized gain/loss export is its 1099-B by another name. No IRS form in tests/irs/ says either word, and decision 68's consolidated 1099 never prints them, so the composite's placements are untouched. Decision 90, the owner's catalog: _prior_return() writes every prior-year return row's required keyword, with JURAT as the one owner of the line decision 65 added, and a state return's own printed title as an alternative inside that keyword - a standalone CA 540 or NY IT-201 files 1040 B01 on 'resident income tax return', a CA 568 or NY IT-204 files 1065 A01 on 'return of income' or 'partnership return', a CA 100S files 1120S A01 on 'franchise or income tax return', and another state is one more phrase, not a rule. The alternative lives inside the required keyword rather than in Any Keywords so the row's required set stays required: the prior-year return still outranks a row that matched on any keyword and one that fails another rule is still contested. The 1040 catalog gains A03-A06, one row per 1099 a person receives, keyed on the form's number - 'nonemployee compensation' is said by the IRS Attention page ahead of every information return and 'certain government payments' by the 1040-ES package, so neither is a keyword; 'miscellaneous information' and 'payment card' are, the second because the 1099-K's title never lands on one line and 'payment card' begins it, where a checklist's menu rule can see it. 'depreciation' joins SHARED - the 1120's C02 unchanged, 1120S F02 and 1065 D02 new - so the schedule behind Form 4562 has one set of words; a fixed-asset register that never says depreciation stays on fixed_assets, which all three catalogs already carry."
     },
     {
       "id": "tracker/validators.py",
@@ -1317,8 +1324,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "cf2df2c611076038",
-      "lines": 308,
+      "sha256": "840510034a22b39d",
+      "lines": 309,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1335,7 +1342,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "61afa4d4b58cdb9f",
+      "sha256": "342edb929e1a3191",
       "lines": 677,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1344,8 +1351,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1fe945eb37d47295",
-      "lines": 318,
+      "sha256": "3d44b15717fddf5a",
+      "lines": 328,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1353,16 +1360,16 @@
       "id": "docs/vocab-coverage.json",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4d39176b5cb4cc5c",
-      "lines": 7631,
+      "sha256": "6d0bfc8cfd64b290",
+      "lines": 7330,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
     {
       "id": "docs/vocab-coverage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9da77c7d4eb1edfa",
-      "lines": 689,
+      "sha256": "ae8683460b542415",
+      "lines": 710,
       "role": "The vocabulary coverage report as people read it: the unreached keywords, the keywords reached only by documents that file elsewhere, the rows nothing files into, then every catalog row by row. Generated by tools/vocab_report.py; never edited by hand.",
       "notes": "Rebuilt with `python tools/vocab_report.py build` in the same commit as a catalog, matcher or case change."
     },
@@ -1766,8 +1773,8 @@
       "id": "tests/test_catalog.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6b15b7d5ae3c489c",
-      "lines": 1412,
+      "sha256": "48fda4e672256f92",
+      "lines": 1594,
       "exports": [
         "CASES",
         "NL",
@@ -1789,7 +1796,11 @@
         "_DECISION_73_XLSX",
         "_DECISION_85",
         "_DECISION_85_XLSX",
+        "_DECISION_90",
+        "_DECISION_90_XLSX",
         "_DEC_BANK_SHORT",
+        "_DEPRECIATION_DETAIL",
+        "_DEPRECIATION_REPORT",
         "_ES_VOUCHER_1",
         "_ES_VOUCHER_4",
         "_F941",
@@ -1814,8 +1825,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "11b648f63a987dfe",
-      "lines": 678,
+      "sha256": "d1447bfea14e5204",
+      "lines": 717,
       "exports": [
         "TWO_PAGE_W2",
         "_FILLER",
@@ -1833,6 +1844,7 @@
         "test_a_form_number_in_the_title_counts_only_when_named_in_its_own_right",
         "test_a_form_quoted_in_a_sentence_is_a_reference",
         "test_a_form_told_to_the_reader_is_a_reference_whatever_follows_it",
+        "test_a_keyword_may_name_alternatives_and_the_words_one_of_them_wants_together",
         "test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading",
         "test_a_menu_line_names_neither_the_form_nor_its_title",
         "test_a_sheets_row_is_a_line_and_its_cells_are_set_apart",
@@ -1853,6 +1865,7 @@
         "test_ocr_text_used_when_available",
         "test_only_the_first_pages_of_a_pdf_are_read",
         "test_required_keywords",
+        "test_the_alternatives_of_a_keyword_are_read_where_a_keyword_cell_is_read",
         "test_the_any_keywords_are_read_apart_from_every_other_rule",
         "test_the_cache_is_keyed_on_content_not_path",
         "test_the_compact_evidence_parses_back_to_what_was_formatted",
@@ -1982,8 +1995,8 @@
       "id": "tests/test_irs_forms.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f9d8ad4e53aa532d",
-      "lines": 105,
+      "sha256": "5ede3ad6ac168fd4",
+      "lines": 112,
       "exports": [
         "EXPECT",
         "IRS",

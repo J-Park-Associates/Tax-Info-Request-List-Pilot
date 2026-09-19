@@ -380,6 +380,44 @@ def csv_tuple(value: object) -> tuple[str, ...]:
     return tuple(p.strip() for p in _cell_str(value).split(",") if p.strip())
 
 
+#: What one keyword may hold beside its words. A keyword cell's commas are
+#: the column's own word - every one of them in Required Keywords, any one
+#: of them in Any Keywords - and neither column can say "these three
+#: words, or this one". A prior-year return row has to: the federal return
+#: is known by three lines only it prints, and a standalone state return
+#: by its own printed title, which shares none of them (decision 90). So a
+#: keyword may name alternatives with ``|``, and join with ``+`` the
+#: phrases one alternative wants together:
+#:
+#:     individual income tax return + filing status + under penalties of
+#:     perjury | resident income tax return
+#:
+#: reads "all of these, or that one", and another state's return is one
+#: more ``|``. A keyword holding neither character is one phrase, exactly
+#: as every keyword was before, and no shipped keyword held either.
+KEYWORD_ANY_OF = "|"
+KEYWORD_ALL_OF = "+"
+
+
+def keyword_alternatives(keyword: str) -> tuple[tuple[str, ...], ...]:
+    """One keyword as the alternatives it accepts, each a tuple of phrases
+    the document must say together.
+
+    ``"trial balance"`` is ``(("trial balance",),)``; the grammar costs a
+    plain keyword nothing. Read here rather than in the matcher because
+    this module owns how a keyword cell is read (``csv_tuple``), and the
+    catalog writes cells the matcher then reads - one owner for the shape
+    of a keyword, whether it was typed into Excel or written in
+    :mod:`tracker.templates`.
+    """
+    alternatives = []
+    for alternative in keyword.split(KEYWORD_ANY_OF):
+        parts = tuple(p.strip() for p in alternative.split(KEYWORD_ALL_OF) if p.strip())
+        if parts:
+            alternatives.append(parts)
+    return tuple(alternatives)
+
+
 def _parse_int(value: object, default: int, column: str, row: int) -> int:
     text = _cell_str(value)
     if not text:

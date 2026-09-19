@@ -290,6 +290,16 @@ sent as an `.xlsx` at least as often; a file that used to come back
 "extension .xlsx not allowed" now files. The trust's 1099 row (1041 B01)
 reads that export as the 1099-B it stands in for.
 
+Three more the owner decided after the second corpus review. A state
+return that arrives on its own — a California 540 or 100S or 568, a New
+York IT-201 or IT-204 — files into the prior-year return row that has
+always said "Federal **& State**", instead of parking as it used to. A
+1040 engagement now has a row of its own for the 1099-NEC, the 1099-MISC,
+the 1099-K and the 1099-G, so those stop landing in review. And the
+depreciation schedule row the 1120 always had is in the 1120-S and the
+partnership checklists too; a register of what was bought and sold, which
+never says depreciation, still belongs to the fixed-asset row beside it.
+
 What turns that from an impression into a number is the backtest
 (`tools/backtest.py`): the firm's own already-sorted documents routed
 against the catalogs at the office, under neutral names, measuring where the

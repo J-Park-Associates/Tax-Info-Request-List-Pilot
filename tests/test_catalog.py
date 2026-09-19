@@ -104,7 +104,7 @@ _DECISION_62 = [
         "If you are not an employee but the amount in this box is not SE income, report it on Schedule 1 (Form 1040), line 8. See Form 1040-ES (or Form 1040-ES (NR)).",
         "report on your income tax return",
         "Form 1099-NEC (Rev. 1-2024) www.irs.gov/Form1099NEC",
-    ], None),
+    ], "A03"),      # parked until decision 90 gave the 1040 catalog a row for it
     ("1040", "1040-ES voucher.pdf", ["2025 Estimated Tax Payment Voucher 1", "Form 1040-ES"], "H01"),
     ("1120S", "1099-INT.pdf", [
         "Form 1099-INT Interest Income (Rev. January 2024) 2025",
@@ -456,12 +456,17 @@ _DECISION_69 = [
         "Fidelity Charitable", "Grant Confirmation", "Grants recommended from your giving account are not tax-deductible contributions.",
     ], None),
     ("1040", "plasma donation summary.pdf", ["BioLife", "2025 Donation Summary", "Total compensation paid 1,200.00"], None),
+    # The claim this case makes is decision 69's and unchanged: a state
+    # return package with its filing letter is *not* the estimated tax
+    # record, whatever the letter says about next year's vouchers. Where
+    # it belongs instead was the owner's to settle, and decision 90
+    # settled it - the prior-year row says "& State" and now means it.
     ("1040", "CA filing instructions then 540.pdf", [
         "2024 California Filing Instructions", "Prepared for John and Jane Smith",
         "Your 2024 California return is attached. Sign and mail Form 540 to the Franchise Tax Board.",
         "Your 2025 estimated tax: mail Form 540-ES vouchers by April 15, June 15, September 15 and January 15.",
         "TAXABLE YEAR 2024 California Resident Income Tax Return FORM 540", "Form 540 2024 Side 5",
-    ], None),
+    ], "B01"),
 ]
 
 
@@ -1294,8 +1299,10 @@ _DECISION_85 = [
         "Form",
         "Copy B-To Be Filed With Employee's FEDERAL Tax Return.",
     ], "A01"),
-    # The same line, for a form no 1040 row asks for: the rule names the
-    # form, and naming it is not filing it.
+    # The same line, read on a 1099-NEC. When this case was written no
+    # 1040 row asked for one and it parked, which is what proved that
+    # naming a form is not filing it; decision 90 gave the catalog the
+    # row, and the line the rule found is what files it.
     ("1040", "1099-NEC 2025 Copy B one to a page.pdf", [
         "PAYER'S name, street address, city or town, state or province, country, ZIP",
         "or foreign postal code, and telephone no.",
@@ -1310,7 +1317,7 @@ _DECISION_85 = [
         "1099-NEC Nonemployee Compensation 2025 Department of the Treasury - Internal Revenue Service",
         "Form",
         "Copy B For Recipient",
-    ], None),
+    ], "A03"),
     # A menu is still a menu when it sets no title off with a dash: three
     # lines, each a form with its own title and the year, is the firm's
     # checklist and is none of them, as decision 73 says of the dashed one.
@@ -1378,6 +1385,179 @@ _DECISION_85_XLSX = [
 ]
 
 
+_DEPRECIATION_REPORT = [
+    "Willow Lane Inc.", "Depreciation Report - Year ended December 31, 2025",
+    "Asset  In service  Cost  Method  Prior  Current  Accumulated",
+    "Ford Transit van  03/14/2025  48,200.00  MACRS 5yr  0.00  9,640.00  9,640.00",
+]
+_DEPRECIATION_DETAIL = [
+    "Willow Lane Inc.  Depreciation Detail  2025",
+    "Asset  In service  Cost  Method  Current depreciation",
+    "Racking system, warehouse B  12/16/2021  92,150.00  200DB 7yr  21,062.86",
+]
+
+_DECISION_90 = [
+    # The owner's catalog, 2026-09-18. Three decisions taken on the v2
+    # corpus review: a standalone state return files into the row that
+    # says "& State"; a 1040 gets a row for each of the four 1099s a
+    # person actually receives; the 1120's depreciation row belongs to
+    # the 1120-S and the partnership too.
+    #
+    # D1. The state form's own printed identity, as the form prints it.
+    # California sets its title across the break - "TAXABLE YEAR / FORM"
+    # over "2024 California Resident Income Tax Return 540" - and New
+    # York puts its number on the line above the title, so what is
+    # matchable is the line the title lands on, not the whole of either.
+    ("1040", "CA 540 2024.pdf", [
+        "TAXABLE YEAR FORM",
+        "2024 California Resident Income Tax Return 540",
+        "Your first name Initial Last name Suffix Your SSN or ITIN",
+        "1 Single 4 Head of household (with qualifying person). See instructions.",
+        "12 State wages from your Form(s) W-2, box 16",
+        "333 3101243 Form 540 2024 Side 1",
+    ], "B01"),
+    ("1040", "NY IT-201 2024.pdf", [
+        "Department of Taxation and Finance IT-201",
+        "Resident Income Tax Return",
+        "New York State - New York City - Yonkers - MCTMT",
+        "For the full year January 1, 2024, through December 31, 2024, or fiscal year beginning",
+        "For help completing your return, see Form IT-201-I, Instructions for Form IT-201.",
+    ], "B01"),
+    ("1065", "CA 568 2024.pdf", [
+        "TAXABLE YEAR Limited Liability Company CALIFORNIA FORM",
+        "2024 Return of Income 568",
+        "A What type of entity is filing this return? Check one only.",
+        "K Is this LLC a member or partner in another multiple member LLC?",
+        "3671243 Form 568 2024 Side 1",
+    ], "A01"),
+    ("1065", "NY IT-204 2024.pdf", [
+        "Department of Taxation and Finance IT-204",
+        "Partnership Return",
+        "For calendar year 2024 and See the instructions, Form IT-204-I.",
+        "Section 1: Partnership information",
+        "A Mark an X in the box that applies to your entity",
+    ], "A01"),
+    ("1120S", "CA 100S 2024.pdf", [
+        "TAXABLE YEAR California S Corporation FORM",
+        "2024 Franchise or Income Tax Return 100S",
+        "Schedule Q Questions (continued on Side 3)",
+        "A 1. FINAL RETURN? Dissolved Surrendered (withdrawn) QSub election",
+        "3611243 Form 100S 2024 Side 1",
+    ], "A01"),
+    # The confusables the state words must not take. A W-2 carries the
+    # state's boxes and is still a W-2; an organizer that *asks* for the
+    # return is not the return (decision 73's ask rule); an operating
+    # agreement is its own row, and says nothing about a return.
+    ("1040", "W-2 with state wages.pdf", [
+        "Form W-2 Wage and Tax Statement 2025",
+        "a Employee's social security number 123-45-6789",
+        "1 Wages, tips, other compensation 61,400.00",
+        "15 State Employer's state ID number 16 State wages, tips, etc. 17 State income tax",
+        "CA 123-4567-8 61,400.00 3,180.00",
+    ], "A01"),
+    ("1040", "organizer prior year page.pdf", [
+        "2025 Individual Income Tax Organizer - Prior Year",
+        "Please attach your 2024 resident income tax return and any state schedules.",
+        "If we prepared it, skip this page.",
+    ], None),
+    ("1065", "operating agreement.pdf", [
+        "Operating Agreement of Willow Lane Holdings LLC",
+        "Article I - Formation. The Company is organized as a limited liability company.",
+        "Article VII - Tax Matters. The Company shall be treated as a partnership for tax purposes.",
+    ], "A02"),
+    # D2 (D3 in the owner's list). Each 1099 by its own number, printed
+    # the way the IRS prints a one-copy return's foot (decision 85). The
+    # 1099-MISC's and the 1099-K's printed titles are keywords too; the
+    # 1099-NEC's and the 1099-G's are not, because the IRS "Attention"
+    # page ahead of every information return says "Nonemployee
+    # Compensation" and the 1040-ES package says "certain government
+    # payments" - a keyword a blank says that its row must not take.
+    ("1040", "1099-MISC 2025 Copy B.pdf", [
+        "CORRECTED (if checked)",
+        "PAYER'S name, street address, city or town, state or province, country, ZIP or foreign postal code",
+        "1 Rents 2 Royalties 3 Other income 4 Federal income tax withheld",
+        "1099-MISC Miscellaneous Information 2025 Department of the Treasury - Internal Revenue Service",
+        "Form",
+        "Copy B For Recipient",
+    ], "A04"),
+    ("1040", "1099-K 2025 Copy B.pdf", [
+        "CORRECTED (if checked)",
+        "FILER'S name, street address, city or town, state or province, country, ZIP or foreign postal code",
+        "1a Gross amount of payment card/third party network transactions 288,470.35",
+        "1099-K Payment Card and Third Party Network Transactions 2025 Department of the Treasury",
+        "Form",
+        "Copy B For Payee",
+    ], "A05"),
+    ("1040", "1099-G 2025 Copy B.pdf", [
+        "CORRECTED (if checked)",
+        "PAYER'S name, street address, city or town, state or province, country, ZIP or foreign postal code",
+        "1 Unemployment compensation 2 State or local income tax refunds, credits, or offsets",
+        "1099-G Certain Government Payments 2025 Department of the Treasury - Internal Revenue Service",
+        "Form",
+        "Copy B For Recipient",
+    ], "A06"),
+    # A processor's own year-end summary is the 1099-K's document under
+    # another name, and prints the words the form's box 1a prints.
+    ("1040", "merchant payment summary.pdf", [
+        "Willow Lane Merchant Services",
+        "Gross Payment Card / Third Party Network Transactions",
+        "Period 01/01/2025 - 12/31/2025  Merchant category code 5812",
+        "Month  Gross amount  Card not present  Transactions",
+        "January  20,207.74  14,505.10  241",
+    ], "A05"),
+    # Naming the four new forms is not being one of them: a checklist
+    # that sets each title off with a dash is a menu, as it was before
+    # the catalog had a row for any of them (decisions 69 and 73).
+    ("1040", "2025 checklist of 1099s.pdf", [
+        "J Park & Associates  2025 Tax Document Checklist",
+        "Form 1099-NEC - Nonemployee Compensation",
+        "Form 1099-MISC - Miscellaneous Information",
+        "Form 1099-K - Payment Card and Third Party Network Transactions",
+        "Form 1099-G - Certain Government Payments",
+        "Please send us each of these when they arrive.",
+    ], None),
+    # D3 (D4 in the owner's list). The 1120's depreciation row, shared
+    # into the two catalogs that had no row for the schedule at all.
+    ("1120", "depreciation report.pdf", _DEPRECIATION_REPORT, "C02"),
+    ("1120S", "depreciation report.pdf", _DEPRECIATION_REPORT, "F02"),
+    ("1065", "depreciation report.pdf", _DEPRECIATION_REPORT, "D02"),
+    ("1120S", "depreciation detail.pdf", _DEPRECIATION_DETAIL, "F02"),
+    ("1065", "depreciation detail.pdf", _DEPRECIATION_DETAIL, "D02"),
+]
+
+_DECISION_90_XLSX = [
+    ("1120S", "depreciation schedule.xlsx", [
+        ["Willow Lane Inc."], ["Depreciation Schedule - Year ended December 31, 2025"],
+        ["Asset", "Cost", "Prior", "Current", "Accumulated"],
+        ["Ford Transit van", 48200, 0, 9640, 9640],
+    ], "F02"),
+    ("1065", "depreciation schedule.xlsx", [
+        ["Willow Lane LLC"], ["Depreciation Schedule - Year ended December 31, 2025"],
+        ["Asset", "Cost", "Prior", "Current", "Accumulated"],
+        ["Ford Transit van", 48200, 0, 9640, 9640],
+    ], "D02"),
+    # The confusable the depreciation row must not take: a register of
+    # what the entity bought and sold, which never says depreciation. It
+    # is the fixed-asset row's document and stays there - the two rows
+    # ask for different schedules, and the register is not the 4562's.
+    ("1120", "asset additions and disposals.xlsx", [
+        ["Willow Lane Inc."], ["Asset Additions and Disposals - 2025"],
+        ["Asset", "Date", "Cost", "Disposed", "Proceeds"],
+        ["Ford Transit van", "03/14/2025", 48200, "", ""],
+    ], "C01"),
+    ("1120S", "asset additions and disposals.xlsx", [
+        ["Willow Lane Inc."], ["Asset Additions and Disposals - 2025"],
+        ["Asset", "Date", "Cost", "Disposed", "Proceeds"],
+        ["Ford Transit van", "03/14/2025", 48200, "", ""],
+    ], "F01"),
+    ("1065", "asset additions and disposals.xlsx", [
+        ["Willow Lane LLC"], ["Asset Additions and Disposals - 2025"],
+        ["Asset", "Date", "Cost", "Disposed", "Proceeds"],
+        ["Ford Transit van", "03/14/2025", 48200, "", ""],
+    ], "D01"),
+]
+
+
 #: (decision, form, file name, lines, expected) - every case, tagged with the
 #: decision that introduced it. tools/vocab_report.py reads this list too.
 CASES = [
@@ -1385,7 +1565,7 @@ CASES = [
     for decision, block in (
         (62, _DECISION_62), (63, _DECISION_63), (65, _DECISION_65), (66, _DECISION_66),
         (67, _DECISION_67), (68, _DECISION_68), (69, _DECISION_69), (73, _DECISION_73),
-        (85, _DECISION_85),
+        (85, _DECISION_85), (90, _DECISION_90),
     )
     for case in block
 ]
@@ -1393,7 +1573,9 @@ CASES = [
 #: (decision, form, file name, rows, expected) - the workbook cases, in the
 #: same shape with a sheet's rows in place of a page's lines. The report
 #: reads this list too, rendering the rows the way a sheet is read.
-XLSX_CASES = [(73, *case) for case in _DECISION_73_XLSX] + [(85, *case) for case in _DECISION_85_XLSX]
+XLSX_CASES = ([(73, *case) for case in _DECISION_73_XLSX]
+              + [(85, *case) for case in _DECISION_85_XLSX]
+              + [(90, *case) for case in _DECISION_90_XLSX])
 
 
 @pytest.mark.parametrize("decision, form, name, lines, expected", CASES, ids=[f"d{c[0]}-{c[2]}" for c in CASES])
