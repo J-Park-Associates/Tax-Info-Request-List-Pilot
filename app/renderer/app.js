@@ -27,8 +27,9 @@ function statusKey(status) {
 }
 
 // Every piece of the page is built from API data as DOM nodes, never as an
-// HTML string: a client's file name, a note typed in Excel or a folder name
-// is text, whatever characters it contains. `el` is the one builder.
+// HTML string: a client's file name, a keyword somebody typed into the
+// request list or a folder name is text, whatever characters it contains.
+// `el` is the one builder.
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
@@ -111,11 +112,9 @@ function render(state) {
     )));
 
   // The one count, from the same summarize() the run log and the reminder use.
-  const summary = [state.summary ? state.summary.line : ""];
-  if (state.pending_statuses) {
-    summary.push(`${state.pending_statuses} update(s) waiting for Excel to close`);
-  }
-  $("summary").textContent = summary.filter(Boolean).join("   ·   ");
+  // Nothing waits for Excel any more: the statuses are in the record
+  // (decision 103), and the request list is the person's file alone.
+  $("summary").textContent = state.summary ? state.summary.line : "";
 
   // The catalog the engagement was cut from, beside its name in the
   // toolbar. It is shown exactly as the sheet records it — the catalog's
@@ -514,7 +513,6 @@ async function runScan() {
     if (run.waiting) did.push(`${run.waiting} still syncing`);
     const problems = [];
     if (run.file_errors.length) problems.push(`${run.file_errors.length} file(s) could not be sorted`);
-    if (run.manifest_deferred) problems.push("the manifest is open in Excel — statuses wait in the sidecar");
     const lines = [`Pass complete — ${did.join(", ")}.   ${summary}`];
     if (problems.length) lines.push(`But ${problems.join("; ")}.`);
     for (const w of run.warnings) lines.push(`• ${w}`);

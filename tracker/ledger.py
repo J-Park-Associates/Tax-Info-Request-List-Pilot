@@ -15,20 +15,27 @@ its rows imported here, the workbook renamed aside, a :data:`MIGRATED`
 event appended - and after that the journal and the store are the only two
 copies of the index, and the store is rebuilt from the journal.
 
-**The manifest's scanner columns are still the workbook's, with this as the
-answer** (decision 88, stage A step 2):
-:func:`tracker.manifest.load_manifest` takes each identifier's status from
-:func:`statuses` wherever the record has ever recorded one - per identifier,
-so a row the record has never seen still reads off the sheet - and
-``write_statuses`` still writes them back. That half goes in decision 103.
+**It is the statuses too** (decision 103). The request list keeps only the
+ten columns a person edits; Status, Received Date, File Count and
+Validation Notes are never written into it again. A scan appends one
+:data:`SCANNED` event with what it changed, a person's filing appends
+:data:`KEYWORD_LEARNED` beside the row it taught, and
+:func:`tracker.manifest.load_manifest` answers from the store these lines
+are folded into.
+
+**And it carries the person's own rules** (decision 103). The workbook is
+read once per pass, and every difference from what the record already
+holds is appended as one :data:`RULES_IMPORTED` event: the changed and
+added rows whole, the removed identifiers, the Engagement fields that
+moved, and the workbook's digest. That is what makes the store rebuildable
+from the journals alone - without it, an engagement's rules would live only
+in a database that is meant to be disposable.
 
 What keeps it honest is the agreement fixture in ``tests/conftest.py``:
-after every test in the suite the record's statuses are compared with the
-*workbook's own* reading (``manifest.statuses_from_workbook()``, kept
-public for exactly this) and the store's ``documents`` table is compared
-with :func:`replay` over these lines. ``python -m tracker.ledger <folder>
---compare`` is the manifest half of that check for one engagement, for a
-person; ``python -m tracker.store <store> check <root>`` is the other.
+after every test in the suite a store built from nothing is held to
+:func:`replay` over these lines - the index rows, the statuses and the
+rules alike. ``python -m tracker.store <store> check <root>`` is that check
+for one practice, for a person.
 
 **Append-only, one line per event.** A line is written with a single
 ``os.write`` under ``O_APPEND`` and then ``fsync``-ed, so a run killed
@@ -59,10 +66,10 @@ alone is the ledger.
 
 **Plain dicts, and no imports above this module.** The events are dicts of
 JSON values, so this module sits at the bottom beside :mod:`tracker.locking`
-and imports nothing else of the package: :mod:`tracker.filer` and
-:mod:`tracker.manifest` both call it, and each serialises its own rows with
-the function that already owns that shape (the index's sidecar rows, the
-manifest's deferred updates). One owner per fact, and no cycle.
+and imports nothing else of the package: every writer serialises its own
+rows with the function in :mod:`tracker.records` that already owns that
+shape (an index row, a status, a rule row, the Engagement sheet). One
+owner per fact, and no cycle.
 """
 
 from __future__ import annotations
@@ -103,6 +110,19 @@ KEYWORD_KEY = "keyword"
 #: by the names they now have. It carries no row - it is a statement about
 #: the folder, not about a document - which is why it is not a row event.
 FILES_KEY = "files"
+#: What a ``RULES_IMPORTED`` event carries. The rows are whole records -
+#: every one that was added or changed, as ``tracker.records.rule_to_json``
+#: serialises it - rather than a patch, because a patch cannot be read
+#: without the row it patches and the whole point of the journal is that a
+#: line means something on its own. ``REMOVED_KEY`` is the identifiers the
+#: person deleted from the sheet, ``INFO_KEY`` the Engagement fields that
+#: changed (``tracker.records.info_to_json``'s names), and ``DIGEST_KEY``
+#: the SHA-256 of the workbook this reading came from, so a rebuild can say
+#: which sheet the rules describe.
+RULES_KEY = "rules"
+REMOVED_KEY = "removed"
+INFO_KEY = "info"
+DIGEST_KEY = "digest"
 
 #: One original was preserved and its record says where it now is. A pass
 #: that sorts a drop decides and preserves in one row, so it appends one of
@@ -129,6 +149,12 @@ BYTES_RECORDED = "bytes_recorded"
 SCANNED = "scanned"
 #: A person's filing taught a request a keyword.
 KEYWORD_LEARNED = "keyword_learned"
+#: The person's request list was read into the record (decision 103).
+#: Appended by a pass, and only when the workbook says something the record
+#: does not: a pass that finds the sheet exactly as it left it appends
+#: nothing. The first one carries the whole list, every one after it only
+#: what moved, so the fold of them all is the sheet.
+RULES_IMPORTED = "rules_imported"
 #: A reminder was drafted. Reserved: the reminder writes files and holds no
 #: lock, so nothing appends it yet.
 DRAFTED = "drafted"
@@ -147,7 +173,7 @@ ROW_EVENTS = frozenset({
     UNFILED_BY_PERSON, BYTES_RECORDED, IMPORTED,
 })
 #: Every event name this version writes or reads.
-EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED, MIGRATED})
+EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED, MIGRATED, RULES_IMPORTED})
 
 #: ``O_BINARY`` exists on Windows only; everywhere else the flag is not a flag.
 _BINARY = getattr(os, "O_BINARY", 0)
@@ -189,24 +215,19 @@ def stamp() -> str:
 # ----------------------------------------------------------------- write ----
 
 
-def append(engagement_dir: Path | str, event: dict, *, seed=None) -> Path:
+def append(engagement_dir: Path | str, event: dict) -> Path:
     """Append one event to the engagement's record. Returns the file.
 
-    ``seed`` is the bootstrap, and is called at most once: when the record
-    holds no event of this event's family yet - no index-shaped event for an
-    index-shaped event, no ``SCANNED`` for a ``SCANNED`` - whatever it
-    returns is appended first. That is how an engagement that has been
-    running for a season, with an index full of rows and no record beside it,
-    ends up with a record whose fold is that index: the first writer imports
-    what the workbooks already say, then writes what it just did. It is not
-    the migration (nothing is renamed here); it is what makes the record true
-    from its first line.
-
     Refuses unless this process holds the engagement lock: the record is
-    written in the same locked section as the write it records, after that
-    write has succeeded - including when Excel held the workbook and the
-    write went to a sidecar, because the sidecar is the workaround and this
-    is the record.
+    written in the same locked section as the decision it records, after
+    that decision's files have been moved. A silent append outside the lock
+    is exactly the line that goes missing later.
+
+    There is no bootstrap here any more. Decision 87 let the first writer
+    seed the record with what the workbooks already said; since decision
+    103 no workbook holds anything the record does not, and what an old
+    folder's workbooks said is imported once, by name, by the filer's
+    migration.
     """
     engagement_dir = Path(engagement_dir)
     name = event.get(EVENT_KEY)
@@ -219,11 +240,6 @@ def append(engagement_dir: Path | str, event: dict, *, seed=None) -> Path:
         )
     path = path_for(engagement_dir)
     _truncate_torn_tail(path)
-    if seed is not None:
-        family = ROW_EVENTS if name in ROW_EVENTS else {name}
-        if not any(e.get(EVENT_KEY) in family for e in read_events(engagement_dir)):
-            for earlier in seed():
-                _write_line(path, earlier)
     _write_line(path, event)
     return path
 
@@ -332,17 +348,40 @@ def statuses(events: list[dict]) -> dict[str, dict]:
     return replay(events).statuses
 
 
+def rules(events: list[dict]) -> dict[str, dict]:
+    """The person's request rows as the record last imported them, by
+    identifier, in the order the record first saw each one.
+
+    Empty where no ``RULES_IMPORTED`` has ever been appended, which is how
+    :func:`tracker.store.rebuild_engagement` knows to take the workbook's
+    own reading instead: that is the first import and nothing else.
+    """
+    return replay(events).rules
+
+
 @dataclass
 class Folded:
-    """What the record adds up to so far: the index, and the statuses.
+    """What the record adds up to: the index, the statuses and the rules.
 
-    A plain pair rather than two answers, because :func:`apply` folds one
-    event into both and a reader replaying the record line by line
-    (:mod:`tracker.store`) needs to carry both between lines.
+    One state rather than four answers, because :func:`apply` folds one
+    event into all of them and a reader replaying the record line by line
+    (:mod:`tracker.store`) needs to carry the lot between lines.
     """
 
     rows: dict[str, dict] = field(default_factory=dict)
     statuses: dict[str, dict] = field(default_factory=dict)
+    #: identifier -> the person's rule row, as ``records.rule_to_json``
+    #: writes it. Keyed by the identifier as the sheet spells it; the
+    #: loader refuses two rows whose identifiers differ only in case, so
+    #: one spelling per row is all there can be.
+    rules: dict[str, dict] = field(default_factory=dict)
+    #: The Engagement sheet's fields, as ``records.info_to_json`` writes
+    #: them. Only the ones any import has ever recorded: a field nothing
+    #: has spoken for is the record's default, not a blank somebody typed.
+    info: dict[str, object] = field(default_factory=dict)
+    #: The digest of the workbook the last import read. What lets a rebuilt
+    #: engagement say which sheet its rules describe, without opening one.
+    rules_digest: str = ""
 
 
 def apply(state: Folded, event: dict) -> Folded:
@@ -369,6 +408,8 @@ def apply(state: Folded, event: dict) -> Folded:
     if name == SCANNED:
         state.statuses.update(event.get(STATUSES_KEY) or {})
         return state
+    if name == RULES_IMPORTED:
+        return _apply_rules_imported(state, event)
     if name not in ROW_EVENTS:
         return state
     key = event.get(KEY_KEY)
@@ -387,11 +428,34 @@ def apply(state: Folded, event: dict) -> Folded:
     return state
 
 
-def replay(events: list[dict]) -> Folded:
-    """Every event folded, oldest first: the index and the statuses together.
+def _apply_rules_imported(state: Folded, event: dict) -> Folded:
+    """One import folded: the rows it carried replace the rows of those
+    identifiers, the ones it names as removed go, the Engagement fields it
+    carried are set, and the workbook's digest is the one it read.
 
-    One walk for a caller that wants both, and the definition :func:`fold`
-    and :func:`statuses` are each one half of.
+    A row the import does not mention is untouched: an import carries what
+    moved and nothing else, so the fold of every import is the sheet. The
+    sheet's own order is not this mapping's - it is the ``row`` each rule
+    carries, which is the Excel row it was read from - so a row added in
+    the middle of the list folds at the end here and still comes back in
+    its place (:func:`tracker.store.rules`).
+    """
+    for row in event.get(RULES_KEY) or []:
+        identifier = str(row.get("identifier", ""))
+        if identifier:
+            state.rules[identifier] = row
+    for identifier in event.get(REMOVED_KEY) or []:
+        state.rules.pop(str(identifier), None)
+    state.info.update(event.get(INFO_KEY) or {})
+    state.rules_digest = str(event.get(DIGEST_KEY, "") or "")
+    return state
+
+
+def replay(events: list[dict]) -> Folded:
+    """Every event folded, oldest first: the index, the statuses and the rules.
+
+    One walk for a caller that wants all of them, and the definition
+    :func:`fold`, :func:`statuses` and :func:`rules` are each one part of.
     """
     state = Folded()
     for event in events:
@@ -418,80 +482,20 @@ def head(engagement_dir: Path | str) -> str:
 if __name__ == "__main__":
     import argparse
 
-    def _compare_with_the_workbooks(folder: Path, events: list[dict]) -> int:
-        """Print whether the record and the manifest agree, and name every
-        place they do not. Returns the exit code: 0 agree, 1 disagree.
-
-        The operator's check (``docs/runbook.md``). Its side of the
-        comparison is the workbook's *own* reading -
-        ``manifest.statuses_from_workbook()`` - because since decision 88
-        the live readers answer from the record, and asking them would only
-        be the record compared with itself.
-
-        **The index half is gone** (decision 102): there is no index
-        workbook to disagree with any more. What was the index is the
-        record's own rows and the store's ``documents`` table, and
-        ``python -m tracker.store <store> check <root>`` is the check for
-        those two. This is the manifest half, and it goes the same way when
-        the scanner columns leave the workbook (decision 103).
-
-        Imported here rather than at the top of the module: this module sits
-        at the bottom of the package beside :mod:`tracker.locking` and
-        imports nothing else of it, and a command line nobody imports is the
-        one place that may look upwards.
-        """
-        from tracker.manifest import statuses_from_workbook
-        from tracker.scaffold import MANIFEST_FILENAME
-
-        disagreements: list[str] = []
-        manifest_path = folder / MANIFEST_FILENAME
-
-        print(f"  rows:     {len(fold(events))} recorded (the record is the only copy)")
-
-        recorded_statuses = statuses(events)
-        workbook_statuses = (
-            {i.lower(): s for i, s in statuses_from_workbook(manifest_path).items()}
-            if manifest_path.is_file() else {}
-        )
-        gone = 0
-        for identifier, status in recorded_statuses.items():
-            theirs = workbook_statuses.get(identifier.lower())
-            if theirs is None:
-                # A row deleted or renamed in Excel since the scan is dropped
-                # by the write-back and by the pending overlay alike; the
-                # record is right that the status was written.
-                gone += 1
-            elif theirs != status:
-                disagreements.append(
-                    f"  statuses  {identifier}: the record says {status!r}, "
-                    f"{MANIFEST_FILENAME} says {theirs!r}"
-                )
-        print(f"  statuses: {len(recorded_statuses)} recorded, {len(workbook_statuses)} in {MANIFEST_FILENAME}"
-              + (f" ({gone} recorded for a row the manifest no longer carries)" if gone else ""))
-
-        if disagreements:
-            print(f"\n  they do not agree ({len(disagreements)}):")
-            for line in disagreements:
-                print(line)
-            print()
-            return 1
-        print("\n  the record and the manifest agree\n")
-        return 0
-
     parser = argparse.ArgumentParser(description="Show one engagement's own record")
     parser.add_argument("engagement_dir", help="the engagement folder")
-    parser.add_argument(
-        "--compare", action="store_true",
-        help="check the record against _manifest.xlsx, status by status, naming every "
-             "disagreement; exit 1 if they disagree",
-    )
     ns = parser.parse_args()
 
+    # There is nothing left here to compare with a workbook. Until decision
+    # 103 the manifest carried each request's status as well, and
+    # ``--compare`` was the operator's check that the two agreed; the
+    # workbook holds only the person's rules now, the record holds
+    # everything the machine decided, and the check that matters is the
+    # store against this file - ``python -m tracker.store <store> check
+    # <clients root>``.
     folder = Path(ns.engagement_dir)
     recorded = read_events(folder)
-    if ns.compare:
-        print(f"\n{path_for(folder)} against the manifest beside it")
-        raise SystemExit(_compare_with_the_workbooks(folder, recorded))
+    folded = replay(recorded)
     print(f"\n{path_for(folder)}")
     print(f"  events: {len(recorded)}")
     if recorded:
@@ -501,6 +505,7 @@ if __name__ == "__main__":
         for one in recorded:
             counts[one[EVENT_KEY]] = counts.get(one[EVENT_KEY], 0) + 1
         print("  by event: " + ", ".join(f"{k} {n}" for k, n in sorted(counts.items())))
-    print(f"  rows:   {len(fold(recorded))}")
-    print(f"  statuses: {len(statuses(recorded))}")
-    print(f"  head:   {head(folder) or '(none)'}\n")
+    print(f"  rows:     {len(folded.rows)}")
+    print(f"  statuses: {len(folded.statuses)}")
+    print(f"  rules:    {len(folded.rules)}")
+    print(f"  head:     {head(folder) or '(none)'}\n")

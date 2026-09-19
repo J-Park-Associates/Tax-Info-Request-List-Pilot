@@ -76,9 +76,7 @@ from tracker.manifest import (
     ManifestError,
     check_manifest,
     load_manifest,
-    pending_updates,
     summarize,
-    with_pending,
     write_text_atomically,
 )
 from tracker.page import esc, page_text, table
@@ -157,7 +155,6 @@ class EngagementRun:
     waiting: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
-    manifest_deferred: bool = False  # the manifest was locked; statuses in the sidecar
     #: The view was not regenerated because somebody had it open. Not a
     #: failure: it holds no fact of its own, so it simply stays one pass
     #: behind until the next pass lands one.
@@ -188,8 +185,6 @@ class EngagementRun:
             parts.append(f"syncing {self.waiting}")
         if self.file_errors:
             parts.append(f"could not sort {len(self.file_errors)}")
-        if self.manifest_deferred:
-            parts.append("manifest locked (statuses deferred)")
         if self.view_stale:
             parts.append(VIEW_NOT_REGENERATED)
         parts.append(f"outstanding {self.outstanding}")
@@ -285,6 +280,7 @@ def should_draft(
 def run_engagement(
     engagement: Engagement,
     *,
+    root: Path | None = None,
     today: dt.date | None = None,
     dry_run: bool = False,
     reminders: str = REMINDERS_AUTO,
@@ -314,6 +310,12 @@ def run_engagement(
         # already held so it does not try to take it again. A dry run takes
         # none: it writes nothing and must never block a real run.
         with nullcontext() if dry_run else engagement_lock(engagement.path):
+            # **The request list is read first** (decision 103). Everything
+            # below answers from the record, so the pass begins by bringing
+            # the record up to the sheet a person may have edited since the
+            # last one - one journalled import, and nothing at all when the
+            # sheet has not moved.
+            ensure(engagement.path, root, migrate=not dry_run)
             # A row added or un-waived in Excel gets its folder and its README
             # line here, on the next pass, rather than when somebody remembers
             # to re-run scaffold. Idempotent: nothing existing is touched.
@@ -330,13 +332,12 @@ def run_engagement(
             # unsorted, so it rides the warnings rather than failing the run.
             run.warnings.extend(f"{e.name}: {e.error}" for e in filed.attention)
 
-            scanned = scan_engagement(engagement.path, today=today, dry_run=dry_run,
+            scanned = scan_engagement(engagement.path, root=root, today=today, dry_run=dry_run,
                                       lock_held=not dry_run)
             summary = scanned.summary
             run.statuses = summary.counts
             run.outstanding = summary.outstanding
             run.warnings.extend(scanned.warnings)
-            run.manifest_deferred = scanned.deferred
 
             if should_draft(engagement, today, reminders, weekday,
                             drafted=last_drafted(engagement.path)):
@@ -510,7 +511,7 @@ def run_registry(
 
     report = RunReport(today=today, dry_run=dry_run, reminders=reminders)
     report.runs = [
-        run_engagement(engagement, today=today, dry_run=dry_run,
+        run_engagement(engagement, root=registry.source, today=today, dry_run=dry_run,
                        reminders=reminders, weekday=weekday)
         for engagement in selected
     ]
@@ -581,16 +582,13 @@ STATUS_NO_PROBLEMS = "Nothing failed."
 #: What the last-pass cell says for an engagement the page read rather than ran.
 STATUS_NOT_PASSED = "not this pass"
 STATUS_INDEX_UNREADABLE = "{label}: the index could not be read ({error})"
-#: What the deferred-writes cell names. One thing is left that Excel can
-#: hold open against a pass: the manifest's scanner columns (decision 103
-#: takes them out of the workbook too, and this goes with them).
-DEFERRED_STATUSES = "statuses"
-_DEFERRED_SEP = ", "
 
-#: The two tables, column by column, in the order they are drawn.
+#: The two tables, column by column, in the order they are drawn. There is
+#: no "Deferred writes" column any more: nothing a pass decides waits for
+#: Excel to let go of a workbook (decision 103 took the last one).
 STATUS_COLUMNS = (
     "Engagement", "Client", "Outstanding", STATUS_REVIEW_HEADING, "Still syncing",
-    "Deferred writes", "Problem or skipped", "Warnings", "Last pass", "Drafted",
+    "Problem or skipped", "Warnings", "Last pass", "Drafted",
 )
 REVIEW_COLUMNS = ("Received", "Engagement", "File the client sent", "Reason", "Candidates")
 
@@ -676,14 +674,12 @@ def _page_title(root: Path) -> str:
 
 def _engagement_cells(run: EngagementRun, parked: list[ParkedFile]) -> tuple:
     """One engagement's row, in ``STATUS_COLUMNS`` order."""
-    deferred = [DEFERRED_STATUSES] if run.manifest_deferred else []
     return (
         run.engagement.label,
         run.engagement.client,
         run.outstanding,
         len(parked),
         run.waiting,
-        _DEFERRED_SEP.join(deferred),
         run.error or run.skipped,
         len(run.warnings),
         run.last_pass.isoformat(sep=" ", timespec="seconds") if run.last_pass else STATUS_NOT_PASSED,
@@ -752,9 +748,9 @@ def write_status_page(root: Path | str, report: RunReport, *,
 def _engagement_status(engagement: Engagement) -> EngagementRun:
     """One engagement's line, read rather than run.
 
-    The manifest and its sidecar, the way the app reads them for one
-    engagement - no lock, no scaffold, no scan, nothing written. A row the
-    page read carries no pass time, because no pass was made.
+    The record, the way the app reads it for one engagement - no lock, no
+    scaffold, no scan, nothing written in the folder. A row the page read
+    carries no pass time, because no pass was made.
     """
     run = EngagementRun(engagement=engagement)
     run.skipped = skipped_because(engagement)
@@ -763,16 +759,13 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
     if engagement.problem:
         run.error = MANIFEST_UNREADABLE.format(problem=engagement.problem)
         return run
-    manifest_path = engagement.path / MANIFEST_FILENAME
     try:
-        deferred = pending_updates(manifest_path, quarantine=False)
-        summary = summarize(with_pending(load_manifest(manifest_path), deferred))
+        summary = summarize(load_manifest(engagement.path))
     except (ManifestError, OSError) as exc:
         run.error = str(exc)
         return run
     run.statuses = summary.counts
     run.outstanding = summary.outstanding
-    run.manifest_deferred = bool(deferred)
     if engagement.warning:
         run.warnings.append(engagement.warning)
     return run

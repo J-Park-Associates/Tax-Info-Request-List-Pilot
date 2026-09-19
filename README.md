@@ -9,8 +9,8 @@ tailored to that form. **The client gets one folder and drops everything
 into it** — no sorting, no naming, no matching files to a list. A scheduled
 job then files what arrives: their originals are preserved untouched in
 `PBC/`, renamed working copies are sorted into per-request folders on the
-firm's side, an index records every rename and move, and each request's
-status is validated back into the manifest.
+firm's side, and the engagement's own record holds every rename, every move
+and each request's validated status.
 
 The standing rules, worded once in `tracker/__init__.py` and upheld by every
 module:
@@ -41,10 +41,9 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 
 ```
 {EngagementName}/
-├── _manifest.xlsx        ← accountant-owned: requests, rules, statuses
-├── _ledger.jsonl         ← the machine's own record: every original, where it went, what it became
+├── _manifest.xlsx        ← accountant-owned, and nothing else: the requests and their rules
+├── _ledger.jsonl         ← the machine's own record: every original, every status, every rules edit
 ├── _content_cache.json   ← verdict cache (no client text is ever stored)
-├── _manifest.pending.json← statuses a locked Excel kept out of the sheet, merged next write
 ├── Status Report.html    ← this engagement on one page, redrawn by every pass
 ├── Prepared/             ← the firm's working set (the client never sees it)
 │   ├── A01 - W-2 Wage Statements - All Employers/
@@ -56,12 +55,21 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
         └── scan0012.pdf
 ```
 
-The index used to be a workbook (`_index.xlsx`) beside the manifest.
-Decision 102 moved it into the record: the journal above, folded into one
+**The manifest is the person's file.** Its Requests sheet holds the ten
+columns an accountant edits and nothing the machine writes; each request's
+Status, Received Date, File Count and Validation Notes are in the record
+and on the Status Report. The machine reads the sheet once a pass and
+journals every change it finds; it writes it only when an engagement is
+created, when a year is rolled forward, and once, to slim an older one.
+
+The index used to be a workbook (`_index.xlsx`) beside the manifest, and
+the statuses used to be four more columns of the manifest. Decisions 102
+and 103 moved both into the record: the journal above, folded into one
 database on the machine that runs the schedule
-([docs/storage.md](docs/storage.md)). A folder that still has the workbook
-is migrated by its next pass, which renames it `_index.migrated.xlsx` and
-never writes one again.
+([docs/storage.md](docs/storage.md)). A folder that still has either is
+migrated by its next pass, which renames the workbook
+`_index.migrated.xlsx`, deletes the four columns from the request list,
+and never writes either again.
 
 1. Roll a returning client's list forward from last year (the default), or
    pick the tax form type for a new client — the catalog lives in
@@ -77,11 +85,11 @@ never writes one again.
    `Prepared/` folder, and records what it did in the engagement's record
 6. `python -m tracker.scanner <engagement_dir>` — validates `Prepared/` in
    three deterministic tiers (existence → integrity → content
-   keywords/dates) and stamps each row with one of the scanner's statuses
-   (`Status.ALL` in `tracker/manifest.py`), with plain-English notes
-7. Open the manifest in Excel to see where everything stands, and the
-   Status Report (double-click it; it is a web page) to see how any given
-   file got there
+   keywords/dates) and records each row's status (`Status.ALL` in
+   `tracker/manifest.py`) with plain-English notes
+7. Open the Status Report (double-click it; it is a web page) to see where
+   everything stands and how any given file got there. The manifest is for
+   editing the list, not for reading the answers
 8. `python -m tracker.reminder <engagement_dir>` — drafts the "still waiting
    on these" email from what the scanner found. **It only drafts it** — there
    is no SMTP anywhere in the module; a person reads it, edits it and sends it
@@ -312,8 +320,10 @@ being guessed onto whichever row is left over. `docs/runbook.md` §8 is how a
 person adds one.
 
 When a person files something out of `00 - Needs Review` they can type a
-keyword, and it is learned by that one engagement's manifest and nowhere
-else; `python tools/learned_keywords.py` lists every keyword taught that way
+keyword, and it is recorded against that one engagement's request and
+nowhere else — every reader lays it over the row's own Any Keywords, and
+the rollover writes it into next year's sheet as an ordinary one;
+`python tools/learned_keywords.py` lists every keyword taught that way
 across all your engagements, grouped by request, so the ones several clients
 needed become catalog rows the test suite then defends.
 

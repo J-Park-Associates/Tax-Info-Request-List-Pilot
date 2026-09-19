@@ -2,10 +2,12 @@
 
 Stage A step 3 of the record/view separation (decision 89), as the owner
 settled it in decision 91: **every file staff open only to read is a web
-page; the one file they edit stays a workbook.** The record
-(:mod:`tracker.ledger`) is what the machine decided, the two workbooks beside
-it are written exactly as before, and this is the third thing - **one file a
-person opens that nobody has to be careful with.**
+page; the one file they edit stays a workbook.** The record is what the
+machine decided, the request list (``MANIFEST_FILENAME``) is what a person
+typed, and this is the third thing - **one file a person opens that nobody
+has to be careful with.** Since decision 103 it is also where each row's
+status and its Validation Notes are read: they left the workbook, and this
+page is where they went.
 
 ``VIEW_FILENAME`` is that file, and it carries no leading underscore on
 purpose: the machine-owned files keep theirs, and this is the one a person
@@ -290,6 +292,16 @@ def _text(value: object) -> str:
     return str(value)
 
 
+#: What the page shows about a request: the ten columns a person edits
+#: (``manifest.HEADERS``) and the four the record holds. They were one
+#: table in the workbook until decision 103 took the second four out of
+#: it; a person still wants to read them side by side, and this is the
+#: page that shows them. The status columns come last, as they always did.
+REQUEST_COLUMNS = (
+    *HEADERS, COL_STATUS, COL_RECEIVED_DATE, COL_FILE_COUNT, COL_VALIDATION_NOTES,
+)
+
+
 def request_row(item: RequestItem) -> dict[str, str]:
     """One Requests row, column header to cell text.
 
@@ -337,7 +349,7 @@ def _request_cells(item: RequestItem) -> Row:
     and the page is the record of what was asked."""
     row = request_row(item)
     values: list[object] = []
-    for header in HEADERS:
+    for header in REQUEST_COLUMNS:
         word = row[header]
         badged = header in (COL_STATUS, COL_MANUAL_OVERRIDE) and word
         values.append(_badge(word) if badged else word)
@@ -444,7 +456,7 @@ def _body(
         "</nav>",
         *_summary(stamp),
         *_heading(SHEET_NAME, len(items)),
-        *table(HEADERS, (_request_cells(item) for item in items), sortable=True),
+        *table(REQUEST_COLUMNS, (_request_cells(item) for item in items), sortable=True),
         "</section>",
         *_heading(INDEX_SHEET, len(entries)),
         *table(INDEX_COLUMNS, (index_row(entry) for entry in entries), sortable=True),

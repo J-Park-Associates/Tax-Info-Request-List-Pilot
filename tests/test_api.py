@@ -236,7 +236,7 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
     run_result = payload["run"]
     assert run_result["ok"] and not run_result["skipped"]
     assert run_result["file_errors"] == []
-    assert run_result["manifest_deferred"] is False
+    assert "manifest_deferred" not in run_result
     statuses = {i["identifier"]: i["status"] for i in payload["state"]["items"]}
     assert statuses["A01"] == Status.RECEIVED   # both current-year W-2s, duplicate ignored
     assert statuses["A02"] == Status.PARTIAL    # 2 of 3
@@ -345,16 +345,19 @@ def test_a_name_of_only_illegal_characters_falls_back(capsys, demo_root):
     assert payload["created"] == api.default_engagement_name("", default_tax_year(), "1040")
 
 
-def test_state_shows_statuses_a_locked_excel_deferred(capsys, demo_root):
-    from tracker.manifest import StatusUpdate, _save_pending
+def test_state_shows_the_status_the_record_holds(capsys, demo_root):
+    """Nothing waits for Excel any more (decision 103): a status is
+    recorded, and what the app shows is what the record says."""
+    from tests.conftest import seed_statuses
+    from tracker.manifest import StatusUpdate
 
     spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    _save_pending(demo_root / "Smith" / MANIFEST_FILENAME,
+    seed_statuses(demo_root / "Smith",
                   {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))
     assert code == 0
-    assert payload["pending_statuses"] == 1
+    assert "pending_statuses" not in payload
     assert payload["items"][0]["status"] == Status.RECEIVED
 
 
@@ -781,25 +784,28 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     assert code == 0 and payload["cleared"] and payload["state"]["lock"] is None
 
 
-def test_state_reads_a_corrupt_sidecar_without_moving_it(capsys, demo_root):
-    # Showing an engagement is a read. A sidecar the app cannot parse stays
-    # where it is for the next real run to move aside as evidence.
-    from tracker.filer import INDEX_PENDING_FILENAME
-    from tracker.manifest import CORRUPT_SUFFIX, pending_path
+def test_state_leaves_an_old_sidecar_where_it_is(capsys, demo_root):
+    """Showing an engagement is a read.
+
+    A folder from before decision 102 or 103 may still have a sidecar
+    beside it. Nothing writes either any more; the app shows the
+    engagement without touching them, and the next real pass is what
+    reads them into the record and renames them.
+    """
+    from tracker.filer import INDEX_PENDING_FILENAME, MANIFEST_PENDING_FILENAME
 
     spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     engagement = demo_root / "Smith"
-    manifest_sidecar = pending_path(engagement / MANIFEST_FILENAME)
+    manifest_sidecar = engagement / MANIFEST_PENDING_FILENAME
     index_sidecar = engagement / INDEX_PENDING_FILENAME
     manifest_sidecar.write_text("{not json", encoding="utf-8")
     index_sidecar.write_text("{not json", encoding="utf-8")
 
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
 
-    assert code == 0 and payload["pending_statuses"] == 0 and payload["index"] == []
+    assert code == 0 and payload["index"] == []
     assert manifest_sidecar.exists() and index_sidecar.exists()
-    assert list(engagement.glob(f"*{CORRUPT_SUFFIX}")) == []
 
 
 def test_a_new_client_engagement_is_named_from_client_year_and_form(capsys, demo_root):
@@ -871,12 +877,25 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     assert code == 0 and payload["run"]["skipped"].startswith("another run")
     (engagement / LOCK_FILENAME).unlink()
 
-    # A manifest typo stops the pass with its row, and is a JSON error the app can show.
+    # A manifest typo stops the pass with its row, and the app is told so
+    # in the run's own error. The engagement still *shows*: nothing is
+    # imported from a workbook that will not validate, so the last rules
+    # the record holds stay in force for every reader (decision 103).
+    before = [i["identifier"] for i in payload_of_state(capsys, engagement)["items"]]
     wb = load_workbook(engagement / MANIFEST_FILENAME)
     wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="(unclosed")
     wb.save(engagement / MANIFEST_FILENAME)
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
-    assert code == 1 and payload["error"].startswith(f"Row 2: {COL_DATE_PATTERN}")
+    assert code == 0
+    assert payload["run"]["ok"] is False
+    assert payload["run"]["error"].startswith(f"Row 2: {COL_DATE_PATTERN}")
+    assert [i["identifier"] for i in payload["state"]["items"]] == before
+
+
+def payload_of_state(capsys, engagement):
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    return payload
 
 
 # ------------------------------------------------------------------ the root ----

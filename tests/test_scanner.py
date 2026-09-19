@@ -16,6 +16,7 @@ from tracker.manifest import (
     ENGAGEMENT_SHEET_NAME,
     SHEET_NAME,
     SUMMARY_SEPARATOR,
+    TEMP_SUFFIX,
     Override,
     RequestItem,
     Status,
@@ -126,7 +127,7 @@ def test_full_scan_statuses_and_writeback(engagement):
     # B01 left empty
 
     report = scan_engagement(engagement, today=DAY1)
-    assert report.written and not report.deferred
+    assert report.recorded == 3
 
     rows = statuses(engagement)
     assert rows["A01"].status == Status.RECEIVED
@@ -178,11 +179,12 @@ def test_manual_override_status_untouched(tmp_path):
     eng = tmp_path / "Eng"
     eng.mkdir()
     create_template(eng / MANIFEST_FILENAME, items)
-    # seed scanner columns the accountant "kept" via override
-    from tracker.manifest import StatusUpdate, write_statuses
-    write_statuses(
-        eng / MANIFEST_FILENAME,
-        {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1, received_date=DAY1)},
+    # the status the last scan recorded, which the override keeps
+    from tests.conftest import seed_statuses
+    from tracker.manifest import StatusUpdate
+
+    seed_statuses(
+        eng, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1, received_date=DAY1)},
     )
     scaffold_engagement(eng)
     text_pdf(folder(eng, "A01") / "wrong.pdf", "Wells Fargo Statement December")
@@ -299,7 +301,7 @@ def test_the_scan_report_carries_the_one_summary(engagement):
 def test_dry_run_writes_nothing(engagement):
     text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
     report = scan_engagement(engagement, today=DAY1, dry_run=True)
-    assert report.dry_run and not report.written
+    assert report.dry_run and report.recorded == 0
     assert report.updates["A01"].status == Status.RECEIVED  # facts computed
     assert statuses(engagement)["A01"].status == ""          # nothing written
     assert not (engagement / CACHE_FILENAME).exists()
@@ -321,7 +323,7 @@ def test_stale_lock_replaced_and_released(engagement):
     os.utime(lock, (old, old))
 
     report = scan_engagement(engagement, today=DAY1)   # takes over stale lock
-    assert report.written
+    assert report.recorded
     assert not lock.exists()                           # released afterwards
 
 
@@ -337,7 +339,7 @@ def test_the_scanner_reads_the_manifest_only_under_the_lock(engagement, monkeypa
         return real(path)
 
     monkeypatch.setattr(scanner_module, "load_manifest", under_the_lock)
-    assert scan_engagement(engagement, today=DAY1).written
+    assert scan_engagement(engagement, today=DAY1).recorded
     assert not (engagement / LOCK_FILENAME).exists()
 
 
@@ -374,7 +376,7 @@ def test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan(engagement, monke
     monkeypatch.setattr("tracker.validators.iter_candidate_files", listing_then_vanish)
 
     report = scan_engagement(engagement, today=DAY1)
-    assert report.written
+    assert report.recorded
     assert report.updates["A01"].status == Status.PENDING_SYNC
 
 
@@ -423,37 +425,84 @@ def test_waived_rows_are_named_so_counts_can_leave_them_out(engagement):
     assert report.summary.total == 2
 
 
-def test_a_deferred_scan_is_what_the_next_scan_measures_from(engagement, monkeypatch):
-    # Excel held the manifest through two scans. The Received Date the first
-    # deferred scan stamped is "the first date all validations passed"; the
-    # second must carry it, not re-stamp today. And when the file is then
-    # gone and Excel closed, the row regresses from Received - with its date
-    # and a note - instead of landing as plain Missing.
-    from openpyxl.workbook.workbook import Workbook as WorkbookClass
-
-    import tracker.manifest as manifest_module
-
+def test_the_first_date_everything_passed_is_what_the_next_scan_measures_from(engagement):
+    # The Received Date the first scan stamped is "the first date all
+    # validations passed"; the second carries it rather than re-stamping
+    # today. And when the file is then gone, the row regresses from
+    # Received - with its date and a note - instead of landing as plain
+    # Missing. Nothing here waits for Excel any more (decision 103): a
+    # scan records, and a person with the request list open cannot hold
+    # that up.
     a01 = folder(engagement, "A01")
     text_pdf(a01 / "chase.pdf", "Chase Bank Statement Dec 2025")
 
-    def locked_save(self, filename):
-        raise PermissionError(f"[Errno 13] locked: {filename}")
-    monkeypatch.setattr(WorkbookClass, "save", locked_save)
-    monkeypatch.setattr(manifest_module, "LOCK_RETRY_DELAY", 0.001)
-
     first = scan_engagement(engagement, today=DAY1)
-    assert first.deferred and first.updates["A01"].received_date == DAY1
+    assert first.recorded and first.updates["A01"].received_date == DAY1
     second = scan_engagement(engagement, today=DAY2)
-    assert second.deferred and second.updates["A01"].received_date == DAY1
+    assert second.recorded == 0                   # nothing changed, nothing recorded
+    assert second.updates["A01"].received_date == DAY1
 
     (a01 / "chase.pdf").unlink()
-    monkeypatch.undo()                                    # Excel closed
     third = scan_engagement(engagement, today=DAY2)
-    assert third.written
+    assert third.recorded
     row = statuses(engagement)["A01"]
     assert row.status == Status.MISSING and row.received_date == DAY1
     assert REGRESSION_NOTE.format(status=Status.RECEIVED, date=DAY1.isoformat(), why="").rstrip("; ") \
         in row.validation_notes
+
+
+def test_the_workbooks_bytes_do_not_change_across_a_pass(engagement):
+    """Decision 103's promise in one line: the machine reads that file.
+
+    A whole pass - sort, import, scan, record - and the digest of
+    ``_manifest.xlsx`` is the one it started with. The statuses went
+    somewhere, and where they went is the record.
+    """
+    from hashlib import sha256
+
+    from tracker.filer import file_drops
+
+    manifest = engagement / MANIFEST_FILENAME
+    text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
+    before = sha256(manifest.read_bytes()).hexdigest()
+
+    file_drops(engagement, today=DAY1)
+    report = scan_engagement(engagement, today=DAY1)
+
+    assert report.recorded
+    assert sha256(manifest.read_bytes()).hexdigest() == before
+    assert statuses(engagement)["A01"].status == Status.RECEIVED
+
+
+def test_a_manifest_held_the_way_excel_holds_one_is_still_imported_and_scanned(
+    engagement, held_like_excel,
+):
+    """The new promise, with a real Windows handle rather than a mock.
+
+    Decision 98's twin of this test proved that a *write* to a workbook
+    Excel holds is refused and the statuses go to a sidecar. There is no
+    such write left: the sheet is read - Excel's share mode allows that -
+    the rules are imported, the scan records what it found, and not a
+    byte of the workbook moves.
+    """
+    manifest = engagement / MANIFEST_FILENAME
+    text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
+
+    from tracker import ledger
+
+    with held_like_excel(manifest):
+        before = manifest.read_bytes()
+        report = scan_engagement(engagement, today=DAY1)
+        assert report.recorded
+        assert manifest.read_bytes() == before        # not a byte of it moved
+        assert list(engagement.glob(f"*{TEMP_SUFFIX}")) == []
+
+    # The rules were imported while the handle was held, and the statuses
+    # recorded: Excel's share mode lets a reader in, and reading is all
+    # this does to that file now.
+    assert any(e[ledger.EVENT_KEY] == ledger.RULES_IMPORTED
+               for e in ledger.read_events(engagement))
+    assert statuses(engagement)["A01"].status == Status.RECEIVED
 
 
 def test_a_received_file_the_sync_client_dehydrated_is_not_a_regression(engagement, monkeypatch):

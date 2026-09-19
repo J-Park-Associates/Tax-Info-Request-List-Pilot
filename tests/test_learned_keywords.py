@@ -20,7 +20,6 @@ from pathlib import Path
 from tracker.manifest import (
     EngagementInfo,
     RequestItem,
-    add_any_keyword,
     create_template,
 )
 from tracker.registry import SKIP_ROLLED_FORWARD
@@ -50,8 +49,22 @@ def engagement(root: Path, *parts: str, items=None, info: EngagementInfo | None 
 
 
 def taught(folder: Path, identifier: str, keyword: str) -> None:
-    """A person filing a parked document and typing a keyword, which is the only way one is learned."""
-    add_any_keyword(folder / MANIFEST_FILENAME, identifier, keyword)
+    """A person filing a parked document and typing a keyword, which is the
+    only way one is learned.
+
+    Recorded against the request rather than typed into the workbook
+    (decision 103): the word lives in the engagement's record now, and
+    ``load_manifest()`` is what puts it in front of this report.
+    """
+    from tests.conftest import ensure
+    from tracker import ledger, store
+    from tracker.locking import engagement_lock
+
+    with engagement_lock(folder):
+        ensure(folder)
+        store.record(store.connect(), folder, ledger.new(ledger.KEYWORD_LEARNED, **{
+            ledger.IDENTIFIER_KEY: identifier, ledger.KEYWORD_KEY: keyword,
+        }))
 
 
 def line_for(text: str, keyword: str) -> str:

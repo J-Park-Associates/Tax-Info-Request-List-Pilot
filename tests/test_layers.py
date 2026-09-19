@@ -26,11 +26,17 @@ half is not worth a module of its own until that call can move.
 
 **Rule 7, amended** (from the implementation plan's rules for every step):
 ``ledger`` and ``locking`` import nothing of the package but each other;
-``manifest`` imports ``ledger``, ``locking`` and ``records`` and nothing
-else; ``runner`` never imports ``scheduling`` or ``api``; the package's
-``__init__`` imports nothing at load time (decision 99 removed thirteen
-re-exports no file consumed, and with them the one load-time cycle the map
-used to name).
+``manifest`` imports ``records`` and nothing else; ``runner`` never imports
+``scheduling`` or ``api``; the package's ``__init__`` imports nothing at
+load time (decision 99 removed thirteen re-exports no file consumed, and
+with them the one load-time cycle the map used to name).
+
+The manifest's rule got *narrower* with decision 103, which is worth
+saying: it used to import ``ledger`` and ``locking`` because it wrote the
+scanner columns and appended to the journal under the lock. It writes
+nothing a pass decides now, so it parses a sheet and names shapes, and
+``load_manifest()`` reaches ``store`` and ``ledger`` at call time - an
+in-layer edge, closed where an edge is allowed to close.
 
 ``manifest`` -> ``records`` is the in-layer edge decision 100 added: the
 record types moved out of the modules that write them, ``records`` imports
@@ -168,9 +174,18 @@ def test_the_store_imports_only_the_record_the_journal_and_the_lock():
     assert load["store"] == {"ledger", "locking", "records"}, load["store"]
 
 
-def test_the_manifest_imports_the_record_and_the_lock_and_nothing_else():
-    load, _ = import_edges()
-    assert load["manifest"] == {"ledger", "locking", "records"}, load["manifest"]
+def test_the_manifest_imports_the_record_and_nothing_else():
+    """Narrower since decision 103, and that is the point.
+
+    The manifest used to append to the journal and take the engagement
+    lock to do it, because it wrote the scanner columns. It writes nothing
+    a pass decides any more: it parses a sheet and names the shapes it
+    parses into. ``load_manifest()`` reaches the store and the journal at
+    call time, which is where an in-layer edge is allowed to close.
+    """
+    load, call = import_edges()
+    assert load["manifest"] == {"records"}, load["manifest"]
+    assert {"store", "ledger"} <= call["manifest"], call["manifest"]
 
 
 def test_the_package_init_imports_nothing_at_load_time():

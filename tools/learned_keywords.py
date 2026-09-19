@@ -1,10 +1,11 @@
 """What the staff taught the router, in one list: the learned-keyword report.
 
 When a person files a parked document from the review folder they may type a
-keyword, and :func:`tracker.manifest.add_any_keyword` writes it into **that
-one engagement's** manifest. It is the right place for it - the person is
-deciding about this client's document, and the next such file routes itself
-here - but it goes nowhere else. Fifty engagements hold fifty private
+keyword, and :func:`tracker.filer.assign_review_file` records it against
+**that one engagement's** request (decision 103; until then it was typed
+into that engagement's workbook). It is the right place for it - the person
+is deciding about this client's document, and the next such file routes
+itself here - but it goes nowhere else. Fifty engagements hold fifty private
 vocabularies, invisible to each other and to the catalog in
 ``tracker/templates.py``, which is the only vocabulary the suite tests
 (``tests/test_catalog.py``, ``tests/test_irs_forms.py``,
@@ -17,11 +18,10 @@ router across every engagement under the clients root, grouped by request
 row, so the recurring ones become catalog commits the suite then defends.
 
 **It only reads.** No lock is taken (the report is not a pass and must never
-queue behind, or block, a scheduled one), no manifest is written, no file is
-moved and no unreadable sidecar is quarantined - the readers' ``quarantine=False``,
-as the reminder and the rollover pass it. The one thing written is the
-optional report file, which is refused inside the repository: client folder
-names would otherwise land in a commit.
+queue behind, or block, a scheduled one), nothing in an engagement folder is
+written or moved: the rows come from the record, the way every reader gets
+them. The one thing written is the optional report file, which is refused
+inside the repository: client folder names would otherwise land in a commit.
 
 **What "learned" means, and the soft spot in it.** The Engagement sheet has
 recorded which form type the engagement was created from since decision 86,
@@ -88,11 +88,8 @@ from tracker.manifest import (  # noqa: E402
     RequestItem,
     label_for,
     load_manifest,
-    pending_updates,
-    with_pending,
 )
 from tracker.registry import SKIP_ROLLED_FORWARD, RegistryError, discover_engagements  # noqa: E402
-from tracker.scaffold import MANIFEST_FILENAME  # noqa: E402
 from tracker.settings import SET_ROOT_HINT, SettingsError, clients_root, settings_path  # noqa: E402
 
 #: How an engagement the run would no longer chase is flagged where it is named.
@@ -125,7 +122,7 @@ def catalog_index() -> dict[tuple[str, str], dict[str, frozenset[str]]]:
     """Every shipped catalog row as ``(identifier, document) -> catalog -> its keywords``.
 
     Built the way an engagement gets a catalog - through ``create_template()``
-    and ``load_manifest()``, which is what ``shipped_catalogs()`` does - so the
+    and ``load_rules()``, which is what ``shipped_catalogs()`` does - so the
     comparison is against the rows a manifest is actually written with, not
     against the spec dicts behind them.
     """
@@ -147,15 +144,14 @@ def keywords_of(item: RequestItem) -> list[str]:
 
 
 def manifest_rows(folder: Path) -> list[RequestItem]:
-    """One engagement's request rows, with any deferred statuses overlaid.
+    """One engagement's request rows, as every reader reads them.
 
-    The overlay changes no keyword - it carries the scanner's columns - but a
-    reader of a manifest reads it the way every other reader does, and
-    ``quarantine=False`` is the half that matters here: looking must never
-    move a sidecar aside.
+    Through ``load_manifest()``, which since decision 103 is what puts a
+    keyword somebody taught in front of a reader at all: the word is in the
+    engagement's record, not in a cell, and this report exists to find
+    exactly those words. It reads and writes nothing in the folder.
     """
-    manifest = folder / MANIFEST_FILENAME
-    return with_pending(load_manifest(manifest), pending_updates(manifest, quarantine=False))
+    return load_manifest(folder)
 
 
 # ------------------------------------------------------------------ report ----

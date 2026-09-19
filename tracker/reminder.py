@@ -62,9 +62,7 @@ from tracker.manifest import (
     Status,
     load_engagement_info,
     load_manifest,
-    pending_updates,
     summarize,
-    with_pending,
 )
 from tracker.reasons import GENERIC_ASK  # re-exported; the one generic sentence
 from tracker.scaffold import (
@@ -169,7 +167,6 @@ class ReminderDraft:
     needs_review_files: int = 0
     total_requests: int = 0
     received_requests: int = 0
-    pending_statuses: int = 0   # deferred by a locked Excel; already reflected here
 
     @property
     def has_outstanding(self) -> bool:
@@ -423,11 +420,10 @@ def draft_reminder(
     sender = sender or info.sender
     firm = firm or info.firm
 
-    # Statuses the last scan could not write because Excel had the manifest
-    # open are still the truth about what arrived; a draft that ignored
-    # them would ask for documents already in hand.
-    deferred = pending_updates(manifest, quarantine=False)  # a draft only reads
-    items = with_pending(load_manifest(manifest), deferred)
+    # Straight from the record, which is where every status is since
+    # decision 103: what the last scan found is what this asks the client
+    # for, and there is no second reading of a workbook to disagree with.
+    items = load_manifest(engagement_dir)
     if not items:
         raise ReminderError(f"{manifest} has no request rows")
     if not any(item.status for item in items):
@@ -468,7 +464,6 @@ def draft_reminder(
         needs_review_files=count_needs_review(engagement_dir),
         total_requests=total,
         received_requests=received,
-        pending_statuses=len(deferred),
     )
 
 
@@ -543,12 +538,6 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
                    f"{HELD_BACK_HEADING} - waiting on us, not the client:"]
         footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.needs_attention]
-    if draft.pending_statuses:
-        footer += ["", "-" * _RULE_WIDTH,
-                   f"{draft.pending_statuses} status update(s) are still waiting to be "
-                   "written into the manifest (it was open in Excel during the last",
-                   "scan). This draft already reflects them; close Excel and re-scan",
-                   "to see them in the sheet."]
     if draft.needs_review_files:
         footer += ["", "-" * _RULE_WIDTH,
                    REVIEW_WARNING.format(n=draft.needs_review_files),

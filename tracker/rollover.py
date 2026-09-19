@@ -20,6 +20,13 @@ Precedence, precisely:
 - ``Override.WAIVED`` is a decision about the client, so it carries forward.
   ``Override.ACCEPTED`` is a judgment about specific files from one particular year,
   so it does not.
+- **A keyword a person's filing taught last year is carried as an ordinary
+  Any Keyword.** Since decision 103 those live in the engagement's record
+  rather than in its workbook, and ``load_manifest()`` lays them over the
+  row's typed keywords - so they reach ``_carry`` as keywords like any
+  other and ``create_template`` writes them into next year's sheet, where
+  a person can see and edit them. That is the one moment a taught keyword
+  becomes something typed.
 
 A template row the client has never had is **not** added. For a returning
 client the list is last year's list; a generic checklist does not get to pad
@@ -52,11 +59,9 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     create_template,
     detect_year,
     load_manifest,
-    pending_updates,
     save_workbook_atomically,
     shift_item,
     shift_years,
-    with_pending,
 )
 from tracker.records import EngagementInfo
 from tracker.scaffold import MANIFEST_FILENAME
@@ -225,13 +230,13 @@ def roll_forward(
     # retires the live engagement behind them.
     if target_year is not None:
         check_tax_year(target_year)
-    # The prior year's last scan may have been deferred (Excel held the
-    # manifest) and never landed - the usual end of an engagement. What
-    # it saw is in the sidecar; read it, move nothing.
-    prior_manifest = prior_dir / MANIFEST_FILENAME
-    prior_items = with_pending(
-        load_manifest(prior_manifest), pending_updates(prior_manifest, quarantine=False)
-    )
+    # Last year, as its record has it: the statuses the last scan wrote,
+    # the file counts it saw, and the keywords somebody's filings taught
+    # the rows. The taught keywords matter here more than anywhere - they
+    # are what a person had to teach one engagement by hand, and carrying
+    # them forward is the whole reason a returning client's list beats a
+    # template. Nothing in the prior year is opened for writing.
+    prior_items = load_manifest(prior_dir)
 
     prior_year = detect_year(prior_items)
     if target_year is None and prior_year is not None:

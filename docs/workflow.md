@@ -39,7 +39,10 @@ Either way the result is `_manifest.xlsx` plus the scaffolded `Shared/` and
 
 ## Lifecycle of a request
 
-The scanner owns the status column; people own the override column.
+The scanner owns the status and records it; people own the request list and
+the Manual Override column. The two do not share a file: the status is read
+on the Status Report and in the app, and the request list holds only what a
+person types.
 
 1. **Missing** — nothing usable has arrived. Asked for in the weekly draft.
 2. **Pending Sync** — the file is there but the cloud has not finished

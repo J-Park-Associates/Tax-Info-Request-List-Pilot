@@ -8,7 +8,7 @@ reconstructed cases in ``tests/test_catalog.py`` actually reach, and
 which are defended by nothing. A keyword no document in the suite says
 is one that can misfile tomorrow with no test to say so. This report is
 that whole, generated the way the suite routes: each catalog built
-through ``create_template()`` and ``load_manifest()``, each corpus form
+through ``create_template()`` and ``load_rules()``, each corpus form
 read by ``content_check.extract_text()``, each keyword tested with
 ``says()``, the reading the router and the scanner share.
 
@@ -72,7 +72,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))   # run as a script: the package and the suite must import
 
 from tracker.content_check import dominant_forms, extract_text, says  # noqa: E402
-from tracker.manifest import RequestItem, create_template, load_manifest  # noqa: E402
+from tracker.manifest import RequestItem, create_template, load_rules  # noqa: E402
 from tracker.settings import ENV_REAL_CORPUS, EXPECTATIONS_FILENAME, EXPECTED_SEP  # noqa: E402
 from tracker.templates import FORM_TEMPLATES, template_items  # noqa: E402
 
@@ -128,13 +128,19 @@ def input_hashes(root: Path | None = None) -> dict[str, str]:
 
 
 def shipped_catalogs() -> dict[str, list[RequestItem]]:
-    """Every catalog as an engagement gets it: written to a manifest and loaded back."""
+    """Every catalog as an engagement gets it: written to a manifest and loaded back.
+
+    Through ``load_rules()``, the workbook's own reading: these are
+    temporary files that are nobody's engagement, and ``load_manifest()``
+    would answer from the record (decision 103) - opening this machine's
+    store to ask a question about a catalog with no record behind it.
+    """
     catalogs: dict[str, list[RequestItem]] = {}
     with tempfile.TemporaryDirectory() as folder:
         for form in FORM_TEMPLATES:
             manifest = Path(folder) / f"{form}.xlsx"
             create_template(manifest, template_items(form))
-            catalogs[form] = load_manifest(manifest)
+            catalogs[form] = load_rules(manifest).items
     return catalogs
 
 

@@ -330,12 +330,27 @@ def test_the_readme_engagement_sheet_table_matches_the_fields():
         assert ENGAGEMENT_HELP[field] == note, field
 
 
-def test_the_roadmap_schema_table_matches_the_manifest_headers():
+def test_the_roadmap_schema_table_lists_exactly_the_manifest_headers():
+    """The sheet is the ten columns a person edits (decision 103), and the
+    schema table is those ten and no others: a row left in it for a column
+    the machine stopped writing is a column somebody will go looking for."""
     from tracker.manifest import HEADERS
 
-    roadmap = read("docs/ROADMAP.md")
-    for header in HEADERS:
-        assert f"| {header} |" in roadmap, header
+    listed = _schema_table("Manifest Schema")
+    assert listed == list(HEADERS), listed
+
+
+def _schema_table(heading: str) -> list[str]:
+    """The first cell of every data row of the table under ``heading``."""
+    lines = read("docs/ROADMAP.md").splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(f"## {heading}"))
+    rows = []
+    for line in lines[start + 1:]:
+        if line.startswith("#"):
+            break
+        if line.startswith("|") and not set(line) <= set("|- "):
+            rows.append(line.split("|")[1].strip())
+    return [cell for cell in rows[1:] if cell]       # drop the header row
 
 
 DOCUMENTS = ("README.md", "docs/ROADMAP.md", "docs/workflow.md", "docs/runbook.md",
@@ -367,10 +382,11 @@ def test_documents_name_only_runtime_files_the_code_owns():
         INDEX_MIGRATED_FILENAME,
         INDEX_PENDING_FILENAME,
         INDEX_PENDING_MIGRATED_FILENAME,
+        MANIFEST_PENDING_FILENAME,
+        MANIFEST_PENDING_MIGRATED_FILENAME,
     )
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
-    from tracker.manifest import pending_path
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import MANIFEST_FILENAME, README_NAME
@@ -382,8 +398,8 @@ def test_documents_name_only_runtime_files_the_code_owns():
 
     owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_MIGRATED_FILENAME,
              INDEX_PENDING_FILENAME, INDEX_PENDING_MIGRATED_FILENAME,
-             LEDGER_FILENAME, LOCK_FILENAME,
-             pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+             MANIFEST_PENDING_FILENAME, MANIFEST_PENDING_MIGRATED_FILENAME,
+             LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
@@ -616,10 +632,9 @@ def test_documents_state_the_naming_pattern_with_the_one_separator():
 
 
 def test_tree_diagrams_name_only_runtime_files_the_code_owns():
-    from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME
+    from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME, MANIFEST_PENDING_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
-    from tracker.manifest import pending_path
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import MANIFEST_FILENAME, README_NAME
@@ -629,7 +644,8 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
     from tracker.view import VIEW_FILENAME
 
     owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
-             pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+             MANIFEST_PENDING_FILENAME,
+             DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, VIEW_FILENAME}
     for rel in DOCUMENTS:

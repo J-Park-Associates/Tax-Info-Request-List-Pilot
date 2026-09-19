@@ -11,8 +11,8 @@ knowledge graph: every module, what it is for, what it imports, what tests
 cover it, which runtime artifacts it reads and writes, and the rules that cut
 across the code. Reading it costs one file instead of fifty, and it carries
 judgment that grepping cannot recover — why the router refuses to guess, why
-`create_template()` does not write scanner columns, which import cycle is
-deliberate.
+the manifest is the person's file and the machine only reads it, which
+import cycle is deliberate.
 
 Confirm it is current before trusting it:
 
@@ -123,9 +123,10 @@ report built with them names files the firm's clients can be read out of,
 so `check` refuses one.
 
 The catalog is not the only vocabulary in the field. When a person files a
-parked document they may type a keyword, and it is written into that one
-engagement's `Any Keywords` — invisible to every other engagement and to the
-catalog the suite tests. `tools/learned_keywords.py` is the season's list of
+parked document they may type a keyword, and it is recorded against that one
+engagement's request — invisible to every other engagement and to the
+catalog the suite tests, and laid over the row's own `Any Keywords` by every
+reader. `tools/learned_keywords.py` is the season's list of
 them: it walks every engagement under the clients root, compares each request
 row's keywords against the catalog rows carrying the same identifier and
 document, and groups what is left by row with the number of engagements that
@@ -225,9 +226,10 @@ Conventions worth matching:
   (`test_overrides_are_never_asked_for`), not `test_case_3`.
 - Import directions hold, and `tests/test_layers.py` says which: no load-time
   import points to a higher layer; `ledger` and `locking` import nothing of
-  the package but each other; `manifest` and `store` import `ledger`,
-  `locking` and `records` and nothing else; `runner` never imports
-  `scheduling` or `api`;
+  the package but each other; `store` imports `ledger`, `locking` and
+  `records` and nothing else; `manifest` imports `records` and nothing else
+  (decision 103 took its writes away, and with them its need for the journal
+  and the lock at load time); `runner` never imports `scheduling` or `api`;
   the package's `__init__` imports nothing. An import inside a function or a `__main__`
   block is a call-time import and may point anywhere.
 
