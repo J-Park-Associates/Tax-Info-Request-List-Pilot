@@ -38,7 +38,7 @@ import secrets
 import time
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, fields, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -64,6 +64,9 @@ from tracker.records import (
     YES,
     EngagementInfo,
     StatusUpdate,
+    identifier_key,
+    status_from_json,
+    status_to_json,
 )
 
 log = logging.getLogger("tracker.manifest")
@@ -675,7 +678,7 @@ def _recorded_statuses(manifest_path: Path) -> dict[str, StatusUpdate]:
     engagement_dir = manifest_path.parent
     try:
         recorded = ledger.statuses(ledger.read_events(engagement_dir))
-        return {identifier: _update_from_json(raw) for identifier, raw in recorded.items()}
+        return {identifier: status_from_json(raw) for identifier, raw in recorded.items()}
     except (ledger.LedgerError, KeyError, TypeError, ValueError, AttributeError) as exc:
         log.warning(
             "%s: its record cannot be read (%s) - the scanner columns in %s answer instead; "
@@ -717,12 +720,12 @@ def load_manifest_from_workbook(path: Path | str) -> list[RequestItem]:
                 raise ManifestError(f"Row {row}: {COL_IDENTIFIER} {identifier!r} {problem}")
             # Windows folder names are case-insensitive, so "A01" and "a01"
             # would claim the same folder; treat them as the same identifier.
-            if identifier.lower() in seen:
+            if identifier_key(identifier) in seen:
                 raise ManifestError(
                     f"Duplicate identifier {identifier!r} "
-                    f"(rows {seen[identifier.lower()]} and {row})"
+                    f"(rows {seen[identifier_key(identifier)]} and {row})"
                 )
-            seen[identifier.lower()] = row
+            seen[identifier_key(identifier)] = row
 
             document = _cell_str(values[COL_DOCUMENT])
             if not document:
@@ -837,7 +840,7 @@ def _load_pending(manifest_path: Path, *, quarantine: bool = True) -> dict[str, 
     try:
         raw = json.loads(sidecar.read_text(encoding="utf-8"))
         return {
-            ident: _update_from_json(u)
+            ident: status_from_json(u)
             for ident, u in raw.items()
         }
     except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError) as exc:
@@ -863,10 +866,10 @@ def with_pending(
 ) -> list[RequestItem]:
     """``items`` with the scanner columns replaced by any deferred update.
     Identifiers match as ``load_manifest`` compares them, without case."""
-    by_identifier = {identifier.lower(): update for identifier, update in updates.items()}
+    by_identifier = {identifier_key(identifier): update for identifier, update in updates.items()}
     out = []
     for item in items:
-        update = by_identifier.get(item.identifier.lower())
+        update = by_identifier.get(identifier_key(item.identifier))
         if update is None:
             out.append(item)
         else:
@@ -880,23 +883,9 @@ def with_pending(
     return out
 
 
-def _update_to_json(update: StatusUpdate) -> dict:
-    """A StatusUpdate as the sidecar stores it: its fields, the date as text."""
-    payload = asdict(update)
-    payload["received_date"] = update.received_date.isoformat() if update.received_date else None
-    return payload
-
-
-def _update_from_json(raw: Mapping) -> StatusUpdate:
-    values = {f.name: raw.get(f.name, f.default) for f in fields(StatusUpdate) if f.name != "status"}
-    values["received_date"] = dt.date.fromisoformat(raw["received_date"]) if raw.get("received_date") else None
-    values["file_count"] = int(values["file_count"] or 0)
-    return StatusUpdate(status=raw["status"], **values)
-
-
 def _save_pending(manifest_path: Path, updates: Mapping[str, StatusUpdate]) -> None:
     payload = {
-        ident: _update_to_json(u)
+        ident: status_to_json(u)
         for ident, u in updates.items()
     }
     write_json_atomically(pending_path(manifest_path), payload)
@@ -1037,7 +1026,7 @@ def statuses_from_workbook(path: Path | str, *, quarantine: bool = False) -> dic
     path = Path(path)
     items = with_pending(load_manifest_from_workbook(path), _load_pending(path, quarantine=quarantine))
     return {
-        item.identifier: _update_to_json(StatusUpdate(
+        item.identifier: status_to_json(StatusUpdate(
             status=item.status, file_count=item.file_count,
             received_date=item.received_date, validation_notes=item.validation_notes,
         ))
@@ -1061,7 +1050,7 @@ def _record_scanned(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
     engagement_dir = path.parent
     if not lock_is_held(engagement_dir):
         return
-    applied = {identifier: _update_to_json(update) for identifier, update in updates.items()}
+    applied = {identifier: status_to_json(update) for identifier, update in updates.items()}
     already = ledger.statuses(ledger.read_events(engagement_dir))
     changed = {i: status for i, status in applied.items() if already.get(i) != status}
     if not changed:
@@ -1089,9 +1078,9 @@ def _record_keyword(path: Path, identifier: str, keyword: str) -> None:
     engagement_dir = path.parent
     if not lock_is_held(engagement_dir):
         return
-    ledger.append(engagement_dir, ledger.new(
-        ledger.KEYWORD_LEARNED, identifier=identifier, keyword=keyword,
-    ))
+    ledger.append(engagement_dir, ledger.new(ledger.KEYWORD_LEARNED, **{
+        ledger.IDENTIFIER_KEY: identifier, ledger.KEYWORD_KEY: keyword,
+    }))
 
 
 def write_statuses(

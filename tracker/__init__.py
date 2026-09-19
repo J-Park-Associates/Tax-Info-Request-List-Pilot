@@ -19,6 +19,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
 - ledger        : the engagement's own append-only record of what was decided, written beside the workbooks under that lock
+- store         : the database on this machine, rebuilt from the record; one file per clients root, and nothing reads it yet
 - page          : the markup both of the firm's pages are drawn with: escaping, tables, the bytes a page is written as
 - view          : the page a person opens, regenerated from the record and the readers every pass
 - settings      : the settings file beside the app - the clients root and firm, written once

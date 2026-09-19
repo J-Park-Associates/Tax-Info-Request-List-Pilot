@@ -58,6 +58,30 @@ hole - the state itself is asserted by ``tests/test_view.py``, including
 the Windows test that really holds the file open while a pass tries to
 replace it.
 
+**And the store agrees with the readers** (decision 101). After every test,
+every engagement folder under ``tmp_path`` that carries a request list is
+built into a store in a throwaway database - ``rebuild_engagement()`` from
+the *workbooks' own* readings, exactly as the migration will - and
+``check()`` against the *live* readers must return nothing at all. The two
+sides are deliberately different readings: the rebuild is fed the workbook,
+the check asks ``read_index()`` and ``load_manifest()``, which answer from
+the record and fall back per row, and the claim is that those two meet.
+Both sides see the deferred sidecar - ``statuses_from_workbook()`` overlays
+it on the way in and ``with_pending()`` overlays it on the way out -
+because a status a locked Excel kept out of the workbook is a status that
+was applied, and a store that could not say so would be a store the
+reminder could not be moved onto. An engagement the live readers
+themselves refuse is passed over, exactly as the record's comparison
+passes over an index the tracker will not read: that refusal is what the
+test is about.
+
+One store per test rather than one for the suite, because the claim is
+about a build from nothing and because a database left open cannot be
+deleted on Windows - the connection is closed before the temporary folder
+goes. This runs the store over every drop sorted, every file a person
+filed, every locked-Excel sidecar and every ledger path the suite has, and
+it is the gate stages 2 and 3 are built on.
+
 Looking changes nothing: the workbooks are read with ``quarantine=False``, so
 a sidecar this fixture cannot parse is reported and left exactly where the
 test put it.
@@ -68,17 +92,29 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import sys
+import tempfile
+from pathlib import Path
 
 import pytest
 
-from tracker import ledger, view
+from tracker import ledger, store, view
 from tracker.filer import (
     INDEX_FILENAME,
     FilingError,
     ledger_key,
+    read_index,
     read_index_from_workbook,
 )
-from tracker.manifest import ManifestError, statuses_from_workbook
+from tracker.manifest import (
+    ManifestError,
+    load_engagement_info,
+    load_manifest,
+    load_manifest_from_workbook,
+    pending_updates,
+    statuses_from_workbook,
+    with_pending,
+)
+from tracker.records import status_from_json
 from tracker.scaffold import MANIFEST_FILENAME
 
 #: Engagements the comparison passes over, by folder name, with the decision
@@ -192,6 +228,73 @@ def the_record_agrees_with_the_workbooks(tmp_path):
         _check(path.parent)
     for path in sorted(tmp_path.rglob(view.VIEW_FILENAME)):
         _check_view(path.parent)
+
+
+def workbook_readings(engagement_dir) -> dict:
+    """What the *workbooks* say, as ``rebuild_engagement()`` takes it.
+
+    The migration's inputs: the request list, the Engagement sheet, the
+    rules workbook's digest, the index as the workbook and its snapshot
+    read it, and every identifier's scanner columns with the deferred
+    sidecar overlaid. Public because ``tests/test_store.py`` builds the
+    same way and two spellings of "what the workbooks say" would be two
+    migrations.
+    """
+    manifest_path = engagement_dir / MANIFEST_FILENAME
+    return {
+        "rules": load_manifest_from_workbook(manifest_path),
+        "info": load_engagement_info(manifest_path),
+        "manifest_digest": view.rules_digest(engagement_dir),
+        "workbook_rows": read_index_from_workbook(
+            engagement_dir / INDEX_FILENAME, quarantine=False),
+        "workbook_statuses": {
+            identifier: status_from_json(stored)
+            for identifier, stored in statuses_from_workbook(manifest_path).items()
+        },
+    }
+
+
+def live_readings(engagement_dir) -> dict:
+    """What the readers answer today, as ``check()`` takes it.
+
+    The fullest reading the package has, and the one the reminder makes:
+    the record's rows and statuses over the workbooks', and over both a
+    status a locked Excel deferred to the sidecar.
+    """
+    manifest_path = engagement_dir / MANIFEST_FILENAME
+    return {
+        "live_items": with_pending(
+            load_manifest(manifest_path), pending_updates(manifest_path, quarantine=False)),
+        "live_rows": read_index(engagement_dir / INDEX_FILENAME, quarantine=False),
+    }
+
+
+def _store_check(root, engagement_dir, conn) -> None:
+    """Build one engagement into the store and hold it to the readers."""
+    try:
+        readings, live = workbook_readings(engagement_dir), live_readings(engagement_dir)
+    except (ManifestError, FilingError, OSError):
+        return          # what the readers refuse is what that test is about
+    store.rebuild_engagement(conn, root, engagement_dir, **readings)
+    said = store.check(conn, root, engagement_dir, **live)
+    assert said == [], "; ".join(said)
+
+
+@pytest.fixture(autouse=True)
+def the_store_agrees_with_the_readers(tmp_path):
+    """After every test: a store built from the workbooks and the record for
+    every engagement the test left behind says what the readers say."""
+    yield
+    folders = sorted({path.parent for path in tmp_path.rglob(MANIFEST_FILENAME)})
+    if not folders:
+        return
+    with tempfile.TemporaryDirectory() as scratch:
+        conn = store.open(Path(scratch) / store.STORE_FILENAME)
+        try:
+            for folder in folders:
+                _store_check(tmp_path, folder, conn)
+        finally:
+            conn.close()
 
 
 @pytest.fixture

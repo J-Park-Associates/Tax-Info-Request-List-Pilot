@@ -331,7 +331,7 @@ def test_the_roadmap_schema_table_matches_the_manifest_headers():
 
 
 DOCUMENTS = ("README.md", "docs/ROADMAP.md", "docs/workflow.md", "docs/runbook.md",
-             "CLAUDE.md")
+             "docs/storage.md", "CLAUDE.md")
 
 
 def test_prose_names_no_weekday_but_the_draft_day():
@@ -364,16 +364,17 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
+    from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
     owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
-             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, VIEW_FILENAME}
+             SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
-        for quoted in re.findall(r"`([^`\s]+\.(?:txt|xml|jsonl|json|lock|xlsx|log|bat|py|md|js|toml|yml))`", read(rel)):
+        for quoted in re.findall(r"`([^`\s]+\.(?:txt|xml|jsonl|json|lock|xlsx|log|bat|py|md|js|toml|yml|db))`", read(rel)):
             name = quoted.split("/")[-1].split("\\")[-1]
             if "<" in quoted or "*" in quoted:
                 continue                                  # a pattern, not a file
@@ -646,11 +647,12 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     )
     from tracker.scanner import CACHE_FILENAME
     from tracker.settings import SETTINGS_FILENAME
+    from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
     values = {INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
               LOG_FILENAME, MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME, CACHE_FILENAME, SETTINGS_FILENAME,
-              VIEW_FILENAME,
+              STORE_FILENAME, VIEW_FILENAME,
               f"{SHARED_DIR_NAME}/", f"{PBC_DIR_NAME}/", f"{PREPARED_DIR_NAME}/"}
     quoted = {f"``{v}``" for v in set(Status.ALL) | set(Override.ALL)}
     for path in (REPO / "tracker").glob("*.py"):
