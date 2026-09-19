@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 84 rows · 338 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 52 IRS forms · 316 cases
+6 catalogs · 84 rows · 339 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 52 IRS forms · 318 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -184,6 +184,7 @@ Reached, but proven nothing: the cheapest placements to add.
 - `partner's share of income` (any) — K-1 1065 in a trust.pdf (d63) → ?; K-1 with its footer under box 19.pdf (d66) → ?; f1065sk1.pdf → **here**; f1065sk1_2024.pdf → **here**
 - `shareholder's share of income` (any) — K-1 with its footer under box 16.pdf (d66) → ?; f1120ssk.pdf → **here**; f1120ssk_2024.pdf → **here**
 - `beneficiary's share of income` (any) — f1041sk1.pdf → **here**
+- `member's share of income` (any) — CA Schedule K-1 568 2025.pdf (d93) → **here**; CA Schedule K-1 568 2025.pdf (d93) → ?
 
 ### G01 — Property Tax Statements
 
@@ -404,7 +405,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### F01 — Special Allocation Support - Section 704(b)
 
-- `special allocation` (any) — special allocation 704(b) support.xlsx (d73) → **here**
+- `special allocation` (any) — special allocation 704(b) support.xlsx (d73) → **here**; CA Schedule K-1 568 2025.pdf (d93) → ?
 - `section 704(b)` (any) — special allocation 704(b) support.xlsx (d73) → **here**
 
 ### G01 — State Apportionment Data - Sales, Payroll, Property by State

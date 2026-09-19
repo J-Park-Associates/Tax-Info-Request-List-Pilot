@@ -418,6 +418,127 @@ def keyword_alternatives(keyword: str) -> tuple[tuple[str, ...], ...]:
     return tuple(alternatives)
 
 
+# ------------------------------------------------- a row per issuer (d93) ----
+
+#: What a keyword cell cannot hold, replaced by the space between words:
+#: the comma the cell is split on (:func:`csv_tuple`) and the two
+#: characters the keyword grammar reserves (:func:`keyword_alternatives`).
+_RESERVED_IN_A_NAME = ",|+"
+#: Dropped outright rather than spaced, so "L.P." is one word and not two.
+_DROPPED_FROM_A_NAME = "."
+_RUN_OF_SPACES = re.compile(r"\s+")
+
+
+def entity_keyword(name: str) -> str:
+    """An entity's name as a keyword cell can hold it.
+
+    An *issuer row* (decision 93, the owner's) is an ordinary request row
+    whose Required Keywords cell holds the name of the entity that issued
+    the document, so that a person holding several Schedule K-1s gets one
+    row per issuing entity instead of one folder with everything in it.
+    The name is somebody's typing, and typing carries punctuation a
+    keyword cell cannot:
+
+    - **A comma cannot survive.** The cell is comma-separated
+      (:func:`csv_tuple`), so "Ashford Holdings, L.P." is not one keyword
+      but two - ``Ashford Holdings`` and ``L.P.`` - and Required Keywords
+      is an AND over its cells, so the row would quietly start demanding
+      both. Nothing warns; the row simply stops being the row that was
+      meant.
+    - **``|`` and ``+`` are the grammar's** (:data:`KEYWORD_ANY_OF`,
+      :data:`KEYWORD_ALL_OF`): a name holding either would be read as
+      alternatives rather than as a name.
+    - **A period is dropped**, so that the two ways one person writes an
+      entity agree with each other: "Ashford Holdings, L.P." and "Ashford
+      Holdings LP" are the same row, whichever was typed.
+
+    The consequence is worth saying out loud, because it is what the
+    runbook tells a person: the name is then matched against the document
+    the way every keyword is - whole tokens, case-insensitive, an
+    apostrophe or a dash forgiven (:func:`tracker.content_check.says`) -
+    and a legal suffix the K-1 prints as "L.P." is no longer in the
+    keyword to be found. So the name to type is the distinctive part
+    ("Ashford Holdings"), not the suffix.
+    """
+    spaced = "".join(
+        "" if ch in _DROPPED_FROM_A_NAME else " " if ch in _RESERVED_IN_A_NAME else ch
+        for ch in str(name)
+    )
+    return _RUN_OF_SPACES.sub(" ", spaced).strip()
+
+
+def _folded(keywords: Iterable[str]) -> set[str]:
+    return {k.strip().lower() for k in keywords if k.strip()}
+
+
+def narrowing_rows(items: Iterable[RequestItem]) -> dict[str, tuple[str, ...]]:
+    """Which rows narrow which: the broad row's identifier → the rows that narrow it.
+
+    A row **narrows** another when it asks for the same document and
+    something more about it. That is exactly the shape a person makes an
+    issuer row in: copy the K-1 row, name it for the entity, and put the
+    entity's name in Required Keywords. So:
+
+    - the **broad** row recognises its document on looser words alone -
+      Any Keywords, and no Required Keywords, so it can never be the
+      strongest evidence for anything (:func:`tracker.router._required_matched`);
+    - the **narrowing** row shares at least one of those looser words, so
+      it is asking about the same document, and requires something on top.
+
+    One shared word, rather than every one of them, because a keyword a
+    person teaches one of the two rows (``add_any_keyword``) must not
+    silently unpair them and start filing unnamed K-1s on the broad row
+    again. Nothing in any shipped catalog narrows anything - no catalog
+    row has Required Keywords where another has none and a looser word in
+    common - so this relation is empty until a person adds an issuer row,
+    and ``tests/test_catalog.py`` says so by name.
+    """
+    items = list(items)
+    narrowed: dict[str, list[str]] = {}
+    for broad in items:
+        if broad.required_keywords or not broad.any_keywords:
+            continue
+        broad_words = _folded(broad.any_keywords)
+        for narrow in items:
+            if narrow.identifier == broad.identifier or not narrow.required_keywords:
+                continue
+            if broad_words & _folded(narrow.any_keywords):
+                narrowed.setdefault(broad.identifier, []).append(narrow.identifier)
+    return {broad: tuple(rows) for broad, rows in narrowed.items()}
+
+
+def _name_tokens(item: RequestItem) -> frozenset[str]:
+    """A narrowing row's required words as whole tokens, normalised."""
+    joined = entity_keyword(" ".join(item.required_keywords)).lower()
+    return frozenset(t for t in re.split(r"[^a-z0-9]+", joined) if t)
+
+
+def check_narrowing_names(items: Iterable[RequestItem]) -> None:
+    """Refuse a list where one issuer row's name is inside another's.
+
+    "Ashford" and "Ashford Holdings" both accept the Ashford Holdings
+    K-1, so every one of them would be contested and park - one row
+    quietly making the other useless, with nothing said. The fix is a
+    person renaming a row, and the only moment they can be told is when
+    the manifest is read. Names are compared as whole tokens, normalised
+    (:func:`entity_keyword`), and only between rows narrowing the *same*
+    broad row: two unrelated requests are allowed to share a word.
+    """
+    by_identifier = {i.identifier: i for i in items}
+    for broad, narrow_identifiers in narrowing_rows(by_identifier.values()).items():
+        named = [(i, _name_tokens(by_identifier[i])) for i in narrow_identifiers]
+        for inner, inner_words in named:
+            for outer, outer_words in named:
+                if inner != outer and inner_words and inner_words < outer_words:
+                    raise ManifestError(
+                        f"Rows {inner} and {outer} both narrow {broad}, and {inner}'s "
+                        f"name is inside {outer}'s: a document naming "
+                        f"{', '.join(by_identifier[outer].required_keywords)} matches "
+                        "both rows, so every one of them would park. Rename one so "
+                        "that neither name is part of the other."
+                    )
+
+
 def _parse_int(value: object, default: int, column: str, row: int) -> int:
     text = _cell_str(value)
     if not text:
@@ -713,6 +834,9 @@ def load_manifest_from_workbook(path: Path | str) -> list[RequestItem]:
                     row=row,
                 )
             )
+        # Two issuer rows whose names nest make each other useless and say
+        # nothing about it; the one moment a person can be told is now.
+        check_narrowing_names(items)
         return items
     finally:
         wb.close()

@@ -15,11 +15,12 @@ the firm's to look at rather than the client's to fix. Producers call
 ``REASON.format(...)``; the reminder consults the same objects. There is
 nothing to keep in step.
 
-Not every cause is a validation note. :data:`NO_READABLE_TEXT` is the
-router's, written into the index's Reason column rather than into a
-request's notes, and it is worded here for the same reason the rest are:
-one sentence, one owner, and a marker the index, the review queue and the
-status report all recognise without retyping a word of it.
+Not every cause is a validation note. :data:`NO_READABLE_TEXT` and
+:data:`ISSUER_NOT_NAMED` are the router's, written into the index's Reason
+column rather than into a request's notes, and they are worded here for the
+same reason the rest are: one sentence, one owner, and a marker the index,
+the review queue and the status report all recognise without retyping a
+word of it.
 """
 
 from __future__ import annotations
@@ -169,6 +170,25 @@ NO_READABLE_TEXT = Reason(
               "OCR or a person, never the client",
 )
 
+#: The request list asks for this document one row per issuer - a Schedule
+#: K-1 per entity that issued one (decision 93, the owner's) - the broad
+#: row accepted the document, and no issuer row did. Filing it on the broad
+#: row would put two entities' K-1s in one folder, which is the thing the
+#: issuer rows exist to stop; picking the issuer row that is left over
+#: would be guessing by elimination, and a document is filed only when
+#: exactly one request accepts it. So it parks, named: a person files it,
+#: or adds the row for the issuer the client did not tell us about.
+#: Ours, never the client's - they sent the right document.
+ISSUER_NOT_NAMED = Reason(
+    "issuer-not-named",
+    "this request list asks for this document one row per issuer ({listed}) "
+    "and this one names none of them; a person should file it, or add the "
+    "row for its issuer",
+    "names none of them", firm_side=True,
+    firm_note="the list asks for this one by issuer and the document names none of "
+              "the issuers on it; a person here files it or adds the row",
+)
+
 # ---- the folder ---------------------------------------------------------------
 
 NO_REQUEST_FOLDER = Reason(
@@ -184,6 +204,7 @@ ALL: tuple[Reason, ...] = (
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
     NO_PAGES, UNREADABLE_PDF, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
+    ISSUER_NOT_NAMED,
     PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )

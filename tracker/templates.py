@@ -10,6 +10,13 @@ This is the **only** place the checklists live. There is no second copy to
 keep in step: the manifest an engagement is created with is the readable
 one, and the wizard reads this module directly.
 
+One thing the catalog deliberately does not hold is a row per issuing
+entity. A person can hold Schedule K-1s from several partnerships, and the
+owner's rule (2026-09-18) is that those are separate requests - but which
+entities they are is a fact about one client, not about the 1040. So the
+catalog carries one K-1 row and :func:`issuer_row` cuts a row per issuer
+from it, into that engagement's own list.
+
 Every row carries a keyword rule. A request with no keyword has no way to
 recognise its document, so it never auto-files (see :mod:`tracker.router`);
 a template row like that would be a request the system can only ever park
@@ -33,6 +40,7 @@ from tracker.manifest import (
     RequestItem,
     csv_tuple,
     detect_year,
+    entity_keyword,
     identifier_problem,
     parse_extensions,
     shift_item,
@@ -256,7 +264,16 @@ FORM_TEMPLATES = {
         # often as a CSV (decision 85). No IRS form in tests/irs/ says either.
         _row("E01", "1099-B / Brokerage Year-End Statements", core=False, extensions="pdf, csv, xlsx", any_keywords="1099-b, proceeds from broker, brokerage statement, realized gain and loss, realized gain/loss, realized gain loss"),
         _row("E02", "1099-R Retirement Distributions", core=False, any_keywords="1099-r, retirement distribution"),
-        _row("F01", "Schedule K-1s Received", core=False, any_keywords="partner's share of income, shareholder's share of income, beneficiary's share of income"),
+        # The catalog keeps **one** K-1 row (decision 93, the owner's), and
+        # a federal and a state K-1 file on it alike: California heads its
+        # Schedule K-1 (568) "Member's Share of Income, Deductions,
+        # Credits, etc." - the LLC member's version of the three lines
+        # already here, and the words decision 85's F1 was waiting on. An
+        # individual who holds several K-1s gets a row per issuing entity
+        # instead, added to that engagement's own list from this one
+        # (`issuer_row`, `docs/runbook.md`); the catalog cannot know which
+        # entities a client is a partner in.
+        _row("F01", "Schedule K-1s Received", core=False, any_keywords="partner's share of income, shareholder's share of income, beneficiary's share of income, member's share of income"),
         # The bill's own titles. `assessor` and `parcel number` are printed
         # by the assessor's "Notice of Assessed Value - This is not a tax
         # bill", and `property tax bill` by the servicer's escrow analysis,
@@ -345,6 +362,15 @@ FORM_TEMPLATES = {
         _shared("D01", "fixed_assets", core=False),
         _shared("D02", "depreciation", core=False),
         _shared("E01", "loans", core=False),
+        # Decision 85's F1 is still open here, and decision 93 does not
+        # close it: a CA Schedule K-1 (568) prints "Enter member's
+        # percentage (without regard to special allocations)", so it files
+        # on this row in a 1065 engagement. The 1065 catalog has no
+        # K-1s-received row - a partnership *issues* K-1s - and the owner's
+        # decision keeps one K-1 row, the 1040's, so there is nowhere else
+        # for it to go and nothing to route it away with: `special
+        # allocation` is this row's only plain-English word, and dropping
+        # it to fix one corpus document would leave the row blind.
         _row("F01", "Special Allocation Support - Section 704(b)", core=False, extensions="xlsx, pdf", any_keywords="special allocation, section 704(b)"),
         _shared("G01", "apportionment", core=False),
     ],
@@ -406,6 +432,64 @@ FORM_TEMPLATES = {
     ],
 }
 
+
+
+# ------------------------------------------------------- a row per issuer ----
+
+#: Which catalog row a K-1 arrives on, and so which row an issuer row is
+#: cut from. One row, named once: the runbook tells a person to copy it,
+#: and this is which one they copy.
+K1_CATALOG = "1040"
+K1_IDENTIFIER = "F01"
+#: How an issuer row is named, so the client folder and the filed copy both
+#: say whose K-1 is in them ("F02 - Schedule K-1 - Ashford Holdings LP").
+ISSUER_DOCUMENT = "Schedule K-1 - {entity}"
+
+
+def k1_row() -> dict:
+    """The catalog's one K-1 row, the row every issuer row is cut from."""
+    return next(spec for spec in FORM_TEMPLATES[K1_CATALOG]
+                if spec["identifier"] == K1_IDENTIFIER)
+
+
+def issuer_row(identifier: str, entity: str) -> dict:
+    """One K-1 request, for the one entity that issued it, as a row spec.
+
+    The owner's decision (2026-09-18): federal and state K-1s file on the
+    same K-1 row, but K-1s are separated by the entity that issued them,
+    because one person can hold several and two entities' K-1s in one
+    folder is a folder nobody can work from. So the *catalog* keeps one
+    K-1 row - it cannot know which partnerships a client is in - and a
+    person adds one row per issuer to that engagement's own list.
+
+    Nothing new in the schema: an issuer row is the K-1 row with the
+    entity's name in Required Keywords and the entity in its Document
+    name. That makes it the stronger evidence of the two by the rules
+    already in :mod:`tracker.router` - a required keyword outranks an any
+    keyword, and the generic row has none - so the K-1 that names its
+    issuer files on that issuer's row, and the one that names no listed
+    issuer parks (``reasons.ISSUER_NOT_NAMED``) instead of joining
+    everybody else's on the generic row.
+
+    ``identifier`` is the next free one in the K-1 row's section (``F02``,
+    ``F03``…). The name is normalised the one way entity names are
+    (:func:`tracker.manifest.entity_keyword`), so two people typing
+    "Ashford Holdings, L.P." and "Ashford Holdings LP" build one row and
+    neither smuggles a comma into a comma-separated cell.
+    """
+    name = entity_keyword(entity)
+    if not name:
+        raise ManifestError("an issuer row needs the name of the entity that issued the K-1")
+    source = k1_row()
+    return _row(
+        identifier,
+        ISSUER_DOCUMENT.format(entity=name),
+        core=False,
+        period=source["period"],
+        extensions=source["extensions"],
+        required_keywords=name,
+        any_keywords=source["any_keywords"],
+    )
 
 
 # ------------------------------------------------------------------ items ----
