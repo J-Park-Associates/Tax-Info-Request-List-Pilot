@@ -8,7 +8,7 @@ carries a cover page nobody reconstructs, and the thirteenth reading
 cannot see either. This harness routes the firm's own redacted documents
 - the ones a person has already checked - against the shipped catalogs
 exactly as ``tests/test_irs_forms.py`` routes the corpus: through
-``create_template()`` and ``load_manifest()``, with the size floor and
+``validated()`` over ``template_items()``, with the size floor and
 the Period's year check lifted, because a redacted document is small and
 its year is the engagement's.
 
@@ -33,7 +33,7 @@ from pathlib import Path
 import pytest
 
 from tests.test_scanner import text_pdf
-from tracker.manifest import RequestItem, create_template, load_manifest
+from tracker.manifest import RequestItem, validated
 from tracker.router import route_file
 from tracker.settings import (
     COLUMN_CATALOG,
@@ -114,9 +114,8 @@ def catalog_rows(workspace: Path, form: str, year: int, built: dict) -> list[Req
     engagement's, which the expectations file gives.
     """
     if (form, year) not in built:
-        manifest = workspace / f"{form}-{year}.xlsx"
-        create_template(manifest, template_items(form, year=year))
-        built[(form, year)] = [replace(i, min_size_kb=0, date_pattern="") for i in load_manifest(manifest)]
+        built[(form, year)] = [replace(i, min_size_kb=0, date_pattern="")
+                               for i in validated(template_items(form, year=year))]
     return built[(form, year)]
 
 

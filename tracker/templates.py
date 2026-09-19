@@ -7,8 +7,8 @@ run unattended — the keyword and date rules the router and scanner use to
 recognise each one.
 
 This is the **only** place the checklists live. There is no second copy to
-keep in step: the manifest an engagement is created with is the readable
-one, and the wizard reads this module directly.
+keep in step: an engagement's list is cut from it into the record, and the
+wizard reads this module directly.
 
 One thing the catalog deliberately does not hold is a row per issuing
 entity. A person can hold Schedule K-1s from several partnerships, and the
@@ -27,22 +27,18 @@ written here: a Period like ``TY2025`` implies it (:func:`tracker.manifest.deriv
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import replace
 
 from tracker.manifest import (
-    COL_EXPECTED_COUNT,
-    COL_MIN_SIZE_KB,
-    DEFAULT_EXPECTED_COUNT,
     DEFAULT_EXTENSIONS,
-    DEFAULT_MIN_SIZE_KB,
     KEYWORD_ALL_OF,
     KEYWORD_ANY_OF,
     ManifestError,
     RequestItem,
-    csv_tuple,
     detect_year,
     entity_keyword,
     identifier_problem,
-    parse_extensions,
+    item_from_fields,
     shift_item,
 )
 
@@ -495,56 +491,30 @@ def issuer_row(identifier: str, entity: str) -> dict:
 # ------------------------------------------------------------------ items ----
 
 
-def _whole_number(spec: dict, key: str, default: int, minimum: int, label: str) -> int:
-    """A wizard field as an int, refused with a sentence rather than a traceback."""
-    raw = spec.get(key)
-    if raw in (None, ""):
-        return default
-    try:
-        number = int(raw)
-    except (TypeError, ValueError):
-        raise ManifestError(
-            f"{label} for {spec.get('identifier', '?')} must be a whole number, got {raw!r}"
-        ) from None
-    if number < minimum:
-        raise ManifestError(f"{label} for {spec.get('identifier', '?')} must be at least {minimum}")
-    return number
-
-
 def item_from_spec(spec: dict) -> RequestItem:
-    """One catalog row (or one wizard row) as a validated :class:`RequestItem`.
+    """One catalog row (or one wizard row) as a :class:`RequestItem`.
 
-    A row with no file types gets the manifest's safe default
-    (``DEFAULT_EXTENSIONS``); ``*`` means ``ANY_EXTENSION``. A row with no content rule at all gets its
-    own document name as the required keyword. Without a rule the request could never auto-file, and
-    a custom request typed into the wizard in a hurry should still work;
-    the manifest shows the rule, so it is a visible default, not a secret.
+    The parsing is the manifest's (:func:`tracker.manifest.item_from_fields`,
+    with the identifier as the prefix of every refusal); this adds the
+    catalog's own one rule: a row with no content rule at all gets its own
+    document name as the required keyword. Without a rule the request could
+    never auto-file, and a custom request typed into the wizard in a hurry
+    should still work; the editor shows the rule, so it is a visible
+    default, not a secret. A row still needs an identifier and a document
+    name, and an identifier the file system would alter is refused here as
+    it is everywhere else.
     """
-    identifier = str(spec.get("identifier", "")).strip()
-    document = str(spec.get("document", "")).strip()
+    identifier = str(spec.get("identifier", "") or "").strip()
+    document = str(spec.get("document", "") or "").strip()
     if not identifier or not document:
         raise ManifestError("every request needs an identifier and a document name")
     problem = identifier_problem(identifier)
     if problem:
         raise ManifestError(f"Identifier {identifier!r} {problem}")
-    required = csv_tuple(spec.get("required_keywords"))
-    any_keywords = csv_tuple(spec.get("any_keywords"))
-    date_pattern = str(spec.get("date_pattern", "") or "")
-    if not (required or any_keywords or date_pattern):
-        required = (document,)
-    return RequestItem(
-        identifier=identifier,
-        document=document,
-        period=str(spec.get("period", "") or ""),
-        expected_count=_whole_number(spec, "expected_count", DEFAULT_EXPECTED_COUNT, 1, COL_EXPECTED_COUNT),
-        allowed_extensions=parse_extensions(
-            spec.get("extensions") or spec.get("allowed_extensions")
-        ),
-        min_size_kb=_whole_number(spec, "min_size_kb", DEFAULT_MIN_SIZE_KB, 0, COL_MIN_SIZE_KB),
-        required_keywords=required,
-        any_keywords=any_keywords,
-        date_pattern=date_pattern,
-    )
+    item = item_from_fields(spec, where=identifier)
+    if not (item.required_keywords or item.any_keywords or item.date_pattern):
+        item = replace(item, required_keywords=(document,))
+    return item
 
 
 def default_tax_year(today: dt.date | None = None) -> int:

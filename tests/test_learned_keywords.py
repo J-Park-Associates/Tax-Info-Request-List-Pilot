@@ -1,7 +1,7 @@
 """Tests for tools/learned_keywords.py - what one person taught one engagement, seen by the firm.
 
-A keyword typed into the app's filing action lands in one manifest and
-nowhere else, so the report is the only place the firm can see that five
+A keyword typed into the app's filing action lands in one engagement's record
+and nowhere else, so the report is the only place the firm can see that five
 clients had to teach the router the same word. Two things have to hold or it
 is worse than nothing: a keyword the catalog already carries must not be
 reported (a list of things already done is a list nobody reads twice), and an
@@ -10,20 +10,20 @@ silent skip reads as "nothing was taught here").
 
 The reports are built on scratch clients roots under ``tmp_path``, the way
 ``tests/test_registry.py`` builds one: an engagement is a folder with a
-manifest in it, and the manifests are the shipped catalog written through
-``create_template()``, so the comparison under test is the real one.
+record in it, and the lists are the shipped catalog recorded through
+``create_engagement()``, so the comparison under test is the real one.
 """
 
 import sys
 from pathlib import Path
 
+from tests.conftest import make_engagement
+from tracker import ledger
 from tracker.manifest import (
     EngagementInfo,
     RequestItem,
-    create_template,
 )
 from tracker.registry import SKIP_ROLLED_FORWARD
-from tracker.scaffold import MANIFEST_FILENAME
 from tracker.templates import template_items
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
@@ -41,18 +41,16 @@ SAID_BY_NOTHING = "willow lane payroll recap"
 
 
 def engagement(root: Path, *parts: str, items=None, info: EngagementInfo | None = None) -> Path:
-    """One engagement folder with a manifest in it, as the registry finds them."""
-    folder = root.joinpath(*parts)
-    folder.mkdir(parents=True)
-    create_template(folder / MANIFEST_FILENAME, template_items("1040") if items is None else items, info)
-    return folder
+    """One engagement folder with a record in it, as the registry finds them."""
+    return make_engagement(root.joinpath(*parts), template_items("1040") if items is None else items,
+                           info, scaffold=False)
 
 
 def taught(folder: Path, identifier: str, keyword: str) -> None:
     """A person filing a parked document and typing a keyword, which is the
     only way one is learned.
 
-    Recorded against the request rather than typed into the workbook
+    Recorded against the request rather than typed into the list
     (decision 103): the word lives in the engagement's record now, and
     ``load_manifest()`` is what puts it in front of this report.
     """
@@ -165,18 +163,18 @@ def test_an_engagement_the_run_would_not_chase_is_still_read_and_is_flagged(tmp_
     assert f"Smith - 2025 ({SKIP_ROLLED_FORWARD.format(successor='Smith - 2026')})" in named
 
 
-def test_an_engagement_whose_manifest_cannot_be_read_is_a_problem_line_not_a_silence(tmp_path):
+def test_an_engagement_whose_record_cannot_be_read_is_a_problem_line_not_a_silence(tmp_path):
     """A skipped engagement reads as one that taught the router nothing, which is the opposite claim."""
     root = tmp_path / "Clients"
     taught(engagement(root, "Fine 2025"), "A01", SAID_BY_NOTHING)
     broken = root / "Broken 2025"
     broken.mkdir()
-    (broken / MANIFEST_FILENAME).write_bytes(b"not a workbook")
+    ledger.path_for(broken).write_text("{this line is not an event}\n", encoding="utf-8")
 
     report = collect(root)
     assert report.engagements == 2 and report.read == 1
     (folder, problem), = report.problems
-    assert folder == str(broken) and "Could not open" in problem
+    assert folder == str(broken) and "does not read as an event" in problem
     text = render(report)
     assert "## Problems" in text and str(broken) in text and "1 problem(s)" in text
 

@@ -5,10 +5,10 @@ in tests/conftest.py, which builds a store for every engagement the suite
 leaves behind and holds it to what the readers say. What is made here is
 the store's own behaviour - the schema it refuses to guess at, the
 journal-then-apply guarantee and the replay that repairs a torn one, the
-rebuild that is also the recovery, which of the record and the workbook
-wins a row, the order a row that changed identity keeps, the three words
-it answers its own state in, the export, and the one placement rule: the
-file is never under the clients root, because that folder syncs.
+rebuild that is also the recovery and takes the journal alone, the order a
+row that changed identity keeps, the three words it answers its own state
+in, the export, and the one placement rule: the file is never under the
+clients root, because that folder syncs.
 """
 
 from __future__ import annotations
@@ -23,19 +23,20 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import seed_statuses, workbook_readings
+from tests.conftest import make_engagement, seed_statuses
 from tests.test_scanner import text_pdf
-from tracker import ledger, store, view
-from tracker.filer import INDEX_FILENAME, ensure, file_drops, read_index
+from tracker import ledger, store
+from tracker.filer import file_drops, read_index
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     RequestItem,
     Status,
-    create_template,
+    load_engagement_info,
     load_manifest,
+    save_rules,
 )
-from tracker.records import StatusUpdate, entry_to_json, ledger_key
-from tracker.scaffold import MANIFEST_FILENAME, SHARED_DIR_NAME, scaffold_engagement
+from tracker.records import RULE_FIELDS, StatusUpdate, entry_to_json, rule_from_json
+from tracker.scaffold import SHARED_DIR_NAME
 
 REPO = Path(__file__).resolve().parents[1]
 DAY1 = dt.date(2026, 7, 1)
@@ -64,11 +65,7 @@ def root(tmp_path):
 
 @pytest.fixture
 def engagement(root):
-    eng = root / "Smith Family 2025"
-    eng.mkdir()
-    create_template(eng / MANIFEST_FILENAME, ITEMS)
-    scaffold_engagement(eng)
-    return eng
+    return make_engagement(root / "Smith Family 2025", ITEMS)
 
 
 @pytest.fixture
@@ -76,11 +73,10 @@ def by_hand(engagement):
     """An engagement whose record this test writes itself.
 
     These tests are about the store's fold, not the filer's, so they append
-    rows no index beside them has ever held - and the suite's own record
-    fixture holds every record to the index beside it. The record is
-    removed when the test ends, the way the journal's own tests put back
-    what they tore, so the folder the fixtures then see is one the
-    workbooks answer for.
+    rows no pass ever made - and the suite's own fixture holds every
+    record to its journal. The record is removed when the test ends, the
+    way the journal's own tests put back what they tore, so the folder the
+    fixtures then see holds no record to check.
     """
     yield engagement
     ledger.path_for(engagement).unlink(missing_ok=True)
@@ -99,7 +95,16 @@ def drop(engagement, name, text):
 
 
 def build(conn, root, engagement):
-    store.rebuild_engagement(conn, root, engagement, **workbook_readings(engagement))
+    store.rebuild_engagement(conn, root, engagement)
+
+
+def edit_rules(engagement, **fields_by_identifier):
+    """A person's edit of one or more rows, saved in the app as one event."""
+    from dataclasses import replace
+
+    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement)]
+    edited = [replace(row, **fields_by_identifier.get(row.identifier, {})) for row in rows]
+    return save_rules(engagement, edited, load_engagement_info(engagement))
 
 
 def said(conn, root, engagement):
@@ -108,24 +113,6 @@ def said(conn, root, engagement):
 
 def rows(conn, table):
     return [tuple(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
-
-
-def _teach(manifest: Path, keyword: str, identifier: str = "A01") -> None:
-    """Type a keyword into a row's Any Keywords, the way a person would."""
-    from openpyxl import load_workbook
-
-    from tracker.manifest import COL_ANY_KEYWORDS, SHEET_NAME
-
-    wb = load_workbook(manifest)
-    try:
-        ws = wb[SHEET_NAME]
-        headers = [str(c.value or "") for c in ws[1]]
-        for row in range(2, (ws.max_row or 1) + 1):
-            if str(ws.cell(row=row, column=1).value or "").strip() == identifier:
-                ws.cell(row=row, column=headers.index(COL_ANY_KEYWORDS) + 1, value=keyword)
-        wb.save(manifest)
-    finally:
-        wb.close()
 
 
 def a_row(**fields) -> dict:
@@ -145,7 +132,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 1
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 2
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -185,14 +172,16 @@ def test_a_record_whose_type_the_store_cannot_store_is_refused_before_it_is_writ
 def test_recording_outside_the_lock_writes_to_neither_the_journal_nor_the_store(
         conn, root, engagement):
     build(conn, root, engagement)
+    before = ledger.path_for(engagement).read_bytes()
+    events = rows(conn, "events")
 
     with pytest.raises(store.StoreError, match="engagement lock"):
         store.record(conn, engagement, ledger.new(
             ledger.KEYWORD_LEARNED, **{ledger.IDENTIFIER_KEY: "A01",
                                        ledger.KEYWORD_KEY: "lender"}))
 
-    assert not ledger.path_for(engagement).exists()
-    assert rows(conn, "events") == [] and rows(conn, "learned_keywords") == []
+    assert ledger.path_for(engagement).read_bytes() == before
+    assert rows(conn, "events") == events and rows(conn, "learned_keywords") == []
 
 
 def test_one_call_is_one_transaction_over_the_journal_and_the_tables(conn, root, by_hand):
@@ -205,12 +194,12 @@ def test_one_call_is_one_transaction_over_the_journal_and_the_tables(conn, root,
     with engagement_lock(by_hand):
         applied = store.record(conn, by_hand, filed, taught)
 
-    assert applied == 2
-    assert len(ledger.read_events(by_hand)) == 2
-    assert [row["seq"] for row in conn.execute("SELECT seq FROM events ORDER BY seq")] == [1, 2]
+    assert applied == 3                                   # after the create's own line
+    assert len(ledger.read_events(by_hand)) == 3
+    assert [row["seq"] for row in conn.execute("SELECT seq FROM events ORDER BY seq")] == [1, 2, 3]
     assert conn.execute("SELECT decision FROM documents").fetchone()[0] == "Filed"
     assert conn.execute("SELECT keyword FROM learned_keywords").fetchone()[0] == "lender"
-    assert conn.execute("SELECT applied_seq FROM engagements").fetchone()[0] == 2
+    assert conn.execute("SELECT applied_seq FROM engagements").fetchone()[0] == 3
 
 
 def test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it_up(
@@ -228,14 +217,14 @@ def test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it
     with engagement_lock(by_hand), pytest.raises(OSError):
         store.record(conn, by_hand, filed)
 
-    assert len(ledger.read_events(by_hand)) == 1        # the journal holds it
+    assert len(ledger.read_events(by_hand)) == 2        # the journal holds it, after the create
     assert rows(conn, "documents") == []                   # the store does not
     monkeypatch.undo()
 
-    assert store.sync(conn, root, by_hand) == 1
+    assert store.sync(conn, root, by_hand) == 2
     assert conn.execute("SELECT decision FROM documents").fetchone()[0] == "Filed"
-    assert conn.execute("SELECT applied_seq FROM engagements").fetchone()[0] == 1
-    assert store.sync(conn, root, by_hand) == 1         # and again changes nothing
+    assert conn.execute("SELECT applied_seq FROM engagements").fetchone()[0] == 2
+    assert store.sync(conn, root, by_hand) == 2         # and again changes nothing
 
 
 def test_a_torn_last_line_is_not_replayed_until_it_is_whole(conn, root, by_hand):
@@ -246,7 +235,7 @@ def test_a_torn_last_line_is_not_replayed_until_it_is_whole(conn, root, by_hand)
     path = ledger.path_for(by_hand)
     path.write_bytes(path.read_bytes() + b'{"event": "filed", "key": "Shared/PBC/tor')
 
-    assert store.sync(conn, root, by_hand) == 1
+    assert store.sync(conn, root, by_hand) == 2           # the create's line and the filing
     assert len(rows(conn, "documents")) == 1
 
 
@@ -283,8 +272,8 @@ def test_a_reader_finding_no_rows_at_all_builds_them_from_the_journal_alone(
         conn, root, engagement):
     """What ``read_index()`` does before every read: the store is a
     derivation of the journal, so a database that has never seen this
-    engagement is made to describe it without opening a workbook, taking a
-    lock or writing a byte in the folder."""
+    engagement is made to describe it without taking a lock or writing a
+    byte in the folder."""
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     recorded = len(ledger.read_events(engagement))
@@ -297,11 +286,9 @@ def test_a_reader_finding_no_rows_at_all_builds_them_from_the_journal_alone(
         rows = store.documents(fresh, engagement)
         assert [row["pbc_location"] for row in rows] == [
             entry.pbc_location for entry in read_index(engagement)]
-        # The person's half comes back too, and still without a workbook:
-        # the pass above imported the request list, and an import is a
-        # line in the journal like any other (decision 103).
-        assert fresh.execute("SELECT manifest_digest FROM engagements").fetchone()[0] == \
-            view.rules_digest(engagement)
+        # The person's half comes back too: the create recorded the
+        # request list, and an edit is a line in the journal like any
+        # other (decisions 103 and 104).
         assert fresh.execute("SELECT COUNT(*) FROM requests").fetchone()[0] == len(ITEMS)
         # And again is a digest of the journal and nothing else.
         assert store.follow_the_journal(fresh, root, engagement) == recorded
@@ -342,23 +329,6 @@ def test_the_store_is_the_one_the_environment_names(tmp_path, monkeypatch):
     store.close()
 
 
-def test_a_row_the_record_holds_wins_over_the_workbooks_own_reading(conn, root, by_hand):
-    drop(by_hand, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(by_hand, today=DAY1)
-    key = ledger_key(read_index(by_hand / INDEX_FILENAME)[0])
-    # The record says one thing; the workbook reading handed to the rebuild
-    # says another for the same original. The record is the record.
-    with engagement_lock(by_hand):
-        ledger.append(by_hand, ledger.new(
-            ledger.UNFILED_BY_PERSON, key=key,
-            row=a_row(pbc_location=key, decision="Needs Review", reason="sent back")))
-    readings = workbook_readings(by_hand)
-    store.rebuild_engagement(conn, root, by_hand, **readings)
-
-    row = conn.execute("SELECT * FROM documents").fetchone()
-    assert row["reason"] == "sent back" and row["seq"] > store.WORKBOOK_SEQ
-
-
 def test_a_row_that_changed_identity_keeps_the_place_the_index_keeps_it_in(
         conn, root, by_hand):
     """Mirrors the fold's own claim: the store's order is the index's order."""
@@ -383,25 +353,18 @@ def test_a_row_that_changed_identity_keeps_the_place_the_index_keeps_it_in(
 
 def test_the_state_is_current_behind_or_unknown(conn, root, by_hand):
     def now():
-        return store.state(conn, by_hand,
-                           rules_digest_now=view.rules_digest(by_hand),
-                           ledger_head_now=ledger.head(by_hand))
+        return store.state(conn, by_hand, ledger_head_now=ledger.head(by_hand))
 
-    assert now() == store.UNKNOWN
+    assert store.state(conn, root / "nobody", ledger_head_now="") == store.UNKNOWN
     build(conn, root, by_hand)
-    assert now() == store.BEHIND        # nothing has imported the sheet yet
-    with engagement_lock(by_hand):
-        ensure(by_hand, root)
-    assert now() == store.CURRENT
+    assert now() == store.CURRENT       # the journal is the whole of it
 
-    # A person edits the request list: the digest moves and the rows the
-    # store holds stop describing it until the next pass reads it again.
-    _teach(by_hand / MANIFEST_FILENAME, "lender")
-    assert now() == store.BEHIND                       # the rules workbook moved
-
-    with engagement_lock(by_hand):
-        ensure(by_hand, root)
+    # A person edits the request list in the app: the edit is an event,
+    # recorded through the store, so the rows follow it in the same call
+    # and the one stamp - the journal's head - is what says so.
+    edit_rules(by_hand, A01={"any_keywords": ("lender",)})
     assert now() == store.CURRENT
+    assert conn.execute("SELECT ledger_head FROM engagements").fetchone()[0] == ledger.head(by_hand)
     with engagement_lock(by_hand):
         store.record(conn, by_hand, ledger.new(
             ledger.FILED, key="p/one", row=a_row(pbc_location="p/one")))
@@ -432,8 +395,21 @@ def test_the_export_writes_every_cell_as_text_and_a_formula_shaped_name_stays_a_
     documents = list(csv.DictReader(
         (tmp_path / "out" / store.DOCUMENTS_CSV).read_text(encoding="utf-8-sig").splitlines()))
     assert len(documents) == 1
-    assert documents[0]["original_name"] == "=SUM scan.pdf"
+    # Behind an apostrophe: a spreadsheet shows the name and never runs it.
+    assert documents[0]["original_name"] == "'=SUM scan.pdf"
     assert all(isinstance(value, str) for value in documents[0].values())
+
+
+def test_the_export_disarms_a_request_named_like_a_command(conn, root, engagement, tmp_path):
+    """A document name typed into the request list as a DDE formula reaches
+    requests.csv behind an apostrophe, whatever the quoting: a spreadsheet
+    evaluates a cell that begins with = + - @ or a tab on the way in."""
+    edit_rules(engagement, A01={"document": "=cmd|' /C calc'!A0"})
+    build(conn, root, engagement)
+    store.export(conn, tmp_path / "out")
+    text = (tmp_path / "out" / store.REQUESTS_CSV).read_text(encoding="utf-8-sig")
+    assert "'=cmd|' /C calc'!A0" in text.replace('""', "'")
+    assert not any(line.split(",")[2].startswith(('"=', "=")) for line in text.splitlines()[1:])
 
 
 def test_the_export_carries_nothing_the_index_and_the_request_list_do_not(
@@ -451,6 +427,58 @@ def test_the_export_carries_nothing_the_index_and_the_request_list_do_not(
         assert "Jane Q Client" not in text
 
 
+def test_a_rebuild_from_the_journal_alone_equals_the_store(root, engagement):
+    """Create, edit twice, file a drop, scan; delete the database; rebuild
+    from the journal; the check says nothing and every table is what it was."""
+    from tracker.scanner import scan_engagement
+
+    edit_rules(engagement, A01={"any_keywords": ("wage statement",)})
+    edit_rules(engagement, C01={"expected_count": 2}, A01={"period": "TY2025 "})
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    scan_engagement(engagement, today=DAY1)
+
+    live = store.connect()
+    before = (store.rules(live, engagement), store.statuses(live, engagement),
+              store.documents(live, engagement), store.engagement_info(live, engagement))
+    assert before[0] and before[1] and before[2]
+    db = Path(os.environ[store.ENV_STORE])
+    store.close()
+    db.unlink()
+
+    fresh = store.open(db)
+    try:
+        store.rebuild_engagement(fresh, root, engagement)
+        assert store.check(fresh, root, engagement) == []
+        assert (store.rules(fresh, engagement), store.statuses(fresh, engagement),
+                store.documents(fresh, engagement), store.engagement_info(fresh, engagement)) == before
+    finally:
+        fresh.close()
+
+
+def test_the_request_tables_hold_every_field_the_request_item_has():
+    """The guard the store used to make at rebuild time: a field added to
+    the manifest's record and not to the tables would be dropped on the
+    floor by every rebuild, and the check would go on passing because both
+    sides would be missing the same value."""
+    from dataclasses import fields
+
+    assert {f.name for f in fields(RequestItem)} == set(store.RULE_COLUMNS) | set(store.STATUS_COLUMNS)
+    assert tuple(store.RULE_COLUMNS) == RULE_FIELDS
+
+
+def test_a_failed_create_is_forgotten_and_a_retired_event_is_refused(conn, root, engagement):
+    assert store.forget(conn, root / "nobody") is False
+    build(conn, root, engagement)
+    assert store.forget(conn, engagement) is True
+    assert store.rules(conn, engagement) is None and store.forget(conn, engagement) is False
+    build(conn, root, engagement)
+    with engagement_lock(engagement):
+        with pytest.raises(store.StoreError, match="retired"):
+            store.record(conn, engagement, {ledger.EVENT_KEY: ledger.RULES_IMPORTED, ledger.AT_KEY: "now"})
+    assert store.check(conn, root, engagement) == []
+
+
 # ------------------------------------------------------------------- the CLI ----
 
 
@@ -463,8 +491,7 @@ def test_the_command_line_builds_every_engagement_under_a_root(root, tmp_path):
     for name in ("Smith Family 2025", "Jones Family 2025"):
         folder = root / name
         folder.mkdir()
-        create_template(folder / MANIFEST_FILENAME, ITEMS)
-        scaffold_engagement(folder)
+        make_engagement(folder, ITEMS)
     path = tmp_path / "app" / store.STORE_FILENAME
 
     built = cli(path, "rebuild", root)
@@ -530,14 +557,15 @@ def _database_files_under(folder: Path) -> list[str]:
 
 
 def test_the_store_names_no_reader_at_load_time():
-    """The explicit form of the layers test's claim: nothing that opens a
-    workbook is reachable from importing this module."""
+    """The explicit form of the layers test's claim: nothing that walks
+    folders or moves files is reachable from importing this module."""
     source = (Path(store.__file__)).read_text(encoding="utf-8")
     top, _, command_line = source.partition('if __name__ == "__main__":')
     for module in ("filer", "manifest", "view", "validators", "registry", "scaffold"):
         assert f"tracker.{module}" not in top.replace(":mod:`tracker.", "")
         assert f"tracker import {module}" not in top
-    assert "from tracker.filer import" in command_line       # and the CLI does reach them
+    assert "from tracker import registry" in command_line      # and the CLI does reach one
+    assert "filer" not in command_line                         # and no longer the filer
 
 
 # ------------------------------------------------------- the readers, checked ----
@@ -556,6 +584,7 @@ def test_the_check_names_the_engagement_the_row_and_the_field(conn, root, engage
 
 def test_an_engagement_the_store_has_never_seen_is_said_so_rather_than_passed(
         conn, root, engagement):
+    store.forget(conn, engagement)                # the create's row, gone
     sentence = said(conn, root, engagement)
     assert len(sentence) == 1 and "does not hold this engagement" in sentence[0]
 
@@ -580,7 +609,7 @@ def test_every_request_the_manifest_holds_has_a_rule_in_the_store(conn, root, en
 
     assert conn.execute("SELECT COUNT(*) FROM requests").fetchone()[0] == len(ITEMS)
     # And no status: a status is something a scan recorded, not something
-    # the sheet carries (decision 103). An unscanned engagement has none.
+    # the list carries (decision 103). An unscanned engagement has none.
     assert conn.execute("SELECT COUNT(*) FROM statuses").fetchone()[0] == 0
     stored = conn.execute('SELECT * FROM requests WHERE "identifier" = ?', ("A01",)).fetchone()
     item = next(i for i in load_manifest(engagement) if i.identifier == "A01")
@@ -603,31 +632,12 @@ def test_a_status_the_record_holds_is_in_the_store_and_answers_load_manifest(
     assert answered["C01"].status == ""
 
 
-def test_a_rebuild_takes_the_rules_from_the_journal_without_opening_the_workbook(
-        conn, root, engagement):
-    """The claim ``docs/storage.md`` makes: the store is rebuildable from
-    the journals alone. Once an import has been journalled, deleting the
-    workbook cannot cost the store the person's rules."""
-    with engagement_lock(engagement):
-        ensure(engagement, root)
-    assert any(e[ledger.EVENT_KEY] == ledger.RULES_IMPORTED
-               for e in ledger.read_events(engagement))
-
-    (engagement / MANIFEST_FILENAME).unlink()
-    store.rebuild_engagement(conn, root, engagement, rules=[], info=store.EngagementInfo(),
-                             manifest_digest="")
-
-    assert [row["identifier"] for row in conn.execute(
-        'SELECT "identifier" FROM requests ORDER BY "row"')] == ["A01", "C01"]
-    assert said(conn, root, engagement) == []
-
-
 def test_the_documents_table_holds_every_column_the_index_row_has(conn, root, engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     build(conn, root, engagement)
 
-    entry = read_index(engagement / INDEX_FILENAME)[0]
+    entry = read_index(engagement)[0]
     row = conn.execute("SELECT * FROM documents").fetchone()
     for field, value in entry_to_json(entry).items():
         assert row[field] == store._to_sql(value), field

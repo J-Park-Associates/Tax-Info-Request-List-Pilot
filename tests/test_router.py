@@ -23,7 +23,6 @@ from tracker.router import (
     route_file,
     route_files,
 )
-from tracker.scaffold import MANIFEST_FILENAME
 
 NL = chr(10)
 
@@ -386,19 +385,18 @@ def test_a_name_read_for_the_reviewer_tolerates_the_run_together_spelling(tmp_pa
 
 
 def test_a_derived_year_never_routes_on_its_own_but_still_contests(tmp_path):
-    # Loaded from a manifest, C01's Period TY2025 implies a year check. A
+    # Validated as a list, C01's Period TY2025 implies a year check. A
     # 2024 mortgage statement says "1098", so it looks like C01 - and is
     # contested, not filed. A row with ONLY a derived year never claims a
     # document just because the document mentions the year.
-    from tracker.manifest import create_template, load_manifest
+    from tracker.manifest import validated
 
-    path = create_template(tmp_path / MANIFEST_FILENAME, [
+    items = validated([
         RequestItem(identifier="C01", document="Mortgage Interest Statement", period="TY2025",
                     allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("1098",)),
         RequestItem(identifier="Z01", document="Anything from 2025", period="TY2025",
                     allowed_extensions=("pdf",), min_size_kb=0),
     ])
-    items = load_manifest(path)
     old = text_pdf(tmp_path / "old.pdf", "Form 1098 Mortgage Interest Statement 2024")
     routing = route_file(old, items)
     assert routing.identifier is None
@@ -473,17 +471,14 @@ def test_a_keyword_with_nothing_in_it_matches_nothing(tmp_path):
 
 
 def _shipped_rows(tmp_path, form="1040"):
-    """A catalog as an engagement loads it: the Period-derived date check
+    """A catalog as an engagement records it: the Period-derived date check
     is live, which template_items() alone does not give."""
     from dataclasses import replace
 
-    from tracker.manifest import create_template, load_manifest
+    from tracker.manifest import validated
     from tracker.templates import template_items
 
-    manifest = tmp_path / MANIFEST_FILENAME
-    manifest.unlink(missing_ok=True)
-    create_template(manifest, template_items(form, year=2025))
-    return [replace(i, min_size_kb=0) for i in load_manifest(manifest)]
+    return [replace(i, min_size_kb=0) for i in validated(template_items(form, year=2025))]
 
 
 def _shipped_1040_rows(tmp_path):

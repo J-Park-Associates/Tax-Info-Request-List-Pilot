@@ -41,8 +41,7 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 
 ```
 {EngagementName}/
-├── _manifest.xlsx        ← accountant-owned, and nothing else: the requests and their rules
-├── _ledger.jsonl         ← the machine's own record: every original, every status, every rules edit
+├── _ledger.jsonl         ← the engagement's record: the request list, every original, every status, every rules edit
 ├── _content_cache.json   ← verdict cache (no client text is ever stored)
 ├── Status Report.html    ← this engagement on one page, redrawn by every pass
 ├── Prepared/             ← the firm's working set (the client never sees it)
@@ -55,27 +54,20 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
         └── scan0012.pdf
 ```
 
-**The manifest is the person's file.** Its Requests sheet holds the ten
-columns an accountant edits and nothing the machine writes; each request's
-Status, Received Date, File Count and Validation Notes are in the record
-and on the Status Report. The machine reads the sheet once a pass and
-journals every change it finds; it writes it only when an engagement is
-created, when a year is rolled forward, and once, to slim an older one.
-
-The index used to be a workbook (`_index.xlsx`) beside the manifest, and
-the statuses used to be four more columns of the manifest. Decisions 102
-and 103 moved both into the record: the journal above, folded into one
-database on the machine that runs the schedule
-([docs/storage.md](docs/storage.md)). A folder that still has either is
-migrated by its next pass, which renames the workbook
-`_index.migrated.xlsx`, deletes the four columns from the request list,
-and never writes either again.
+**The request list and the engagement's details are in the record.** The
+ten columns an accountant edits, and the client, link, due date and the
+rest, are edited in the app's **Edit Request List** editor and nowhere
+else; every save is journalled as one event and folded into one database
+on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
+beside each request's Status, Received Date, File Count and Validation
+Notes and every original's index row. Nothing in the folder is a
+spreadsheet, and the machine reads and writes no workbook.
 
 1. Roll a returning client's list forward from last year (the default), or
    pick the tax form type for a new client — the catalog lives in
    `tracker/templates.py` and nowhere else
-2. List the engagement's document requests (and validation rules) in
-   `_manifest.xlsx`
+2. List the engagement's document requests (and validation rules) in the
+   app's request-list editor
 3. `python -m tracker.scaffold <engagement_dir>` — builds `Shared/` and
    `Prepared/`, and writes the client's README
 4. Share `Shared/` with the client. They drop everything in; that's their
@@ -88,8 +80,8 @@ and never writes either again.
    keywords/dates) and records each row's status (`Status.ALL` in
    `tracker/manifest.py`) with plain-English notes
 7. Open the Status Report (double-click it; it is a web page) to see where
-   everything stands and how any given file got there. The manifest is for
-   editing the list, not for reading the answers
+   everything stands and how any given file got there. The list is edited
+   in the app, not for reading the answers
 8. `python -m tracker.reminder <engagement_dir>` — drafts the "still waiting
    on these" email from what the scanner found. **It only drafts it** — there
    is no SMTP anywhere in the module; a person reads it, edits it and sends it
@@ -134,13 +126,13 @@ warning people learn to send past.
 ### Running it unattended
 
 There is nothing to register. Point the scheduled job at the folder you keep
-your clients in; every folder under it holding `_manifest.xlsx` is an
-engagement, and the manifest's **Engagement** sheet (written by the wizard
-when you create or roll forward an engagement) says who the client is, the
-share link, the due date, whether they are chased by email and whether the
-engagement is still active:
+your clients in; every folder under it holding `_ledger.jsonl` is an
+engagement, and the engagement's details (written by the wizard when you
+create or roll forward an engagement, edited in the app) say who the client
+is, the share link, the due date, whether they are chased by email and
+whether the engagement is still active:
 
-| Engagement sheet | |
+| Engagement details | |
 |---|---|
 | Client | greeting name in the reminder |
 | Engagement Name | label; the folder name if blank |
@@ -187,9 +179,9 @@ schedule. The app's **Install Schedule** button does exactly this for the
 folder it is showing - from source with the Python it runs under, and in
 the packaged app with its own executable, which runs the job when given
 `--run` first (there is no Python on that machine). Every pass also re-scaffolds each engagement, so a
-row added in Excel has its folder and its README line by the next run, and
+row added in the app has its folder and its README line by the next run, and
 an engagement that has been rolled forward is retired by its successor
-without anyone opening last year's manifest.
+without anyone opening last year's engagement.
 
 One machine per clients root: the per-engagement lock (`tracker/locking.py`)
 that keeps a scheduled pass and a click in the app from working the same
@@ -229,7 +221,7 @@ The schedule is a default, not a cage:
 | see what would happen | `python -m tracker.runner "D:\OneDrive\Clients" --dry-run` |
 | move the drafting day | `python -m tracker.runner "D:\OneDrive\Clients" --weekday monday` |
 
-`Reminders: no` on an engagement's sheet is a standing decision that this
+`Reminders: no` in an engagement's details is a standing decision that this
 client isn't chased by email — neither the schedule nor `--reminders always`
 overrides it, though the per-engagement CLI above still drafts one on demand.
 
@@ -257,13 +249,12 @@ Prior-year data takes precedence over the template, absolutely:
 - `Waived` carries forward (it is a decision about the client). `Accepted`
   does not — that was a judgment about one year's particular files.
 - Checklist rows this client has never had are **offered, not added**. They
-  are listed in the output and on the manifest's `Carried Forward` sheet;
-  `--include-new` adds them.
+  are listed in the output, once; `--include-new` adds them, and an offer
+  you want later is added in the app's editor.
 - Documents that arrived last year and matched no request are surfaced too —
   exactly the gap next year's list should close.
 
-The new manifest carries a `Carried Forward` sheet explaining why every row
-is there. The prior engagement is opened read-only and never modified.
+The prior engagement is opened read-only and never modified.
 
 ### How files get matched
 
@@ -321,8 +312,9 @@ person adds one.
 
 When a person files something out of `00 - Needs Review` they can type a
 keyword, and it is recorded against that one engagement's request and
-nowhere else — every reader lays it over the row's own Any Keywords, and
-the rollover writes it into next year's sheet as an ordinary one;
+nowhere else — every reader lays it over the row's own Any Keywords, the
+editor shows it beside the row as taught, and the rollover carries it into
+next year's list as an ordinary one;
 `python tools/learned_keywords.py` lists every keyword taught that way
 across all your engagements, grouped by request, so the ones several clients
 needed become catalog rows the test suite then defends.

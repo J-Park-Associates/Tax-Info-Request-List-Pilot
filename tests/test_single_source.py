@@ -146,6 +146,34 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
         assert ignored.count(name) == 1, name
 
 
+def test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet():
+    """Decision 104: nothing Excel remains in the tree but the tier-3 reader
+    of a *client's* spreadsheet. ``openpyxl`` stays in requirements.txt for
+    that one line, and a guard holds it there."""
+    import ast
+    import subprocess
+
+    tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
+    hits = []
+    for rel in tracked:
+        if not (rel.startswith(("tracker/", "tools/", "app/")) or rel == "api_entry.py"):
+            continue
+        if rel.endswith(".py"):
+            tree = ast.parse(read(rel))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import) and any(a.name.split(".")[0] == "openpyxl" for a in node.names):
+                    hits.append((rel, node.lineno))
+                if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "openpyxl":
+                    hits.append((rel, node.lineno))
+        elif rel.endswith((".js", ".html", ".css", ".json")):
+            assert "openpyxl" not in read(rel), rel
+    assert len(hits) == 1 and hits[0][0] == "tracker/content_check.py", hits
+    source = read("tracker/content_check.py").splitlines()
+    start = next(i for i, line in enumerate(source) if line.startswith("def _extract_xlsx("))
+    assert start < hits[0][1] - 1, "the one import is inside _extract_xlsx"
+    assert any(line.startswith("openpyxl==") for line in read("requirements.txt").splitlines())
+
+
 def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
     from tracker.api import _slug
     from tracker.manifest import UNSCANNED_LABEL, Status
@@ -166,18 +194,25 @@ def test_the_stylesheet_has_a_class_for_every_view_state():
 
 
 def test_the_renderer_types_no_vocabulary_of_its_own():
+    """Every word Python owns reaches the page through the API's vocabulary:
+    the statuses, the overrides, the decisions, the defaults, the ten
+    headers of the request list, the yes/no words, the one-character
+    values, the year bounds and the editor's floors - none is typed in the
+    renderer, so the app cannot disagree with the tracker about a word."""
     from tracker.api import _slug
     from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.manifest import (
+        ANY_EXTENSION,
         DEFAULT_EXTENSIONS,
         EXPECTED_PATTERN,
+        HEADERS,
         UNSCANNED_LABEL,
         YEAR_MAX,
         YEAR_MIN,
         Override,
         Status,
     )
-    from tracker.rollover import CARRIED_SHEET
+    from tracker.records import NO, YES
     from tracker.scaffold import PBC_DIR_NAME
     from tracker.scheduling import DEFAULT_START
     from tracker.settings import EXAMPLE_ROOT
@@ -190,8 +225,13 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
         assert literal not in js.replace("chip-${vocab.unscanned_key}", ""), literal
-    for literal in (CARRIED_SHEET, PBC_DIR_NAME, EXAMPLE_ROOT, str(YEAR_MIN), str(YEAR_MAX),
-                    UNSCANNED_LABEL):
+    for literal in (*HEADERS, YES, NO, ANY_EXTENSION):
+        assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
+    # The dashboard's own table heads its columns in plain English, so the
+    # one-word headers are not looked for in the page; the two-word ones
+    # are the list's alone.
+    for literal in (PBC_DIR_NAME, EXAMPLE_ROOT, str(YEAR_MIN), str(YEAR_MAX),
+                    UNSCANNED_LABEL, *[h for h in HEADERS if " " in h]):
         assert literal not in html, literal
     assert 'min="' not in html and 'max="' not in html
 
@@ -259,17 +299,6 @@ def test_the_roadmap_schema_table_lists_the_status_and_override_values():
         assert f"`{value}`" in override_row, value
 
 
-def test_the_readme_names_the_carried_forward_sheet_the_rollover_writes():
-    from tracker.manifest import ENGAGEMENT_SHEET_NAME, SHEET_NAME
-    from tracker.rollover import CARRIED_SHEET
-
-    readme = read("README.md")
-    assert f"`{CARRIED_SHEET}` sheet" in readme
-    for rel in DOCUMENTS:
-        for name in re.findall(r"`([A-Z][A-Za-z ]+)` sheet", read(rel)):
-            assert name in (CARRIED_SHEET, ENGAGEMENT_SHEET_NAME, SHEET_NAME), (rel, name)
-
-
 def test_the_scan_button_label_is_typed_once():
     label = re.search(r'const SCAN_LABEL = "([^"]+)";', read("app/renderer/app.js")).group(1)
     assert label not in read("app/renderer/index.html")
@@ -318,8 +347,8 @@ def test_the_package_docstring_lists_every_module():
     assert listed == modules, listed ^ modules
 
 
-def test_the_readme_engagement_sheet_table_matches_the_fields():
-    from tracker.manifest import ENGAGEMENT_FIELDS, ENGAGEMENT_HELP, ENGAGEMENT_NOTES, NO
+def test_the_readme_engagement_details_table_matches_the_fields():
+    from tracker.records import ENGAGEMENT_FIELDS, ENGAGEMENT_HELP, ENGAGEMENT_NOTES, NO
 
     readme = read("README.md")
     for label, field in ENGAGEMENT_FIELDS:
@@ -331,7 +360,7 @@ def test_the_readme_engagement_sheet_table_matches_the_fields():
 
 
 def test_the_roadmap_schema_table_lists_exactly_the_manifest_headers():
-    """The sheet is the ten columns a person edits (decision 103), and the
+    """The list is the ten columns a person edits (decision 103), and the
     schema table is those ten and no others: a row left in it for a column
     the machine stopped writing is a column somebody will go looking for."""
     from tracker.manifest import HEADERS
@@ -373,34 +402,36 @@ def test_prose_names_no_weekday_but_the_draft_day():
                 assert day not in text, (rel, day)
 
 
+#: The runtime files the decision log names and the code no longer owns.
+#: The log never deletes: rows 1 to 103 name these files, and decisions 102
+#: to 104 retired them. A document may name one only in the log or in a
+#: sentence about the past (the runbook's legacy paragraph names the old
+#: request list, which is allowed by this set).
+RETIRED_FILES = {"_manifest.xlsx", "_index.xlsx", "_manifest.pending.json", "_index.pending.json",
+                 "_index.migrated.xlsx", "_index.pending.migrated.json",
+                 "_manifest.pending.migrated.json"}
+
+
 def test_documents_name_only_runtime_files_the_code_owns():
-    """Every `something.ext` a document quotes is a file the code names, or a repo file."""
+    """Every `something.ext` a document quotes is a file the code names, a
+    repo file, or one of the files the log retired (``RETIRED_FILES``)."""
     import subprocess
 
-    from tracker.filer import (
-        INDEX_FILENAME,
-        INDEX_MIGRATED_FILENAME,
-        INDEX_PENDING_FILENAME,
-        INDEX_PENDING_MIGRATED_FILENAME,
-        MANIFEST_PENDING_FILENAME,
-        MANIFEST_PENDING_MIGRATED_FILENAME,
-    )
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
-    from tracker.scaffold import MANIFEST_FILENAME, README_NAME
+    from tracker.scaffold import README_NAME
     from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
-    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_MIGRATED_FILENAME,
-             INDEX_PENDING_FILENAME, INDEX_PENDING_MIGRATED_FILENAME,
-             MANIFEST_PENDING_FILENAME, MANIFEST_PENDING_MIGRATED_FILENAME,
-             LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-             LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
+    assert LEGACY_MANIFEST_FILENAME in RETIRED_FILES
+    owned = {CACHE_FILENAME, LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+             LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
@@ -409,7 +440,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
             name = quoted.split("/")[-1].split("\\")[-1]
             if "<" in quoted or "*" in quoted:
                 continue                                  # a pattern, not a file
-            assert quoted in repo_files or name in repo_files or name in owned, (rel, quoted)
+            assert quoted in repo_files or name in repo_files or name in owned or name in RETIRED_FILES, (rel, quoted)
 
 
 def test_the_build_output_folder_is_the_one_gitignore_knows():
@@ -457,6 +488,14 @@ def test_the_roadmap_names_every_status_in_bold():
 
 def test_documents_name_buttons_by_their_labels():
     """A doc may say 'the X button' only for a button the page actually has."""
+    from tracker.api import (
+        EDITOR_ADD_LABEL,
+        EDITOR_CANCEL_LABEL,
+        EDITOR_OPEN_LABEL,
+        EDITOR_PASTE_LABEL,
+        EDITOR_REMOVE_LABEL,
+        EDITOR_SAVE_LABEL,
+    )
     from tracker.view import VIEW_OPEN_LABEL
 
     html = read("app/renderer/index.html")
@@ -465,9 +504,12 @@ def test_documents_name_buttons_by_their_labels():
     js = read("app/renderer/app.js")
     labels |= set(re.findall(r'<button[^>]*>([^<]+)</button>', js))
     labels.add(re.search(r'const SCAN_LABEL = "([^"]+)";', js).group(1))
-    # Two buttons are filled in at runtime from a label Python owns: the
-    # scan button's, above, and the one that opens the engagement's page.
+    # Buttons filled in at runtime from a label Python owns: the scan
+    # button's, above, the one that opens the engagement's page, and the
+    # request-list editor's (decision 104).
     labels.add(VIEW_OPEN_LABEL)
+    labels |= {EDITOR_OPEN_LABEL, EDITOR_SAVE_LABEL, EDITOR_CANCEL_LABEL, EDITOR_ADD_LABEL,
+               EDITOR_REMOVE_LABEL, EDITOR_PASTE_LABEL}
     labels = {label for label in labels if label and "${" not in label}
     for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
         text = read(rel)
@@ -632,22 +674,23 @@ def test_documents_state_the_naming_pattern_with_the_one_separator():
 
 
 def test_tree_diagrams_name_only_runtime_files_the_code_owns():
-    from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME, MANIFEST_PENDING_FILENAME
+    """A tree diagram shows the folder as it is: the files the code writes
+    and none of the retired ones - a tree is never a sentence about the past."""
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
-    from tracker.scaffold import MANIFEST_FILENAME, README_NAME
+    from tracker.scaffold import README_NAME
     from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
     from tracker.view import VIEW_FILENAME
 
-    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
-             MANIFEST_PENDING_FILENAME,
+    owned = {CACHE_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
              DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-             LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
+             LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, VIEW_FILENAME}
+    assert not owned & RETIRED_FILES
     for rel in DOCUMENTS:
         for line in read(rel).splitlines():
             if "──" not in line:
@@ -659,17 +702,16 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 
 
 def test_the_package_prose_names_constants_rather_than_their_values():
-    """A docstring or comment may name MANIFEST_FILENAME; it may not spell the value."""
+    """A docstring or comment may name LEDGER_FILENAME; it may not spell the value."""
     import ast
 
-    from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import Override, Status
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME
     from tracker.scaffold import (
-        MANIFEST_FILENAME,
         PBC_DIR_NAME,
         PREPARED_DIR_NAME,
         README_NAME,
@@ -681,9 +723,9 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
-    values = {INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-              LOG_FILENAME, MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME, CACHE_FILENAME, SETTINGS_FILENAME,
-              STORE_FILENAME, VIEW_FILENAME,
+    values = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+              LOG_FILENAME, LEGACY_MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME, CACHE_FILENAME,
+              SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
               f"{SHARED_DIR_NAME}/", f"{PBC_DIR_NAME}/", f"{PREPARED_DIR_NAME}/"}
     quoted = {f"``{v}``" for v in set(Status.ALL) | set(Override.ALL)}
     for path in (REPO / "tracker").glob("*.py"):

@@ -8,33 +8,28 @@ silently drop something the client actually had.
 import datetime as dt
 
 import pytest
-from openpyxl import load_workbook
 
-from tests.conftest import ensure, seed_statuses
-from tests.samples import col
+from tests.conftest import ensure, make_engagement, seed_statuses
+from tracker import ledger
 from tracker.manifest import (
-    COL_DATE_PATTERN,
-    COL_IDENTIFIER,
-    COL_MANUAL_OVERRIDE,
-    SHEET_NAME,
+    EngagementInfo,
     Override,
     RequestItem,
     Status,
     StatusUpdate,
-    create_template,
+    create_engagement,
+    load_manifest,
 )
 from tracker.rollover import (
-    CARRIED_SHEET,
     ORIGIN_NEW,
     ORIGIN_PRIOR,
     ORIGIN_WAIVED,
     detect_year,
     roll_forward,
     shift_years,
-    write_rollover_manifest,
 )
 from tracker.router import UNMATCHED
-from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME
+from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 
 # Last year's engagement: a 2025 individual return.
 PRIOR = [
@@ -76,9 +71,7 @@ TEMPLATE = [
 @pytest.fixture
 def prior(tmp_path):
     """Last year's engagement, scanned: A01 received 3 files, C01 never came."""
-    eng = tmp_path / "Smith Family 2025"
-    eng.mkdir()
-    create_template(eng / MANIFEST_FILENAME, PRIOR)
+    eng = make_engagement(tmp_path / "Smith Family 2025", PRIOR, scaffold=False)
     seed_statuses(eng, {
         "A01": StatusUpdate(status=Status.RECEIVED, file_count=3,
                             received_date=dt.date(2026, 3, 1)),
@@ -91,6 +84,15 @@ def prior(tmp_path):
 
 def rolled_by_id(report):
     return {r.item.identifier: r for r in report.rolled}
+
+
+def next_year(tmp_path, report, name="Smith Family 2026"):
+    """Next year's engagement, created from the rollover's rows the way the
+    API and the command line create it: into the record, no scaffold."""
+    folder = tmp_path / name
+    folder.mkdir(parents=True, exist_ok=True)
+    create_engagement(folder, report.items)
+    return folder
 
 
 # ------------------------------------------------------------- year shifting ----
@@ -157,9 +159,7 @@ def test_template_only_fills_blanks(prior):
     """A blank has nothing to override, so the template may fill it."""
     sparse = [RequestItem(identifier="A01", document="W-2s", period="TY2025",
                           min_size_kb=0)]
-    eng = prior.parent / "Sparse 2025"
-    eng.mkdir()
-    create_template(eng / MANIFEST_FILENAME, sparse)
+    eng = make_engagement(prior.parent / "Sparse 2025", sparse, scaffold=False)
 
     a01 = rolled_by_id(roll_forward(eng, template=TEMPLATE))["A01"].item
     assert a01.document == "W-2s"                          # prior still wins
@@ -188,17 +188,17 @@ def test_waived_stays_waived(prior):
 
 def test_accepted_does_not_carry(prior):
     """Accepted judged one year's files; it must not pre-approve the next."""
+    from dataclasses import replace
+
+    from tracker.manifest import load_engagement_info, save_rules
+
     eng = prior
     seed_statuses(eng,
                    {"C01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
-    wb = load_workbook(eng / MANIFEST_FILENAME)
-    ws = wb[SHEET_NAME]
-    for row in ws.iter_rows(min_row=2):
-        if row[0].value == "C01":
-            row[col(COL_MANUAL_OVERRIDE) - 1].value = Override.ACCEPTED
-    wb.save(eng / MANIFEST_FILENAME)
-    wb.close()
-    ensure(eng)          # the pass that reads the edit into the record
+    rows = [replace(row, manual_override=Override.ACCEPTED) if row.identifier == "C01" else row
+            for row in load_manifest(eng)]
+    save_rules(eng, rows, load_engagement_info(eng))       # the edit, saved in the app
+    ensure(eng)
 
     c01 = rolled_by_id(roll_forward(eng))["C01"].item
     assert c01.manual_override == ""
@@ -233,47 +233,27 @@ def test_include_new_adds_the_offers(prior):
 
 
 def test_a_template_row_differing_from_a_priors_only_in_case_is_the_same_row(prior, tmp_path):
-    # The tenth reading: both were written, and load_manifest() refused the
-    # new manifest as a duplicate until a person edited it in Excel.
+    # The tenth reading: both were written, and the new list was refused as
+    # a duplicate until a person edited it.
     from dataclasses import replace
-
-    from tracker.manifest import load_manifest
 
     lowered = [replace(spec, identifier=spec.identifier.lower()) if spec.identifier == "A01" else spec for spec in TEMPLATE]
     report = roll_forward(prior, template=lowered, include_new=True)
     assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01", "E01"]
-    out = tmp_path / "Smith Family 2026" / MANIFEST_FILENAME
-    write_rollover_manifest(out, report)
+    out = next_year(tmp_path, report)
     assert [i.identifier for i in load_manifest(out)] == ["A01", "B01", "C01", "D01", "E01"]
 
 
-def test_the_carried_sheet_has_readable_columns(prior, tmp_path):
-    from tracker.rollover import CARRIED_LAYOUT
-
-    out = tmp_path / "Smith Family 2026" / MANIFEST_FILENAME
-    write_rollover_manifest(out, roll_forward(prior, template=TEMPLATE))
-    wb = load_workbook(out)
-    widths = [wb[CARRIED_SHEET].column_dimensions[c].width for c in ("A", "B", "C")[:len(CARRIED_LAYOUT)]]
-    wb.close()
-    assert widths == list(CARRIED_LAYOUT.values())[:len(widths)]
-
-
-def test_offers_reach_the_workbook_without_becoming_requests(prior, tmp_path):
-    """A person must be able to see what was withheld, in Excel."""
-    from tracker.manifest import load_manifest
-
+def test_offers_are_reported_without_becoming_requests(prior, tmp_path):
+    """A person sees what was withheld in the reply and the command line,
+    once; the created list holds none of it, and an offer they want is
+    added in the editor."""
     report = roll_forward(prior, template=TEMPLATE)
-    out = tmp_path / "Smith Family 2026" / MANIFEST_FILENAME
-    write_rollover_manifest(out, report)
+    out = next_year(tmp_path, report)
 
     assert "E01" not in {i.identifier for i in load_manifest(out)}
-    wb = load_workbook(out)
-    text = "\n".join(
-        " ".join(str(c) for c in row if c)
-        for row in wb[CARRIED_SHEET].iter_rows(values_only=True)
-    )
-    wb.close()
-    assert "NOT added" in text and "E01" in text
+    assert [o.item.identifier for o in report.offered] == ["E01"]
+    assert report.offered[0].origin == ORIGIN_NEW
 
 
 def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
@@ -330,12 +310,10 @@ def test_a_target_year_outside_the_bounds_is_refused_here_as_in_the_wizard(prior
 # --------------------------------------------------------------- the workbook ----
 
 
-def test_written_manifest_is_loadable_and_explains_itself(prior, tmp_path):
+def test_the_created_engagement_loads_back_from_the_record_and_the_report_explains_itself(prior, tmp_path):
     report = roll_forward(prior, template=TEMPLATE)
-    out = tmp_path / "Smith Family 2026" / MANIFEST_FILENAME
-    write_rollover_manifest(out, report)
+    out = next_year(tmp_path, report)
 
-    from tracker.manifest import load_manifest
     items = {i.identifier: i for i in load_manifest(out)}
     assert items["A01"].period == "TY2026"
     assert items["A01"].expected_count == 3
@@ -343,19 +321,20 @@ def test_written_manifest_is_loadable_and_explains_itself(prior, tmp_path):
     # Fresh year: no scanner state carried over.
     assert items["A01"].status == "" and items["A01"].received_date is None
 
-    wb = load_workbook(out)
-    rows = list(wb[CARRIED_SHEET].iter_rows(min_row=2, values_only=True))
-    wb.close()
-    origins = {r[0]: r[2] for r in rows if r[0]}
+    origins = {r.item.identifier: r.origin for r in [*report.rolled, *report.offered]}
     assert origins["A01"] == ORIGIN_PRIOR
     assert origins["D01"] == ORIGIN_WAIVED
     assert origins["E01"] == ORIGIN_NEW
 
 
 def test_prior_engagement_is_never_written_to(prior):
-    before = (prior / MANIFEST_FILENAME).read_bytes()
+    """The prior year is read, never written: its record's bytes and its
+    folder are as they were, because last year is finished with."""
+    before = ledger.path_for(prior).read_bytes()
+    listing = sorted(p.name for p in prior.iterdir())
     roll_forward(prior, template=TEMPLATE)
-    assert (prior / MANIFEST_FILENAME).read_bytes() == before
+    assert ledger.path_for(prior).read_bytes() == before
+    assert sorted(p.name for p in prior.iterdir()) == listing
 
 
 def test_shift_years_leaves_digits_inside_longer_numbers_alone():
@@ -367,77 +346,17 @@ def test_shift_years_leaves_digits_inside_longer_numbers_alone():
 
 def test_a_derived_year_check_is_not_carried_as_text(prior, tmp_path):
     # The prior's TY2025 rows had their year check derived from Period; the
-    # rolled manifest gets TY2026 and derives again. The Date Pattern cell
-    # stays blank rather than being filled with last year's regex.
-    from openpyxl import load_workbook as lw
-
-    from tracker.manifest import load_manifest
-
+    # rolled list gets TY2026 and derives again. The rolled row carries no
+    # pattern of its own rather than last year's regex.
     report = roll_forward(prior)
-    target = tmp_path / "next"
-    target.mkdir()
-    path = write_rollover_manifest(target / MANIFEST_FILENAME, report)
-    wb = lw(path)
-    ws = wb[SHEET_NAME]
-    cells = {ws.cell(row=r, column=col(COL_IDENTIFIER)).value: ws.cell(row=r, column=col(COL_DATE_PATTERN)).value
-             for r in range(2, ws.max_row + 1)}
-    wb.close()
-    rows = {i.identifier: i for i in load_manifest(path)}
+    built = {r.item.identifier: r.item for r in report.rolled}
+    assert built["C01"].date_pattern == "" and not built["C01"].date_pattern_derived
+    assert built["A01"].date_pattern == r"(?i)\b2026\b"   # A01 typed its own pattern; it shifts and stays
+
+    rows = {i.identifier: i for i in load_manifest(next_year(tmp_path, report))}
     assert rows["C01"].period == "TY2026"
-    assert cells["C01"] is None and rows["C01"].date_pattern == r"(?i)\b2026\b"
-    assert rows["C01"].date_pattern_derived
-    assert cells["A01"] == r"(?i)\b2026\b"        # A01 typed its own pattern; it shifts and stays
-
-
-def test_a_rollover_reads_the_prior_year_without_moving_anything_in_it(prior):
-    """The prior engagement is read, never written: a prior year that still
-    keeps its index in a workbook is not migrated by a rollover, because a
-    rollover is a reading of last year and last year is finished with."""
-    from tests.conftest import write_a_legacy_index
-    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry
-
-    write_a_legacy_index(prior, [IndexEntry(
-        received="2026-03-01", original_name="K-1 Redwood LP.pdf", size_kb=12.0,
-        digest="abc", identifier="", prepared_location="", pbc_location="",
-        decision=NEEDS_REVIEW, reason=UNMATCHED)])
-    before = sorted(p.name for p in prior.iterdir())
-    roll_forward(prior)
-    assert (prior / INDEX_FILENAME).exists()
-    assert sorted(p.name for p in prior.iterdir()) == before
-
-
-def test_a_prior_year_of_either_layout_rolls_forward(tmp_path):
-    """A year that finished before decision 103 still has the four columns.
-
-    Its statuses are read into the record by the migration its rollover
-    triggers, so the counts it learns from are the same either way, and
-    the new list is written thin whichever it came from.
-    """
-    from tests.conftest import write_a_legacy_manifest
-    from tracker.filer import ensure as ensure_engagement
-    from tracker.manifest import carries_scanner_columns, load_rules
-
-    old = tmp_path / "Smith Family 2025"
-    old.mkdir()
-    write_a_legacy_manifest(old, PRIOR, {
-        "A01": StatusUpdate(status=Status.RECEIVED, file_count=3,
-                            received_date=dt.date(2026, 3, 1)),
-    })
-    assert carries_scanner_columns(old / MANIFEST_FILENAME)
-
-    ensure_engagement(old)                      # the pass a rollover makes first
-    report = roll_forward(old)
-
-    assert rolled_by_id(report)["A01"].prior_status == Status.RECEIVED
-    assert rolled_by_id(report)["A01"].item.expected_count == 3
-    assert not carries_scanner_columns(old / MANIFEST_FILENAME)
-
-    new = tmp_path / "Smith Family 2026"
-    new.mkdir()
-    write_rollover_manifest(new / MANIFEST_FILENAME, report)
-    assert not carries_scanner_columns(new / MANIFEST_FILENAME)
-    assert [i.identifier for i in load_rules(new / MANIFEST_FILENAME).items] == [
-        "A01", "B01", "C01", "D01"]
+    assert rows["C01"].date_pattern == r"(?i)\b2026\b" and rows["C01"].date_pattern_derived
+    assert rows["A01"].date_pattern == r"(?i)\b2026\b" and not rows["A01"].date_pattern_derived
 
 
 def test_a_keyword_the_prior_year_was_taught_is_carried_as_an_ordinary_one(prior, tmp_path):
@@ -446,14 +365,11 @@ def test_a_keyword_the_prior_year_was_taught_is_carried_as_an_ordinary_one(prior
     Last year somebody filed a parked document and typed "home lending";
     it lived in that engagement's record and nowhere else (decision 103).
     Next year's list is last year's list, so it comes forward as an
-    ordinary Any Keyword - in the new workbook's cell, where a person can
-    see it and edit it.
+    ordinary Any Keyword - in next year's record, where the editor shows
+    it and a person can edit it.
     """
-    from tests.conftest import ensure
-    from tracker import ledger, store
+    from tracker import store
     from tracker.locking import engagement_lock
-    from tracker.manifest import load_manifest, load_rules
-    from tracker.scaffold import MANIFEST_FILENAME
 
     with engagement_lock(prior):
         ensure(prior)
@@ -466,11 +382,11 @@ def test_a_keyword_the_prior_year_was_taught_is_carried_as_an_ordinary_one(prior
     report = roll_forward(prior)
     assert rolled_by_id(report)["C01"].item.any_keywords == ("rental", "home lending")
 
-    new = tmp_path / "Smith Family 2026"
-    new.mkdir()
-    write_rollover_manifest(new / MANIFEST_FILENAME, report)
-    written = {i.identifier: i.any_keywords for i in load_rules(new / MANIFEST_FILENAME).items}
+    new = next_year(tmp_path, report)
+    written = {row["identifier"]: tuple(row["any_keywords"])
+               for row in store.rules(store.connect(), new)}          # typed, as stored
     assert written["C01"] == ("rental", "home lending")
+    assert store.learned_keywords(store.connect(), new) == {}
 
 
 def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior):
@@ -481,7 +397,6 @@ def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior)
     from pathlib import Path
 
     from tracker.manifest import load_engagement_info
-    from tracker.scaffold import MANIFEST_FILENAME
 
     repo = Path(__file__).resolve().parent.parent
     subprocess.run(
@@ -489,7 +404,7 @@ def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior)
         cwd=prior.parent, check=True, capture_output=True,
         env={**__import__("os").environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
     )
-    info = load_engagement_info(prior.parent / "Smith TY2026" / MANIFEST_FILENAME)
+    info = load_engagement_info(prior.parent / "Smith TY2026")
     assert Path(info.rolled_from).is_absolute() and Path(info.rolled_from) == prior.resolve()
 
 
@@ -508,50 +423,27 @@ def test_the_rollover_carries_the_catalog_the_list_was_cut_from(tmp_path):
                                  rolled_from=str(tmp_path)).form == ""
 
 
-def test_the_rollover_command_line_writes_the_carried_form_into_next_year(prior):
-    """End to end: the prior's sheet says which catalog, and so does the new
-    workbook - the cell a person opens the file to read."""
+def test_the_rollover_command_line_writes_the_carried_form_into_next_year(tmp_path):
+    """End to end: the prior's details say which catalog, and so do next
+    year's - the details the app shows."""
     import os
     import subprocess
     import sys
     from pathlib import Path
 
-    from tracker.manifest import (
-        EngagementInfo,
-        load_engagement_info,
-        write_engagement_info,
-    )
-    from tracker.scaffold import MANIFEST_FILENAME
+    from tracker.manifest import load_engagement_info
 
-    write_engagement_info(prior / MANIFEST_FILENAME,
-                          EngagementInfo(client="John Smith", form="1040"))
+    prior = make_engagement(tmp_path / "Smith Family 2025", PRIOR,
+                            EngagementInfo(client="John Smith", form="1040"), scaffold=False)
     repo = Path(__file__).resolve().parent.parent
     subprocess.run(
         [sys.executable, "-m", "tracker.rollover", prior.name, "Smith TY2026"],
         cwd=prior.parent, check=True, capture_output=True,
         env={**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
     )
-    info = load_engagement_info(prior.parent / "Smith TY2026" / MANIFEST_FILENAME)
+    info = load_engagement_info(prior.parent / "Smith TY2026")
     assert info.form == "1040" and info.client == "John Smith"
-
-
-def test_a_file_named_like_a_formula_is_a_name_on_the_carried_sheet(prior, tmp_path):
-    from openpyxl import load_workbook
-
-    from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW, IndexEntry
-    from tracker.rollover import CARRIED_SHEET, write_rollover_manifest
-    from tracker.scaffold import MANIFEST_FILENAME
-
-    seed_index(prior, [
-        IndexEntry(received="2026-03-01", original_name="=SUM scan.pdf", size_kb=12.0, digest="abc",
-                   identifier="", prepared_location="", pbc_location="", decision=NEEDS_REVIEW, reason=UNMATCHED),
-    ])
-    target = tmp_path / "next"
-    target.mkdir()
-    write_rollover_manifest(target / MANIFEST_FILENAME, roll_forward(prior))
-    ws = load_workbook(target / MANIFEST_FILENAME, data_only=True)[CARRIED_SHEET]
-    assert any("=SUM scan.pdf" in str(c.value) for row in ws.iter_rows() for c in row if c.value)
+    assert list((prior.parent / "Smith TY2026").glob("*.xlsx")) == []
 
 
 # ------------------------------------------- a row per issuer (decision 93) ----
@@ -561,17 +453,14 @@ def test_the_rollover_carries_a_row_per_issuer(tmp_path):
     """Issuer rows are ordinary rows, so nothing in the rollover knows about
     them - and that is the claim: a client who was a partner in two
     partnerships last year is asked for both again, by name."""
-    from tracker.manifest import load_manifest
     from tracker.templates import issuer_row, item_from_spec, template_items
 
-    eng = tmp_path / "Smith Family 2025"
-    eng.mkdir()
     k1 = next(i for i in template_items("1040", year=2025) if i.identifier == "F01")
-    create_template(eng / MANIFEST_FILENAME, [
+    eng = make_engagement(tmp_path / "Smith Family 2025", [
         k1,
         item_from_spec(issuer_row("F02", "Ashford Holdings LP")),
         item_from_spec(issuer_row("F03", "Birch Lane Partners")),
-    ])
+    ], scaffold=False)
     seed_statuses(eng, {
         "F02": StatusUpdate(status=Status.RECEIVED, file_count=1,
                             received_date=dt.date(2026, 3, 1)),
@@ -587,8 +476,55 @@ def test_the_rollover_carries_a_row_per_issuer(tmp_path):
     # Last year's judgement of last year's files is not carried (decision 10).
     assert rolled["F02"].item.status == "" and rolled["F02"].item.received_date is None
 
-    # And the list it writes reads back as a list: nesting names would be
+    # And the list it makes reads back as a list: nesting names would be
     # refused here, these are not.
-    written = write_rollover_manifest(tmp_path / "Smith Family 2026" / MANIFEST_FILENAME,
-                                      roll_forward(eng))
+    written = next_year(tmp_path, roll_forward(eng))
     assert [i.identifier for i in load_manifest(written)] == ["F01", "F02", "F03"]
+
+
+# ------------------------------------------------ through the app (d104) ----
+
+
+def test_the_rollover_carries_rules_engagement_details_and_learned_keywords_into_next_years_record(
+    capsys, tmp_path, monkeypatch,
+):
+    """The whole of a returning client, through the API: last year's rows
+    with a keyword a filing taught, its form and its client carried, its
+    link and due date left for this year, Rolled From set - and no
+    spreadsheet anywhere under the root."""
+    import tracker.api as api
+    from tests.test_api import run
+    from tracker import store
+    from tracker.locking import engagement_lock
+    from tracker.manifest import load_engagement_info
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    demo_root = tmp_path / "Clients"                # recorded the way the app records it
+    demo_root.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    set_clients_root(demo_root)
+
+    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
+            "link": "https://drive.example/old", "due": "2026-04-15",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    prior = demo_root / "Smith 2025"
+    with engagement_lock(prior):
+        ensure(prior)
+        store.record(store.connect(), prior, ledger.new(ledger.KEYWORD_LEARNED, **{
+            ledger.IDENTIFIER_KEY: "C01", ledger.KEYWORD_KEY: "home lending",
+        }))
+
+    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    assert code == 0, payload
+    new = demo_root / payload["created"]
+
+    rows = {i.identifier: i for i in load_manifest(new)}
+    assert "home lending" in rows["C01"].any_keywords
+    assert rows["C01"].period == "TY2026" and rows["C01"].date_pattern_derived
+    assert store.learned_keywords(store.connect(), new) == {}       # carried as typed, not taught
+    info = load_engagement_info(new)
+    assert info.form == "1040" and info.client == "John Smith"
+    assert info.link == "" and info.due is None
+    assert info.rolled_from == str(prior)
+    assert list(demo_root.rglob("*.xlsx")) == []

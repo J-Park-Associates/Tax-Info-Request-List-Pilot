@@ -2,12 +2,11 @@
 
 Stage A step 3 of the record/view separation (decision 89), as the owner
 settled it in decision 91: **every file staff open only to read is a web
-page; the one file they edit stays a workbook.** The record is what the
-machine decided, the request list (``MANIFEST_FILENAME``) is what a person
-typed, and this is the third thing - **one file a person opens that nobody
-has to be careful with.** Since decision 103 it is also where each row's
-status and its Validation Notes are read: they left the workbook, and this
-page is where they went.
+page.** The record is what the machine decided and what a person typed
+(the request list, edited in the app since decision 104), and this is the
+other thing - **one file a person opens that nobody has to be careful
+with.** Since decision 103 it is also where each row's status and its
+Validation Notes are read.
 
 ``VIEW_FILENAME`` is that file, and it carries no leading underscore on
 purpose: the machine-owned files keep theirs, and this is the one a person
@@ -17,9 +16,9 @@ request rows as the readers now answer them, :func:`tracker.filer.read_index`
 for the index, and :func:`tracker.review.triage` for what each parked file
 might be. Four sections, in the order a person reads them:
 
-- **Summary** - the rules workbook's digest, the record's head, when it was
-  drawn, the counts, and the sentence that says it is regenerated every
-  pass and holds nothing of its own.
+- **Summary** - the record's head, when it was drawn, the counts, and the
+  sentence that says it is regenerated every pass and holds nothing of its
+  own.
 - **Requests** - the person's rules, the keywords a filing taught, and each
   row's status as a badge.
 - **Index** - every original, in the index's own column order.
@@ -46,10 +45,11 @@ is not somewhere else.
 **Current, behind, or unknown.** Because the view is a mirrored derivation,
 a person has to be able to tell whether the thing in front of them is still
 true. :func:`view_state` answers by comparing the stamp the page carries in
-its ``<head>`` - the rules workbook's SHA-256 and the record's head as they
-were when the page was drawn - with those same two things now: ``CURRENT``
-when both match, ``BEHIND`` when the page is there and either has moved on,
-``UNKNOWN`` when there is no page or its stamp cannot be read. The stamp is
+its ``<head>`` - the record's head as it was when the page was drawn - with
+the head now: ``CURRENT`` when they match, ``BEHIND`` when the page is
+there and the record has moved on (a rules edit is an event, so an edit
+moves it too), ``UNKNOWN`` when there is no page or its stamp cannot be
+read. The stamp is
 in meta tags rather than in the visible text, so reading it is a short
 regular expression over the head of the file and never a parser; the same
 values are shown in the Summary for a person.
@@ -62,8 +62,8 @@ naming the firm's clients must not reach the network to render. It carries
 only what the index and the request list already carry - catalog terms,
 file names, statuses, reasons - and not one word of a client's document.
 
-**Imports downwards only.** This module reads the record, the manifest, the
-index, the triage and the engagement's file names, and nothing in the
+**Imports downwards only.** This module reads the record, the request
+list, the index, the triage and the engagement's file names, and nothing in the
 package imports it but :mod:`tracker.runner` and :mod:`tracker.api`, which
 sit above all of them. Writing the view is the last thing a pass does.
 """
@@ -78,11 +78,10 @@ from pathlib import Path
 
 from tracker import ledger, review
 from tracker.filer import (
-    INDEX_SHEET,
+    INDEX_HEADING,
     NEEDS_REVIEW,
     FilingError,
     read_index,
-    rules_digest,
 )
 from tracker.manifest import (
     ANY_EXTENSION,
@@ -101,7 +100,6 @@ from tracker.manifest import (
     COL_STATUS,
     COL_VALIDATION_NOTES,
     HEADERS,
-    SHEET_NAME,
     ManifestError,
     Override,
     RequestItem,
@@ -119,29 +117,28 @@ from tracker.records import (
     UNKNOWN,
     IndexEntry,
 )
-from tracker.scaffold import MANIFEST_FILENAME
 
 log = logging.getLogger("tracker.view")
 
 #: The file a person opens. Regenerated every pass; it holds no facts.
 VIEW_FILENAME = "Status Report.html"
 
-#: The section carrying the stamp. The other three are named by the modules
-#: that own what they show, so the page invents no heading of its own.
+#: The section carrying the stamp, and the section that lists the person's
+#: rules. The other two are named by the modules that own what they show.
 SUMMARY_SECTION = "Summary"
+REQUESTS_SECTION = "Requests"
 #: The sections, in the order they are drawn and the navigation lists them.
-SECTIONS = (SUMMARY_SECTION, SHEET_NAME, INDEX_SHEET, NEEDS_REVIEW)
+SECTIONS = (SUMMARY_SECTION, REQUESTS_SECTION, INDEX_HEADING, NEEDS_REVIEW)
 
 #: What the Summary says about itself, in the first line a person reads.
 VIEW_NOTE = ("This page is regenerated every pass and holds no facts of its own: "
              "every value on it comes from the record, the request list and the index.")
 
-#: The Summary's labels. ``view_state`` reads two of them back, so they are
+#: The Summary's labels. ``view_state`` reads one of them back, so they are
 #: the stamp's field names and are worded once.
 LABEL_ENGAGEMENT = "Engagement folder"
 LABEL_GENERATED = "Generated (UTC)"
 LABEL_GENERATED_LOCAL = "Generated (this machine)"
-LABEL_RULES_DIGEST = "Rules workbook SHA-256"
 LABEL_RECORD_DIGEST = "Record SHA-256"
 LABEL_REQUEST_ROWS = "Request rows"
 LABEL_INDEX_ROWS = "Index rows"
@@ -155,7 +152,6 @@ META_NAMES: dict[str, str] = {
     LABEL_ENGAGEMENT: "tracker-engagement",
     LABEL_GENERATED: "tracker-generated",
     LABEL_GENERATED_LOCAL: "tracker-generated-local",
-    LABEL_RULES_DIGEST: "tracker-rules-sha256",
     LABEL_RECORD_DIGEST: "tracker-record-sha256",
     LABEL_REQUEST_ROWS: "tracker-request-rows",
     LABEL_INDEX_ROWS: "tracker-index-rows",
@@ -293,10 +289,9 @@ def _text(value: object) -> str:
 
 
 #: What the page shows about a request: the ten columns a person edits
-#: (``manifest.HEADERS``) and the four the record holds. They were one
-#: table in the workbook until decision 103 took the second four out of
-#: it; a person still wants to read them side by side, and this is the
-#: page that shows them. The status columns come last, as they always did.
+#: (``manifest.HEADERS``) and the four the record holds. A person wants to
+#: read them side by side, and this is the page that shows them. The
+#: status columns come last, as they always did.
 REQUEST_COLUMNS = (
     *HEADERS, COL_STATUS, COL_RECEIVED_DATE, COL_FILE_COUNT, COL_VALIDATION_NOTES,
 )
@@ -314,7 +309,7 @@ def request_row(item: RequestItem) -> dict[str, str]:
         COL_DOCUMENT: _text(item.document),
         COL_PERIOD: _text(item.period),
         COL_EXPECTED_COUNT: _text(item.expected_count),
-        # An item with no extensions accepts anything; the manifest says so
+        # An item with no extensions accepts anything; the editor says so
         # out loud rather than leaving a blank, and so does the view.
         COL_ALLOWED_EXTENSIONS: ", ".join(item.allowed_extensions) or ANY_EXTENSION,
         COL_MIN_SIZE_KB: _text(item.min_size_kb),
@@ -368,13 +363,13 @@ def _readers(
     """What the readers say, read here if the caller has not read it already."""
     try:
         if items is None:
-            items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+            items = load_manifest(engagement_dir)
         if entries is None:
             entries = read_index(engagement_dir)
     except (ManifestError, FilingError, OSError) as exc:
-        # A manifest the loader refuses or an index the tracker will not
-        # touch: there is nothing to draw, and the caller decides what that
-        # means. A pass says it in a log line and stands.
+        # A record the readers refuse: there is nothing to draw, and the
+        # caller decides what that means. A pass says it in a log line and
+        # stands.
         raise ViewError(f"{engagement_dir.name}: the view could not be built ({exc})") from exc
     return items, entries
 
@@ -397,7 +392,6 @@ def _stamp(
         LABEL_ENGAGEMENT: engagement_dir.name,
         LABEL_GENERATED: generated.isoformat(timespec="seconds"),
         LABEL_GENERATED_LOCAL: generated.astimezone().isoformat(sep=" ", timespec="seconds"),
-        LABEL_RULES_DIGEST: rules_digest(engagement_dir),
         LABEL_RECORD_DIGEST: ledger.head(engagement_dir),
         LABEL_REQUEST_ROWS: str(len(items)),
         LABEL_INDEX_ROWS: str(len(entries)),
@@ -455,10 +449,10 @@ def _body(
         *(f'<a href="#{esc(_anchor(section))}">{esc(section)}</a>' for section in SECTIONS),
         "</nav>",
         *_summary(stamp),
-        *_heading(SHEET_NAME, len(items)),
+        *_heading(REQUESTS_SECTION, len(items)),
         *table(REQUEST_COLUMNS, (_request_cells(item) for item in items), sortable=True),
         "</section>",
-        *_heading(INDEX_SHEET, len(entries)),
+        *_heading(INDEX_HEADING, len(entries)),
         *table(INDEX_COLUMNS, (index_row(entry) for entry in entries), sortable=True),
         "</section>",
         *_heading(NEEDS_REVIEW, len(triaged)),
@@ -536,8 +530,8 @@ def write_view(
     **Never raises because somebody had it open.** The replace goes through
     the same atomic swap the index uses, and a file another process holds
     raises from it; that is reported as ``stale`` and the caller carries on.
-    The view holds no fact that is not in the record and the workbooks, so a
-    stale one costs a person one pass of freshness and nothing else.
+    The view holds no fact that is not in the record, so a stale one costs
+    a person one pass of freshness and nothing else.
     """
     engagement_dir = Path(engagement_dir)
     path = engagement_dir / VIEW_FILENAME
@@ -600,24 +594,20 @@ def read_stamp(engagement_dir: Path | str) -> dict[str, str] | None:
 def view_state(engagement_dir: Path | str) -> str:
     """Whether the view still describes the engagement: one of ``VIEW_STATES``.
 
-    ``CURRENT`` when the stamp's two digests are the rules workbook's and
-    the record's head *now*; ``BEHIND`` when there is a view and either has
-    moved on since it was drawn; ``UNKNOWN`` when there is none, or its
-    stamp cannot be read. The firm's rule for a mirrored derivation is that
-    it says how old it is rather than looking authoritative, and these are
-    the three honest answers.
+    ``CURRENT`` when the stamp's record digest is the record's head *now*;
+    ``BEHIND`` when there is a view and the record has moved on since it
+    was drawn - a pass, or a rules edit, which is an event too; ``UNKNOWN``
+    when there is none, or its stamp cannot be read. The firm's rule for a
+    mirrored derivation is that it says how old it is rather than looking
+    authoritative, and these are the three honest answers.
     """
     engagement_dir = Path(engagement_dir)
     stamp = read_stamp(engagement_dir)
     if not stamp:
         return UNKNOWN
-    if LABEL_RULES_DIGEST not in stamp or LABEL_RECORD_DIGEST not in stamp:
+    if LABEL_RECORD_DIGEST not in stamp:
         return UNKNOWN
-    matches = (
-        stamp[LABEL_RULES_DIGEST] == rules_digest(engagement_dir)
-        and stamp[LABEL_RECORD_DIGEST] == ledger.head(engagement_dir)
-    )
-    return CURRENT if matches else BEHIND
+    return CURRENT if stamp[LABEL_RECORD_DIGEST] == ledger.head(engagement_dir) else BEHIND
 
 
 # -------------------------------------------------------------------- CLI ----

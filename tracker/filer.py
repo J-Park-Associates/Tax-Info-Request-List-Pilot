@@ -26,29 +26,25 @@ own keywords matched, and where in the document they were said. Catalog
 words and file names only, never a word of the client's document, which is
 the same line the content cache draws.
 
-**The index is not a workbook any more** (decision 102). It was
-``INDEX_FILENAME``, rewritten whole on every pass, and thirteen readings
-of the decision log are the record of what that cost: a sheet sorted with
-the header among the data, a renamed tab, a cell typed over, a snapshot
-that outlived its workbook, a row lost because the only place it lived
-was a file Excel could rewrite. What the index *is* now is
+**The index is not a workbook any more** (decision 102). It was a
+workbook rewritten whole on every pass, and thirteen readings of the
+decision log are the record of what that cost: a sheet sorted with the
+header among the data, a renamed tab, a cell typed over, a snapshot that
+outlived its workbook, a row lost because the only place it lived was a
+file Excel could rewrite. What the index *is* now is
 :mod:`tracker.ledger`, the engagement's own append-only record, folded
 into :mod:`tracker.store`; :func:`read_index` answers from the store and
 :func:`_record` is the one write. One call per decision, one transaction,
 nothing deferred, no sidecar, no retry, and no second copy for Excel to
-argue with. What is left of the workbook here is the migration
-(:func:`ensure`), which reads a legacy folder's index workbook once,
-imports its rows into the record, renames it to
-``INDEX_MIGRATED_FILENAME`` and says so with a ``migrated`` event.
+argue with. The migration that once read a legacy folder's index workbook
+into the record left with decision 104 (it is set aside outside the tree,
+in ``Retired - Excel manifest``); :func:`ensure` is now only the store's
+top-up, and a folder that holds no record is nobody's engagement.
 
-**And the request list is the person's file** (decision 103).
-:func:`ensure` reads it once a pass, compares its digest with the one the
-record holds, and journals every difference as ``rules_imported``
-(:func:`_import_the_rules`); nothing here writes it in a pass. A folder
-whose sheet still carries the four columns the scanner used to fill has
-them read into the record and deleted from the sheet by the same
-migration, once, and what a person's filing teaches a request is recorded
-in the same call as the filing rather than typed into a cell.
+**And the request list is in the record too** (decisions 103 and 104):
+the rules a pass works from are the ones the app's editor last saved,
+read through :func:`tracker.manifest.load_manifest`, and what a person's
+filing teaches a request is recorded in the same call as the filing.
 
 Guarantees:
 
@@ -65,8 +61,8 @@ Guarantees:
   and a click in the desktop app cannot both move the same originals.
   :func:`tracker.runner.run_engagement` holds one across the whole pass and
   says so with ``lock_held``; run alone, this takes its own. Either way it
-  is taken before the manifest, the record or the drop folder is read, so
-  what a run decides from cannot change under it.
+  is taken before the request list, the record or the drop folder is read,
+  so what a run decides from cannot change under it.
 - **Wherever the client put it counts.** ``PBC_DIR_NAME/`` is visible to the client
   and the README says "drop it anywhere", so a file that lands straight in
   ``PBC_DIR_NAME/`` is treated as a drop that has already been preserved: it is
@@ -110,7 +106,6 @@ old names are re-exported below for one release.
 from __future__ import annotations
 
 import datetime as dt
-import json
 import logging
 import os
 import shutil
@@ -119,24 +114,10 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from openpyxl import load_workbook
-from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
-
 from tracker import ledger, store
 from tracker.content_check import CACHE_FILENAME, ContentCache
-from tracker.locking import engagement_lock, lock_is_held
-from tracker.manifest import (
-    STATUSES_ARE_ON_THE_REPORT,
-    ManifestError,
-    Override,
-    RequestItem,
-    carries_scanner_columns,
-    label_for,
-    load_manifest,
-    load_rules,
-    read_scanner_columns,
-    slim_the_workbook,
-)
+from tracker.locking import engagement_lock
+from tracker.manifest import Override, RequestItem, label_for, load_manifest
 
 # The records themselves live in tracker/records.py (decision 100). The two
 # names this module no longer uses are re-exported from here so that every
@@ -144,22 +125,16 @@ from tracker.manifest import (
 # kept for one release; import from tracker.records.
 from tracker.records import (
     CANDIDATE_SEP,
-    INDEX_LAYOUT,
     Evidence,  # noqa: F401
     IndexEntry,
     entry_from_json,
     entry_to_json,
     format_evidence,
-    identifier_key,
-    info_to_json,
     ledger_key,
     parse_evidence,  # noqa: F401
-    rule_to_json,
-    status_to_json,
 )
 from tracker.router import route_file
 from tracker.scaffold import (
-    MANIFEST_FILENAME,
     PBC_DIR_NAME,
     PREPARED_DIR_NAME,
     README_NAME,
@@ -182,30 +157,10 @@ from tracker.validators import (
 
 log = logging.getLogger("tracker.filer")
 
-#: The index workbook this engagement used to keep, and the sidecar beside
-#: it. Nothing writes either any more (decision 102); they are the names
-#: :func:`ensure` looks for so it can migrate a folder that still has them.
-INDEX_FILENAME = "_index.xlsx"
-INDEX_PENDING_FILENAME = "_index.pending.json"
-#: What the migration renames them to. Kept rather than deleted, beside the
-#: engagement they describe, until a person has seen the Status Report show
-#: the same rows; ``docs/runbook.md`` says so and says they may then go.
-INDEX_MIGRATED_FILENAME = "_index.migrated.xlsx"
-INDEX_PENDING_MIGRATED_FILENAME = "_index.pending.migrated.json"
-#: The manifest's own deferred-status sidecar, and what the migration
-#: renames it to. Nothing writes either any more (decision 103); these are
-#: the names the migration looks for, so a status a locked Excel kept out
-#: of the sheet on the last pass before the upgrade still reaches the
-#: record rather than being lost with the file.
-MANIFEST_PENDING_FILENAME = "_manifest.pending.json"
-MANIFEST_PENDING_MIGRATED_FILENAME = "_manifest.pending.migrated.json"
-#: What the index's section is called wherever it is shown - the workbook's
-#: old sheet name, kept because it is the word a person knows it by and the
-#: Status Report's own section heading (:mod:`tracker.view`).
-INDEX_SHEET = "Index"
-#: Key the sidecar's snapshot rows were written under. Read by the legacy
-#: reader and by nothing else.
-_SIDECAR_ENTRIES_KEY = "entries"
+#: What the index's section is called wherever it is shown - the word a
+#: person knows it by and the Status Report's own section heading
+#: (:mod:`tracker.view`).
+INDEX_HEADING = "Index"
 _MAX_STEM = 110
 
 
@@ -246,23 +201,6 @@ _CANDIDATE_SEP = CANDIDATE_SEP
 class FilingError(Exception):
     """A person's filing decision could not be carried out as asked."""
 
-
-#: The columns a header row must carry to be the old index workbook's
-#: (every version of it had them), and how far down a header row is looked
-#: for. The migration's reader is the only thing that hunts for a header
-#: now: a person may have sorted that sheet with the header among the data,
-#: and a migration that read past it would leave those rows behind.
-_MANDATORY_COLUMNS = ("original_name", "pbc_location", "decision")
-_HEADER_WITHIN = 10
-
-#: What a migration says when a workbook cannot be rewritten or moved
-#: aside. Excel holding it open is the usual reason; the engagement fails
-#: this pass and the next one tries again, with nothing half done, because
-#: the writes are the last thing the migration does and each is atomic.
-MIGRATION_REFUSED = (
-    "{name} could not be written ({why}) - it is open in Excel, most likely. "
-    "Nothing was left half-migrated; close it and the next pass does it."
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,8 +266,8 @@ def prepared_location(folder: Path, name: str) -> str:
 
 def request_folder(item: RequestItem, assigned: dict[str, list[Path]], prepared_dir: Path) -> Path:
     """The folder a request's working copies go in: the one it already has
-    (by identifier prefix, so a Document renamed in Excel changes nothing),
-    else the canonical name."""
+    (by identifier prefix, so a Document renamed in the editor changes
+    nothing), else the canonical name."""
     existing = assigned.get(item.identifier) or []
     return existing[0] if existing else prepared_dir / folder_name_for(item)
 
@@ -412,20 +350,6 @@ def _unique_path(folder: Path, name: str) -> Path:
 # ------------------------------------------------------------------ index ----
 
 
-def _engagement_folder(given: Path | str) -> Path:
-    """The engagement folder, whether the caller named it or the index in it.
-
-    Every reader used to be handed the index workbook's own path, because
-    that is the file it read. There is no such file any more, so the
-    readers take the folder - and the workbook's name, and the name the
-    migration gives it, are still resolved to their parent for one
-    release, so a caller that has not caught up gets the engagement's rows
-    rather than an empty index.
-    """
-    path = Path(given)
-    return path.parent if path.name in (INDEX_FILENAME, INDEX_MIGRATED_FILENAME) else path
-
-
 def clients_root_of(engagement_dir: Path | str) -> Path:
     """The clients root the store keys this engagement's rows under.
 
@@ -454,511 +378,38 @@ def read_index(engagement: Path | str) -> list[IndexEntry]:
     So no reader has to know whether anybody prepared this engagement
     first: the pass, the app's state, the triage, the reminder, the
     rollover and the Status Report all come through here and all get the
-    same rows. What :func:`ensure` adds on top of this is the part the
-    journal cannot answer - the person's rules, the Engagement sheet, and
-    the one-time migration of a folder that still has an
-    ``INDEX_FILENAME`` beside it.
+    same rows.
     """
-    folder = _engagement_folder(engagement)
+    folder = Path(engagement)
     conn = store.connect()
     store.follow_the_journal(conn, clients_root_of(folder), folder)
     return [entry_from_json(row) for row in store.documents(conn, folder)]
 
 
-# -------------------------------------------------------- the legacy index ----
-
-
-def _legacy_index_reading(engagement_dir: Path) -> list[IndexEntry]:
-    """What the old index workbook and its sidecar say, oldest first.
-
-    **The migration's reader, and nothing else's.** It is the reading every
-    reader made before decision 102, kept private and kept generous: the
-    header row is hunted for rather than assumed, rows above it are read,
-    and the snapshot sidecar's rows win over the workbook's and are added
-    where the workbook has none. All of that exists because a person could
-    sort, re-type and save that sheet, and this is the one and only pass
-    that will ever read it - a row it leaves behind is a row nothing can
-    recover.
-
-    Nothing is moved, quarantined or written: an unreadable sidecar is
-    said out loud and the workbook's rows stand, because a migration that
-    refused the whole engagement over a sidecar it could not parse would
-    leave the workbook in place for ever.
-    """
-    workbook = _read_index_workbook(engagement_dir / INDEX_FILENAME)
-    snapshot = _legacy_sidecar_reading(engagement_dir)
-    if not snapshot:
-        return workbook
-    by_location = {entry.pbc_location: entry for entry in snapshot if entry.pbc_location}
-    merged = [by_location.pop(entry.pbc_location, entry) if entry.pbc_location else entry
-              for entry in workbook]
-    return merged + [entry for entry in snapshot
-                     if not entry.pbc_location or entry.pbc_location in by_location]
-
-
-def _legacy_sidecar_reading(engagement_dir: Path) -> list[IndexEntry]:
-    """The rows ``INDEX_PENDING_FILENAME`` holds, or none at all.
-
-    Two shapes ever existed: a snapshot object whose ``entries`` are the
-    whole index, and, before it, a bare list of rows to append after the
-    workbook's. Both are read by their shape rather than by a version
-    number, because this reads a file no version of this code will ever
-    write again and refusing one over a key would lose the rows.
-    """
-    sidecar = engagement_dir / INDEX_PENDING_FILENAME
-    if not sidecar.exists():
-        return []
-    try:
-        raw = json.loads(sidecar.read_text(encoding="utf-8"))
-        rows = raw if isinstance(raw, list) else raw[_SIDECAR_ENTRIES_KEY]
-        return [entry_from_json(row) for row in rows]
-    except OSError:
-        raise
-    except Exception as exc:
-        log.warning("%s does not read as an index sidecar (%s); it is moved aside unread "
-                    "with the workbook and the workbook's own rows are migrated",
-                    sidecar.name, exc)
-        return []
-
-
-def _as_float(value: object) -> float:
-    """A number from an index cell, or 0.0 if somebody typed over it in Excel."""
-    try:
-        return float(value or 0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _header_at(rows) -> int | None:
-    """Where the index's header row sits among ``rows``, or None.
-
-    Found, not assumed: a person who typed a title above it, or sorted the
-    sheet with "my data has headers" unchecked, moved it. The columns every
-    version of the index has had (``_MANDATORY_COLUMNS``) are what name it,
-    and it is looked for no further down than ``_HEADER_WITHIN``.
-    """
-    for position, row in enumerate(rows):
-        if position >= _HEADER_WITHIN:
-            return None
-        cells = {str(cell or "").strip() for cell in row}
-        if all(INDEX_LAYOUT[name][0] in cells for name in _MANDATORY_COLUMNS):
-            return position
-    return None
-
-
-def _sheet_with_the_header(wb) -> object | None:
-    """The worksheet the index is on, or None if no sheet carries its header.
-
-    ``wb.active`` is whatever tab a person left selected when they saved,
-    which is how a renamed index tab and a notes tab of their own read as
-    an empty index. The sheet is chosen by the header instead, with the one
-    the tracker used to write preferred when more than one carries it.
-    """
-    carrying = [ws for ws in wb.worksheets if _header_at(ws.iter_rows(values_only=True)) is not None]
-    for ws in carrying:
-        if ws.title == INDEX_SHEET:
-            return ws
-    return carrying[0] if carrying else None
-
-
-def _holds_anything(ws) -> bool:
-    return any(cell not in (None, "") for row in ws.iter_rows(values_only=True) for cell in row)
-
-
-def _blank(row, positions) -> bool:
-    """A row none of ``positions`` holds anything in.
-
-    A row is blank by the columns the index knows - not by its first
-    physical cell, which a column somebody inserted at A, or a cleared
-    Received cell, would make of every row.
-    """
-    return not row or all(
-        (row[position] if position < len(row) else None) in (None, "") for position in positions
-    )
-
-
-def _read_index_workbook(path: Path) -> list[IndexEntry]:
-    """Every row the old index workbook holds, oldest first; [] if it is gone.
-
-    Raises where the workbook holds rows and no sheet carries a header the
-    tracker knows: that is a sheet somebody rebuilt by hand, and migrating
-    it would be guessing which of its columns is which.
-    """
-    if not path.exists():
-        return []
-    wb = load_workbook(path, data_only=True)
-    try:
-        ws = _sheet_with_the_header(wb)
-        if ws is None:
-            if any(_holds_anything(sheet) for sheet in wb.worksheets):
-                raise FilingError(
-                    f"{path.name} has no header row the tracker knows "
-                    f"({', '.join(INDEX_LAYOUT[n][0] for n in _MANDATORY_COLUMNS)}) within the "
-                    f"first {_HEADER_WITHIN} rows of any of its sheets ({', '.join(wb.sheetnames)}); "
-                    "it was edited by hand - put its header back and the next pass migrates it"
-                )
-            return []
-        rows = list(ws.iter_rows(values_only=True))
-    finally:
-        wb.close()
-    header_at = _header_at(rows)
-    # By header name, so an index written with columns since dropped (Filed
-    # As, Document) or before one was added (Candidates) still reads.
-    headers = [str(h or "").strip() for h in rows[header_at]]
-    by_field = {
-        name: headers.index(header)
-        for name, (header, _) in INDEX_LAYOUT.items()
-        if header in headers
-    }
-    # Above the header is data too. A sort with "my data has headers"
-    # unchecked leaves the header wherever its own text sorts, and
-    # everything above it was dropped in silence, a person's filing
-    # included (the thirteenth reading). Only a row with none of the
-    # mandatory columns filled is a title somebody typed.
-    mandatory = [by_field[name] for name in _MANDATORY_COLUMNS if name in by_field]
-    above = [row for row in rows[:header_at] if not _blank(row, mandatory)]
-    if above:
-        log.warning(
-            "%s holds %d row(s) above its header row - the sheet was sorted with the header "
-            "among the data; they are read and migrated with the rest",
-            path.name, len(above),
-        )
-    entries = []
-    for row in above + [r for r in rows[header_at + 1:] if not _blank(r, by_field.values())]:
-        values: dict[str, object] = {}
-        for name, position in by_field.items():
-            raw = row[position] if position < len(row) else None
-            values[name] = _as_float(raw) if name == "size_kb" else str(raw or "")
-        entries.append(IndexEntry(**values))
-    return entries
-
-
 # ----------------------------------------------------------------- ensure ----
 
 
-def rules_digest(engagement_dir: Path | str) -> str:
-    """The SHA-256 of the workbook the person's requests live in; "" if it
-    cannot be read.
-
-    One answer to "are these the same rules": the store stamps it on an
-    engagement's rows so it can say whether they still describe the sheet,
-    the Status Report prints it, and :func:`ensure` reads the sheet again
-    when it moves. Hashed with the digest every other reader of bytes in
-    this package uses. It lives here rather than in
-    :mod:`tracker.manifest`, which may not import the hasher (the layers
-    test pins what it may import), and :mod:`tracker.view` re-exports it
-    under the name it has always had there.
-    """
-    try:
-        return sha256_of(Path(engagement_dir) / MANIFEST_FILENAME)
-    except OSError:
-        return ""
-
-
-def workbook_readings(engagement_dir: Path | str) -> dict:
-    """What the person's workbook says, as :func:`tracker.store.rebuild_engagement`
-    takes it: the request list, the Engagement sheet and the sheet's digest.
-
-    The store opens no workbook and imports nothing that does, so the
-    reading is handed to it. One open of the file gives both halves
-    (:func:`tracker.manifest.load_rules`); this used to be three.
-
-    **It is the first reading and only the first.** Once a pass has
-    imported the sheet, the rules are the journal's and a rebuild takes
-    them from there; what this gives is what an engagement nobody has
-    passed over yet has to be built from.
-    """
-    folder = Path(engagement_dir)
-    reading = load_rules(folder / MANIFEST_FILENAME)
-    return {
-        "rules": reading.items,
-        "info": reading.info,
-        "manifest_digest": rules_digest(folder),
-    }
-
-
-def ensure(engagement_dir: Path | str, root: Path | None = None, *, migrate: bool = True) -> str:
+def ensure(engagement_dir: Path | str, root: Path | None = None) -> str:
     """Make the store describe this engagement, and say which of the three
     words it is in (:data:`tracker.records.CURRENT` and its two siblings).
 
     Run at the start of every pass and by every command that names an
-    engagement, before anything reads the index or the request list. Four
-    things, in order, and all of them cheap when there is nothing to do:
-
-    - an engagement whose folder still keeps facts in a workbook is
-      **migrated** (:func:`_migrate`), once, under the engagement lock:
-      an ``INDEX_FILENAME`` beside it (decision 102) or a request list
-      still carrying the four scanner columns (decision 103);
-    - an engagement the store has never seen is built from its record and,
-      where the record has never been told the rules, the person's
-      workbook;
-    - a store behind the journal replays the lines it has not applied;
-    - the person's request list is **imported** when its digest has moved
-      (:func:`_import_the_rules`), as one journalled event.
-
-    ``migrate=False`` is for a caller that must not write in the
-    engagement folder - a dry run, the practice's Status Report, the app
-    showing an engagement somebody else's pass is holding. It migrates
-    nothing and imports nothing, because both write in the folder: the
-    rules the record already holds stay in force, which is also what
-    happens when the workbook will not load. Everything else still
-    happens: the store is the machine's own derivation and building it
-    moves nothing of the client's.
+    engagement, before anything reads the index or the request list: an
+    engagement the store has never seen is built from its record, and one
+    the store is behind on has the lines it has not applied replayed
+    (:func:`tracker.store.follow_the_journal`). Nothing is written in the
+    engagement folder - the store is the machine's own derivation and
+    building it moves nothing of the client's - so a dry run, the Status
+    Report and the app showing an engagement another run is holding all
+    call it as freely as a pass does. Until decision 104 this is also
+    where a folder that still kept facts in a workbook was migrated and
+    where the request list was imported; both left with the workbook.
     """
     folder = Path(engagement_dir)
     root = Path(root) if root is not None else clients_root_of(folder)
     conn = store.connect()
-    if migrate and _keeps_facts_in_a_workbook(folder):
-        _migrate(conn, root, folder)
-    digest = rules_digest(folder)
-    said = store.state(conn, folder, rules_digest_now=digest, ledger_head_now=ledger.head(folder))
-    if said == store.UNKNOWN:
-        store.rebuild_engagement(conn, root, folder, **workbook_readings(folder))
-    elif said == store.BEHIND:
-        store.sync(conn, root, folder)
-    if migrate and store.manifest_digest(conn, folder) != digest:
-        # Under the engagement lock, because it appends to the journal -
-        # and taken here only when the caller is not already holding it,
-        # as the migration does, since a second ``O_EXCL`` on a lock this
-        # process owns would read as another run.
-        with nullcontext() if lock_is_held(folder) else engagement_lock(folder):
-            _import_the_rules(conn, folder)
-    # The head is read again: the import may have appended to the journal,
-    # and a state read from the head as it was before would say "behind"
-    # about a line this call had just written.
-    return store.state(conn, folder, rules_digest_now=digest, ledger_head_now=ledger.head(folder))
-
-
-def _keeps_facts_in_a_workbook(engagement_dir: Path) -> bool:
-    """Whether this folder still keeps in a workbook something the record
-    owns: the index (decision 102) or a request's status (decision 103)."""
-    return (_has_a_legacy_index(engagement_dir)
-            or (engagement_dir / MANIFEST_PENDING_FILENAME).exists()
-            or _has_scanner_columns(engagement_dir))
-
-
-def _has_a_legacy_index(engagement_dir: Path) -> bool:
-    """Whether this folder still keeps the index in a workbook."""
-    return ((engagement_dir / INDEX_FILENAME).exists()
-            or (engagement_dir / INDEX_PENDING_FILENAME).exists())
-
-
-def _has_scanner_columns(engagement_dir: Path) -> bool:
-    """Whether the request list still carries the four columns the scanner
-    used to write. A workbook that will not open is not a workbook to
-    migrate: the pass reports it where it reports every other unreadable
-    manifest, and the record's rules stand."""
-    try:
-        return carries_scanner_columns(engagement_dir / MANIFEST_FILENAME)
-    except ManifestError:
-        return False
-
-
-def _migrate(conn, root: Path, engagement_dir: Path) -> None:
-    """Move what this engagement still keeps in a workbook into the record.
-
-    Once per engagement, idempotent, under the engagement lock, and in an
-    order chosen so that a crash or a refusal leaves nothing half done.
-    Two halves, because two decisions took two different workbooks:
-
-    **The index** (decision 102). The old ``INDEX_FILENAME`` and its
-    sidecar are read the generous way (:func:`_legacy_index_reading`);
-    every row the record does not already carry is appended to the
-    journal as ``imported`` - the journal, not just the store, because the
-    store is disposable and a row that lived only there would go with it -
-    and the two files are renamed aside.
-
-    **The statuses** (decision 103). A request list still carrying the
-    four scanner columns is read once (``manifest.read_scanner_columns``),
-    its own deferred-status sidecar overlaid on top of it because a status
-    a locked Excel kept out of the sheet was still a status that was
-    applied, and what comes out is appended as one ``scanned`` event -
-    only for the identifiers the record has not already answered for, so a
-    second pass adds nothing. Then the workbook is rewritten without those
-    columns (``manifest.slim_the_workbook``, atomic, formatting and every
-    other sheet kept) and the sidecar is renamed aside.
-
-    The renames and the rewrite are the **last** steps: until they land
-    the folder still looks unmigrated and the next pass does all of this
-    again, harmlessly, because the imports are idempotent. One ``migrated``
-    event then names what was done.
-
-    If Excel holds either workbook, the write is refused and so is the
-    whole engagement's pass, loudly (:data:`MIGRATION_REFUSED`). Nothing is
-    lost - the rewrite is atomic, so the sheet is the old one or the new
-    one and never half of each - and the next pass tries again.
-
-    The lock is taken here only when the caller is not already holding it:
-    the writers in this module call :func:`ensure` inside their own locked
-    section, and a second ``O_EXCL`` on a lock this process already owns
-    would read as another run.
-    """
-    with nullcontext() if lock_is_held(engagement_dir) else engagement_lock(engagement_dir):
-        _migrate_under_the_lock(conn, root, engagement_dir)
-
-
-def _migrate_under_the_lock(conn, root: Path, engagement_dir: Path) -> None:
-    if not _keeps_facts_in_a_workbook(engagement_dir):
-        return          # another run got there while we waited for the lock
-    legacy = _legacy_index_reading(engagement_dir) if _has_a_legacy_index(engagement_dir) else []
-    recorded = ledger.replay(ledger.read_events(engagement_dir))
-    for entry in legacy:
-        if ledger_key(entry) not in recorded.rows:
-            ledger.append(engagement_dir, _ledger_event(ledger.IMPORTED, entry))
-    imported = _import_the_old_statuses(engagement_dir, recorded.statuses)
-    store.rebuild_engagement(conn, root, engagement_dir,
-                             workbook_rows=legacy, **workbook_readings(engagement_dir))
-    try:
-        slimmed = slim_the_workbook(engagement_dir / MANIFEST_FILENAME)
-    except OSError as exc:
-        raise FilingError(MIGRATION_REFUSED.format(name=MANIFEST_FILENAME, why=exc)) from exc
-    moved = _move_the_old_files_aside(engagement_dir)
-    store.record(conn, engagement_dir,
-                 ledger.new(ledger.MIGRATED, **{
-                     ledger.FILES_KEY: moved + [f"{MANIFEST_FILENAME}: {c}" for c in slimmed],
-                 }))
-    log.warning(
-        "%s: what was in a workbook is in the record now (%s); %s. %s",
-        engagement_dir.name,
-        ", ".join(moved) or "nothing moved aside",
-        f"{len(imported)} status(es) imported and {len(slimmed)} column(s) removed from "
-        f"{MANIFEST_FILENAME}" if slimmed or imported else "the request list was already thin",
-        STATUSES_ARE_ON_THE_REPORT[0].upper() + STATUSES_ARE_ON_THE_REPORT[1:],
-    )
-
-
-def _import_the_old_statuses(
-    engagement_dir: Path, recorded: dict[str, dict]
-) -> dict[str, dict]:
-    """Append the scanner columns an old workbook still holds as one
-    ``scanned`` event. Returns what was imported.
-
-    The sheet is read once, the deferred-status sidecar beside it laid on
-    top - a status a locked Excel kept out of the workbook was applied as
-    far as every reader was concerned, and losing it here would make a
-    received row ask the client again - and only the identifiers the
-    record has never answered for are recorded. That is what makes a
-    second run of this a no-op, and it is why an engagement that has been
-    keeping a record since decision 87 contributes nothing.
-    """
-    from_sheet = read_scanner_columns(engagement_dir / MANIFEST_FILENAME)
-    statuses = {identifier: status_to_json(update) for identifier, update in from_sheet.items()}
-    statuses.update(_deferred_statuses(engagement_dir))
-    already = {identifier_key(i) for i in recorded}
-    fresh = {i: s for i, s in statuses.items() if identifier_key(i) not in already and s["status"]}
-    if fresh:
-        ledger.append(engagement_dir,
-                      ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: fresh}))
-    return fresh
-
-
-def _deferred_statuses(engagement_dir: Path) -> dict[str, dict]:
-    """The rows the manifest's own pending sidecar still holds, or none.
-
-    The last reading of a file no version of this code will ever write
-    again. A sidecar that does not parse is said out loud and the sheet's
-    own cells stand: refusing the whole engagement over it would leave the
-    workbook unmigrated for ever, which is worse than the statuses one
-    unreadable file was holding.
-    """
-    sidecar = engagement_dir / MANIFEST_PENDING_FILENAME
-    if not sidecar.exists():
-        return {}
-    try:
-        raw = json.loads(sidecar.read_text(encoding="utf-8"))
-        return {identifier: dict(stored) for identifier, stored in raw.items()}
-    except OSError:
-        raise
-    except Exception as exc:
-        log.warning("%s does not read as a deferred-status sidecar (%s); it is moved aside "
-                    "unread and the sheet's own columns are migrated", sidecar.name, exc)
-        return {}
-
-
-def _move_the_old_files_aside(engagement_dir: Path) -> list[str]:
-    """Rename the files nothing writes any more. Returns the names they now have.
-
-    Renamed rather than deleted: a person may want to look at what the
-    tracker read, and nothing this system does deletes a file it did not
-    make. A name already taken is numbered rather than overwritten, so a
-    second workbook that turned up after an earlier migration cannot erase
-    the first one's copy.
-    """
-    moved: list[str] = []
-    for name, aside in ((INDEX_FILENAME, INDEX_MIGRATED_FILENAME),
-                        (INDEX_PENDING_FILENAME, INDEX_PENDING_MIGRATED_FILENAME),
-                        (MANIFEST_PENDING_FILENAME, MANIFEST_PENDING_MIGRATED_FILENAME)):
-        source = engagement_dir / name
-        if not source.exists():
-            continue
-        target = _unique_path(engagement_dir, aside)
-        try:
-            _move_whole(source, target)
-        except OSError as exc:
-            raise FilingError(MIGRATION_REFUSED.format(name=name, why=exc)) from exc
-        moved.append(target.name)
-    return moved
-
-
-def _import_the_rules(conn, engagement_dir: Path) -> None:
-    """Read the person's request list into the record, as one journalled event.
-
-    Every pass, and it writes nothing unless the workbook says something
-    the record does not. The sheet's digest is compared first
-    (:func:`ensure`), so a pass over an engagement nobody has edited never
-    opens the file at all; when it has moved, the rows and the Engagement
-    sheet are read once and diffed against what the store holds, and one
-    ``rules_imported`` event carries the changed and added rows whole, the
-    identifiers that are gone, the Engagement fields that moved and the
-    digest this reading came from.
-
-    **Journalled, not simply written.** The workbook is a file Excel holds
-    open, silently re-types, validates nothing at entry and keeps no
-    history of (Jason's own words, 2026-09-18). The record cannot stop a
-    keyword being mistyped, but it can say when it changed and to what,
-    and it is what lets the store be rebuilt from the journals alone. The
-    app's rules editor, after season one, is what replaces this.
-
-    A workbook that will not validate is **not** imported: the error is
-    raised for this engagement's pass to record, and the rules the record
-    already holds stay in force for every reader. Nothing is half-read -
-    the reading is one open of the file and the write is one transaction.
-    """
-    reading = load_rules(engagement_dir / MANIFEST_FILENAME)
-    digest = rules_digest(engagement_dir)
-    # What this import is a difference *from*. Where the journal has never
-    # carried one, it is a difference from nothing: the first import
-    # carries the whole list, so the fold of every import is the sheet and
-    # a rebuild from the journals alone gives the rules back.
-    journalled = store.has_rules_import(conn, engagement_dir)
-    held = (store.rules(conn, engagement_dir) or []) if journalled else []
-    was = {identifier_key(str(row["identifier"])): row for row in held}
-    rows = [rule_to_json(item) for item in reading.items]
-    changed = [row for row in rows if was.get(identifier_key(str(row["identifier"]))) != row]
-    # Named as the record spells them, not folded: the fold keys a rule by
-    # the identifier the sheet gave it, and a removal has to reach that key.
-    still_there = {identifier_key(str(row["identifier"])) for row in rows}
-    removed = [str(row["identifier"]) for row in held
-               if identifier_key(str(row["identifier"])) not in still_there]
-    before = store.engagement_info(conn, engagement_dir) if journalled else None
-    now = info_to_json(reading.info)
-    moved = now if before is None else {
-        field: value for field, value in now.items() if info_to_json(before).get(field) != value
-    }
-    if not (changed or removed or moved):
-        # The sheet was saved and says exactly what the record already
-        # holds - Excel rewrites a file a person only looked at. There is
-        # nothing to record; the digest is noted so the next pass knows
-        # this reading has been made, which is the store's own
-        # bookkeeping and not a fact about anybody's rules.
-        store.note_rules_digest(conn, engagement_dir, digest)
-        return
-    store.record(conn, engagement_dir, ledger.new(ledger.RULES_IMPORTED, **{
-        ledger.RULES_KEY: changed,
-        ledger.REMOVED_KEY: removed,
-        ledger.INFO_KEY: moved,
-        ledger.DIGEST_KEY: digest,
-    }))
+    store.follow_the_journal(conn, root, folder)
+    return store.state(conn, folder, ledger_head_now=ledger.head(folder))
 
 
 # ------------------------------------------------------------------ record ----
@@ -1096,20 +547,19 @@ def iter_drops(shared_dir: Path) -> list[Path]:
 
 
 def _storable(path: Path) -> bool:
-    """Whether the name can be written into the index at all. NTFS holds
+    """Whether the name can be written into the record at all. NTFS holds
     names as UTF-16 and takes an unpaired surrogate (a truncated emoji, a
-    Mac's or a NAS's name in a broken code page); the workbook and the
-    snapshot sidecar are UTF-8 and cannot hold it. A control character is
-    the same wound from the other side: a POSIX filesystem takes one in a
-    name, and a workbook is XML, which cannot hold it - openpyxl refuses
-    the cell (``ILLEGAL_CHARACTERS_RE``, its own list), and the refusal is
-    a ValueError, so the write is not even retried. Either name once took
-    the whole index down, every pass, with the pass's originals moved."""
+    Mac's or a NAS's name in a broken code page); the journal is UTF-8
+    JSON and cannot hold it, and such a name once took the whole index
+    down, every pass, with the pass's originals moved. That is the one
+    refusal left: a control character in a POSIX name files again since
+    decision 104, because the refusal of one existed only because a
+    workbook is XML, and there is no workbook."""
     try:
         path.name.encode("utf-8")
     except UnicodeEncodeError:
         return False
-    return ILLEGAL_CHARACTERS_RE.search(path.name) is None
+    return True
 
 
 #: The reparse tags that make a name a link to somewhere else. A cloud
@@ -1513,11 +963,11 @@ def file_drops(
     # in between must not be invisible to it. A dry run writes nothing, so
     # it needs no lock and never blocks a real run.
     with nullcontext() if dry_run or lock_held else engagement_lock(engagement_dir):
-        # Before anything is read: an engagement that still keeps its index
-        # in a workbook is migrated here, inside the lock, once. A dry run
-        # builds the store's own rows and moves nothing of the client's.
-        ensure(engagement_dir, migrate=not dry_run)
-        items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+        # Before anything is read: the store is brought up to the record.
+        # A dry run builds the store's own rows and moves nothing of the
+        # client's.
+        ensure(engagement_dir)
+        items = load_manifest(engagement_dir)
         by_id = {i.identifier: i for i in items}
         entries = read_index(engagement_dir)
         # What the record already says, taken before anything in this pass
@@ -1599,8 +1049,9 @@ def file_drops(
                 if not dry_run:
                     pbc_dir.mkdir(parents=True, exist_ok=True)
                     prepared_dir.mkdir(parents=True, exist_ok=True)
-                # Existing request folders, so a Document renamed in Excel keeps
-                # filing into the folder that already holds its earlier files.
+                # Existing request folders, so a Document renamed in the
+                # editor keeps filing into the folder that already holds
+                # its earlier files.
                 assigned = assign_folders(prepared_dir, [i.identifier for i in items])
                 _sort_all(drops, strays, pbc_dir, entries, stamp, _SortContext(
                     items=items, by_id=by_id, known=known, prepared_dir=prepared_dir,
@@ -1896,9 +1347,8 @@ def assign_review_file(
     ``keyword`` is optional: recorded against the request so the next
     document like this one routes itself, and laid over the row's typed
     Any Keywords by every reader (``manifest.load_manifest``). It is
-    **recorded, not written into the workbook** (decision 103), so there
-    is no longer any way for Excel to hold it up: the one note left is
-    that the request already had the word.
+    recorded, never typed into the row (decision 103): the one note left
+    is that the request already had the word.
 
     The rules the filer lives by still hold: nothing is guessed (the person
     chose), the engagement lock is held, and the row, the move and the
@@ -1908,14 +1358,14 @@ def assign_review_file(
     today = today or dt.date.today()
     prepared_dir = engagement_dir / PREPARED_DIR_NAME
 
-    # Everything - the manifest, the row, the keyword written back - under
+    # Everything - the request list, the row, the keyword recorded - under
     # the one lock, so a scheduled pass cannot slip in between.
     with engagement_lock(engagement_dir):
         ensure(engagement_dir)
-        items = {i.identifier: i for i in load_manifest(engagement_dir / MANIFEST_FILENAME)}
+        items = {i.identifier: i for i in load_manifest(engagement_dir)}
         item = items.get(identifier)
         if item is None:
-            raise FilingError(f"no request {identifier!r} in the manifest")
+            raise FilingError(f"no request {identifier!r} in the request list")
         if item.manual_override == Override.WAIVED:
             raise FilingError(f"{identifier} is waived; clear the override first")
 
@@ -2022,9 +1472,9 @@ def assign_review_file(
         # The keyword travels with the filing, in the same call and so in
         # the same transaction: a filing that teaches a keyword is one
         # decision, and the rollback below asks whether that decision
-        # landed, not whether half of it did. It is recorded, not written
-        # into the sheet - the workbook is the person's file now, and
-        # load_manifest() lays the taught keywords over the typed ones.
+        # landed, not whether half of it did. It is recorded, never typed
+        # into the row, and load_manifest() lays the taught keywords over
+        # the typed ones.
         keyword = keyword.strip()
         note = ""
         if keyword and keyword.lower() in {k.lower() for k in item.any_keywords}:
@@ -2167,8 +1617,8 @@ LEFT_FILED = (
 #: What an unfiling says when the re-scan did not happen. The row is
 #: rewritten and the file is back in review either way; it is the request's
 #: status that waits. There is one reason left - another run holds the
-#: engagement - because since decision 103 no scan writes a workbook and
-#: Excel cannot hold one up.
+#: engagement - because since decision 103 no scan writes anything but
+#: the record.
 RESCAN_REFUSED = "the status was not put back now ({why}); the next pass does it"
 
 
@@ -2364,7 +1814,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=f"Sort the client's drop folder into {PBC_DIR_NAME}/ and {PREPARED_DIR_NAME}/"
     )
-    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
+    parser.add_argument("engagement_dir", help="the engagement folder")
     parser.add_argument(
         "--dry-run", action="store_true", help="decide everything, move nothing"
     )

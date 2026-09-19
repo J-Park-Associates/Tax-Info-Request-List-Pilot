@@ -1,19 +1,20 @@
 """One lock per engagement, shared by every step that changes it (component 12).
 
-The filer moves the client's originals and rewrites ``INDEX_FILENAME``; the
-scanner rewrites ``MANIFEST_FILENAME``. Two of either running at once on the
-same engagement - a scheduled run overlapping a click in the desktop app,
-or Task Scheduler's repeat firing while an OCR-heavy pass is still going -
-would race on the same files, and the loser's index rows would be
-overwritten by the winner's. That is the one way an original can end up in
-``PBC_DIR_NAME/`` with no record of how it got there, so the lock is not optional
-and it is not per step: whoever holds ``LOCK_FILENAME`` owns the engagement
-until they let go.
+The filer moves the client's originals and records where each one went;
+the scanner records each request's status; the manifest records a person's
+edit of the list. Two of any of them running at once on the same
+engagement - a scheduled run overlapping a click in the desktop app, or
+Task Scheduler's repeat firing while an OCR-heavy pass is still going -
+would race on the same files and the same journal, and the loser's rows
+would be written from a stale picture. That is the one way an original can
+end up in ``PBC_DIR_NAME/`` with no record of how it got there, so the lock
+is not optional and it is not per step: whoever holds ``LOCK_FILENAME``
+owns the engagement until they let go.
 
 **Taken before anything is read.** A run decides what to do from the
-manifest, the index and the drop folder; if it read those first and locked
-afterwards, a run that finished in between would be invisible to it and its
-rows rewritten from a stale picture. So the lock comes first, and every
+request list, the index and the drop folder; if it read those first and
+locked afterwards, a run that finished in between would be invisible to it
+and its rows written from a stale picture. So the lock comes first, and every
 read a decision rests on happens inside it. Dry runs never take the lock -
 they write nothing, so they cannot race.
 
@@ -334,8 +335,8 @@ def clear_stale_lock(engagement_dir: Path | str) -> LockStatus:
 def engagement_lock(engagement_dir: Path) -> Iterator[EngagementLock]:
     """Hold the engagement lock for the duration of a ``with`` block.
 
-    Open it *before* reading the manifest, the index or the drop folder:
-    what a run decides from must not change under it.
+    Open it *before* reading the request list, the index or the drop
+    folder: what a run decides from must not change under it.
     """
     lock = acquire_lock(Path(engagement_dir))
     try:

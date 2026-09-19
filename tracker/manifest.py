@@ -1,57 +1,77 @@
-"""Manifest layer for the tracker (component 1, docs/ROADMAP.md).
+"""The request list: its schema, its validation, and its reading from and
+writing to the record (component 1, docs/ROADMAP.md).
 
-``MANIFEST_FILENAME`` is **the person's file**, and since decision 103 that
-is the whole of what it is. Its Requests sheet holds the ten columns an
-accountant edits (:data:`ACCOUNTANT_COLUMNS`, which is now all of
-:data:`HEADERS`) and nothing the machine decided: Status, Received Date,
-File Count and Validation Notes left the sheet, and the statuses, the
-keywords a person's filing taught and every index row live in the record
-(:mod:`tracker.ledger` and :mod:`tracker.store`, ``docs/storage.md``).
+**The manifest is the record's request list** (decision 104). It is the
+ten columns an accountant edits (:data:`COLUMNS`, whose headers are
+:data:`HEADERS`) and the engagement's own details
+(:class:`tracker.records.EngagementInfo`), and it lives in exactly one
+place: the engagement's record - the journal beside the client's files
+(:mod:`tracker.ledger`) folded into the store on the machine
+(:mod:`tracker.store`, ``docs/storage.md``). There is no workbook. Until
+this decision the list was a workbook (the file
+``registry.LEGACY_MANIFEST_FILENAME`` names), read once a pass and
+journalled as it changed; the owner retired it on 2026-09-19 - "I don't
+want anything to do with the Excel manifest anymore. I just want it all on
+the database." - and the workbook half of this module is set aside,
+outside the tree, in ``Retired - Excel manifest``.
 
-So this module does three things with that workbook:
+So this module does four things with that list:
 
-- **it reads it, every pass.** :func:`load_rules` opens it once - read-only,
-  the way Excel's own share mode allows, with a short retry for the moment
-  Excel saves by replacing the file - and gives back the rules and the
-  Engagement sheet, validated, failing loudly with the row a person has to
-  fix. The pass compares its digest with the one the record holds and
-  journals every difference (``tracker.filer.ensure``);
-- **it writes it at three moments and no others**: when an engagement is
-  created (:func:`create_template`), when a year is rolled forward, and
-  once, to slim an old workbook that still carries the four scanner
-  columns. Never in a pass. That is why there is no lock retry on a write,
-  no deferred-update sidecar and nothing to merge: the thirteen defensive
-  decisions those cost are gone with the writes that needed them;
-- **it answers what a request is now** (:func:`load_manifest`), from the
-  record - the rules as the last import read them, each row's status, and
-  the keywords a filing taught - never by reading the sheet for a status
-  again.
+- **it says what a row is.** :class:`RequestItem`, the column constants,
+  :data:`COLUMN_HELP` (the sentence the app's editor shows under each
+  heading) and the defaults - the one schema the store's ``requests``
+  table, the API's ``edit`` command and the catalog in
+  :mod:`tracker.templates` all write against;
+- **it validates it, as a function on records.** The checks the sheet's
+  loader used to make cell by cell are :func:`item_from_fields` (one row
+  from plain values - the editor's JSON, a catalog spec) and
+  :func:`validated` (the list: identifiers, duplicates without case, the
+  counts, the date pattern compiled or derived from the Period, the
+  narrowing names), each refusal naming the row and the column in one
+  sentence. Every path that stores rules or routes against a catalog goes
+  through them, so the derived year check the harnesses used to get from a
+  workbook round trip is the same check, made once, here;
+- **it reads it** (:func:`load_manifest`, :func:`load_engagement_info`):
+  from the record - the rules as the last edit left them, each row's
+  status, and the keywords a filing taught - after
+  :func:`tracker.store.follow_the_journal` has brought the store up to
+  the journal. A folder with no journal is nobody's engagement and is
+  refused by sentence (:data:`NOT_AN_ENGAGEMENT`);
+- **it writes it, at two moments and no others**: :func:`create_engagement`
+  writes an engagement's first list and details as one ``rules_changed``
+  event, and :func:`save_rules` writes a person's edit as one - exactly
+  the rows that changed, the identifiers removed, the details that moved,
+  and nothing at all when nothing did. Both go through
+  :func:`tracker.store.record` under the engagement lock, so the journal
+  is written first and the fold is one transaction. The app's editor is
+  the only way a rule is entered; there is no import and no export.
 
-Why the import journals every change rather than simply overwriting the
-store: the workbook is a file Excel holds open, silently re-types, validates
-nothing at entry and keeps no history of (the owner said so on 2026-09-18).
-The record cannot stop a person mistyping a keyword, but it can say when it
-changed and to what, which is the difference between a rule that went wrong
-and a rule nobody can account for. The app's own rules editor, after season
-one, replaces the import.
+Why the writes came back to this module, having left it in decision 103:
+they left because a workbook was the person's file and the machine only
+read it. The person's file is the record now, and the module that owns
+the schema and the validation is the one that must own the two writes,
+or the rows in the journal would be shaped by somebody else. It reaches
+``store``, ``ledger`` and ``locking`` at call time - an in-layer edge,
+closed where an edge is allowed to close (``tests/test_layers.py``) - and
+imports :mod:`tracker.records` and nothing else of the package at load
+time.
 
-It also owns *how* anything beside a workbook is written. Every sidecar, the
-content cache and the app's settings file go through
-:func:`atomic_replacement` - a uniquely named temp file ending in
-``TEMP_SUFFIX``, swapped in whole with ``os.replace`` - so a killed run never
-leaves a half-written file where a reader will trust it.
+``row`` is the request's 1-based position in the list. It is part of the
+rule: a row inserted in the middle moves every row below it, and those
+rows are recorded as changed, because a person reordered them and the
+record says so.
 
-This module never touches client files — only the manifest workbook. All
-values are validated on load and fail loudly with row context, so a
-malformed manifest can never silently produce wrong rules.
+It also owns *how* the machine's own small files are written. The content
+cache and the app's settings file go through :func:`atomic_replacement` -
+a uniquely named temp file ending in ``TEMP_SUFFIX``, swapped in whole with
+``os.replace`` - so a killed run never leaves a half-written file where a
+reader will trust it. These move with ``fsio`` in decision 105.
 
-The *records* it loads - :class:`EngagementInfo`, :class:`StatusUpdate`, the
-Engagement sheet's field table, the rules-only serialisation of a request
-row and the yes/no spellings - live in :mod:`tracker.records` since decision
-100, and are imported back here so every existing ``from tracker.manifest
-import ...`` still reads. :class:`RequestItem` stays: it is the schema of the
-sheet a person edits, not a record of what the machine decided, and it means
-nothing away from the cells it is parsed from.
+The *records* this module reads and writes - :class:`EngagementInfo`,
+:class:`StatusUpdate`, the details' field table, the serialisation of a
+rule row - live in :mod:`tracker.records` since decision 100.
+:class:`RequestItem` stays here: it is the schema of the list a person
+edits, not a record of what the machine decided.
 """
 
 from __future__ import annotations
@@ -62,44 +82,27 @@ import logging
 import os
 import re
 import secrets
-import time
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
-
-# The records this module loads live in tracker/records.py (decision 100):
-# they are the shapes, this is the workbook. An in-layer import, and the
-# only one that way round - nothing in records imports the manifest.
-# ENGAGEMENT_HELP is re-exported so that
-# `from tracker.manifest import ENGAGEMENT_HELP` still resolves to the same
-# dict; kept for one release; import from tracker.records.
+# The records this module reads and writes live in tracker/records.py
+# (decision 100): they are the shapes, this is the list. An in-layer
+# import, and the only one that way round - nothing in records imports
+# the manifest.
 from tracker.records import (
     COL_IDENTIFIER,
-    ENGAGEMENT_FIELDS,
-    ENGAGEMENT_HELP,  # noqa: F401
-    ENGAGEMENT_LABELS,
-    ENGAGEMENT_NOTES,
-    NO,
-    YES,
+    RULE_FIELDS,
     EngagementInfo,
     StatusUpdate,
     identifier_key,
+    info_to_json,
     rule_from_json,
-    status_from_json,  # noqa: F401  (re-exported for one release)
+    rule_to_json,
 )
 
 log = logging.getLogger("tracker.manifest")
-
-SHEET_NAME = "Requests"
-#: Who the engagement is for and how it is chased. Lives in the manifest so
-#: the folder carries everything the scheduled run needs to know about it -
-#: there is no separate registry file for a person to keep in step.
-ENGAGEMENT_SHEET_NAME = "Engagement"
 
 # ---------------------------------------------------------------- schema ----
 
@@ -117,43 +120,63 @@ COL_RECEIVED_DATE = "Received Date"
 COL_FILE_COUNT = "File Count"
 COL_VALIDATION_NOTES = "Validation Notes"
 
-#: Columns the accountant edits. Since decision 103 they are the whole
-#: sheet: the machine reads these and writes none of them.
-ACCOUNTANT_COLUMNS = (
-    COL_IDENTIFIER,
-    COL_DOCUMENT,
-    COL_PERIOD,
-    COL_EXPECTED_COUNT,
-    COL_ALLOWED_EXTENSIONS,
-    COL_MIN_SIZE_KB,
-    COL_REQUIRED_KEYWORDS,
-    COL_ANY_KEYWORDS,
-    COL_DATE_PATTERN,
-    COL_MANUAL_OVERRIDE,
+#: Each column's key in the record and the API, beside its header: the ten
+#: columns a person edits, in the order the editor shows them. The keys are
+#: ``records.RULE_FIELDS`` less the two the person never types (``row`` is
+#: the position, ``date_pattern_derived`` is what ``validated()`` decided),
+#: and the assertion below holds the two lists together.
+COLUMNS: tuple[tuple[str, str], ...] = (
+    (COL_IDENTIFIER, "identifier"),
+    (COL_DOCUMENT, "document"),
+    (COL_PERIOD, "period"),
+    (COL_EXPECTED_COUNT, "expected_count"),
+    (COL_ALLOWED_EXTENSIONS, "allowed_extensions"),
+    (COL_MIN_SIZE_KB, "min_size_kb"),
+    (COL_REQUIRED_KEYWORDS, "required_keywords"),
+    (COL_ANY_KEYWORDS, "any_keywords"),
+    (COL_DATE_PATTERN, "date_pattern"),
+    (COL_MANUAL_OVERRIDE, "manual_override"),
 )
-
-#: The four columns the scanner used to write into the sheet. They are not
-#: part of the schema any more - :data:`HEADERS` is the accountant's ten -
-#: and these names survive for exactly two readers: the loader, which
-#: ignores them where an old workbook still carries them, and the migration
-#: that deletes them from such a workbook once. What they held is in the
-#: record (``statuses`` in :mod:`tracker.store`) and on the Status Report.
-LEGACY_SCANNER_COLUMNS = (
-    COL_STATUS,
-    COL_RECEIVED_DATE,
-    COL_FILE_COUNT,
-    COL_VALIDATION_NOTES,
+#: The ten headers, in order. The roadmap's schema table lists exactly
+#: these (``tests/test_single_source.py`` holds it to that), the Status
+#: Report draws them, and every message that names a column uses one.
+HEADERS = tuple(header for header, _ in COLUMNS)
+assert tuple(field for _, field in COLUMNS) == tuple(
+    f for f in RULE_FIELDS if f not in ("row", "date_pattern_derived")
 )
-
-#: The Requests sheet, whole. ``create_template()`` and the rollover write
-#: exactly these, the loader requires exactly these, and the roadmap's
-#: schema table lists exactly these
-#: (``tests/test_single_source.py`` holds it to that).
-HEADERS = ACCOUNTANT_COLUMNS
 
 DEFAULT_EXPECTED_COUNT = 1
 DEFAULT_MIN_SIZE_KB = 5
-#: What a blank Allowed Extensions cell means. A blank used to mean "accept
+#: The bounds ``validated()`` and ``item_from_fields()`` enforce on the
+#: two numbers, and where the editor's number inputs take their minimum
+#: from - through the API's vocabulary, never typed in the page.
+MIN_EXPECTED_COUNT = 1
+MIN_SIZE_KB_FLOOR = 0
+
+#: The one sentence the editor shows under each heading, by field. The
+#: roadmap's schema table carries the same sentences in its Purpose column
+#: on purpose: one text, two places a person reads it.
+COLUMN_HELP: dict[str, str] = {
+    "identifier": "Names the request and its folder; matched by prefix, so A100 and BS01 both work",
+    "document": "What the request is called to people",
+    "period": "The period asked for, e.g. TY2025 or Dec 2025; a year in it is the year check",
+    "expected_count": "How many files are due; counted over distinct valid files",
+    "allowed_extensions": "File types accepted, comma-separated; blank means the safe default, * means any type",
+    "min_size_kb": "Files smaller than this are rejected as placeholders",
+    "required_keywords": (
+        "Every one of these must appear in the document (a keyword may hold alternatives with | "
+        "and phrases wanted together with +)"
+    ),
+    "any_keywords": "At least one of these must appear; a keyword reads the same way",
+    "date_pattern": (
+        "Blank with a year in Period checks for that year; * turns the year check off; "
+        "a typed regex wins"
+    ),
+    "manual_override": "Accepted counts as Received; Waived takes the request out of every count",
+}
+assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
+
+#: What a blank Allowed Extensions means. A blank used to mean "accept
 #: anything", which is easy to leave by accident and lets an .exe count as a
 #: document; accepting anything now has to be said out loud with "*".
 DEFAULT_EXTENSIONS = ("pdf", "xlsx", "csv")
@@ -184,7 +207,6 @@ _PERIOD_YEAR = YEAR_PATTERN
 _ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
 WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
 WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
-DATE_FORMAT = "yyyy-mm-dd"
 #: How a date is asked for on a command line or in the wizard.
 ISO_DATE_HINT = "YYYY-MM-DD"
 
@@ -194,6 +216,7 @@ ISO_DATE_HINT = "YYYY-MM-DD"
 #: (a trailing dot) would leave the scanner unable to
 #: find the folder scaffold just made — a permanent "folder not found".
 _ILLEGAL_IDENTIFIER_CHARS = WINDOWS_ILLEGAL_CHARS
+
 
 
 class Status:
@@ -219,22 +242,9 @@ UNSCANNED_LABEL = "Requested"
 SUMMARY_SEPARATOR = " · "
 SUMMARY_EMPTY = "no requests"
 
-#: The temp file an atomic save lands in first. The two sidecar suffixes
-#: that used to stand beside it went with the deferred writes (decision
-#: 103): nothing is deferred any more, so there is nothing to keep beside
-#: a workbook and nothing to quarantine.
+#: The temp file an atomic save lands in first. Nothing is deferred and
+#: nothing is quarantined: a write lands whole or not at all.
 TEMP_SUFFIX = ".tmp"
-
-#: How often a *read* of the workbook is retried, and how long it waits the
-#: first time (doubling). Not a lock retry - Excel's share mode lets a
-#: reader in, and decision 103 took every write out of the pass. What this
-#: covers is the fraction of a second in which Excel saves by writing a new
-#: file beside the old one and renaming it over the top: a reader that
-#: happened to open in that window sees the file vanish, and the honest
-#: answer is to look again rather than to tell a person their manifest is
-#: missing.
-READ_RETRIES = 3
-READ_RETRY_DELAY = 0.2
 
 
 class Override:
@@ -246,20 +256,27 @@ class Override:
     ALL = (ACCEPTED, WAIVED)
 
 
+
 class ManifestError(Exception):
-    """A manifest could not be read, parsed, or validated."""
+    """A request list could not be read, parsed, or validated."""
+
+
+#: What a reader says of a folder that holds no journal: it is not an
+#: engagement, whatever else is in it. The journal's file name is filled in
+#: at call time by the reader, because this module does not import the
+#: ledger at load time.
+NOT_AN_ENGAGEMENT = "{name}: no record here ({ledger}); it is not an engagement"
 
 
 @dataclass(frozen=True, slots=True)
 class RequestItem:
     """One request: the person's rule, and what the record says about it.
 
-    ``records.RULE_FIELDS`` names the person's half - the ten columns of
-    the sheet plus ``row``, which is where on it the rule was read - and
-    that half is what the workbook, a ``rules_imported`` event and the
-    store's ``requests`` table all carry. The four status fields are the
-    record's: they are not on the sheet any more (decision 103), so
-    :func:`load_rules` leaves them at their defaults and
+    ``records.RULE_FIELDS`` names the person's half - the ten columns
+    (:data:`COLUMNS`) plus ``row``, the request's 1-based position in the
+    list - and that half is what a ``rules_changed`` event and the
+    store's ``requests`` table carry. The four status fields are the
+    record's: ``validated()`` leaves them at their defaults and
     :func:`load_manifest` fills them from the store's ``statuses``.
     """
 
@@ -274,11 +291,11 @@ class RequestItem:
     date_pattern: str = ""                     # validated to compile on load
     date_pattern_derived: bool = False         # True: made from Period's year, not typed
     manual_override: str = ""                  # "", Override.ACCEPTED, Override.WAIVED
-    status: str = ""                           # the record's, not the sheet's
+    status: str = ""                           # the record's, never typed
     received_date: dt.date | None = None
     file_count: int | None = None
     validation_notes: str = ""
-    row: int = 0                               # Excel row this item came from
+    row: int = 0                               # 1-based position in the list
 
     @property
     def label(self) -> str:
@@ -353,32 +370,21 @@ def label_for(*parts: str) -> str:
 EXPECTED_PATTERN = "{n} files expected"
 
 
-def engagement_sheet_note() -> str:
-    """The italic line under the Engagement sheet, built from the notes."""
-    return ". ".join(
-        f"{ENGAGEMENT_LABELS[field]}: {note}" if field != "rolled_from"
-        else f"{ENGAGEMENT_LABELS[field]} is {note}"
-        for field, note in ENGAGEMENT_NOTES.items()
-    ) + "."
-
 
 # --------------------------------------------------------------- parsing ----
 
 
-def _cell_str(value: object) -> str:
-    return "" if value is None else str(value).strip()
-
-
 def csv_tuple(value: object) -> tuple[str, ...]:
-    """A cell's comma-separated list, or a list the caller already has.
+    """A comma-separated list as typed, or a list the caller already has.
 
-    A cell holds one string; a spec typed as JSON holds ``["pdf"]``, and
+    A typed cell holds one string; a spec typed as JSON holds ``["pdf"]``, and
     stringifying that gave the single extension ``['pdf']``, which no
     document has and every document therefore parked against for ever.
     """
     if isinstance(value, (list, tuple)):
         return tuple(str(v).strip() for v in value if str(v).strip())
-    return tuple(p.strip() for p in _cell_str(value).split(",") if p.strip())
+    text = "" if value is None else str(value).strip()
+    return tuple(p.strip() for p in text.split(",") if p.strip())
 
 
 #: What one keyword may hold beside its words. A keyword cell's commas are
@@ -408,7 +414,7 @@ def keyword_alternatives(keyword: str) -> tuple[tuple[str, ...], ...]:
     plain keyword nothing. Read here rather than in the matcher because
     this module owns how a keyword cell is read (``csv_tuple``), and the
     catalog writes cells the matcher then reads - one owner for the shape
-    of a keyword, whether it was typed into Excel or written in
+    of a keyword, whether it was typed into the editor or written in
     :mod:`tracker.templates`.
     """
     alternatives = []
@@ -417,6 +423,7 @@ def keyword_alternatives(keyword: str) -> tuple[tuple[str, ...], ...]:
         if parts:
             alternatives.append(parts)
     return tuple(alternatives)
+
 
 
 # ------------------------------------------------- a row per issuer (d93) ----
@@ -521,7 +528,7 @@ def check_narrowing_names(items: Iterable[RequestItem]) -> None:
     K-1, so every one of them would be contested and park - one row
     quietly making the other useless, with nothing said. The fix is a
     person renaming a row, and the only moment they can be told is when
-    the manifest is read. Names are compared as whole tokens, normalised
+    the list is validated. Names are compared as whole tokens, normalised
     (:func:`entity_keyword`), and only between rows narrowing the *same*
     broad row: two unrelated requests are allowed to share a word.
     """
@@ -539,48 +546,6 @@ def check_narrowing_names(items: Iterable[RequestItem]) -> None:
                         "that neither name is part of the other."
                     )
 
-
-def _parse_int(value: object, default: int, column: str, row: int) -> int:
-    text = _cell_str(value)
-    if not text:
-        return default
-    try:
-        number = float(text)
-        if number != int(number):
-            raise ValueError
-        return int(number)
-    except ValueError:
-        raise ManifestError(
-            f"Row {row}: {column} must be a whole number, got {value!r}"
-        ) from None
-
-
-def _parse_date(value: object, column: str, row: int) -> dt.date | None:
-    if isinstance(value, dt.datetime):
-        return value.date()
-    if isinstance(value, dt.date):
-        return value
-    text = _cell_str(value)
-    if not text:
-        return None
-    try:
-        return dt.date.fromisoformat(text)
-    except ValueError:
-        raise ManifestError(
-            f"Row {row}: {column} must be a date, got {value!r}"
-        ) from None
-
-
-def _parse_enum(value: object, allowed: tuple[str, ...], column: str, row: int) -> str:
-    text = _cell_str(value)
-    if not text:
-        return ""
-    for candidate in allowed:
-        if text.lower() == candidate.lower():
-            return candidate
-    raise ManifestError(
-        f"Row {row}: {column} must be one of {', '.join(allowed)} (or blank), got {value!r}"
-    )
 
 
 _MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
@@ -614,7 +579,7 @@ def derived_date_pattern(period: str) -> str:
 
 def check_tax_year(year: int) -> int:
     """``year`` back, or ``ManifestError`` if it is not a year a tax return
-    is for. One check, because a year that reaches a manifest unbounded
+    is for. One check, because a year that reaches a list unbounded
     shifts every Period by a few thousand years and the document names
     with them; the wizard's box and the rollover's flag are two doors into
     the same room.
@@ -637,7 +602,7 @@ def parse_extensions(value: object) -> tuple[str, ...]:
 def identifier_problem(identifier: str) -> str:
     """Why ``identifier`` cannot name a request folder, or "" if it can.
 
-    Shared by :func:`load_manifest` and the desktop app's create path so a
+    Shared by :func:`validated` and the desktop app's create path so a
     bad identifier is refused with the same sentence wherever it is typed.
     """
     if _ILLEGAL_IDENTIFIER_CHARS.search(identifier):
@@ -647,146 +612,201 @@ def identifier_problem(identifier: str) -> str:
     return ""
 
 
-def _header_map(ws, wanted: tuple[str, ...] = HEADERS) -> dict[str, int]:
-    """Map canonical column names to 1-based column indexes; fail on missing.
 
-    Only ``wanted`` has to be there. An older workbook still carrying the
-    four columns the scanner used to write (:data:`LEGACY_SCANNER_COLUMNS`)
-    loads exactly the same way and those cells are simply not read: nothing
-    refuses a file a person has been using all season because the machine
-    stopped writing part of it.
+# ------------------------------------------------ a row from plain values ----
+
+
+def _whole_number(value: object, default: int, minimum: int, column: str, where: str) -> int:
+    """A count or a size from a typed value: blank is the default, anything
+    else a whole number no smaller than ``minimum``, refused with the row
+    and the column named."""
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return default
+    try:
+        number = float(text)
+        if number != int(number):
+            raise ValueError
+    except (TypeError, ValueError, OverflowError):
+        raise ManifestError(f"{where}: {column} must be a whole number, got {value!r}") from None
+    if int(number) < minimum:
+        raise ManifestError(f"{where}: {column} must be at least {minimum}")
+    return int(number)
+
+
+def _override(value: object, where: str) -> str:
+    """A Manual Override as typed, folded to the one spelling, or blank."""
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return ""
+    for candidate in Override.ALL:
+        if text.lower() == candidate.lower():
+            return candidate
+    raise ManifestError(
+        f"{where}: {COL_MANUAL_OVERRIDE} must be one of {', '.join(Override.ALL)} (or blank), "
+        f"got {value!r}"
+    )
+
+
+def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem:
+    """One request row from plain values: the editor's JSON, a catalog spec,
+    a test's dict.
+
+    **The one parser of a row.** The sheet used to be parsed cell by cell;
+    the same defaults and the same refusals are made here from a mapping
+    keyed by :data:`COLUMNS`' field names, and ``where`` is what every
+    refusal begins with (``"Row 3"`` from the API, the identifier from the
+    catalog). Strings are stripped; the two numbers take their defaults
+    when blank and must be whole and no smaller than the floor; the file
+    types go through :func:`parse_extensions` (``"extensions"`` is accepted
+    as the key too, as the wizard has always sent it); the keywords through
+    :func:`csv_tuple`, a string or a list; the override is folded to its
+    one spelling; the date pattern is kept as typed - whether it compiles,
+    and what a blank one derives from the Period, is :func:`validated`'s
+    to say, because that is a fact about the list and not the row. A row
+    that says its pattern was derived (``date_pattern_derived``, as the
+    store hands rows back) is read as having none typed, so a list read
+    out of the record and sent back in is the same list.
+
+    It defaults **no keyword**: a row with no rule is legal and is warned
+    about (:func:`check_rules`), as the sheet allowed. The catalog's
+    ``item_from_spec`` adds its own rule on top.
     """
-    found: dict[str, int] = {}
-    for idx in range(1, (ws.max_column or 0) + 1):
-        text = _cell_str(ws.cell(row=1, column=idx).value)
-        if text:
-            found[text.lower()] = idx
-    missing = [h for h in wanted if h.lower() not in found]
-    if missing:
-        raise ManifestError(
-            f"Sheet {SHEET_NAME!r} is missing column(s): {', '.join(missing)}"
-        )
-    return {h: found[h.lower()] for h in wanted}
+    def text(key: str) -> str:
+        value = fields.get(key)
+        return "" if value is None else str(value).strip()
+
+    extensions = fields.get("allowed_extensions")
+    if extensions in (None, ""):
+        extensions = fields.get("extensions")
+    return RequestItem(
+        identifier=text("identifier"),
+        document=text("document"),
+        period=text("period"),
+        expected_count=_whole_number(fields.get("expected_count"), DEFAULT_EXPECTED_COUNT,
+                                     MIN_EXPECTED_COUNT, COL_EXPECTED_COUNT, where),
+        allowed_extensions=parse_extensions(extensions),
+        min_size_kb=_whole_number(fields.get("min_size_kb"), DEFAULT_MIN_SIZE_KB,
+                                  MIN_SIZE_KB_FLOOR, COL_MIN_SIZE_KB, where),
+        required_keywords=csv_tuple(fields.get("required_keywords")),
+        any_keywords=csv_tuple(fields.get("any_keywords")),
+        date_pattern="" if fields.get("date_pattern_derived") else text("date_pattern"),
+        manual_override=_override(fields.get("manual_override"), where),
+    )
 
 
-def legacy_scanner_columns(ws) -> dict[str, int]:
-    """The scanner columns an old Requests sheet still carries, by 1-based
-    column index; empty on a sheet already slimmed.
+def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
+    """The list-level checks the sheet's loader made, on records.
 
-    The one reader of :data:`LEGACY_SCANNER_COLUMNS`, shared by the
-    migration that imports those cells into the record and the one that
-    deletes them from the sheet, so the two cannot disagree about which
-    columns they are looking at.
+    Every path that stores rules or routes against a catalog goes through
+    this - ``create_engagement``, ``save_rules``, the IRS-form and catalog
+    harnesses, the vocabulary report - so one list is validated one way:
+    an identifier on every row, none the file system would alter
+    (:func:`identifier_problem`), no two the same without case (a Windows
+    folder name is not case-sensitive); a document on every row; the two
+    numbers within their floors; ``NO_DATE_CHECK`` made blank, a typed
+    pattern made to compile, and a blank one derived from the Period with
+    ``date_pattern_derived`` set; and last, no two issuer rows whose names
+    nest (:func:`check_narrowing_names`). Returns new items with ``row``
+    set to 1..n - the position is part of the rule (decision 104).
+
+    A row that comes in with a derived pattern already set (one a reader
+    gave back) is treated as blank and derived again: a derived check was
+    never typed, and re-reading it as typed would turn it into a rule the
+    person did not make.
     """
-    found: dict[str, int] = {}
-    for idx in range(1, (ws.max_column or 0) + 1):
-        text = _cell_str(ws.cell(row=1, column=idx).value).lower()
-        for header in LEGACY_SCANNER_COLUMNS:
-            if text == header.lower():
-                found[header] = idx
-    return found
+    out: list[RequestItem] = []
+    seen: dict[str, int] = {}
+    for n, item in enumerate(items, start=1):
+        where = f"Row {n}"
+        identifier = item.identifier.strip()
+        if not identifier:
+            raise ManifestError(f"{where}: {COL_IDENTIFIER} is required")
+        problem = identifier_problem(identifier)
+        if problem:
+            raise ManifestError(f"{where}: {COL_IDENTIFIER} {identifier!r} {problem}")
+        key = identifier_key(identifier)
+        if key in seen:
+            raise ManifestError(f"Duplicate identifier {identifier!r} (rows {seen[key]} and {n})")
+        seen[key] = n
+        document = item.document.strip()
+        if not document:
+            raise ManifestError(f"{where}: {COL_DOCUMENT} is required")
+        if item.expected_count < MIN_EXPECTED_COUNT:
+            raise ManifestError(f"{where}: {COL_EXPECTED_COUNT} must be at least {MIN_EXPECTED_COUNT}")
+        if item.min_size_kb < MIN_SIZE_KB_FLOOR:
+            raise ManifestError(f"{where}: {COL_MIN_SIZE_KB} must be at least {MIN_SIZE_KB_FLOOR}")
+        period = item.period.strip()
+        date_pattern = "" if item.date_pattern_derived else item.date_pattern.strip()
+        derived = False
+        if date_pattern == NO_DATE_CHECK:
+            date_pattern = ""
+        elif date_pattern:
+            try:
+                re.compile(date_pattern)
+            except re.error as exc:
+                raise ManifestError(f"{where}: {COL_DATE_PATTERN} is not a valid regex: {exc}") from None
+        else:
+            date_pattern = derived_date_pattern(period)
+            derived = bool(date_pattern)
+        out.append(replace(
+            item,
+            identifier=identifier,
+            document=document,
+            period=period,
+            date_pattern=date_pattern,
+            date_pattern_derived=derived,
+            manual_override=_override(item.manual_override, where),
+            row=n,
+        ))
+    # Two issuer rows whose names nest make each other useless and say
+    # nothing about it; the one moment a person can be told is now.
+    check_narrowing_names(out)
+    return out
 
 
-# --------------------------------------------------------------- loading ----
+# --------------------------------------------------------------- reading ----
 
 
-def _open_manifest(path: Path):
-    """The workbook, read-only (cached values), or the one sentence for why not.
+def _the_record(engagement_dir: Path | str):
+    """The store's connection, brought up to this engagement's journal.
 
-    A file that is not there is said so at once - nothing is being saved
-    over a path that does not exist. A file that *is* there and will not
-    open is tried :data:`READ_RETRIES` times with a doubling wait, because
-    Excel saves a workbook by writing a new one beside it and renaming it
-    over the top: for a fraction of a second the bytes at that path are the
-    half-written new file's, and a reader that gave up there would tell a
-    person their manifest was corrupt. Excel's own share mode lets a reader
-    open the file it is holding, so nothing else here waits on Excel -
-    since decision 103 the machine has no write of its own to retry.
+    Imported here, not at the top: this module owns the list, the store
+    owns the tables, and the two sit in the same layer with no load-time
+    edge between them (``tests/test_layers.py``). A folder with no journal
+    is refused: it has nothing to fold and is nobody's engagement - a
+    folder somebody made a moment ago, or one that holds only a workbook
+    the tracker no longer reads.
     """
-    if not path.exists():
-        raise ManifestError(f"Manifest not found: {path}")
-    delay = READ_RETRY_DELAY
-    for attempt in range(1, READ_RETRIES + 1):
-        try:
-            return load_workbook(path, data_only=True)
-        except Exception as exc:  # zip/corruption errors from openpyxl
-            if attempt == READ_RETRIES:
-                raise ManifestError(f"Could not open {path}: {exc}") from exc
-            log.debug("%s could not be read (attempt %d/%d): %s",
-                      path.name, attempt, READ_RETRIES, exc)
-            time.sleep(delay)
-            delay *= 2
-    raise ManifestError(f"Could not open {path}")   # unreachable; the loop raises
-
-
-def _requests_sheet(wb, path: Path):
-    if SHEET_NAME not in wb.sheetnames:
-        raise ManifestError(f"{path.name} has no {SHEET_NAME!r} sheet")
-    return wb[SHEET_NAME]
-
-
-def _the_folder_and_the_workbook(path_or_dir: Path | str) -> tuple[Path, Path]:
-    """The engagement folder and its manifest, whichever of the two was named.
-
-    Every reader here has always been handed the workbook's own path,
-    because that is the file it read. Since decision 103 the answer comes
-    from the record, which belongs to the folder, so both spellings are
-    accepted and resolved here rather than at a dozen call sites.
-
-    ``MANIFEST_FILENAME`` is the scaffold's, and the scaffold imports this
-    module: the name is fetched at call time so the edge stays one-way at
-    load time (``tests/test_layers.py``).
-    """
-    from tracker.scaffold import MANIFEST_FILENAME
-
-    path = Path(path_or_dir)
-    if path.suffix.lower() == ".xlsx":
-        return path.parent, path
-    return path, path / MANIFEST_FILENAME
-
-
-def load_manifest(path_or_dir: Path | str) -> list[RequestItem]:
-    """Every request, as the record answers it now. Rows in the sheet's order.
-
-    **This does not read the workbook** (decision 103). The rules are the
-    ones the last import read into the store's ``requests`` table, each
-    row's Status, Received Date, File Count and Validation Notes come from
-    ``statuses``, and a keyword a person's filing taught the row is added to
-    its Any Keywords from ``learned_keywords``. The store is a derivation of
-    the journal and :func:`tracker.store.follow_the_journal` makes it one
-    again first, so no reader has to know whether a pass prepared this
-    engagement - exactly as ``tracker.filer.read_index`` does for the index.
-
-    The one time the sheet is read here is the reading that has never
-    happened: an engagement no import has spoken for yet (a manifest just
-    created, a folder nothing has passed over) answers from
-    :func:`load_rules`, which is the same first reading the store's own
-    build takes. After a pass there is always an import, and after a
-    workbook that will not validate the last good rules stay in force -
-    nothing is imported from a sheet that does not load.
-
-    Raises :class:`ManifestError` with row context when that first reading
-    is the one that fails.
-    """
-    # Imported here, not at the top: this module is the workbook's, the
-    # store is the record's, and the two sit in the same layer with no
-    # load-time edge between them (``tests/test_layers.py``). A call-time
-    # import is where that edge is allowed to close.
     from tracker import ledger, store
 
-    folder, workbook = _the_folder_and_the_workbook(path_or_dir)
+    folder = Path(engagement_dir)
+    if not ledger.path_for(folder).exists():
+        raise ManifestError(NOT_AN_ENGAGEMENT.format(name=folder.name, ledger=ledger.LEDGER_FILENAME))
     conn = store.connect()
-    if ledger.path_for(folder).exists():
-        # A folder with a journal is an engagement something has decided
-        # about, and the store is a derivation of that journal: bring it
-        # up before reading, exactly as ``filer.read_index`` does. A
-        # folder with none has nothing to fold and is left unknown to the
-        # store - a workbook somebody made a moment ago, or a catalog in a
-        # temporary directory, is not an engagement yet.
-        store.follow_the_journal(conn, store.root_for(folder), folder)
-    stored = store.rules(conn, folder)
-    items = (load_rules(workbook).items if stored is None
-             else [RequestItem(**rule_from_json(row)) for row in stored])
+    store.follow_the_journal(conn, store.root_for(folder), folder)
+    return conn
+
+
+def load_manifest(engagement_dir: Path | str) -> list[RequestItem]:
+    """Every request, as the record answers it now, in the list's order.
+
+    The rules are the ones the last edit left in the store's ``requests``
+    table, each row's Status, Received Date, File Count and Validation
+    Notes come from ``statuses``, and a keyword a person's filing taught
+    the row is added to its Any Keywords from ``learned_keywords``. The
+    store is a derivation of the journal and
+    :func:`tracker.store.follow_the_journal` makes it one again first, so
+    no reader has to know whether a pass prepared this engagement -
+    exactly as ``tracker.filer.read_index`` does for the index.
+
+    Raises :class:`ManifestError` for a folder that holds no record.
+    """
+    from tracker import store
+
+    folder = Path(engagement_dir)
+    conn = _the_record(folder)
+    items = [RequestItem(**rule_from_json(row)) for row in store.rules(conn, folder) or []]
     return _with_the_record(
         items, store.statuses(conn, folder), store.learned_keywords(conn, folder)
     )
@@ -842,137 +862,156 @@ def with_statuses(
     return _with_the_record(items, by_identifier, {})
 
 
+
+def load_engagement_info(engagement_dir: Path | str) -> EngagementInfo:
+    """The engagement's own details, as the record holds them.
+
+    The one reader that wants this half alone and not the rules: the
+    registry, which asks every folder under the clients root who it is
+    for; the reminder, for its greeting and sign-off; the scaffold, for
+    the README's contact line. Every field is at its default on an
+    engagement nothing has recorded details for. Raises
+    :class:`ManifestError` for a folder that holds no record.
+    """
+    from tracker import store
+
+    folder = Path(engagement_dir)
+    conn = _the_record(folder)
+    return store.engagement_info(conn, folder) or EngagementInfo()
+
+
+# --------------------------------------------------------------- writing ----
+
+
 @dataclass(frozen=True, slots=True)
-class RulesReading:
-    """One reading of the workbook: the person's rules and their engagement.
+class RulesSaved:
+    """What one save of the list recorded: the identifiers of the rows that
+    changed or were added, the identifiers removed, the engagement fields
+    that moved, and whether anything was written at all."""
 
-    A pair, because both come out of one open of the file
-    (:func:`load_rules`) and every caller wants both - the pass that imports
-    them, the store's first build, the check a person runs before a pass.
-    Three opens of one workbook was what this replaced.
+    changed: tuple[str, ...]
+    removed: tuple[str, ...]
+    info_fields: tuple[str, ...]
+    recorded: bool
+
+
+def create_engagement(
+    engagement_dir: Path | str,
+    items: Iterable[RequestItem],
+    info: EngagementInfo | None = None,
+    *,
+    form: str = "",
+) -> None:
+    """Write an engagement's first request list and details into its record.
+
+    The folder must exist and hold no journal: a live engagement carries a
+    season of somebody's rules and must never be written over by a re-run.
+    ``items`` are validated whole before anything is written, so a refusal
+    leaves no folder content and no store row; then, under the engagement
+    lock, the store is brought up to the (empty) journal and **one**
+    ``rules_changed`` event carries the whole list and the whole of
+    ``info``. That first event is what every later edit is a difference
+    from, and what makes the fold of every event the list.
+
+    ``form`` is the catalog the rows were cut from, recorded in the
+    details. A keyword rather than a field of the rows because it is one
+    fact about the engagement, not a property of any request. Optional,
+    and a blank never clears a form ``info`` already carries.
     """
+    from tracker import ledger, store
+    from tracker.locking import engagement_lock
 
-    items: list[RequestItem] = field(default_factory=list)
-    info: EngagementInfo = field(default_factory=EngagementInfo)
+    folder = Path(engagement_dir)
+    if not folder.is_dir():
+        raise ManifestError(f"{folder} is not a folder; make it before creating the engagement")
+    if ledger.path_for(folder).exists():
+        raise ManifestError(f"Refusing to overwrite an engagement that already has a record: {folder}")
+    rows = [rule_to_json(item) for item in validated(items)]
+    info = info or EngagementInfo()
+    if form:
+        info = replace(info, form=form)
+    conn = store.connect()
+    with engagement_lock(folder):
+        # A row the store may still hold for this folder - a name whose
+        # folder was deleted by hand and is being set up again - would
+        # read the new, shorter journal as truncated; forget it first.
+        store.forget(conn, folder)
+        store.follow_the_journal(conn, store.root_for(folder), folder)
+        store.record(conn, folder, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: rows,
+            ledger.REMOVED_KEY: [],
+            ledger.INFO_KEY: info_to_json(info),
+        }))
 
 
-def load_rules(path: Path | str) -> RulesReading:
-    """The person's request list and Engagement sheet, from one open of ``path``.
+def save_rules(
+    engagement_dir: Path | str,
+    items: Iterable[RequestItem],
+    info: EngagementInfo,
+    *,
+    lock_held: bool = False,
+) -> RulesSaved:
+    """Record a person's edit of the list and the details as one event.
 
-    **The only reading of the workbook there is.** The rows come back as
-    :class:`RequestItem`s with their status fields at the defaults: the
-    sheet holds no status to read (decision 103), and an older sheet that
-    still carries the four columns is read for its rules with those cells
-    ignored - so nothing refuses a workbook a person has been using all
-    season.
+    Validated whole first (:func:`validated`), so a refusal records
+    nothing. Then, under the engagement lock (taken here unless the caller
+    already holds it), the list is diffed against what the store holds:
+    ``changed`` is every row whose stored form differs from the held row
+    of the same identifier, spelled exactly - whole rows, ``row`` included,
+    so a row moved is a row changed - ``removed`` is every held identifier
+    no longer present in that exact spelling, and the details are the
+    fields that differ from the ones recorded, or all of them when no
+    rules event has ever been written. Nothing changed, nothing written:
+    a save of the same list is not an event. Otherwise one
+    ``rules_changed`` event carries exactly the difference, through
+    :func:`tracker.store.record`, journal first.
 
-    Reads with ``data_only=True`` so formula cells yield their cached
-    values, and raises :class:`ManifestError` with the Excel row on any
-    invalid data. A workbook that raises here is a workbook nothing is
-    imported from: the engagement's pass records the problem and the rules
-    the record already holds stay in force.
+    **Journalled, not simply written.** The record cannot stop a person
+    mistyping a keyword, but it can say when it changed and to what, which
+    is the difference between a rule that went wrong and a rule nobody can
+    account for - and it is what lets the store be rebuilt from the
+    journals alone.
     """
-    path = Path(path)
-    wb = _open_manifest(path)
-    try:
-        info = (_engagement_from_sheet(wb[ENGAGEMENT_SHEET_NAME])
-                if ENGAGEMENT_SHEET_NAME in wb.sheetnames else EngagementInfo())
-        return RulesReading(items=_requests_from_sheet(wb, path), info=info)
-    finally:
-        wb.close()
+    from contextlib import nullcontext
 
+    from tracker import ledger, store
+    from tracker.locking import engagement_lock
 
-def _requests_from_sheet(wb, path: Path) -> list[RequestItem]:
-    """Every rule on the Requests sheet, parsed and validated, in sheet order.
-
-    The status fields of each :class:`RequestItem` are left at their
-    defaults: there is nothing on the sheet to read them from, and a row
-    that has never been scanned and a row whose status is in the record
-    read the same here. What the record says is laid on in
-    :func:`load_manifest`.
-    """
-    ws = _requests_sheet(wb, path)
-    columns = _header_map(ws)
-
-    items: list[RequestItem] = []
-    seen: dict[str, int] = {}
-    for row in range(2, (ws.max_row or 1) + 1):
-        values = {
-            name: ws.cell(row=row, column=idx).value
-            for name, idx in columns.items()
-        }
-        if all(_cell_str(v) == "" for v in values.values()):
-            continue  # blank spacer row
-
-        identifier = _cell_str(values[COL_IDENTIFIER])
-        if not identifier:
-            raise ManifestError(f"Row {row}: {COL_IDENTIFIER} is required")
-        problem = identifier_problem(identifier)
-        if problem:
-            raise ManifestError(f"Row {row}: {COL_IDENTIFIER} {identifier!r} {problem}")
-        # Windows folder names are case-insensitive, so "A01" and "a01"
-        # would claim the same folder; treat them as the same identifier.
-        if identifier_key(identifier) in seen:
-            raise ManifestError(
-                f"Duplicate identifier {identifier!r} "
-                f"(rows {seen[identifier_key(identifier)]} and {row})"
-            )
-        seen[identifier_key(identifier)] = row
-
-        document = _cell_str(values[COL_DOCUMENT])
-        if not document:
-            raise ManifestError(f"Row {row}: {COL_DOCUMENT} is required")
-
-        expected_count = _parse_int(
-            values[COL_EXPECTED_COUNT], DEFAULT_EXPECTED_COUNT, COL_EXPECTED_COUNT, row
-        )
-        if expected_count < 1:
-            raise ManifestError(f"Row {row}: {COL_EXPECTED_COUNT} must be >= 1")
-
-        min_size_kb = _parse_int(
-            values[COL_MIN_SIZE_KB], DEFAULT_MIN_SIZE_KB, COL_MIN_SIZE_KB, row
-        )
-        if min_size_kb < 0:
-            raise ManifestError(f"Row {row}: {COL_MIN_SIZE_KB} must be >= 0")
-
-        period = _cell_str(values[COL_PERIOD])
-        date_pattern = _cell_str(values[COL_DATE_PATTERN])
-        date_pattern_derived = False
-        if date_pattern == NO_DATE_CHECK:
-            date_pattern = ""
-        elif date_pattern:
-            try:
-                re.compile(date_pattern)
-            except re.error as exc:
-                raise ManifestError(
-                    f"Row {row}: {COL_DATE_PATTERN} is not a valid regex: {exc}"
-                ) from None
+    folder = Path(engagement_dir)
+    rows = [rule_to_json(item) for item in validated(items)]
+    now = info_to_json(info)
+    with nullcontext() if lock_held else engagement_lock(folder):
+        conn = _the_record(folder)
+        held = store.rules(conn, folder) or []
+        first = not store.has_rules_event(conn, folder)
+        # Diffed by the identifier's exact spelling, because that is how
+        # the fold and the store key a rule. A respelling by case is a
+        # removal of the old spelling and an addition of the new, in one
+        # event; diffing by the folded key here would carry the new
+        # spelling and never name the old one, and the record would hold
+        # both for good.
+        was = {str(row["identifier"]): row for row in held}
+        changed = [row for row in rows if was.get(str(row["identifier"])) != row]
+        still_there = {str(row["identifier"]) for row in rows}
+        removed = [str(row["identifier"]) for row in held if str(row["identifier"]) not in still_there]
+        if first:
+            moved = dict(now)
         else:
-            date_pattern = derived_date_pattern(period)
-            date_pattern_derived = bool(date_pattern)
-
-        items.append(
-            RequestItem(
-                identifier=identifier,
-                document=document,
-                period=period,
-                expected_count=expected_count,
-                allowed_extensions=parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
-                min_size_kb=min_size_kb,
-                required_keywords=csv_tuple(values[COL_REQUIRED_KEYWORDS]),
-                any_keywords=csv_tuple(values[COL_ANY_KEYWORDS]),
-                date_pattern=date_pattern,
-                date_pattern_derived=date_pattern_derived,
-                manual_override=_parse_enum(
-                    values[COL_MANUAL_OVERRIDE], Override.ALL, COL_MANUAL_OVERRIDE, row
-                ),
-                row=row,
-            )
-        )
-    # Two issuer rows whose names nest make each other useless and say
-    # nothing about it; the one moment a person can be told is now.
-    check_narrowing_names(items)
-    return items
+            before = info_to_json(store.engagement_info(conn, folder) or EngagementInfo())
+            moved = {name: value for name, value in now.items() if before.get(name) != value}
+        if not (changed or removed or moved):
+            return RulesSaved(changed=(), removed=(), info_fields=(), recorded=False)
+        store.record(conn, folder, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: changed,
+            ledger.REMOVED_KEY: removed,
+            ledger.INFO_KEY: moved,
+        }))
+    return RulesSaved(
+        changed=tuple(str(row["identifier"]) for row in changed),
+        removed=tuple(removed),
+        info_fields=tuple(moved),
+        recorded=True,
+    )
 
 
 # -------------------------------------------------- how a file is written ----
@@ -999,9 +1038,8 @@ def atomic_replacement(path: Path) -> Iterator[Path]:
     update all-or-nothing; the swap is atomic on NTFS and on every POSIX
     filesystem. A crash, a full disk or a killed scheduled task mid-write
     leaves the previous file, never half of the new one. The temp is
-    removed whatever happens. A file Excel holds open raises
-    ``PermissionError`` from the replace, so lock-retry callers see the
-    same exception they always did.
+    removed whatever happens. A file another program holds open raises
+    ``PermissionError`` from the replace, and the caller says so.
     """
     temp = temp_path_for(path)
     try:
@@ -1009,9 +1047,9 @@ def atomic_replacement(path: Path) -> Iterator[Path]:
         os.replace(temp, path)
     finally:
         # The temp's removal must never replace the error that stopped the
-        # write: openpyxl leaves the half-written zip open when save()
+        # write: a writer may leave the half-written file open when it
         # raises, Windows then refuses the delete, and a full disk would
-        # read as "open in Excel" and be retried five times.
+        # read as "held by another program".
         try:
             temp.unlink(missing_ok=True)
         except OSError as exc:
@@ -1028,39 +1066,9 @@ def write_text_atomically(
 
 
 def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
-    """Write ``payload`` as JSON to ``path`` all-or-nothing; every sidecar uses this."""
+    """Write ``payload`` as JSON to ``path`` all-or-nothing; the cache and the settings use this."""
     write_text_atomically(path, json.dumps(payload, indent=indent))
 
-
-def as_text(cell):
-    """Keep a value the tracker wrote from data a string, whatever it starts with.
-
-    openpyxl reads a string beginning with ``=`` as a formula. A client file
-    called ``=SUM scan.pdf`` would then be written into the index as a
-    formula, read back as an empty cell, and shown by Excel as an error.
-    A person's own formulas in the manifest are not touched: this is
-    applied only to cells the tracker fills from data.
-    """
-    if isinstance(cell.value, str) and cell.data_type == "f":
-        cell.data_type = "s"
-    return cell
-
-
-def save_workbook_atomically(wb: Workbook, path: Path) -> None:
-    """Save ``wb`` to ``path`` without ever leaving a half-written file there.
-
-    openpyxl streams the zip straight into the target, so a crash mid-save
-    would leave a manifest that Excel cannot open and :func:`load_rules`
-    rejects; :func:`atomic_replacement` is what makes it whole or nothing.
-
-    Three callers, and there will never be a fourth in a pass: creating an
-    engagement, rolling a year forward, and the one-time slimming of a
-    workbook that still carries the scanner columns. If Excel holds the
-    file the replace raises ``PermissionError`` and the caller says so
-    loudly - there is nothing to defer and nothing to merge (decision 103).
-    """
-    with atomic_replacement(path) as temp:
-        wb.save(temp)
 
 
 def has_routing_rules(item: RequestItem) -> bool:
@@ -1132,20 +1140,8 @@ def summarize(items: Iterable[RequestItem]) -> Summary:
                    outstanding=outstanding, waived=waived, unscanned=unscanned)
 
 
+
 # ----------------------------------------------------------------- check ----
-
-
-@dataclass(frozen=True, slots=True)
-class ManifestCheck:
-    """What a person should know about a manifest before the run relies on it."""
-
-    problems: list[str]   # the manifest cannot be used until these are fixed
-    warnings: list[str]   # legal, but probably not what was meant
-
-    @property
-    def ok(self) -> bool:
-        return not self.problems
-
 
 #: Form numbers that name a family, not a form: a keyword of just the number
 #: matches none of the family's members (``1099`` does not match ``1099-INT``;
@@ -1161,28 +1157,20 @@ BARE_FORM_NUMBER_WARNING = (
 )
 
 
-def check_manifest(path: Path | str) -> ManifestCheck:
-    """Everything load-time validation would say, plus what it would let slide.
+def check_rules(items: Iterable[RequestItem]) -> list[str]:
+    """What a person should know about a list the rules will act on: legal,
+    but probably not what was meant.
 
-    Meant for a button in the app and the top of the scheduled run, so a
-    typo made in Excel is reported with its row now rather than as a failed
-    job hours later. **It reads the workbook**, not the record: the
-    question is what the next import would make of the sheet as it stands,
-    and the record holds the last sheet that loaded. Problems are the
-    loader's own messages; warnings are rows the rules cannot act on - a
-    request with no keyword or date rule never auto-files, a row accepting
-    any file type will count an .exe.
+    The warnings half of what the old manifest check said; there is no
+    problems half, because a list the record holds has been validated on
+    the way in. Rides every ``state`` the app reads and every pass's
+    report, so a request that can never auto-file is seen now rather than
+    at a deadline: a row with no keyword and no typed date rule, a row
+    accepting any file type (an .exe would count), a keyword with no
+    letter or digit in it, and a bare family number that matches none of
+    the family's forms. A waived row is nobody's to act on and is skipped.
     """
-    path = Path(path)
-    problems: list[str] = []
     warnings: list[str] = []
-    items: list[RequestItem] = []
-    try:
-        items = load_rules(path).items
-    except ManifestError as exc:
-        problems.append(str(exc))
-    if not items and not problems:
-        warnings.append(f"{SHEET_NAME} sheet has no request rows")
     for item in items:
         if item.manual_override == Override.WAIVED:
             continue
@@ -1205,277 +1193,4 @@ def check_manifest(path: Path | str) -> ManifestCheck:
                     row=item.row, identifier=item.identifier, keyword=keyword.strip(),
                     example=FORM_FAMILIES[keyword.strip()],
                 ))
-    return ManifestCheck(problems=problems, warnings=warnings)
-
-
-# ------------------------------------------------------------ engagement ----
-
-
-def _parse_yes_no(value: object, label: str, default: bool) -> bool:
-    text = _cell_str(value).lower()
-    if not text:
-        return default
-    if text in (YES, "y", "true", "1"):
-        return True
-    if text in (NO, "n", "false", "0"):
-        return False
-    raise ManifestError(
-        f"{ENGAGEMENT_SHEET_NAME} sheet: {label} must be {YES} or {NO}, got {value!r}"
-    )
-
-
-def _engagement_from_sheet(ws) -> EngagementInfo:
-    raw: dict[str, object] = {}
-    for row in ws.iter_rows(min_row=1, max_col=2, values_only=True):
-        if not row or not _cell_str(row[0]):
-            continue
-        raw[_cell_str(row[0]).lower()] = row[1] if len(row) > 1 else None
-    values: dict[str, object] = {}
-    for label, field_name in ENGAGEMENT_FIELDS:
-        value = raw.get(label.lower())
-        if field_name == "due":
-            values[field_name] = _parse_date(value, label, 0)
-        elif field_name in ("reminders", "active"):
-            values[field_name] = _parse_yes_no(value, label, True)
-        else:
-            values[field_name] = _cell_str(value)
-    return EngagementInfo(**values)
-
-
-def load_engagement_info(path: Path | str) -> EngagementInfo:
-    """The Engagement sheet of ``path``; all defaults if the sheet is absent.
-
-    The one caller that wants this half alone and not the rules: the
-    registry, which asks every folder under the clients root who it is for
-    and must not pay for parsing a request list to find out. Everything
-    that wants both takes :func:`load_rules`, which is one open.
-    """
-    path = Path(path)
-    wb = _open_manifest(path)
-    try:
-        if ENGAGEMENT_SHEET_NAME not in wb.sheetnames:
-            return EngagementInfo()
-        return _engagement_from_sheet(wb[ENGAGEMENT_SHEET_NAME])
-    finally:
-        wb.close()
-
-
-def _write_engagement_sheet(wb: Workbook, info: EngagementInfo) -> None:
-    if ENGAGEMENT_SHEET_NAME in wb.sheetnames:
-        del wb[ENGAGEMENT_SHEET_NAME]
-    ws = wb.create_sheet(ENGAGEMENT_SHEET_NAME)
-    ws.column_dimensions["A"].width = 18
-    ws.column_dimensions["B"].width = 60
-    for row, (label, field_name) in enumerate(ENGAGEMENT_FIELDS, start=1):
-        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
-        value = getattr(info, field_name)
-        if isinstance(value, bool):
-            value = YES if value else NO
-        elif isinstance(value, dt.date):
-            cell = ws.cell(row=row, column=2, value=value)
-            cell.number_format = DATE_FORMAT
-            continue
-        as_text(ws.cell(row=row, column=2, value=value or None))   # a client called "=1+1" is a name (decision 58)
-    note = ws.cell(row=len(ENGAGEMENT_FIELDS) + 2, column=1, value=engagement_sheet_note())
-    note.font = Font(italic=True, color="666666")
-
-
-def write_engagement_info(path: Path | str, info: EngagementInfo) -> None:
-    """Replace the Engagement sheet. Raises PermissionError if Excel has the file."""
-    path = Path(path)
-    wb = load_workbook(path)
-    try:
-        _write_engagement_sheet(wb, info)
-        save_workbook_atomically(wb, path)
-    finally:
-        wb.close()
-
-
-# ---------------------------------------------------------------- slimming ----
-
-#: What the statuses that used to sit in the sheet are read from now,
-#: said to the person who goes looking for them. One sentence, used by the
-#: migration's log line and by ``docs/runbook.md``.
-STATUSES_ARE_ON_THE_REPORT = (
-    "each request's status, Received Date, File Count and Validation Notes are in the "
-    "engagement's record and on its Status Report"
-)
-
-
-def carries_scanner_columns(path: Path | str) -> bool:
-    """Whether this workbook's Requests sheet still has the four columns the
-    scanner used to write. What the migration looks for, and nothing else."""
-    path = Path(path)
-    wb = _open_manifest(path)
-    try:
-        if SHEET_NAME not in wb.sheetnames:
-            return False
-        return bool(legacy_scanner_columns(wb[SHEET_NAME]))
-    finally:
-        wb.close()
-
-
-def read_scanner_columns(path: Path | str) -> dict[str, StatusUpdate]:
-    """Every identifier's scanner columns as an old workbook still holds
-    them, by the identifier as the sheet spells it.
-
-    The migration's reader and nothing else's: the one and only pass that
-    will ever read those cells, before they are deleted. A row with no
-    status at all is left out - a blank cell is not a status, and recording
-    one would make the record answer for a row nothing has looked at.
-    """
-    path = Path(path)
-    wb = _open_manifest(path)
-    try:
-        if SHEET_NAME not in wb.sheetnames:
-            return {}
-        ws = wb[SHEET_NAME]
-        columns = legacy_scanner_columns(ws)
-        if not columns:
-            return {}
-        identifier_at = _header_map(ws, (COL_IDENTIFIER,))[COL_IDENTIFIER]
-        out: dict[str, StatusUpdate] = {}
-        for row in range(2, (ws.max_row or 1) + 1):
-            identifier = _cell_str(ws.cell(row=row, column=identifier_at).value)
-            if not identifier:
-                continue
-            status = _parse_enum(
-                ws.cell(row=row, column=columns[COL_STATUS]).value, Status.ALL, COL_STATUS, row
-            ) if COL_STATUS in columns else ""
-            if not status:
-                continue
-            count_cell = (ws.cell(row=row, column=columns[COL_FILE_COUNT]).value
-                          if COL_FILE_COUNT in columns else None)
-            out[identifier] = StatusUpdate(
-                status=status,
-                file_count=_parse_int(count_cell, 0, COL_FILE_COUNT, row),
-                received_date=(_parse_date(ws.cell(row=row, column=columns[COL_RECEIVED_DATE]).value,
-                                           COL_RECEIVED_DATE, row)
-                               if COL_RECEIVED_DATE in columns else None),
-                validation_notes=(_cell_str(ws.cell(row=row, column=columns[COL_VALIDATION_NOTES]).value)
-                                  if COL_VALIDATION_NOTES in columns else ""),
-            )
-        return out
-    finally:
-        wb.close()
-
-
-def slim_the_workbook(path: Path | str) -> list[str]:
-    """Delete the scanner columns from an old Requests sheet. Returns their names.
-
-    The **one** write this module makes to a workbook that already exists
-    and is not being created or rolled forward, and it happens once per
-    engagement, ever. Loaded without ``data_only`` so a person's own
-    formulas survive, and saved through :func:`save_workbook_atomically` so
-    the file is the old one or the new one and never half of each - which
-    is what makes a migration that Excel interrupts safe to run again.
-
-    ``delete_cols`` moves the cells left with their formatting, so the
-    column widths a person set, the Engagement sheet, a Carried Forward
-    sheet and any sheet of their own are all still there afterwards.
-    Raises ``PermissionError`` if Excel holds the file; the caller says so
-    and the next pass tries again.
-    """
-    path = Path(path)
-    wb = load_workbook(path)        # NOT data_only: a person's formulas survive
-    try:
-        if SHEET_NAME not in wb.sheetnames:
-            return []
-        ws = wb[SHEET_NAME]
-        columns = legacy_scanner_columns(ws)
-        if not columns:
-            return []
-        # Right to left, so deleting one does not move the next.
-        for header in sorted(columns, key=lambda h: columns[h], reverse=True):
-            ws.delete_cols(columns[header])
-        save_workbook_atomically(wb, path)
-        return [h for h in LEGACY_SCANNER_COLUMNS if h in columns]
-    finally:
-        wb.close()
-
-
-# --------------------------------------------------------------- template ----
-
-#: How wide each column of the Requests sheet is drawn, by header - the ten
-#: a person edits, which is all of them since decision 103.
-COLUMN_WIDTHS = {
-    COL_IDENTIFIER: 11,
-    COL_DOCUMENT: 38,
-    COL_PERIOD: 12,
-    COL_EXPECTED_COUNT: 15,
-    COL_ALLOWED_EXTENSIONS: 19,
-    COL_MIN_SIZE_KB: 12,
-    COL_REQUIRED_KEYWORDS: 24,
-    COL_ANY_KEYWORDS: 24,
-    COL_DATE_PATTERN: 28,
-    COL_MANUAL_OVERRIDE: 16,
-}
-
-
-def create_template(
-    path: Path | str,
-    items: Iterable[RequestItem] = (),
-    info: EngagementInfo | None = None,
-    *,
-    form: str = "",
-) -> Path:
-    """Create a fresh manifest workbook at ``path``, optionally seeded with rows.
-
-    Writes the ten columns a person edits and nothing else: the four the
-    scanner used to fill are not part of the sheet any more (decision 103),
-    and what they held is in the record and on the Status Report.
-
-    Always writes the Engagement sheet (defaults when ``info`` is None) so
-    the person opening the workbook sees where the client's details go.
-    Refuses to overwrite an existing file — a live manifest carries a
-    season of somebody's rules and must never be clobbered by a re-run.
-
-    ``form`` is the catalog the rows were cut from, recorded on the
-    Engagement sheet. It is a keyword rather than something carried by the
-    rows because it is one fact about the engagement, not a property of any
-    request: putting it on every row would be a copy per row and a column on
-    the Requests sheet nobody edits. Optional, so every caller that hands
-    over rows alone - the suite, the rollover, and the reports that build a
-    catalog the way an engagement gets it, ``create_template(path,
-    template_items(form, year=year))`` - is unchanged and records a blank.
-    A blank never clears a form ``info`` already carries.
-    """
-    path = Path(path)
-    if path.exists():
-        raise ManifestError(f"Refusing to overwrite existing manifest: {path}")
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = SHEET_NAME
-    for idx, header in enumerate(HEADERS, start=1):
-        cell = ws.cell(row=1, column=idx, value=header)
-        cell.font = Font(bold=True)
-        ws.column_dimensions[get_column_letter(idx)].width = COLUMN_WIDTHS[header]
-    ws.freeze_panes = "A2"
-
-    column = {header: index for index, header in enumerate(HEADERS, start=1)}
-    for row, item in enumerate(items, start=2):
-        cells = {
-            COL_IDENTIFIER: item.identifier,
-            COL_DOCUMENT: item.document,
-            COL_PERIOD: item.period or None,
-            COL_EXPECTED_COUNT: item.expected_count,
-            # An item built in code with no extensions means "anything"; say
-            # so, or the loader would read the blank back as the safe default.
-            COL_ALLOWED_EXTENSIONS: ", ".join(item.allowed_extensions) or ANY_EXTENSION,
-            COL_MIN_SIZE_KB: item.min_size_kb,
-            COL_REQUIRED_KEYWORDS: ", ".join(item.required_keywords) or None,
-            COL_ANY_KEYWORDS: ", ".join(item.any_keywords) or None,
-            COL_DATE_PATTERN: None if item.date_pattern_derived else (item.date_pattern or None),
-            COL_MANUAL_OVERRIDE: item.manual_override or None,
-        }
-        for header, value in cells.items():
-            as_text(ws.cell(row=row, column=column[header], value=value))
-
-    info = info or EngagementInfo()
-    _write_engagement_sheet(wb, replace(info, form=form) if form else info)
-    wb.active = 0
-    path.parent.mkdir(parents=True, exist_ok=True)
-    save_workbook_atomically(wb, path)
-    wb.close()
-    return path
+    return warnings

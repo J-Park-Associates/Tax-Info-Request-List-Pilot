@@ -23,8 +23,8 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from tracker.manifest import HEADERS, EngagementInfo, create_template
-from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
+from tracker.manifest import EngagementInfo, create_engagement
+from tracker.scaffold import scaffold_engagement
 from tracker.templates import BASE_YEAR, template_items
 
 #: The rows the sample documents were written against.
@@ -36,23 +36,6 @@ PRIOR_YEAR = BASE_YEAR - 1
 SCRATCH_CLIENT = "John A. Smith"
 SCRATCH_FIRM = "Example CPA"
 SCRATCH_ENGAGEMENT = f"Smith TY{YEAR}"
-
-
-def col(header: str) -> int:
-    """The 1-based column of ``header`` on the Requests sheet, from HEADERS."""
-    return HEADERS.index(header) + 1
-
-
-def row(**by_header: object) -> list:
-    """A full-width Requests row in HEADERS order from header-name keys.
-
-    Call it with the COL_* constants unpacked (``row(**{COL_IDENTIFIER: "Z01"})``)
-    so a test never retypes the column order the manifest owns.
-    """
-    unknown = set(by_header) - set(HEADERS)
-    if unknown:
-        raise KeyError(f"not manifest headers: {sorted(unknown)}")
-    return [by_header.get(header) for header in HEADERS]
 
 
 def text_pdf(path: Path, lines: list[str]) -> Path:
@@ -322,8 +305,9 @@ def build_scratch_root(root: Path | str) -> Path:
     root = Path(root)
     engagement = root / SCRATCH_ENGAGEMENT
     engagement.mkdir(parents=True, exist_ok=True)
-    create_template(engagement / MANIFEST_FILENAME, DEMO_ITEMS,
-                    EngagementInfo(client=SCRATCH_CLIENT, firm=SCRATCH_FIRM))
+    # The API's own create, not the suite's helper: the build workflow
+    # imports this module without conftest.
+    create_engagement(engagement, DEMO_ITEMS, EngagementInfo(client=SCRATCH_CLIENT, firm=SCRATCH_FIRM))
     build_samples(scaffold_engagement(engagement).shared_dir)
     return root
 

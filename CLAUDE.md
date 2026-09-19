@@ -11,7 +11,7 @@ knowledge graph: every module, what it is for, what it imports, what tests
 cover it, which runtime artifacts it reads and writes, and the rules that cut
 across the code. Reading it costs one file instead of fifty, and it carries
 judgment that grepping cannot recover — why the router refuses to guess, why
-the manifest is the person's file and the machine only reads it, which
+the request list lives in the record and is edited only in the app, which
 import cycle is deliberate.
 
 Confirm it is current before trusting it:
@@ -228,8 +228,9 @@ Conventions worth matching:
   import points to a higher layer; `ledger` and `locking` import nothing of
   the package but each other; `store` imports `ledger`, `locking` and
   `records` and nothing else; `manifest` imports `records` and nothing else
-  (decision 103 took its writes away, and with them its need for the journal
-  and the lock at load time); `runner` never imports `scheduling` or `api`;
+  at load time, and reaches `store`, `ledger` and `locking` at call time
+  (decision 104 gave it the request list's writes); `runner` never imports
+  `scheduling` or `api`;
   the package's `__init__` imports nothing. An import inside a function or a `__main__`
   block is a call-time import and may point anywhere.
 

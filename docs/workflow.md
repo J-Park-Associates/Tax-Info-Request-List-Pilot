@@ -8,8 +8,8 @@ people side.
 
 - **Engagement lead** — owns the engagement's request list: picks the return
   type or rolls last year's list forward, trims and extends it, and fills in
-  the client, share link and due date in the wizard (they land on the
-  manifest's Engagement sheet; nothing else needs registering). Starts the
+  the client, share link and due date in the wizard (they land in the
+  record as the engagement's details; nothing else needs registering). Starts the
   morning on `tracker.runner.STATUS_PAGE_FILENAME` — the whole practice on one
   page, written into the clients folder by every pass and opened by the app's
   **Open Status** button: what each engagement still owes, what is waiting for
@@ -22,7 +22,8 @@ people side.
 ## Starting an engagement
 
 The request list is built from one catalog, `tracker/templates.py`, and
-the manifest an engagement is created with is the readable copy of it.
+an engagement's list is cut from it into the record, where the app's
+editor shows it.
 
 - **Returning client (the default):** roll last year's engagement forward.
   In the desktop app, *New Engagement* opens on the returning-client page;
@@ -34,8 +35,9 @@ the manifest an engagement is created with is the readable copy of it.
   keyword the document itself contains; the wizard defaults it to the
   document name so a custom request can still auto-file.
 
-Either way the result is `_manifest.xlsx` plus the scaffolded `Shared/` and
-`Prepared/` trees, and a `_README.txt` for the client.
+Either way the result is the request list in the record plus the
+scaffolded `Shared/` and `Prepared/` trees, and a `_README.txt` for the
+client.
 
 ## Lifecycle of a request
 
@@ -77,10 +79,10 @@ person types.
 
 ## Four things a person still does in the app
 
-- **Check Manifest** runs the same validation the scheduled job runs before
-  it touches a file: a bad regex or a non-number typed in Excel is named
-  with its row, and rows the rules cannot act on are listed as warnings.
-  Allowed Extensions left blank means the manifest's default
+- **Edit Request List** opens the list in the app: add, change, remove or
+  paste rows and the engagement's details; a bad value is refused when you
+  save, with its row and column named, and rows the rules cannot act on
+  are listed as warnings. Allowed Extensions left blank means the default
   (`tracker.manifest.DEFAULT_EXTENSIONS`); `*` means any type. A Period
   that names a year is the year check; `*` in Date Pattern turns it off.
   Only the first `tracker.content_check.MAX_PAGES` pages of a PDF are read.

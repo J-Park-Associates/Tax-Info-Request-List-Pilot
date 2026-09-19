@@ -7,9 +7,10 @@ clients folder:
     python -m tracker.runner <clients root>
 
 That is the whole scheduled task. There is nothing to register: a folder
-holding ``MANIFEST_FILENAME`` is an engagement, and the manifest's Engagement
-sheet says who the client is and how they are chased. Creating an engagement
-in the desktop app is all it takes for the nightly run to pick it up.
+holding the engagement's own record is an engagement, and the details in
+that record say who the client is and how they are chased. Creating an
+engagement in the desktop app is all it takes for the nightly run to pick
+it up.
 
 **Drafting is weekly, on ``DRAFT_WEEKDAY``.** A reminder that lands in the accountant's
 lap every night is noise that gets ignored; one a week, waiting over the weekend
@@ -20,7 +21,7 @@ step looks at the day. ``--reminders always`` forces a draft on any day and
 
 **Nothing is ever sent.** The draft step writes ``DRAFT_FILENAME`` into
 the engagement folder and stops there. A person opens it, edits it and sends
-it. An engagement whose Engagement sheet says ``Reminders`` set to ``NO`` is left out of
+it. An engagement whose details say ``Reminders`` set to ``NO`` is left out of
 the automated draft entirely — that is a standing decision about that client,
 and neither the schedule nor ``--reminders always`` overrides it. Drafting one by hand for
 anybody, any time, is still just:
@@ -50,7 +51,7 @@ opens that rather than the index, and a view whose replace does not land
 is simply not replaced: the run carries ``view_stale`` and succeeds,
 because the view holds no fact of its own.
 
-One engagement's failure never stops the others. An unreadable manifest, a
+One engagement's failure never stops the others. An unreadable record, a
 scan already running, a drop that would not sort — each is recorded against
 that engagement and the run moves on, because one client's problem must not
 be the reason nine other clients went unprocessed. The command exits non-zero
@@ -69,12 +70,12 @@ from pathlib import Path
 
 from tracker import store
 from tracker.filer import NEEDS_REVIEW, ensure, file_drops, read_index
+from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import (
-    ENGAGEMENT_SHEET_NAME,
     ISO_DATE_HINT,
     ManifestError,
-    check_manifest,
+    check_rules,
     load_manifest,
     summarize,
     write_text_atomically,
@@ -97,9 +98,10 @@ from tracker.reminder import (
     is_unedited,
     write_draft,
 )
-from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
+from tracker.scaffold import scaffold_engagement
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.settings import SettingsError, firm, product_name
+from tracker.store import StoreError
 from tracker.view import VIEW_FILENAME, write_view
 
 log = logging.getLogger("tracker.runner")
@@ -138,8 +140,8 @@ NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
 #: Why an engagement is passed over, and why one cannot be run at all -
 #: worded once, because the pass and the status page must agree about the
 #: same engagement.
-SKIP_INACTIVE = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
-MANIFEST_UNREADABLE = "manifest could not be read: {problem}"
+SKIP_INACTIVE = f"inactive (the engagement's details say {ENGAGEMENT_LABELS['active']}: {NO})"
+RECORD_UNREADABLE = "the record could not be read: {problem}"
 #: What a pass says about a view whose replace did not land. Not an error:
 #: the view carries no fact, so the old one standing costs a person one pass.
 VIEW_NOT_REGENERATED = "status report open (not regenerated)"
@@ -254,7 +256,7 @@ def should_draft(
 ) -> bool:
     """Whether the automated run drafts a reminder for this engagement today.
 
-    ``Reminders`` set to ``NO`` on the manifest's Engagement sheet wins over every
+    ``Reminders`` set to ``NO`` in the engagement's details wins over every
     mode. It is a standing decision that this client is not chased by email,
     and a command line flag is not the place to reverse it —
     ``python -m tracker.reminder`` still drafts one on demand for anybody.
@@ -310,17 +312,16 @@ def run_engagement(
         # already held so it does not try to take it again. A dry run takes
         # none: it writes nothing and must never block a real run.
         with nullcontext() if dry_run else engagement_lock(engagement.path):
-            # **The request list is read first** (decision 103). Everything
-            # below answers from the record, so the pass begins by bringing
-            # the record up to the sheet a person may have edited since the
-            # last one - one journalled import, and nothing at all when the
-            # sheet has not moved.
-            ensure(engagement.path, root, migrate=not dry_run)
-            # A row added or un-waived in Excel gets its folder and its README
-            # line here, on the next pass, rather than when somebody remembers
-            # to re-run scaffold. Idempotent: nothing existing is touched.
+            # **The store is brought up to the record first.** Everything
+            # below answers from it; a rules edit a person saved since the
+            # last pass is already in the journal (decision 104).
+            ensure(engagement.path, root)
+            # A row added or un-waived in the app gets its folder and its
+            # README line here, on the next pass, rather than when somebody
+            # remembers to re-run scaffold. Idempotent: nothing existing is
+            # touched.
             if not dry_run:
-                scaffold_engagement(engagement.path)   # contact line from the Engagement sheet
+                scaffold_engagement(engagement.path)   # contact line from the details
             filed = file_drops(engagement.path, today=today, dry_run=dry_run,
                                lock_held=not dry_run)
             run.filed = len(filed.filed)
@@ -394,8 +395,8 @@ def skipped_because(engagement: Engagement) -> str:
 
     The pass and the status page ask the same question of the same
     engagement, so they ask it in one place: a prior year its successor
-    retired, and a client the Engagement sheet says is finished with, are
-    neither failures nor work outstanding, and neither should read as one.
+    retired, and a client the details say is finished with, are neither
+    failures nor work outstanding, and neither should read as one.
     """
     if engagement.superseded_by:
         return SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)
@@ -407,10 +408,11 @@ def skipped_because(engagement: Engagement) -> str:
 def _worth_a_pass(run: EngagementRun) -> bool:
     """Whether this engagement gets a pass at all; if not, ``run`` says why.
 
-    Skips (rolled forward, inactive) are not failures; a missing folder, an
-    unreadable manifest or a manifest with problems are - named with the
-    row, before a single file is touched, the same check the app's button
-    runs. Warnings ride the report rather than being noticed at a deadline.
+    Skips (rolled forward, inactive) are not failures; a missing folder or
+    an unreadable record are - named before a single file is touched.
+    Warnings - the rows the rules cannot act on, the same list the app's
+    ``state`` carries - ride the report rather than being noticed at a
+    deadline.
     """
     engagement = run.engagement
     run.skipped = skipped_because(engagement)
@@ -420,13 +422,17 @@ def _worth_a_pass(run: EngagementRun) -> bool:
         run.error = f"folder not found: {engagement.path}"
         return False
     if engagement.problem:
-        run.error = MANIFEST_UNREADABLE.format(problem=engagement.problem)
+        run.error = RECORD_UNREADABLE.format(problem=engagement.problem)
         return False
-    checked = check_manifest(engagement.path / MANIFEST_FILENAME)
-    if not checked.ok:
-        run.error = "; ".join(checked.problems)
+    try:
+        run.warnings = check_rules(load_manifest(engagement.path))
+    except (ManifestError, LedgerError, StoreError) as exc:
+        # A folder with no record, a journal line that will not parse, a
+        # store that will not open: the registry names these as the
+        # engagement's problem when it found the folder, and a caller that
+        # handed the folder over directly hears the same sentence here.
+        run.error = RECORD_UNREADABLE.format(problem=exc)
         return False
-    run.warnings = list(checked.warnings)
     if engagement.warning:
         run.warnings.append(engagement.warning)
     return True
@@ -434,8 +440,8 @@ def _worth_a_pass(run: EngagementRun) -> bool:
 
 def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
     """Draft the reminder for a pass that has decided today is the day. Never sends."""
-    # A dry run left the manifest unwritten, so there is nothing on disk
-    # for the drafter to read. Report from the scan we just did in memory
+    # A dry run recorded nothing, so there is nothing in the record for
+    # the drafter to read. Report from the scan we just did in memory
     # rather than reading back statuses that were deliberately not saved.
     if dry_run:
         run.draft_note = (
@@ -445,7 +451,7 @@ def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
         return
 
     engagement = run.engagement
-    draft = draft_reminder(engagement.path)   # reads the Engagement sheet itself
+    draft = draft_reminder(engagement.path)   # reads the engagement's details itself
     if not draft.has_outstanding:
         run.draft_note = NOTHING_OUTSTANDING
         _refresh_stale_draft(draft, engagement.path)
@@ -585,7 +591,7 @@ STATUS_INDEX_UNREADABLE = "{label}: the index could not be read ({error})"
 
 #: The two tables, column by column, in the order they are drawn. There is
 #: no "Deferred writes" column any more: nothing a pass decides waits for
-#: Excel to let go of a workbook (decision 103 took the last one).
+#: anything (decision 103 took the last deferred write).
 STATUS_COLUMNS = (
     "Engagement", "Client", "Outstanding", STATUS_REVIEW_HEADING, "Still syncing",
     "Problem or skipped", "Warnings", "Last pass", "Drafted",
@@ -638,7 +644,7 @@ def _parked_files(report: RunReport) -> tuple[dict[Path, list[ParkedFile]], list
     for run in report.runs:
         engagement = run.engagement
         try:
-            ensure(engagement.path, migrate=False)
+            ensure(engagement.path)
             entries = read_index(engagement.path)
         except Exception as exc:
             problems.append(STATUS_INDEX_UNREADABLE.format(label=engagement.label, error=exc))
@@ -757,7 +763,7 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
     if run.skipped:
         return run           # a prior year's numbers are not this year's work
     if engagement.problem:
-        run.error = MANIFEST_UNREADABLE.format(problem=engagement.problem)
+        run.error = RECORD_UNREADABLE.format(problem=engagement.problem)
         return run
     try:
         summary = summarize(load_manifest(engagement.path))

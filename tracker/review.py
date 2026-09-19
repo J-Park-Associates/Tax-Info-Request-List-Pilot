@@ -75,7 +75,6 @@ from tracker.records import (
     Evidence,
     IndexEntry,
 )
-from tracker.scaffold import MANIFEST_FILENAME
 
 #: How many requests one parked file is offered. Past three a shortlist
 #: stops being read and starts being scrolled, and the fourth-best guess
@@ -297,7 +296,7 @@ def triage(
     """
     engagement_dir = Path(engagement_dir)
     if items is None:
-        items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+        items = load_manifest(engagement_dir)
     return [
         Triage(entry, shortlist_for(entry, items))
         for entry in entries
@@ -314,13 +313,13 @@ if __name__ == "__main__":
         description="Which request might each parked file belong to, and why? "
                     "Read-only: it suggests, and files nothing."
     )
-    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
+    parser.add_argument("engagement_dir", help="the engagement folder")
     ns = parser.parse_args()
 
     from tracker.filer import ensure, read_index
 
     engagement = Path(ns.engagement_dir)
-    ensure(engagement, migrate=False)
+    ensure(engagement)
     parked = triage(engagement, read_index(engagement))
     print(f"{len(parked)} file(s) parked for a person in {engagement}\n")
     for triaged in parked:

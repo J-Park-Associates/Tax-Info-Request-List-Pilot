@@ -656,16 +656,15 @@ if __name__ == "__main__":
     import argparse
 
     from tracker.manifest import load_manifest
-    from tracker.scaffold import MANIFEST_FILENAME
 
     parser = argparse.ArgumentParser(
         description="Where would these files go, and why? Read-only: routes, moves nothing."
     )
-    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
+    parser.add_argument("engagement_dir", help="the engagement folder")
     parser.add_argument("files", nargs="+", help="the dropped file(s) to route")
     ns = parser.parse_args()
 
-    manifest_items = load_manifest(Path(ns.engagement_dir) / MANIFEST_FILENAME)
+    manifest_items = load_manifest(Path(ns.engagement_dir))
     for decision in route_files([Path(f) for f in ns.files], manifest_items):
         where = decision.identifier or "Needs Review"
         print(f"{decision.path.name}\n    -> {where}: {decision.reason}")

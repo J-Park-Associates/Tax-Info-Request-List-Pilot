@@ -75,7 +75,7 @@ def test_the_index_layout_names_exactly_the_rows_fields_in_order():
 
 def test_the_identifier_column_is_the_one_the_manifest_asks_for():
     """The index is joined back to the request list by that header, so the
-    two sheets spell it once between them."""
+    two tables spell it once between them."""
     assert INDEX_LAYOUT["identifier"][0] is manifest.COL_IDENTIFIER
     assert manifest.HEADERS[0] is records.COL_IDENTIFIER
 
@@ -130,8 +130,8 @@ def test_every_rule_and_place_is_in_the_list_that_names_them():
 
 
 def test_the_engagement_labels_name_exactly_the_engagement_records_fields():
-    """The sheet is written and read back by label, so a field with no label
-    is a cell nobody writes and a label with no field is a row nobody reads."""
+    """The details are shown and edited by label, so a field with no label
+    is a value nobody sees and a label with no field is a box nobody reads."""
     names = tuple(f.name for f in fields(EngagementInfo))
 
     assert tuple(field for _, field in ENGAGEMENT_FIELDS) == names
@@ -147,15 +147,16 @@ def test_the_engagement_labels_name_exactly_the_engagement_records_fields():
 #: re-exports is that these exact names go on working, and a list computed
 #: from the modules would pass whatever they happen to say today.
 RE_EXPORTED = {
-    filer: ("IndexEntry", "INDEX_LAYOUT", "ledger_key",
+    filer: ("IndexEntry", "ledger_key",
             "Evidence", "format_evidence", "parse_evidence"),
     content_check: ("Evidence", "EVIDENCE_RULES", "EVIDENCE_PLACES",
                     "RULE_REQUIRED", "RULE_ANY", "RULE_DATE", "RULE_FILENAME", "RULE_REFUSED",
                     "WHERE_TITLE", "WHERE_FIRST_PAGE", "WHERE_FOOTER", "WHERE_DEEP",
                     "format_evidence", "parse_evidence"),
     router: ("Routing", "EVIDENCE_CONTENT"),
-    manifest: ("StatusUpdate", "EngagementInfo", "COL_IDENTIFIER", "YES", "NO",
-               "ENGAGEMENT_FIELDS", "ENGAGEMENT_LABELS", "ENGAGEMENT_NOTES", "ENGAGEMENT_HELP"),
+    # The manifest's copies of the details' field table and the yes/no
+    # words went with decision 104: nothing read them from there.
+    manifest: ("StatusUpdate", "EngagementInfo", "COL_IDENTIFIER"),
 }
 
 
