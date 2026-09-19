@@ -23,9 +23,10 @@ as the reminder and the rollover pass it. The one thing written is the
 optional report file, which is refused inside the repository: client folder
 names would otherwise land in a commit.
 
-**What "learned" means, and the soft spot in it.** The Engagement sheet does
-not record which form type the engagement was created from, so a manifest row
-cannot be compared against *its* catalog. It is compared instead against every
+**What "learned" means, and the soft spot in it.** The Engagement sheet has
+recorded which form type the engagement was created from since decision 86,
+but this tool does not read it, so a manifest row is not compared against
+*its* catalog alone. It is compared instead against every
 catalog in ``FORM_TYPES`` holding a row with the same Identifier and Document,
 and the report names which ones matched; a keyword is learned when the
 manifest carries it and no matching catalog row does. Comparing against all of

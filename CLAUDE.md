@@ -17,12 +17,16 @@ deliberate.
 Confirm it is current before trusting it:
 
 ```
-python tools/repo_map.py check      # exit 0 = current, 1 = stale (names the files)
+python tools/repo_map.py check      # exit 0 = current, 1 = stale (names the files or the facts)
 ```
 
-If `check` says stale, refresh it rather than working from a map you know is
-wrong. Only re-scan the repository directly for something the map does not
-cover — then consider whether that gap belongs in the curated layer.
+`check` compares hashes, then rebuilds the derived layer and compares it fact
+for fact with the committed map, then renders the page and compares that: a
+hand-edited derived field, a forged edge, a stale `repo-map.md` or a new source
+file you have not `git add`-ed all fail it. If `check` says stale, refresh it
+rather than working from a map you know is wrong. Only re-scan the repository
+directly for something the map does not cover — then consider whether that
+gap belongs in the curated layer.
 
 Useful lookups:
 
@@ -41,7 +45,19 @@ difference is the point:
 - **no dedicated test file** — said plainly where it is true; the map names
   each one.
 
-An "exercised by" edge is never evidence a module is tested.
+An "exercised by" edge is never evidence a module is tested. The owner edge is
+drawn from the file names, so a test that drives its module through `runpy`
+or a subprocess still counts as its coverage.
+
+**Read the import edges precisely too.** `imports` is a load-time dependency.
+**imports at call time** is an import inside a function or a `__main__` block:
+it runs when called, not when the module loads, so a cycle that closes through
+one is a cycle only at call time. `from tracker import ledger` draws both the
+module (`tracker/ledger.py`) and the package it executes (`tracker/__init__.py`).
+The one deliberate cycle, filer ↔ scanner inside `_rescan()`, is a curated
+`deliberate_cycle` edge and is stated on both nodes; the one load-time cycle,
+`tracker/__init__.py` → `manifest.py` → `from tracker import ledger`, is stated
+on the package's node.
 
 ## Keeping the map current
 
@@ -136,10 +152,10 @@ reaches the router with the document: nothing is filed on a name (decision
 is scored — and written down — should be the rules, not the firm's naming.
 
 ```
-python tools/backtest.py collect <folder>    # a skeleton expectations file for a person to fill in
-python tools/backtest.py run <folder>        # route the corpus, score it, time it
-python tools/backtest.py record              # make that report's agreement the baseline
-python tools/backtest.py check               # exit 1 when a report is below the baseline
+python tools/backtest.py collect <folder> --catalog 1040 --year 2025 --out <file>   # a skeleton expectations file for a person to fill in
+python tools/backtest.py run <folder> --out <report>    # route the corpus, score it, time it
+python tools/backtest.py record --report <report>       # make that report's agreement the baseline
+python tools/backtest.py check --report <report>        # exit 1 when the report is below the baseline
 ```
 
 The corpus, its expectations.csv and the report are the firm's: they never

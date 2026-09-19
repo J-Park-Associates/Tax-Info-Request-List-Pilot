@@ -67,10 +67,11 @@ position among the rows the expectations file lists, counting from one.
 
 ::
 
-    python tools/backtest.py run <folder>        # route the corpus and score it
-    python tools/backtest.py collect <folder>    # a skeleton expectations file to fill in
-    python tools/backtest.py record              # record this report's agreement
-    python tools/backtest.py check               # exit 1 if a report is below the baseline
+    python tools/backtest.py run <folder> --out <report>      # route the corpus and score it
+    python tools/backtest.py collect <folder> --catalog 1040 --year 2025 --out <file>
+                                                              # a skeleton expectations file to fill in
+    python tools/backtest.py record --report <report>         # record this report's agreement
+    python tools/backtest.py check --report <report>          # exit 1 if it is below the baseline
 """
 
 from __future__ import annotations
