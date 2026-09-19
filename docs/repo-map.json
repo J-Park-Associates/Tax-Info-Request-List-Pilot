@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 110,
-    "edges": 532,
-    "reused": 89
+    "edges": 533,
+    "reused": 85
   },
   "node_types": [
     "artifact",
@@ -1128,8 +1128,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3f5b7456b7acfb4f",
-      "lines": 1331,
+      "sha256": "9be3955e527b29f7",
+      "lines": 1372,
       "cli": "python -m tracker.store",
       "exports": [
         "BUSY_TIMEOUT_MS",
@@ -1157,6 +1157,7 @@
         "follow_the_journal",
         "forget",
         "has_rules_event",
+        "key_root",
         "learned_keywords",
         "open",
         "path_for",
@@ -1181,7 +1182,7 @@
         "ENGAGEMENTS_CSV": "'engagements.csv'"
       },
       "role": "The store: one SQLite file per clients root (STORE_FILENAME) on the designated machine's local disk, beside the settings file, holding engagements, requests, statuses, learned_keywords, documents and events for every engagement under that root, all folded from the journal and from nothing else. Owns the file name, the schema and its user_version (bumped by decision 104 when the workbook digest column left), path_for(), open(), connect() / close() (one connection per process, to the file TRACKER_STORE names or the one beside the settings file), documents(), rules(), statuses(), learned_keywords() and engagement_info() (what the readers answer from), record() (the journal first, then one immediate transaction), sync() and follow_the_journal() (replay the lines the store has not applied, building the engagement from the journal alone where it has none), rebuild_engagement() (delete and build again from the journal), forget() (drop a failed create's row), check() (every disagreement with the journal, as sentences), state() (current / behind / unknown, from the journal's head alone), export() (three CSVs on demand, every cell text, a cell that begins like a formula behind an apostrophe) and the CLI that rebuilds, checks, exports or states a whole clients root.",
-      "notes": "Decision 101 built it and had nothing read it; 102 moved the index into it; 103 the statuses and the person's rules; 104 took away the last thing that was passed in from anywhere else. WHERE IT LIVES IS THE POINT: never under the clients root and never in an engagement folder, because those sync and a synced database file is a corrupted one - decision 87's finding, kept, with the owner's 2026-09-19 decision adding the local database the other side of that line. The journal stays in the folder and travels with the engagement; the store is local and disposable, and the arrow only points one way - the store is rebuilt from the journal, never the reverse. THE GUARANTEE is journal-then-apply: record() refuses outside the engagement lock and refuses a retired event name by sentence, appends each event through append() and only then folds them in one BEGIN IMMEDIATE, so a machine that dies between the two leaves the journal ahead and sync() replays the difference. The fold has one owner, apply() in tracker/ledger.py, so a line-at-a-time replay and a whole-file fold cannot differ. ONE CONNECTION PER PROCESS: connect() opens it on first use and every writer deep in the package asks for it by name; close() lets it go, which Windows needs before a database file can be deleted. TRACKER_STORE overrides where it is - the suite points every test at its own file. It imports records, ledger and locking and nothing else of the package at load time - narrower than its layer allows, so the database the readers answer from never depends on the modules that walk folders and move files; connect() reads tracker/settings.py at call time and the CLI imports the registry at call time to find the folders. The gate is check(), run by the autouse fixture in tests/conftest.py over every engagement the suite leaves behind: the documents, the statuses and the rules are all compared with ledger.replay() over the journal, always - an engagement with no rules event has none on either side. Decision 104: the requests table is the fold of rules_changed (and of the rules_imported lines older journals carry, which _apply_rules_event folds the same way); rules() returns [] for an engagement the store holds and None only for one it does not; has_rules_event() is what a save is a difference from; rebuild_engagement() takes nothing but the journal (the workbook-fed fallback, the sequence number workbook rows were marked with, the digest column and its bookkeeping all went, and the schema guard that refused a request row whose fields had moved is a test in tests/test_store.py now); state() has one stamp, the journal's head, because a rules edit is an event; forget() is what a failed create leaves behind - nothing - and writes nothing to any journal. A version-1 file is refused by the sentence open() has always had, and is deleted and rebuilt: the store is disposable and no store at the office predates this chain. root_for() is the one rule for the key an engagement is stored under, and _engagement_row() answers a caller with a root by the exact key and everyone else by the one stored path the folder ends with (decision 103's end-to-end finding). RULE_COLUMNS is built from records.RULE_FIELDS; _rule_from_sql() hands the list fields back as lists and the flag as a boolean, the shape the API hands the editor."
+      "notes": "Decision 101 built it and had nothing read it; 102 moved the index into it; 103 the statuses and the person's rules; 104 took away the last thing that was passed in from anywhere else. WHERE IT LIVES IS THE POINT: never under the clients root and never in an engagement folder, because those sync and a synced database file is a corrupted one - decision 87's finding, kept, with the owner's 2026-09-19 decision adding the local database the other side of that line. The journal stays in the folder and travels with the engagement; the store is local and disposable, and the arrow only points one way - the store is rebuilt from the journal, never the reverse. THE GUARANTEE is journal-then-apply: record() refuses outside the engagement lock and refuses a retired event name by sentence, appends each event through append() and only then folds them in one BEGIN IMMEDIATE, so a machine that dies between the two leaves the journal ahead and sync() replays the difference. The fold has one owner, apply() in tracker/ledger.py, so a line-at-a-time replay and a whole-file fold cannot differ. ONE CONNECTION PER PROCESS: connect() opens it on first use and every writer deep in the package asks for it by name; close() lets it go, which Windows needs before a database file can be deleted. TRACKER_STORE overrides where it is - the suite points every test at its own file. It imports records, ledger and locking and nothing else of the package at load time - narrower than its layer allows, so the database the readers answer from never depends on the modules that walk folders and move files; connect() reads tracker/settings.py at call time and the CLI imports the registry at call time to find the folders. The gate is check(), run by the autouse fixture in tests/conftest.py over every engagement the suite leaves behind: the documents, the statuses and the rules are all compared with ledger.replay() over the journal, always - an engagement with no rules event has none on either side. Decision 104: the requests table is the fold of rules_changed (and of the rules_imported lines older journals carry, which _apply_rules_event folds the same way); rules() returns [] for an engagement the store holds and None only for one it does not; has_rules_event() is what a save is a difference from; rebuild_engagement() takes nothing but the journal (the workbook-fed fallback, the sequence number workbook rows were marked with, the digest column and its bookkeeping all went, and the schema guard that refused a request row whose fields had moved is a test in tests/test_store.py now); state() has one stamp, the journal's head, because a rules edit is an event; forget() is what a failed create leaves behind - nothing - and writes nothing to any journal. A version-1 file is refused by the sentence open() has always had, and is deleted and rebuilt: the store is disposable and no store at the office predates this chain. key_root() is the one rule for the key an engagement is stored under (root_for() is its name for a caller with no root in hand): the root the settings file names whenever the folder is under it - the record's own root, which wins over the root a caller typed, so a pass run on one client's folder and a check given the drive key the engagement as the app does - else the caller's root, else the folder's parent. _engagement_row() answers by that exact key, and under the recorded root by nothing else: a folder there with no row is one the store has not met, never another engagement whose key its path ends with (decision 106; the pre-integration audit found Clients/Archive/Smith 2025 answered as Clients/Smith 2025's row). The tail - the one stored path the folder ends with, longest wins - answers only where no recorded root covers the folder, which is decision 103's end-to-end finding on a machine with no settings file. RULE_COLUMNS is built from records.RULE_FIELDS; _rule_from_sql() hands the list fields back as lists and the flag as a boolean, the shape the API hands the editor."
     },
     {
       "id": "tracker/templates.py",
@@ -1403,8 +1404,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2de72eb339226d90",
-      "lines": 344,
+      "sha256": "a71fc878d62914ea",
+      "lines": 345,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1421,7 +1422,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "3bc1ffc80f3af715",
+      "sha256": "1455de5c39bcbcb5",
       "lines": 736,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1439,7 +1440,7 @@
       "id": "docs/storage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7cdbede1daedc5e1",
+      "sha256": "0f6c6603fd0a39f7",
       "lines": 262,
       "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, and what each of the four stages took away.",
       "notes": "Written with decision 101 and finished with 104. It is the page to read before touching storage. The migrations of decisions 102 and 103, which it described step by step, are gone from the tree and from this page; the History section says they existed and where their reading copy is."
@@ -2834,8 +2835,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "aa28f9cff2e9f65e",
-      "lines": 670,
+      "sha256": "a0cc27426c460b94",
+      "lines": 737,
       "exports": [
         "DAY1",
         "DAY2",
@@ -2849,12 +2850,15 @@
         "drop",
         "edit_rules",
         "engagement",
+        "recorded_root",
         "root",
         "rows",
         "said",
         "test_a_failed_create_is_forgotten_and_a_retired_event_is_refused",
         "test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it_up",
+        "test_a_folder_nested_under_the_clients_root_is_never_another_engagement",
         "test_a_pass_and_the_command_line_key_one_engagement_the_same_way",
+        "test_a_pass_run_on_one_clients_folder_keys_under_the_recorded_root",
         "test_a_reader_finding_no_rows_at_all_builds_them_from_the_journal_alone",
         "test_a_rebuild_from_the_journal_alone_equals_the_store",
         "test_a_rebuild_run_twice_says_and_holds_exactly_the_same",
@@ -4996,6 +5000,12 @@
     {
       "from": "tests/test_store.py",
       "to": "tracker/scanner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_store.py",
+      "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
     },

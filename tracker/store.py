@@ -402,19 +402,8 @@ def _transaction(conn: sqlite3.Connection):
     conn.execute("COMMIT")
 
 
-def root_for(engagement_dir: Path | str) -> Path:
-    """The clients root this engagement's rows are keyed under.
-
-    An engagement is named in the ``engagements`` table by its path
-    *relative to the clients root*, so that a database copied to another
-    machine or another drive letter still names the same folders. Almost
-    nothing in the package carries that root around - a pass is handed an
-    engagement, not a registry - so it is worked out here, once: the root
-    the settings file names when this folder is under it, and the folder's
-    own parent when there is no root recorded or the folder is somewhere
-    else (a test's temporary tree, a folder somebody named by hand). Every
-    caller in one process gets the same answer for one folder, which is all
-    the key has to be.
+def _recorded_root_over(folder: Path) -> Path | None:
+    """The clients root the settings file names, when ``folder`` is under it.
 
     :mod:`tracker.settings` is imported at call time for the same reason
     :func:`store_path` does it: this module must not pull in, at load time,
@@ -422,15 +411,55 @@ def root_for(engagement_dir: Path | str) -> Path:
     """
     from tracker.settings import clients_root
 
-    folder = Path(engagement_dir)
     root = clients_root()
     if root is None:
-        return folder.parent
+        return None
     try:
         folder.resolve().relative_to(root.resolve())
     except (OSError, ValueError):
-        return folder.parent
+        return None
     return root
+
+
+def key_root(engagement_dir: Path | str, root: Path | str | None = None) -> Path:
+    """The clients root this engagement's rows are keyed under.
+
+    An engagement is named in the ``engagements`` table by its path
+    *relative to the clients root*, so that a database copied to another
+    machine or another drive letter still names the same folders. Almost
+    nothing in the package carries that root around - a pass is handed an
+    engagement, not a registry - so it is worked out here, once, and the
+    same way for every caller, because two spellings of one folder must
+    never be two rows:
+
+    - **the root the settings file names, when this folder is under it**
+      (decision 106) - the record's own root, and it wins over the root a
+      caller has in hand. The runner is handed a root on its command line
+      and ``check`` on its own, and either may be a wider folder, or a
+      narrower one somebody ran a single client's folder through; the key
+      is the same whichever was typed;
+    - else the ``root`` the caller was given, when it has one;
+    - else the folder's own parent (a test's temporary tree, a folder
+      somebody named by hand, a machine with no settings file). Keying by
+      the parent is keying by name, and decision 104 records what that
+      means on such a machine: two folders of one name under different
+      parents are one row. The runner and the app never work that way,
+      because they always have a root.
+    """
+    folder = Path(engagement_dir)
+    recorded = _recorded_root_over(folder)
+    if recorded is not None:
+        return recorded
+    if root is not None:
+        return Path(root)
+    return folder.parent
+
+
+def root_for(engagement_dir: Path | str) -> Path:
+    """The clients root a caller with no root in hand keys this folder
+    under: :func:`key_root` with nothing else known. The name the readers
+    have always called it by."""
+    return key_root(engagement_dir)
 
 
 def engagement_path(root: Path | str, engagement_dir: Path | str) -> str:
@@ -451,28 +480,40 @@ def _engagement_row(conn: sqlite3.Connection, engagement_dir: Path | str,
     **One rule for every caller.** The stored key is relative to a
     clients root, and not every caller has the same root in hand: the
     runner has the one it was run against, the command line the one it
-    was given, and a reader deep in the package only the folder. So a
-    caller that knows a root is answered by the exact key first, and
-    everyone is answered by the tail: the one stored path the folder
-    ends with, on a folder boundary. The longest match wins, which is
-    the only one that can be right - two different stored paths cannot
-    both be the tail of one folder unless one is the tail of the other,
-    and the longer is then the engagement and the shorter is its parent.
+    was given, and a reader deep in the package only the folder. So every
+    caller is answered by the exact key under :func:`key_root` first.
 
-    Why the tail is not optional: an end-to-end run after decision 103
-    found the pass keying one engagement by the root it was run against
-    while ``check`` looked it up by the root on its command line, and the
-    two disagreed on a machine with no settings file. Two spellings of one
-    folder must never be two rows.
+    **Under the recorded root, the exact key is the only answer**
+    (decision 106). A folder under the clients root the settings file
+    names is exactly one stored path, and a folder there with no row is
+    an engagement the store has not met - never another engagement whose
+    key its path happens to end with. The pre-integration audit of
+    2026-09-19 found ``Clients/Archive/Smith 2025``, never seen, answered
+    as ``Clients/Smith 2025``'s row: its reads refused the journal as
+    truncated, and a longer journal would have been applied onto the
+    other engagement. The store cannot tell "one folder named by a wider
+    root" from "a different folder nested under the root" by the paths
+    alone, so under the recorded root it does not try.
+
+    Where no recorded root covers the folder, everyone is answered by the
+    tail: the one stored path the folder ends with, on a folder boundary.
+    The longest match wins, which is the only one that can be right - two
+    different stored paths cannot both be the tail of one folder unless
+    one is the tail of the other, and the longer is then the engagement
+    and the shorter is its parent. Why the tail stays: an end-to-end run
+    after decision 103 found the pass keying one engagement by the root it
+    was run against while ``check`` looked it up by the root on its
+    command line, and the two disagreed on a machine with no settings
+    file. Two spellings of one folder must never be two rows.
     """
-    if root is not None:
-        exact = conn.execute("SELECT * FROM engagements WHERE path = ?",
-                             (engagement_path(root, engagement_dir),)).fetchone()
-        if exact is not None:
-            return exact
-    folder = Path(engagement_dir).resolve().as_posix()
+    folder = Path(engagement_dir)
+    exact = conn.execute("SELECT * FROM engagements WHERE path = ?",
+                         (engagement_path(key_root(folder, root), folder),)).fetchone()
+    if exact is not None or _recorded_root_over(folder) is not None:
+        return exact
+    resolved = folder.resolve().as_posix()
     matches = [row for row in conn.execute("SELECT * FROM engagements")
-               if folder == row["path"] or folder.endswith("/" + row["path"])]
+               if resolved == row["path"] or resolved.endswith("/" + row["path"])]
     return max(matches, key=lambda row: len(row["path"]), default=None)
 
 
@@ -959,7 +1000,7 @@ def sync(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str)
     against anything. It is refused by name, and a rebuild is the answer.
     """
     engagement_dir = Path(engagement_dir)
-    rel = engagement_path(root, engagement_dir)
+    rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
     row = _engagement_row(conn, engagement_dir, root)
     if row is None:
         raise StoreError(f"{rel}: the store does not hold this engagement; rebuild it")
@@ -995,7 +1036,7 @@ def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_di
     details all come out of the lines.
     """
     engagement_dir = Path(engagement_dir)
-    rel = engagement_path(root, engagement_dir)
+    rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
     row = _engagement_row(conn, engagement_dir, root)
     if row is not None:
         # The journal's digest first, and the lines only if it moved: this
@@ -1040,7 +1081,7 @@ def rebuild_engagement(
     record grow every time somebody checked it.
     """
     engagement_dir = Path(engagement_dir)
-    rel = engagement_path(root, engagement_dir)
+    rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
     events = ledger.read_events(engagement_dir)
     head = ledger.head(engagement_dir)
     built_at = ledger.stamp()
@@ -1082,7 +1123,7 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     event has none on either side.
     """
     name = Path(engagement_dir).name
-    rel = engagement_path(root, engagement_dir)
+    rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
     engagement = _engagement_row(conn, engagement_dir, root)
     folded = ledger.replay(ledger.read_events(engagement_dir))
     if engagement is None:

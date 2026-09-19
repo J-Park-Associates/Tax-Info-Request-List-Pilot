@@ -110,7 +110,7 @@ any other version is refused by name rather than opened hopefully.
 
 | table | what it holds |
 |---|---|
-| `engagements` | one row per engagement folder, keyed by its path relative to the clients root with forward slashes: the engagement's own details, the journal's head as it was when the rows were built, how many lines have been applied, and when |
+| `engagements` | one row per engagement folder, keyed by its path relative to the clients root with forward slashes — the root the settings file names whenever the folder is under it, whatever root a caller typed, so one folder is one key for the app, the scheduled pass and the command line alike (decision 106); a caller's own root, or the folder's parent, only on a machine with no settings file. The engagement's own details, the journal's head as it was when the rows were built, how many lines have been applied, and when |
 | `requests` | the person's rules, one row per identifier — everything the request list's own record holds that is not a status, in the order the person gave the rows. Tuples (keywords, extensions) are JSON text |
 | `statuses` | what the last scan said about one identifier: status, received date, file count, validation notes, and the sequence number that set them |
 | `documents` | the index: one row per preserved original, every column the index row has, plus the identity it is keyed under, the place it holds in the index's own order, and the sequence number that last wrote it |

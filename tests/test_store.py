@@ -668,3 +668,70 @@ def test_a_pass_and_the_command_line_key_one_engagement_the_same_way(root, engag
     assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 1
     assert store.check(conn, root.parent, engagement) == []
     assert next(i.status for i in load_manifest(engagement) if i.identifier == "A01") == Status.RECEIVED
+
+
+@pytest.fixture
+def recorded_root(root, tmp_path, monkeypatch):
+    """The clients root as the office has it: named in the settings file.
+
+    The suite's other tests run with no settings file, which is a machine
+    keying by the folder's parent; these run the way the app and the
+    scheduled pass do, with the record's own root written down."""
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    set_clients_root(root)
+    return root
+
+
+def test_a_folder_nested_under_the_clients_root_is_never_another_engagement(recorded_root, engagement):
+    """Decision 106. ``Clients/Archive/Smith 2025`` ends the way
+    ``Clients/Smith 2025``'s key does, and the pre-integration audit of
+    2026-09-19 found the store answering the one as the other: its reads
+    refused the journal as truncated, and a longer journal would have been
+    applied onto the other engagement's rows. Under the recorded root a
+    folder is exactly one key, and a folder with no row is one the store
+    has not met."""
+    from tracker.manifest import load_manifest
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    conn = store.connect()
+    assert store._engagement_row(conn, engagement)["path"] == "Smith Family 2025"
+
+    deep = recorded_root / "Archive" / "Smith Family 2025"
+    deep.mkdir(parents=True)
+    assert store._engagement_row(conn, deep) is None                       # not met, never a tail
+    assert store._engagement_row(conn, deep, recorded_root) is None
+    assert store.state(conn, deep, ledger_head_now="") == store.UNKNOWN
+
+    nested = make_engagement(deep, ITEMS)                               # now it is its own engagement
+    assert [r["path"] for r in conn.execute("SELECT path FROM engagements ORDER BY path")] == [
+        "Archive/Smith Family 2025", "Smith Family 2025",
+    ]
+    assert read_index(nested) == []
+    assert [e.original_name for e in read_index(engagement)] == ["w2.pdf"]
+    assert store.check(conn, recorded_root, engagement) == []
+    assert store.check(conn, recorded_root, nested) == []
+    assert {i.identifier for i in load_manifest(nested)} == {i.identifier for i in ITEMS}
+
+
+def test_a_pass_run_on_one_clients_folder_keys_under_the_recorded_root(recorded_root, engagement):
+    """Decision 106: the root on the command line is not the key when the
+    settings file names a wider one. A pass run over one client's folder,
+    or ``check`` given the drive, keys the engagement exactly as the app
+    and the scheduled pass do - one folder, one row, whichever root was
+    typed - because under the recorded root nothing but the exact key
+    answers, and two spellings of one folder must never be two rows."""
+    from tracker.runner import REMINDERS_NEVER, main
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    assert main([str(engagement), "--reminders", REMINDERS_NEVER]) == 0   # the client's folder, not the root
+    conn = store.connect()
+    assert [r["path"] for r in conn.execute("SELECT path FROM engagements")] == ["Smith Family 2025"]
+    assert store.check(conn, engagement, engagement) == []                # the same narrow root
+    assert store.check(conn, recorded_root.parent, engagement) == []      # a wider one
+    assert store.check(conn, recorded_root, engagement) == []             # the recorded one
+    assert [e.original_name for e in read_index(engagement)] == ["w2.pdf"]
+    assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 1
