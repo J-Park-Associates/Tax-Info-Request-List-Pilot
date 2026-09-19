@@ -105,6 +105,10 @@ half a person needs. It decides nothing - every verdict above is reached
 exactly as it was before there was a record - and it is what the index's
 Evidence column, and the person working the review queue, then read.
 
+The decision itself - :class:`tracker.records.Routing` - lives in
+:mod:`tracker.records` since decision 100: the decision is a record, and this
+module is the deciding. It is re-exported here for one release.
+
 Routing is read-only. Moving, renaming and indexing happen in
 :mod:`tracker.filer`, which uses the decisions made here. The verdicts the
 router reaches on the way are left in the engagement's content cache,
@@ -115,18 +119,11 @@ working copy's new name instead of reading the document a second time.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import reasons
 from tracker.content_check import (
-    RULE_ANY,
-    RULE_FILENAME,
-    RULE_REFUSED,
-    RULE_REQUIRED,
-    WHERE_TITLE,
     ContentCache,
-    Evidence,
     Extraction,
     any_keyword_matched,
     contains_keyword,
@@ -134,12 +131,28 @@ from tracker.content_check import (
     extract,
     form_family,
     form_key,
-    format_evidence,
     rules_fingerprint,
     says,
     self_named_forms,
 )
 from tracker.manifest import Override, RequestItem, has_routing_rules, narrowing_rows
+
+# The routing decision is a record and lives in tracker/records.py
+# (decision 100); this module is the deciding. Routing and EVIDENCE_CONTENT
+# are re-exported from here, so every `from tracker.router import Routing`
+# still resolves to the same class; kept for one release; import from
+# tracker.records.
+from tracker.records import (
+    EVIDENCE_CONTENT,
+    RULE_ANY,
+    RULE_FILENAME,
+    RULE_REFUSED,
+    RULE_REQUIRED,
+    WHERE_TITLE,
+    Evidence,
+    Routing,
+    format_evidence,
+)
 from tracker.validators import (
     PdfVerdictCache,
     check_file,
@@ -154,12 +167,6 @@ UNMATCHED = "matched no request"
 AMBIGUOUS = "matched more than one request"
 #: OCR text matched a request's looser keywords only; not enough to file on.
 OCR_ONLY = "matched only by OCR text"
-#: What a routing decision rested on. There is one: the document's own
-#: words. A file name was a tier of its own until decision 92 and is not
-#: one any more, because nothing is filed on a name - what the name says
-#: is kept as evidence for a person (``content_check.RULE_FILENAME``,
-#: which is what an index row carries and is untouched), never as a tier.
-EVIDENCE_CONTENT = "content"
 PENDING = reasons.PENDING_SYNC.format()
 #: No word of the document could be read, so nothing but its name is left
 #: and a name files nothing. Worded once, in :mod:`tracker.reasons`.
@@ -184,41 +191,6 @@ _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 #: What a file name uses between words, read as spaces; a hyphen stays,
 #: because "1098-T.pdf" names the form it names.
 _SEPARATORS = re.compile(r"[^a-z0-9-]+")
-
-
-@dataclass(frozen=True, slots=True)
-class Routing:
-    """Where one dropped file belongs, and why."""
-
-    path: Path
-    identifier: str | None          # None → needs human review
-    reason: str                     # plain English, safe to show a client
-    candidates: tuple[str, ...] = ()  # identifiers that accepted the file
-    evidence: str = ""              # EVIDENCE_CONTENT | ""
-    #: What each candidate's evidence actually was, by identifier: the
-    #: keywords that matched, where they were said, the tier-2 reason that
-    #: refused the file. ``evidence`` above says which *tier* the decision
-    #: rested on and nothing more; this says why, and only for the
-    #: identifiers the decision names, so the index's cell stays readable.
-    evidence_record: dict[str, tuple[Evidence, ...]] = field(default_factory=dict)
-    pending: bool = False           # still syncing; leave it where it is
-    #: The *other* requests one document belongs to (decision 94, the
-    #: owner's): a page that prints two forms' own names is two documents,
-    #: and each form's request gets a working copy of it. Empty on every
-    #: ordinary decision, which is nearly all of them - ``identifier`` is
-    #: the first request either way, so a reader that knows only about it
-    #: reads a real request and a real filing, never half a sentence.
-    also: tuple[str, ...] = ()
-
-    @property
-    def routed(self) -> bool:
-        return self.identifier is not None
-
-    @property
-    def filed_to(self) -> tuple[str, ...]:
-        """Every request this document is filed under, in the order the
-        page names their forms; empty when it is not filed at all."""
-        return () if self.identifier is None else (self.identifier, *self.also)
 
 
 def _filename_evidence(path: Path, item: RequestItem) -> tuple[Evidence, ...]:

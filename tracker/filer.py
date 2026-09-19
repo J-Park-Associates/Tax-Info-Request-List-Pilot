@@ -78,6 +78,11 @@ Guarantees:
   and ``read_index`` returns that snapshot until the workbook can be
   rewritten from it. Nothing that was moved into ``PBC_DIR_NAME/`` is ever
   left unrecorded, and nothing a person decided is ever forgotten.
+
+The index *row* itself - :class:`tracker.records.IndexEntry`, its column
+table and the shape it is stored in - lives in :mod:`tracker.records` since
+decision 100; what is here is every reading and writing of the workbook, the
+sidecar and the record. The old names are re-exported below for one release.
 """
 
 from __future__ import annotations
@@ -90,7 +95,7 @@ import shutil
 import stat
 import time
 from contextlib import nullcontext
-from dataclasses import asdict, dataclass, field, fields, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -98,16 +103,9 @@ from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.utils import get_column_letter
 
 from tracker import ledger
-from tracker.content_check import (
-    CACHE_FILENAME,
-    ContentCache,
-    Evidence,
-    format_evidence,
-    parse_evidence,
-)
+from tracker.content_check import CACHE_FILENAME, ContentCache
 from tracker.locking import engagement_lock
 from tracker.manifest import (
-    COL_IDENTIFIER,
     LOCK_RETRIES,
     LOCK_RETRY_DELAY,
     ManifestError,
@@ -121,6 +119,23 @@ from tracker.manifest import (
     quarantine_sidecar,
     save_workbook_atomically,
     write_json_atomically,
+)
+
+# The records themselves live in tracker/records.py (decision 100). The two
+# names this module no longer uses are re-exported from here so that every
+# `from tracker.filer import ...` still resolves to the same object; they are
+# kept for one release; import from tracker.records.
+from tracker.records import (
+    CANDIDATE_SEP,
+    INDEX_COLUMNS,
+    INDEX_LAYOUT,
+    Evidence,  # noqa: F401
+    IndexEntry,
+    entry_from_json,
+    entry_to_json,
+    format_evidence,
+    ledger_key,
+    parse_evidence,  # noqa: F401
 )
 from tracker.router import route_file
 from tracker.scaffold import (
@@ -200,110 +215,16 @@ _PERSONS_DECISIONS = (
 #: yet, and one somebody has said no request asks for.
 _PARKED = (NEEDS_REVIEW, NOT_REQUESTED)
 
-#: How candidate identifiers are joined in the Candidates cell.
-_CANDIDATE_SEP = ", "
+#: How candidate identifiers are joined in the Candidates cell. The record
+#: owns it now (``records.CANDIDATE_SEP``); this name is kept for one
+#: release.
+_CANDIDATE_SEP = CANDIDATE_SEP
 
 
 class FilingError(Exception):
     """A person's filing decision could not be carried out as asked."""
 
 
-@dataclass(frozen=True, slots=True)
-class IndexEntry:
-    """One row of ``INDEX_FILENAME`` — the audit trail for one original file.
-
-    The fields ARE the columns: their order is the column order, the
-    ``INDEX_LAYOUT`` table below gives each its header and width, and the
-    workbook is read back by header name, so a column added here is one
-    edit and an older index (with columns since dropped) still reads.
-    Nothing stored here is a copy of something stored elsewhere: the
-    working copy's name is the basename of its location, and the request's
-    Document lives in the manifest, joined by Identifier.
-    """
-
-    received: str
-    original_name: str
-    size_kb: float
-    digest: str
-    identifier: str
-    prepared_location: str
-    pbc_location: str
-    decision: str
-    reason: str
-    candidates: str = ""     # identifiers the router named, for a person to choose from
-    #: Why each candidate was one: the keywords that matched and where they
-    #: were said, written as content_check.format_evidence() writes it. The
-    #: Reason sentence says what was decided; this says what it was decided
-    #: on, and a parked row carries it as much as a filed one, because the
-    #: parked row is the one a person has to work out.
-    evidence: str = ""
-    #: The *other* working copies this one original has (decision 94): a
-    #: page that prints two forms' own names is two documents, and each
-    #: form's request gets a copy of it. ``prepared_location`` names the
-    #: first, this names the rest, and the Reason sentence names the
-    #: requests - so the row stays one row for one original, which is what
-    #: the record keys on, what the client's folder holds one of, and what
-    #: a person unfiles in one click. Empty on every ordinary row, which
-    #: is every row written before decision 94.
-    also_filed: str = ""
-
-    @property
-    def candidate_list(self) -> list[str]:
-        """The router's candidates as the list they were joined from."""
-        return [c for c in (part.strip() for part in self.candidates.split(_CANDIDATE_SEP)) if c]
-
-    @property
-    def filed_locations(self) -> list[str]:
-        """Every working copy this original has, in the order they were
-        made: the one ``prepared_location`` names, then ``also_filed``'s.
-        One row, one original, one list - the shape every reader that has
-        to touch all of them (unfiling, the app's filed list, the status
-        report) asks for, so none of them splits a cell of its own."""
-        if not self.prepared_location:
-            return []
-        return [self.prepared_location] + [
-            part.strip() for part in self.also_filed.split(_CANDIDATE_SEP) if part.strip()
-        ]
-
-    @property
-    def filed_names(self) -> list[str]:
-        """The file name of each working copy - the basename of each of
-        ``filed_locations``. The one place a location is cut to a name."""
-        return [location.rsplit("/", 1)[-1] for location in self.filed_locations]
-
-    @property
-    def evidence_record(self) -> dict[str, tuple[Evidence, ...]]:
-        """The Evidence cell read back, by candidate identifier."""
-        return parse_evidence(self.evidence)
-
-    @property
-    def filed_as(self) -> str:
-        """The working copy's file name - the basename of where it went.
-        The first one, where decision 94 made several; ``filed_names`` is
-        every one of them."""
-        return next(iter(self.filed_names), "")
-
-    def as_row(self) -> list[object]:
-        return [getattr(self, f.name) for f in fields(IndexEntry)]
-
-
-#: field name -> (column header, Excel width). One table, in field order.
-INDEX_LAYOUT: dict[str, tuple[str, int]] = {
-    "received": ("Received", 12),
-    "original_name": ("Original Name", 40),
-    "size_kb": ("Size KB", 9),
-    "digest": ("SHA-256", 18),
-    "identifier": (COL_IDENTIFIER, 10),
-    "prepared_location": ("Prepared Location", 40),
-    "pbc_location": ("PBC Location", 26),
-    "decision": ("Decision", 14),
-    "reason": ("Reason", 60),
-    "candidates": ("Candidates", 14),
-    "evidence": ("Evidence", 50),
-    "also_filed": ("Also Filed", 40),
-}
-assert tuple(INDEX_LAYOUT) == tuple(f.name for f in fields(IndexEntry))
-INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
 #: The columns a header row must carry to be the index's (every version
 #: of the index has had them), and how far down a header row is looked for.
 _MANDATORY_COLUMNS = ("original_name", "pbc_location", "decision")
@@ -471,16 +392,6 @@ class _PendingIndex:
     snapshot: bool
 
 
-def _entry_from_json(row: object) -> IndexEntry:
-    """An IndexEntry from a sidecar row, ignoring keys a later version may add:
-    a row for an original already moved must never be thrown away over a
-    field this version does not know."""
-    if not isinstance(row, dict):
-        raise TypeError(f"index sidecar row is {type(row).__name__}, not an object")
-    known = {f.name for f in fields(IndexEntry)}
-    return IndexEntry(**{key: value for key, value in row.items() if key in known})
-
-
 def _read_pending_index(path: Path, *, quarantine: bool = True) -> _PendingIndex | None:
     sidecar = _pending_index_path(path)
     if not sidecar.exists():
@@ -495,14 +406,14 @@ def _read_pending_index(path: Path, *, quarantine: bool = True) -> _PendingIndex
     try:
         raw = json.loads(text)
         if isinstance(raw, list):                       # before INDEX_SIDECAR_VERSION
-            return _PendingIndex([_entry_from_json(row) for row in raw], snapshot=False)
+            return _PendingIndex([entry_from_json(row) for row in raw], snapshot=False)
         if not isinstance(raw, dict):
             raise TypeError(f"index sidecar is {type(raw).__name__}, not an object")
         version = raw.get(_SIDECAR_VERSION_KEY)
         if version != INDEX_SIDECAR_VERSION:
             # Refused loudly rather than read half-right: nothing is guessed.
             raise ValueError(f"index sidecar version {version!r}; this version reads {INDEX_SIDECAR_VERSION}")
-        rows = [_entry_from_json(row) for row in raw[_SIDECAR_ENTRIES_KEY]]
+        rows = [entry_from_json(row) for row in raw[_SIDECAR_ENTRIES_KEY]]
         return _PendingIndex(rows, snapshot=True)
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         quarantine_sidecar(sidecar, exc, "index", quarantine=quarantine)
@@ -546,30 +457,11 @@ def _save_pending_index(path: Path, entries: list[IndexEntry]) -> None:
     """The whole index, as ``write_index`` would have written it."""
     write_json_atomically(_pending_index_path(path), {
         _SIDECAR_VERSION_KEY: INDEX_SIDECAR_VERSION,
-        _SIDECAR_ENTRIES_KEY: [asdict(e) for e in entries],
+        _SIDECAR_ENTRIES_KEY: [entry_to_json(e) for e in entries],
     })
 
 
 # ------------------------------------------------------------------ record ----
-
-
-def ledger_key(entry: IndexEntry) -> str:
-    """The identity the engagement's record keeps this row under.
-
-    The index's own: where the client's preserved original is, which is what
-    the snapshot merge keys on and what the app joins a review card back by.
-    A row that names no original (only a workbook somebody built by hand has
-    one) falls back to what else the row says about the document, so two such
-    rows are not folded into one.
-
-    It is still one location per row after decision 94, and that is why the
-    index keeps one row for a page filed under several requests rather than
-    one row per copy: two rows naming one preserved original would collide
-    here, and the collision would be silent - the record would fold them
-    into one and the workbook would go on holding two. The copies are a
-    column of that row (``IndexEntry.also_filed``), not rows of their own.
-    """
-    return entry.pbc_location or f"{entry.received}|{entry.original_name}|{entry.digest}"
 
 
 #: Which event a row's decision is recorded as, when a pass reaches it. The
@@ -583,14 +475,8 @@ _LEDGER_EVENT_FOR = {
 }
 
 
-def _ledger_row(entry: IndexEntry) -> dict:
-    """The row as the record stores it - the shape the index's own sidecar
-    writes and ``_entry_from_json`` reads back, so there is one owner for it."""
-    return asdict(entry)
-
-
 def _ledger_event(name: str, entry: IndexEntry, *, was: str = "") -> dict:
-    event = ledger.new(name, **{ledger.KEY_KEY: ledger_key(entry), ledger.ROW_KEY: _ledger_row(entry)})
+    event = ledger.new(name, **{ledger.KEY_KEY: ledger_key(entry), ledger.ROW_KEY: entry_to_json(entry)})
     if was and was != event[ledger.KEY_KEY]:
         event[ledger.WAS_KEY] = was
     return event
@@ -665,7 +551,7 @@ def _rows_changed(
     for entry in entries:
         key = ledger_key(entry)
         was = moved.get(key, "")
-        row = _ledger_row(entry)
+        row = entry_to_json(entry)
         earlier = before.get(was or key)
         if earlier == row:
             continue
@@ -774,7 +660,7 @@ def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     recorded = _recorded_rows(path.parent)
     if recorded is not None:
         _refuse_an_index_edited_past_reading(path)
-        rows = [_entry_from_json(row) for row in recorded.values()]
+        rows = [entry_from_json(row) for row in recorded.values()]
         return rows + _sidecar_rows_off_the_record(path, recorded, pending)
     return _index_from_workbook(path, pending)
 
@@ -1552,7 +1438,7 @@ def file_drops(
         entries = read_index(index_path, quarantine=not dry_run)
         # What the record already says, taken before anything in this pass
         # touches a row, so what this pass wrote is what gets recorded.
-        before = {ledger_key(entry): _ledger_row(entry) for entry in entries}
+        before = {ledger_key(entry): entry_to_json(entry) for entry in entries}
         # An original preserved by a pass that could not read it back has no
         # digest (decision 65). While it has none, a replacement is never
         # noticed and a person's filing of it is never honoured; a later
@@ -1959,7 +1845,7 @@ def assign_review_file(
             raise FilingError(f"{identifier} is waived; clear the override first")
 
         entries = read_index(index_path)
-        before = {ledger_key(e): _ledger_row(e) for e in entries}
+        before = {ledger_key(e): entry_to_json(e) for e in entries}
         position = _find_parked(entries, original)
         entry = entries[position]
         source = engagement_dir / entry.pbc_location
@@ -2199,7 +2085,7 @@ def dismiss_review_file(
 
     with engagement_lock(engagement_dir):
         entries = read_index(index_path)
-        before = {ledger_key(e): _ledger_row(e) for e in entries}
+        before = {ledger_key(e): entry_to_json(e) for e in entries}
         position = _find_parked(entries, original)
         entry = entries[position]
         new_entry = replace(
@@ -2298,7 +2184,7 @@ def unfile_document(
 
     with engagement_lock(engagement_dir):
         entries = read_index(index_path)
-        before = {ledger_key(e): _ledger_row(e) for e in entries}
+        before = {ledger_key(e): entry_to_json(e) for e in entries}
         position = _find_filed(entries, original)
         entry = entries[position]
         source = engagement_dir / entry.pbc_location

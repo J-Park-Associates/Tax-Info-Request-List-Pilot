@@ -225,9 +225,9 @@ Conventions worth matching:
   (`test_overrides_are_never_asked_for`), not `test_case_3`.
 - Import directions hold, and `tests/test_layers.py` says which: no load-time
   import points to a higher layer; `ledger` and `locking` import nothing of
-  the package but each other; `manifest` imports `ledger` and `locking` and
-  nothing else; `runner` never imports `scheduling` or `api`; the package's
-  `__init__` imports nothing. An import inside a function or a `__main__`
+  the package but each other; `manifest` imports `ledger`, `locking` and
+  `records` and nothing else; `runner` never imports `scheduling` or `api`;
+  the package's `__init__` imports nothing. An import inside a function or a `__main__`
   block is a call-time import and may point anywhere.
 
 Client data never enters the repo: `runs.log` and the

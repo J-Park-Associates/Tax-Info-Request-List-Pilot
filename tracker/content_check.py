@@ -50,6 +50,11 @@ verdict the scanner finds. Extracted client text is deliberately never
 persisted anywhere. Editing a row's rules changes the fingerprint and
 triggers one re-extraction; unchanged files on unchanged rules are never
 re-read, which keeps the scheduled cadence cheap.
+
+:class:`Evidence` itself, the rule and place vocabularies and the cell format
+it is written into live in :mod:`tracker.records` since decision 100 - they
+are the shape of a verdict, not the reading of a document - and are
+re-exported here for one release.
 """
 
 from __future__ import annotations
@@ -67,6 +72,29 @@ from tracker.manifest import (
     has_routing_rules,
     keyword_alternatives,
     write_json_atomically,
+)
+
+# The Evidence record and the cell format it is written in live in
+# tracker/records.py (decision 100): they are the shape of a verdict, not the
+# reading of a document. The names this module does not use itself are
+# re-exported from here so that every `from tracker.content_check import ...`
+# still resolves to the same object; kept for one release; import from
+# tracker.records.
+from tracker.records import (
+    EVIDENCE_PLACES,  # noqa: F401
+    EVIDENCE_RULES,  # noqa: F401
+    RULE_ANY,
+    RULE_DATE,
+    RULE_FILENAME,  # noqa: F401
+    RULE_REFUSED,  # noqa: F401
+    RULE_REQUIRED,
+    WHERE_DEEP,
+    WHERE_FIRST_PAGE,
+    WHERE_FOOTER,
+    WHERE_TITLE,
+    Evidence,
+    format_evidence,  # noqa: F401
+    parse_evidence,  # noqa: F401
 )
 from tracker.validators import PDF_EXTENSION, extension_of, sha256_of
 
@@ -114,99 +142,10 @@ _MAX_OCR_PAGES = MAX_PAGES
 
 # ---------------------------------------------------------------- evidence ----
 
-#: Which of the manifest row's rules found the term. ``required`` and ``any``
-#: are the row's keyword lists, ``date`` its Period check, ``filename`` the
-#: router's by-name fallback and ``refused`` a tier-2 refusal travelling as
-#: evidence (the Reason's code). One list, named once, so the router, the
-#: index and the app's vocabulary all say the same words.
-RULE_REQUIRED = "required"
-RULE_ANY = "any"
-RULE_DATE = "date"
-RULE_FILENAME = "filename"
-RULE_REFUSED = "refused"
-EVIDENCE_RULES: tuple[str, ...] = (
-    RULE_REQUIRED, RULE_ANY, RULE_DATE, RULE_FILENAME, RULE_REFUSED,
-)
-
-#: Where in the document the term was said. ``title`` is within
-#: ``TITLE_CHARS`` of the start - a form printing its own name; ``footer``
-#: is the last ``_FOOTER_LINES`` non-blank lines of a page, where a form
-#: repeats its number on every copy; ``first_page`` is the rest of page 1
-#: and ``deep`` is anything further in, which is the weakest place a
-#: keyword can be said and the one a person most wants to see named.
-#: Evidence about a file's name or a refusal has no place and carries "".
-WHERE_TITLE = "title"
-WHERE_FIRST_PAGE = "first_page"
-WHERE_FOOTER = "footer"
-WHERE_DEEP = "deep"
-EVIDENCE_PLACES: tuple[str, ...] = (
-    WHERE_TITLE, WHERE_FIRST_PAGE, WHERE_FOOTER, WHERE_DEEP,
-)
+#: How many non-blank lines at the end of a page count as its footer, where
+#: a form repeats its own number on every copy. The Evidence record's own
+#: ``WHERE_FOOTER`` is named from this reading.
 _FOOTER_LINES = 2
-
-
-@dataclass(frozen=True, slots=True)
-class Evidence:
-    """One reason a verdict went the way it did.
-
-    ``term`` is the firm's own word - a keyword off the manifest row, the
-    row's Period, a Reason's code - never a word read out of the client's
-    document. ``page`` is 1-based, counted from the page breaks
-    ``_extract_pdf`` writes, and 0 where a page means nothing (a file name,
-    a refusal).
-    """
-
-    rule: str
-    term: str
-    where: str = ""
-    page: int = 0
-
-
-#: How one Evidence is written into a single cell, and how the whole record
-#: for a decision is: ``A01: 1098@title:1 required, TY2025@first_page:1
-#: date; L01: 1098-t@title filename``. Compact because it shares one Excel
-#: column with every other candidate's evidence, and parsed back by
-#: :func:`parse_evidence` so the shape has one owner rather than a writer
-#: here and a reader in the app. The page is left off when it is 0. Terms
-#: are catalog words and file names, which carry none of these separators.
-_EVIDENCE_AT = "@"
-_EVIDENCE_PAGE = ":"
-_EVIDENCE_SEP = ", "
-_RECORD_SEP = "; "
-_RECORD_AT = ": "
-
-
-def format_evidence(record: dict[str, tuple[Evidence, ...]]) -> str:
-    """The evidence behind one decision, as the index's Evidence cell."""
-    return _RECORD_SEP.join(
-        identifier + _RECORD_AT + _EVIDENCE_SEP.join(_format_one(e) for e in found)
-        for identifier, found in record.items() if found
-    )
-
-
-def _format_one(evidence: Evidence) -> str:
-    page = f"{_EVIDENCE_PAGE}{evidence.page}" if evidence.page else ""
-    return f"{evidence.term}{_EVIDENCE_AT}{evidence.where}{page} {evidence.rule}"
-
-
-def parse_evidence(text: str) -> dict[str, tuple[Evidence, ...]]:
-    """An Evidence cell read back, exactly as :func:`format_evidence` wrote it.
-
-    Lenient about what it cannot understand: the index is an audit trail a
-    person may have typed into, and half a record read is better than a
-    row that will not load.
-    """
-    record: dict[str, tuple[Evidence, ...]] = {}
-    for group in (text or "").split(_RECORD_SEP):
-        identifier, _, listed = group.partition(_RECORD_AT)
-        identifier = identifier.strip()
-        if not identifier or not listed.strip():
-            continue
-        found = tuple(e for e in (_parse_one(part) for part in listed.split(_EVIDENCE_SEP))
-                      if e is not None)
-        if found:
-            record[identifier] = record.get(identifier, ()) + found
-    return record
 
 
 def _evidence_from_json(raw: object) -> tuple[Evidence, ...]:
@@ -223,15 +162,6 @@ def _evidence_from_json(raw: object) -> tuple[Evidence, ...]:
                  str(item.get("where", "")), int(item.get("page", 0) or 0))
         for item in raw if isinstance(item, dict)
     )
-
-
-def _parse_one(part: str) -> Evidence | None:
-    body, _, rule = part.strip().rpartition(" ")
-    term, at, place = body.rpartition(_EVIDENCE_AT)
-    if not rule or not at or not term:
-        return None
-    where, _, page = place.partition(_EVIDENCE_PAGE)
-    return Evidence(rule, term, where, int(page) if page.isdigit() else 0)
 
 
 @dataclass(frozen=True, slots=True)

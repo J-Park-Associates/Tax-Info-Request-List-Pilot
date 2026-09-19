@@ -37,6 +37,7 @@ from tracker.filer import (
     NOT_REQUESTED,
     IndexEntry,
     file_drops,
+    read_index,
     write_index,
 )
 from tracker.locking import LOCK_FILENAME
@@ -115,6 +116,16 @@ def park(engagement, *entries):
     return engagement
 
 
+def triage_of(engagement, **kwargs):
+    """``triage`` with the index read for it.
+
+    Since decision 100 ``entries`` is required: the caller reads the index
+    and hands it over, which is what the app, the view and the CLI all do.
+    These tests are that caller, and read it the way the CLI does.
+    """
+    return triage(engagement, read_index(engagement / INDEX_FILENAME, quarantine=False), **kwargs)
+
+
 def identifiers(triaged):
     return [suggestion.identifier for suggestion in triaged.shortlist]
 
@@ -128,7 +139,7 @@ def test_a_row_that_says_it_in_the_title_outranks_one_that_says_it_deep(engageme
         "C01": (Evidence(RULE_REQUIRED, "1098", WHERE_TITLE, 1),),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
 
     assert identifiers(triaged) == ["C01", "A01"], "the title beats the catalog order"
 
@@ -139,7 +150,7 @@ def test_a_required_keyword_outranks_an_any_keyword_said_in_the_same_place(engag
         "C01": (Evidence(RULE_REQUIRED, "1098", WHERE_FIRST_PAGE, 1),),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
 
     assert identifiers(triaged) == ["C01", "B01"]
 
@@ -150,7 +161,7 @@ def test_a_keyword_in_the_file_name_ranks_below_anything_the_document_said(engag
         "B01": (Evidence(RULE_ANY, "donation", WHERE_DEEP, 9),),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
 
     assert identifiers(triaged) == ["B01", "C01"]
 
@@ -162,7 +173,7 @@ def test_two_rows_with_equal_evidence_keep_catalog_order(engagement):
         "A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
 
     assert identifiers(triaged) == ["A01", "C01"], "the manifest's own order breaks the tie"
     first, second = triaged.shortlist
@@ -175,7 +186,7 @@ def test_the_shortlist_is_capped(engagement):
         for item in ITEMS if item.manual_override != Override.WAIVED
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
 
     assert len(ITEMS) - 1 > MAX_SUGGESTIONS, "the fixture has to offer more than the cap"
     assert len(triaged.shortlist) == MAX_SUGGESTIONS
@@ -191,7 +202,7 @@ def test_a_shortlist_never_names_a_waived_row(engagement):
         "C01": (Evidence(RULE_ANY, "1098", WHERE_DEEP, 4),),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
 
     assert identifiers(triaged) == ["C01"], "a row that wants nothing is never suggested"
 
@@ -204,7 +215,7 @@ def test_a_file_with_no_evidence_gets_no_suggestion_whatever_the_request_list_sa
     park(engagement, parked_row("mystery.pdf", {}))
     wanting = [replace(item, status=state) for item in ITEMS]
 
-    [triaged] = triage(engagement, items=wanting)
+    [triaged] = triage_of(engagement, items=wanting)
 
     assert triaged.entry.evidence == ""
     assert triaged.shortlist == (), "no evidence, no suggestion — the person reads it"
@@ -216,7 +227,7 @@ def test_a_refusal_on_its_own_is_not_a_suggestion(engagement):
         "C01": (Evidence(RULE_REFUSED, reasons.TOO_SMALL.code),),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
 
     assert triaged.shortlist == ()
 
@@ -229,7 +240,7 @@ def test_a_row_a_person_said_nothing_asks_for_is_not_triaged(engagement):
         parked_row("scan0015.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)}),
     )
 
-    triaged = triage(engagement)
+    triaged = triage_of(engagement)
 
     assert [t.entry.original_name for t in triaged] == ["scan0015.pdf"]
 
@@ -239,7 +250,7 @@ def test_a_candidate_no_longer_on_the_manifest_is_not_offered(engagement):
         "Z99": (Evidence(RULE_REQUIRED, "something", WHERE_TITLE, 1),),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
 
     assert triaged.shortlist == (), "there is no row left to file it into"
 
@@ -253,7 +264,7 @@ def test_the_reason_says_each_keyword_and_where_it_was_said(engagement):
                 Evidence(RULE_ANY, "mortgage interest", WHERE_FIRST_PAGE, 1)),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
     (suggestion,) = triaged.shortlist
 
     assert suggestion.reason.startswith("C01")
@@ -266,7 +277,7 @@ def test_a_keyword_found_in_the_file_name_is_said_to_be_the_file_name(engagement
         "C01": (Evidence(RULE_FILENAME, "1098", WHERE_TITLE),),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
     (suggestion,) = triaged.shortlist
 
     assert "the file name says 1098" in suggestion.reason
@@ -279,7 +290,7 @@ def test_a_contested_file_names_the_row_it_looks_like_with_the_rule_that_failed(
     report = file_drops(engagement, today=DAY1)
     assert len(report.review) == 1
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
 
     assert identifiers(triaged)[0] == "A01"
     assert reasons.WRONG_PERIOD.marker in triaged.shortlist[0].reason
@@ -292,7 +303,7 @@ def test_a_refusal_beside_content_evidence_is_said_in_that_suggestions_sentence(
                 Evidence(RULE_REFUSED, reasons.PASSWORD_PROTECTED.code)),
     }))
 
-    [triaged] = triage(engagement)
+    [triaged] = triage_of(engagement)
     (suggestion,) = triaged.shortlist
 
     assert "'1098' in the title" in suggestion.reason
@@ -315,7 +326,7 @@ def test_two_runs_over_the_same_bytes_give_identical_output(engagement):
         "A01": (Evidence(RULE_ANY, "W-2", WHERE_DEEP, 3),),
     }))
 
-    assert triage(engagement) == triage(engagement)
+    assert triage_of(engagement) == triage_of(engagement)
 
 
 def test_triage_takes_no_lock_and_writes_nothing(engagement):
@@ -324,7 +335,7 @@ def test_triage_takes_no_lock_and_writes_nothing(engagement):
     file_drops(engagement, today=DAY1)
     before = _fingerprint(engagement)
 
-    assert triage(engagement)
+    assert triage_of(engagement)
 
     assert _fingerprint(engagement) == before, "triage changed something on disk"
     assert not list(engagement.rglob(LOCK_FILENAME)), "triage took the engagement lock"
