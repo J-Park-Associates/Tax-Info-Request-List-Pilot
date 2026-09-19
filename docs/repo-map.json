@@ -3,7 +3,7 @@
   "generated": "2026-09-19",
   "generator": "tools/repo_map.py",
   "generator_sha256": "03f0550f4da063b1",
-  "module_table_sha256": "f2e4fd60cdeba038",
+  "module_table_sha256": "eb8bb45287effcfe",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 107,
-    "edges": 467,
-    "reused": 64
+    "nodes": 108,
+    "edges": 465,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -99,10 +99,10 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "04baef48e00f5aa9",
-      "lines": 84,
-      "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs.",
-      "notes": "Imports tracker.manifest and tracker.scaffold at load time, and tracker/manifest.py imports `from tracker import ledger`, which executes this package while it is still initialising. That is the one load-time cycle in the package, and it holds only because tracker/ledger.py imports nothing of the package but tracker/locking.py - keep it at the bottom. Every other cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one."
+      "sha256": "9adcc83a8fea3b1c",
+      "lines": 57,
+      "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
+      "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one."
     },
     {
       "id": "tracker/api.py",
@@ -1283,8 +1283,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8966bec51ec77b1f",
-      "lines": 226,
+      "sha256": "92e7a059afca0198",
+      "lines": 234,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -1300,8 +1300,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3a099aa1aefacd32",
-      "lines": 316,
+      "sha256": "c1c68dd5de28e177",
+      "lines": 317,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1318,7 +1318,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "371ddfd974caf6c0",
+      "sha256": "e933e52eaaaa504a",
       "lines": 784,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1946,6 +1946,26 @@
       ]
     },
     {
+      "id": "tests/test_layers.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "a687fea0c446e065",
+      "lines": 168,
+      "exports": [
+        "PACKAGE",
+        "REPO",
+        "import_edges",
+        "test_every_allowed_upward_edge_is_still_needed",
+        "test_every_module_is_in_exactly_one_layer",
+        "test_no_load_time_import_points_to_a_higher_layer",
+        "test_the_bottom_two_import_nothing_of_the_package_but_each_other",
+        "test_the_filer_and_scanner_cycle_closes_only_at_call_time",
+        "test_the_manifest_imports_the_record_and_the_lock_and_nothing_else",
+        "test_the_package_init_imports_nothing_at_load_time",
+        "test_the_runner_never_imports_the_scheduler_or_the_api"
+      ]
+    },
+    {
       "id": "tests/test_learned_keywords.py",
       "type": "test",
       "layer": "tests",
@@ -2224,7 +2244,7 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d8a3e129e54c0f57",
+      "sha256": "5682640df41195cb",
       "lines": 783,
       "exports": [
         "ENFORCERS",
@@ -2287,7 +2307,7 @@
         "test_standard_library_imports_are_not_dependencies",
         "test_the_committed_map_is_current",
         "test_the_curated_file_is_mapped_so_editing_it_shows_as_drift",
-        "test_the_deliberate_cycle_is_stated_and_the_load_time_one_named",
+        "test_the_deliberate_cycle_is_stated_and_no_load_time_one_remains",
         "test_the_generated_outputs_are_not_mapped",
         "test_the_markdown_carries_the_curated_pipeline_and_roles",
         "test_the_markdown_is_checked_against_the_json",
@@ -4797,18 +4817,6 @@
       "to": "docs/vocab-coverage.md",
       "type": "writes",
       "source": "curated"
-    },
-    {
-      "from": "tracker/__init__.py",
-      "to": "tracker/manifest.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/__init__.py",
-      "to": "tracker/scaffold.py",
-      "type": "imports",
-      "source": "derived"
     },
     {
       "from": "tracker/api.py",

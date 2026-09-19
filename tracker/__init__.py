@@ -28,41 +28,14 @@ The standing rules below are the ones every module upholds. They are read
 by the app (through the API's vocabulary) and pinned into CLAUDE.md, the
 README, the roadmap and the knowledge map by tests/test_single_source.py,
 so they are worded here and nowhere else.
+
+The package imports nothing at load time (decision 99). Every component is
+reached by its own name - ``from tracker import manifest`` - and
+``tests/test_layers.py`` pins which layer each one sits in and that no
+load-time import points upward. The re-exports that used to live here
+were thirteen names no file consumed, and they were the package's one
+load-time cycle.
 """
-
-from tracker.manifest import (
-    ManifestError,
-    Override,
-    RequestItem,
-    Status,
-    StatusUpdate,
-    create_template,
-    load_manifest,
-    write_statuses,
-)
-from tracker.scaffold import (
-    ScaffoldResult,
-    assign_folders,
-    folder_name_for,
-    matches_identifier,
-    scaffold_engagement,
-)
-
-__all__ = [
-    "ManifestError",
-    "Override",
-    "RequestItem",
-    "ScaffoldResult",
-    "Status",
-    "StatusUpdate",
-    "assign_folders",
-    "create_template",
-    "folder_name_for",
-    "load_manifest",
-    "matches_identifier",
-    "scaffold_engagement",
-    "write_statuses",
-]
 
 #: (headline, detail) - the detail names folders by placeholder so the
 #: scaffold's constants stay the only copy of those names; see
