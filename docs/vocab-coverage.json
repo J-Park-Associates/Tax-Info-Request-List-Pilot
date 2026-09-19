@@ -61,9 +61,40 @@
          "name": "fw2_2025.pdf"
         },
         {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2as.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw2c.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2gu.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2vi.pdf"
+        },
+        {
          "expected": null,
          "kind": "irs",
          "name": "fw3.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3c.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3pr.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3ss.pdf"
         }
        ],
        "rule": "required"
@@ -122,6 +153,11 @@
          "name": "W-2 with state wages.pdf"
         },
         {
+         "expected": null,
+         "kind": "irs",
+         "name": "f941x.pdf"
+        },
+        {
          "expected": "A01",
          "kind": "irs",
          "name": "fw2.pdf"
@@ -137,9 +173,41 @@
          "name": "fw2_2025.pdf"
         },
         {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2as.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw2c.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2gu.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2vi.pdf"
+        },
+        {
          "expected": null,
          "kind": "irs",
          "name": "fw3.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3c.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "fw3ss.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "nyit201.pdf"
         }
        ],
        "rule": "required"
@@ -190,6 +258,21 @@
          "expected": "A01",
          "kind": "irs",
          "name": "fw2_2025.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2as.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2gu.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "fw2vi.pdf"
         }
        ],
        "rule": "required"
@@ -501,12 +584,22 @@
         {
          "expected": "B01",
          "kind": "irs",
+         "name": "ca540.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
          "name": "f1040.pdf"
         },
         {
          "expected": "B01",
          "kind": "irs",
          "name": "f1040x.pdf"
+        },
+        {
+         "expected": "B01",
+         "kind": "irs",
+         "name": "nyit201.pdf"
         }
        ],
        "rule": "required"
@@ -1041,6 +1134,11 @@
          "expected": "F01",
          "kind": "irs",
          "name": "f1065sk1_2024.pdf"
+        },
+        {
+         "expected": "F01",
+         "kind": "irs",
+         "name": "nyit204ip.pdf"
         }
        ],
        "rule": "any"
@@ -1052,6 +1150,10 @@
          "decision": 66,
          "kind": "case",
          "name": "K-1 with its footer under box 16.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "ca100s.pdf"
         },
         {
          "expected": "F01",
@@ -1090,6 +1192,11 @@
          "decision": 93,
          "kind": "case",
          "name": "CA Schedule K-1 568 2025.pdf"
+        },
+        {
+         "expected": "F01",
+         "kind": "irs",
+         "name": "ca568k1.pdf"
         }
        ],
        "rule": "any"
@@ -1258,6 +1365,10 @@
          "expected": "H01",
          "kind": "irs",
          "name": "f1040es_2025.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041es.pdf"
         }
        ],
        "rule": "any"
@@ -2157,6 +2268,11 @@
          "expected": "C01",
          "kind": "case",
          "name": "distributions to beneficiaries.xlsx"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1041n.pdf"
         }
        ],
        "rule": "any"
@@ -2238,6 +2354,23 @@
          "expected": "D01",
          "kind": "case",
          "name": "trustee fee statement.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041a.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1041n.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041qft.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120nd.pdf"
         }
        ],
        "rule": "any"
@@ -2476,7 +2609,22 @@
         {
          "expected": "A01",
          "kind": "irs",
+         "name": "ca565.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "ca568.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
          "name": "f1065.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "nyit204.pdf"
         }
        ],
        "rule": "required"
@@ -3449,6 +3597,10 @@
          "decision": 93,
          "kind": "case",
          "name": "CA Schedule K-1 568 2025.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "ca568k1.pdf"
         }
        ],
        "rule": "any"
@@ -3617,6 +3769,11 @@
          "expected": "A01",
          "kind": "irs",
          "name": "f1120.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "f1120x.pdf"
         }
        ],
        "rule": "required"
@@ -4436,6 +4593,11 @@
          "expected": "E01",
          "kind": "irs",
          "name": "f941.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f941x.pdf"
         }
        ],
        "rule": "any"
@@ -4462,6 +4624,11 @@
          "expected": "E01",
          "kind": "irs",
          "name": "f941.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f941x.pdf"
         }
        ],
        "rule": "any"
@@ -4661,6 +4828,10 @@
          "expected": "F01",
          "kind": "case",
          "name": "corporate estimated tax payments made.xlsx"
+        },
+        {
+         "kind": "irs",
+         "name": "f1041t.pdf"
         }
        ],
        "rule": "any"
@@ -4913,6 +5084,11 @@
          "expected": "A01",
          "kind": "case",
          "name": "CA 100S 2024.pdf"
+        },
+        {
+         "expected": "A01",
+         "kind": "irs",
+         "name": "ca100s.pdf"
         },
         {
          "expected": "A01",
@@ -5719,6 +5895,11 @@
          "expected": "E01",
          "kind": "irs",
          "name": "f941.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f941x.pdf"
         }
        ],
        "rule": "any"
@@ -5746,6 +5927,11 @@
          "expected": "E01",
          "kind": "irs",
          "name": "f941.pdf"
+        },
+        {
+         "expected": "E01",
+         "kind": "irs",
+         "name": "f941x.pdf"
         }
        ],
        "rule": "any"
@@ -6897,6 +7083,14 @@
         },
         {
          "kind": "irs",
+         "name": "ca568.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1040c.pdf"
+        },
+        {
+         "kind": "irs",
          "name": "f1040sb.pdf"
         },
         {
@@ -6914,6 +7108,18 @@
         {
          "kind": "irs",
          "name": "f1099oid.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120l.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120pc.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1120ric.pdf"
         },
         {
          "kind": "irs",
@@ -7063,6 +7269,11 @@
          "expected": "G01",
          "kind": "irs",
          "name": "f941.pdf"
+        },
+        {
+         "expected": "G01",
+         "kind": "irs",
+         "name": "f941x.pdf"
         }
        ],
        "rule": "any"
@@ -7089,6 +7300,11 @@
          "expected": "G01",
          "kind": "irs",
          "name": "f941.pdf"
+        },
+        {
+         "expected": "G01",
+         "kind": "irs",
+         "name": "f941x.pdf"
         }
        ],
        "rule": "any"
@@ -7187,6 +7403,11 @@
          "expected": "H01",
          "kind": "case",
          "name": "990-T for 2025.pdf"
+        },
+        {
+         "expected": "H01",
+         "kind": "irs",
+         "name": "f990t.pdf"
         }
        ],
        "rule": "any"
@@ -7276,7 +7497,7 @@
   "catalogs": 6,
   "documents": {
    "case": 318,
-   "irs": 52
+   "irs": 106
   },
   "keywords": 339,
   "reached_only_elsewhere": 2,
@@ -7286,7 +7507,13 @@
   "unreached": 66
  },
  "inputs": {
+  "tests/irs/ca100s.pdf": "8f1af92e2eb3162d5d8efd5a5b683207c01363cc7be55bc9e685627278427310",
+  "tests/irs/ca540.pdf": "3be81dcc5d2be3d303596f6fa528e8fdb7cda6644afac6ccf869fc5ebeb7bf1c",
+  "tests/irs/ca565.pdf": "62a2eeac8ad4a942f297e50e2f099085e3445cc14ee68360a79fa48b323140b6",
+  "tests/irs/ca568.pdf": "9e4451f6b68f8b50ab2db82e701be68d54dc38803bae1e10d6ae2cc3981ed4c3",
+  "tests/irs/ca568k1.pdf": "27110e8d32a4f3c5f78550f446a73a89c3622a0a4915a53c1916cb1780f5204c",
   "tests/irs/f1040.pdf": "3d31c226df0d189ced80e039d01cf0f8820c1019681a0f0ca6264de277b7e982",
+  "tests/irs/f1040c.pdf": "89f9a5ee6dfe887869549127c3997a64390c32809b91bc191d0a4473499399c0",
   "tests/irs/f1040es.pdf": "396ffad25baa737b33a67d27624f7444be3ac4e7245d287aebe5f89864f90b54",
   "tests/irs/f1040es_2025.pdf": "a6e94741c8fc559a668e3d73c5b2680132ad1f54d233782e2af7f2325905cfb7",
   "tests/irs/f1040nr.pdf": "aa1c0523595ad630e097e41d42a35cbc7fa04685633a842d9ff4a7aa7b478c7a",
@@ -7295,52 +7522,100 @@
   "tests/irs/f1040sa.pdf": "c14acf3478f4c33f27ac6e8ecd9f94b6fb25b16745b341728bd27847d2ef56bb",
   "tests/irs/f1040sb.pdf": "dd1ec3719954532bd219343d81385a2ada3c8e9573fc755a3893f1fbbecc63e2",
   "tests/irs/f1040sd.pdf": "90564c8b7e49280363612639b804d113ebedb516c2e87c70649f29c844da1d2e",
+  "tests/irs/f1040ss.pdf": "4b8383bd330ef96cd51f216621af2635e0313a37719d3109d9e1dcada9c408f6",
+  "tests/irs/f1040v.pdf": "2426bb330ac54b765b32fbc3eceb878544aa333a3a823e1170aa8261a40fd251",
   "tests/irs/f1040x.pdf": "e4d8d7df37209218d0d63d06e988004306365354873481726e93916accf3013e",
   "tests/irs/f1041.pdf": "95540fbdb580102735b89866554bb0b556d37f3e6c8781c677c8398db7908c10",
+  "tests/irs/f1041a.pdf": "d9d4ca8eb3e092439fb792e32586e2c2df814e7a4f8fadcb312a8ce57f67da96",
+  "tests/irs/f1041es.pdf": "1c5fd089a9f75302228a60f2fbdffb9a5381f8e78af4111a44a742bc37461830",
+  "tests/irs/f1041n.pdf": "85e5c7ed00f885c07c3b5916e1f79c0fcd4d8ce16b1ce0f5eef5b7c2a4ff239b",
+  "tests/irs/f1041qft.pdf": "4d2bb9980e7f55bf83b7705b47b719cac4c4235732b869030833a42eb8328bc1",
   "tests/irs/f1041sk1.pdf": "d8d7b6eacabdf145474aee8385fcfeafe68bd2f69baaef52d9a8227ebcd45fc3",
+  "tests/irs/f1041t.pdf": "d213c64c34676ec766420567c855d760c75f975ce32370937fd92b51eda590c1",
+  "tests/irs/f1041v.pdf": "f3a5625d64a0f63b9fa2e8970779915a4826e8232a118de00e548035a15d6de4",
   "tests/irs/f1065.pdf": "0f19f556e12ef53c41ba27e5930b4373103f3abcf64693c4ea686451b2a8f56f",
   "tests/irs/f1065sk1.pdf": "66098d4d48537ce2dac1f093d6351567957896e5843d8c524823b380068f6547",
   "tests/irs/f1065sk1_2024.pdf": "58e55bd504214d6678801fda33917a851fbdf6e26e7140fc9d1bc3d5b7902f9f",
+  "tests/irs/f1065x.pdf": "0796e450b150b6dcbe77dab0f9b8a123a5ab9908cdd1eebb1147b273f68a607d",
   "tests/irs/f1095a.pdf": "df83be599d3bdcda826862aa5125868c2f481191a53c8417ed5fba91eccc7473",
   "tests/irs/f1095b.pdf": "d6b37dc8e837fb722e139426caa8f2e298d678d98ae84c0f10e66f63eeaab784",
   "tests/irs/f1095c.pdf": "53f0a430f0444342d6c3f96cdfb2e819fa5a52929dddf4859bf2d77ac347e080",
   "tests/irs/f1096.pdf": "4d70b0618592ab4e1f31fb2781a4fea5d18d957931a666562c79585266aa3e0b",
   "tests/irs/f1098.pdf": "304da9c0f67a46ff04ba831359185dc13dde335199cbf7c413dc879e5410dd87",
+  "tests/irs/f1098c.pdf": "b97cfbb3923b33e3882c81d912412697d6534a27789a1a2e4402b33dbd679e2a",
+  "tests/irs/f1098e.pdf": "bffb9b5ec4f06d47391a5fa7b773d1c4197c587428ace03a96914a9038389602",
+  "tests/irs/f1098f.pdf": "6daba916e80427ba8c6035334218b247418872b1328f70db59ce18a881493a33",
+  "tests/irs/f1098q.pdf": "d3c03fb7286c3b91af545cbb62db89e1ccc6c291fb9164b9e439fd6359443758",
   "tests/irs/f1098t.pdf": "f461d17ce14de4efb4d95936c8639434861dbf174da250ac777f50cd1883c692",
+  "tests/irs/f1099a.pdf": "7aec78933a169273c13202d07bf93cad8d009da2bf1a7f4340055dc1fe648244",
+  "tests/irs/f1099c.pdf": "826fe6811249e38b00df962b323c7ef838bc1e94a3c4522f9e10be4887f096a8",
+  "tests/irs/f1099cap.pdf": "012afd4d00cc9eeda604845da1aded86a9f6d8182d9135cdd53ffbb639c7f5e3",
+  "tests/irs/f1099da.pdf": "e6f397924211a3a887cacd75f5ca6378ed728cf0bbce99909f15f4da09dad258",
   "tests/irs/f1099div.pdf": "4ea1de804ff1db921753bd6319beeccfe4647299e03d79816e04d852a9cd1435",
   "tests/irs/f1099g.pdf": "65a416c52508d8a3d77ee1734194767d1e1c8a607c778fd1914dd1a62da569a2",
+  "tests/irs/f1099h.pdf": "f86e63d7f4a84f92442bd6aaa9960252f2606f48b656753fb6c8610eab47def4",
   "tests/irs/f1099int.pdf": "ee7697c9b29374596fd9645b157b7312d121ae3c2f76bebf68908c3fc2b739e6",
   "tests/irs/f1099k.pdf": "fa3a2b659f7ee13d59ea6c66ad992a5ab55afa0060db275ad1ee122478189b89",
+  "tests/irs/f1099ls.pdf": "e85327c1c79a53fb0b88facc8b56a324bbf20795746e5cd6e7ea219f2dc59485",
+  "tests/irs/f1099ltc.pdf": "69623198392f04003e66480c084cac90f920951d830a5fc73f35ad45aefaabdc",
   "tests/irs/f1099msc.pdf": "38051fe1cdce8fac5183a7e7b182b1a0de590dcfec3e4f66a156eba3f98943fa",
   "tests/irs/f1099nec.pdf": "68a8f00078be6dd6a4912cc4209df317b31840d5fe19560222d39df9f2f7ff49",
   "tests/irs/f1099nec_2024.pdf": "807913ea46c20c35741f1eb6c79d78c6da37dfd5389eff94a2beb308d239fef3",
   "tests/irs/f1099oid.pdf": "cc88d18964125c3f69a6fd15afcb5cd8b90fb1c3ea68c7b3b7b91a106e17d756",
+  "tests/irs/f1099q.pdf": "19ad3c80de52d509c30eac7d5de2527806c043530f567234ea310899cba4b7bb",
+  "tests/irs/f1099qa.pdf": "468cdb339f65afcae4423e20db35b213541a714faa202c9be51bf6f926120537",
   "tests/irs/f1099r.pdf": "d3de9319bed344f02621f97760a50bd19093de22f7d1e3352bd8ff10f61a4c44",
   "tests/irs/f1099s.pdf": "f682abe945492be97fa285605a2b0a78aeda93ab56c43f8c7abfcedbb47bb1bb",
   "tests/irs/f1099sa.pdf": "cc2324629a9bd416180c1e10b66ce44d914937a6c4a11cc4bb8e17c22da44bd1",
+  "tests/irs/f1099sb.pdf": "5b2279ef4026c773d8b74315d7672b7b455bbd6be791421dee4ab453b50466a1",
   "tests/irs/f1120.pdf": "016c7fb4042a565c23a98014b17019af7ddc89e3260dd3f926b84d6688b7be6e",
+  "tests/irs/f1120c.pdf": "c61543e2b4c816b0ae999e0785668112a523949fdfd346f17ce28cca6f66cd73",
+  "tests/irs/f1120f.pdf": "1f5921961f8dee175bf892291b262f97d901fe4ae9a7e659dd4303670dbc82a8",
   "tests/irs/f1120h.pdf": "dffaa4d3079cc0ba14e7f50c823bf19ff9595c54c274d03ffe859c60382eab6f",
+  "tests/irs/f1120l.pdf": "20b6dca73f05503086353b4d67d3435c52866fb589d738276251fb4597a83563",
+  "tests/irs/f1120nd.pdf": "0846e900f3f1b4ce588ab3adf23a3eb9992543b2dc0dd3bb86f844ad2cb7b76d",
+  "tests/irs/f1120pc.pdf": "736a2d5b952fc1430a3f2caefec0ad70a9dc861d651d0f7642e41f7d3f148915",
+  "tests/irs/f1120pol.pdf": "246ece230ad6d68d6cbb4041bd28c15bdd4f497bcd5d6233907107b99cc7285f",
+  "tests/irs/f1120rei.pdf": "820ae6d731f576907e6bf5eb1dd03926989ece3399a132c0c9ca044018d2f68d",
+  "tests/irs/f1120ric.pdf": "4772cde96d4e3ba7adde9353f1a88a36f3be14a99d5ca614ec4477362ec32d6c",
   "tests/irs/f1120s.pdf": "c4b7cae7f2283a2e3225523ea001a710109fee34aad909461421025b287cd18d",
+  "tests/irs/f1120sf.pdf": "9ab41d0667c0430d16a8132bd441bd8fbc636f500bcb0740d71df2b9b6f1bca6",
   "tests/irs/f1120ssk.pdf": "104ac7b1137cb78c9051d4e3424630dca233887f17928b311fef6fd578baacd0",
   "tests/irs/f1120ssk_2024.pdf": "c90fec338c02c39e56cc2dd6ebd8c5e921ec5b653cd75b149c040f88e2e54be4",
+  "tests/irs/f1120x.pdf": "0439bd07d1dc3fa29b7b2995ef62d3967b9b79660ad0c52a5be4a08eb86d16b9",
   "tests/irs/f1125e.pdf": "7d3295ba7039b4b0e84786f75f481dd1ca98df10c0695fade6fdaacc6817e729",
   "tests/irs/f4562.pdf": "c05f9d1f5e26b1b21e18b0a13adbbcd3d568bb9f3ca53bd7bba7c795c7799b4a",
   "tests/irs/f4868.pdf": "36c7607db08ff469ed4e5df89e27ca90f29023c7cd6ca77c69343045e8f33d29",
   "tests/irs/f5498.pdf": "745fe725b8b59b5ab5d797045b2715416b7ef4bca86c7337fce210e064866f17",
+  "tests/irs/f5498qa.pdf": "3a84d587ef0347a3040c8342f851ba968d0938aa1f2c8e371e790d0caacbb16a",
   "tests/irs/f5498sa.pdf": "aaf55e3c61e8fc6913e00ff3eb5ffb0c9a780f3e39339aa8d2ac1810b2657994",
   "tests/irs/f8879.pdf": "f6c6ef51c0cb91f6f2e805818c755281e8485f768e6999c272ed1e06e9504fea",
   "tests/irs/f940.pdf": "575bb0d645ff613574c9b58506c6e0f7cbdc757c85ebc3e766ffc59fd5709d7c",
   "tests/irs/f941.pdf": "38a3d8cf7a455101d52543c8c48e66202bc25c189ead878627e35c797c88e2ad",
+  "tests/irs/f941x.pdf": "ef258081fb39a56ea0046f9afb2f03cb4b362eec406cd1be5ca882908baba924",
   "tests/irs/f990.pdf": "0b715d2790691ca6d4fb16ba0923e3cdf1d0e04cd26ea48788d41a708e945533",
   "tests/irs/f990ez.pdf": "290b3f9018ae12837b0ffdc32a8cb7beca78917caffdaf313c85d17d4e73a27c",
   "tests/irs/f990pf.pdf": "999df73380009f180fcc741f778a47bc83a25de3116fb1a1cf8d03f6b24b39ba",
+  "tests/irs/f990t.pdf": "bc9b5dc14df57cbf1334a8cc7037c623cec19f255f4dd3e24c8430394233d20e",
   "tests/irs/fw2.pdf": "61eca7c81f16d3965819fe1f31be4fe68c1b2887a81f51172f1d2ed2b2b9f087",
   "tests/irs/fw2_2024.pdf": "318af9431e372ef7b92c478ef76355312de70f09ac92072d48cdd025080ef526",
   "tests/irs/fw2_2025.pdf": "6a52ad63693de54220a3326b22c4d0fb34f4c25084366537087312975a55ae96",
+  "tests/irs/fw2as.pdf": "a5847534d589e2274a90d8e4155b22e932fedbd9d85c5500da11e25ced727356",
+  "tests/irs/fw2c.pdf": "23344409a2b3fdaa1a7daf2660114060f20562078967772a147f9c83705df307",
+  "tests/irs/fw2g.pdf": "2d75e44d5ea6574aec1c5b68884cdf1bd2bcc96f9f897a57c3b15cc691631168",
+  "tests/irs/fw2gu.pdf": "e4c50a522729f282b33672aa7996080c312a7502c9fc6f629289296fbcf93e47",
+  "tests/irs/fw2vi.pdf": "66d4998f2218c2c36ae85d4087e08329da33795e8144f84fe62e09018bd4d1c1",
   "tests/irs/fw3.pdf": "2df15f40431bd52814cbac85d9843102b09a640b6fe558f201e5214ff1890656",
+  "tests/irs/fw3c.pdf": "34a838c48c3da9c64e05e1e5dcb816b074104f6114b29fb0dfed3e287af35752",
+  "tests/irs/fw3pr.pdf": "3f7819da40f3175d8295afc30bfe23ff04c09af49300453499936b8e08ea10a3",
+  "tests/irs/fw3ss.pdf": "f311c3e30182206ac4ac1767c50d0bbc14a7a151a52dfe58acf7770bb615c3b2",
+  "tests/irs/nyit201.pdf": "cfe63039ffa4374f5fff67b7d2b37c5bdb802211fac55c69386e8f15c20d3e08",
+  "tests/irs/nyit204.pdf": "814ae022406c8d92f91499c3b29f62bd2946039c12ff9c012109c2bfff2643e9",
+  "tests/irs/nyit204ip.pdf": "22a4a83ed55ade1db141eaa7721160a589f1ece2a0080b006e8c325040cfc764",
+  "tests/irs/nyit204ll.pdf": "2fa553d27d160150080a13d8de4e128b5c5c1c5149cb515811ac3b17a9664044",
   "tests/test_catalog.py": "f7d01f8816abfe637687257ae8cfbb2ce7e9979b5380e03235a7dc60f33e3ca0",
-  "tests/test_irs_forms.py": "5ede3ad6ac168fd49a1af702517e5f7376760ee72b1e7ff8bf9a8c0e3e50312a",
-  "tests/test_real_corpus.py": "32c0f2def2439259f3265350e03cc9acf83c7047894609db60881b826784c08d",
+  "tests/test_irs_forms.py": "75d03d4596e6f94af419d956152b05f0310f4142aa8a06c774c81c75e9709e80",
+  "tests/test_real_corpus.py": "3d527b20cd9be62113dd6c2bee3c4376667ad2772a17941d819e0dec03169098",
   "tools/vocab_report.py": "d10b5df1ecdc629030ef69e490cc7ba93d93da5633f470cc337443869c59bd91",
   "tracker/content_check.py": "860610877b6dd342d26925d57edfba20033735bfae7eef20d6eca3717570fa1a",
   "tracker/manifest.py": "06baab025a98e838466feff64e1c9b975dba39b5cb4515aebefc9b4de7d4098a",

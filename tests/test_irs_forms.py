@@ -1,10 +1,15 @@
 """The shipped catalogs against the IRS's own forms.
 
-``tests/irs/`` holds fifty-two forms as the IRS publishes them (irs.gov,
-public domain, fetched 2026-09-17; the two W-2 revisions 2026-09-18): the
-blank Copy B with its Instructions for Recipient, a return with its
-schedules, a K-1 of each flavour, the notices and transmittals that mention
-forms they are not, and the prior revisions whose layout changed. Each is routed
+``tests/irs/`` holds the blank forms as the IRS publishes them (irs.gov,
+public domain: fifty fetched 2026-09-17, the two W-2 revisions and, with
+decision 96, every variant ``FORM_VARIANTS`` names that irs.gov publishes,
+2026-09-18) and the California and New York returns the catalogs name
+(ftb.ca.gov and tax.ny.gov, the same day): the blank Copy B with its
+Instructions for Recipient, a return with its schedules, a K-1 of each
+flavour, the notices and transmittals that mention forms they are not, the
+prior revisions whose layout changed, and the siblings that share a family's
+lines (1120 and 1120-F, W-2 and W-2c) so that no form is known only by what
+its neighbours do not print. Each is routed
 against a shipped catalog the way an engagement routes it - through
 create_template() and load_manifest() - and must land where it belongs,
 or park. A reconstruction typed from memory omits the instruction page
@@ -87,6 +92,53 @@ EXPECT = [
     ("f941.pdf", "1120S", 2025, "E01"), ("fw3.pdf", "1120S", 2025, "E01"),
     ("f940.pdf", "990", 2025, "G01"), ("fw3.pdf", "990", 2025, "G01"),
     ("f1040es_2025.pdf", "1120", 2025, None),
+    # Decision 96: the corpus completed. A W-2 for a territory is a W-2, an
+    # amended return is that return, an amended 941 is a payroll return and a
+    # 990-T is what the 990's H01 names; a corrected or transmittal form is
+    # not a wage statement; a return type no catalog serves parks, as the
+    # 1120-H always has; an information return no row names parks.
+    ("fw2as.pdf", "1040", 2025, "A01"), ("fw2gu.pdf", "1040", 2025, "A01"), ("fw2vi.pdf", "1040", 2025, "A01"),
+    ("fw2g.pdf", "1040", 2025, None), ("fw2g.pdf", "1041", 2025, None),
+    ("fw3c.pdf", "1120", 2025, None), ("fw3pr.pdf", "1120", 2025, None), ("fw3ss.pdf", "1120", 2025, None),
+    ("f941x.pdf", "1120", 2025, "E01"), ("f941x.pdf", "1120S", 2025, "E01"), ("f941x.pdf", "990", 2025, "G01"),
+    ("f941x.pdf", "1040", 2025, None),
+    ("f990t.pdf", "990", 2026, "H01"), ("f990t.pdf", "1040", 2026, None),
+    ("f1120x.pdf", "1120", 2026, "A01"), ("f1120x.pdf", "1120S", 2026, None), ("f1120x.pdf", "1040", 2026, None),
+    ("f1120c.pdf", "1120", 2026, None), ("f1120f.pdf", "1120", 2026, None), ("f1120l.pdf", "1120", 2026, None),
+    ("f1120pc.pdf", "1120", 2026, None), ("f1120pol.pdf", "1120", 2026, None), ("f1120rei.pdf", "1120", 2026, None),
+    ("f1120ric.pdf", "1120", 2026, None), ("f1120sf.pdf", "1120", 2026, None), ("f1120nd.pdf", "1120", 2026, None),
+    ("f1120f.pdf", "1120S", 2026, None), ("f1120f.pdf", "1040", 2026, None),
+    ("f1040c.pdf", "1040", 2026, None), ("f1040ss.pdf", "1040", 2026, None), ("f1040v.pdf", "1040", 2026, None),
+    ("f1041n.pdf", "1041", 2026, None), ("f1041v.pdf", "1041", 2026, None), ("f1041t.pdf", "1041", 2025, None),
+    ("f1041es.pdf", "1041", 2025, None),      # no 1041 row asks for estimated payments: the owner's call
+    ("f1041a.pdf", "1040", 2026, None), ("f1041qft.pdf", "1040", 2026, None),
+    ("f1098c.pdf", "1040", 2025, None), ("f1098e.pdf", "1040", 2025, None), ("f1098f.pdf", "1040", 2025, None),
+    ("f1098q.pdf", "1040", 2025, None), ("f1099a.pdf", "1040", 2025, None), ("f1099c.pdf", "1040", 2025, None),
+    ("f1099cap.pdf", "1040", 2025, None), ("f1099h.pdf", "1040", 2025, None), ("f1099ls.pdf", "1040", 2025, None),
+    ("f1099ltc.pdf", "1040", 2025, None), ("f1099q.pdf", "1040", 2025, None), ("f1099qa.pdf", "1040", 2025, None),
+    ("f1099sb.pdf", "1040", 2025, None), ("f5498qa.pdf", "1040", 2025, None),
+    ("f1099c.pdf", "1041", 2025, None), ("f1099q.pdf", "1041", 2025, None), ("f1098e.pdf", "1041", 2025, None),
+    # The state forms: decision 90 files a standalone state return into the
+    # "& State" row and decision 93 a state K-1 on the K-1 row; a state
+    # form for another entity, or the LLC fee form, parks.
+    ("ca540.pdf", "1040", 2026, "B01"), ("ca540.pdf", "1041", 2026, None),
+    ("nyit201.pdf", "1040", 2026, "B01"), ("nyit201.pdf", "1041", 2026, None),
+    ("ca100s.pdf", "1120S", 2026, "A01"), ("ca100s.pdf", "1120", 2026, None),
+    ("ca565.pdf", "1065", 2026, "A01"), ("ca565.pdf", "1040", 2026, None), ("ca565.pdf", "1120S", 2026, None),
+    ("ca568.pdf", "1065", 2026, "A01"), ("ca568.pdf", "1040", 2026, None), ("ca568.pdf", "1120S", 2026, None),
+    ("nyit204.pdf", "1065", 2026, "A01"), ("nyit204.pdf", "1040", 2026, None),
+    ("nyit204ll.pdf", "1065", 2026, None), ("nyit204ll.pdf", "1040", 2026, None),
+    ("ca568k1.pdf", "1040", 2025, "F01"), ("nyit204ip.pdf", "1040", 2025, "F01"), ("nyit204ip.pdf", "1065", 2025, None),
+    # Not committed, because today's rules get them wrong and the fix is
+    # Phase C's identity, not a keyword's (decision 96 lists them as open):
+    # the CA 100S in a 1040 files F01 on its own K-1 pages; the CA 568 K-1
+    # in a 1065 files F01 (decision 85's F1); the 1041-A, 1041-QFT and
+    # 1120-ND in a 1041 file D01 on a fee line every return prints; the
+    # 1041-ES in a 1040 (H01) and the 1041-T in an 1120 (F01) file as another
+    # entity's estimated payments. Not committed either, as calls for the
+    # owner: the W-2c (parks; a corrected wage statement), the 1065-X (parks;
+    # its title is not the 1065's) and the 1099-DA (parks; broker proceeds
+    # without the 1099-B's words).
 ]
 
 
