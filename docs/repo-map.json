@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 107,
-    "edges": 466,
-    "reused": 80
+    "edges": 467,
+    "reused": 64
   },
   "node_types": [
     "artifact",
@@ -87,7 +87,7 @@
       "id": "rule:nothing-is-guessed",
       "type": "concept",
       "layer": "constraint",
-      "role": "Nothing is guessed. A document is filed only when exactly one request accepts it. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person - misfiling a tax document is worse than not filing it."
+      "role": "Nothing is guessed. A document is filed only when exactly one request accepts it - or, when one document names several forms as itself, when each of those forms is accepted by exactly one request. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person - misfiling a tax document is worse than not filing it."
     },
     {
       "id": "rule:originals-are-never-altered",
@@ -99,8 +99,8 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5cb628a7a1afc47e",
-      "lines": 83,
+      "sha256": "04baef48e00f5aa9",
+      "lines": 84,
       "role": "Package docstring listing every component, and the re-exports of the manifest and scaffold APIs.",
       "notes": "Imports tracker.manifest and tracker.scaffold at load time, and tracker/manifest.py imports `from tracker import ledger`, which executes this package while it is still initialising. That is the one load-time cycle in the package, and it holds only because tracker/ledger.py imports nothing of the package but tracker/locking.py - keep it at the bottom. Every other cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one."
     },
@@ -108,8 +108,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "18ae22c1c839c100",
-      "lines": 974,
+      "sha256": "78b847f755ff153e",
+      "lines": 979,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -155,8 +155,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "860610877b6dd342",
-      "lines": 1360,
+      "sha256": "19aac643167157db",
+      "lines": 1442,
       "cli": "python -m tracker.content_check",
       "exports": [
         "CACHE_FILENAME",
@@ -187,13 +187,16 @@
         "extract",
         "extract_by_ocr",
         "extract_text",
+        "form_family",
+        "form_key",
         "format_evidence",
         "has_content_rules",
         "is_form_number",
         "keyword_pattern",
         "parse_evidence",
         "rules_fingerprint",
-        "says"
+        "says",
+        "self_named_forms"
       ],
       "constants": {
         "CACHE_FILENAME": "'_content_cache.json'",
@@ -219,8 +222,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "03a16ccffcd1c905",
-      "lines": 2370,
+      "sha256": "d46001d118e44d53",
+      "lines": 2473,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -568,8 +571,8 @@
       "id": "tracker/reasons.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6e8deed33ca86f91",
-      "lines": 221,
+      "sha256": "f231b729c6155383",
+      "lines": 253,
       "exports": [
         "EXTENSION_NOT_ALLOWED",
         "EXTRACTION_FAILED",
@@ -579,6 +582,7 @@
         "GOOGLE_EXPORT_HINT",
         "GOOGLE_STUB",
         "ISSUER_NOT_NAMED",
+        "NAMES_SEVERAL_FORMS",
         "NO_EXPECTED_KEYWORD",
         "NO_PAGES",
         "NO_READABLE_TEXT",
@@ -589,6 +593,7 @@
         "PASSWORD_PROTECTED",
         "PENDING_SYNC",
         "Reason",
+        "SEVERAL_FORMS_UNSORTED",
         "TOO_SMALL",
         "UNCHECKABLE_TYPE",
         "UNREADABLE_PDF",
@@ -602,7 +607,9 @@
         "GENERIC_ASK": "'we could not read the file that arrived; please send it again'",
         "FIRM_WAITING": "'waiting on a person here to read it, not on the client'",
         "FIRM_WAITING_PARTIAL": "'some of what arrived is waiting on a person here to read it; confirm before asking for more'",
-        "GOOGLE_EXPORT_HINT": "'File > Download > PDF or Excel'"
+        "GOOGLE_EXPORT_HINT": "'File > Download > PDF or Excel'",
+        "NAMES_SEVERAL_FORMS": "'names {n} forms as itself, each asked for by exactly one request ({listed}); a copy is filed under each'",
+        "SEVERAL_FORMS_UNSORTED": "'it names {n} forms as itself and they do not sort one to a request'"
       },
       "role": "Every refusal said once: for each cause, the note the scanner writes (a template), the marker the reminder recognises it by, the plain sentence the client is asked with, and whether the row is the firm's to look at.",
       "notes": "Replaced substrings retyped in reminder.py to recognise sentences typed in validators/content_check/scanner: rewording a producer silently changed what a client was asked. tests/test_reasons.py checks each marker is part of its own template. Decision 55: reasons_in() strips the file-name prefixes the scanner writes, so a marker is never found in a client's file name. OCR_FAILED is firm-side: ours to retry, not the client's to resend (decision 57). Decision 92 added NO_READABLE_TEXT (code 'unreadable', marker 'nothing in this file could be read'), which is the ONE reason here that is not a validation note: the router writes it into the index's Reason column when no word of a file could be read, and it is firm-side because the client's document may be perfectly good and only this machine cannot read it. It is in ALL, so find() and the review card's refusal words reach it like any other. Decision 93 added ISSUER_NOT_NAMED (code 'issuer-not-named', marker 'names none of them'), the second reason here that is not a validation note: the router writes it into the index's Reason column when a request list asks for a document one row per issuer and the document names none of them. Firm-side - the client sent the right document; a person files it or adds the row."
@@ -772,18 +779,21 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "325814eeaf89c85a",
-      "lines": 551,
+      "sha256": "8e24f72a2264adef",
+      "lines": 705,
       "cli": "python -m tracker.router",
       "exports": [
         "AMBIGUOUS",
         "CONTESTED_PREFIX",
         "EVIDENCE_CONTENT",
         "ISSUER_NOT_NAMED",
+        "MULTI_FORM_FAMILIES",
         "NO_REQUEST_ACCEPTS",
         "OCR_ONLY",
         "PENDING",
         "Routing",
+        "SEVERAL_FORMS",
+        "SEVERAL_FORMS_UNSORTED",
         "UNMATCHED",
         "UNREADABLE",
         "route_file",
@@ -795,6 +805,7 @@
         "OCR_ONLY": "'matched only by OCR text'",
         "EVIDENCE_CONTENT": "'content'",
         "NO_REQUEST_ACCEPTS": "'no request accepts .{extension} files'",
+        "MULTI_FORM_FAMILIES": "2",
         "CONTESTED_PREFIX": "'looks like'"
       },
       "role": "Decides which single manifest row a dropped file belongs to. Evidence order: required keywords, then any-keywords/period, read off a text layer or off OCR (OCR routes on required keywords only). There is no third tier: a file name is never evidence for a filing (decision 92), and a document nothing could be read out of parks.",
@@ -1014,8 +1025,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0356af6641b34de4",
-      "lines": 198,
+      "sha256": "20171e85e6fad201",
+      "lines": 205,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
@@ -1028,6 +1039,7 @@
         "EXAMPLE_ROOT",
         "EXPECTATIONS_COLUMNS",
         "EXPECTATIONS_FILENAME",
+        "EXPECTED_SEP",
         "KEY_CLIENTS_ROOT",
         "KEY_FIRM",
         "PACKAGE_JSON",
@@ -1056,7 +1068,8 @@
         "COLUMN_FILE": "'file'",
         "COLUMN_CATALOG": "'catalog'",
         "COLUMN_YEAR": "'year'",
-        "COLUMN_EXPECTED": "'expected'"
+        "COLUMN_EXPECTED": "'expected'",
+        "EXPECTED_SEP": "'+'"
       },
       "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root and the firm are kept. clients_root()/set_clients_root(), firm()/set_firm(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is. ENV_REAL_CORPUS and real_corpus_dir() name the other folder outside the repository: the firm's own redacted documents, with the expectations file's name and columns beside them.",
       "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through manifest.write_json_atomically(): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement."
@@ -1238,8 +1251,8 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "0fb03178505ae110",
-      "lines": 857,
+      "sha256": "145842d5088e2c2d",
+      "lines": 860,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser."
     },
@@ -1270,8 +1283,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a30a768f6e075fc1",
-      "lines": 225,
+      "sha256": "8966bec51ec77b1f",
+      "lines": 226,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -1279,16 +1292,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "279ad7b3ee5e0170",
-      "lines": 364,
+      "sha256": "f1fb9a70da29bd74",
+      "lines": 365,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6db00eb23ac98c83",
-      "lines": 314,
+      "sha256": "3a099aa1aefacd32",
+      "lines": 316,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1305,7 +1318,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "e871880705df6710",
+      "sha256": "371ddfd974caf6c0",
       "lines": 784,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1314,8 +1327,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "064fd255cae056dc",
-      "lines": 411,
+      "sha256": "7a644a906903185d",
+      "lines": 412,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1323,15 +1336,15 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "f9367d101f865b47",
-      "lines": 7626,
+      "sha256": "2ab964f6c821590f",
+      "lines": 7697,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
     {
       "id": "docs/vocab-coverage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "dc97501c958d6ab5",
+      "sha256": "ac4c249cd2ca6b0a",
       "lines": 710,
       "role": "The vocabulary coverage report as people read it: the unreached keywords, the keywords reached only by documents that file elsewhere, the rows nothing files into, then every catalog row by row. Generated by tools/vocab_report.py; never edited by hand.",
       "notes": "Rebuilt with `python tools/vocab_report.py build` in the same commit as a catalog, matcher or case change."
@@ -1537,8 +1550,8 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e7b71910916c8021",
-      "lines": 295,
+      "sha256": "5dd46fd275322c4a",
+      "lines": 359,
       "exports": [
         "DEMO_ITEMS",
         "PRIOR_YEAR",
@@ -1546,6 +1559,7 @@
         "SCRATCH_ENGAGEMENT",
         "SCRATCH_FIRM",
         "YEAR",
+        "brokerage_cover_lines",
         "build_samples",
         "build_scratch_root",
         "col",
@@ -1555,6 +1569,9 @@
         "listing_denied",
         "prior_return_lines",
         "row",
+        "scanned_1098_lines",
+        "scanned_1099_int_lines",
+        "scanned_w2_lines",
         "sheet_xlsx",
         "text_pdf",
         "w2_lines"
@@ -1733,8 +1750,8 @@
       "id": "tests/test_catalog.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f7d01f8816abfe63",
-      "lines": 1625,
+      "sha256": "05de2e39bcff68a0",
+      "lines": 1682,
       "exports": [
         "CASES",
         "NL",
@@ -1802,8 +1819,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9d9ca5cd18dbcef7",
-      "lines": 2150,
+      "sha256": "c904101e667e097c",
+      "lines": 2186,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1838,6 +1855,7 @@
         "test_a_name_the_index_cannot_hold_is_reported_not_allowed_to_take_the_index_down",
         "test_a_name_the_workbook_cannot_hold_is_refused_like_one_utf8_cannot",
         "test_a_name_windows_cannot_open_is_reported_not_passed_over",
+        "test_a_page_that_prints_two_forms_files_a_copy_under_each_and_unfiles_as_one",
         "test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone",
         "test_a_persons_decision_survives_excel_saving_the_stale_workbook",
         "test_a_persons_filing_above_a_sorted_header_is_not_undone",
@@ -2104,11 +2122,12 @@
       "id": "tests/test_real_corpus.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3d527b20cd9be621",
-      "lines": 193,
+      "sha256": "09f19b34e9f884ab",
+      "lines": 208,
       "exports": [
         "catalog_rows",
         "catalogs",
+        "filed_to",
         "read_expectations",
         "real_corpus",
         "scratch_corpus",
@@ -2989,8 +3008,8 @@
       "id": "tools/vocab_report.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "d10b5df1ecdc6290",
-      "lines": 506,
+      "sha256": "781aa294fdd71e28",
+      "lines": 518,
       "cli": "python -m tools.vocab_report",
       "exports": [
         "Document",
@@ -3504,6 +3523,12 @@
     {
       "from": "tests/test_catalog.py",
       "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_catalog.py",
+      "to": "tests/test_real_corpus.py",
       "type": "imports",
       "source": "derived"
     },

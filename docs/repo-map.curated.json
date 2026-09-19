@@ -280,7 +280,7 @@
     "rule:nothing-is-guessed": {
       "type": "concept",
       "layer": "constraint",
-      "role": "Nothing is guessed. A document is filed only when exactly one request accepts it. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person - misfiling a tax document is worse than not filing it."
+      "role": "Nothing is guessed. A document is filed only when exactly one request accepts it - or, when one document names several forms as itself, when each of those forms is accepted by exactly one request. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person - misfiling a tax document is worse than not filing it."
     },
     "rule:nothing-is-ever-sent": {
       "type": "concept",

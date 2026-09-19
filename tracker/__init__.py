@@ -74,9 +74,10 @@ STANDING_RULES: tuple[tuple[str, str], ...] = (
      "Files are moved byte for byte under their own names into {shared}/{pbc}/; "
      "all work happens on copies, and every move is recorded in {index}."),
     ("Nothing is guessed.",
-     "A document is filed only when exactly one request accepts it. Ambiguous, contested "
-     "and unrecognized files go to {review} for a person - misfiling a tax document is "
-     "worse than not filing it."),
+     "A document is filed only when exactly one request accepts it - or, when one document "
+     "names several forms as itself, when each of those forms is accepted by exactly one "
+     "request. Ambiguous, contested and unrecognized files go to {review} for a person - "
+     "misfiling a tax document is worse than not filing it."),
     ("Nothing is ever sent.",
      "The system drafts client emails and stops. There is no SMTP, no mail client and no "
      "network call in the reminder or scheduling path."),

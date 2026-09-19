@@ -46,6 +46,24 @@
          "name": "W-2 with state wages.pdf"
         },
         {
+         "decision": 94,
+         "expected": "A01+A02+C01",
+         "kind": "case",
+         "name": "W-2 1099-INT and 1098 scanned together.pdf"
+        },
+        {
+         "decision": 94,
+         "expected": null,
+         "kind": "case",
+         "name": "W-2 1099-INT and a brokerage cover.pdf"
+        },
+        {
+         "decision": 94,
+         "expected": "A01+A02",
+         "kind": "case",
+         "name": "W-2 and 1099-INT scanned together.pdf"
+        },
+        {
          "expected": "A01",
          "kind": "irs",
          "name": "fw2.pdf"
@@ -153,6 +171,24 @@
          "name": "W-2 with state wages.pdf"
         },
         {
+         "decision": 94,
+         "expected": "A01+A02+C01",
+         "kind": "case",
+         "name": "W-2 1099-INT and 1098 scanned together.pdf"
+        },
+        {
+         "decision": 94,
+         "expected": null,
+         "kind": "case",
+         "name": "W-2 1099-INT and a brokerage cover.pdf"
+        },
+        {
+         "decision": 94,
+         "expected": "A01+A02",
+         "kind": "case",
+         "name": "W-2 and 1099-INT scanned together.pdf"
+        },
+        {
          "expected": null,
          "kind": "irs",
          "name": "f941x.pdf"
@@ -243,6 +279,24 @@
          "expected": "A01",
          "kind": "case",
          "name": "W-2 with state wages.pdf"
+        },
+        {
+         "decision": 94,
+         "expected": "A01+A02+C01",
+         "kind": "case",
+         "name": "W-2 1099-INT and 1098 scanned together.pdf"
+        },
+        {
+         "decision": 94,
+         "expected": null,
+         "kind": "case",
+         "name": "W-2 1099-INT and a brokerage cover.pdf"
+        },
+        {
+         "decision": 94,
+         "expected": "A01+A02",
+         "kind": "case",
+         "name": "W-2 and 1099-INT scanned together.pdf"
         },
         {
          "expected": "A01",
@@ -684,6 +738,12 @@
          "name": "substitute 1098 with a dash title.pdf"
         },
         {
+         "decision": 94,
+         "expected": "A01+A02+C01",
+         "kind": "case",
+         "name": "W-2 1099-INT and 1098 scanned together.pdf"
+        },
+        {
          "expected": null,
          "kind": "irs",
          "name": "f1040sa.pdf"
@@ -984,6 +1044,12 @@
          "decision": 73,
          "kind": "case",
          "name": "trust brokerage year-end statement.pdf"
+        },
+        {
+         "decision": 94,
+         "expected": null,
+         "kind": "case",
+         "name": "W-2 1099-INT and a brokerage cover.pdf"
         }
        ],
        "rule": "any"
@@ -2218,6 +2284,11 @@
          "expected": "B02",
          "kind": "case",
          "name": "trust brokerage year-end statement.pdf"
+        },
+        {
+         "decision": 94,
+         "kind": "case",
+         "name": "W-2 1099-INT and a brokerage cover.pdf"
         }
        ],
        "rule": "any"
@@ -7496,7 +7567,7 @@
  "counts": {
   "catalogs": 6,
   "documents": {
-   "case": 318,
+   "case": 323,
    "irs": 106
   },
   "keywords": 339,
@@ -7613,11 +7684,11 @@
   "tests/irs/nyit204.pdf": "814ae022406c8d92f91499c3b29f62bd2946039c12ff9c012109c2bfff2643e9",
   "tests/irs/nyit204ip.pdf": "22a4a83ed55ade1db141eaa7721160a589f1ece2a0080b006e8c325040cfc764",
   "tests/irs/nyit204ll.pdf": "2fa553d27d160150080a13d8de4e128b5c5c1c5149cb515811ac3b17a9664044",
-  "tests/test_catalog.py": "f7d01f8816abfe637687257ae8cfbb2ce7e9979b5380e03235a7dc60f33e3ca0",
+  "tests/test_catalog.py": "05de2e39bcff68a04bceafd231a4596103d83e1672c98ad05df9277c7000b216",
   "tests/test_irs_forms.py": "75d03d4596e6f94af419d956152b05f0310f4142aa8a06c774c81c75e9709e80",
-  "tests/test_real_corpus.py": "3d527b20cd9be62113dd6c2bee3c4376667ad2772a17941d819e0dec03169098",
-  "tools/vocab_report.py": "d10b5df1ecdc629030ef69e490cc7ba93d93da5633f470cc337443869c59bd91",
-  "tracker/content_check.py": "860610877b6dd342d26925d57edfba20033735bfae7eef20d6eca3717570fa1a",
+  "tests/test_real_corpus.py": "09f19b34e9f884abfddbb7fc7dd04d979ce619e55acbb0a8205d0ff8c070c52d",
+  "tools/vocab_report.py": "781aa294fdd71e28c398e2df24b6974940d6cbfc06c9640a0f68c197c32699bf",
+  "tracker/content_check.py": "19aac643167157db3679a0e83265c9975656cde4124d5cd91fdc421de14adf14",
   "tracker/manifest.py": "06baab025a98e838466feff64e1c9b975dba39b5cb4515aebefc9b4de7d4098a",
   "tracker/templates.py": "ab983f39a9d439ca9ebbcbb10648b6966b4adb216e4990bf8ade048bee924716"
  },

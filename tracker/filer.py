@@ -13,8 +13,14 @@ that pile into two things:
     engagement, named to one convention so a preparer can work the return
     without opening the client's filing habits.
 
-``INDEX_FILENAME`` maps one to the other: every original, where it went, what
-it was renamed to, and — when it was not filed — why not. Its Evidence
+``INDEX_FILENAME`` maps one to the other: **one row per original**, where it
+went, what it was renamed to, and — when it was not filed — why not. One
+original can have more than one working copy: a page that prints two
+forms' own names is two documents, and decision 94 files a copy under each
+request that asked for one of them. It stays one row all the same — one
+client file, one preserved original, one identity in the engagement's
+record — with ``prepared_location`` naming the first copy, ``also_filed``
+the rest, and the Reason naming the requests. Its Evidence
 column carries the *why* behind the verdict: which of the manifest row's
 own keywords matched, and where in the document they were said. Catalog
 words and file names only, never a word of the client's document, which is
@@ -231,11 +237,39 @@ class IndexEntry:
     #: on, and a parked row carries it as much as a filed one, because the
     #: parked row is the one a person has to work out.
     evidence: str = ""
+    #: The *other* working copies this one original has (decision 94): a
+    #: page that prints two forms' own names is two documents, and each
+    #: form's request gets a copy of it. ``prepared_location`` names the
+    #: first, this names the rest, and the Reason sentence names the
+    #: requests - so the row stays one row for one original, which is what
+    #: the record keys on, what the client's folder holds one of, and what
+    #: a person unfiles in one click. Empty on every ordinary row, which
+    #: is every row written before decision 94.
+    also_filed: str = ""
 
     @property
     def candidate_list(self) -> list[str]:
         """The router's candidates as the list they were joined from."""
         return [c for c in (part.strip() for part in self.candidates.split(_CANDIDATE_SEP)) if c]
+
+    @property
+    def filed_locations(self) -> list[str]:
+        """Every working copy this original has, in the order they were
+        made: the one ``prepared_location`` names, then ``also_filed``'s.
+        One row, one original, one list - the shape every reader that has
+        to touch all of them (unfiling, the app's filed list, the status
+        report) asks for, so none of them splits a cell of its own."""
+        if not self.prepared_location:
+            return []
+        return [self.prepared_location] + [
+            part.strip() for part in self.also_filed.split(_CANDIDATE_SEP) if part.strip()
+        ]
+
+    @property
+    def filed_names(self) -> list[str]:
+        """The file name of each working copy - the basename of each of
+        ``filed_locations``. The one place a location is cut to a name."""
+        return [location.rsplit("/", 1)[-1] for location in self.filed_locations]
 
     @property
     def evidence_record(self) -> dict[str, tuple[Evidence, ...]]:
@@ -244,8 +278,10 @@ class IndexEntry:
 
     @property
     def filed_as(self) -> str:
-        """The working copy's file name - the basename of where it went."""
-        return self.prepared_location.rsplit("/", 1)[-1] if self.prepared_location else ""
+        """The working copy's file name - the basename of where it went.
+        The first one, where decision 94 made several; ``filed_names`` is
+        every one of them."""
+        return next(iter(self.filed_names), "")
 
     def as_row(self) -> list[object]:
         return [getattr(self, f.name) for f in fields(IndexEntry)]
@@ -264,6 +300,7 @@ INDEX_LAYOUT: dict[str, tuple[str, int]] = {
     "reason": ("Reason", 60),
     "candidates": ("Candidates", 14),
     "evidence": ("Evidence", 50),
+    "also_filed": ("Also Filed", 40),
 }
 assert tuple(INDEX_LAYOUT) == tuple(f.name for f in fields(IndexEntry))
 INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
@@ -524,6 +561,13 @@ def ledger_key(entry: IndexEntry) -> str:
     A row that names no original (only a workbook somebody built by hand has
     one) falls back to what else the row says about the document, so two such
     rows are not folded into one.
+
+    It is still one location per row after decision 94, and that is why the
+    index keeps one row for a page filed under several requests rather than
+    one row per copy: two rows naming one preserved original would collide
+    here, and the collision would be silent - the record would fold them
+    into one and the workbook would go on holding two. The copies are a
+    column of that row (``IndexEntry.also_filed``), not rows of their own.
     """
     return entry.pbc_location or f"{entry.received}|{entry.original_name}|{entry.digest}"
 
@@ -1736,6 +1780,40 @@ class _SortContext:
     pdf_cache: PdfVerdictCache
 
 
+def _working_copy(
+    item: RequestItem, drop: Path, pbc_target: Path, digest: str, run: _SortContext
+) -> str:
+    """Put one working copy of a preserved original in one request's folder,
+    and say where it went.
+
+    The copy is made from ``pbc_target`` - the preserved original, never
+    the drop - under the canonical name for that row, and a copy already
+    there holding these bytes is reused rather than doubled
+    (:func:`_existing_copy`: a killed run's). A dry run decides all of it
+    and writes nothing, which is why the names claimed are kept in
+    ``run.reserved`` rather than read back off the disk.
+
+    One call per request: decision 94 files a page that carries several
+    forms under each of them, and each folder numbers its own names.
+    """
+    dest_folder = request_folder(item, run.assigned, run.prepared_dir)
+    if dest_folder not in run.reserved:
+        run.reserved[dest_folder] = (
+            {p.name.lower() for p in dest_folder.iterdir()}
+            if dest_folder.is_dir()
+            else set()
+        )
+    filed_as = prepared_name_for(item, extension_of(drop), run.reserved[dest_folder])
+    if not run.dry_run:
+        dest_folder.mkdir(parents=True, exist_ok=True)
+        existing = _existing_copy(dest_folder, pbc_target, digest)
+        if existing is not None:
+            filed_as = existing.name
+        else:
+            _copy_whole(pbc_target, dest_folder / filed_as)
+    return prepared_location(dest_folder, filed_as)
+
+
 def _sort_one(
     drop: Path,
     pbc_target: Path,
@@ -1785,29 +1863,22 @@ def _sort_one(
     item = run.by_id.get(routing.identifier or "")
 
     if routing.routed and item is not None:
-        dest_folder = request_folder(item, run.assigned, run.prepared_dir)
-        if dest_folder not in run.reserved:
-            run.reserved[dest_folder] = (
-                {p.name.lower() for p in dest_folder.iterdir()}
-                if dest_folder.is_dir()
-                else set()
-            )
-        filed_as = prepared_name_for(item, extension_of(drop), run.reserved[dest_folder])
-        if not dry_run:
-            dest_folder.mkdir(parents=True, exist_ok=True)
-            existing = _existing_copy(dest_folder, pbc_target, digest)
-            if existing is not None:
-                filed_as = existing.name
-            else:
-                _copy_whole(pbc_target, dest_folder / filed_as)
+        # One row per request the router named (decision 94 names more
+        # than one where a page carried more than one form), and one
+        # working copy per row. The original is preserved once, under its
+        # own name, and the index keeps one row for it: the copies are
+        # this row's, not rows of their own.
+        wanted = [item] + [run.by_id[i] for i in routing.also if i in run.by_id]
+        locations = [_working_copy(it, drop, pbc_target, digest, run) for it in wanted]
         entry = IndexEntry(
             received=stamp, original_name=drop.name, size_kb=size_kb,
             digest=digest, identifier=item.identifier,
-            prepared_location=prepared_location(dest_folder, filed_as),
+            prepared_location=locations[0],
             pbc_location=pbc_rel, decision=FILED,
             reason=f"{routing.reason}; {refiled}" if refiled else routing.reason,
             candidates=_CANDIDATE_SEP.join(routing.candidates),
             evidence=format_evidence(routing.evidence_record),
+            also_filed=_CANDIDATE_SEP.join(locations[1:]),
         )
         report.filed.append(entry)
         return entry
@@ -2200,7 +2271,10 @@ def unfile_document(
     The working copy goes back under the client's own name, the name a parked
     copy has always had, and the row is rewritten ``NEEDS_REVIEW`` with no
     identifier, the reason attributed to a person and what the row said
-    before kept after it. Then the engagement is re-scanned, so the request
+    before kept after it. A page decision 94 filed under several requests
+    has a copy in each and **every one of them leaves its request folder**:
+    one goes back to ``REVIEW_DIR_NAME`` under the client's name and the
+    rest, being those same bytes again, stand down. Then the engagement is re-scanned, so the request
     the document was answering goes back to what it is without it, with the
     regression note that pass would have written; nothing else waits for the
     scheduled run to notice.
@@ -2228,16 +2302,29 @@ def unfile_document(
         position = _find_filed(entries, original)
         entry = entries[position]
         source = engagement_dir / entry.pbc_location
-        working = engagement_dir / entry.prepared_location if entry.prepared_location else None
-        # The working copy is only this row's while it is here, hydrated, not
-        # claimed by a later row, and still the bytes the row recorded. Any
-        # other file at that path is somebody else's document and is not
-        # carried back to review under this row's name.
-        here = (
-            working is not None and working.is_file() and not is_cloud_placeholder(working)
-            and not _copy_taken_by_a_later_row(entries, position)
-        )
-        still_the_rows = here and bool(entry.digest) and sha256_of(working) == entry.digest
+        # Every working copy this row has: one, or one per request where
+        # decision 94 filed the page under several. A copy is only this
+        # row's while it is here, hydrated, not claimed by a later row,
+        # and still the bytes the row recorded. Any other file at that
+        # path is somebody else's document and is not carried back to
+        # review under this row's name. The path check is the first copy's
+        # (the index's own column is what a later row can take); for the
+        # rest the bytes are the whole test, and they are the stronger one.
+        taken = _copy_taken_by_a_later_row(entries, position)
+        mine: list[Path] = []
+        strangers: list[str] = []
+        for position_in_row, location in enumerate(entry.filed_locations):
+            copy = engagement_dir / location
+            if not copy.is_file() or is_cloud_placeholder(copy):
+                continue
+            if position_in_row == 0 and taken:
+                continue
+            if entry.digest and sha256_of(copy) == entry.digest:
+                mine.append(copy)
+            else:
+                strangers.append(location)
+        working = mine[0] if mine else None
+        still_the_rows = working is not None
         if not still_the_rows:
             # Nothing else can be parked but a copy of the original, so the
             # original has to be here before anything is moved or written.
@@ -2251,12 +2338,23 @@ def unfile_document(
 
         review_dir.mkdir(parents=True, exist_ok=True)
         parked = _unique_path(review_dir, entry.original_name)
-        left_filed = ""
+        left_filed = "; ".join(
+            LEFT_FILED.format(location=location, parked=parked.name) for location in strangers
+        )
+        stood_down: list[Path] = []
         if still_the_rows:
             _move_whole(working, parked)      # keeps any notes a person made on it
+            # A page decision 94 filed under several requests has a copy in
+            # each, and every one of them has to leave its request folder or
+            # the scan goes on counting the document this row no longer
+            # claims. One goes back under the client's name; the rest are
+            # these same bytes over again, and a copy is disposable - the
+            # original in PBC_DIR_NAME/ is the record, and the copy that
+            # went back is byte for byte the one removed here.
+            for copy in mine[1:]:
+                copy.unlink()
+                stood_down.append(copy)
         else:
-            if here:
-                left_filed = LEFT_FILED.format(location=entry.prepared_location, parked=parked.name)
             _copy_whole(source, parked)
 
         new_entry = replace(
@@ -2265,6 +2363,7 @@ def unfile_document(
             prepared_location=prepared_location(review_dir, parked.name),
             decision=NEEDS_REVIEW,
             reason=f"{UNFILED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}",
+            also_filed="",
         )
         entries[position] = new_entry
         landed = True
@@ -2280,6 +2379,10 @@ def unfile_document(
                         _move_whole(parked, working)
                     else:
                         parked.unlink(missing_ok=True)
+                    # The copies that stood down with it come back from the
+                    # one that went back, which is them byte for byte.
+                    for copy in stood_down:
+                        _copy_whole(working or source, copy)
                 except OSError as undo:
                     log.error("Could not put %s back after the index write failed: %s", parked.name, undo)
             raise

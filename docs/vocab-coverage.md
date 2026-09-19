@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 84 rows · 339 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 318 cases
+6 catalogs · 84 rows · 339 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 323 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -110,9 +110,9 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — W-2 Wage Statements - All Employers
 
-- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → ?; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → ?; fw3pr.pdf → ?; fw3ss.pdf → ?
-- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; f941x.pdf → parks; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → ?; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → ?; fw3ss.pdf → ?; nyit201.pdf → B01
-- `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2gu.pdf → **here**; fw2vi.pdf → **here**
+- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; W-2 1099-INT and 1098 scanned together.pdf (d94) → **here**, and A02+C01; W-2 1099-INT and a brokerage cover.pdf (d94) → parks; W-2 and 1099-INT scanned together.pdf (d94) → **here**, and A02; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → ?; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → ?; fw3pr.pdf → ?; fw3ss.pdf → ?
+- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; W-2 1099-INT and 1098 scanned together.pdf (d94) → **here**, and A02+C01; W-2 1099-INT and a brokerage cover.pdf (d94) → parks; W-2 and 1099-INT scanned together.pdf (d94) → **here**, and A02; f941x.pdf → parks; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → ?; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → ?; fw3ss.pdf → ?; nyit201.pdf → B01
+- `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; W-2 1099-INT and 1098 scanned together.pdf (d94) → **here**, and A02+C01; W-2 1099-INT and a brokerage cover.pdf (d94) → parks; W-2 and 1099-INT scanned together.pdf (d94) → **here**, and A02; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2gu.pdf → **here**; fw2vi.pdf → **here**
 
 ### A02 — 1099-INT / 1099-DIV - Interest & Dividend Income
 
@@ -145,7 +145,7 @@ Reached, but proven nothing: the cheapest placements to add.
 ### C01 — Mortgage Interest Statement - Form 1098
 
 - `1098` (required) — substitute 1098 with a dash title.pdf (d73) → **here**; f1098.pdf → **here**
-- `mortgage interest` (required) — 2024 return with Schedule A.pdf (d62) → B01; 2024 1040 with schedules.pdf (d63) → B01; organizer with every line.pdf (d66) → parks; escrow letter.pdf (d67) → parks; organizer homeowners section.pdf (d67) → parks; escrow letter wrapped.pdf (d69) → parks; organizer deductions page.pdf (d69) → parks; organizer homeowners wrapped.pdf (d69) → parks; substitute 1098 with a dash title.pdf (d73) → **here**; f1040sa.pdf → parks; f1098.pdf → **here**
+- `mortgage interest` (required) — 2024 return with Schedule A.pdf (d62) → B01; 2024 1040 with schedules.pdf (d63) → B01; organizer with every line.pdf (d66) → parks; escrow letter.pdf (d67) → parks; organizer homeowners section.pdf (d67) → parks; escrow letter wrapped.pdf (d69) → parks; organizer deductions page.pdf (d69) → parks; organizer homeowners wrapped.pdf (d69) → parks; substitute 1098 with a dash title.pdf (d73) → **here**; W-2 1099-INT and 1098 scanned together.pdf (d94) → **here**, and A01+A02; f1040sa.pdf → parks; f1098.pdf → **here**
 
 ### D01 — Charitable Contribution Receipts
 
@@ -169,7 +169,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 - `1099-b` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; 1099-B Copy B.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?
 - `proceeds from broker` (any) — 1099-B.pdf (d62) → ?; Schwab consolidated 1099 with a B.pdf (d68) → parks; 1099-B Copy B.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?
-- `brokerage statement` (any) — Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?
+- `brokerage statement` (any) — Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?; W-2 1099-INT and a brokerage cover.pdf (d94) → parks
 - `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → parks; Fidelity realized gain and loss report.pdf (d73) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → ?; Schwab year-end brokerage statement.pdf (d73) → **here**; trust brokerage year-end statement.pdf (d73) → ?
 - `realized gain/loss` (any) — realized gain loss export.pdf (d85) → **here**; realized gain loss export.pdf (d85) → ?; realized gain loss.xlsx (d85) → **here**
 - `realized gain loss` (any) — realized gain loss report.pdf (d85) → ?; realized gain loss.xlsx (d85) → **here**
@@ -277,7 +277,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### B02 — Brokerage Year-End Statements
 
-- `brokerage statement` (any) — Schwab year-end brokerage statement.pdf (d73) → ?; trust brokerage year-end statement.pdf (d73) → **here**
+- `brokerage statement` (any) — Schwab year-end brokerage statement.pdf (d73) → ?; trust brokerage year-end statement.pdf (d73) → **here**; W-2 1099-INT and a brokerage cover.pdf (d94) → ?
 - `realized gain and loss` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Fidelity realized gain and loss report.pdf (d73) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks; Schwab year-end brokerage statement.pdf (d73) → ?; trust brokerage year-end statement.pdf (d73) → **here**
 
 ### C01 — Distributions to Beneficiaries - Dates & Amounts

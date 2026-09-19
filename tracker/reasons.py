@@ -21,6 +21,14 @@ column rather than into a request's notes, and they are worded here for the
 same reason the rest are: one sentence, one owner, and a marker the index,
 the review queue and the status report all recognise without retyping a
 word of it.
+
+And not every sentence here is a cause at all. :data:`NAMES_SEVERAL_FORMS`
+is what the index says when a document *was* filed - under several
+requests at once (decision 94) - and :data:`SEVERAL_FORMS_UNSORTED` when
+that same page would not sort. They are plain templates rather than
+:class:`Reason`\\ s, and deliberately outside ``ALL``: the reminder asks
+``ALL`` what to tell a client about a failure, and a document that filed
+is not one.
 """
 
 from __future__ import annotations
@@ -188,6 +196,30 @@ ISSUER_NOT_NAMED = Reason(
     firm_note="the list asks for this one by issuer and the document names none of "
               "the issuers on it; a person here files it or adds the row",
 )
+
+#: One page, several forms (decision 94, the owner's). Neither of these is
+#: a refusal, so neither is a :class:`Reason` and neither is in ``ALL``:
+#: they are what the index's Reason column says about a document that
+#: printed more than one form's own name, and they are worded here for the
+#: reason the refusals are - one sentence, one owner, and a wording the
+#: index, the status report and the runbook's reason table all quote
+#: instead of retyping.
+#:
+#: Counts and identifiers only. What the *page* said is never in here: a
+#: form number read off a client's document is a word of that document,
+#: and the index's sentences carry the firm's words and the client's file
+#: names, never the document's (the same line :class:`Evidence` draws).
+NAMES_SEVERAL_FORMS = (
+    "names {n} forms as itself, each asked for by exactly one request ({listed}); "
+    "a copy is filed under each"
+)
+#: The same page where the forms will not sort one to a request: a form no
+#: request asks for, two requests wanting one form, or a request accepted
+#: on a phrase that names no form at all. The whole page parks - filing
+#: the half that does sort would put the other half somewhere nobody will
+#: look for it. Said inside the router's contested sentence, so a person
+#: reads the shortlist they already know how to read.
+SEVERAL_FORMS_UNSORTED = "it names {n} forms as itself and they do not sort one to a request"
 
 # ---- the folder ---------------------------------------------------------------
 

@@ -265,6 +265,9 @@ async function assignParked(li) {
 // Folded away by default. It is a list of what is already right, there for
 // the one row that is not, and the index is the only thing that knows where
 // a working copy went: a correction made in Explorer is one it never learns.
+// One original can have a copy in more than one request folder (a page that
+// carried two forms), so each destination is named; Unfile still takes the
+// one original, because the row is one row and every copy goes back with it.
 function renderUnfileList(state) {
   const filed = (state.index || []).filter((e) => e.decision === vocab.decisions.filed);
   $("filed-card").classList.toggle("hidden", filed.length === 0);
@@ -272,7 +275,7 @@ function renderUnfileList(state) {
   show("filed-list", filed.map((e) =>
     el("li", { dataset: { original: e.pbc_location } },
       el("span", { className: "r-name" }, e.original_name),
-      el("span", { className: "r-why" }, `${e.identifier} — ${e.filed_as}`),
+      el("span", { className: "r-why" }, `${e.identifier} — ${e.filed_names.join(", ")}`),
       el("input", {
         type: "text", className: "r-note", placeholder: vocab.review_labels.unfile_note,
         "aria-label": vocab.review_labels.unfile_note,

@@ -151,6 +151,70 @@ def form_1098_lines(lender: str, borrower: str, year: int) -> list[str]:
     ]
 
 
+# ------------------------------------------- one page, several forms ----
+#
+# Decision 94's pile: the sheets that come out of a client's scanner when
+# they feed it a stack. Each block is one real form as the IRS prints it -
+# its number at the head of a line with its printed title and its year
+# after it, which is what ``content_check.self_named_forms`` reads - and a
+# block is a page's worth of boxes long, so two of them are never inside
+# one title window. Two blocks inside one window would be a menu
+# (decision 73), and that is the checklist below, which must go on
+# parking.
+
+
+def scanned_w2_lines(year: int) -> list[str]:
+    """A whole W-2 as a page: the self-naming line and enough of the boxes
+    that whatever follows is past the title window."""
+    return [
+        f"Form W-2 Wage and Tax Statement {year}",
+        "a Employee's social security number 123-45-6789",
+        "b Employer identification number (EIN) 94-1234567",
+        "c Employer's name, address, and ZIP code",
+        "Willow Lane Bakery LLC 1200 Market Street Springfield IL 62704",
+        "e Employee's first name and initial Last name Suff.",
+        "f Employee's address and ZIP code",
+        "1 Wages, tips, other compensation 64,200.00 2 Federal income tax withheld 7,140.00",
+        "3 Social security wages 64,200.00 4 Social security tax withheld 3,980.40",
+        "5 Medicare wages and tips 64,200.00 6 Medicare tax withheld 931.00",
+        "15 State Employer's state ID number 16 State wages, tips, etc. 17 State income tax",
+        "Copy B To Be Filed With Employee's FEDERAL Tax Return",
+    ]
+
+
+def scanned_1099_int_lines(year: int) -> list[str]:
+    """A whole 1099-INT as a page, printed the way a payer prints it."""
+    return [
+        f"Form 1099-INT Interest Income {year}",
+        "PAYER'S name street address city or town state or province country ZIP",
+        "Harborline Savings Bank 88 Quay Road Springfield IL 62704",
+        "PAYER'S TIN RECIPIENT'S TIN RECIPIENT'S name",
+        "1 Interest income 1,842.17",
+        "4 Federal income tax withheld 0.00",
+        "This is important tax information and is being furnished to the IRS.",
+    ]
+
+
+def scanned_1098_lines(year: int) -> list[str]:
+    """A whole 1098 as a page."""
+    return [
+        f"Form 1098 Mortgage Interest Statement {year}",
+        "RECIPIENT'S/LENDER'S name street address city or town state ZIP",
+        "Cedar Ridge Mortgage Company 410 Vine Street Springfield IL 62704",
+        "1 Mortgage interest received from payer(s)/borrower(s) 12,411.08",
+        "2 Outstanding mortgage principal 342,900.00",
+    ]
+
+
+def brokerage_cover_lines(year: int) -> list[str]:
+    """A page that names no form at all and that a row keyed on a phrase
+    would nonetheless accept - the row decision 94 refuses to split on."""
+    return [
+        f"Harborline Savings Bank - brokerage statement for the year {year}",
+        "Account 8812-4455 Ending balance 40,000.00",
+    ]
+
+
 def sheet_xlsx(path: Path, rows: list[list]) -> Path:
     """A workbook whose first sheet holds ``rows``, one list per row.
 
