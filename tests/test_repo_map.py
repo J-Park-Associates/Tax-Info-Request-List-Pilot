@@ -6,7 +6,9 @@ from the source, curated judgment survives regeneration, drift is detected,
 and an update re-parses only what changed.
 """
 
+import ast
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -202,10 +204,57 @@ def test_a_curated_edge_to_a_nonexistent_node_fails_loudly(repo):
     """A typo in the curated file must not quietly produce a broken graph."""
     curated = repo / "docs" / "repo-map.curated.json"
     data = json.loads(curated.read_text())
-    data["edges"].append({"from": "pkg/app.py", "to": "pkg/ghost.py", "type": "imports"})
+    data["edges"].append({"from": "pkg/app.py", "to": "pkg/ghost.py", "type": "writes"})
     curated.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(repo_map.MapError, match="pkg/ghost.py"):
+        repo_map.build(repo)
+
+
+def _curated(repo, mutate):
+    path = repo / "docs" / "repo-map.curated.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    mutate(data)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_a_curated_annotation_for_a_file_that_is_not_tracked_is_refused(repo):
+    """Before: it became a phantom concept node rendered among the rules, with no error."""
+    _curated(repo, lambda d: d["nodes"].update({"pkg/ghost.py": {"role": "gone"}}))
+    with pytest.raises(repo_map.MapError, match="pkg/ghost.py.*not tracked"):
+        repo_map.build(repo)
+
+
+def test_a_misspelled_curated_type_is_refused(repo):
+    """Before: the node stayed in the JSON and silently dropped off the page."""
+    _curated(repo, lambda d: d["nodes"]["artifact:output.txt"].update({"type": "artefact"}))
+    with pytest.raises(repo_map.MapError, match="type must be"):
+        repo_map.build(repo)
+
+
+def test_an_unknown_curated_key_is_refused(repo):
+    """Before: a `note` key was ignored and the note lost."""
+    _curated(repo, lambda d: d["nodes"]["pkg/core.py"].update({"note": "lost"}))
+    with pytest.raises(repo_map.MapError, match="unknown key"):
+        repo_map.build(repo)
+
+
+def test_a_curated_edge_may_not_claim_a_derived_type(repo):
+    """A hand-written `tests` edge would render as coverage the source never showed."""
+    _curated(repo, lambda d: d["edges"].append(
+        {"from": "tests/test_core.py", "to": "pkg/app.py", "type": "tests"}))
+    with pytest.raises(repo_map.MapError, match="derived"):
+        repo_map.build(repo)
+
+
+def test_an_unknown_edge_type_and_a_self_edge_are_refused(repo):
+    _curated(repo, lambda d: d["edges"].append(
+        {"from": "pkg/app.py", "to": "artifact:output.txt", "type": "write"}))
+    with pytest.raises(repo_map.MapError, match="unknown type"):
+        repo_map.build(repo)
+    _curated(repo, lambda d: d["edges"].__setitem__(
+        -1, {"from": "pkg/app.py", "to": "pkg/app.py", "type": "writes"}))
+    with pytest.raises(repo_map.MapError, match="itself"):
         repo_map.build(repo)
 
 
@@ -374,9 +423,361 @@ def test_the_markdown_carries_the_curated_pipeline_and_roles(repo):
 
 
 def test_the_committed_map_is_current():
-    """The map in docs/ must match this repository, or it is misinformation."""
+    """The map in docs/ must match this repository, or it is misinformation.
+
+    Hashes first, then every derived fact against a fresh build, then the
+    rendered page against the JSON: a hand-edited field, a forged edge or a
+    stale repo-map.md each used to pass on the hashes alone.
+    """
     graph = repo_map.load_map(ROOT / "docs" / "repo-map.json")
     drift = repo_map.stale_files(graph, ROOT)
     assert drift == {"changed": [], "added": [], "removed": []}, (
         "docs/repo-map.json is stale — run `python tools/repo_map.py update`"
     )
+    assert repo_map.semantic_drift(graph, ROOT) == [], (
+        "docs/repo-map.json does not match a fresh build — run `python tools/repo_map.py update`"
+    )
+    assert repo_map.markdown_is_current(graph, ROOT / "docs" / "repo-map.md"), (
+        "docs/repo-map.md does not match docs/repo-map.json — run `python tools/repo_map.py update`"
+    )
+
+
+# ------------------------------------------------- resolution and scope ----
+
+
+def add(repo, rel: str, text: str) -> None:
+    path = repo / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+
+
+def test_from_package_import_module_draws_the_module_and_the_package(repo):
+    """`from pkg import core` names core and executes pkg/__init__.py: two real edges.
+
+    Before, both collapsed onto the package, and a module imported only that
+    way showed no importer at all.
+    """
+    add(repo, "pkg/__init__.py", "")
+    add(repo, "pkg/user.py", "from pkg import core\n\n\ndef go():\n    return core\n")
+
+    graph = repo_map.build(repo)
+
+    assert edges(graph, **{"from": "pkg/user.py", "to": "pkg/core.py", "type": "imports"})
+    assert edges(graph, **{"from": "pkg/user.py", "to": "pkg/__init__.py", "type": "imports"})
+
+
+def test_a_test_written_from_package_import_module_owns_the_module(repo):
+    add(repo, "pkg/__init__.py", "")
+    add(repo, "tests/test_app.py", "from pkg import app\n\n\ndef test_x():\n    assert app\n")
+
+    graph = repo_map.build(repo)
+
+    assert edges(graph, **{"from": "tests/test_app.py", "to": "pkg/app.py", "type": "tests"})
+    assert edges(graph, **{"from": "tests/test_app.py", "to": "pkg/__init__.py",
+                           "type": "exercises"})
+
+
+def test_an_imported_name_that_is_not_a_module_is_not_a_dependency(repo):
+    add(repo, "pkg/user.py", "from pkg.core import public\n")
+    graph = repo_map.build(repo)
+    assert not edges(graph, **{"from": "pkg/user.py", "type": "depends_on"})
+    assert edges(graph, **{"from": "pkg/user.py", "to": "pkg/core.py", "type": "imports"})
+
+
+def test_an_import_inside_a_function_or_a_main_block_is_at_call_time(repo):
+    """It runs when called, not when loaded: a different claim, and a different edge."""
+    add(repo, "pkg/late.py",
+        'def run():\n    from pkg import core\n    return core\n\n\n'
+        'if __name__ == "__main__":\n    from pkg.app import run as go\n    go()\n')
+
+    graph = repo_map.build(repo)
+
+    assert edges(graph, **{"from": "pkg/late.py", "to": "pkg/core.py", "type": "imports_at_call"})
+    assert not edges(graph, **{"from": "pkg/late.py", "to": "pkg/core.py", "type": "imports"})
+    assert edges(graph, **{"from": "pkg/late.py", "to": "pkg/app.py", "type": "imports_at_call"})
+
+
+def test_a_module_loaded_and_also_imported_inside_a_function_is_one_dependency(repo):
+    add(repo, "pkg/late.py",
+        "from pkg.core import public\n\n\ndef run():\n    from pkg import core\n    return core, public\n")
+    graph = repo_map.build(repo)
+    assert edges(graph, **{"from": "pkg/late.py", "to": "pkg/core.py", "type": "imports"})
+    assert not edges(graph, **{"from": "pkg/late.py", "to": "pkg/core.py", "type": "imports_at_call"})
+
+
+def test_the_owner_test_is_found_by_name_even_without_an_import(repo):
+    """A test driving its module through runpy or a subprocess is still its coverage."""
+    add(repo, "tests/test_app.py",
+        "import runpy\n\n\ndef test_x():\n    runpy.run_path('pkg/app.py')\n")
+    graph = repo_map.build(repo)
+    assert edges(graph, **{"from": "tests/test_app.py", "to": "pkg/app.py", "type": "tests"})
+
+
+def test_a_dotted_third_party_import_depends_on_its_package(repo):
+    add(repo, "pkg/extra.py", "from openpyxl.styles import Font\n")
+    graph = repo_map.build(repo)
+    assert edges(graph, **{"from": "pkg/extra.py", "to": "pkg:openpyxl", "type": "depends_on"})
+
+
+def test_node_builtins_are_not_dependencies_of_the_shell(repo):
+    add(repo, "app/main.js",
+        'const fs = require("fs");\nconst path = require("node:path");\n'
+        'const { app } = require("electron");\n')
+    graph = repo_map.build(repo)
+    assert edges(graph, to="pkg:electron", type="depends_on")
+    assert not edges(graph, to="pkg:fs")
+    assert not edges(graph, to="pkg:path")
+
+
+@pytest.mark.parametrize("path, expected", [
+    ("app/package.json", ("file", "desktop-app")),
+    ("app/package-lock.json", ("file", "desktop-app")),
+    ("app/renderer/app.js", ("module", "desktop-app")),
+    ("app/renderer/index.html", ("ui", "desktop-app")),
+    (".github/workflows/ci.yml", ("workflow", "ci")),
+    ("tests/test_x.py", ("test", "tests")),
+    ("tools/x.py", ("tool", "tooling")),
+    ("tracker/x.py", ("module", "core")),
+    ("README.md", ("doc", "docs")),
+    ("requirements.txt", ("doc", "docs")),
+    ("Build App.bat", ("script", "root")),
+    ("automation.manifest.json", ("file", "root")),
+])
+def test_type_comes_from_the_suffix_and_layer_from_the_directory(path, expected):
+    """A lockfile under app/ is a file, not an untested module."""
+    assert repo_map.classify(path) == expected
+
+
+def test_private_upper_case_names_are_not_exported_and_line_counts_are_exact(repo):
+    add(repo, "pkg/core.py", "CONSTANT = 1\n_PRIVATE = 2\n\n\ndef public():\n    pass\n")
+    core = node(repo_map.build(repo), "pkg/core.py")
+    assert core["exports"] == ["CONSTANT", "public"]
+    assert core["constants"] == {"CONSTANT": "1"}
+    assert core["lines"] == 6
+
+
+def test_packages_say_whether_a_requirements_file_pins_them(repo):
+    add(repo, "requirements.txt", "openpyxl==3.1.5\n")
+    add(repo, "pkg/extra.py", "import openpyxl\nimport pdfplumber\n")
+    graph = repo_map.build(repo)
+    assert node(graph, "pkg:openpyxl")["pin"] == "3.1.5 (requirements.txt)"
+    assert "pin" not in node(graph, "pkg:pdfplumber")
+
+
+# ------------------------------------------------------ check semantics ----
+
+
+def test_a_hand_edited_derived_fact_is_drift_though_every_hash_matches(repo):
+    graph = repo_map.build(repo)
+    assert repo_map.semantic_drift(graph, repo) == []
+
+    forged = json.loads(json.dumps(graph))
+    node(forged, "pkg/core.py")["exports"] = []
+    assert repo_map.stale_files(forged, repo) == {"changed": [], "added": [], "removed": []}
+    drift = repo_map.semantic_drift(forged, repo)
+    assert drift and all("pkg/core.py" in line for line in drift)
+
+
+def test_a_forged_edge_is_drift(repo):
+    graph = repo_map.build(repo)
+    forged = json.loads(json.dumps(graph))
+    forged["edges"].append({"from": "tests/test_core.py", "to": "pkg/app.py",
+                            "type": "tests", "source": "derived"})
+    drift = repo_map.semantic_drift(forged, repo)
+    assert drift == ["edge tests/test_core.py --tests--> pkg/app.py (derived) is in the map "
+                     "but not the source"]
+
+
+def test_an_incremental_update_never_differs_from_a_fresh_build(repo):
+    first = repo_map.build(repo)
+    add(repo, "pkg/core.py", "CONSTANT = 1\nNEW = 2\n\n\ndef public():\n    pass\n")
+    second = repo_map.build(repo, previous=first)
+    assert second["counts"]["reused"] > 0
+    assert repo_map.semantic_drift(second, repo) == []
+
+
+def test_a_file_that_makes_a_stem_ambiguous_rebuilds_every_cached_edge(repo):
+    """A bare `import core` resolved against one set of files is only as good as that set."""
+    add(repo, "pkg/uses.py", "import core\n")
+    first = repo_map.build(repo)
+    assert edges(first, **{"from": "pkg/uses.py", "to": "pkg/core.py"})
+
+    add(repo, "tests/core.py", "y = 2\n")
+    second = repo_map.build(repo, previous=first)
+
+    assert not edges(second, **{"from": "pkg/uses.py", "to": "pkg/core.py"})
+    assert second["counts"]["reused"] == 0, "the module table changed, so nothing is trusted"
+    assert second["module_table_sha256"] != first["module_table_sha256"]
+
+
+def test_outputs_are_written_lf_on_every_os(repo):
+    graph = repo_map.build(repo)
+    repo_map.write_outputs(graph, repo / "docs" / "repo-map.json", repo / "docs" / "repo-map.md")
+    assert b"\r\n" not in (repo / "docs" / "repo-map.json").read_bytes()
+    assert b"\r\n" not in (repo / "docs" / "repo-map.md").read_bytes()
+
+
+def test_the_markdown_is_checked_against_the_json(repo):
+    graph = repo_map.build(repo)
+    markdown = repo / "docs" / "repo-map.md"
+    repo_map.write_outputs(graph, repo / "docs" / "repo-map.json", markdown)
+    assert repo_map.markdown_is_current(graph, markdown)
+    markdown.write_bytes(markdown.read_bytes().replace(b"\n", b"\r\n"))
+    assert repo_map.markdown_is_current(graph, markdown), "line endings are not a difference"
+    markdown.write_bytes(b"# stale\n")
+    assert not repo_map.markdown_is_current(graph, markdown)
+
+
+def test_a_source_file_git_does_not_track_is_named(repo):
+    (repo / "pkg" / "new_module.py").write_text("x = 1\n", encoding="utf-8")
+    assert repo_map.untracked_sources(repo) == ["pkg/new_module.py"]
+    assert repo_map.stale_files(repo_map.build(repo), repo)["added"] == [], (
+        "the hashes cannot see it; only the untracked check can")
+
+
+def test_a_map_of_an_older_schema_is_refused(repo):
+    graph = repo_map.build(repo)
+    path = repo / "docs" / "repo-map.json"
+    path.write_text(json.dumps({**graph, "schema": 1}), encoding="utf-8")
+    with pytest.raises(repo_map.MapError, match="schema"):
+        repo_map.load_map(path)
+
+
+def test_every_curated_edge_type_renders(repo):
+    """25 of 73 curated edges never reached the page before the generic renderer."""
+    add(repo, "docs/how.md", "# how\n")
+    _curated(repo, lambda d: d["edges"].extend([
+        {"from": "docs/how.md", "to": "pkg/app.py", "type": "documents"},
+        {"from": "pkg/app.py", "to": "pkg/core.py", "type": "precedes"},
+    ]))
+    _curated(repo, lambda d: d["nodes"].update({"docs/how.md": {"role": "the manual"}}))
+    text = repo_map.render_markdown(repo_map.build(repo))
+    assert "documented in: `docs/how.md`" in text
+    assert "precedes: `pkg/core.py`" in text
+    assert "the manual" in text, "a document with a role renders"
+
+
+# ---------------------------------------- the real map's curated layer ----
+
+
+def real_map():
+    return repo_map.load_map(ROOT / "docs" / "repo-map.json")
+
+
+def test_a_module_is_tested_by_its_own_test_file_if_and_only_if_that_file_exists():
+    """The line "no dedicated test file" is a to-do; it must never be false."""
+    graph = real_map()
+    tracked = set(repo_map.tracked_files(ROOT))
+    wrong = []
+    for n in graph["nodes"]:
+        if not n.get("sha256") or n["type"] not in ("module", "tool", "workflow", "script"):
+            continue
+        owner = repo_map.dedicated_test_for(n["id"])
+        tested = edges(graph, to=n["id"], type="tests")
+        if (owner in tracked) != bool(tested):
+            wrong.append((n["id"], owner, [e["from"] for e in tested]))
+    assert not wrong, wrong
+
+
+def test_curated_prose_names_constants_rather_than_quoting_their_values():
+    """A present-tense value in prose is a second copy that drifts (CACHE_VERSION did, twice).
+
+    A note may record history ("decision 85: CACHE_VERSION 8, because ...");
+    that stays true. "CACHE_VERSION is 9" and "(7 since decision 82)" do not.
+    """
+    graph = real_map()
+    constants = {name for n in graph["nodes"] for name in n.get("constants", {})}
+    hits = []
+    for n in graph["nodes"]:
+        prose = f"{n.get('role', '')} {n.get('notes', '')}"
+        for name, value in re.findall(
+                r"\b([A-Z][A-Z0-9_]{2,})\s+(?:is|=|stays|remains|is now|is still)\s+(\d+)\b", prose):
+            if name in constants:
+                hits.append((n["id"], name, value))
+        if re.search(r"\(\d+ since decision", prose):
+            hits.append((n["id"], "(N since decision", ""))
+    assert not hits, hits
+
+
+def _defined_names() -> set[str]:
+    """Every def, class and assigned name in tracked Python; every function, const and property key in tracked JS."""
+    names: set[str] = set()
+    for rel in repo_map.tracked_files(ROOT):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        if rel.endswith(".py"):
+            for item in ast.walk(ast.parse(text)):
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    names.add(item.name)
+                elif isinstance(item, ast.Name) and isinstance(item.ctx, ast.Store):
+                    names.add(item.id)
+                elif isinstance(item, ast.Attribute):
+                    names.add(item.attr)
+        elif rel.endswith(".js"):
+            names.update(re.findall(r"\bfunction\s+(\w+)", text))
+            names.update(re.findall(r"\b(?:const|let|var)\s+(\w+)", text))
+            names.update(re.findall(r"\b(\w+)\s*[:(]", text))
+    return names
+
+
+#: Standard-library callables curated prose may name as `name()`.
+STANDARD_LIBRARY_NAMES = {"asdict"}
+
+
+def test_every_function_a_curated_note_names_exists_in_the_tree():
+    """A note naming a deleted function (the runner's `_retire_stale_drafts()`) is a lie an agent will chase."""
+    graph = real_map()
+    defined = _defined_names() | STANDARD_LIBRARY_NAMES
+    missing = set()
+    for n in graph["nodes"]:
+        prose = f"{n.get('role', '')} {n.get('notes', '')}"
+        for name in re.findall(r"\b([A-Za-z_]\w*)\(\)", prose):
+            if name not in defined:
+                missing.add((n["id"], name))
+    assert not missing, sorted(missing)
+
+
+#: Which modules uphold each standing rule. A rule losing an enforcer, or a
+#: module joining one, is a decision, and this is where it is recorded.
+ENFORCERS = {
+    "rule:no-AI-on-client-documents": {"tracker/content_check.py", "tracker/validators.py"},
+    "rule:originals-are-never-altered": {"tracker/filer.py"},
+    "rule:nothing-is-guessed": {"tracker/router.py", "tracker/filer.py", "tracker/review.py"},
+    "rule:nothing-is-ever-sent": {"tracker/reminder.py", "tracker/runner.py",
+                                  "tracker/scheduling.py"},
+}
+
+
+def test_the_set_of_modules_enforcing_each_standing_rule_is_pinned():
+    graph = real_map()
+    rules = {n["id"] for n in graph["nodes"] if n["type"] == "concept"}
+    assert rules == set(ENFORCERS)
+    for rule, expected in ENFORCERS.items():
+        assert {e["from"] for e in edges(graph, to=rule, type="enforces")} == expected, rule
+
+
+def test_every_artifact_has_a_writer_and_a_reader_or_says_it_is_write_only():
+    """"Who reads this sidecar?" must never be answered with silence."""
+    graph = real_map()
+    for n in graph["nodes"]:
+        if n["type"] != "artifact":
+            continue
+        assert edges(graph, to=n["id"], type="writes"), n["id"]
+        assert edges(graph, to=n["id"], type="reads") or n.get("write_only"), n["id"]
+
+
+def test_the_pipeline_ends_with_the_view_every_pass_writes():
+    graph = real_map()
+    assert any(stage.startswith("tracker.view") for stage in graph["pipeline"])
+    assert edges(graph, **{"from": "tracker/reminder.py", "to": "tracker/view.py", "type": "precedes"})
+
+
+def test_the_deliberate_cycle_is_stated_and_the_load_time_one_named():
+    graph = real_map()
+    assert edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
+                           "type": "deliberate_cycle"})
+    assert "load-time cycle" in node(graph, "tracker/__init__.py")["notes"]
+    assert edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
+                           "type": "imports_at_call"}), "the cycle closes at call time, not load"
+    assert not edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
+                               "type": "imports"})

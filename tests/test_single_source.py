@@ -486,11 +486,45 @@ def test_tree_diagrams_show_catalog_folders_as_the_scaffold_names_them():
                 assert period == TY, (rel, period)
 
 
+def _known_flags() -> set[str]:
+    """Every ``--flag`` the package and the tools define, by literal or by ``*_FLAG`` constant."""
+    modules = [*(REPO / "tracker").glob("*.py"), *(REPO / "tools").glob("*.py")]
+    sources = "\n".join(read(str(p.relative_to(REPO))) for p in modules)
+    return (set(re.findall(r'"(--[a-z][a-z-]*)"', sources))
+            | set(re.findall(r"^\w+_FLAG = \"(--[a-z-]+)\"", sources, re.M)))
+
+
+def test_the_command_center_manifest_names_real_commands_and_admits_no_sending():
+    """automation.manifest.json is argv the Command Center runs verbatim, so it is pinned here."""
+    from tracker.runner import LOG_FLAG
+
+    data = json.loads(read("automation.manifest.json"))
+    safety = data["safety"]
+    assert safety["auto_send"] is False
+    assert safety["money_movement"] is False
+    if safety.get("scheduled"):
+        assert re.match(r"^\d{4}-\d{2}-\d{2} ", safety["scheduled_exception"]), "a dated exception"
+    known = _known_flags()
+    for action in data["actions"]:
+        argv = action["command"]
+        assert argv[0] == "python", action["id"]
+        if argv[1] == "-m":
+            assert (REPO / (argv[2].replace(".", "/") + ".py")).is_file(), argv[2]
+            rest = argv[3:]
+        else:
+            assert (REPO / argv[1]).is_file(), argv[1]
+            rest = argv[2:]
+        for token in rest:
+            if token.startswith("--") and token != "--":
+                assert token in known, (action["id"], token)
+        if LOG_FLAG in argv:
+            assert action["kind"] == "authorize", "a pass that writes is authorized, never previewed"
+
+
 def test_every_cli_flag_a_document_names_exists_in_the_code():
     from tracker.runner import REMINDER_MODES
 
-    sources = "\n".join(read(str(p.relative_to(REPO))) for p in (REPO / "tracker").glob("*.py"))
-    known = set(re.findall(r'"(--[a-z][a-z-]*)"', sources)) | set(re.findall(r"^\w+_FLAG = \"(--[a-z-]+)\"", sources, re.M))
+    known = _known_flags()
     for rel in DOCUMENTS:
         text = read(rel)
         for flag in set(re.findall(r"(--[a-z][a-z-]*)", text)):
@@ -518,7 +552,8 @@ def test_claude_md_explains_the_map_edges_by_their_rendered_names():
     finally:
         sys.path.pop(0)
     text = read("CLAUDE.md")
-    for label in (module.TESTED_BY, module.EXERCISED_BY, module.NO_TEST_FILE):
+    for label in (module.TESTED_BY, module.EXERCISED_BY, module.NO_TEST_FILE,
+                  module.IMPORTS_AT_CALL):
         assert f"**{label}**" in text, label
 
 
