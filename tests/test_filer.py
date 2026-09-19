@@ -29,7 +29,7 @@ from tracker.filer import (
     read_index,
     read_index_from_workbook,
 )
-from tracker.manifest import COL_DOCUMENT, SHEET_NAME, RequestItem, create_template
+from tracker.manifest import COL_DOCUMENT, SHEET_NAME, TEMP_SUFFIX, RequestItem, create_template
 from tracker.router import UNMATCHED
 from tracker.scaffold import (
     MANIFEST_FILENAME,
@@ -439,6 +439,50 @@ def test_a_locked_index_never_orphans_files_already_moved(engagement, monkeypatc
     assert (engagement / INDEX_FILENAME).exists()
     assert not (engagement / filer_module.INDEX_PENDING_FILENAME).exists()
     rows = read_index(engagement / INDEX_FILENAME)
+    assert {e.original_name for e in rows} == {"w2.pdf", "mortgage.pdf"}
+    assert all(e.decision == FILED for e in rows)
+
+
+def test_an_index_held_the_way_excel_holds_one_still_records_every_moved_original(
+    engagement, monkeypatch, held_like_excel,
+):
+    """``test_a_locked_index_never_orphans_files_already_moved``'s twin with a
+    real handle.
+
+    That test raises ``PermissionError`` from the atomic save by hand; this
+    one holds ``_index.xlsx`` the way Excel holds a workbook it has open and
+    proves what Windows does. The first pass writes the index so there is
+    one to hold. With it held, the second pass still moves the original into
+    PBC and files the copy, the workbook keeps its old bytes, no temp file is
+    left beside it, the snapshot sidecar holds every row, and the readers
+    already see both originals. Let the handle go and a pass with nothing to
+    sort lands the snapshot in the workbook and clears it.
+    """
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    assert file_drops(engagement, today=DAY1).index_deferred is False
+    index = engagement / INDEX_FILENAME
+    before = index.read_bytes()
+    drop(engagement, "mortgage.pdf", "Form 1098 Mortgage Interest Statement 2025")
+
+    monkeypatch.setattr(filer_module, "LOCK_RETRY_DELAY", 0.001)   # the retries, not the refusal
+    with held_like_excel(index):
+        report = file_drops(engagement, today=DAY2)
+        assert report.handled == 1
+        assert report.index_deferred is True
+        assert index.read_bytes() == before                         # not a byte of it moved
+        assert list(engagement.glob(f"*{TEMP_SUFFIX}")) == []
+        assert (engagement / INDEX_PENDING_FILENAME).exists()
+        assert {p.name for p in pbc(engagement).iterdir()} == {"w2.pdf", "mortgage.pdf"}
+        assert {e.original_name for e in read_index(index)} == {"w2.pdf", "mortgage.pdf"}
+
+    report = file_drops(engagement, today=DAY2)
+    assert report.handled == 0
+    assert report.index_deferred is False
+    assert not (engagement / INDEX_PENDING_FILENAME).exists()
+    assert index.read_bytes() != before
+    rows = read_index_from_workbook(index)
     assert {e.original_name for e in rows} == {"w2.pdf", "mortgage.pdf"}
     assert all(e.decision == FILED for e in rows)
 

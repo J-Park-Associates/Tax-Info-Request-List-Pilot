@@ -227,6 +227,38 @@ def test_locked_write_defers_to_sidecar(manifest, monkeypatch):
     assert payload["A01"]["status"] == Status.MISSING
 
 
+def test_a_manifest_held_the_way_excel_holds_one_defers_and_lands_when_it_is_let_go(
+    manifest, held_like_excel,
+):
+    """``test_locked_write_defers_to_sidecar``'s twin with a real handle.
+
+    That test raises ``PermissionError`` from ``Workbook.save`` by hand and
+    proves the retry and the sidecar; this one holds ``_manifest.xlsx`` the
+    way Excel holds a workbook it has open and proves what Windows does. With
+    the handle held, a read still answers, the write is refused, not a byte
+    of the workbook moves, no temp file is left beside it, and the statuses
+    wait in the sidecar where every reader overlays them. Let the handle go
+    and the next write, with nothing new to say, lands what waited and
+    clears the sidecar.
+    """
+    before = manifest.read_bytes()
+    updates = {"A01": StatusUpdate(status=Status.MISSING, validation_notes="no files")}
+    with held_like_excel(manifest):
+        read = {i.identifier: i for i in load_manifest(manifest)}
+        assert read["A01"].status == ""                             # a read, and it answers
+        assert write_statuses(manifest, updates, retries=2, retry_delay=0.01) is False
+        assert manifest.read_bytes() == before                      # not a byte of it moved
+        assert list(manifest.parent.glob(f"*{TEMP_SUFFIX}")) == []
+        assert pending_updates(manifest)["A01"].status == Status.MISSING
+
+    assert write_statuses(manifest, {}, retries=2, retry_delay=0.01) is True
+    assert not pending_path(manifest).exists()
+    assert manifest.read_bytes() != before
+    landed = {i.identifier: i for i in load_manifest(manifest)}["A01"]
+    assert landed.status == Status.MISSING
+    assert landed.validation_notes == "no files"
+
+
 def test_pending_sidecar_merged_and_cleared(manifest):
     pending_path(manifest).write_text(
         json.dumps(

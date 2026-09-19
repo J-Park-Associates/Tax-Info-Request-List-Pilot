@@ -65,7 +65,9 @@ test put it.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import sys
 
 import pytest
 
@@ -190,3 +192,50 @@ def the_record_agrees_with_the_workbooks(tmp_path):
         _check(path.parent)
     for path in sorted(tmp_path.rglob(view.VIEW_FILENAME)):
         _check_view(path.parent)
+
+
+@pytest.fixture
+def held_like_excel():
+    """A context manager that holds a file the way Excel holds a workbook it
+    has open: ``CreateFileW`` with ``GENERIC_READ`` and share mode
+    ``FILE_SHARE_READ`` and nothing else. Another reader still opens the
+    file; a writer's ``os.replace`` onto it is refused for as long as the
+    handle is held, which is the refusal every lock-retry path in the
+    package is written for.
+
+    The one real evidence of Windows share modes the suite has. Every other
+    "Excel has it open" test monkeypatches ``Workbook.save`` or the atomic
+    replace and so proves the retry logic, never the file system; the
+    tests that take this fixture prove both, one workbook each. It skips
+    off Windows, because share modes are a Windows file-system behaviour
+    and CI runs the Windows jobs.
+    """
+    if sys.platform != "win32":
+        pytest.skip("Excel's share modes are a Windows file-system behaviour")
+    import ctypes
+    from ctypes import wintypes
+
+    GENERIC_READ = 0x80000000
+    FILE_SHARE_READ = 0x00000001
+    OPEN_EXISTING = 3
+    FILE_ATTRIBUTE_NORMAL = 0x80
+    INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                     wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+                                     wintypes.HANDLE)
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    @contextlib.contextmanager
+    def hold(path):
+        handle = kernel32.CreateFileW(str(path), GENERIC_READ, FILE_SHARE_READ, None,
+                                      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, None)
+        assert handle != INVALID_HANDLE_VALUE, ctypes.get_last_error()
+        try:
+            yield
+        finally:
+            kernel32.CloseHandle(handle)
+
+    return hold
