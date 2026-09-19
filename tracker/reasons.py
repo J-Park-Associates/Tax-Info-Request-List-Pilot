@@ -14,6 +14,12 @@ suite), the plain sentence the client is asked with, and whether the row is
 the firm's to look at rather than the client's to fix. Producers call
 ``REASON.format(...)``; the reminder consults the same objects. There is
 nothing to keep in step.
+
+Not every cause is a validation note. :data:`NO_READABLE_TEXT` is the
+router's, written into the index's Reason column rather than into a
+request's notes, and it is worded here for the same reason the rest are:
+one sentence, one owner, and a marker the index, the review queue and the
+status report all recognise without retyping a word of it.
 """
 
 from __future__ import annotations
@@ -145,6 +151,24 @@ OCR_FAILED = Reason(
     "OCR failed", firm_side=True,
 )
 
+# ---- routing: what the router could not do ---------------------------------
+
+#: No word of the document could be read - a scan with no text layer and no
+#: OCR on this machine, an image-only PDF, a sheet with nothing in it - so
+#: the only thing left is the file's own name, and a name is the client's
+#: word for what a document is, never the document's (decision 40). Owner,
+#: 2026-09-18: a document nobody can read is filed by nobody. Deliberately
+#: not "matched no request", which says the words were read and no request
+#: asked for them: the fix here is OCR or a person, never a keyword.
+NO_READABLE_TEXT = Reason(
+    "unreadable",
+    "nothing in this file could be read, so only its name says what it is; "
+    "a scan needs OCR before it can be filed",
+    "nothing in this file could be read", firm_side=True,
+    firm_note="nothing in it could be read here, so nobody has identified it yet; "
+              "OCR or a person, never the client",
+)
+
 # ---- the folder ---------------------------------------------------------------
 
 NO_REQUEST_FOLDER = Reason(
@@ -159,7 +183,8 @@ ALL: tuple[Reason, ...] = (
     PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, EXTENSION_NOT_ALLOWED,
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
     NO_PAGES, UNREADABLE_PDF, EXTRACTION_FAILED,
-    UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, PENDING_SYNC, VANISHED,
+    UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
+    PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )
 

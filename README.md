@@ -271,12 +271,21 @@ Form 1098", "Forms W-2", "such as Form 1099-NEC". A request whose Period
 names a month (`Dec 2025`) also checks that the document prints that
 month.
 
-A scan with no text layer is routed by its file name when the name says
-which request it is. When the name says nothing it is read by OCR (if OCR
-is installed), the same reading the scanner makes later — and OCR text
-routes a file only on a request's *required* keywords; a looser match on
-OCR text goes to review with the lead noted, because a misread word is how
-a document lands under the wrong request.
+A scan with no text layer is read by OCR (if OCR is installed), the same
+reading the scanner makes later — and OCR text routes a file only on a
+request's *required* keywords; a looser match on OCR text goes to review
+with the lead noted, because a misread word is how a document lands under
+the wrong request.
+
+**A file name never files anything.** The client chose that name; the form
+did not. So a document nobody here can read — a scan with no text layer
+and no OCR on this machine, an image-only PDF, an empty sheet — parks for
+a person with `tracker.reasons.NO_READABLE_TEXT`, which is a different
+answer from "matched no request" (there the words *were* read and nothing
+asked for them). What the name says is kept and handed over: the parked
+file's shortlist offers the request its name points at, at the weakest
+rank there is, beside a document the person then opens. The cost is
+known — until Tesseract is installed, every scanned PDF parks.
 
 When a person files something out of `00 - Needs Review` they can type a
 keyword, and it is learned by that one engagement's manifest and nowhere
@@ -293,9 +302,9 @@ there against the shipped catalogs and scores how often the router lands
 where the person did, with the confusions, the share still parked for a
 person, and the time a real pass takes. That agreement is recorded in
 `docs/backtest-baseline.json`, and no routing change may lower it. Every
-document is routed under one neutral name, so the by-name fallback cannot
-read the client's name off the file and the score is the rules' and not
-the firm's filing habits'. Nothing identifying comes back: the report
+document is routed under one neutral name, so the client's own file naming
+never reaches the router with the document and the score is the rules' and
+not the firm's filing habits'. Nothing identifying comes back: the report
 carries counts, request identifiers and row numbers, never a file name, a
 folder name or a word of a document — and the documents never leave the
 office.

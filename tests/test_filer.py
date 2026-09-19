@@ -137,7 +137,9 @@ def test_client_subfolders_are_flattened(engagement):
 
 
 def test_unroutable_file_is_preserved_and_parked(engagement):
-    original = drop(engagement, "vacation.pdf", "Photos from Maui")
+    # A readable page nothing asks for: the rules read it and no request
+    # wanted it, which is a different answer from "nothing could be read".
+    original = drop(engagement, "vacation.pdf", "Photos from Maui, the hotel pool and the beach at sunset")
     before = original.read_bytes()
 
     report = file_drops(engagement, today=DAY1)

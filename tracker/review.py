@@ -25,9 +25,17 @@ document already arrived (owner, 2026-09-18). A nudge with no evidence
 behind it is how a tired reviewer files the wrong document into the last
 open row, and once it is filed the index says a person decided it. So a
 parked row with nothing behind it - one that matched no request, a scan
-with no text layer, a record carrying only a refusal - gets an **empty**
-shortlist and keeps the router's own reason, and the person reads the
-document. No suggestion is better than an invented one.
+whose name says nothing either, a record carrying only a refusal - gets an
+**empty** shortlist and keeps the router's own reason, and the person reads
+the document. No suggestion is better than an invented one.
+
+**A file name is a suggestion and never a filing** (owner, 2026-09-18).
+Since decision 92 the router files nothing on a name; what the name of an
+unreadable scan says is kept on the parked row as ``RULE_FILENAME``
+evidence, so it arrives here and becomes "A01 - the file name says W-2" at
+the bottom of the ranking. That is the right place for it: it is the one
+piece of evidence the *client* wrote rather than the form, so it starts a
+person reading and cannot outrank a word the document itself said.
 
 **A row that wants nothing is never suggested.** ``Override.WAIVED`` says
 the firm no longer needs that document; offering it is offering a known

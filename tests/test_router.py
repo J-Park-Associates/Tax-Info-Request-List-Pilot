@@ -16,14 +16,27 @@ from tracker.router import (
     AMBIGUOUS,
     CONTESTED_PREFIX,
     EVIDENCE_CONTENT,
-    EVIDENCE_FILENAME,
     NO_REQUEST_ACCEPTS,
     OCR_ONLY,
     UNMATCHED,
+    UNREADABLE,
     route_file,
     route_files,
 )
 from tracker.scaffold import MANIFEST_FILENAME
+
+
+def no_ocr(monkeypatch):
+    """This machine has no Tesseract engine - the owner's stated cost of
+    decision 92, and the state every "it parks" claim below is about."""
+    monkeypatch.setattr("tracker.content_check._ocr_pdf", lambda p: None)
+
+
+def named_by(routing) -> dict[str, tuple[str, ...]]:
+    """Which request each of the file name's keywords was recorded against."""
+    return {identifier: tuple(e.term for e in found)
+            for identifier, found in routing.evidence_record.items()}
+
 
 W2 = RequestItem(
     identifier="A01", document="W-2 Wage Statements", period="TY2025",
@@ -87,20 +100,41 @@ def test_wrong_year_is_not_routed(tmp_path):
     assert reasons.WRONG_PERIOD.matches(routing.reason)
 
 
-def test_filename_rescues_a_scan_with_no_text_layer(tmp_path):
-    """An image-only PDF still routes when the client named it sensibly."""
-    for name in ("Form 1098 Mortgage Interest.pdf", "smith_1098.pdf", "smith-1098-2025.pdf", "W2 2025.pdf"):
+def test_a_scan_with_a_good_name_parks_and_suggests_rather_than_filing(tmp_path, monkeypatch):
+    """A name is what the client called the file, not what the form says.
+
+    Decision 55 filed an image-only PDF on a sensible name. The owner
+    (2026-09-18) took that back: a document nobody can read is filed by
+    nobody. The name is still worth something - it is handed to the person
+    as evidence, so the review card offers the request it points at - but
+    no row is a candidate and nothing moves.
+    """
+    no_ocr(monkeypatch)
+    for name, suggested, term in (
+        ("Form 1098 Mortgage Interest.pdf", "C01", "1098"),
+        ("smith_1098.pdf", "C01", "1098"),
+        ("smith-1098-2025.pdf", "C01", "1098"),
+        ("W2 2025.pdf", "A01", "W-2"),
+    ):
         f = tmp_path / name
         text_pdf(f, "")  # valid PDF, no usable text
         routing = route_file(f, ITEMS, text=None)
-        assert routing.identifier == ("A01" if name.startswith("W2") else "C01"), name
-        assert routing.evidence == EVIDENCE_FILENAME
+        assert routing.identifier is None, name
+        assert routing.evidence == "", name        # no tier: nothing was decided
+        assert routing.candidates == (), name      # nothing accepted it
+        assert reasons.NO_READABLE_TEXT.matches(routing.reason), name
+        assert named_by(routing) == {suggested: (term,)}, name
 
 
-def test_filename_match_respects_word_boundaries(tmp_path):
+def test_filename_match_respects_word_boundaries(tmp_path, monkeypatch):
+    no_ocr(monkeypatch)
     f = tmp_path / "ledger-10983.pdf"
     text_pdf(f, "")
-    assert route_file(f, ITEMS).identifier is None
+    routing = route_file(f, ITEMS)
+    assert routing.identifier is None
+    # Nothing to suggest either: the name said nothing, so the person gets
+    # the document and no shortlist rather than a guess.
+    assert routing.evidence_record == {}
 
 
 def test_an_image_only_scan_routes_on_its_required_keywords_after_ocr(tmp_path, monkeypatch):
@@ -131,14 +165,25 @@ def test_ocr_text_alone_never_routes_on_any_keywords(tmp_path, monkeypatch):
     assert routing.reason.startswith(OCR_ONLY) and routing.candidates == ("A02",)
 
 
-def test_a_sensibly_named_scan_is_not_ocrd(tmp_path, monkeypatch):
+def test_a_scan_whose_name_lies_is_read_by_ocr_and_the_content_decides(tmp_path, monkeypatch):
+    """The OCR path is untouched, and it now runs on named scans too.
+
+    Until decision 92 a scan whose name said which request it was skipped
+    OCR - the name routed it, cheaply. Nothing is filed on a name any
+    more, so that shortcut only threw away the one reading that can still
+    file the file. Here the name says W-2 and the page says 1098: with
+    Tesseract installed the content decides, exactly as it does for a
+    document with a text layer (decision 40).
+    """
+    calls = []
     monkeypatch.setattr(
         "tracker.content_check._ocr_pdf",
-        lambda p: (_ for _ in ()).throw(AssertionError("OCR ran on a scan the name already routes")),
+        lambda p: (calls.append(p), "Form 1098 Mortgage Interest Statement 2025")[1],
     )
-    f = text_pdf(tmp_path / "Form 1098 Mortgage Interest.pdf", "")
+    f = text_pdf(tmp_path / "W2 2025 scan.pdf", "")
     routing = route_file(f, ITEMS)
-    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME
+    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_CONTENT
+    assert calls == [f], "the name no longer excuses the reading"
 
 
 def test_the_router_and_the_scanner_reach_one_verdict_for_one_document(tmp_path, monkeypatch):
@@ -269,14 +314,17 @@ def test_a_tuition_statement_is_never_filed_as_mortgage_interest(tmp_path):
     assert route_file(f, items).identifier == "C01"
 
 
-def test_a_multi_page_scan_with_no_text_layer_still_routes_by_its_name(tmp_path):
+def test_a_multi_page_scan_with_no_text_layer_is_no_more_read_than_one_page(tmp_path, monkeypatch):
     # Two blank pages extract to a newline, which is text to a truthiness
-    # test and nothing to a reader. The name is the evidence, as for one page.
+    # test and nothing to a reader. It parks, as one page does, and the
+    # name goes with it as the suggestion (decision 92).
+    no_ocr(monkeypatch)
     f = text_pdf(tmp_path / "Form 1098 Mortgage Interest.pdf", "", pages=2)
     routing = route_file(f, ITEMS)
-    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME
+    assert routing.identifier is None and named_by(routing) == {"C01": ("1098",)}
     f = text_pdf(tmp_path / "1098-T scan.pdf", "", pages=2)
-    assert route_file(f, ITEMS).identifier is None
+    routing = route_file(f, ITEMS)
+    assert routing.identifier is None and routing.evidence_record == {}
 
 
 def test_google_stub_review_reason_tells_the_client_what_to_do(tmp_path):
@@ -321,15 +369,18 @@ def test_a_corrupt_pdf_is_a_review_reason_not_a_crash(tmp_path):
     assert reasons.UNREADABLE_PDF.matches(routing.reason)
 
 
-def test_filename_fallback_tolerates_the_run_together_spelling(tmp_path):
+def test_a_name_read_for_the_reviewer_tolerates_the_run_together_spelling(tmp_path, monkeypatch):
     # Clients name scans "W2", not "W-2". Same whole token, not a substring.
+    # The file parks either way (decision 92); what the spelling decides is
+    # whether the person is offered A01 or left to read the document.
+    no_ocr(monkeypatch)
     f = text_pdf(tmp_path / "Smith W2 2025.pdf", "")
     routing = route_file(f, ITEMS)
-    assert routing.identifier == "A01"
-    assert routing.evidence == EVIDENCE_FILENAME
+    assert routing.identifier is None and named_by(routing) == {"A01": ("W-2",)}
     # ...but "W20" is still not "W-2".
     other = text_pdf(tmp_path / "Smith W20 form.pdf", "")
-    assert route_file(other, ITEMS).identifier is None
+    routing = route_file(other, ITEMS)
+    assert routing.identifier is None and routing.evidence_record == {}
 
 
 def test_a_derived_year_never_routes_on_its_own_but_still_contests(tmp_path):
@@ -360,39 +411,51 @@ def test_a_derived_year_never_routes_on_its_own_but_still_contests(tmp_path):
     assert "add a keyword to Z01" in routing.reason
 
 
-def test_a_scanners_stamp_is_not_a_text_layer(tmp_path):
+def test_a_scanners_stamp_is_not_a_text_layer(tmp_path, monkeypatch):
     # "Page 1 of 2" on each of two pages, or "Scanned by CamScanner" on one,
     # is more than a handful of characters and still no reading of the
-    # document. The name routes it, as for a blank scan.
+    # document. It parks as a blank scan does, with the name as the lead.
+    no_ocr(monkeypatch)
     for text, pages in (("Page 1 of 2", 2), ("Scanned by CamScanner", 1)):
         f = text_pdf(tmp_path / "Form 1098 Mortgage Interest.pdf", text, pages=pages)
         routing = route_file(f, ITEMS)
-        assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME, text
+        assert routing.identifier is None, text
+        assert reasons.NO_READABLE_TEXT.matches(routing.reason), text
+        assert named_by(routing) == {"C01": ("1098",)}, text
 
 
-def test_a_clients_hyphenated_file_name_still_routes(tmp_path):
+def test_a_clients_hyphenated_file_name_is_read_the_way_a_keyword_is(tmp_path, monkeypatch):
     # A form's own variant is part of its name; a bank's or a person's is
-    # a separator. Both sides of the hyphen, both ways.
-    for name, expected in (
+    # a separator. Both sides of the hyphen, both ways. Every one of these
+    # parks (decision 92); what the hyphen decides is which request, if
+    # any, the person is offered beside the document.
+    no_ocr(monkeypatch)
+    for name, suggested in (
         ("1098-Citi.pdf", "C01"), ("W2-Tom.pdf", "A01"), ("Jane-W2.pdf", "A01"),
         ("smith-1098-mtg.pdf", "C01"), ("1098-T.pdf", None), ("W-2G winnings.pdf", None),
     ):
-        f = text_pdf(tmp_path / name, "")
-        assert route_file(f, ITEMS).identifier == expected, name
+        routing = route_file(text_pdf(tmp_path / name, ""), ITEMS)
+        assert routing.identifier is None, name
+        assert list(routing.evidence_record) == ([suggested] if suggested else []), name
 
 
-def test_a_run_together_form_number_is_still_its_own_variant(tmp_path):
+def test_a_run_together_form_number_is_still_its_own_variant(tmp_path, monkeypatch):
     # "Form1040-ES.pdf" is not last year's Form 1040. The keyword pattern
     # reads "form 1040" as "form1040" itself; a separate run-together
-    # fallback used to skip the variant rule.
+    # fallback used to skip the variant rule. Read off a name nothing is
+    # filed on any more (decision 92), so the claim is about what the name
+    # is recorded as having said, and none of them is B01.
     from dataclasses import replace
 
     from tracker.templates import template_items
 
+    no_ocr(monkeypatch)
     items = [replace(i, min_size_kb=0) for i in template_items("1040", core_only=True, year=2025)]
     for name in ("Form1040-ES.pdf", "Form1040 V.pdf", "Form1040_V.pdf", "Form 1040-V.pdf"):
-        assert route_file(text_pdf(tmp_path / name, ""), items).identifier is None, name
-    assert route_file(text_pdf(tmp_path / "W2 2025.pdf", ""), items).identifier == "A01"
+        routing = route_file(text_pdf(tmp_path / name, ""), items)
+        assert routing.identifier is None and routing.evidence_record == {}, name
+    routing = route_file(text_pdf(tmp_path / "W2 2025.pdf", ""), items)
+    assert routing.identifier is None and list(routing.evidence_record) == ["A01"]
 
 
 def test_a_keyword_with_nothing_in_it_matches_nothing(tmp_path):
@@ -517,16 +580,26 @@ def test_the_record_names_only_the_rows_the_decision_names(tmp_path):
     assert set(routing.evidence_record) == set(routing.candidates) == {"A01"}
 
 
-def test_a_file_routed_by_its_name_records_the_name_as_its_evidence(tmp_path):
+def test_a_file_nothing_could_be_read_out_of_records_its_name_for_the_person(tmp_path, monkeypatch):
+    """Not filed on, and not thrown away either: the reviewer gets it.
+
+    This is the record :mod:`tracker.review` reads back into "C01 - the
+    file name says 1098" at its weakest tier, and the filer writes it into
+    the parked row's Evidence column exactly as it writes a filed row's.
+    """
     from tracker.content_check import RULE_FILENAME, WHERE_TITLE
 
+    no_ocr(monkeypatch)
     f = text_pdf(tmp_path / "smith_1098.pdf", "")     # a scan, no text layer
     routing = route_file(f, ITEMS)
-    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_FILENAME
+    assert routing.identifier is None and routing.reason == UNREADABLE
     # A name is all title and has no pages.
     assert [(e.rule, e.term, e.where, e.page) for e in routing.evidence_record["C01"]] == [
         (RULE_FILENAME, "1098", WHERE_TITLE, 0),
     ]
+    # And only the rows the name pointed at: _recorded_for() keeps a parked
+    # row's cell as short as a filed row's.
+    assert set(routing.evidence_record) == {"C01"}
 
 
 def test_a_tier_two_refusal_travels_as_the_reasons_own_code(tmp_path):
