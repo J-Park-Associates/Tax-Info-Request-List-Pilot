@@ -1605,6 +1605,34 @@ def test_a_page_that_prints_two_forms_files_a_copy_under_each_and_unfiles_as_one
     assert row.decision == NEEDS_REVIEW and row.also_filed == "" and row.identifier == ""
 
 
+def test_the_scan_after_a_two_form_split_accepts_the_copy_under_each_request(engagement, monkeypatch):
+    """Decision 94's second copy is validated on the verdict the router filed
+    it on, not on the ordinary reading that called the page one form's. The
+    ordinary reading refuses C01 (the W-2 is the page's own form, the 1098
+    is not); the split's reading accepts it; the scan must find the second
+    in the cache - and read nothing again - or the copy fails validation
+    and the client is asked for a 1098 they already sent."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tests.test_content_check import counting_extractor
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+
+    calls = counting_extractor(monkeypatch)
+    drop(engagement, "scan0003.pdf",
+         "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    (entry,) = file_drops(engagement, today=DAY1).filed
+    assert entry.also_filed
+    read_once = calls["n"]
+
+    report = scan_engagement(engagement, today=DAY1)
+
+    assert calls["n"] == read_once                              # both copies were cache hits
+    assert report.updates["C01"].status == Status.RECEIVED, report.updates["C01"]
+    assert report.updates["C01"].file_count == 1
+    assert report.updates["A01"].status == Status.PARTIAL        # the row expects two
+    assert report.updates["A01"].file_count == 1
+
+
 def test_unfiling_something_that_is_not_filed_says_what_it_is(engagement):
     """Each of the other decisions needs a different answer, so none of them is guessed."""
     from tracker.filer import (
