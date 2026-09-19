@@ -8,7 +8,8 @@ Commands:
   list      every engagement under the clients root, plus the vocabulary the app shows
   templates the form catalog and the calendar's default tax year
   create    a new engagement from the wizard's spec (JSON on stdin)
-  state     current manifest rows, the index, the one summary, useful paths
+  state     current manifest rows, the index, the triaged review queue, the
+            one summary, useful paths
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
   scan      one pass, exactly as the scheduled run makes it (no draft)
@@ -31,7 +32,7 @@ import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES
+from tracker import STANDING_RULES, review
 from tracker.content_check import EVIDENCE_PLACES, EVIDENCE_RULES
 from tracker.filer import (
     _CANDIDATE_SEP,
@@ -141,6 +142,7 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     shift_item,
     template_items,
 )
+from tracker.view import VIEW_FILENAME, VIEW_LABEL, VIEW_STATES, view_state
 
 log = logging.getLogger("tracker.api")
 
@@ -169,10 +171,16 @@ NEW_CLIENT_PLACEHOLDER = "New"
 DISMISS_LABEL = "Not requested"
 DISMISS_NOTE_HINT = "why nothing asks for it (optional)"
 DISMISSED_HEADING = "Not requested ({n})"
+FILE_LABEL = "File it"
 FILE_ANYWAY_LABEL = "File it anyway"
 UNFILE_LABEL = "Unfile"
 UNFILE_NOTE_HINT = "why it is coming back (optional)"
 FILED_HEADING = "Filed documents ({n})"
+#: How the picker divides itself: the triaged shortlist first, under the
+#: first heading, then every other request under the second. The two are
+#: headings, not decisions - a person may still pick anything on the list.
+SUGGESTED_HEADING = "Suggested"
+OTHER_REQUESTS_HEADING = "Other requests"
 
 
 def _new_engagement_dir(name: str) -> Path:
@@ -276,9 +284,23 @@ def _vocab() -> dict:
         "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE,
                       "dismissed": NOT_REQUESTED},
         "review_labels": {"dismiss": DISMISS_LABEL, "dismiss_note": DISMISS_NOTE_HINT,
-                          "dismissed_heading": DISMISSED_HEADING, "file_anyway": FILE_ANYWAY_LABEL,
+                          "dismissed_heading": DISMISSED_HEADING, "file": FILE_LABEL,
+                          "file_anyway": FILE_ANYWAY_LABEL,
                           "unfile": UNFILE_LABEL, "unfile_note": UNFILE_NOTE_HINT,
-                          "filed_heading": FILED_HEADING},
+                          "filed_heading": FILED_HEADING,
+                          "suggested": SUGGESTED_HEADING,
+                          "other_requests": OTHER_REQUESTS_HEADING},
+        # Every word tracker.review gives the card, from the module that
+        # owns it: what is said when the evidence suggests nothing, the one
+        # separator between an identifier and what follows it (the reason
+        # sentence and the picker's entries both use it), the words each
+        # evidence place is named by - the record travels raw in the index,
+        # so anything labelling a place labels it from here - and the cap
+        # the shortlist's length keeps.
+        "triage": {"nothing_suggested": review.NOTHING_SUGGESTED,
+                   "identifier_separator": review.IDENTIFIER_SEPARATOR,
+                   "places": dict(review.PLACE_WORDS),
+                   "max_suggestions": review.MAX_SUGGESTIONS},
         "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
         "expected_pattern": EXPECTED_PATTERN,
         "period_pattern": PERIOD_PATTERN,
@@ -308,6 +330,11 @@ def _vocab() -> dict:
             "task_name": TASK_NAME,
         },
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
+        # The read-only workbook a pass regenerates, and the three words
+        # that say whether the one on disk still describes the engagement.
+        # The app compares nothing itself: it shows the word the API sends
+        # and derives the chip's class from it, exactly as it does a status.
+        "view": {"label": VIEW_LABEL, "states": list(VIEW_STATES)},
     }
 
 
@@ -392,6 +419,29 @@ def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
             for identifier, found in entry.evidence_record.items()}
 
 
+def _triage_payload(triaged: review.Triage) -> dict:
+    """One parked file's shortlist as JSON, in triage order.
+
+    The row itself is already in ``state["index"]``; what travels here is
+    the part only :mod:`tracker.review` knows, joined back to that row by
+    ``pbc_location`` - the same handle every review command takes.
+
+    ``reason`` ships **whole, with its leading identifier**, exactly as
+    :class:`tracker.review.Suggestion` built it. One owner: review.py
+    writes the sentence and nothing downstream re-assembles it from
+    ``identifier`` and a separator of its own. The identifier travels
+    beside it as data too, because that is what ``assign`` is given, and a
+    caller must never have to read it back out of a sentence.
+    """
+    return {
+        "original_name": triaged.entry.original_name,
+        "pbc_location": triaged.entry.pbc_location,
+        "shortlist": [asdict(suggestion) for suggestion in triaged.shortlist],
+        "genre": triaged.genre,
+        "group": triaged.group,
+    }
+
+
 def _state(engagement: Path) -> dict:
     manifest_path = engagement / MANIFEST_FILENAME
     root = clients_root()
@@ -401,8 +451,14 @@ def _state(engagement: Path) -> dict:
     items = with_pending(load_manifest(manifest_path), deferred)
     info = load_engagement_info(manifest_path)
     summary = summarize(items)
+    entries = read_index(engagement / INDEX_FILENAME, quarantine=False)
+    view_path = engagement / VIEW_FILENAME
     return {
         "pending_statuses": len(deferred),
+        # The derived workbook, and whether it still describes this
+        # engagement. Reading the stamp takes no lock and tolerates Excel
+        # holding it, so showing the engagement stays a read.
+        "view": {"state": view_state(engagement), "path": str(view_path)},
         "engagement": _info_payload(info),
         "lock": _lock_payload(engagement),
         "summary": {
@@ -419,7 +475,14 @@ def _state(engagement: Path) -> dict:
         # the record it was written from, keyed by candidate identifier.
         "index": [asdict(e) | {"filed_as": e.filed_as, "candidates": e.candidate_list,
                                "evidence": _evidence_payload(e)}
-                  for e in read_index(engagement / INDEX_FILENAME, quarantine=False)],
+                  for e in entries],
+        # The review queue, triaged: one entry per parked file, its
+        # shortlist best-first with the sentence behind each suggestion.
+        # There is no `review` command - the card draws from the one state
+        # the app already reads - and the manifest and the index are handed
+        # to triage() so each is read once for the whole screen.
+        "review": [_triage_payload(t)
+                   for t in review.triage(engagement, items=items, entries=entries)],
         "paths": {
             "engagement": str(engagement),
             "shared": str(engagement / SHARED_DIR_NAME),
@@ -427,6 +490,9 @@ def _state(engagement: Path) -> dict:
             "prepared": str(engagement / PREPARED_DIR_NAME),
             "index": str(engagement / INDEX_FILENAME),
             "manifest": str(manifest_path),
+            # The one a person is meant to open. Named here as well as
+            # above because the shell opens only paths this map holds.
+            "view": str(view_path),
             # The practice's page, not this engagement's: it lives in the
             # clients root. Reported here because the shell opens only the
             # paths the API has named, and a person looking at one
@@ -543,7 +609,8 @@ def _cmd_create(argv: list[str]) -> dict:
      "due": <ISO_DATE_HINT>, "items": [{identifier, document, extensions, ...}, ...]}
     year defaults to the most recently ended year; catalog rows are shifted to it.
     client/link/due land on the manifest's Engagement sheet, which is all the
-    scheduled run needs - there is no registry to add the engagement to.
+    scheduled run needs - there is no registry to add the engagement to, and
+    the catalog the rows came from is recorded there beside them.
     """
     spec = json.loads(sys.stdin.read() or "{}")
     form = str(spec.get("form", "")).strip()
@@ -567,7 +634,10 @@ def _cmd_create(argv: list[str]) -> dict:
     info = _info_from_spec(spec)
     engagement.mkdir(parents=True)
     try:
-        create_template(engagement / MANIFEST_FILENAME, items, info)
+        # The catalog the wizard chose is recorded on the sheet: an
+        # engagement that cannot say which checklist it came from cannot be
+        # checked against it later.
+        create_template(engagement / MANIFEST_FILENAME, items, info, form=form)
         scaffold_engagement(engagement)  # validates the manifest too
     except Exception:
         shutil.rmtree(engagement, ignore_errors=True)  # never leave a half-built one

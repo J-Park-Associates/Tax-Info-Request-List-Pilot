@@ -37,6 +37,9 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
+from tracker import ledger
+from tracker.locking import lock_is_held
+
 log = logging.getLogger("tracker.manifest")
 
 SHEET_NAME = "Requests"
@@ -282,6 +285,10 @@ class EngagementInfo:
     reminders: bool = True
     active: bool = True
     rolled_from: str = ""
+    #: Which catalog the request list was cut from, as the catalog keys it.
+    #: Blank on an engagement made before it was recorded, and blank is
+    #: unknown to every reader - nothing refuses a manifest for it.
+    form: str = ""
 
 
 #: Row labels on the Engagement sheet, in the order they are written.
@@ -309,6 +316,10 @@ ENGAGEMENT_FIELDS = (
     ("Reminders", "reminders"),
     ("Active", "active"),
     ("Rolled From", "rolled_from"),
+    # Added last so an engagement made before it existed keeps every cell
+    # where its reader and its owner left them; the sheet is read by label
+    # (_engagement_from_sheet), so a missing row is simply a blank value.
+    ("Form", "form"),
 )
 #: field name -> the sheet's label, for messages that name a cell.
 ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
@@ -326,6 +337,7 @@ ENGAGEMENT_HELP = {
     "due": "the date the reminder asks the client to send things by",
     "sender": "who the reminder is from",
     "firm": "the sign-off line and the client README's contact (typed once at setup)",
+    "form": "which catalog the request list was cut from; blank if it was never recorded",
     **ENGAGEMENT_NOTES,
 }
 
@@ -514,8 +526,63 @@ def _requests_sheet(wb, path: Path):
 def load_manifest(path: Path | str) -> list[RequestItem]:
     """Load and validate every request row from ``path``.
 
+    The request itself - the identifier, the document, the period, the
+    keywords, the extensions, Waived, Manual Override - is the person's, and
+    always comes from the workbook. The machine writes none of it and the
+    engagement's record holds none of it.
+
+    **The scanner columns are the record's, per identifier.** Where
+    ``ledger.LEDGER_FILENAME`` has ever recorded a status for an identifier,
+    that status, its Received Date, File Count and Validation Notes are what
+    this returns for that row; an identifier the record has never seen keeps
+    the workbook's own columns. Two readings side by side, one row at a time:
+    the record is the truth for what it has recorded, the workbook for what
+    it has not. So an engagement scanned before it kept a record, or one row
+    added to the list since, reads exactly as it always did.
+
+    Readers that must also see a status a locked Excel deferred still overlay
+    :func:`pending_updates` through :func:`with_pending` on top of this; the
+    two agree, because a deferred write is recorded as applied.
+
     Reads with ``data_only=True`` so formula cells yield their cached values.
     Raises :class:`ManifestError` with row context on any invalid data.
+    """
+    path = Path(path)
+    # The same replacement with_pending() makes, from the record rather than
+    # from the sidecar: one owner for what replacing a row's scanner columns
+    # means, and one rule for matching an identifier without case.
+    return with_pending(load_manifest_from_workbook(path), _recorded_statuses(path))
+
+
+def _recorded_statuses(manifest_path: Path) -> dict[str, StatusUpdate]:
+    """The status the engagement's record holds for each identifier it has
+    ever recorded one for; empty where there is no record, no ``scanned``
+    event in it, or no reading it.
+
+    A record that does not read as one is said loudly, with the engagement
+    and the line, and the workbook's own columns answer instead - the way the
+    storage path already reports a sidecar it refuses. Never a silent skip.
+    """
+    engagement_dir = manifest_path.parent
+    try:
+        recorded = ledger.statuses(ledger.read_events(engagement_dir))
+        return {identifier: _update_from_json(raw) for identifier, raw in recorded.items()}
+    except (ledger.LedgerError, KeyError, TypeError, ValueError, AttributeError) as exc:
+        log.warning(
+            "%s: its record cannot be read (%s) - the scanner columns in %s answer instead; "
+            "a person should look",
+            engagement_dir.name, exc, manifest_path.name,
+        )
+        return {}
+
+
+def load_manifest_from_workbook(path: Path | str) -> list[RequestItem]:
+    """Every request row as the workbook alone says it, scanner columns included.
+
+    The reading every reader made before the record was believed, kept public
+    under its own name: :func:`load_manifest` layers the record on top of it,
+    the record's own bootstrap imports from it, and the suite's agreement
+    fixture would be comparing the record with itself without it.
     """
     path = Path(path)
     wb = _open_manifest(path)
@@ -843,6 +910,78 @@ def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
         wb.close()
 
 
+def statuses_from_workbook(path: Path | str, *, quarantine: bool = False) -> dict[str, dict]:
+    """Every identifier's scanner columns as the workbook and its pending
+    sidecar alone read them, by the identifier as the workbook spells it.
+
+    The reading every reader made before the record was believed, kept public
+    under its own name: it is what the record's own bootstrap imports, and
+    what the suite's agreement fixture checks the record against - through
+    :func:`load_manifest` it would be checking the record against itself.
+
+    Looking changes nothing by default: an unreadable sidecar is reported and
+    left where it is.
+    """
+    path = Path(path)
+    items = with_pending(load_manifest_from_workbook(path), _load_pending(path, quarantine=quarantine))
+    return {
+        item.identifier: _update_to_json(StatusUpdate(
+            status=item.status, file_count=item.file_count,
+            received_date=item.received_date, validation_notes=item.validation_notes,
+        ))
+        for item in items
+    }
+
+
+def _record_scanned(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
+    """Append what this write applied to the engagement's own record.
+
+    Only what *changed*: a pass that found the engagement exactly as it left
+    it appends nothing, so the record is the list of the moments something
+    moved rather than one line per pass for ever.
+
+    Only under the engagement lock, which is what makes this a *pass* - the
+    scanner takes it before it reads a thing. Seeding a request list into a
+    manifest from a test or a tool is not a pass and writes no event; the
+    bootstrap above means the first real pass records where those rows stood
+    anyway, so nothing is lost by the silence.
+    """
+    engagement_dir = path.parent
+    if not lock_is_held(engagement_dir):
+        return
+    applied = {identifier: _update_to_json(update) for identifier, update in updates.items()}
+    already = ledger.statuses(ledger.read_events(engagement_dir))
+    changed = {i: status for i, status in applied.items() if already.get(i) != status}
+    if not changed:
+        return
+    ledger.append(
+        engagement_dir,
+        ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: changed}),
+        seed=lambda: [ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {
+            # A row nothing has scanned yet has no status to import, and a
+            # blank one recorded as a status would make the record answer for
+            # a row it has never seen anything happen to.
+            identifier: status
+            for identifier, status in statuses_from_workbook(path).items() if status["status"]
+        }})],
+    )
+
+
+def _record_keyword(path: Path, identifier: str, keyword: str) -> None:
+    """Append a keyword a person's filing taught a request.
+
+    The filer writes the index row first and the keyword after it, both
+    inside its own lock, so by the time this runs the record already carries
+    the rows; a caller outside the lock (a tool, a test) writes no event.
+    """
+    engagement_dir = path.parent
+    if not lock_is_held(engagement_dir):
+        return
+    ledger.append(engagement_dir, ledger.new(
+        ledger.KEYWORD_LEARNED, identifier=identifier, keyword=keyword,
+    ))
+
+
 def write_statuses(
     path: Path | str,
     updates: Mapping[str, StatusUpdate],
@@ -884,9 +1023,14 @@ def write_statuses(
             pending_path(path).unlink(missing_ok=True)
         except PermissionError as exc:
             log.warning("%s was written but %s is held open and stays (%s)", path.name, pending_path(path).name, exc)
+        _record_scanned(path, merged)
         return True
 
     _save_pending(path, merged)
+    # Recorded either way: the statuses are applied as far as this system is
+    # concerned - every reader overlays the sidecar - and which file they
+    # landed in is the workaround, not the fact.
+    _record_scanned(path, merged)
     log.error(
         "Manifest still locked after %d attempts; %d update(s) deferred to %s",
         retries,
@@ -1155,6 +1299,7 @@ def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
             cell.value = ", ".join((*existing, keyword))
             as_text(cell)              # a keyword starting with "=" is a keyword, not a formula
             save_workbook_atomically(wb, path)
+            _record_keyword(path, identifier, keyword)
             return True
         raise ManifestError(f"No request {identifier!r} in {path.name}")
     finally:
@@ -1163,7 +1308,10 @@ def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
 
 # --------------------------------------------------------------- template ----
 
-_COLUMN_WIDTHS = {
+#: How wide each column is drawn, by header. Public because the Requests
+#: sheet is drawn twice now - here, and by the view a pass regenerates -
+#: and a second copy of these numbers would drift.
+COLUMN_WIDTHS = {
     COL_IDENTIFIER: 11,
     COL_DOCUMENT: 38,
     COL_PERIOD: 12,
@@ -1185,6 +1333,8 @@ def create_template(
     path: Path | str,
     items: Iterable[RequestItem] = (),
     info: EngagementInfo | None = None,
+    *,
+    form: str = "",
 ) -> Path:
     """Create a fresh manifest workbook at ``path``, optionally seeded with rows.
 
@@ -1192,6 +1342,16 @@ def create_template(
     the person opening the workbook sees where the client's details go.
     Refuses to overwrite an existing file — a live manifest carries scanner
     state and must never be clobbered by a re-run.
+
+    ``form`` is the catalog the rows were cut from, recorded on the
+    Engagement sheet. It is a keyword rather than something carried by the
+    rows because it is one fact about the engagement, not a property of any
+    request: putting it on every row would be a copy per row and a column on
+    the Requests sheet nobody edits. Optional, so every caller that hands
+    over rows alone - the suite, the rollover, and the reports that build a
+    catalog the way an engagement gets it, ``create_template(path,
+    template_items(form, year=year))`` - is unchanged and records a blank.
+    A blank never clears a form ``info`` already carries.
     """
     path = Path(path)
     if path.exists():
@@ -1203,7 +1363,7 @@ def create_template(
     for idx, header in enumerate(HEADERS, start=1):
         cell = ws.cell(row=1, column=idx, value=header)
         cell.font = Font(bold=True)
-        ws.column_dimensions[get_column_letter(idx)].width = _COLUMN_WIDTHS[header]
+        ws.column_dimensions[get_column_letter(idx)].width = COLUMN_WIDTHS[header]
     ws.freeze_panes = "A2"
 
     column = {header: index for index, header in enumerate(HEADERS, start=1)}
@@ -1225,7 +1385,8 @@ def create_template(
         for header, value in cells.items():
             as_text(ws.cell(row=row, column=column[header], value=value))
 
-    _write_engagement_sheet(wb, info or EngagementInfo())
+    info = info or EngagementInfo()
+    _write_engagement_sheet(wb, replace(info, form=form) if form else info)
     wb.active = 0
     path.parent.mkdir(parents=True, exist_ok=True)
     save_workbook_atomically(wb, path)

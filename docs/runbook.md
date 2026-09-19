@@ -16,8 +16,42 @@ this page does not repeat it. Why anything is the way it is, is
 Clients drop their own documents into a shared Google Drive folder. Google
 Drive for desktop syncs that folder onto the designated machine, and the
 synced engagement folder **is** the record: the manifest, the index, the
-originals, the working copies and the drafts all live in it. There is no
-database, no portal and no second copy anywhere.
+originals, the working copies, the drafts and the engagement's own ledger
+all live in it. There is no database, no portal and no second copy anywhere.
+
+**The one to open is `_status.xlsx`.** Every pass regenerates it in the
+engagement folder from what the tool now knows: a **Summary** sheet, a
+**Requests** sheet (the list with each row's status and any keyword somebody
+taught it), an **Index** sheet (every original and where it went) and a
+**Needs Review** sheet (what is waiting for a person). Open that one rather
+than the index. It is read-only on purpose and it holds nothing of its own —
+every fact on it is the ledger's or the manifest's — so **anything typed into
+it is lost at the next pass**, and a copy left open in Excel simply is not
+refreshed until it is closed. The Summary says which rules and which ledger it
+was drawn from, and the app prints the answer beside the engagement's name:
+*current* (it still describes this engagement), *behind* (somebody has edited
+the request list, or the tool has decided something, since it was drawn) or
+*unknown* (there is none yet, or it cannot be read). The app's
+**Open Status Workbook** button opens it, and
+`python -m tracker.view "<engagement folder>"` redraws it and prints the state.
+The manifest is still where the request list is edited and the index is still
+the audit trail; neither has changed.
+
+`_ledger.jsonl` is that ledger: a line the tool appends every time it
+decides something about a document or writes a status, kept beside the
+workbooks so what the system did is not held only in files Excel can
+rewrite. **Nobody edits it**, and the tool now believes it: what it has
+recorded about a document or a status is what the app and the drafts show,
+and anything it has not recorded still comes from the manifest and the index,
+which are written exactly as before and are still what you read and edit.
+Leave it where it is; if you are ever asked what one engagement's history
+looks like, `python -m tracker.ledger "<engagement folder>"` prints the
+count and the dates without opening anything.
+
+`python -m tracker.ledger "<engagement folder>" --compare` is the check to
+run if you ever suspect the ledger and the workbooks have parted company: it
+compares them row by row and status by status, names every disagreement, and
+says plainly when there is none.
 
 The folder that holds every engagement is typed once, in the app, on first
 launch. It is written to the settings file beside the app
@@ -71,7 +105,11 @@ same day, and the tool's card there prints that sentence.
    **Open Status** button opens it. The run log
    (`tracker.runner.LOG_FILENAME`), in the clients root beside the
    engagement folders, has the same, pass by pass, including passes made from
-   the app's button.
+   the app's button. For one client, open that engagement's
+   `tracker.view.VIEW_FILENAME` — the pass you just read about regenerated
+   it, so it is that engagement's list, index and review queue as of this
+   morning, and the app says beside the engagement's name whether it is
+   still current.
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document
@@ -82,6 +120,20 @@ same day, and the tool's card there prints that sentence.
    **File it anyway** is the undo. A document filed in the wrong place is
    sent back to the review folder with **Unfile**, on the record, and filed
    again from there.
+
+   The card does not leave you to find the request yourself. Each parked
+   file carries a shortlist: up to three requests, best first, at the head
+   of its picker under *Suggested*, with every other request below them
+   under *Other requests*, and under the row the one line that says why each
+   is on the list — which of that request's keywords the document said,
+   where it said it, and the rule that refused it. It is a shortlist and
+   never a filing: nothing is moved, no status changes and no lock is taken
+   until you press **File it**, the picker is still the whole list so you
+   may file to anything on it, and a request the firm has waived is never
+   offered. A file whose evidence says nothing gets no suggestion at all
+   rather than a guess — where the card says so, read the document. The
+   same answer is on the command line, without the app:
+   `python -m tracker.review` against the engagement folder prints it.
 3. **A locked engagement.** The app shows a notice when a run holds one. If
    it says a run is still going, leave it — **Sort & Scan** waits for it.
    If it says a run left its lock behind, a **Clear lock** button appears;
@@ -227,6 +279,16 @@ documents a person then files. That is the system working as designed: it
 parks anything it cannot be sure of, because misfiling a tax document is
 worse than not filing it, and every file a person files teaches the row a
 keyword.
+
+Two things a person will notice changed this season. A W-2 printed one copy
+to the page — which is how the 2024 and 2025 revisions print, and how a
+client's own copy usually arrives — is recognised now; it used to park with
+"matched no request" because its only mention of its own number is the line
+at the foot of the form. And the brokerage row (1040 E01) takes a workbook
+as well as a PDF or a CSV, because a broker's realized gain/loss export is
+sent as an `.xlsx` at least as often; a file that used to come back
+"extension .xlsx not allowed" now files. The trust's 1099 row (1041 B01)
+reads that export as the 1099-B it stands in for.
 
 What turns that from an impression into a number is the backtest
 (`tools/backtest.py`): the firm's own already-sorted documents routed

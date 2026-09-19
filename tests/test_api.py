@@ -464,6 +464,144 @@ def test_dismiss_refuses_a_file_the_index_does_not_know(capsys, demo_root, tmp_p
     assert code == 1 and payload["error"]
 
 
+# ------------------------------------------------- the review queue, triaged ----
+
+
+def triage_engagement(capsys, demo_root):
+    """One engagement whose drop folder holds a document two requests want.
+
+    Two rows, each with a plain required keyword, and one document that
+    says A02's in its title and A01's far down the page: the router files
+    neither (it matches more than one request) and the row is parked
+    carrying both keywords, where they were said, through the filer's own
+    writers. Nothing here types an evidence string.
+    """
+    from tests.test_scanner import text_pdf
+
+    spec = {"name": "Reed Property 2025", "client": "Ada Reed", "items": [
+        {"identifier": "A01", "document": "Mortgage Interest Statement", "period": "TY2025",
+         "required_keywords": "mortgage interest", "min_size_kb": 0, "date_pattern": "*"},
+        {"identifier": "A02", "document": "Rental Property Statements", "period": "TY2025",
+         "required_keywords": "rental income", "min_size_kb": 0, "date_pattern": "*"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Reed Property 2025"
+    text_pdf(engagement / SHARED_DIR_NAME / "packet.pdf", "\n".join([
+        "Rental income summary for the year 2025",
+        "Lakeside Property Management",
+        *[f"Unit {n:03d} rent collected and expenses paid during the year" for n in range(60)],
+        "The mortgage interest paid on the property is shown below.",
+    ]))
+    return engagement
+
+
+def test_the_state_triages_each_parked_file_best_first_with_the_reason_behind_each(
+    capsys, demo_root,
+):
+    from tracker.review import IDENTITY_UNKNOWN
+
+    engagement = triage_engagement(capsys, demo_root)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    state = payload["state"]
+
+    [triaged] = state["review"]
+    [parked] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW]
+    assert triaged["pbc_location"] == parked["pbc_location"], "the queue joins to the index row"
+    # Best first, and best is not the manifest's order: A02 said its
+    # keyword in the title, A01 said its own far down the same page.
+    assert [s["identifier"] for s in triaged["shortlist"]] == ["A02", "A01"]
+    assert [s["rank"] for s in triaged["shortlist"]] == sorted(
+        s["rank"] for s in triaged["shortlist"]
+    )
+    assert all(s["rank"][0] == IDENTITY_UNKNOWN for s in triaged["shortlist"])
+    # The sentence behind each, whole, as review.py wrote it: the row's own
+    # word and where the document said it.
+    first, second = triaged["shortlist"]
+    assert first["reason"].startswith("A02") and "'rental income' in the title" in first["reason"]
+    assert second["reason"].startswith("A01") and "'mortgage interest'" in second["reason"]
+
+
+def test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing(
+    capsys, demo_root, tmp_path,
+):
+    # A photo: no request accepts a .jpg, so the record names no candidate
+    # and the queue says so rather than nominating the nearest row.
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+
+    [triaged] = payload["state"]["review"]
+    assert triaged["original_name"] == "vacation photo.jpg"
+    assert triaged["shortlist"] == [], "no evidence, no suggestion — the person reads it"
+
+
+def test_dismissing_a_file_takes_it_out_of_the_review_queue(capsys, demo_root, tmp_path):
+    from tracker.filer import NOT_REQUESTED
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    [parked] = payload["state"]["index"]
+    assert [t["pbc_location"] for t in payload["state"]["review"]] == [parked["pbc_location"]]
+
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "note": "a holiday snap"})
+    assert code == 0, payload
+
+    # The row is still in the index, said out loud; it is not work any more.
+    [row] = [e for e in payload["state"]["index"] if e["decision"] == NOT_REQUESTED]
+    assert row["pbc_location"] == parked["pbc_location"]
+    assert payload["state"]["review"] == [], "a row nobody asks for is not triaged"
+
+
+def test_assigning_a_shortlisted_request_files_it_and_the_queue_drops_it(capsys, demo_root):
+    engagement = triage_engagement(capsys, demo_root)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    [triaged] = payload["state"]["review"]
+    best = triaged["shortlist"][0]["identifier"]
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": triaged["pbc_location"], "identifier": best})
+    assert code == 0, payload
+
+    assert payload["assigned"]["identifier"] == best
+    assert payload["state"]["review"] == [], "filed is not parked"
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert filed["identifier"] == best
+
+
+def test_the_vocabulary_carries_every_word_the_review_card_shows(capsys, demo_root):
+    from tracker.review import (
+        IDENTIFIER_SEPARATOR,
+        MAX_SUGGESTIONS,
+        NOTHING_SUGGESTED,
+        PLACE_WORDS,
+    )
+
+    vocab = run(capsys, "list")[1]["vocab"]
+
+    # The card's own buttons and headings...
+    labels = vocab["review_labels"]
+    assert labels["file"] == api.FILE_LABEL and labels["dismiss"] == api.DISMISS_LABEL
+    assert labels["file_anyway"] == api.FILE_ANYWAY_LABEL
+    assert labels["suggested"] == api.SUGGESTED_HEADING
+    assert labels["other_requests"] == api.OTHER_REQUESTS_HEADING
+    # ...and every word tracker.review owns, from tracker.review.
+    assert vocab["triage"] == {
+        "nothing_suggested": NOTHING_SUGGESTED,
+        "identifier_separator": IDENTIFIER_SEPARATOR,
+        "places": dict(PLACE_WORDS),
+        "max_suggestions": MAX_SUGGESTIONS,
+    }
+    # Nothing the card shows is typed in the renderer: every one of these
+    # reaches the screen through vocab, never as a literal of its own.
+    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8"
+    )
+    for word in (*labels.values(), NOTHING_SUGGESTED, *PLACE_WORDS.values()):
+        assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
+
+
 def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
@@ -490,6 +628,35 @@ def test_create_writes_the_engagement_sheet_the_scheduled_run_reads(capsys, demo
     from tracker.settings import firm
     assert found.firm == firm() and found.reminders is True
     assert found.name == ""          # the folder is the name; nothing to drift
+
+
+def test_create_records_the_catalog_the_wizard_chose_and_state_carries_it(capsys, demo_root):
+    """Decision 86: the engagement says which checklist it was cut from, on
+    the sheet a person opens and in the state the app draws from."""
+    from tracker.manifest import load_engagement_info
+
+    spec = {"name": "Willow Inc 2025", "form": "1120S", "client": "Willow Inc",
+            "items": [t for t in api.FORM_TEMPLATES["1120S"] if t["core"]]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["form"] == "1120S"
+    assert load_engagement_info(demo_root / "Willow Inc 2025" / MANIFEST_FILENAME).form == "1120S"
+
+
+def test_an_engagement_created_without_a_form_says_nothing_rather_than_guessing(capsys, demo_root):
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["form"] == ""
+
+
+def test_rollover_carries_the_catalog_the_prior_was_cut_from(capsys, demo_root):
+    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["form"] == "1040"
 
 
 def test_rollover_carries_the_client_but_not_last_years_link_or_due(capsys, demo_root):
@@ -753,9 +920,11 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                   "duplicate": DUPLICATE, "dismissed": NOT_REQUESTED}
     assert vocab["review_labels"] == {
         "dismiss": api.DISMISS_LABEL, "dismiss_note": api.DISMISS_NOTE_HINT,
-        "dismissed_heading": api.DISMISSED_HEADING, "file_anyway": api.FILE_ANYWAY_LABEL,
+        "dismissed_heading": api.DISMISSED_HEADING, "file": api.FILE_LABEL,
+        "file_anyway": api.FILE_ANYWAY_LABEL,
         "unfile": api.UNFILE_LABEL, "unfile_note": api.UNFILE_NOTE_HINT,
         "filed_heading": api.FILED_HEADING,
+        "suggested": api.SUGGESTED_HEADING, "other_requests": api.OTHER_REQUESTS_HEADING,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert vocab["carried_sheet"] == CARRIED_SHEET

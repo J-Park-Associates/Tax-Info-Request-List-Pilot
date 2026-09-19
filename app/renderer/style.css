@@ -226,6 +226,23 @@ body {
   box-shadow: var(--shadow);
   transition: border-color 180ms ease;
 }
+.eng-form {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+/* The status workbook's state, beside the engagement. One class per word
+   the API sends (tracker.view.VIEW_STATES); the renderer derives the class
+   from the word and types none of them. */
+.view-current { border-color: #a7f3d0; color: #047857; }
+.view-behind  { border-color: #fde68a; color: #b45309; }
+.view-unknown { border-color: var(--border); color: var(--subtle); }
+
 .eng-picker select:hover { border-color: #cbd5e1; }
 .eng-picker select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
@@ -506,7 +523,10 @@ body {
 .review li {
   display: grid;
   grid-template-columns: 1fr auto auto auto auto;
-  grid-template-areas: "name select keyword file dismiss" "why select note file dismiss";
+  grid-template-areas:
+    "name select keyword file dismiss"
+    "why select note file dismiss"
+    "reasons reasons reasons reasons reasons";
   column-gap: 10px;
   row-gap: 2px;
   align-items: center;
@@ -526,6 +546,18 @@ body {
   background: #fbfcfe;
   color: var(--text);
 }
+/* Why each suggestion is on the list, under the row that offers it: an
+   <option> carries no second line, and the reason is what is read first. */
+.review .r-reasons {
+  grid-area: reasons;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  color: var(--subtle);
+  font-size: 12.5px;
+}
+.review .r-reasons li { padding: 1px 0 1px 14px; text-indent: -14px; }
+.review .r-reasons .r-nothing { font-style: italic; }
 .review select { grid-area: select; max-width: 300px; }
 .review .r-keyword { grid-area: keyword; width: 190px; }
 .review .r-note { grid-area: note; width: 190px; }

@@ -9,6 +9,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - scanner       : orchestrator (scan, resolve, write back)
 - router        : deterministic routing of a dropped file to one request
 - filer         : sort the drop folder, preserve originals, write the index workbook
+- review        : triage the parked files - a ranked shortlist with its reasons, filing nothing
 - rollover      : build a returning client's list from their prior year
 - reminder      : draft (never send) the client reminder email
 - registry      : finds every engagement under the clients root (no registry file)
@@ -16,6 +17,8 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - scheduling    : generate the Task Scheduler / n8n job
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
+- ledger        : the engagement's own append-only record of what was decided, written beside the workbooks under that lock
+- view          : the read-only workbook a person opens, regenerated from the record and the readers every pass
 - settings      : the settings file beside the app - the clients root and firm, written once
 - reasons       : every refusal said once: the note, the client's ask, whose problem it is
 - api           : the desktop app's command layer, one JSON command in, one JSON reply out

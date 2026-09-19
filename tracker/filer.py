@@ -91,6 +91,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.utils import get_column_letter
 
+from tracker import ledger
 from tracker.content_check import (
     CACHE_FILENAME,
     ContentCache,
@@ -512,6 +513,155 @@ def _save_pending_index(path: Path, entries: list[IndexEntry]) -> None:
     })
 
 
+# ------------------------------------------------------------------ record ----
+
+
+def ledger_key(entry: IndexEntry) -> str:
+    """The identity the engagement's record keeps this row under.
+
+    The index's own: where the client's preserved original is, which is what
+    the snapshot merge keys on and what the app joins a review card back by.
+    A row that names no original (only a workbook somebody built by hand has
+    one) falls back to what else the row says about the document, so two such
+    rows are not folded into one.
+    """
+    return entry.pbc_location or f"{entry.received}|{entry.original_name}|{entry.digest}"
+
+
+#: Which event a row's decision is recorded as, when a pass reaches it. The
+#: decisions a person makes are recorded under their own names, at the call
+#: that makes them, so the record says who decided and not only what.
+_LEDGER_EVENT_FOR = {
+    FILED: ledger.FILED,
+    NEEDS_REVIEW: ledger.PARKED,
+    DUPLICATE: ledger.DUPLICATE,
+    NOT_REQUESTED: ledger.PARKED,
+}
+
+
+def _ledger_row(entry: IndexEntry) -> dict:
+    """The row as the record stores it - the shape the index's own sidecar
+    writes and ``_entry_from_json`` reads back, so there is one owner for it."""
+    return asdict(entry)
+
+
+def _ledger_event(name: str, entry: IndexEntry, *, was: str = "") -> dict:
+    event = ledger.new(name, **{ledger.KEY_KEY: ledger_key(entry), ledger.ROW_KEY: _ledger_row(entry)})
+    if was and was != event[ledger.KEY_KEY]:
+        event[ledger.WAS_KEY] = was
+    return event
+
+
+def _seed_from_index(index_path: Path):
+    """The bootstrap for an engagement whose index has rows and whose record
+    has none: every row as it now stands, imported. Called at most once, by
+    the first writer that appends - never by a reader, so looking at a folder
+    still changes nothing."""
+    def seed() -> list[dict]:
+        return [
+            _ledger_event(ledger.IMPORTED, entry)
+            for entry in read_index_from_workbook(index_path, quarantine=False)
+        ]
+    return seed
+
+
+def index_as_recorded(engagement_dir: Path) -> dict[str, dict]:
+    """What the engagement's record says its index rows are, by identity.
+
+    In the index's own order (see :func:`tracker.ledger.fold`). Raises
+    :class:`tracker.ledger.LedgerError` where the record does not read as
+    one: a writer must never diff against half a record, so only
+    :func:`read_index` catches that and says so.
+    """
+    return ledger.fold(ledger.read_events(engagement_dir))
+
+
+def _recorded_rows(engagement_dir: Path) -> dict[str, dict] | None:
+    """The index the engagement's record folds to, or None to read the workbook.
+
+    None means one of two things, and they are not the same: the record
+    carries no index-shaped event (a legacy folder, or one whose record holds
+    nothing but a scan), which is ordinary and silent; or the record does not
+    read as one, which is said loudly with the engagement and the line, the
+    way the storage path already reports an index it refuses. Never a silent
+    skip - a record nobody looks at is a record nobody repairs.
+    """
+    try:
+        recorded = index_as_recorded(engagement_dir)
+    except ledger.LedgerError as exc:
+        log.warning(
+            "%s: %s - the index is read from %s instead, and what the record "
+            "holds past that line is not read at all; a person should look",
+            engagement_dir.name, exc, INDEX_FILENAME,
+        )
+        return None
+    return recorded or None
+
+
+def _rows_changed(
+    before: dict[str, dict],
+    entries: list[IndexEntry],
+    moved: dict[str, str],
+    decided: dict[str, str],
+) -> list[dict]:
+    """One event per row the index now holds that ``before`` does not already say.
+
+    Read off the rows themselves rather than collected as the caller goes,
+    so every road a row travels - a drop sorted, bytes recorded on a row
+    preserved without them, a row that followed an original the client moved,
+    a row a person rewrote - is recorded by the one rule and none of them can
+    be forgotten by a later edit somewhere else.
+
+    ``moved`` maps a row's new identity to the one it is leaving; ``decided``
+    names the event for the row this call decided itself, so a person's
+    decision is recorded as theirs and not as the decision it happens to
+    write.
+    """
+    events = []
+    for entry in entries:
+        key = ledger_key(entry)
+        was = moved.get(key, "")
+        row = _ledger_row(entry)
+        earlier = before.get(was or key)
+        if earlier == row:
+            continue
+        if key in decided:
+            name = decided[key]
+        elif was:
+            name = ledger.PRESERVED          # the original is elsewhere; the row followed it
+        elif earlier is not None and not earlier["digest"] and row["digest"]:
+            name = ledger.BYTES_RECORDED
+        else:
+            name = _LEDGER_EVENT_FOR.get(entry.decision, ledger.PARKED)
+        events.append(_ledger_event(name, entry, was=was))
+    return events
+
+
+def _record_write(
+    engagement_dir: Path,
+    index_path: Path,
+    before: dict[str, dict],
+    entries: list[IndexEntry],
+    *,
+    moved: dict[str, str] | None = None,
+    decided: dict[str, str] | None = None,
+) -> None:
+    """Append what the index now says and the record does not, under the lock.
+
+    ``before`` is the index as this call found it. Where the record already
+    carries rows it is the record, not that reading, that is compared
+    against: a row can reach the index by a road no writer took - an older
+    version's sidecar folded in, a cell somebody typed over in Excel, a write
+    whose process was killed between the workbook landing and this line - and
+    the next write through here learns it rather than leaving the two
+    disagreeing for ever.
+    """
+    recorded = index_as_recorded(engagement_dir)
+    bootstrap = None if recorded or not before else _seed_from_index(index_path)
+    for event in _rows_changed(recorded or before, entries, moved or {}, decided or {}):
+        ledger.append(engagement_dir, event, seed=bootstrap)
+
+
 def _by_a_person(entry: IndexEntry) -> bool:
     """Whether this row records a decision a person made, not one a pass made.
 
@@ -544,6 +694,83 @@ def _the_later_row(snapshot: IndexEntry, workbook: IndexEntry) -> IndexEntry:
 def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     """Every index row, oldest first. Empty if there is no index yet.
 
+    **The engagement's own record answers this wherever it has one.** Where
+    ``ledger.LEDGER_FILENAME`` holds at least one index-shaped event, its
+    fold is the index - the rows the writers recorded, in the order the index
+    holds them - and nothing the workbook's cells say is read. That is the
+    whole of stage A step 2: the record is the one thing Excel cannot
+    rewrite, and every reader above this call (the runner, the scanner, the
+    reminder, the app's state, the review triage, last year's rollover)
+    switches with it because they all come through here.
+
+    The one thing still asked of the workbook is whether it is an index the
+    tracker may touch at all (``_refuse_an_index_edited_past_reading``): it
+    is still rewritten on every pass, so the guard that stops a pass
+    rebuilding a sheet a person edited past reading stands until the index
+    stops being written.
+
+    Where there is no such event - a folder from before the record, or one
+    whose record holds nothing but a scan - the workbook is read exactly as
+    it always was, by :func:`read_index_from_workbook`. Reversible: delete
+    the record and this is the workbook reader again.
+
+    A record that does not read as one falls back to the workbook and says so
+    loudly, naming the engagement and the line (``_recorded_rows``); it is
+    never passed over in silence.
+
+    The snapshot sidecar is read whichever way this call answers. It may be
+    the only copy of rows the workbook has not taken, an I/O error reading it
+    is never guessed past, and an unreadable one is still moved aside by a
+    real run: believing the record does not excuse the reading the workbook
+    path would have done. A row it holds that the record has never seen is
+    kept (``_sidecar_rows_off_the_record``).
+    """
+    path = Path(path)
+    pending = _read_pending_index(path, quarantine=quarantine)
+    recorded = _recorded_rows(path.parent)
+    if recorded is not None:
+        _refuse_an_index_edited_past_reading(path)
+        rows = [_entry_from_json(row) for row in recorded.values()]
+        return rows + _sidecar_rows_off_the_record(path, recorded, pending)
+    return _index_from_workbook(path, pending)
+
+
+def _sidecar_rows_off_the_record(
+    path: Path, recorded: dict[str, dict], pending: _PendingIndex | None
+) -> list[IndexEntry]:
+    """Rows a sidecar holds that the engagement's record has never seen.
+
+    A snapshot this version writes is appended to the record in the same
+    locked section as the write, so there are none. A sidecar written before
+    the record existed - a bare list from before ``INDEX_SIDECAR_VERSION``,
+    or a snapshot an older version left behind - holds rows no writer here
+    ever recorded, and a row for an original that has *already been moved* is
+    never dropped over which file it landed in. They are read, said out loud,
+    and recorded by the next write that goes through ``_record_write``.
+    """
+    if pending is None:
+        return []
+    off = [entry for entry in pending.entries if ledger_key(entry) not in recorded]
+    if off:
+        log.warning(
+            "%s holds %d row(s) the engagement's record has never seen - a sidecar written "
+            "before the record; they are read and the next write records them",
+            _pending_index_path(path).name, len(off),
+        )
+    return off
+
+
+def read_index_from_workbook(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
+    """Every index row the workbook and its snapshot sidecar say, oldest first.
+
+    The reading every reader made before the record was believed, kept public
+    under its own name because three things need the workbook's own answer
+    and not the record's: the record's bootstrap (``_seed_from_index``, which
+    imports what the workbooks already say), ``_record_write``'s diff of what
+    a pass left in the workbook, and the suite's agreement fixture, which
+    would be comparing the record with itself if it went through
+    :func:`read_index`. Stage B's migration will need it too.
+
     While Excel holds the workbook, ``INDEX_PENDING_FILENAME`` is the index:
     the snapshot the last run could not write replaces what the workbook
     says, because the workbook is the *older* of the two. A sidecar from
@@ -566,7 +793,12 @@ def read_index(path: Path, *, quarantine: bool = True) -> list[IndexEntry]:
     sidecar that cannot be *read* (I/O) raises: it may be the only current
     copy of the index, and nothing is guessed past it.
     """
-    pending = _read_pending_index(path, quarantine=quarantine)
+    path = Path(path)
+    return _index_from_workbook(path, _read_pending_index(path, quarantine=quarantine))
+
+
+def _index_from_workbook(path: Path, pending: _PendingIndex | None) -> list[IndexEntry]:
+    """The workbook reading, given the sidecar already read off disk once."""
     if pending is not None and pending.snapshot and not _snapshot_is_stale(path):
         return list(pending.entries)
     workbook = _read_index_workbook(path)
@@ -652,21 +884,51 @@ def _blank(row, positions) -> bool:
     )
 
 
+def _the_index_sheet(path: Path, wb: Workbook):
+    """The sheet the index's rows are on, or None where the workbook is empty.
+
+    Raises where the workbook holds rows and no sheet carries the header: no
+    header row in a workbook that holds something is an index the tracker
+    must not touch (the twelfth reading). One wording, in one place, because
+    both the workbook reading and the guard :func:`read_index` keeps over the
+    workbook it is still going to rewrite ask this same question.
+    """
+    ws = _sheet_with_the_header(wb)
+    if ws is None and any(_holds_anything(sheet) for sheet in wb.worksheets):
+        raise FilingError(
+            f"{path.name} has no header row the tracker knows ({', '.join(INDEX_LAYOUT[n][0] for n in _MANDATORY_COLUMNS)}) "
+            f"within the first {_HEADER_WITHIN} rows of any of its sheets ({', '.join(wb.sheetnames)}); "
+            "it was edited by hand - restore it before the next run"
+        )
+    return ws
+
+
+def _refuse_an_index_edited_past_reading(path: Path) -> None:
+    """Raise where the index workbook is one the tracker must not touch.
+
+    Asked even when the record is what answers :func:`read_index`, because
+    the workbook is still written on every pass (stage A writes both) and
+    this is the call every writer makes before it rewrites it. Rebuilding a
+    sheet whose header a person removed would put the tracker's rows over
+    whatever they put there. The guard goes when the index stops being
+    written, not before.
+    """
+    if not path.exists():
+        return
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        _the_index_sheet(path, wb)
+    finally:
+        wb.close()
+
+
 def _read_index_workbook(path: Path) -> list[IndexEntry]:
     if not path.exists():
         return []
     wb = load_workbook(path, data_only=True)
     try:
-        ws = _sheet_with_the_header(wb)
+        ws = _the_index_sheet(path, wb)
         if ws is None:
-            # No header row in a workbook that holds something is an index
-            # the tracker must not touch (the twelfth reading).
-            if any(_holds_anything(sheet) for sheet in wb.worksheets):
-                raise FilingError(
-                    f"{path.name} has no header row the tracker knows ({', '.join(INDEX_LAYOUT[n][0] for n in _MANDATORY_COLUMNS)}) "
-                    f"within the first {_HEADER_WITHIN} rows of any of its sheets ({', '.join(wb.sheetnames)}); "
-                    "it was edited by hand - restore it before the next run"
-                )
             return []
         rows = list(ws.iter_rows(values_only=True))
     finally:
@@ -1244,6 +1506,9 @@ def file_drops(
         items = load_manifest(engagement_dir / MANIFEST_FILENAME)
         by_id = {i.identifier: i for i in items}
         entries = read_index(index_path, quarantine=not dry_run)
+        # What the record already says, taken before anything in this pass
+        # touches a row, so what this pass wrote is what gets recorded.
+        before = {ledger_key(entry): _ledger_row(entry) for entry in entries}
         # An original preserved by a pass that could not read it back has no
         # digest (decision 65). While it has none, a replacement is never
         # noticed and a person's filing of it is never honoured; a later
@@ -1277,6 +1542,11 @@ def file_drops(
         # carries the row's bytes the row follows the file (and is not
         # adopted a second time); the rest are said, every pass.
         strays, moved, gone = _follow_moved_originals(engagement_dir, entries, strays, stamp)
+        # Where a row's identity in the record moved to, and from.
+        moved_keys = {
+            path.relative_to(engagement_dir).as_posix(): ledger_key(earlier)
+            for path, earlier in moved
+        }
         for path, earlier in moved:
             report.attention.append(FileError(path.name, MOVED_IN_PBC.format(
                 location=earlier.pbc_location,
@@ -1338,6 +1608,11 @@ def file_drops(
             # nothing to sort at all.
             if not dry_run and (len(entries) > recorded or sidecar_waiting):
                 report.index_deferred = not write_index(index_path, entries)
+                # The record goes after the write it records, in the same
+                # locked section - whether the workbook took the rows or the
+                # snapshot did, because the sidecar is the workaround and
+                # this is the record.
+                _record_write(engagement_dir, index_path, before, entries, moved=moved_keys)
         # The tidy-up is owed to every pass, not only one that sorted
         # something: an empty folder the client dragged in outlives the
         # files that were in it, and a pass that found nothing to do used
@@ -1613,6 +1888,7 @@ def assign_review_file(
             raise FilingError(f"{identifier} is waived; clear the override first")
 
         entries = read_index(index_path)
+        before = {ledger_key(e): _ledger_row(e) for e in entries}
         position = _find_parked(entries, original)
         entry = entries[position]
         source = engagement_dir / entry.pbc_location
@@ -1711,6 +1987,7 @@ def assign_review_file(
             candidates="",
         )
         entries[position] = new_entry
+        landed = True
         try:
             deferred = not write_index(index_path, entries)
         except BaseException:
@@ -1723,7 +2000,8 @@ def assign_review_file(
             # that stood in for the parked one leaves the row still naming
             # a parked copy that is no longer there, so it is put back -
             # from the copy that stood in for it, which is it byte for byte.
-            if not _index_records(index_path, new_entry):
+            landed = _index_records(index_path, new_entry)
+            if not landed:
                 try:
                     if moved:
                         _move_whole(target, parked)
@@ -1734,6 +2012,13 @@ def assign_review_file(
                 except OSError as undo:       # the copy stays where it is; the real error is the one to hear
                     log.error("Could not put %s back after the index write failed: %s", target.name, undo)
             raise
+        finally:
+            # The record follows the index wherever the index went: an
+            # interrupt between the workbook landing and this line would
+            # otherwise leave the one decision a person made unrecorded.
+            if landed:
+                _record_write(engagement_dir, index_path, before, entries,
+                              decided={ledger_key(new_entry): ledger.ASSIGNED_BY_PERSON})
 
         keyword = keyword.strip()
         note = ""
@@ -1755,9 +2040,15 @@ def assign_review_file(
 
 
 def _index_records(index_path: Path, entry: IndexEntry) -> bool:
-    """True when the index on disk already carries ``entry`` as written."""
+    """True when the index workbook on disk already carries ``entry`` as written.
+
+    The workbook's own reading, never :func:`read_index`: this is asked in the
+    moment between the write landing and the record learning of it, and a
+    reader that answered from the record would say no to the write it is
+    being asked about - the rollback would undo a filing that is on disk.
+    """
     try:
-        rows = read_index(index_path, quarantine=False)
+        rows = read_index_from_workbook(index_path, quarantine=False)
     except Exception:
         return False
     return entry in rows          # the whole row: an older row for the same location is not it
@@ -1837,6 +2128,7 @@ def dismiss_review_file(
 
     with engagement_lock(engagement_dir):
         entries = read_index(index_path)
+        before = {ledger_key(e): _ledger_row(e) for e in entries}
         position = _find_parked(entries, original)
         entry = entries[position]
         new_entry = replace(
@@ -1848,7 +2140,16 @@ def dismiss_review_file(
         # Nothing was moved, so there is nothing to put back: a write that
         # fails for a reason Excel is not leaves the folder as it was and
         # the row as the index on disk still has it.
-        deferred = not write_index(index_path, entries)
+        landed = True
+        try:
+            deferred = not write_index(index_path, entries)
+        except BaseException:
+            landed = _index_records(index_path, new_entry)
+            raise
+        finally:
+            if landed:
+                _record_write(engagement_dir, index_path, before, entries,
+                              decided={ledger_key(new_entry): ledger.DISMISSED_BY_PERSON})
     return DismissResult(entry=new_entry, index_deferred=deferred)
 
 
@@ -1923,6 +2224,7 @@ def unfile_document(
 
     with engagement_lock(engagement_dir):
         entries = read_index(index_path)
+        before = {ledger_key(e): _ledger_row(e) for e in entries}
         position = _find_filed(entries, original)
         entry = entries[position]
         source = engagement_dir / entry.pbc_location
@@ -1965,12 +2267,14 @@ def unfile_document(
             reason=f"{UNFILED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}",
         )
         entries[position] = new_entry
+        landed = True
         try:
             deferred = not write_index(index_path, entries)
         except BaseException:
             # The same rule as filing: leave the file where the index on disk
             # says it is, so a retry does this once rather than twice.
-            if not _index_records(index_path, new_entry):
+            landed = _index_records(index_path, new_entry)
+            if not landed:
                 try:
                     if still_the_rows:
                         _move_whole(parked, working)
@@ -1979,6 +2283,10 @@ def unfile_document(
                 except OSError as undo:
                     log.error("Could not put %s back after the index write failed: %s", parked.name, undo)
             raise
+        finally:
+            if landed:
+                _record_write(engagement_dir, index_path, before, entries,
+                              decided={ledger_key(new_entry): ledger.UNFILED_BY_PERSON})
 
     # Outside the lock: the scan takes it for itself. A pass that slips in
     # between reads the index this one has already written, so it sees the

@@ -42,6 +42,13 @@ opened, because a page about the firm's clients must not reach the network
 to render, and it is written from a report rather than from a lock: drawing
 the page never changes what it describes.
 
+**Every real pass leaves one workbook a person may open.** The last thing
+each engagement's pass does is regenerate its view (``VIEW_FILENAME``,
+:mod:`tracker.view`) from what the readers now say. It is derived and
+read-only: a person opens that one rather than the index, and a view
+somebody already had open is simply not replaced - the run carries
+``view_stale`` and succeeds, because the view holds no fact of its own.
+
 One engagement's failure never stops the others. An unreadable manifest, a
 scan already running, a drop that would not sort — each is recorded against
 that engagement and the run moves on, because one client's problem must not
@@ -93,6 +100,7 @@ from tracker.reminder import (
 from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.settings import SettingsError, firm, product_name
+from tracker.view import VIEW_FILENAME, write_view
 
 log = logging.getLogger("tracker.runner")
 
@@ -132,6 +140,9 @@ NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
 #: same engagement.
 SKIP_INACTIVE = f"inactive ({ENGAGEMENT_SHEET_NAME} sheet says {ENGAGEMENT_LABELS['active']}: {NO})"
 MANIFEST_UNREADABLE = "manifest could not be read: {problem}"
+#: What a pass says about a view somebody had open. Not an error: the view
+#: carries no fact, so the old one standing costs a person one pass.
+VIEW_NOT_REGENERATED = "status workbook open (not regenerated)"
 
 
 @dataclass(slots=True)
@@ -146,6 +157,10 @@ class EngagementRun:
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
     index_deferred: bool = False     # the index was locked; rows in the sidecar
     manifest_deferred: bool = False  # the manifest was locked; statuses in the sidecar
+    #: The view was not regenerated because somebody had it open. Not a
+    #: failure: it holds no fact of its own, so it simply stays one pass
+    #: behind until the next pass lands one.
+    view_stale: bool = False
     statuses: dict[str, int] = field(default_factory=dict)
     outstanding: int = 0             # from tracker.manifest.summarize, the one count
     drafted: Path | None = None
@@ -176,6 +191,8 @@ class EngagementRun:
             parts.append("index locked (rows deferred)")
         if self.manifest_deferred:
             parts.append("manifest locked (statuses deferred)")
+        if self.view_stale:
+            parts.append(VIEW_NOT_REGENERATED)
         parts.append(f"outstanding {self.outstanding}")
         if self.drafted:
             parts.append(f"drafted {self.drafted.name}")
@@ -324,6 +341,9 @@ def run_engagement(
         run.error = f"{exc.__class__.__name__}: {exc}"
         run.draft_note = traceback.format_exc(limit=3).strip().splitlines()[-1]
 
+    if not dry_run and not run.skipped and not run.error:
+        _view_step(run)
+
     if run.file_errors and not run.error:
         # The rest of the pass went ahead, but a drop that could not be
         # sorted is a failure the scheduler must show, not a footnote.
@@ -333,6 +353,28 @@ def run_engagement(
             + "; ".join(run.file_errors[:3])
         )
     return run
+
+
+def _view_step(run: EngagementRun) -> None:
+    """Regenerate the engagement's read-only view: the last thing a pass does.
+
+    After the statuses and after the draft, because the view is drawn from
+    what the pass has already written and a view drawn halfway through would
+    describe a state that never existed. It takes no lock - the pass takes
+    one per step for its own writes, and this writes nothing anybody reads
+    back - so it follows the status page (decision 75): drawn from what the
+    readers now say, never taking a lock, and never able to fail a pass.
+
+    A view somebody had open is not regenerated and is not an error; it
+    carries no fact, so the old one standing is the whole cost. Anything
+    else that goes wrong here is a log line for the same reason the page's
+    is: every original has been moved and every status written by now.
+    """
+    try:
+        run.view_stale = write_view(run.engagement.path).stale
+    except Exception as exc:
+        log.warning("Could not write %s for %s (%s)",
+                    VIEW_FILENAME, run.engagement.label, exc)
 
 
 def skipped_because(engagement: Engagement) -> str:

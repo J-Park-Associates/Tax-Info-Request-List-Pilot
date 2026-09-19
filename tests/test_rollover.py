@@ -437,6 +437,48 @@ def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior)
     assert Path(info.rolled_from).is_absolute() and Path(info.rolled_from) == prior.resolve()
 
 
+def test_the_rollover_carries_the_catalog_the_list_was_cut_from(tmp_path):
+    """Decision 86: a returning client files the same return next year, so
+    the Form cell carries; a prior that never recorded one carries a blank."""
+    from tracker.manifest import EngagementInfo
+    from tracker.rollover import carry_engagement_info
+
+    carried = carry_engagement_info(
+        EngagementInfo(client="John Smith", link="https://drive.example/old", form="1120S"),
+        rolled_from=str(tmp_path),
+    )
+    assert carried.form == "1120S" and carried.link == ""
+    assert carry_engagement_info(EngagementInfo(client="John Smith"),
+                                 rolled_from=str(tmp_path)).form == ""
+
+
+def test_the_rollover_command_line_writes_the_carried_form_into_next_year(prior):
+    """End to end: the prior's sheet says which catalog, and so does the new
+    workbook - the cell a person opens the file to read."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from tracker.manifest import (
+        EngagementInfo,
+        load_engagement_info,
+        write_engagement_info,
+    )
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    write_engagement_info(prior / MANIFEST_FILENAME,
+                          EngagementInfo(client="John Smith", form="1040"))
+    repo = Path(__file__).resolve().parent.parent
+    subprocess.run(
+        [sys.executable, "-m", "tracker.rollover", prior.name, "Smith TY2026"],
+        cwd=prior.parent, check=True, capture_output=True,
+        env={**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
+    )
+    info = load_engagement_info(prior.parent / "Smith TY2026" / MANIFEST_FILENAME)
+    assert info.form == "1040" and info.client == "John Smith"
+
+
 def test_a_file_named_like_a_formula_is_a_name_on_the_carried_sheet(prior, tmp_path):
     from openpyxl import load_workbook
 

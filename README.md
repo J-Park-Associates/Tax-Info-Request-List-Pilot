@@ -134,6 +134,7 @@ engagement is still active:
 | Reminders | `no` = this client is not chased by email |
 | Active | `no` = the scheduled run skips this folder |
 | Rolled From | written by the rollover; the engagement it names is no longer chased |
+| Form | which catalog the request list was cut from; blank if it was never recorded |
 
 The app asks for that folder on first launch and writes it to
 `settings.json` beside itself (`python -m tracker.settings <folder>` does the

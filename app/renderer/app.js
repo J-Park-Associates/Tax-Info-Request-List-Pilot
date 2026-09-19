@@ -117,6 +117,25 @@ function render(state) {
   }
   $("summary").textContent = summary.filter(Boolean).join("   ·   ");
 
+  // The catalog the engagement was cut from, beside its name in the
+  // toolbar. It is shown exactly as the sheet records it — the catalog's
+  // own key is how a person names the return — so the app carries no word
+  // of its own for it, and an engagement made before it was recorded shows
+  // nothing rather than a guess.
+  const engForm = state.engagement ? state.engagement.form : "";
+  $("eng-form").textContent = engForm;
+  $("eng-form").classList.toggle("hidden", !engForm);
+
+  // The read-only status workbook beside it: current, behind, or unknown.
+  // Both the label and the word are the API's — the page compares nothing
+  // and names no state — and the class is derived from the word, the same
+  // way a status chip's is.
+  const viewState = state.view ? state.view.state : "";
+  const chipEl = $("view-state");
+  chipEl.textContent = viewState ? `${vocab.view.label}: ${viewState}` : "";
+  chipEl.className = `eng-form view-${viewState}`;
+  chipEl.classList.toggle("hidden", !viewState);
+
   renderReview(state);
   renderUnfileList(state);
   renderLock(state);
@@ -133,31 +152,60 @@ function renderReview(state) {
   $("review-card").classList.toggle("hidden", parked.length === 0 && dismissed.length === 0);
   const choices = state.items.filter((i) => i.manual_override !== vocab.overrides.waived);
   const ids = new Set(state.items.map((i) => i.identifier));
-  show("review-list", parked.map((e) => reviewRow(e, choices, ids, true)));
+  // The triage the API computed, by the same handle every review command
+  // takes. Only a parked row has one; a set-aside row is not triaged.
+  const triaged = new Map((state.review || []).map((t) => [t.pbc_location, t]));
+  show("review-list", parked.map((e) =>
+    reviewRow(e, choices, ids, true, triaged.get(e.pbc_location))));
   $("dismissed-card").classList.toggle("hidden", dismissed.length === 0);
   $("dismissed-heading").textContent =
     fill(vocab.review_labels.dismissed_heading, { n: dismissed.length });
-  show("dismissed-list", dismissed.map((e) => reviewRow(e, choices, ids, false)));
+  show("dismissed-list", dismissed.map((e) => reviewRow(e, choices, ids, false, null)));
+}
+
+// One entry of the picker: the identifier and the document, joined by the
+// one separator a reason sentence uses between the same two things.
+function requestOption(item, picked) {
+  return el("option", { value: item.identifier, selected: item.identifier === picked },
+    `${item.identifier}${vocab.triage.identifier_separator}${item.document}`);
 }
 
 // One row of the card. The question is the same whether the document is
 // waiting or has been set aside - which request does this belong to - so it
-// is asked the same way; only an open question offers the two boxes and the
-// button that set a document aside.
-function reviewRow(e, choices, ids, open) {
-  // The router's own candidates travel as data in the index; a person
-  // still confirms, but the picker starts on the first one.
-  const guess = (e.candidates || [])[0] || "";
+// is asked the same way; only an open question offers the two boxes, the
+// button that sets a document aside, and the shortlist.
+//
+// The shortlist is the picker's first entries, in the order the API ranked
+// them, and the sentence behind each is listed beneath the row: an <option>
+// can carry no second line, and the reason is the whole point - a person
+// reads why before they pick. Everything below the divider is every other
+// request, because a suggestion is a suggestion and nothing is taken away.
+function reviewRow(e, choices, ids, open, triage) {
+  const shortlist = (triage && triage.shortlist) || [];
+  const suggested = shortlist.map((s) => s.identifier);
+  const byId = new Map(choices.map((i) => [i.identifier, i]));
+  const best = suggested.map((id) => byId.get(id)).filter(Boolean);
+  const rest = choices.filter((i) => !suggested.includes(i.identifier));
+  // The picker starts on the best suggestion; failing that, on the router's
+  // own first candidate, which is what it started on before there was one.
+  const guess = suggested[0] || (e.candidates || [])[0] || "";
   const picked = guess && ids.has(guess) ? guess : "";
   return el("li", { dataset: { original: e.pbc_location } },
     el("span", { className: "r-name" }, e.original_name),
     el("span", { className: "r-why" }, e.reason),
     el("select", { "aria-label": `Request for ${e.original_name}` },
       el("option", { value: "" }, "Belongs to…"),
-      choices.map((i) =>
-        el("option", { value: i.identifier, selected: i.identifier === picked },
-          `${i.identifier} — ${i.document}`)),
+      best.length
+        ? [el("optgroup", { label: vocab.review_labels.suggested },
+            best.map((i) => requestOption(i, picked))),
+           el("optgroup", { label: vocab.review_labels.other_requests },
+            rest.map((i) => requestOption(i, picked)))]
+        : rest.map((i) => requestOption(i, picked)),
     ),
+    open && el("ul", { className: "r-reasons" },
+      shortlist.length
+        ? shortlist.map((s) => el("li", {}, s.reason))
+        : el("li", { className: "r-nothing" }, vocab.triage.nothing_suggested)),
     open && el("input", {
       type: "text", className: "r-keyword", placeholder: "keyword to learn (optional)",
       "aria-label": "Keyword to add to the request",
@@ -168,7 +216,7 @@ function reviewRow(e, choices, ids, open) {
       "aria-label": vocab.review_labels.dismiss_note,
     }),
     el("button", { className: "btn btn-primary r-file" },
-      open ? "File it" : vocab.review_labels.file_anyway),
+      open ? vocab.review_labels.file : vocab.review_labels.file_anyway),
     open && el("button", { className: "btn r-dismiss" }, vocab.review_labels.dismiss),
   );
 }
@@ -731,6 +779,7 @@ $("btn-new").addEventListener("click", openWizard);
 $("btn-shared").addEventListener("click", () => paths && window.tracker.open(paths.shared));
 $("btn-excel").addEventListener("click", () => paths && window.tracker.open(paths.manifest));
 $("btn-index").addEventListener("click", () => paths && window.tracker.open(paths.index));
+$("btn-view").addEventListener("click", () => paths && window.tracker.open(paths.view));
 $("btn-status").addEventListener("click", () => paths && window.tracker.open(paths.status));
 $("eng-select").addEventListener("change", (e) => {
   active = e.target.value;

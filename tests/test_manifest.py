@@ -444,6 +444,64 @@ def test_yes_no_cells_are_forgiving_but_not_guessing(manifest):
         load_engagement_info(manifest)
 
 
+def test_create_records_the_catalog_the_request_list_was_cut_from(tmp_path):
+    """Decision 86: the wizard's choice is written onto the sheet, so an
+    engagement can say which checklist it came from without the folder name."""
+    from tracker.manifest import load_engagement_info
+    from tracker.templates import template_items
+
+    path = create_template(tmp_path / MANIFEST_FILENAME,
+                           template_items("1120S", year=2025), form="1120S")
+    assert load_engagement_info(path).form == "1120S"
+
+
+def test_the_form_a_caller_gives_never_clears_the_one_the_sheet_carries(tmp_path):
+    from tracker.manifest import EngagementInfo, load_engagement_info
+
+    info = EngagementInfo(client="John Smith", form="1065")
+    path = create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS, info)
+    assert load_engagement_info(path) == info          # no form= given; the info's stands
+
+
+def test_a_manifest_that_never_recorded_a_form_loads_as_unknown(tmp_path):
+    """An engagement made before the cell existed keeps every other cell
+    where it was, and its form reads as blank rather than as a guess."""
+    from openpyxl import load_workbook as lw
+
+    from tracker.manifest import ENGAGEMENT_FIELDS, load_engagement_info
+
+    path = create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS, form="1040")
+    before = {label: None for label, _ in ENGAGEMENT_FIELDS}
+    wb = lw(path)
+    ws = wb[ENGAGEMENT_SHEET_NAME]
+    for row in ws.iter_rows(min_row=1, max_col=2):
+        if _cell_text(row[0]) in before:
+            before[_cell_text(row[0])] = row[0].row
+    ws.delete_rows(before[ENGAGEMENT_LABELS["form"]])      # the sheet as it was before
+    wb.save(path)
+
+    loaded = load_engagement_info(path)
+    assert loaded.form == ""
+    wb = lw(path)
+    for label, _ in ENGAGEMENT_FIELDS:
+        if label == ENGAGEMENT_LABELS["form"]:
+            continue
+        found = [c.row for c in wb[ENGAGEMENT_SHEET_NAME]["A"] if _cell_text(c) == label]
+        assert found == [before[label]], label
+
+
+def test_a_blank_form_cell_is_unknown_not_a_refusal(manifest):
+    """Nothing reads the cell yet, and a blank must never fail a load."""
+    from tracker.manifest import check_manifest, load_engagement_info
+
+    assert load_engagement_info(manifest).form == ""      # created without a form
+    assert check_manifest(manifest).problems == []
+
+
+def _cell_text(cell) -> str:
+    return "" if cell.value is None else str(cell.value).strip()
+
+
 def test_add_any_keyword_appends_once_and_names_a_missing_row(manifest):
     from tracker.manifest import add_any_keyword
 
