@@ -52,7 +52,7 @@ statuses the scanner writes. And the person's filing is the standard, not
 the truth - a disagreement is a case to read, not automatically a bug.
 
 Each ``(catalog, year)`` is built once, through ``create_template()`` and
-``load_manifest()``, the way ``tests/test_irs_forms.py`` and
+``load_rules()``, the way ``tests/test_irs_forms.py`` and
 ``tests/test_real_corpus.py`` build theirs, with the same two rules
 lifted: the size floor, because a redacted or scanned document is small,
 and the Period's year check, because the engagement year is what the

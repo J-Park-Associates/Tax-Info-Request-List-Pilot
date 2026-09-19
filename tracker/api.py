@@ -61,9 +61,7 @@ from tracker.manifest import (
     create_template,
     load_engagement_info,
     load_manifest,
-    pending_updates,
     summarize,
-    with_pending,
     write_engagement_info,
     write_text_atomically,
 )
@@ -459,21 +457,20 @@ def _triage_payload(triaged: review.Triage) -> dict:
 def _state(engagement: Path) -> dict:
     manifest_path = engagement / MANIFEST_FILENAME
     root = clients_root()
-    # Showing the engagement is a read: nothing is moved, not even a sidecar
-    # that cannot be parsed - the next real run is what moves it aside.
-    deferred = pending_updates(manifest_path, quarantine=False)
-    items = with_pending(load_manifest(manifest_path), deferred)
+    # The store is brought up to the record before anything is read, and
+    # no further: migrating a folder that still keeps facts in a workbook
+    # would take the engagement lock and rewrite a sheet, and showing an
+    # engagement must stay a read - the app shows one a pass is holding,
+    # and says so. So the rules a person sees here are the ones the last
+    # pass imported, and the Engagement sheet is read off the workbook,
+    # which is the one thing they may have edited since.
+    ensure(engagement, migrate=False)
+    items = load_manifest(engagement)
     info = load_engagement_info(manifest_path)
     summary = summarize(items)
-    # The store is brought up to the record before the rows are read, and
-    # no further: migrating a folder that still keeps its index in a
-    # workbook would take the engagement lock, and showing an engagement
-    # must stay a read - the app shows one a pass is holding, and says so.
-    ensure(engagement, migrate=False)
     entries = read_index(engagement)
     view_path = engagement / VIEW_FILENAME
     return {
-        "pending_statuses": len(deferred),
         # The derived page, and whether it still describes this engagement.
         # Reading the stamp takes no lock and tolerates another program
         # holding it, so showing the engagement stays a read.
@@ -582,7 +579,6 @@ def _cmd_scan(argv: list[str]) -> dict:
             "waiting": run.waiting,
             "file_errors": run.file_errors,
             "warnings": run.warnings,
-            "manifest_deferred": run.manifest_deferred,
             "statuses": run.statuses,
             "outstanding": run.outstanding,
         },
@@ -799,11 +795,12 @@ def _cmd_assign(argv: list[str]) -> dict:
     result = assign_review_file(
         engagement, original, identifier, keyword=str(spec.get("keyword", "") or "")
     )
+    # The re-scan puts the request's status right straight away. There is
+    # one reason left for it not to (decision 103): another run holds the
+    # engagement. A workbook somebody has open in Excel cannot stop it.
     scan_note = ""
     try:
-        scan = scan_engagement(engagement)
-        if not scan.written:
-            scan_note = "manifest open in Excel; status update saved to the sidecar"
+        scan_engagement(engagement)
     except ScanLockedError as exc:
         scan_note = f"not re-scanned: {exc}"
     return {

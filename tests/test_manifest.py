@@ -1,7 +1,6 @@
 """Tests for tracker/manifest.py — the manifest layer, no OneDrive needed."""
 
 import datetime as dt
-import json
 from pathlib import Path
 
 import pytest
@@ -9,20 +8,19 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.workbook.workbook import Workbook as WorkbookClass
 
 from tests.samples import col
-from tracker import reasons
 from tracker.manifest import (
+    ACCOUNTANT_COLUMNS,
     COL_ALLOWED_EXTENSIONS,
     COL_DATE_PATTERN,
     COL_DOCUMENT,
     COL_EXPECTED_COUNT,
     COL_IDENTIFIER,
     COL_MANUAL_OVERRIDE,
-    COL_STATUS,
-    CORRUPT_SUFFIX,
     DEFAULT_MIN_SIZE_KB,
     ENGAGEMENT_LABELS,
     ENGAGEMENT_SHEET_NAME,
     HEADERS,
+    LEGACY_SCANNER_COLUMNS,
     NO,
     SHEET_NAME,
     SUMMARY_EMPTY,
@@ -35,15 +33,16 @@ from tracker.manifest import (
     RequestItem,
     Status,
     StatusUpdate,
+    carries_scanner_columns,
     check_narrowing_names,
     create_template,
     entity_keyword,
     load_manifest,
+    load_rules,
     narrowing_rows,
-    pending_path,
-    pending_updates,
+    read_scanner_columns,
+    slim_the_workbook,
     temp_path_for,
-    write_statuses,
 )
 from tracker.scaffold import MANIFEST_FILENAME
 
@@ -124,12 +123,48 @@ def test_missing_column_rejected(tmp_path):
     wb = Workbook()
     ws = wb.active
     ws.title = SHEET_NAME
-    for idx, header in enumerate(h for h in HEADERS if h != COL_STATUS):
+    for idx, header in enumerate(h for h in HEADERS if h != COL_DOCUMENT):
         ws.cell(row=1, column=idx + 1, value=header)
     path = tmp_path / "bad.xlsx"
     wb.save(path)
-    with pytest.raises(ManifestError, match=f"missing column.*{COL_STATUS}"):
+    with pytest.raises(ManifestError, match=f"missing column.*{COL_DOCUMENT}"):
         load_manifest(path)
+
+
+def test_the_sheet_is_the_ten_columns_a_person_edits(manifest):
+    """Decision 103: the four the scanner used to write left the schema."""
+    wb = load_workbook(manifest)
+    try:
+        ws = wb[SHEET_NAME]
+        written = [str(ws.cell(row=1, column=i).value or "")
+                   for i in range(1, (ws.max_column or 0) + 1)]
+    finally:
+        wb.close()
+    assert written == list(HEADERS) == list(ACCOUNTANT_COLUMNS)
+    assert not set(written) & set(LEGACY_SCANNER_COLUMNS)
+
+
+def test_a_workbook_that_still_carries_the_scanner_columns_is_read_for_its_rules(tmp_path):
+    """Nothing refuses a file a person has been using all season.
+
+    An old sheet keeps its four extra columns until its engagement's next
+    pass slims it; until then the rules load exactly as they always did
+    and the cells the scanner used to fill are simply not read.
+    """
+    from tests.conftest import write_a_legacy_manifest
+
+    write_a_legacy_manifest(tmp_path, SAMPLE_ITEMS, {
+        "A01": StatusUpdate(status=Status.RECEIVED, file_count=1,
+                            received_date=dt.date(2026, 7, 8), validation_notes="all in"),
+    })
+    path = tmp_path / MANIFEST_FILENAME
+    assert carries_scanner_columns(path)
+    reading = load_rules(path)
+    assert [i.identifier for i in reading.items] == ["A01", "A02", "B01"]
+    assert [i.status for i in reading.items] == ["", "", ""]
+    assert [i.file_count for i in reading.items] == [None, None, None]
+    # and the cells are there to be read once, by the migration
+    assert read_scanner_columns(path)["A01"].status == Status.RECEIVED
 
 
 def _write_cell(path, row, header, value):
@@ -157,12 +192,6 @@ def test_bad_expected_count_rejected(manifest):
         load_manifest(manifest)
 
 
-def test_unknown_status_rejected(manifest):
-    _write_cell(manifest, 2, COL_STATUS, "Done-ish")
-    with pytest.raises(ManifestError, match="Row 2.*Status must be one of"):
-        load_manifest(manifest)
-
-
 def test_unknown_override_rejected(manifest):
     _write_cell(manifest, 2, COL_MANUAL_OVERRIDE, "Maybe")
     with pytest.raises(ManifestError, match="Row 2.*Manual Override"):
@@ -175,130 +204,6 @@ def test_blank_rows_skipped(manifest):
     items = load_manifest(manifest)
     assert [i.identifier for i in items] == ["A01", "A02", "B01", "C01"]
     assert items[-1].row == 6
-
-
-# ------------------------------------------------------------- write-back ----
-
-
-def test_write_statuses_roundtrip(manifest):
-    updates = {
-        "A01": StatusUpdate(
-            status=Status.RECEIVED,
-            file_count=1,
-            received_date=dt.date(2026, 7, 8),
-        ),
-        "A02": StatusUpdate(
-            status=Status.PARTIAL,
-            file_count=7,
-            validation_notes="7 of 12 monthly statements received",
-        ),
-    }
-    assert write_statuses(manifest, updates) is True
-
-    items = {i.identifier: i for i in load_manifest(manifest)}
-    assert items["A01"].status == Status.RECEIVED
-    assert items["A01"].received_date == dt.date(2026, 7, 8)
-    assert items["A01"].file_count == 1
-    assert items["A02"].status == Status.PARTIAL
-    assert items["A02"].file_count == 7
-    assert "7 of 12" in items["A02"].validation_notes
-    # untouched rows and accountant columns intact
-    assert items["B01"].status == ""
-    assert items["A01"].required_keywords == ("Chase",)
-
-
-def test_write_unknown_identifier_dropped(manifest, caplog):
-    assert write_statuses(manifest, {"Z99": StatusUpdate(status=Status.MISSING)}) is True
-    assert "Z99" in caplog.text
-    assert not pending_path(manifest).exists()
-
-
-def test_locked_write_defers_to_sidecar(manifest, monkeypatch):
-    def locked_save(self, filename):
-        raise PermissionError(f"[Errno 13] locked: {filename}")
-
-    monkeypatch.setattr(WorkbookClass, "save", locked_save)
-    updates = {"A01": StatusUpdate(status=Status.MISSING, validation_notes="no files")}
-    assert write_statuses(manifest, updates, retries=2, retry_delay=0.01) is False
-
-    sidecar = pending_path(manifest)
-    assert sidecar.exists()
-    payload = json.loads(sidecar.read_text(encoding="utf-8"))
-    assert payload["A01"]["status"] == Status.MISSING
-
-
-def test_a_manifest_held_the_way_excel_holds_one_defers_and_lands_when_it_is_let_go(
-    manifest, held_like_excel,
-):
-    """``test_locked_write_defers_to_sidecar``'s twin with a real handle.
-
-    That test raises ``PermissionError`` from ``Workbook.save`` by hand and
-    proves the retry and the sidecar; this one holds ``_manifest.xlsx`` the
-    way Excel holds a workbook it has open and proves what Windows does. With
-    the handle held, a read still answers, the write is refused, not a byte
-    of the workbook moves, no temp file is left beside it, and the statuses
-    wait in the sidecar where every reader overlays them. Let the handle go
-    and the next write, with nothing new to say, lands what waited and
-    clears the sidecar.
-    """
-    before = manifest.read_bytes()
-    updates = {"A01": StatusUpdate(status=Status.MISSING, validation_notes="no files")}
-    with held_like_excel(manifest):
-        read = {i.identifier: i for i in load_manifest(manifest)}
-        assert read["A01"].status == ""                             # a read, and it answers
-        assert write_statuses(manifest, updates, retries=2, retry_delay=0.01) is False
-        assert manifest.read_bytes() == before                      # not a byte of it moved
-        assert list(manifest.parent.glob(f"*{TEMP_SUFFIX}")) == []
-        assert pending_updates(manifest)["A01"].status == Status.MISSING
-
-    assert write_statuses(manifest, {}, retries=2, retry_delay=0.01) is True
-    assert not pending_path(manifest).exists()
-    assert manifest.read_bytes() != before
-    landed = {i.identifier: i for i in load_manifest(manifest)}["A01"]
-    assert landed.status == Status.MISSING
-    assert landed.validation_notes == "no files"
-
-
-def test_pending_sidecar_merged_and_cleared(manifest):
-    pending_path(manifest).write_text(
-        json.dumps(
-            {
-                "A01": {  # stale: superseded by the new update below
-                    "status": Status.MISSING,
-                    "file_count": 0,
-                    "received_date": None,
-                    "validation_notes": "",
-                },
-                "B01": {  # only in sidecar: must still be applied
-                    "status": Status.PENDING_SYNC,
-                    "file_count": 1,
-                    "received_date": None,
-                    "validation_notes": reasons.PENDING_SYNC.format(),
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    new = {
-        "A01": StatusUpdate(
-            status=Status.RECEIVED, file_count=1, received_date=dt.date(2026, 7, 8)
-        )
-    }
-    assert write_statuses(manifest, new) is True
-    assert not pending_path(manifest).exists()
-
-    items = {i.identifier: i for i in load_manifest(manifest)}
-    assert items["A01"].status == Status.RECEIVED  # new beat stale sidecar
-    assert items["B01"].status == Status.PENDING_SYNC
-    assert "placeholder" in items["B01"].validation_notes
-
-
-def test_corrupt_sidecar_quarantined(manifest, caplog):
-    pending_path(manifest).write_text("{not json", encoding="utf-8")
-    assert write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}) is True
-    assert not pending_path(manifest).exists()
-    assert pending_path(manifest).with_suffix(CORRUPT_SUFFIX).exists()
-    assert "Unreadable pending sidecar" in caplog.text
 
 
 # -------------------------------------------------------- identifier safety ----
@@ -332,33 +237,94 @@ def test_identifiers_differing_only_by_case_are_duplicates(tmp_path):
 # ------------------------------------------------------------ atomic saves ----
 
 
-def test_a_crash_mid_save_leaves_the_previous_manifest_intact(manifest, monkeypatch):
+def _legacy(tmp_path):
+    """A workbook from before decision 103, for the one write that slims it."""
+    from tests.conftest import write_a_legacy_manifest
+
+    write_a_legacy_manifest(tmp_path, SAMPLE_ITEMS, {
+        "A01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+    })
+    return tmp_path / MANIFEST_FILENAME
+
+
+def test_a_crash_mid_save_leaves_the_previous_manifest_intact(tmp_path, monkeypatch):
     # openpyxl streams straight into the target; a killed task mid-write
     # used to leave a manifest Excel could not open. The save now lands
-    # beside the file and is swapped in whole, or not at all.
+    # beside the file and is swapped in whole, or not at all. The slimming
+    # is the only write left that touches a workbook already in use.
+    path = _legacy(tmp_path)
+
     def crash(self, filename):
         Path(str(filename)).write_bytes(b"PK\x03\x04 half a zip")
         raise KeyboardInterrupt
 
     monkeypatch.setattr(WorkbookClass, "save", crash)
     with pytest.raises(KeyboardInterrupt):
-        write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}, retries=1)
+        slim_the_workbook(path)
 
-    assert not manifest.with_name(manifest.name + TEMP_SUFFIX).exists()
-    assert [i.identifier for i in load_manifest(manifest)] == ["A01", "A02", "B01"]
+    assert not path.with_name(path.name + TEMP_SUFFIX).exists()
+    assert [i.identifier for i in load_rules(path).items] == ["A01", "A02", "B01"]
+    assert carries_scanner_columns(path)         # nothing of the write landed
 
 
-def test_no_temp_file_is_left_beside_the_workbook_under_any_name(manifest, monkeypatch):
+def test_no_temp_file_is_left_beside_the_workbook_under_any_name(tmp_path, monkeypatch):
     # The temp name is unique per write, so the claim above has to hold for
     # every name ending in TEMP_SUFFIX, not just one fixed spelling.
+    path = _legacy(tmp_path)
+
     def crash(self, filename):
         Path(str(filename)).write_bytes(b"PK\x03\x04 half a zip")
         raise KeyboardInterrupt
 
     monkeypatch.setattr(WorkbookClass, "save", crash)
     with pytest.raises(KeyboardInterrupt):
-        write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}, retries=1)
-    assert list(manifest.parent.glob(f"*{TEMP_SUFFIX}")) == []
+        slim_the_workbook(path)
+    assert list(path.parent.glob(f"*{TEMP_SUFFIX}")) == []
+
+
+def test_slimming_keeps_the_formatting_and_every_other_sheet(tmp_path):
+    """The one rewrite of somebody's workbook must not cost them anything.
+
+    ``delete_cols`` moves the cells left with their formatting, so a column
+    width a person set, the Engagement sheet and a sheet of their own all
+    survive - which is what makes it safe to do to a file that has been in
+    use for a season.
+    """
+    from openpyxl.utils import get_column_letter
+
+    from tracker.manifest import COLUMN_WIDTHS, load_engagement_info
+
+    path = _legacy(tmp_path)
+    wb = load_workbook(path)
+    try:
+        wb[SHEET_NAME].column_dimensions["B"].width = 51
+        wb.create_sheet("Notes to self").cell(row=1, column=1, value="do not lose me")
+        wb.save(path)
+    finally:
+        wb.close()
+
+    assert slim_the_workbook(path) == list(LEGACY_SCANNER_COLUMNS)
+    assert not carries_scanner_columns(path)
+    assert [i.identifier for i in load_rules(path).items] == ["A01", "A02", "B01"]
+    assert load_engagement_info(path) is not None
+
+    wb = load_workbook(path)
+    try:
+        assert wb[SHEET_NAME].column_dimensions["B"].width == 51
+        assert ENGAGEMENT_SHEET_NAME in wb.sheetnames
+        assert wb["Notes to self"].cell(row=1, column=1).value == "do not lose me"
+        for index, header in enumerate(HEADERS, start=1):
+            assert wb[SHEET_NAME].cell(row=1, column=index).value == header
+            assert header in COLUMN_WIDTHS
+            assert get_column_letter(index) in wb[SHEET_NAME].column_dimensions
+    finally:
+        wb.close()
+
+
+def test_slimming_a_sheet_that_is_already_thin_changes_nothing(manifest):
+    before = manifest.read_bytes()
+    assert slim_the_workbook(manifest) == []
+    assert manifest.read_bytes() == before
 
 
 def test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it(manifest):
@@ -370,52 +336,6 @@ def test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it(manifest):
     for temp in (first, second):
         assert temp.name.endswith(TEMP_SUFFIX)
         assert is_ignored(temp)                   # a stranded temp is never a document
-
-
-def test_the_pending_sidecar_is_written_whole_or_not_at_all(manifest, monkeypatch):
-    sidecar = pending_path(manifest)
-    before = json.dumps({"B01": {"status": Status.MISSING, "file_count": 0,
-                                 "received_date": None, "validation_notes": ""}})
-    sidecar.write_text(before, encoding="utf-8")
-
-    def locked_save(self, filename):
-        raise PermissionError(f"[Errno 13] locked: {filename}")
-
-    def refuse_replace(src, dst):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(WorkbookClass, "save", locked_save)
-    monkeypatch.setattr("tracker.manifest.os.replace", refuse_replace)
-    with pytest.raises(OSError, match="disk full"):
-        write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)},
-                       retries=1, retry_delay=0.01)
-
-    assert sidecar.read_text(encoding="utf-8") == before   # the old sidecar survived
-    assert list(manifest.parent.glob(f"*{TEMP_SUFFIX}")) == []
-
-
-def test_a_second_corrupt_sidecar_never_overwrites_the_first(manifest, caplog):
-    first_evidence = "{not json, the first time"
-    pending_path(manifest).write_text(first_evidence, encoding="utf-8")
-    assert write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}) is True
-    pending_path(manifest).write_text("{not json, the second time", encoding="utf-8")
-    assert write_statuses(manifest, {"A01": StatusUpdate(status=Status.MISSING)}) is True
-
-    corrupt = sorted(p.name for p in manifest.parent.glob(f"*{CORRUPT_SUFFIX}"))
-    assert len(corrupt) == 2
-    kept = pending_path(manifest).with_suffix(CORRUPT_SUFFIX)
-    assert kept.read_text(encoding="utf-8") == first_evidence
-
-
-def test_reading_pending_updates_leaves_a_corrupt_sidecar_where_it_is(manifest, caplog):
-    # A reader - the reminder, the app's state - must never move a file:
-    # looking changes nothing. Only the write that will retry it moves it aside.
-    sidecar = pending_path(manifest)
-    sidecar.write_text("{not json", encoding="utf-8")
-    assert pending_updates(manifest, quarantine=False) == {}
-    assert sidecar.exists()
-    assert list(manifest.parent.glob(f"*{CORRUPT_SUFFIX}")) == []
-    assert "ignored for this read" in caplog.text
 
 
 # --------------------------------------------------------- engagement sheet ----
@@ -537,17 +457,6 @@ def _cell_text(cell) -> str:
     return "" if cell.value is None else str(cell.value).strip()
 
 
-def test_add_any_keyword_appends_once_and_names_a_missing_row(manifest):
-    from tracker.manifest import add_any_keyword
-
-    assert add_any_keyword(manifest, "A01", "Schedule E") is True
-    assert add_any_keyword(manifest, "A01", "schedule e") is False     # case-insensitive
-    assert load_manifest(manifest)[0].any_keywords == ("Schedule E",)
-    assert add_any_keyword(manifest, "A01", "   ") is False
-    with pytest.raises(ManifestError, match="No request 'Z99'"):
-        add_any_keyword(manifest, "Z99", "x")
-
-
 # ------------------------------------------------------ allowed extensions ----
 
 
@@ -610,7 +519,7 @@ def test_check_manifest_reports_problems_with_their_row(manifest):
 
 
 def test_check_manifest_warns_about_rows_the_rules_cannot_act_on(tmp_path):
-    from tracker.manifest import _save_pending, check_manifest
+    from tracker.manifest import check_manifest
 
     path = create_template(tmp_path / MANIFEST_FILENAME, [
         RequestItem(identifier="A01", document="Anything goes"),              # no rule, "*"
@@ -618,13 +527,30 @@ def test_check_manifest_warns_about_rows_the_rules_cannot_act_on(tmp_path):
                     allowed_extensions=("pdf",)),
         RequestItem(identifier="A03", document="Waived", manual_override=Override.WAIVED),
     ])
-    _save_pending(path, {"A02": StatusUpdate(status=Status.RECEIVED)})
     result = check_manifest(path)
     assert result.ok
-    assert [w[:14] for w in result.warnings] == ["Row 2 (A01): n", "Row 2 (A01): A", pending_path(path).name[:14]]
+    assert [w[:14] for w in result.warnings] == ["Row 2 (A01): n", "Row 2 (A01): A"]
     assert "never be filed automatically" in result.warnings[0]
     assert "any file type counts" in result.warnings[1]
-    assert "close Excel and re-scan" in result.warnings[2]
+
+
+def test_check_manifest_reads_the_sheet_not_the_record(tmp_path):
+    """The question is what the next import would make of the workbook.
+
+    A person edits the sheet and presses Check before a pass has read it;
+    an answer from the record would be an answer about the sheet as it was
+    the last time anybody looked.
+    """
+    from tracker.manifest import check_manifest
+
+    path = create_template(tmp_path / MANIFEST_FILENAME,
+                           [RequestItem(identifier="A01", document="W-2",
+                                        any_keywords=("w-2",), allowed_extensions=("pdf",))])
+    assert check_manifest(path).warnings == []
+    _write_cell(path, 2, COL_DATE_PATTERN, "([unclosed")
+    problems = check_manifest(path).problems
+    assert len(problems) == 1
+    assert problems[0].startswith("Row 2: Date Pattern is not a valid regex")
 
 
 # --------------------------------------------------------------- summary ----
@@ -750,19 +676,27 @@ def test_a_failed_save_reports_its_own_error_not_a_locked_temp_file(tmp_path, mo
     assert target.read_bytes() == b"before"
 
 
-def test_a_formula_in_the_keyword_cell_is_refused_not_rewritten(manifest):
-    from openpyxl import load_workbook
+def test_a_person_may_keep_a_formula_in_a_keyword_cell(manifest):
+    """Nothing writes into that cell any more, so nothing can refuse it.
 
-    from tracker.manifest import COL_ANY_KEYWORDS, add_any_keyword
+    ``add_any_keyword`` used to refuse a formula there and tell the person
+    to type the keyword by hand; a keyword a filing teaches is recorded
+    now (decision 103), and a formula a person built is just a cell whose
+    cached value the loader reads.
+    """
+    from tracker.manifest import COL_ANY_KEYWORDS
 
     wb = load_workbook(manifest)
-    ws = wb[SHEET_NAME]
-    headers = [c.value for c in ws[1]]
-    ws.cell(row=2, column=headers.index(COL_ANY_KEYWORDS) + 1, value="=B2")
-    wb.save(manifest)
-    with pytest.raises(ManifestError, match="holds a formula"):
-        add_any_keyword(manifest, "A01", "wages")
-    assert load_workbook(manifest)[SHEET_NAME].cell(row=2, column=headers.index(COL_ANY_KEYWORDS) + 1).value == "=B2"
+    try:
+        ws = wb[SHEET_NAME]
+        headers = [c.value for c in ws[1]]
+        at = headers.index(COL_ANY_KEYWORDS) + 1
+        ws.cell(row=2, column=at, value="=B2")
+        wb.save(manifest)
+    finally:
+        wb.close()
+    load_rules(manifest)                      # it loads; the cached value is read
+    assert load_workbook(manifest)[SHEET_NAME].cell(row=2, column=at).value == "=B2"
 
 
 # ------------------------------------------- a row per issuer (decision 93) ----

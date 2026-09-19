@@ -33,11 +33,10 @@ from tracker.filer import NEEDS_REVIEW, file_drops, read_index
 from tracker.manifest import (
     COL_ANY_KEYWORDS,
     COL_STATUS,
-    HEADERS,
+    SHEET_NAME,
     Override,
     RequestItem,
     Status,
-    add_any_keyword,
     create_template,
     load_manifest,
 )
@@ -85,6 +84,36 @@ def a_pass(engagement, today=DAY1):
     """What a pass does to the folder, without a registry: sort, then scan."""
     file_drops(engagement, today=today)
     scan_engagement(engagement, today=today)
+
+
+def type_a_keyword(engagement, identifier, keyword):
+    """A person typing a keyword into the request list, in Excel."""
+    from openpyxl import load_workbook
+
+    manifest = engagement / MANIFEST_FILENAME
+    wb = load_workbook(manifest)
+    try:
+        ws = wb[SHEET_NAME]
+        at = [str(c.value or "") for c in ws[1]].index(COL_ANY_KEYWORDS) + 1
+        for row in range(2, (ws.max_row or 1) + 1):
+            if str(ws.cell(row=row, column=1).value or "").strip() == identifier:
+                ws.cell(row=row, column=at, value=keyword)
+        wb.save(manifest)
+    finally:
+        wb.close()
+
+
+def teach_a_keyword(engagement, identifier, keyword):
+    """A person's filing teaching a request a keyword: recorded, not typed."""
+    from tests.conftest import ensure
+    from tracker import store
+    from tracker.locking import engagement_lock
+
+    with engagement_lock(engagement):
+        ensure(engagement)
+        store.record(store.connect(), engagement, ledger.new(ledger.KEYWORD_LEARNED, **{
+            ledger.IDENTIFIER_KEY: identifier, ledger.KEYWORD_KEY: keyword,
+        }))
 
 
 def page_of(engagement) -> str:
@@ -154,7 +183,7 @@ def test_the_page_has_the_four_sections_and_a_navigation_to_each(engagement):
     # And the three tables are the three the sections own, headed by the
     # columns their own modules name.
     assert [table[0] for table in tables(page)] == [
-        list(HEADERS),
+        list(view.REQUEST_COLUMNS),
         list(view.INDEX_COLUMNS),
         [view.INDEX_LAYOUT[name][0] for name in view.NEEDS_REVIEW_FIELDS],
     ]
@@ -174,16 +203,16 @@ def test_every_index_row_is_on_the_page_as_the_reader_gives_it(engagement):
 
 def test_every_request_row_is_on_the_page_with_the_status_the_record_holds(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    a_pass(engagement)
-    add_any_keyword(engagement / MANIFEST_FILENAME, "C01", "lender")
+    type_a_keyword(engagement, "C01", "lender")     # a person edits the list
+    a_pass(engagement)                              # and the pass imports it
     view.write_view(engagement)
 
     items = load_manifest(engagement / MANIFEST_FILENAME)
     rows = requests_table(engagement)
-    assert rows[1:] == [[view.request_row(item)[header] for header in HEADERS]
+    assert rows[1:] == [[view.request_row(item)[header] for header in view.REQUEST_COLUMNS]
                         for item in items]
 
-    by_identifier = {row[0]: dict(zip(HEADERS, row, strict=True)) for row in rows[1:]}
+    by_identifier = {row[0]: dict(zip(view.REQUEST_COLUMNS, row, strict=True)) for row in rows[1:]}
     assert by_identifier["A01"][COL_STATUS] == Status.RECEIVED
     assert "lender" in by_identifier["C01"][COL_ANY_KEYWORDS]
     # And that status is the one the record holds, not a second reading.
@@ -192,6 +221,18 @@ def test_every_request_row_is_on_the_page_with_the_status_the_record_holds(engag
     )
     # A status is a coloured word, classed by the value it says.
     assert f'<span class="{view.BADGE_CLASS} {view.BADGE_CLASS}-{slug(Status.RECEIVED)}">' in page_of(engagement)
+
+
+def test_a_keyword_a_filing_taught_is_on_the_page_beside_the_typed_ones(engagement):
+    """Decision 103: the word is in the record, not in a cell, and the page
+    is where a person sees what their filing taught the request."""
+    type_a_keyword(engagement, "C01", "mortgage")
+    teach_a_keyword(engagement, "C01", "lender")
+    view.write_view(engagement)
+
+    row = {r[0]: dict(zip(view.REQUEST_COLUMNS, r, strict=True))
+           for r in requests_table(engagement)[1:]}["C01"]
+    assert row[COL_ANY_KEYWORDS] == "mortgage, lender"
 
 
 def test_a_row_the_firm_no_longer_wants_is_on_the_page_and_marked(engagement):
@@ -210,7 +251,7 @@ def test_a_value_shaped_like_markup_is_shown_as_its_own_text(engagement):
     """A keyword somebody typed, and a client's file name, are names -
     whatever characters they carry. (The keyword carries the tag: Windows
     refuses a file name holding one, so the file carries an ampersand.)"""
-    add_any_keyword(engagement / MANIFEST_FILENAME, "C01", "<b>lender</b>")
+    type_a_keyword(engagement, "C01", "<b>lender</b>")
     drop(engagement, "Smith & Co 1098.pdf", "Form 1098 Mortgage Interest Statement")
     a_pass(engagement)
     view.write_view(engagement)
@@ -319,7 +360,7 @@ def test_the_stamp_changes_when_the_rules_change_and_when_the_record_grows(engag
     view.write_view(engagement)
     first = view.read_stamp(engagement)
 
-    add_any_keyword(engagement / MANIFEST_FILENAME, "C01", "lender")
+    type_a_keyword(engagement, "C01", "lender")
     view.write_view(engagement)
     second = view.read_stamp(engagement)
     assert second[view.LABEL_RULES_DIGEST] != first[view.LABEL_RULES_DIGEST]
@@ -349,7 +390,7 @@ def test_a_stamp_that_cannot_be_read_is_unknown_rather_than_believed(engagement)
 
 def test_the_view_is_behind_after_a_person_edits_the_rules_and_after_a_new_event(engagement):
     view.write_view(engagement)
-    add_any_keyword(engagement / MANIFEST_FILENAME, "C01", "lender")
+    type_a_keyword(engagement, "C01", "lender")
     assert view.view_state(engagement) == view.BEHIND
 
     view.write_view(engagement)

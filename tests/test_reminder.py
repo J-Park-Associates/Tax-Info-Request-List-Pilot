@@ -17,7 +17,6 @@ from tracker.manifest import (
     Status,
     StatusUpdate,
     create_template,
-    write_statuses,
 )
 from tracker.reminder import (
     DRAFT_BANNER,
@@ -64,14 +63,17 @@ SCANNED = [
 
 
 def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
-    """A manifest on disk carrying the scanner state these items describe.
+    """A request list on disk, with the record carrying these statuses.
 
-    create_template writes the accountant's columns only, so the scanner
-    columns are written back exactly as a real scan would write them.
+    The workbook holds the person's ten columns and nothing else
+    (decision 103), so the statuses are recorded the way a scan records
+    them: one ``scanned`` event through the store, under the lock.
     """
+    from tests.conftest import seed_statuses
+
     folder = tmp_path / name
     folder.mkdir()
-    manifest = create_template(folder / MANIFEST_FILENAME, items)
+    create_template(folder / MANIFEST_FILENAME, items)
     updates = {
         i.identifier: StatusUpdate(
             status=i.status,
@@ -82,7 +84,7 @@ def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
         for i in items if i.status
     }
     if updates:
-        write_statuses(manifest, updates)
+        seed_statuses(folder, updates)
     return folder
 
 
@@ -326,24 +328,27 @@ def test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients():
     assert reasons.FIRM_WAITING_PARTIAL in attention[0].reason
 
 
-def test_statuses_deferred_by_a_locked_excel_still_count(tmp_path):
-    # Friday: Excel open, the scan saw A01 arrive but could not write it.
-    # Saturday: the draft must not ask for A01.
-    from tracker.manifest import _save_pending
+def test_the_draft_is_built_from_the_record_and_nothing_else(tmp_path):
+    """Friday: the scan saw A01 arrive and recorded it. Saturday: the draft
+    must not ask for A01.
+
+    A status only the record holds is what the draft counts - which since
+    decision 103 is every status there is. The workbook a person edits
+    carries none of this, and Excel being open on Friday cannot hold a
+    status back any more.
+    """
+    from tests.conftest import seed_statuses
 
     folder = engagement(tmp_path, [
         item("A01", "W-2 Wage Statements", Status.MISSING),
         item("A02", "Bank Statements", Status.MISSING),
     ])
-    _save_pending(folder / MANIFEST_FILENAME, {
+    seed_statuses(folder, {
         "A01": StatusUpdate(status=Status.RECEIVED, file_count=1, received_date=dt.date(2026, 2, 1)),
     })
     draft = draft_reminder(folder)
     assert [line.item.identifier for line in draft.lines] == ["A02"]
     assert draft.received_requests == 1
-    assert draft.pending_statuses == 1
-    written = write_draft(draft, engagement_dir=folder).read_text(encoding="utf-8")
-    assert "1 status update(s) are still waiting" in written
 
 
 def test_needs_review_count_ignores_junk_and_sees_nested_files(tmp_path):

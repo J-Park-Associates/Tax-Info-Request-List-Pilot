@@ -1,10 +1,10 @@
 """The agreement checks every test in the suite pays for once.
 
 `tracker/ledger.py` is the engagement's own record. Since decision 102 it
-is the whole of the index - there is no ``_index.xlsx`` to disagree with
-any more - and since decision 88 it is what ``load_manifest()`` answers
-each identifier's status from, with the workbook behind it. Three autouse
-fixtures hold all of that honest after **every** test.
+is the whole of the index, and since decision 103 it is the whole of the
+statuses and of the person's imported rules too - there is nothing in a
+workbook left for it to disagree with. Three autouse fixtures hold that
+honest after **every** test.
 
 **A store of its own** (``a_store_of_its_own``). The store keeps one
 connection per process and the file it would otherwise open sits beside
@@ -14,18 +14,13 @@ the connection is closed at teardown before the temporary folder goes,
 because Windows will not delete a database a handle is open on. No test
 can see another's rows.
 
-**The record agrees with the manifest**
-(``the_record_agrees_with_the_manifest``). For every engagement the test
-left a record in, the statuses the record's ``scanned`` events add up to
-are compared with the workbook's scanner columns, the pending sidecar
-overlaid, for every identifier the record has ever seen a status for. An
-identifier the manifest no longer carries is passed over: a row deleted or
-renamed in Excel since the scan is dropped by ``_apply_updates`` and by
-``with_pending`` alike, and the record is right that it was written. The
-comparison is against ``manifest.statuses_from_workbook()``, never
-``load_manifest()``, which would be the record compared with itself. The
-index half of this check is gone with the workbook it compared against;
-the store fixture below is what took its place.
+**The record against the manifest is gone** (decision 103). The statuses
+the record's ``scanned`` events add up to used to be compared with the
+workbook's own scanner columns after every test; there are no such
+columns, no second copy of a status, and nothing to compare. What took
+its place is the store fixture below, which holds the store's
+``statuses`` - and its ``requests``, and its ``documents`` - to
+``ledger.replay()`` over the journal.
 
 **And the view agrees with the readers** (decisions 89 and 91). Wherever a
 test left a view behind, the page is **drawn again from the live readers**
@@ -40,33 +35,33 @@ render. A view ``view_state()`` does not call current is passed over,
 because that is exactly what a pass reports as ``view_stale``.
 
 **The store agrees with the record** (``the_store_agrees_with_the_record``,
-decision 101, re-aimed by 102). Every engagement folder under ``tmp_path``
-that carries a request list is built into a store in a throwaway database -
-``rebuild_engagement()`` from the record and the workbooks - and ``check()``
-against the other copies must return nothing at all. The two sides are
-deliberately different readings, and since the index left the workbook
-each half has a different other copy: the **documents** are compared with
-``ledger.replay()`` over the journal, which is now the only second copy
-of them; the **requests and statuses** are compared with the live manifest
-readers, which answer from the record and fall back to the sheet per
-identifier while the rebuild is fed the sheet's own reading. Both sides see
-the deferred sidecar, because a status a locked Excel kept out of the
-workbook is a status that was applied. An engagement the readers themselves
-refuse is passed over: that refusal is what the test is about.
+decision 101, re-aimed by 102 and again by 103). Every engagement folder
+under ``tmp_path`` that carries a request list is built into a store in a
+throwaway database - ``rebuild_engagement()``, which takes the journal
+where the journal has spoken and the workbook's first reading where it has
+not - and ``check()`` must return nothing at all. The other copy is
+``ledger.replay()`` over the journal, for all three halves now: the
+**documents**, the **statuses** and the **rules** the imports fold to. It
+is the only other copy there is, because the readers answer from these
+very tables and asking them would be the store compared with itself.
+An engagement the readers themselves refuse is passed over: that refusal
+is what the test is about.
 
 One store per test rather than one for the suite, because the claim is
 about a build from nothing. This runs the store over every drop sorted,
-every file a person filed, every locked-Excel sidecar and every ledger path
-the suite has, and it is the gate decision 102 was built on.
+every file a person filed, every rules edit and every ledger path the
+suite has, and it is the gate each stage was built on.
 
-**Seeding an index** (``seed_index``). A test that needs rows to exist
-records them, because recording them is the only way they can exist: the
-helper appends ``imported`` events under the engagement lock through the
-store, which is the same call every writer in the package makes.
+**Seeding an index** (``seed_index``) **and a status**
+(``seed_statuses``). A test that needs rows or statuses to exist records
+them, because recording them is the only way they can exist: the helpers
+append ``imported`` and ``scanned`` events under the engagement lock
+through the store, which is the same call every writer in the package
+makes. ``seed_statuses`` replaces the ``write_statuses()`` every such test
+used to call.
 
-Looking changes nothing: the workbooks are read with ``quarantine=False``, so
-a sidecar this fixture cannot parse is reported and left exactly where the
-test put it.
+Looking changes nothing: these fixtures read the record and fingerprint
+the workbooks, and never write in an engagement folder.
 """
 from __future__ import annotations
 
@@ -82,13 +77,12 @@ from tracker import ledger, store, view
 from tracker.filer import FilingError, ensure, workbook_readings
 from tracker.locking import engagement_lock
 from tracker.manifest import (
+    LEGACY_SCANNER_COLUMNS,
+    SHEET_NAME,
     ManifestError,
-    load_manifest,
-    pending_updates,
-    statuses_from_workbook,
-    with_pending,
+    legacy_scanner_columns,
 )
-from tracker.records import entry_from_json, entry_to_json, ledger_key
+from tracker.records import entry_to_json, ledger_key, status_to_json
 from tracker.scaffold import MANIFEST_FILENAME
 
 
@@ -130,38 +124,45 @@ def a_store_of_its_own(tmp_path):
 KNOWN_DISAGREEMENTS: dict[str, str] = {}
 
 
-def _manifest_statuses(engagement_dir):
-    """The *workbook's* scanner columns with the pending sidecar overlaid.
-    Never ``load_manifest()``, which answers from the record."""
-    path = engagement_dir / MANIFEST_FILENAME
+def sheet_headers(engagement_dir) -> list[str]:
+    """The Requests sheet's column headings, in order; [] where there is no
+    sheet to read.
+
+    A test's way of asking what a person's workbook actually holds, so no
+    test opens openpyxl to find out and none of them disagree about where
+    the header row is.
+    """
+    from openpyxl import load_workbook
+
+    path = Path(engagement_dir) / MANIFEST_FILENAME
     if not path.is_file():
-        return None
+        return []
+    wb = load_workbook(path, data_only=True)
     try:
-        recorded = statuses_from_workbook(path)
-    except ManifestError:
-        return None        # a manifest the loader refuses; that is what the test is about
-    return {identifier.lower(): status for identifier, status in recorded.items()}
+        if SHEET_NAME not in wb.sheetnames:
+            return []
+        ws = wb[SHEET_NAME]
+        return [text for text in
+                (str(ws.cell(row=1, column=i).value or "").strip()
+                 for i in range(1, (ws.max_column or 0) + 1))
+                if text]
+    finally:
+        wb.close()
 
 
-def _compare_statuses(name, recorded, actual):
-    for identifier, status in recorded.items():
-        expected = actual.get(identifier.lower())
-        if expected is None:
-            continue           # the row is not in the manifest any more
-        assert status == expected, (
-            f"{name}: {identifier} - the record says {status!r}, the manifest says {expected!r}"
-        )
+def scanner_columns_left(engagement_dir) -> dict[str, int]:
+    """Which of the four columns the scanner used to write this sheet still
+    carries, by column index; empty on a sheet that is the person's alone."""
+    from openpyxl import load_workbook
 
-
-def _check(engagement_dir) -> None:
-    name = engagement_dir.name
-    if name in KNOWN_DISAGREEMENTS:
-        return
-    recorded = ledger.statuses(ledger.read_events(engagement_dir))
-    if recorded:
-        actual = _manifest_statuses(engagement_dir)
-        if actual is not None:
-            _compare_statuses(name, recorded, actual)
+    path = Path(engagement_dir) / MANIFEST_FILENAME
+    if not path.is_file():
+        return {}
+    wb = load_workbook(path, data_only=True)
+    try:
+        return {} if SHEET_NAME not in wb.sheetnames else legacy_scanner_columns(wb[SHEET_NAME])
+    finally:
+        wb.close()
 
 
 def _check_view(engagement_dir) -> None:
@@ -192,45 +193,30 @@ def _check_view(engagement_dir) -> None:
 
 
 @pytest.fixture(autouse=True)
-def the_record_agrees_with_the_manifest(tmp_path):
-    """After every test: every status the record holds is the status the
-    manifest workbook holds, and every view the test left behind says what
-    the readers say."""
-    yield
-    for path in sorted(tmp_path.rglob(ledger.LEDGER_FILENAME)):
-        _check(path.parent)
-    for path in sorted(tmp_path.rglob(view.VIEW_FILENAME)):
-        _check_view(path.parent)
+def the_view_agrees_with_the_readers(tmp_path):
+    """After every test: every view the test left behind is the page the
+    readers draw now.
 
-
-def live_readings(engagement_dir) -> dict:
-    """The other copies of what the store holds, as ``check()`` takes them.
-
-    Two different readings, because since decision 102 the two halves have
-    two different other copies. The **index rows** come from the journal
-    replayed - the only other copy there is, now that the workbook is gone
-    and ``read_index()`` answers from the store's own tables. The
-    **request rows** come from the live manifest readers, which still
-    answer from the record and fall back to the sheet per identifier, with
-    a status a locked Excel deferred overlaid on top.
+    Its other half - the record's statuses against the workbook's scanner
+    columns - went with those columns in decision 103. There is no second
+    copy of a status to disagree with any more, and what took its place is
+    the store fixture below, which holds all three halves of the store to
+    the journal.
     """
-    manifest_path = engagement_dir / MANIFEST_FILENAME
-    return {
-        "live_items": with_pending(
-            load_manifest(manifest_path), pending_updates(manifest_path, quarantine=False)),
-        "live_rows": [entry_from_json(row) for row in
-                      ledger.replay(ledger.read_events(engagement_dir)).rows.values()],
-    }
+    yield
+    for path in sorted(tmp_path.rglob(view.VIEW_FILENAME)):
+        if path.parent.name not in KNOWN_DISAGREEMENTS:
+            _check_view(path.parent)
 
 
 def _store_check(root, engagement_dir, conn) -> None:
-    """Build one engagement into the store and hold it to the other copies."""
+    """Build one engagement into the store and hold it to the record."""
     try:
-        readings, live = workbook_readings(engagement_dir), live_readings(engagement_dir)
+        readings = workbook_readings(engagement_dir)
     except (ManifestError, FilingError, OSError):
         return          # what the readers refuse is what that test is about
     store.rebuild_engagement(conn, root, engagement_dir, **readings)
-    said = store.check(conn, root, engagement_dir, **live)
+    said = store.check(conn, root, engagement_dir)
     assert said == [], "; ".join(said)
 
 
@@ -271,6 +257,69 @@ def seed_index(engagement_dir, entries):
             for entry in entries
         ])
     return entries
+
+
+def seed_statuses(engagement_dir, updates):
+    """Put ``updates`` in the engagement's record, the way a scan would.
+
+    The one way a test seeds a status. There are no scanner columns to
+    write any more (decision 103), so a test that wants a row to be
+    Received records it: one ``scanned`` event, under the engagement
+    lock, through the store - the same call ``tracker.scanner`` makes.
+    Returns the updates, so a test can seed and keep them in one line.
+    """
+    engagement_dir = Path(engagement_dir)
+    updates = dict(updates)
+    with engagement_lock(engagement_dir):
+        ensure(engagement_dir)
+        store.record(store.connect(), engagement_dir, ledger.new(
+            ledger.SCANNED,
+            **{ledger.STATUSES_KEY: {i: status_to_json(u) for i, u in updates.items()}},
+        ))
+    return updates
+
+
+def write_a_legacy_manifest(engagement_dir, items, statuses=()):
+    """Write a Requests sheet the way it looked before decision 103: the
+    ten accountant columns and the four the scanner used to fill.
+
+    ``create_template()`` writes ten columns now, so a folder from before
+    the upgrade cannot be made with it. This is the shape of the past,
+    kept only so the migration can be tested against it: the scanner
+    columns are appended to the sheet the template wrote, and
+    ``statuses`` fills them, identifier -> ``StatusUpdate``.
+    """
+    from openpyxl import load_workbook
+
+    from tracker.manifest import DATE_FORMAT, create_template
+
+    path = Path(engagement_dir) / MANIFEST_FILENAME
+    if not path.exists():
+        create_template(path, items)
+    wb = load_workbook(path)
+    try:
+        ws = wb[SHEET_NAME]
+        at = {}
+        for offset, header in enumerate(LEGACY_SCANNER_COLUMNS):
+            at[header] = (ws.max_column or 0) + 1 + offset
+            ws.cell(row=1, column=at[header], value=header)
+        identifier_at = 1
+        for row in range(2, (ws.max_row or 1) + 1):
+            identifier = str(ws.cell(row=row, column=identifier_at).value or "").strip()
+            update = dict(statuses).get(identifier)
+            if update is None:
+                continue
+            for header, value in zip(LEGACY_SCANNER_COLUMNS,
+                                     (update.status, update.received_date,
+                                      update.file_count, update.validation_notes),
+                                     strict=True):
+                cell = ws.cell(row=row, column=at[header], value=value)
+                if isinstance(value, dt.date):
+                    cell.number_format = DATE_FORMAT
+        wb.save(path)
+    finally:
+        wb.close()
+    return path
 
 
 def write_a_legacy_index(engagement_dir, entries):

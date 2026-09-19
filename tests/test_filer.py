@@ -40,8 +40,17 @@ from tracker.filer import (
     file_drops,
     prepared_name_for,
     read_index,
+    rules_digest,
 )
-from tracker.manifest import COL_DOCUMENT, SHEET_NAME, TEMP_SUFFIX, RequestItem, create_template
+from tracker.manifest import (
+    COL_DOCUMENT,
+    ENGAGEMENT_SHEET_NAME,
+    SHEET_NAME,
+    TEMP_SUFFIX,
+    RequestItem,
+    create_template,
+    load_manifest,
+)
 from tracker.router import UNMATCHED
 from tracker.scaffold import (
     MANIFEST_FILENAME,
@@ -402,6 +411,120 @@ def test_dry_run_previews_real_numbering(engagement):
     ]
 
 
+# --------------------------- the rules are imported every pass (d103) ----
+
+
+def imports(engagement) -> list[dict]:
+    return [e for e in ledger.read_events(engagement)
+            if e[ledger.EVENT_KEY] == ledger.RULES_IMPORTED]
+
+
+def edit_the_list(engagement, **by_identifier):
+    """A person editing Any Keywords in Excel, one row at a time."""
+    from tracker.manifest import COL_ANY_KEYWORDS
+
+    manifest = engagement / MANIFEST_FILENAME
+    wb = load_workbook(manifest)
+    try:
+        ws = wb[SHEET_NAME]
+        at = [str(c.value or "") for c in ws[1]].index(COL_ANY_KEYWORDS) + 1
+        for row in range(2, (ws.max_row or 1) + 1):
+            identifier = str(ws.cell(row=row, column=1).value or "").strip()
+            if identifier in by_identifier:
+                ws.cell(row=row, column=at, value=by_identifier[identifier])
+        wb.save(manifest)
+    finally:
+        wb.close()
+
+
+def test_a_rules_edit_between_two_passes_is_one_event_of_exactly_what_changed(engagement):
+    """The import is a difference, and it is journalled.
+
+    The first pass carries the whole list - that is what makes the fold of
+    every import the sheet. The second carries only the row a person
+    touched, and a pass over a sheet nobody touched carries nothing at all.
+    """
+    ensure(engagement)
+    first = imports(engagement)
+    assert len(first) == 1
+    assert [row["identifier"] for row in first[0][ledger.RULES_KEY]] == ["A01", "C01"]
+    assert first[0][ledger.DIGEST_KEY] == rules_digest(engagement)
+
+    ensure(engagement)                                   # nothing has moved
+    assert imports(engagement) == first
+
+    edit_the_list(engagement, C01="lender, mortgage")
+    ensure(engagement)
+
+    second = imports(engagement)
+    assert len(second) == 2
+    assert [row["identifier"] for row in second[1][ledger.RULES_KEY]] == ["C01"]
+    assert second[1][ledger.RULES_KEY][0]["any_keywords"] == ["lender", "mortgage"]
+    assert second[1][ledger.REMOVED_KEY] == []
+    assert {i.identifier: i.any_keywords
+            for i in load_manifest(engagement)}["C01"] == ("lender", "mortgage")
+
+
+def test_a_row_a_person_deleted_is_recorded_as_removed_and_leaves_the_store(engagement):
+    ensure(engagement)
+    manifest = engagement / MANIFEST_FILENAME
+    wb = load_workbook(manifest)
+    try:
+        wb[SHEET_NAME].delete_rows(3)                    # C01
+        wb.save(manifest)
+    finally:
+        wb.close()
+
+    ensure(engagement)
+
+    last = imports(engagement)[-1]
+    assert last[ledger.REMOVED_KEY] == ["C01"]
+    assert [row["identifier"] for row in store.rules(store.connect(), engagement)] == ["A01"]
+    assert [i.identifier for i in load_manifest(engagement)] == ["A01"]
+
+
+def test_a_workbook_that_fails_validation_is_not_imported_and_the_last_rules_stand(
+        engagement, tmp_path):
+    """The pass records the problem for that engagement and goes on.
+
+    Nothing is imported from a sheet that will not load, so every reader
+    goes on answering with the rules the record already holds - which is
+    the only honest answer while the file in front of a person is wrong.
+    """
+    from tracker.manifest import COL_DATE_PATTERN, ManifestError
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, run_registry
+
+    ensure(engagement)
+    before = load_manifest(engagement)
+    manifest = engagement / MANIFEST_FILENAME
+    wb = load_workbook(manifest)
+    try:
+        ws = wb[SHEET_NAME]
+        at = [str(c.value or "") for c in ws[1]].index(COL_DATE_PATTERN) + 1
+        ws.cell(row=2, column=at, value="([unclosed")
+        wb.save(manifest)
+    finally:
+        wb.close()
+
+    with pytest.raises(ManifestError, match="Row 2"):
+        ensure(engagement)
+
+    assert load_manifest(engagement) == before           # the last good rules
+    assert len(imports(engagement)) == 1
+
+    # And the pass says so for this engagement and goes on to the next.
+    other = engagement.parent / "Jones Family 2025"
+    other.mkdir()
+    create_template(other / MANIFEST_FILENAME, ITEMS)
+    scaffold_engagement(other)
+    report = run_registry(discover_engagements(engagement.parent), today=DAY1,
+                          reminders=REMINDERS_NEVER)
+    said = {run.engagement.path.name: run for run in report.runs}
+    assert said[engagement.name].error.startswith("Row 2")
+    assert said[other.name].ok
+
+
 # ------------------------------- the index moves into the record (d102) ----
 
 
@@ -425,7 +548,8 @@ def test_a_folder_that_still_has_an_index_workbook_is_migrated_by_its_next_pass(
     assert [e.original_name for e in read_index(engagement)] == [
         "older.pdf", "oldest.pdf", "w2.pdf"]
     names = [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)]
-    assert names == [ledger.IMPORTED, ledger.IMPORTED, ledger.MIGRATED, ledger.FILED]
+    assert names == [ledger.IMPORTED, ledger.IMPORTED, ledger.MIGRATED,
+                     ledger.RULES_IMPORTED, ledger.FILED]
     migrated = ledger.read_events(engagement)[2]
     assert migrated[ledger.FILES_KEY] == [INDEX_MIGRATED_FILENAME]
 
@@ -448,7 +572,9 @@ def test_the_migration_folds_in_the_snapshot_the_last_run_could_not_land(engagem
     assert [e.original_name for e in read_index(engagement)] == ["older.pdf", "deferred.pdf"]
     assert not (engagement / INDEX_PENDING_FILENAME).exists()
     assert (engagement / INDEX_PENDING_MIGRATED_FILENAME).exists()
-    assert ledger.read_events(engagement)[-1][ledger.FILES_KEY] == [
+    migrated = next(e for e in ledger.read_events(engagement)
+                    if e[ledger.EVENT_KEY] == ledger.MIGRATED)
+    assert migrated[ledger.FILES_KEY] == [
         INDEX_MIGRATED_FILENAME, INDEX_PENDING_MIGRATED_FILENAME]
 
 
@@ -469,10 +595,16 @@ def test_the_migration_is_idempotent_and_a_second_ensure_writes_no_event(engagem
 
 def test_an_engagement_that_never_had_a_workbook_is_simply_created(engagement):
     """A brand new folder has nothing to migrate and is not treated as if
-    it had: no ``migrated`` event, no rows, no files moved."""
+    it had: no ``migrated`` event, no index rows, no files moved.
+
+    Its request list *is* read, once, and journalled - that is the first
+    import (decision 103), and it is what makes the store rebuildable
+    from the journal from the engagement's first day.
+    """
     assert ensure(engagement) == store.CURRENT
     assert read_index(engagement) == []
-    assert ledger.read_events(engagement) == []
+    assert [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)] == [
+        ledger.RULES_IMPORTED]
     assert not (engagement / INDEX_MIGRATED_FILENAME).exists()
 
 
@@ -488,7 +620,7 @@ def test_an_engagement_whose_record_already_carries_every_row_migrates_the_same_
 
     assert read_index(engagement) == recorded
     names = [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)]
-    assert names == [ledger.FILED, ledger.MIGRATED]
+    assert names == [ledger.RULES_IMPORTED, ledger.FILED, ledger.MIGRATED]
     assert (engagement / INDEX_MIGRATED_FILENAME).exists()
 
 
@@ -519,6 +651,79 @@ def test_a_workbook_held_the_way_excel_holds_one_refuses_the_migration_loudly(
     assert report.handled == 1
     assert not index.exists() and (engagement / INDEX_MIGRATED_FILENAME).exists()
     assert [e.original_name for e in read_index(engagement)] == ["older.pdf", "w2.pdf"]
+
+
+# --------------------- the scanner columns move into the record (d103) ----
+
+
+def test_an_old_request_list_is_read_into_the_record_and_slimmed_once(tmp_path):
+    """The whole of decision 103's migration, on one folder from before it.
+
+    The four columns and the sidecar beside them are the last reading this
+    code will ever make of either: the statuses go into the record with the
+    sidecar winning, the sheet is rewritten without them and keeps
+    everything else a person put in it, the sidecar is renamed aside, and
+    one migrated event says what was done. A second pass changes nothing.
+    """
+    import json
+
+    from tests.conftest import write_a_legacy_manifest
+    from tracker.filer import MANIFEST_PENDING_FILENAME, MANIFEST_PENDING_MIGRATED_FILENAME
+    from tracker.manifest import LEGACY_SCANNER_COLUMNS, Status, carries_scanner_columns
+    from tracker.records import StatusUpdate, status_to_json
+
+    engagement = tmp_path / "Smith Family 2025"
+    engagement.mkdir()
+    write_a_legacy_manifest(engagement, ITEMS, {
+        "A01": StatusUpdate(status=Status.MISSING, file_count=0),
+        "C01": StatusUpdate(status=Status.RECEIVED, file_count=1,
+                            received_date=DAY1, validation_notes="all in"),
+    })
+    manifest = engagement / MANIFEST_FILENAME
+    # A person's own column width, and the sidecar the last locked scan left:
+    # A01 arrived after all, and that status must not be lost with the file.
+    wb = load_workbook(manifest)
+    try:
+        wb[SHEET_NAME].column_dimensions["B"].width = 47
+        wb.save(manifest)
+    finally:
+        wb.close()
+    (engagement / MANIFEST_PENDING_FILENAME).write_text(json.dumps({
+        "A01": status_to_json(StatusUpdate(status=Status.RECEIVED, file_count=2,
+                                           received_date=DAY2)),
+    }), encoding="utf-8")
+    scaffold_engagement(engagement)
+
+    ensure(engagement)
+
+    # The statuses are in the record, the sidecar's winning over the sheet's.
+    answered = {i.identifier: i for i in load_manifest(engagement)}
+    assert answered["A01"].status == Status.RECEIVED and answered["A01"].file_count == 2
+    assert answered["A01"].received_date == DAY2
+    assert answered["C01"].status == Status.RECEIVED and answered["C01"].validation_notes == "all in"
+    # The sheet is the person's ten columns, and everything else survived.
+    assert not carries_scanner_columns(manifest)
+    wb = load_workbook(manifest)
+    try:
+        assert wb[SHEET_NAME].column_dimensions["B"].width == 47
+        assert ENGAGEMENT_SHEET_NAME in wb.sheetnames
+    finally:
+        wb.close()
+    # The sidecar is aside, and one event says what was done.
+    assert not (engagement / MANIFEST_PENDING_FILENAME).exists()
+    assert (engagement / MANIFEST_PENDING_MIGRATED_FILENAME).exists()
+    migrated = [e for e in ledger.read_events(engagement)
+                if e[ledger.EVENT_KEY] == ledger.MIGRATED]
+    assert len(migrated) == 1
+    assert MANIFEST_PENDING_MIGRATED_FILENAME in migrated[0][ledger.FILES_KEY]
+    for header in LEGACY_SCANNER_COLUMNS:
+        assert f"{MANIFEST_FILENAME}: {header}" in migrated[0][ledger.FILES_KEY]
+
+    after = ledger.path_for(engagement).read_bytes()
+    files = sorted(p.name for p in engagement.iterdir())
+    ensure(engagement)
+    assert ledger.path_for(engagement).read_bytes() == after
+    assert sorted(p.name for p in engagement.iterdir()) == files
 
 
 def test_a_migrated_workbook_never_overwrites_one_an_earlier_migration_left(engagement):
@@ -554,12 +759,19 @@ def test_read_index_keeps_the_place_of_a_row_that_changed_identity(engagement):
 
 
 def counted_records(monkeypatch) -> list[tuple]:
-    """Every call to ``store.record``, with the events it was given."""
+    """Every call to ``store.record``, with the events it was given.
+
+    The pass's own import of the request list is left out: it is one call
+    of its own at the start (decision 103), and what these tests are
+    about is the decisions about documents.
+    """
     calls: list[tuple] = []
     real = store.record
 
     def counting(conn, engagement_dir, *events):
-        calls.append(tuple(e[ledger.EVENT_KEY] for e in events))
+        named = tuple(e[ledger.EVENT_KEY] for e in events)
+        if named != (ledger.RULES_IMPORTED,):
+            calls.append(named)
         return real(conn, engagement_dir, *events)
 
     monkeypatch.setattr(store, "record", counting)
@@ -589,8 +801,10 @@ def test_a_person_filing_dismissing_or_unfiling_is_one_call_each(engagement, mon
     dismiss_review_file(engagement, parked["notice.pdf"].pbc_location, today=DAY2)
     unfile_document(engagement, parked["scan0012.pdf"].pbc_location, today=DAY2)
 
+    # The unfiling's re-scan is a call of its own, and rightly: it is the
+    # pass's decision about the request, not the person's about the row.
     assert calls == [(ledger.ASSIGNED_BY_PERSON,), (ledger.DISMISSED_BY_PERSON,),
-                     (ledger.UNFILED_BY_PERSON,)]
+                     (ledger.UNFILED_BY_PERSON,), (ledger.SCANNED,)]
 
 
 def test_a_pass_that_changed_nothing_records_nothing(engagement, monkeypatch):
@@ -699,23 +913,44 @@ def test_the_filer_reads_nothing_before_it_holds_the_lock(engagement, monkeypatc
     assert seen and not any(held for _, held in seen)
 
 
-def test_a_persons_keyword_is_learned_under_the_lock(engagement, monkeypatch):
-    import tracker.filer as filer_module
+def test_a_persons_keyword_is_recorded_in_the_same_call_as_the_filing(engagement, monkeypatch):
+    """One decision, one call, one transaction (decision 103).
+
+    The filing and the word it taught are the same decision, so they are
+    the same ``store.record()`` - which means the rollback that puts a
+    moved file back asks one question and not two. Nothing is written
+    into the workbook, so nothing about the keyword can be held up by
+    Excel any more.
+    """
     from tracker.filer import assign_review_file
-    from tracker.locking import LOCK_FILENAME
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = file_drops(engagement, today=DAY1).review[0]
-    real = filer_module.add_any_keyword
+    before = (engagement / MANIFEST_FILENAME).read_bytes()
+    calls = counted_records(monkeypatch)
 
-    def under_the_lock(*args, **kwargs):
-        assert (engagement / LOCK_FILENAME).exists(), "keyword written outside the lock"
-        return real(*args, **kwargs)
-
-    monkeypatch.setattr(filer_module, "add_any_keyword", under_the_lock)
     result = assign_review_file(engagement, parked.pbc_location, "C01", keyword="lender")
-    assert result.keyword == "lender"
-    assert not (engagement / LOCK_FILENAME).exists()
+
+    assert result.keyword == "lender" and result.keyword_note == ""
+    assert calls == [(ledger.ASSIGNED_BY_PERSON, ledger.KEYWORD_LEARNED)]
+    assert (engagement / MANIFEST_FILENAME).read_bytes() == before
+    assert {i.identifier: i.any_keywords for i in load_manifest(engagement)}["C01"] == ("lender",)
+
+
+def test_a_keyword_the_request_already_has_is_said_and_not_recorded_twice(engagement, monkeypatch):
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    drop(engagement, "notice.pdf", "an agency notice nothing asks for")
+    parked = {e.original_name: e for e in file_drops(engagement, today=DAY1).review}
+    assign_review_file(engagement, parked["scan0012.pdf"].pbc_location, "C01", keyword="lender")
+    calls = counted_records(monkeypatch)
+
+    again = assign_review_file(engagement, parked["notice.pdf"].pbc_location, "C01",
+                               keyword="LENDER", today=DAY2)
+
+    assert again.keyword == "" and "already had the keyword" in again.keyword_note
+    assert calls == [(ledger.ASSIGNED_BY_PERSON,)]
 
 
 def test_the_filer_holds_the_engagement_lock(engagement):
@@ -860,21 +1095,27 @@ def test_assigning_refuses_what_a_person_should_not_do(engagement):
         assign_review_file(waived, "x.pdf", "A01")
 
 
-def test_assigning_still_files_when_excel_holds_the_manifest(engagement, monkeypatch):
-    import tracker.manifest as manifest_module
+def test_assigning_files_and_teaches_while_excel_holds_the_manifest(engagement, held_like_excel):
+    """The old claim was that the filing survived a keyword Excel refused.
+
+    There is nothing for Excel to refuse: the keyword is recorded, not
+    typed into a cell, and the sheet is only ever read (decision 103). So
+    both land, with a real handle held the way Excel holds one.
+    """
     from tracker.filer import assign_review_file
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     file_drops(engagement, today=DAY1)
+    manifest = engagement / MANIFEST_FILENAME
+    before = manifest.read_bytes()
 
-    def locked(*args, **kwargs):
-        raise PermissionError("[Errno 13] locked by Excel")
+    with held_like_excel(manifest):
+        result = assign_review_file(engagement, "scan0012.pdf", "C01", keyword="lender")
 
-    monkeypatch.setattr(manifest_module, "add_any_keyword", locked)
-    monkeypatch.setattr("tracker.filer.add_any_keyword", locked)
-    result = assign_review_file(engagement, "scan0012.pdf", "C01", keyword="lender")
     assert result.entry.decision == FILED
-    assert result.keyword == "" and "open in Excel" in result.keyword_note
+    assert result.keyword == "lender" and result.keyword_note == ""
+    assert manifest.read_bytes() == before
+    assert {i.identifier: i.any_keywords for i in load_manifest(engagement)}["C01"] == ("lender",)
 
 
 # ---------------------------------------------- what a review found (decision 54) ----

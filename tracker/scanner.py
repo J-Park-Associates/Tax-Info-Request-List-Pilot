@@ -3,8 +3,21 @@
 Ties the layers together for one engagement: walk ``PREPARED_DIR_NAME/`` — the
 working set :mod:`tracker.filer` built from the client's drop folder — match
 folders to manifest rows (prefix rule, longest identifier wins), run
-validation tiers 1-3, resolve each row's status deterministically, and write
-results back to ``MANIFEST_FILENAME`` (lock-resiliently, via the manifest layer).
+validation tiers 1-3, resolve each row's status deterministically, and
+**record** what it found.
+
+Recorded, not written back (decision 103). The statuses used to be four
+columns of ``MANIFEST_FILENAME``, written with a lock retry and deferred to
+a sidecar when Excel held the file; they are one ``scanned`` event now,
+appended to the engagement's journal and folded into the store inside one
+transaction (:func:`tracker.store.record`), under the lock this scan
+already holds. So a scan never touches the workbook - its bytes are the
+same before and after a pass - there is nothing to defer, and a person
+with the request list open in Excel no longer holds a scan up.
+
+Only what changed is recorded: a pass that finds the engagement exactly as
+it left it appends nothing at all, so the record is the list of the
+moments something moved rather than one line per pass for ever.
 
 Status policy (docs/ROADMAP.md decision log):
 
@@ -21,11 +34,12 @@ Status policy (docs/ROADMAP.md decision log):
   hash before counting — only when more than one valid file exists, so the
   common single-file case never pays for hashing.
 
-Strictly read-only: the scanner reads the prepared copies and writes only
-the manifest, content cache and run-lock. It never touches ``SHARED_DIR_NAME/`` at
-all — the client's originals are the filer's business, and even there they
-are only ever moved, never altered. The engagement lock (:mod:`tracker.locking`,
-shared with the filer) prevents overlapping runs; stale locks are replaced.
+Strictly read-only where the client's files are concerned: the scanner
+reads the prepared copies and writes only the record, the content cache and
+the run-lock. It never touches ``SHARED_DIR_NAME/`` at all — the client's
+originals are the filer's business, and even there they are only ever
+moved, never altered. The engagement lock (:mod:`tracker.locking`, shared
+with the filer) prevents overlapping runs; stale locks are replaced.
 """
 
 from __future__ import annotations
@@ -36,7 +50,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import reasons
+from tracker import ledger, reasons, store
 from tracker.content_check import CACHE_FILENAME, ContentCache, check_content
 from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
@@ -45,12 +59,10 @@ from tracker.manifest import (
     RequestItem,
     Status,
     load_manifest,
-    pending_updates,
     summarize,
-    with_pending,
-    write_statuses,
+    with_statuses,
 )
-from tracker.records import StatusUpdate
+from tracker.records import StatusUpdate, identifier_key, status_to_json
 from tracker.scaffold import (
     MANIFEST_FILENAME,
     PREPARED_DIR_NAME,
@@ -102,14 +114,15 @@ class ScanReport:
     items: list[RequestItem] = field(default_factory=list)   # the rows as loaded
     updates: dict[str, StatusUpdate] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)   # things in PREPARED_DIR_NAME no row accounts for
-    written: bool = False    # manifest updated on disk
-    deferred: bool = False   # manifest was locked; updates went to sidecar
+    #: How many statuses this scan appended to the record. Zero on a pass
+    #: that found the engagement exactly as it left it, and on a dry run.
+    recorded: int = 0
     dry_run: bool = False
 
     @property
     def summary(self):
         """The one count, over the rows as this scan leaves them."""
-        return summarize(with_pending(self.items, self.updates))
+        return summarize(with_statuses(self.items, self.updates))
 
 
 # ------------------------------------------------------------- per-item ----
@@ -335,17 +348,44 @@ def _prepared_warnings(prepared_dir: Path, claimed: set[Path]) -> list[str]:
 # ----------------------------------------------------------------- scan ----
 
 
+def _record_the_statuses(engagement_dir: Path, updates: dict[str, StatusUpdate]) -> int:
+    """Append what this scan changed, as one ``scanned`` event. Returns how many.
+
+    **One call, one transaction, under the lock this scan already holds.**
+    :func:`tracker.store.record` appends the line to the journal and folds
+    it into the store, so either the whole of what this scan decided is on
+    the record or none of it is.
+
+    Only what *changed*: the record already holds the statuses of the last
+    pass, so a pass that found the engagement exactly as it left it
+    appends nothing and the journal stays the list of moments something
+    moved. Nothing is written to the workbook, here or anywhere else in a
+    pass (decision 103).
+    """
+    conn = store.connect()
+    already = {identifier: status_to_json(update)
+               for identifier, update in store.statuses(conn, engagement_dir).items()}
+    applied = {identifier: status_to_json(update) for identifier, update in updates.items()}
+    changed = {i: s for i, s in applied.items() if already.get(identifier_key(i)) != s}
+    if not changed:
+        return 0
+    store.record(conn, engagement_dir,
+                 ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: changed}))
+    return len(changed)
+
+
 def scan_engagement(
     engagement_dir: Path | str,
     *,
+    root: Path | None = None,
     today: dt.date | None = None,
     dry_run: bool = False,
     lock_held: bool = False,
 ) -> ScanReport:
-    """Scan one engagement and (unless ``dry_run``) write the manifest back.
+    """Scan one engagement and (unless ``dry_run``) record what it found.
 
-    Dry runs read everything but write nothing — no manifest update, no
-    cache save, no lock file — safe to run alongside a real scan.
+    Dry runs read everything but write nothing — no event, no cache save,
+    no lock file — safe to run alongside a real scan.
 
     ``lock_held`` says the caller already holds this engagement's lock and
     this call must not take it again: that is
@@ -358,15 +398,22 @@ def scan_engagement(
 
     # The lock comes before the manifest is read (see tracker.locking): a
     # sort that finished in between would otherwise be invisible to this scan.
+    # The filer and this module are one deliberate cycle, closed at call
+    # time and asserted to stay that way (tests/test_layers.py).
+    from tracker.filer import ensure
+
     with nullcontext() if dry_run or lock_held else engagement_lock(engagement_dir):
-        manifest_path = engagement_dir / MANIFEST_FILENAME
-        # The statuses a locked Excel kept out of the workbook last time are
-        # what this scan compares against: the Received Date it carried
-        # forward ("first date all validations passed") and the status a
-        # regression is measured from both live there until the write lands.
-        items = with_pending(
-            load_manifest(manifest_path), pending_updates(manifest_path, quarantine=not dry_run)
-        )
+        # The store is brought up to the person's sheet and the journal
+        # before a thing is read: the rules this scan works from are the
+        # imported ones, and recording what it finds needs an engagement
+        # the store holds. A dry run migrates and imports nothing, and
+        # reads the rules the record already has.
+        ensure(engagement_dir, root, migrate=not dry_run)
+        # What the record already says about each row is what this scan
+        # compares against: the Received Date it carried forward ("first
+        # date all validations passed") and the status a regression is
+        # measured from both come from there.
+        items = load_manifest(engagement_dir)
         prepared_dir = engagement_dir / PREPARED_DIR_NAME
         cache = ContentCache(engagement_dir / CACHE_FILENAME)
         pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
@@ -397,8 +444,7 @@ def scan_engagement(
                 path for folder in claimed for path in iter_candidate_files(folder)
             }
         )
-        report.written = write_statuses(manifest_path, updates)
-        report.deferred = not report.written
+        report.recorded = _record_the_statuses(engagement_dir, updates)
         cache.save()
         return report
 
@@ -419,10 +465,10 @@ def _print_report(report: ScanReport) -> None:
     print(f"\n  {report.summary.line}")
     if report.dry_run:
         print("  DRY RUN - nothing was written")
-    elif report.written:
-        print("  Manifest updated")
+    elif report.recorded:
+        print(f"  {report.recorded} status(es) recorded")
     else:
-        print("  Manifest LOCKED (open in Excel?) - updates deferred to sidecar")
+        print("  Nothing changed since the last scan")
 
 
 if __name__ == "__main__":

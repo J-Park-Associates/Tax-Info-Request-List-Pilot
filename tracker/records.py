@@ -37,6 +37,14 @@ same goes for ``FileError``, ``FileReport`` and ``ContentResult``: they are
 one run's report of what it did, produced and consumed inside the module
 that did it, and never stored.
 
+Its **rows** travel all the same since decision 103: the person's half of
+a request row is what a ``rules_imported`` event carries, so
+:data:`RULE_FIELDS`, :func:`rule_to_json` and :func:`rule_from_json` are
+here - the serialisation is a fact about the record, the parsing is a fact
+about the sheet, and the two live where each belongs. The pair is
+deliberately duck-typed on the field names rather than on the class, so
+this module still imports nothing of the package.
+
 **The old names still work, for one release.** Each module a record left
 keeps a re-export of it - ``from tracker.filer import IndexEntry`` resolves
 to exactly this class, the same object, not a copy - so no caller had to
@@ -473,9 +481,111 @@ ENGAGEMENT_HELP = {
 }
 
 
+def info_to_json(info: EngagementInfo) -> dict:
+    """The Engagement sheet as it is stored: its fields, the date as text.
+
+    The shape a ``rules_imported`` event carries the engagement's own
+    details in, and the shape the store folds back. One owner, as
+    :func:`status_to_json` is one owner for a status.
+    """
+    payload = asdict(info)
+    payload["due"] = info.due.isoformat() if info.due else None
+    return payload
+
+
+def info_from_json(raw: dict) -> EngagementInfo:
+    """An EngagementInfo from a stored one, ignoring a field this version
+    does not know: a sheet an older or newer run recorded must not be
+    thrown away over one cell."""
+    known = {f.name for f in fields(EngagementInfo)}
+    values = {key: value for key, value in raw.items() if key in known}
+    values["due"] = dt.date.fromisoformat(raw["due"]) if raw.get("due") else None
+    return EngagementInfo(**values)
+
+
+#: The person's half of a request row: everything the manifest's
+#: ``RequestItem`` holds that is not a status the machine decided. It is
+#: named here rather than beside that class because these rows now *travel*
+#: - a ``rules_imported`` event carries them and the store's ``requests``
+#: table is these columns - while the parsing of the cells they came from
+#: stays with the sheet. ``tracker.store`` builds its column list from this,
+#: so a field added to the sheet's record is added in one place.
+RULE_FIELDS: tuple[str, ...] = (
+    "identifier",
+    "document",
+    "period",
+    "expected_count",
+    "allowed_extensions",
+    "min_size_kb",
+    "required_keywords",
+    "any_keywords",
+    "date_pattern",
+    "date_pattern_derived",
+    "manual_override",
+    "row",
+)
+
+
+#: The rule fields that hold a list of words rather than one value. Named
+#: because JSON and SQLite both lose the difference between a tuple and a
+#: string: stored, they are a JSON array in a text column, and this is what
+#: says which columns to read back that way.
+RULE_LIST_FIELDS: frozenset[str] = frozenset({
+    "allowed_extensions", "required_keywords", "any_keywords",
+})
+#: The rule fields that are yes/no. Stored as 0 and 1, like every other
+#: flag the store holds, and turned back into booleans here so a row read
+#: from the record is the row that was written and not a near-enough copy.
+RULE_FLAG_FIELDS: frozenset[str] = frozenset({"date_pattern_derived"})
+
+
+def rule_to_json(item: object) -> dict:
+    """One request row's *rules* as they are stored: the person's fields,
+    the word lists as JSON lists.
+
+    Duck-typed on :data:`RULE_FIELDS` rather than typed on ``RequestItem``,
+    because that class is the manifest's and this module imports nothing of
+    the package. The pair with :func:`rule_from_json` is what lets a rule
+    row travel in the journal and come back the same row.
+    """
+    payload: dict[str, object] = {}
+    for name in RULE_FIELDS:
+        value = getattr(item, name)
+        payload[name] = list(value) if name in RULE_LIST_FIELDS else value
+    return payload
+
+
+def rule_from_json(raw: dict) -> dict:
+    """A stored rule row as keyword arguments for ``RequestItem``.
+
+    Keyword arguments rather than the record itself, for the same reason:
+    the class lives in the module that parses the sheet. A field this
+    version does not know is ignored and one it does not carry is left to
+    the record's own default, so a row written by another version still
+    loads.
+    """
+    values: dict[str, object] = {}
+    for name in RULE_FIELDS:
+        if name not in raw:
+            continue
+        value = raw[name]
+        if name in RULE_LIST_FIELDS:
+            values[name] = tuple(value or ())
+        elif name in RULE_FLAG_FIELDS:
+            values[name] = bool(value)
+        else:
+            values[name] = value
+    return values
+
+
 @dataclass(frozen=True, slots=True)
 class StatusUpdate:
-    """Scanner output for one identifier, destined for the scanner columns."""
+    """Scanner output for one identifier, as the record holds it.
+
+    Named for the scanner columns it used to be written into; since
+    decision 103 there are no such columns and this is simply what the
+    record says about one request.
+    """
 
     status: str
     file_count: int = 0
@@ -484,14 +594,12 @@ class StatusUpdate:
 
 
 def status_to_json(update: StatusUpdate) -> dict:
-    """One identifier's scanner columns as they are stored: its fields, the
-    date as text.
+    """One identifier's status as it is stored: its fields, the date as text.
 
     The one shape for it, as :func:`entry_to_json` is the one shape for an
-    index row. The manifest's deferred-update sidecar writes it, the
-    engagement's record writes it inside a ``scanned`` event, and the store
-    reads both back through :func:`status_from_json`, so a field added
-    above is carried by all three without another edit.
+    index row. The engagement's record writes it inside a ``scanned``
+    event and the store reads it back through :func:`status_from_json`, so
+    a field added above is carried by both without another edit.
     """
     payload = asdict(update)
     payload["received_date"] = update.received_date.isoformat() if update.received_date else None
@@ -507,10 +615,9 @@ def status_from_json(raw: dict) -> StatusUpdate:
     """A StatusUpdate from a stored one, tolerant of a field it does not carry.
 
     A status is only ever read back to decide what a client still owes, and
-    a sidecar written by an older version - or an event from one - must not
-    be thrown away over a column that version did not have. The status
-    itself is the one value with no sensible default: a stored update
-    without one is not a status.
+    an event written by an older version must not be thrown away over a
+    field that version did not have. The status itself is the one value
+    with no sensible default: a stored update without one is not a status.
     """
     values = {f.name: raw.get(f.name, f.default) for f in fields(StatusUpdate) if f.name != "status"}
     values["received_date"] = dt.date.fromisoformat(raw["received_date"]) if raw.get("received_date") else None

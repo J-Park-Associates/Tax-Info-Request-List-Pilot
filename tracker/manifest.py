@@ -1,30 +1,57 @@
 """Manifest layer for the tracker (component 1, docs/ROADMAP.md).
 
-Owns everything about the manifest workbook (``MANIFEST_FILENAME``): the schema, loading and validating
-rows into :class:`RequestItem` dataclasses, and writing scanner status back
-with Excel-lock resilience (retry with backoff, then defer updates to a
-``PENDING_SUFFIX`` sidecar that is merged on the next write).
+``MANIFEST_FILENAME`` is **the person's file**, and since decision 103 that
+is the whole of what it is. Its Requests sheet holds the ten columns an
+accountant edits (:data:`ACCOUNTANT_COLUMNS`, which is now all of
+:data:`HEADERS`) and nothing the machine decided: Status, Received Date,
+File Count and Validation Notes left the sheet, and the statuses, the
+keywords a person's filing taught and every index row live in the record
+(:mod:`tracker.ledger` and :mod:`tracker.store`, ``docs/storage.md``).
+
+So this module does three things with that workbook:
+
+- **it reads it, every pass.** :func:`load_rules` opens it once - read-only,
+  the way Excel's own share mode allows, with a short retry for the moment
+  Excel saves by replacing the file - and gives back the rules and the
+  Engagement sheet, validated, failing loudly with the row a person has to
+  fix. The pass compares its digest with the one the record holds and
+  journals every difference (``tracker.filer.ensure``);
+- **it writes it at three moments and no others**: when an engagement is
+  created (:func:`create_template`), when a year is rolled forward, and
+  once, to slim an old workbook that still carries the four scanner
+  columns. Never in a pass. That is why there is no lock retry on a write,
+  no deferred-update sidecar and nothing to merge: the thirteen defensive
+  decisions those cost are gone with the writes that needed them;
+- **it answers what a request is now** (:func:`load_manifest`), from the
+  record - the rules as the last import read them, each row's status, and
+  the keywords a filing taught - never by reading the sheet for a status
+  again.
+
+Why the import journals every change rather than simply overwriting the
+store: the workbook is a file Excel holds open, silently re-types, validates
+nothing at entry and keeps no history of (the owner said so on 2026-09-18).
+The record cannot stop a person mistyping a keyword, but it can say when it
+changed and to what, which is the difference between a rule that went wrong
+and a rule nobody can account for. The app's own rules editor, after season
+one, replaces the import.
 
 It also owns *how* anything beside a workbook is written. Every sidecar, the
 content cache and the app's settings file go through
 :func:`atomic_replacement` - a uniquely named temp file ending in
 ``TEMP_SUFFIX``, swapped in whole with ``os.replace`` - so a killed run never
-leaves a half-written file where a reader will trust it. And only the
-function that is about to rewrite a workbook moves an unreadable sidecar
-aside (:func:`quarantine_sidecar`); a reader, and any dry run, leaves the
-disk exactly as it found it.
+leaves a half-written file where a reader will trust it.
 
-This module never touches client files — only the manifest workbook and its
-sidecar. All values are validated on load and fail loudly with row context so
-a malformed manifest can never silently produce wrong statuses.
+This module never touches client files — only the manifest workbook. All
+values are validated on load and fail loudly with row context, so a
+malformed manifest can never silently produce wrong rules.
 
-The *records* it loads and writes back - :class:`EngagementInfo`,
-:class:`StatusUpdate`, the Engagement sheet's field table and the yes/no
-spellings - live in :mod:`tracker.records` since decision 100, and are
-imported back here so every existing ``from tracker.manifest import ...``
-still reads. :class:`RequestItem` stays: it is the schema of the sheet a
-person edits, not a record of what the machine decided, and it means nothing
-away from the cells it is parsed from.
+The *records* it loads - :class:`EngagementInfo`, :class:`StatusUpdate`, the
+Engagement sheet's field table, the rules-only serialisation of a request
+row and the yes/no spellings - live in :mod:`tracker.records` since decision
+100, and are imported back here so every existing ``from tracker.manifest
+import ...`` still reads. :class:`RequestItem` stays: it is the schema of the
+sheet a person edits, not a record of what the machine decided, and it means
+nothing away from the cells it is parsed from.
 """
 
 from __future__ import annotations
@@ -38,20 +65,17 @@ import secrets
 import time
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
-from tracker import ledger
-from tracker.locking import lock_is_held
-
-# The records this module loads and writes back live in tracker/records.py
-# (decision 100): they are the shapes, this is the workbook. An in-layer
-# import, and the only one that way round - nothing in records imports the
-# manifest. ENGAGEMENT_HELP is re-exported so that
+# The records this module loads live in tracker/records.py (decision 100):
+# they are the shapes, this is the workbook. An in-layer import, and the
+# only one that way round - nothing in records imports the manifest.
+# ENGAGEMENT_HELP is re-exported so that
 # `from tracker.manifest import ENGAGEMENT_HELP` still resolves to the same
 # dict; kept for one release; import from tracker.records.
 from tracker.records import (
@@ -65,8 +89,8 @@ from tracker.records import (
     EngagementInfo,
     StatusUpdate,
     identifier_key,
-    status_from_json,
-    status_to_json,
+    rule_from_json,
+    status_from_json,  # noqa: F401  (re-exported for one release)
 )
 
 log = logging.getLogger("tracker.manifest")
@@ -93,7 +117,8 @@ COL_RECEIVED_DATE = "Received Date"
 COL_FILE_COUNT = "File Count"
 COL_VALIDATION_NOTES = "Validation Notes"
 
-#: Columns the accountant edits; the scanner only ever reads these.
+#: Columns the accountant edits. Since decision 103 they are the whole
+#: sheet: the machine reads these and writes none of them.
 ACCOUNTANT_COLUMNS = (
     COL_IDENTIFIER,
     COL_DOCUMENT,
@@ -107,15 +132,24 @@ ACCOUNTANT_COLUMNS = (
     COL_MANUAL_OVERRIDE,
 )
 
-#: Columns the scanner writes; the accountant should not hand-edit these.
-SCANNER_COLUMNS = (
+#: The four columns the scanner used to write into the sheet. They are not
+#: part of the schema any more - :data:`HEADERS` is the accountant's ten -
+#: and these names survive for exactly two readers: the loader, which
+#: ignores them where an old workbook still carries them, and the migration
+#: that deletes them from such a workbook once. What they held is in the
+#: record (``statuses`` in :mod:`tracker.store`) and on the Status Report.
+LEGACY_SCANNER_COLUMNS = (
     COL_STATUS,
     COL_RECEIVED_DATE,
     COL_FILE_COUNT,
     COL_VALIDATION_NOTES,
 )
 
-HEADERS = ACCOUNTANT_COLUMNS + SCANNER_COLUMNS
+#: The Requests sheet, whole. ``create_template()`` and the rollover write
+#: exactly these, the loader requires exactly these, and the roadmap's
+#: schema table lists exactly these
+#: (``tests/test_single_source.py`` holds it to that).
+HEADERS = ACCOUNTANT_COLUMNS
 
 DEFAULT_EXPECTED_COUNT = 1
 DEFAULT_MIN_SIZE_KB = 5
@@ -185,17 +219,22 @@ UNSCANNED_LABEL = "Requested"
 SUMMARY_SEPARATOR = " · "
 SUMMARY_EMPTY = "no requests"
 
-#: Sidecars beside a workbook: rows waiting because Excel held it, an
-#: unreadable sidecar kept as evidence, and the temp file an atomic save
-#: lands in first.
-PENDING_SUFFIX = ".pending.json"
-CORRUPT_SUFFIX = ".corrupt.json"
+#: The temp file an atomic save lands in first. The two sidecar suffixes
+#: that used to stand beside it went with the deferred writes (decision
+#: 103): nothing is deferred any more, so there is nothing to keep beside
+#: a workbook and nothing to quarantine.
 TEMP_SUFFIX = ".tmp"
 
-#: How long a locked workbook is retried before rows are deferred to the
-#: sidecar; the index uses the same policy.
-LOCK_RETRIES = 5
-LOCK_RETRY_DELAY = 0.5
+#: How often a *read* of the workbook is retried, and how long it waits the
+#: first time (doubling). Not a lock retry - Excel's share mode lets a
+#: reader in, and decision 103 took every write out of the pass. What this
+#: covers is the fraction of a second in which Excel saves by writing a new
+#: file beside the old one and renaming it over the top: a reader that
+#: happened to open in that window sees the file vanish, and the honest
+#: answer is to look again rather than to tell a person their manifest is
+#: missing.
+READ_RETRIES = 3
+READ_RETRY_DELAY = 0.2
 
 
 class Override:
@@ -213,7 +252,16 @@ class ManifestError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class RequestItem:
-    """One row of the Requests sheet, fully parsed and validated."""
+    """One request: the person's rule, and what the record says about it.
+
+    ``records.RULE_FIELDS`` names the person's half - the ten columns of
+    the sheet plus ``row``, which is where on it the rule was read - and
+    that half is what the workbook, a ``rules_imported`` event and the
+    store's ``requests`` table all carry. The four status fields are the
+    record's: they are not on the sheet any more (decision 103), so
+    :func:`load_rules` leaves them at their defaults and
+    :func:`load_manifest` fills them from the store's ``statuses``.
+    """
 
     identifier: str
     document: str
@@ -226,7 +274,7 @@ class RequestItem:
     date_pattern: str = ""                     # validated to compile on load
     date_pattern_derived: bool = False         # True: made from Period's year, not typed
     manual_override: str = ""                  # "", Override.ACCEPTED, Override.WAIVED
-    status: str = ""                           # "", or a Status.ALL value
+    status: str = ""                           # the record's, not the sheet's
     received_date: dt.date | None = None
     file_count: int | None = None
     validation_notes: str = ""
@@ -599,34 +647,76 @@ def identifier_problem(identifier: str) -> str:
     return ""
 
 
-def _header_map(ws) -> dict[str, int]:
-    """Map canonical column names to 1-based column indexes; fail on missing."""
+def _header_map(ws, wanted: tuple[str, ...] = HEADERS) -> dict[str, int]:
+    """Map canonical column names to 1-based column indexes; fail on missing.
+
+    Only ``wanted`` has to be there. An older workbook still carrying the
+    four columns the scanner used to write (:data:`LEGACY_SCANNER_COLUMNS`)
+    loads exactly the same way and those cells are simply not read: nothing
+    refuses a file a person has been using all season because the machine
+    stopped writing part of it.
+    """
     found: dict[str, int] = {}
     for idx in range(1, (ws.max_column or 0) + 1):
         text = _cell_str(ws.cell(row=1, column=idx).value)
         if text:
             found[text.lower()] = idx
-    missing = [h for h in HEADERS if h.lower() not in found]
+    missing = [h for h in wanted if h.lower() not in found]
     if missing:
         raise ManifestError(
             f"Sheet {SHEET_NAME!r} is missing column(s): {', '.join(missing)}"
         )
-    return {h: found[h.lower()] for h in HEADERS}
+    return {h: found[h.lower()] for h in wanted}
+
+
+def legacy_scanner_columns(ws) -> dict[str, int]:
+    """The scanner columns an old Requests sheet still carries, by 1-based
+    column index; empty on a sheet already slimmed.
+
+    The one reader of :data:`LEGACY_SCANNER_COLUMNS`, shared by the
+    migration that imports those cells into the record and the one that
+    deletes them from the sheet, so the two cannot disagree about which
+    columns they are looking at.
+    """
+    found: dict[str, int] = {}
+    for idx in range(1, (ws.max_column or 0) + 1):
+        text = _cell_str(ws.cell(row=1, column=idx).value).lower()
+        for header in LEGACY_SCANNER_COLUMNS:
+            if text == header.lower():
+                found[header] = idx
+    return found
 
 
 # --------------------------------------------------------------- loading ----
 
 
 def _open_manifest(path: Path):
-    """The workbook, read-only (cached values), or the one sentence for why not."""
+    """The workbook, read-only (cached values), or the one sentence for why not.
+
+    A file that is not there is said so at once - nothing is being saved
+    over a path that does not exist. A file that *is* there and will not
+    open is tried :data:`READ_RETRIES` times with a doubling wait, because
+    Excel saves a workbook by writing a new one beside it and renaming it
+    over the top: for a fraction of a second the bytes at that path are the
+    half-written new file's, and a reader that gave up there would tell a
+    person their manifest was corrupt. Excel's own share mode lets a reader
+    open the file it is holding, so nothing else here waits on Excel -
+    since decision 103 the machine has no write of its own to retry.
+    """
     if not path.exists():
         raise ManifestError(f"Manifest not found: {path}")
-    try:
-        return load_workbook(path, data_only=True)
-    except ManifestError:
-        raise
-    except Exception as exc:  # zip/corruption errors from openpyxl
-        raise ManifestError(f"Could not open {path}: {exc}") from exc
+    delay = READ_RETRY_DELAY
+    for attempt in range(1, READ_RETRIES + 1):
+        try:
+            return load_workbook(path, data_only=True)
+        except Exception as exc:  # zip/corruption errors from openpyxl
+            if attempt == READ_RETRIES:
+                raise ManifestError(f"Could not open {path}: {exc}") from exc
+            log.debug("%s could not be read (attempt %d/%d): %s",
+                      path.name, attempt, READ_RETRIES, exc)
+            time.sleep(delay)
+            delay *= 2
+    raise ManifestError(f"Could not open {path}")   # unreachable; the loop raises
 
 
 def _requests_sheet(wb, path: Path):
@@ -635,260 +725,257 @@ def _requests_sheet(wb, path: Path):
     return wb[SHEET_NAME]
 
 
-def load_manifest(path: Path | str) -> list[RequestItem]:
-    """Load and validate every request row from ``path``.
+def _the_folder_and_the_workbook(path_or_dir: Path | str) -> tuple[Path, Path]:
+    """The engagement folder and its manifest, whichever of the two was named.
 
-    The request itself - the identifier, the document, the period, the
-    keywords, the extensions, Waived, Manual Override - is the person's, and
-    always comes from the workbook. The machine writes none of it and the
-    engagement's record holds none of it.
+    Every reader here has always been handed the workbook's own path,
+    because that is the file it read. Since decision 103 the answer comes
+    from the record, which belongs to the folder, so both spellings are
+    accepted and resolved here rather than at a dozen call sites.
 
-    **The scanner columns are the record's, per identifier.** Where
-    ``ledger.LEDGER_FILENAME`` has ever recorded a status for an identifier,
-    that status, its Received Date, File Count and Validation Notes are what
-    this returns for that row; an identifier the record has never seen keeps
-    the workbook's own columns. Two readings side by side, one row at a time:
-    the record is the truth for what it has recorded, the workbook for what
-    it has not. So an engagement scanned before it kept a record, or one row
-    added to the list since, reads exactly as it always did.
-
-    Readers that must also see a status a locked Excel deferred still overlay
-    :func:`pending_updates` through :func:`with_pending` on top of this; the
-    two agree, because a deferred write is recorded as applied.
-
-    Reads with ``data_only=True`` so formula cells yield their cached values.
-    Raises :class:`ManifestError` with row context on any invalid data.
+    ``MANIFEST_FILENAME`` is the scaffold's, and the scaffold imports this
+    module: the name is fetched at call time so the edge stays one-way at
+    load time (``tests/test_layers.py``).
     """
-    path = Path(path)
-    # The same replacement with_pending() makes, from the record rather than
-    # from the sidecar: one owner for what replacing a row's scanner columns
-    # means, and one rule for matching an identifier without case.
-    return with_pending(load_manifest_from_workbook(path), _recorded_statuses(path))
+    from tracker.scaffold import MANIFEST_FILENAME
+
+    path = Path(path_or_dir)
+    if path.suffix.lower() == ".xlsx":
+        return path.parent, path
+    return path, path / MANIFEST_FILENAME
 
 
-def _recorded_statuses(manifest_path: Path) -> dict[str, StatusUpdate]:
-    """The status the engagement's record holds for each identifier it has
-    ever recorded one for; empty where there is no record, no ``scanned``
-    event in it, or no reading it.
+def load_manifest(path_or_dir: Path | str) -> list[RequestItem]:
+    """Every request, as the record answers it now. Rows in the sheet's order.
 
-    A record that does not read as one is said loudly, with the engagement
-    and the line, and the workbook's own columns answer instead - the way the
-    storage path already reports a sidecar it refuses. Never a silent skip.
+    **This does not read the workbook** (decision 103). The rules are the
+    ones the last import read into the store's ``requests`` table, each
+    row's Status, Received Date, File Count and Validation Notes come from
+    ``statuses``, and a keyword a person's filing taught the row is added to
+    its Any Keywords from ``learned_keywords``. The store is a derivation of
+    the journal and :func:`tracker.store.follow_the_journal` makes it one
+    again first, so no reader has to know whether a pass prepared this
+    engagement - exactly as ``tracker.filer.read_index`` does for the index.
+
+    The one time the sheet is read here is the reading that has never
+    happened: an engagement no import has spoken for yet (a manifest just
+    created, a folder nothing has passed over) answers from
+    :func:`load_rules`, which is the same first reading the store's own
+    build takes. After a pass there is always an import, and after a
+    workbook that will not validate the last good rules stay in force -
+    nothing is imported from a sheet that does not load.
+
+    Raises :class:`ManifestError` with row context when that first reading
+    is the one that fails.
     """
-    engagement_dir = manifest_path.parent
-    try:
-        recorded = ledger.statuses(ledger.read_events(engagement_dir))
-        return {identifier: status_from_json(raw) for identifier, raw in recorded.items()}
-    except (ledger.LedgerError, KeyError, TypeError, ValueError, AttributeError) as exc:
-        log.warning(
-            "%s: its record cannot be read (%s) - the scanner columns in %s answer instead; "
-            "a person should look",
-            engagement_dir.name, exc, manifest_path.name,
+    # Imported here, not at the top: this module is the workbook's, the
+    # store is the record's, and the two sit in the same layer with no
+    # load-time edge between them (``tests/test_layers.py``). A call-time
+    # import is where that edge is allowed to close.
+    from tracker import ledger, store
+
+    folder, workbook = _the_folder_and_the_workbook(path_or_dir)
+    conn = store.connect()
+    if ledger.path_for(folder).exists():
+        # A folder with a journal is an engagement something has decided
+        # about, and the store is a derivation of that journal: bring it
+        # up before reading, exactly as ``filer.read_index`` does. A
+        # folder with none has nothing to fold and is left unknown to the
+        # store - a workbook somebody made a moment ago, or a catalog in a
+        # temporary directory, is not an engagement yet.
+        store.follow_the_journal(conn, store.root_for(folder), folder)
+    stored = store.rules(conn, folder)
+    items = (load_rules(workbook).items if stored is None
+             else [RequestItem(**rule_from_json(row)) for row in stored])
+    return _with_the_record(
+        items, store.statuses(conn, folder), store.learned_keywords(conn, folder)
+    )
+
+
+def _with_the_record(
+    items: Iterable[RequestItem],
+    statuses: Mapping[str, StatusUpdate],
+    learned: Mapping[str, tuple[str, ...]],
+) -> list[RequestItem]:
+    """The person's rules with what the record holds about each laid on top.
+
+    One place where "what a request is now" is assembled: the status the
+    last scan recorded, and the keywords a person's filings taught the row
+    added to the ones they typed. Identifiers are matched without case,
+    because a folder name on Windows is (``records.identifier_key``).
+    """
+    out = []
+    for item in items:
+        key = identifier_key(item.identifier)
+        update = statuses.get(key)
+        taught = tuple(
+            word for word in learned.get(key, ())
+            if word.lower() not in {k.lower() for k in item.any_keywords}
         )
-        return {}
+        if update is None and not taught:
+            out.append(item)
+            continue
+        out.append(replace(
+            item,
+            any_keywords=item.any_keywords + taught,
+            **({} if update is None else {
+                "status": update.status,
+                "file_count": update.file_count,
+                "received_date": update.received_date,
+                "validation_notes": update.validation_notes,
+            }),
+        ))
+    return out
 
 
-def load_manifest_from_workbook(path: Path | str) -> list[RequestItem]:
-    """Every request row as the workbook alone says it, scanner columns included.
+def with_statuses(
+    items: Iterable[RequestItem], updates: Mapping[str, StatusUpdate]
+) -> list[RequestItem]:
+    """``items`` with each row's status replaced by ``updates``, where it has one.
 
-    The reading every reader made before the record was believed, kept public
-    under its own name: :func:`load_manifest` layers the record on top of it,
-    the record's own bootstrap imports from it, and the suite's agreement
-    fixture would be comparing the record with itself without it.
+    What a scan shows of itself before the record has been read again: the
+    scanner resolves a status per row and counts the rows as it is about to
+    leave them (``ScanReport.summary``). Identifiers match without case,
+    the way every reading that joins a status to a request does.
+    """
+    by_identifier = {identifier_key(identifier): update for identifier, update in updates.items()}
+    return _with_the_record(items, by_identifier, {})
+
+
+@dataclass(frozen=True, slots=True)
+class RulesReading:
+    """One reading of the workbook: the person's rules and their engagement.
+
+    A pair, because both come out of one open of the file
+    (:func:`load_rules`) and every caller wants both - the pass that imports
+    them, the store's first build, the check a person runs before a pass.
+    Three opens of one workbook was what this replaced.
+    """
+
+    items: list[RequestItem] = field(default_factory=list)
+    info: EngagementInfo = field(default_factory=EngagementInfo)
+
+
+def load_rules(path: Path | str) -> RulesReading:
+    """The person's request list and Engagement sheet, from one open of ``path``.
+
+    **The only reading of the workbook there is.** The rows come back as
+    :class:`RequestItem`s with their status fields at the defaults: the
+    sheet holds no status to read (decision 103), and an older sheet that
+    still carries the four columns is read for its rules with those cells
+    ignored - so nothing refuses a workbook a person has been using all
+    season.
+
+    Reads with ``data_only=True`` so formula cells yield their cached
+    values, and raises :class:`ManifestError` with the Excel row on any
+    invalid data. A workbook that raises here is a workbook nothing is
+    imported from: the engagement's pass records the problem and the rules
+    the record already holds stay in force.
     """
     path = Path(path)
     wb = _open_manifest(path)
     try:
-        ws = _requests_sheet(wb, path)
-        columns = _header_map(ws)
-
-        items: list[RequestItem] = []
-        seen: dict[str, int] = {}
-        for row in range(2, (ws.max_row or 1) + 1):
-            values = {
-                name: ws.cell(row=row, column=idx).value
-                for name, idx in columns.items()
-            }
-            if all(_cell_str(v) == "" for v in values.values()):
-                continue  # blank spacer row
-
-            identifier = _cell_str(values[COL_IDENTIFIER])
-            if not identifier:
-                raise ManifestError(f"Row {row}: {COL_IDENTIFIER} is required")
-            problem = identifier_problem(identifier)
-            if problem:
-                raise ManifestError(f"Row {row}: {COL_IDENTIFIER} {identifier!r} {problem}")
-            # Windows folder names are case-insensitive, so "A01" and "a01"
-            # would claim the same folder; treat them as the same identifier.
-            if identifier_key(identifier) in seen:
-                raise ManifestError(
-                    f"Duplicate identifier {identifier!r} "
-                    f"(rows {seen[identifier_key(identifier)]} and {row})"
-                )
-            seen[identifier_key(identifier)] = row
-
-            document = _cell_str(values[COL_DOCUMENT])
-            if not document:
-                raise ManifestError(f"Row {row}: {COL_DOCUMENT} is required")
-
-            expected_count = _parse_int(
-                values[COL_EXPECTED_COUNT], DEFAULT_EXPECTED_COUNT, COL_EXPECTED_COUNT, row
-            )
-            if expected_count < 1:
-                raise ManifestError(f"Row {row}: {COL_EXPECTED_COUNT} must be >= 1")
-
-            min_size_kb = _parse_int(
-                values[COL_MIN_SIZE_KB], DEFAULT_MIN_SIZE_KB, COL_MIN_SIZE_KB, row
-            )
-            if min_size_kb < 0:
-                raise ManifestError(f"Row {row}: {COL_MIN_SIZE_KB} must be >= 0")
-
-            period = _cell_str(values[COL_PERIOD])
-            date_pattern = _cell_str(values[COL_DATE_PATTERN])
-            date_pattern_derived = False
-            if date_pattern == NO_DATE_CHECK:
-                date_pattern = ""
-            elif date_pattern:
-                try:
-                    re.compile(date_pattern)
-                except re.error as exc:
-                    raise ManifestError(
-                        f"Row {row}: {COL_DATE_PATTERN} is not a valid regex: {exc}"
-                    ) from None
-            else:
-                date_pattern, date_pattern_derived = derived_date_pattern(period), False
-                date_pattern_derived = bool(date_pattern)
-
-            items.append(
-                RequestItem(
-                    identifier=identifier,
-                    document=document,
-                    period=period,
-                    expected_count=expected_count,
-                    allowed_extensions=parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
-                    min_size_kb=min_size_kb,
-                    required_keywords=csv_tuple(values[COL_REQUIRED_KEYWORDS]),
-                    any_keywords=csv_tuple(values[COL_ANY_KEYWORDS]),
-                    date_pattern=date_pattern,
-                    date_pattern_derived=date_pattern_derived,
-                    manual_override=_parse_enum(
-                        values[COL_MANUAL_OVERRIDE], Override.ALL, COL_MANUAL_OVERRIDE, row
-                    ),
-                    status=_parse_enum(values[COL_STATUS], Status.ALL, COL_STATUS, row),
-                    received_date=_parse_date(
-                        values[COL_RECEIVED_DATE], COL_RECEIVED_DATE, row
-                    ),
-                    file_count=(
-                        _parse_int(values[COL_FILE_COUNT], -1, COL_FILE_COUNT, row)
-                        if _cell_str(values[COL_FILE_COUNT])
-                        else None
-                    ),
-                    validation_notes=_cell_str(values[COL_VALIDATION_NOTES]),
-                    row=row,
-                )
-            )
-        # Two issuer rows whose names nest make each other useless and say
-        # nothing about it; the one moment a person can be told is now.
-        check_narrowing_names(items)
-        return items
+        info = (_engagement_from_sheet(wb[ENGAGEMENT_SHEET_NAME])
+                if ENGAGEMENT_SHEET_NAME in wb.sheetnames else EngagementInfo())
+        return RulesReading(items=_requests_from_sheet(wb, path), info=info)
     finally:
         wb.close()
 
 
-# ------------------------------------------------------------- write-back ----
+def _requests_from_sheet(wb, path: Path) -> list[RequestItem]:
+    """Every rule on the Requests sheet, parsed and validated, in sheet order.
 
-
-def pending_path(workbook_path: Path) -> Path:
-    """The sidecar beside ``workbook_path`` that holds rows an Excel lock deferred."""
-    return workbook_path.with_name(workbook_path.stem + PENDING_SUFFIX)
-
-
-def quarantine_sidecar(
-    sidecar: Path, exc: Exception, what: str, *, quarantine: bool = True
-) -> Path | None:
-    """Move an unreadable sidecar aside (kept as evidence) so it is never retried for ever.
-
-    Each quarantine gets its own name (``CORRUPT_SUFFIX``, then ``.2``, ``.3``
-    ...): a second unreadable sidecar must never overwrite the first, because
-    the first is the only record of rows that were once deferred.
-
-    With ``quarantine=False`` nothing on disk is touched and ``None`` is
-    returned: that is the reader's and the dry run's contract. Only the call
-    that is about to rewrite the workbook - the one that would otherwise
-    retry the same unreadable file for ever - moves it aside.
+    The status fields of each :class:`RequestItem` are left at their
+    defaults: there is nothing on the sheet to read them from, and a row
+    that has never been scanned and a row whose status is in the record
+    read the same here. What the record says is laid on in
+    :func:`load_manifest`.
     """
-    if not quarantine:
-        log.error(
-            "Unreadable %s sidecar %s ignored for this read (%s); "
-            "the next real run moves it aside", what, sidecar.name, exc,
-        )
-        return None
-    corrupt = sidecar.with_suffix(CORRUPT_SUFFIX)
-    counter = 1
-    while corrupt.exists():
-        counter += 1
-        corrupt = sidecar.with_suffix(f".{counter}{CORRUPT_SUFFIX}")
-    sidecar.replace(corrupt)
-    log.error("Unreadable %s sidecar moved to %s: %s", what, corrupt.name, exc)
-    return corrupt
+    ws = _requests_sheet(wb, path)
+    columns = _header_map(ws)
 
-
-def _load_pending(manifest_path: Path, *, quarantine: bool = True) -> dict[str, StatusUpdate]:
-    sidecar = pending_path(manifest_path)
-    if not sidecar.exists():
-        return {}
-    try:
-        raw = json.loads(sidecar.read_text(encoding="utf-8"))
-        return {
-            ident: status_from_json(u)
-            for ident, u in raw.items()
+    items: list[RequestItem] = []
+    seen: dict[str, int] = {}
+    for row in range(2, (ws.max_row or 1) + 1):
+        values = {
+            name: ws.cell(row=row, column=idx).value
+            for name, idx in columns.items()
         }
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError) as exc:
-        quarantine_sidecar(sidecar, exc, "pending", quarantine=quarantine)
-        return {}
+        if all(_cell_str(v) == "" for v in values.values()):
+            continue  # blank spacer row
 
+        identifier = _cell_str(values[COL_IDENTIFIER])
+        if not identifier:
+            raise ManifestError(f"Row {row}: {COL_IDENTIFIER} is required")
+        problem = identifier_problem(identifier)
+        if problem:
+            raise ManifestError(f"Row {row}: {COL_IDENTIFIER} {identifier!r} {problem}")
+        # Windows folder names are case-insensitive, so "A01" and "a01"
+        # would claim the same folder; treat them as the same identifier.
+        if identifier_key(identifier) in seen:
+            raise ManifestError(
+                f"Duplicate identifier {identifier!r} "
+                f"(rows {seen[identifier_key(identifier)]} and {row})"
+            )
+        seen[identifier_key(identifier)] = row
 
-def pending_updates(
-    manifest_path: Path | str, *, quarantine: bool = True
-) -> dict[str, StatusUpdate]:
-    """Status updates a locked Excel kept out of the workbook, if any.
+        document = _cell_str(values[COL_DOCUMENT])
+        if not document:
+            raise ManifestError(f"Row {row}: {COL_DOCUMENT} is required")
 
-    Readers that must not act on stale statuses - the reminder above all,
-    which would otherwise ask a client for a document the last scan saw
-    arrive - overlay these on what :func:`load_manifest` returned. Such
-    readers pass ``quarantine=False`` so that looking never moves a file.
-    """
-    return _load_pending(Path(manifest_path), quarantine=quarantine)
+        expected_count = _parse_int(
+            values[COL_EXPECTED_COUNT], DEFAULT_EXPECTED_COUNT, COL_EXPECTED_COUNT, row
+        )
+        if expected_count < 1:
+            raise ManifestError(f"Row {row}: {COL_EXPECTED_COUNT} must be >= 1")
 
+        min_size_kb = _parse_int(
+            values[COL_MIN_SIZE_KB], DEFAULT_MIN_SIZE_KB, COL_MIN_SIZE_KB, row
+        )
+        if min_size_kb < 0:
+            raise ManifestError(f"Row {row}: {COL_MIN_SIZE_KB} must be >= 0")
 
-def with_pending(
-    items: Iterable[RequestItem], updates: Mapping[str, StatusUpdate]
-) -> list[RequestItem]:
-    """``items`` with the scanner columns replaced by any deferred update.
-    Identifiers match as ``load_manifest`` compares them, without case."""
-    by_identifier = {identifier_key(identifier): update for identifier, update in updates.items()}
-    out = []
-    for item in items:
-        update = by_identifier.get(identifier_key(item.identifier))
-        if update is None:
-            out.append(item)
+        period = _cell_str(values[COL_PERIOD])
+        date_pattern = _cell_str(values[COL_DATE_PATTERN])
+        date_pattern_derived = False
+        if date_pattern == NO_DATE_CHECK:
+            date_pattern = ""
+        elif date_pattern:
+            try:
+                re.compile(date_pattern)
+            except re.error as exc:
+                raise ManifestError(
+                    f"Row {row}: {COL_DATE_PATTERN} is not a valid regex: {exc}"
+                ) from None
         else:
-            out.append(replace(
-                item,
-                status=update.status,
-                file_count=update.file_count,
-                received_date=update.received_date,
-                validation_notes=update.validation_notes,
-            ))
-    return out
+            date_pattern = derived_date_pattern(period)
+            date_pattern_derived = bool(date_pattern)
+
+        items.append(
+            RequestItem(
+                identifier=identifier,
+                document=document,
+                period=period,
+                expected_count=expected_count,
+                allowed_extensions=parse_extensions(values[COL_ALLOWED_EXTENSIONS]),
+                min_size_kb=min_size_kb,
+                required_keywords=csv_tuple(values[COL_REQUIRED_KEYWORDS]),
+                any_keywords=csv_tuple(values[COL_ANY_KEYWORDS]),
+                date_pattern=date_pattern,
+                date_pattern_derived=date_pattern_derived,
+                manual_override=_parse_enum(
+                    values[COL_MANUAL_OVERRIDE], Override.ALL, COL_MANUAL_OVERRIDE, row
+                ),
+                row=row,
+            )
+        )
+    # Two issuer rows whose names nest make each other useless and say
+    # nothing about it; the one moment a person can be told is now.
+    check_narrowing_names(items)
+    return items
 
 
-def _save_pending(manifest_path: Path, updates: Mapping[str, StatusUpdate]) -> None:
-    payload = {
-        ident: status_to_json(u)
-        for ident, u in updates.items()
-    }
-    write_json_atomically(pending_path(manifest_path), payload)
+# -------------------------------------------------- how a file is written ----
 
 
 def temp_path_for(path: Path) -> Path:
@@ -963,182 +1050,17 @@ def save_workbook_atomically(wb: Workbook, path: Path) -> None:
     """Save ``wb`` to ``path`` without ever leaving a half-written file there.
 
     openpyxl streams the zip straight into the target, so a crash mid-save
-    would leave a manifest that Excel cannot open and ``load_manifest``
+    would leave a manifest that Excel cannot open and :func:`load_rules`
     rejects; :func:`atomic_replacement` is what makes it whole or nothing.
+
+    Three callers, and there will never be a fourth in a pass: creating an
+    engagement, rolling a year forward, and the one-time slimming of a
+    workbook that still carries the scanner columns. If Excel holds the
+    file the replace raises ``PermissionError`` and the caller says so
+    loudly - there is nothing to defer and nothing to merge (decision 103).
     """
     with atomic_replacement(path) as temp:
         wb.save(temp)
-
-
-def _apply_updates(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
-    """Open the workbook for writing and set scanner columns. May raise
-    PermissionError if Excel holds the file locked (caller retries)."""
-    wb = load_workbook(path)  # NOT data_only: preserves any formulas on save
-    try:
-        ws = _requests_sheet(wb, path)
-        columns = _header_map(ws)
-
-        rows_by_identifier = {
-            _cell_str(ws.cell(row=r, column=columns[COL_IDENTIFIER]).value): r
-            for r in range(2, (ws.max_row or 1) + 1)
-        }
-
-        for identifier, update in updates.items():
-            row = rows_by_identifier.get(identifier)
-            if row is None:
-                # Row was deleted/renamed since the scan; nothing to update.
-                log.warning(
-                    "Identifier %r not found in %s; update dropped", identifier, path.name
-                )
-                continue
-            ws.cell(row=row, column=columns[COL_STATUS], value=update.status)
-            date_cell = ws.cell(
-                row=row,
-                column=columns[COL_RECEIVED_DATE],
-                value=update.received_date,
-            )
-            if update.received_date is not None:
-                date_cell.number_format = DATE_FORMAT
-            ws.cell(row=row, column=columns[COL_FILE_COUNT], value=update.file_count)
-            # cell(value=None) assigns nothing: a note that is now empty must
-            # still replace the one before it, or "request folder not found"
-            # outlives the folder and the reminder holds the row back for ever.
-            notes = ws.cell(row=row, column=columns[COL_VALIDATION_NOTES])
-            notes.value = update.validation_notes or None
-            as_text(notes)
-        save_workbook_atomically(wb, path)
-    finally:
-        wb.close()
-
-
-def statuses_from_workbook(path: Path | str, *, quarantine: bool = False) -> dict[str, dict]:
-    """Every identifier's scanner columns as the workbook and its pending
-    sidecar alone read them, by the identifier as the workbook spells it.
-
-    The reading every reader made before the record was believed, kept public
-    under its own name: it is what the record's own bootstrap imports, and
-    what the suite's agreement fixture checks the record against - through
-    :func:`load_manifest` it would be checking the record against itself.
-
-    Looking changes nothing by default: an unreadable sidecar is reported and
-    left where it is.
-    """
-    path = Path(path)
-    items = with_pending(load_manifest_from_workbook(path), _load_pending(path, quarantine=quarantine))
-    return {
-        item.identifier: status_to_json(StatusUpdate(
-            status=item.status, file_count=item.file_count,
-            received_date=item.received_date, validation_notes=item.validation_notes,
-        ))
-        for item in items
-    }
-
-
-def _record_scanned(path: Path, updates: Mapping[str, StatusUpdate]) -> None:
-    """Append what this write applied to the engagement's own record.
-
-    Only what *changed*: a pass that found the engagement exactly as it left
-    it appends nothing, so the record is the list of the moments something
-    moved rather than one line per pass for ever.
-
-    Only under the engagement lock, which is what makes this a *pass* - the
-    scanner takes it before it reads a thing. Seeding a request list into a
-    manifest from a test or a tool is not a pass and writes no event; the
-    bootstrap above means the first real pass records where those rows stood
-    anyway, so nothing is lost by the silence.
-    """
-    engagement_dir = path.parent
-    if not lock_is_held(engagement_dir):
-        return
-    applied = {identifier: status_to_json(update) for identifier, update in updates.items()}
-    already = ledger.statuses(ledger.read_events(engagement_dir))
-    changed = {i: status for i, status in applied.items() if already.get(i) != status}
-    if not changed:
-        return
-    ledger.append(
-        engagement_dir,
-        ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: changed}),
-        seed=lambda: [ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {
-            # A row nothing has scanned yet has no status to import, and a
-            # blank one recorded as a status would make the record answer for
-            # a row it has never seen anything happen to.
-            identifier: status
-            for identifier, status in statuses_from_workbook(path).items() if status["status"]
-        }})],
-    )
-
-
-def _record_keyword(path: Path, identifier: str, keyword: str) -> None:
-    """Append a keyword a person's filing taught a request.
-
-    The filer writes the index row first and the keyword after it, both
-    inside its own lock, so by the time this runs the record already carries
-    the rows; a caller outside the lock (a tool, a test) writes no event.
-    """
-    engagement_dir = path.parent
-    if not lock_is_held(engagement_dir):
-        return
-    ledger.append(engagement_dir, ledger.new(ledger.KEYWORD_LEARNED, **{
-        ledger.IDENTIFIER_KEY: identifier, ledger.KEYWORD_KEY: keyword,
-    }))
-
-
-def write_statuses(
-    path: Path | str,
-    updates: Mapping[str, StatusUpdate],
-    *,
-    retries: int = LOCK_RETRIES,
-    retry_delay: float = LOCK_RETRY_DELAY,
-) -> bool:
-    """Write scanner columns for the given identifiers, lock-resiliently.
-
-    Any updates deferred by a previous locked write (the pending sidecar) are
-    merged first; new updates win for the same identifier. If the workbook is
-    still locked after ``retries`` attempts with exponential backoff, the
-    merged updates are saved to the sidecar and applied on the next call.
-
-    Returns True if the workbook was written, False if deferred to sidecar.
-    """
-    path = Path(path)
-    merged: dict[str, StatusUpdate] = _load_pending(path)
-    merged.update(updates)
-    if not merged:
-        return True
-
-    delay = retry_delay
-    for attempt in range(1, retries + 1):
-        try:
-            _apply_updates(path, merged)
-        except PermissionError as exc:
-            log.warning(
-                "Manifest locked (attempt %d/%d): %s", attempt, retries, exc
-            )
-            if attempt < retries:
-                time.sleep(delay)
-                delay *= 2
-            continue
-        # The workbook holds every update now. A sidecar something else
-        # holds open cannot be deleted, but it must not be mistaken for a
-        # locked workbook: saving it again would only re-defer what landed.
-        try:
-            pending_path(path).unlink(missing_ok=True)
-        except PermissionError as exc:
-            log.warning("%s was written but %s is held open and stays (%s)", path.name, pending_path(path).name, exc)
-        _record_scanned(path, merged)
-        return True
-
-    _save_pending(path, merged)
-    # Recorded either way: the statuses are applied as far as this system is
-    # concerned - every reader overlays the sidecar - and which file they
-    # landed in is the workaround, not the fact.
-    _record_scanned(path, merged)
-    log.error(
-        "Manifest still locked after %d attempts; %d update(s) deferred to %s",
-        retries,
-        len(merged),
-        pending_path(path).name,
-    )
-    return False
 
 
 def has_routing_rules(item: RequestItem) -> bool:
@@ -1244,21 +1166,19 @@ def check_manifest(path: Path | str) -> ManifestCheck:
 
     Meant for a button in the app and the top of the scheduled run, so a
     typo made in Excel is reported with its row now rather than as a failed
-    job hours later. Problems are the loader's own messages. Warnings are
-    rows the rules cannot act on: a request with no keyword or date rule
-    never auto-files, a row accepting any file type will count an .exe, and
-    statuses still waiting in the pending sidecar are not in the sheet yet.
+    job hours later. **It reads the workbook**, not the record: the
+    question is what the next import would make of the sheet as it stands,
+    and the record holds the last sheet that loaded. Problems are the
+    loader's own messages; warnings are rows the rules cannot act on - a
+    request with no keyword or date rule never auto-files, a row accepting
+    any file type will count an .exe.
     """
     path = Path(path)
     problems: list[str] = []
     warnings: list[str] = []
     items: list[RequestItem] = []
     try:
-        items = load_manifest(path)
-    except ManifestError as exc:
-        problems.append(str(exc))
-    try:
-        load_engagement_info(path)
+        items = load_rules(path).items
     except ManifestError as exc:
         problems.append(str(exc))
     if not items and not problems:
@@ -1285,12 +1205,6 @@ def check_manifest(path: Path | str) -> ManifestCheck:
                     row=item.row, identifier=item.identifier, keyword=keyword.strip(),
                     example=FORM_FAMILIES[keyword.strip()],
                 ))
-    pending = pending_path(path)
-    if pending.exists():
-        warnings.append(
-            f"{pending.name} is waiting: the last scan could not write into the sheet "
-            "(was it open in Excel?); close Excel and re-scan"
-        )
     return ManifestCheck(problems=problems, warnings=warnings)
 
 
@@ -1329,7 +1243,13 @@ def _engagement_from_sheet(ws) -> EngagementInfo:
 
 
 def load_engagement_info(path: Path | str) -> EngagementInfo:
-    """The Engagement sheet of ``path``; all defaults if the sheet is absent."""
+    """The Engagement sheet of ``path``; all defaults if the sheet is absent.
+
+    The one caller that wants this half alone and not the rules: the
+    registry, which asks every folder under the clients root who it is for
+    and must not pay for parsing a request list to find out. Everything
+    that wants both takes :func:`load_rules`, which is one open.
+    """
     path = Path(path)
     wb = _open_manifest(path)
     try:
@@ -1371,47 +1291,113 @@ def write_engagement_info(path: Path | str, info: EngagementInfo) -> None:
         wb.close()
 
 
-def add_any_keyword(path: Path | str, identifier: str, keyword: str) -> bool:
-    """Append ``keyword`` to a row's Any Keywords so the next such file routes itself.
+# ---------------------------------------------------------------- slimming ----
 
-    Returns False if the row already had it. Raises PermissionError when
-    Excel holds the manifest - the caller decides whether that matters.
+#: What the statuses that used to sit in the sheet are read from now,
+#: said to the person who goes looking for them. One sentence, used by the
+#: migration's log line and by ``docs/runbook.md``.
+STATUSES_ARE_ON_THE_REPORT = (
+    "each request's status, Received Date, File Count and Validation Notes are in the "
+    "engagement's record and on its Status Report"
+)
+
+
+def carries_scanner_columns(path: Path | str) -> bool:
+    """Whether this workbook's Requests sheet still has the four columns the
+    scanner used to write. What the migration looks for, and nothing else."""
+    path = Path(path)
+    wb = _open_manifest(path)
+    try:
+        if SHEET_NAME not in wb.sheetnames:
+            return False
+        return bool(legacy_scanner_columns(wb[SHEET_NAME]))
+    finally:
+        wb.close()
+
+
+def read_scanner_columns(path: Path | str) -> dict[str, StatusUpdate]:
+    """Every identifier's scanner columns as an old workbook still holds
+    them, by the identifier as the sheet spells it.
+
+    The migration's reader and nothing else's: the one and only pass that
+    will ever read those cells, before they are deleted. A row with no
+    status at all is left out - a blank cell is not a status, and recording
+    one would make the record answer for a row nothing has looked at.
     """
     path = Path(path)
-    keyword = keyword.strip()
-    if not keyword:
-        return False
-    wb = load_workbook(path)
+    wb = _open_manifest(path)
     try:
+        if SHEET_NAME not in wb.sheetnames:
+            return {}
         ws = wb[SHEET_NAME]
-        columns = _header_map(ws)
+        columns = legacy_scanner_columns(ws)
+        if not columns:
+            return {}
+        identifier_at = _header_map(ws, (COL_IDENTIFIER,))[COL_IDENTIFIER]
+        out: dict[str, StatusUpdate] = {}
         for row in range(2, (ws.max_row or 1) + 1):
-            if _cell_str(ws.cell(row=row, column=columns[COL_IDENTIFIER]).value) != identifier:
+            identifier = _cell_str(ws.cell(row=row, column=identifier_at).value)
+            if not identifier:
                 continue
-            cell = ws.cell(row=row, column=columns[COL_ANY_KEYWORDS])
-            if cell.data_type == "f":
-                raise ManifestError(
-                    f"Row {row} ({identifier}): {COL_ANY_KEYWORDS} holds a formula; "
-                    f"type the keyword {keyword!r} into it by hand"
-                )
-            existing = csv_tuple(cell.value)
-            if keyword.lower() in (k.lower() for k in existing):
-                return False
-            cell.value = ", ".join((*existing, keyword))
-            as_text(cell)              # a keyword starting with "=" is a keyword, not a formula
-            save_workbook_atomically(wb, path)
-            _record_keyword(path, identifier, keyword)
-            return True
-        raise ManifestError(f"No request {identifier!r} in {path.name}")
+            status = _parse_enum(
+                ws.cell(row=row, column=columns[COL_STATUS]).value, Status.ALL, COL_STATUS, row
+            ) if COL_STATUS in columns else ""
+            if not status:
+                continue
+            count_cell = (ws.cell(row=row, column=columns[COL_FILE_COUNT]).value
+                          if COL_FILE_COUNT in columns else None)
+            out[identifier] = StatusUpdate(
+                status=status,
+                file_count=_parse_int(count_cell, 0, COL_FILE_COUNT, row),
+                received_date=(_parse_date(ws.cell(row=row, column=columns[COL_RECEIVED_DATE]).value,
+                                           COL_RECEIVED_DATE, row)
+                               if COL_RECEIVED_DATE in columns else None),
+                validation_notes=(_cell_str(ws.cell(row=row, column=columns[COL_VALIDATION_NOTES]).value)
+                                  if COL_VALIDATION_NOTES in columns else ""),
+            )
+        return out
+    finally:
+        wb.close()
+
+
+def slim_the_workbook(path: Path | str) -> list[str]:
+    """Delete the scanner columns from an old Requests sheet. Returns their names.
+
+    The **one** write this module makes to a workbook that already exists
+    and is not being created or rolled forward, and it happens once per
+    engagement, ever. Loaded without ``data_only`` so a person's own
+    formulas survive, and saved through :func:`save_workbook_atomically` so
+    the file is the old one or the new one and never half of each - which
+    is what makes a migration that Excel interrupts safe to run again.
+
+    ``delete_cols`` moves the cells left with their formatting, so the
+    column widths a person set, the Engagement sheet, a Carried Forward
+    sheet and any sheet of their own are all still there afterwards.
+    Raises ``PermissionError`` if Excel holds the file; the caller says so
+    and the next pass tries again.
+    """
+    path = Path(path)
+    wb = load_workbook(path)        # NOT data_only: a person's formulas survive
+    try:
+        if SHEET_NAME not in wb.sheetnames:
+            return []
+        ws = wb[SHEET_NAME]
+        columns = legacy_scanner_columns(ws)
+        if not columns:
+            return []
+        # Right to left, so deleting one does not move the next.
+        for header in sorted(columns, key=lambda h: columns[h], reverse=True):
+            ws.delete_cols(columns[header])
+        save_workbook_atomically(wb, path)
+        return [h for h in LEGACY_SCANNER_COLUMNS if h in columns]
     finally:
         wb.close()
 
 
 # --------------------------------------------------------------- template ----
 
-#: How wide each column is drawn, by header. Public because the Requests
-#: sheet is drawn twice now - here, and by the view a pass regenerates -
-#: and a second copy of these numbers would drift.
+#: How wide each column of the Requests sheet is drawn, by header - the ten
+#: a person edits, which is all of them since decision 103.
 COLUMN_WIDTHS = {
     COL_IDENTIFIER: 11,
     COL_DOCUMENT: 38,
@@ -1423,10 +1409,6 @@ COLUMN_WIDTHS = {
     COL_ANY_KEYWORDS: 24,
     COL_DATE_PATTERN: 28,
     COL_MANUAL_OVERRIDE: 16,
-    COL_STATUS: 17,
-    COL_RECEIVED_DATE: 14,
-    COL_FILE_COUNT: 11,
-    COL_VALIDATION_NOTES: 50,
 }
 
 
@@ -1439,10 +1421,14 @@ def create_template(
 ) -> Path:
     """Create a fresh manifest workbook at ``path``, optionally seeded with rows.
 
+    Writes the ten columns a person edits and nothing else: the four the
+    scanner used to fill are not part of the sheet any more (decision 103),
+    and what they held is in the record and on the Status Report.
+
     Always writes the Engagement sheet (defaults when ``info`` is None) so
     the person opening the workbook sees where the client's details go.
-    Refuses to overwrite an existing file — a live manifest carries scanner
-    state and must never be clobbered by a re-run.
+    Refuses to overwrite an existing file — a live manifest carries a
+    season of somebody's rules and must never be clobbered by a re-run.
 
     ``form`` is the catalog the rows were cut from, recorded on the
     Engagement sheet. It is a keyword rather than something carried by the

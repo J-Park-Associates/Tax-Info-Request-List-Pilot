@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import os
 import sqlite3
 import subprocess
 import sys
@@ -22,17 +23,16 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import live_readings, workbook_readings
+from tests.conftest import seed_statuses, workbook_readings
 from tests.test_scanner import text_pdf
 from tracker import ledger, store, view
-from tracker.filer import INDEX_FILENAME, file_drops, read_index
+from tracker.filer import INDEX_FILENAME, ensure, file_drops, read_index
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     RequestItem,
     Status,
     create_template,
     load_manifest,
-    write_statuses,
 )
 from tracker.records import StatusUpdate, entry_to_json, ledger_key
 from tracker.scaffold import MANIFEST_FILENAME, SHARED_DIR_NAME, scaffold_engagement
@@ -103,11 +103,29 @@ def build(conn, root, engagement):
 
 
 def said(conn, root, engagement):
-    return store.check(conn, root, engagement, **live_readings(engagement))
+    return store.check(conn, root, engagement)
 
 
 def rows(conn, table):
     return [tuple(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
+
+
+def _teach(manifest: Path, keyword: str, identifier: str = "A01") -> None:
+    """Type a keyword into a row's Any Keywords, the way a person would."""
+    from openpyxl import load_workbook
+
+    from tracker.manifest import COL_ANY_KEYWORDS, SHEET_NAME
+
+    wb = load_workbook(manifest)
+    try:
+        ws = wb[SHEET_NAME]
+        headers = [str(c.value or "") for c in ws[1]]
+        for row in range(2, (ws.max_row or 1) + 1):
+            if str(ws.cell(row=row, column=1).value or "").strip() == identifier:
+                ws.cell(row=row, column=headers.index(COL_ANY_KEYWORDS) + 1, value=keyword)
+        wb.save(manifest)
+    finally:
+        wb.close()
 
 
 def a_row(**fields) -> dict:
@@ -279,11 +297,12 @@ def test_a_reader_finding_no_rows_at_all_builds_them_from_the_journal_alone(
         rows = store.documents(fresh, engagement)
         assert [row["pbc_location"] for row in rows] == [
             entry.pbc_location for entry in read_index(engagement)]
-        # The person's half is left blank on purpose: the journal cannot
-        # answer for it, and an empty digest is how ensure() knows to read
-        # the sheet.
-        assert fresh.execute("SELECT manifest_digest FROM engagements").fetchone()[0] == ""
-        assert fresh.execute("SELECT COUNT(*) FROM requests").fetchone()[0] == 0
+        # The person's half comes back too, and still without a workbook:
+        # the pass above imported the request list, and an import is a
+        # line in the journal like any other (decision 103).
+        assert fresh.execute("SELECT manifest_digest FROM engagements").fetchone()[0] == \
+            view.rules_digest(engagement)
+        assert fresh.execute("SELECT COUNT(*) FROM requests").fetchone()[0] == len(ITEMS)
         # And again is a digest of the journal and nothing else.
         assert store.follow_the_journal(fresh, root, engagement) == recorded
     finally:
@@ -370,13 +389,18 @@ def test_the_state_is_current_behind_or_unknown(conn, root, by_hand):
 
     assert now() == store.UNKNOWN
     build(conn, root, by_hand)
+    assert now() == store.BEHIND        # nothing has imported the sheet yet
+    with engagement_lock(by_hand):
+        ensure(by_hand, root)
     assert now() == store.CURRENT
 
-    write_statuses(by_hand / MANIFEST_FILENAME,
-                   {"A01": StatusUpdate(status=Status.MISSING)})
+    # A person edits the request list: the digest moves and the rows the
+    # store holds stop describing it until the next pass reads it again.
+    _teach(by_hand / MANIFEST_FILENAME, "lender")
     assert now() == store.BEHIND                       # the rules workbook moved
 
-    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        ensure(by_hand, root)
     assert now() == store.CURRENT
     with engagement_lock(by_hand):
         store.record(conn, by_hand, ledger.new(
@@ -551,16 +575,51 @@ def test_the_rebuilt_rows_are_the_readers_rows_after_a_person_files_a_parked_one
     assert conn.execute("SELECT identifier FROM documents").fetchone()[0] == "C01"
 
 
-def test_every_request_the_manifest_holds_has_a_rule_and_a_status_in_the_store(
-        conn, root, engagement):
+def test_every_request_the_manifest_holds_has_a_rule_in_the_store(conn, root, engagement):
     build(conn, root, engagement)
 
     assert conn.execute("SELECT COUNT(*) FROM requests").fetchone()[0] == len(ITEMS)
-    assert conn.execute("SELECT COUNT(*) FROM statuses").fetchone()[0] == len(ITEMS)
+    # And no status: a status is something a scan recorded, not something
+    # the sheet carries (decision 103). An unscanned engagement has none.
+    assert conn.execute("SELECT COUNT(*) FROM statuses").fetchone()[0] == 0
     stored = conn.execute('SELECT * FROM requests WHERE "identifier" = ?', ("A01",)).fetchone()
-    item = next(i for i in load_manifest(engagement / MANIFEST_FILENAME) if i.identifier == "A01")
+    item = next(i for i in load_manifest(engagement) if i.identifier == "A01")
     assert stored["required_keywords"] == '["W-2"]' == store._to_sql(item.required_keywords)
     assert stored["date_pattern_derived"] == int(item.date_pattern_derived)
+
+
+def test_a_status_the_record_holds_is_in_the_store_and_answers_load_manifest(
+        conn, root, engagement):
+    seed_statuses(engagement, {"A01": StatusUpdate(
+        status=Status.RECEIVED, file_count=1, received_date=DAY1)})
+    build(conn, root, engagement)
+
+    assert said(conn, root, engagement) == []
+    held = conn.execute('SELECT * FROM statuses WHERE "identifier" = ?', ("a01",)).fetchone()
+    assert held["status"] == Status.RECEIVED and held["file_count"] == 1
+    answered = {i.identifier: i for i in load_manifest(engagement)}
+    assert answered["A01"].status == Status.RECEIVED
+    assert answered["A01"].received_date == DAY1
+    assert answered["C01"].status == ""
+
+
+def test_a_rebuild_takes_the_rules_from_the_journal_without_opening_the_workbook(
+        conn, root, engagement):
+    """The claim ``docs/storage.md`` makes: the store is rebuildable from
+    the journals alone. Once an import has been journalled, deleting the
+    workbook cannot cost the store the person's rules."""
+    with engagement_lock(engagement):
+        ensure(engagement, root)
+    assert any(e[ledger.EVENT_KEY] == ledger.RULES_IMPORTED
+               for e in ledger.read_events(engagement))
+
+    (engagement / MANIFEST_FILENAME).unlink()
+    store.rebuild_engagement(conn, root, engagement, rules=[], info=store.EngagementInfo(),
+                             manifest_digest="")
+
+    assert [row["identifier"] for row in conn.execute(
+        'SELECT "identifier" FROM requests ORDER BY "row"')] == ["A01", "C01"]
+    assert said(conn, root, engagement) == []
 
 
 def test_the_documents_table_holds_every_column_the_index_row_has(conn, root, engagement):
@@ -572,3 +631,30 @@ def test_the_documents_table_holds_every_column_the_index_row_has(conn, root, en
     row = conn.execute("SELECT * FROM documents").fetchone()
     for field, value in entry_to_json(entry).items():
         assert row[field] == store._to_sql(value), field
+
+
+def test_a_pass_and_the_command_line_key_one_engagement_the_same_way(root, engagement):
+    """The pass keys the engagement by the root it was run against; the
+    command line, handed that same root, finds it - and so does a caller
+    with no root at all. Found by an end-to-end run after decision 103: on
+    a machine with no settings file the pass fell back to the folder's
+    parent for its key and ``check`` looked the engagement up by the root
+    on its command line, so ``state`` said current and ``check`` said the
+    store did not hold it. One folder is one row, however it is named."""
+    from tracker.manifest import Status, load_manifest
+    from tracker.runner import REMINDERS_NEVER, main
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    assert main([str(root), "--reminders", REMINDERS_NEVER]) == 0
+    store.close()
+
+    db = Path(os.environ[store.ENV_STORE])
+    checked = cli(db, "check", root)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    assert "agrees" in checked.stdout
+    assert "current" in cli(db, "state", root).stdout
+    # and the same engagement named by a different root is still that row
+    conn = store.connect()
+    assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 1
+    assert store.check(conn, root.parent, engagement) == []
+    assert next(i.status for i in load_manifest(engagement) if i.identifier == "A01") == Status.RECEIVED

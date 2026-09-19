@@ -10,6 +10,7 @@ import datetime as dt
 import pytest
 from openpyxl import load_workbook
 
+from tests.conftest import ensure, seed_statuses
 from tests.samples import col
 from tracker.manifest import (
     COL_DATE_PATTERN,
@@ -21,7 +22,6 @@ from tracker.manifest import (
     Status,
     StatusUpdate,
     create_template,
-    write_statuses,
 )
 from tracker.rollover import (
     CARRIED_SHEET,
@@ -79,7 +79,7 @@ def prior(tmp_path):
     eng = tmp_path / "Smith Family 2025"
     eng.mkdir()
     create_template(eng / MANIFEST_FILENAME, PRIOR)
-    write_statuses(eng / MANIFEST_FILENAME, {
+    seed_statuses(eng, {
         "A01": StatusUpdate(status=Status.RECEIVED, file_count=3,
                             received_date=dt.date(2026, 3, 1)),
         "B01": StatusUpdate(status=Status.RECEIVED, file_count=1,
@@ -146,7 +146,7 @@ def test_counts_learn_from_what_arrived(prior):
 def test_counts_are_never_lowered(prior):
     """A client who under-delivered still owes what was asked."""
     eng = prior
-    write_statuses(eng / MANIFEST_FILENAME,
+    seed_statuses(eng,
                    {"A01": StatusUpdate(status=Status.PARTIAL, file_count=1)})
     a01 = rolled_by_id(roll_forward(eng))["A01"]
     assert a01.item.expected_count == 2
@@ -189,7 +189,7 @@ def test_waived_stays_waived(prior):
 def test_accepted_does_not_carry(prior):
     """Accepted judged one year's files; it must not pre-approve the next."""
     eng = prior
-    write_statuses(eng / MANIFEST_FILENAME,
+    seed_statuses(eng,
                    {"C01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
     wb = load_workbook(eng / MANIFEST_FILENAME)
     ws = wb[SHEET_NAME]
@@ -198,6 +198,7 @@ def test_accepted_does_not_carry(prior):
             row[col(COL_MANUAL_OVERRIDE) - 1].value = Override.ACCEPTED
     wb.save(eng / MANIFEST_FILENAME)
     wb.close()
+    ensure(eng)          # the pass that reads the edit into the record
 
     c01 = rolled_by_id(roll_forward(eng))["C01"].item
     assert c01.manual_override == ""
@@ -405,21 +406,71 @@ def test_a_rollover_reads_the_prior_year_without_moving_anything_in_it(prior):
     assert sorted(p.name for p in prior.iterdir()) == before
 
 
-def test_a_rollover_learns_from_the_prior_years_deferred_scan_too(prior, monkeypatch):
-    """The last scan of the prior year was deferred and never landed - the
-    usual end of an engagement. What it saw is in the sidecar."""
-    import datetime as dt
+def test_a_prior_year_of_either_layout_rolls_forward(tmp_path):
+    """A year that finished before decision 103 still has the four columns.
 
-    from tracker.manifest import Status, StatusUpdate, _save_pending
+    Its statuses are read into the record by the migration its rollover
+    triggers, so the counts it learns from are the same either way, and
+    the new list is written thin whichever it came from.
+    """
+    from tests.conftest import write_a_legacy_manifest
+    from tracker.filer import ensure as ensure_engagement
+    from tracker.manifest import carries_scanner_columns, load_rules
+
+    old = tmp_path / "Smith Family 2025"
+    old.mkdir()
+    write_a_legacy_manifest(old, PRIOR, {
+        "A01": StatusUpdate(status=Status.RECEIVED, file_count=3,
+                            received_date=dt.date(2026, 3, 1)),
+    })
+    assert carries_scanner_columns(old / MANIFEST_FILENAME)
+
+    ensure_engagement(old)                      # the pass a rollover makes first
+    report = roll_forward(old)
+
+    assert rolled_by_id(report)["A01"].prior_status == Status.RECEIVED
+    assert rolled_by_id(report)["A01"].item.expected_count == 3
+    assert not carries_scanner_columns(old / MANIFEST_FILENAME)
+
+    new = tmp_path / "Smith Family 2026"
+    new.mkdir()
+    write_rollover_manifest(new / MANIFEST_FILENAME, report)
+    assert not carries_scanner_columns(new / MANIFEST_FILENAME)
+    assert [i.identifier for i in load_rules(new / MANIFEST_FILENAME).items] == [
+        "A01", "B01", "C01", "D01"]
+
+
+def test_a_keyword_the_prior_year_was_taught_is_carried_as_an_ordinary_one(prior, tmp_path):
+    """The one moment a taught keyword becomes something typed.
+
+    Last year somebody filed a parked document and typed "home lending";
+    it lived in that engagement's record and nowhere else (decision 103).
+    Next year's list is last year's list, so it comes forward as an
+    ordinary Any Keyword - in the new workbook's cell, where a person can
+    see it and edit it.
+    """
+    from tests.conftest import ensure
+    from tracker import ledger, store
+    from tracker.locking import engagement_lock
+    from tracker.manifest import load_manifest, load_rules
     from tracker.scaffold import MANIFEST_FILENAME
 
-    manifest = prior / MANIFEST_FILENAME
-    _save_pending(manifest, {"A01": StatusUpdate(
-        status=Status.RECEIVED, file_count=3, received_date=dt.date(2026, 3, 1))})
+    with engagement_lock(prior):
+        ensure(prior)
+        store.record(store.connect(), prior, ledger.new(ledger.KEYWORD_LEARNED, **{
+            ledger.IDENTIFIER_KEY: "C01", ledger.KEYWORD_KEY: "home lending",
+        }))
+    assert {i.identifier: i.any_keywords
+            for i in load_manifest(prior)}["C01"] == ("rental", "home lending")
+
     report = roll_forward(prior)
-    a01 = rolled_by_id(report)["A01"]
-    assert a01.prior_status == Status.RECEIVED
-    assert a01.item.expected_count >= 3
+    assert rolled_by_id(report)["C01"].item.any_keywords == ("rental", "home lending")
+
+    new = tmp_path / "Smith Family 2026"
+    new.mkdir()
+    write_rollover_manifest(new / MANIFEST_FILENAME, report)
+    written = {i.identifier: i.any_keywords for i in load_rules(new / MANIFEST_FILENAME).items}
+    assert written["C01"] == ("rental", "home lending")
 
 
 def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior):
@@ -521,7 +572,7 @@ def test_the_rollover_carries_a_row_per_issuer(tmp_path):
         item_from_spec(issuer_row("F02", "Ashford Holdings LP")),
         item_from_spec(issuer_row("F03", "Birch Lane Partners")),
     ])
-    write_statuses(eng / MANIFEST_FILENAME, {
+    seed_statuses(eng, {
         "F02": StatusUpdate(status=Status.RECEIVED, file_count=1,
                             received_date=dt.date(2026, 3, 1)),
     })

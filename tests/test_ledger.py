@@ -1,14 +1,13 @@
 """Tests for tracker/ledger.py - the engagement's own append-only record.
 
-The record's main claim is not made here: it is the autouse fixtures in
-tests/conftest.py, which after every test in the suite hold the record's
-statuses to the manifest's and the store's rows to the record's. What is
-made here is the record's own behaviour - one line per event, a torn tail
-nobody trips over, the fold that is the index's own order, and the refusal
-to write a word outside the engagement lock - and which of the record and
-the manifest answered a read. Since decision 102 the index has only one
-answer: the record. The manifest's scanner columns still have two, per
-identifier, which is decision 88's rule and what decision 103 finishes.
+The record's main claim is not made here: it is the autouse fixture in
+tests/conftest.py, which after every test in the suite holds a store built
+from nothing to what these lines fold to. What is made here is the
+record's own behaviour - one line per event, a torn tail nobody trips
+over, the fold that is the index's own order, and the refusal to write a
+word outside the engagement lock - and that every reader answers from it.
+Since decision 103 there is no second answer to any of it: the index, the
+statuses and the person's imported rules are the record's alone.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
-from openpyxl import load_workbook
 
 from tests.test_scanner import text_pdf
 from tracker import ledger, store
@@ -35,10 +33,6 @@ from tracker.filer import (
 )
 from tracker.locking import engagement_lock
 from tracker.manifest import (
-    COL_DOCUMENT,
-    COL_IDENTIFIER,
-    COL_STATUS,
-    SHEET_NAME,
     RequestItem,
     Status,
     create_template,
@@ -302,42 +296,31 @@ def test_a_record_holding_only_a_scan_gives_an_index_of_no_rows(engagement):
     assert read_index(engagement) == []
 
 
-def test_a_recorded_identifier_reads_from_the_record_and_an_unrecorded_one_from_the_workbook(engagement):
+def test_every_status_comes_from_the_record_and_none_from_the_sheet(engagement):
+    """Decision 103: there is no second reading of a status to prefer.
+
+    A row the record has scanned answers with what it recorded; a row it
+    has not is blank, because a blank is what nobody having looked at it
+    means. The request itself is always the person's.
+    """
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
-    manifest = engagement / MANIFEST_FILENAME
-    whole = manifest.read_bytes()
     assert ledger.statuses(ledger.read_events(engagement))["A01"]["status"] == Status.RECEIVED
 
-    # A01's Status typed over in Excel, and a row beside it the record has
-    # never seen a status for, with a status of its own.
-    wb = load_workbook(manifest)
-    ws = wb[SHEET_NAME]
-    at = {str(cell.value): cell.column for cell in ws[1]}
-    ws.cell(row=2, column=at[COL_STATUS], value=Status.MISSING)
-    ws.cell(row=4, column=at[COL_IDENTIFIER], value="E01")
-    ws.cell(row=4, column=at[COL_DOCUMENT], value="Charitable Contribution Receipts")
-    ws.cell(row=4, column=at[COL_STATUS], value=Status.PARTIAL)
-    wb.save(manifest)
-    wb.close()
-
-    by_id = {item.identifier: item for item in load_manifest(manifest)}
-    assert by_id["A01"].status == Status.RECEIVED     # the record, not the cell typed over it
-    assert by_id["E01"].status == Status.PARTIAL      # the workbook: the record has never seen E01
-    assert by_id["A01"].required_keywords == ("W-2",)   # the request itself is always the person's
-
-    manifest.write_bytes(whole)    # put it back: the suite's own fixture reads this folder too
+    by_id = {item.identifier: item for item in load_manifest(engagement)}
+    assert by_id["A01"].status == Status.RECEIVED
+    assert by_id["A01"].required_keywords == ("W-2",)
+    assert by_id["C01"].status == Status.MISSING     # scanned, and nothing arrived
+    # And the same answer when the manifest is named rather than the folder.
+    assert load_manifest(engagement / MANIFEST_FILENAME) == list(by_id.values())
 
 
-def test_an_unreadable_record_refuses_the_index_and_falls_back_for_the_statuses(engagement, caplog):
-    """Two different answers, because there are two different second copies.
-
-    The index has none any more, so a record that does not read as one is
-    refused by name and the line: guessing past it would answer a question
-    about a client's documents with a shrug. The manifest's scanner columns
-    still have the sheet behind them, so that reader says so loudly and
-    reads it.
+def test_an_unreadable_record_refuses_every_reader_by_name(engagement):
+    """There is one copy of what the machine decided, so a record that does
+    not read as one is refused by name and the line rather than guessed
+    past: answering a question about a client's documents - or about what
+    they still owe - with a shrug is the thing this record exists to stop.
     """
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
@@ -347,38 +330,25 @@ def test_an_unreadable_record_refuses_the_index_and_falls_back_for_the_statuses(
     path.write_bytes(whole.replace(b'"event"', b'"even', 1))   # corruption in the middle
     store.close()                  # the rows this process already read are not the question
 
-    caplog.clear()
     with pytest.raises(ledger.LedgerError, match="line 1"):
         read_index(engagement)
-    assert {i.identifier for i in load_manifest(engagement / MANIFEST_FILENAME)} == {"A01", "C01"}
-    assert engagement.name in caplog.text
+    with pytest.raises(ledger.LedgerError, match="line 1"):
+        load_manifest(engagement)
 
     path.write_bytes(whole)        # put it back: the suite's own fixture reads this folder too
 
 
-def test_the_rollover_reads_last_years_statuses_through_the_record_and_otherwise_the_workbook(engagement):
+def test_the_rollover_reads_last_years_statuses_from_the_record(engagement):
     from tracker.rollover import roll_forward
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
-    manifest = engagement / MANIFEST_FILENAME
-    whole = manifest.read_bytes()
-    wb = load_workbook(manifest)
-    ws = wb[SHEET_NAME]
-    at = {str(cell.value): cell.column for cell in ws[1]}
-    ws.cell(row=2, column=at[COL_STATUS], value=Status.MISSING)   # typed over in Excel
-    wb.save(manifest)
-    wb.close()
 
     def prior_status(report):
         return {r.item.identifier: r.prior_status for r in report.rolled}["A01"]
 
-    assert prior_status(roll_forward(engagement)) == Status.RECEIVED      # the record
-    ledger.path_for(engagement).unlink()                                 # last year, before the record
-    assert prior_status(roll_forward(engagement)) == Status.MISSING      # the workbook
-
-    manifest.write_bytes(whole)
+    assert prior_status(roll_forward(engagement)) == Status.RECEIVED
 
 
 def test_the_app_shows_a_persons_filing_the_moment_they_make_it(engagement):
@@ -398,40 +368,19 @@ def test_the_app_shows_a_persons_filing_the_moment_they_make_it(engagement):
 # -------------------------------------------------------------------- CLI ----
 
 
-def compare(engagement):
-    return subprocess.run(
+def test_the_command_line_no_longer_offers_a_comparison_with_a_workbook(engagement):
+    """``--compare`` went with the columns it compared (decision 103).
+
+    There is no second copy of a status to disagree with. What is left to
+    check is the store against this file, and that is
+    ``python -m tracker.store <store> check <clients root>``.
+    """
+    refused = subprocess.run(
         [sys.executable, "-m", "tracker.ledger", str(engagement), "--compare"],
         cwd=REPO, capture_output=True, text=True,
     )
-
-
-def test_the_compare_check_says_they_agree_and_names_a_disagreement(engagement):
-    """The operator's check, now the manifest half only: the index has no
-    workbook to disagree with since decision 102, and `python -m
-    tracker.store <store> check <root>` is the check for the store."""
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
-    scan_engagement(engagement, today=DAY1)
-
-    agreed = compare(engagement)
-    assert agreed.returncode == 0 and "the record and the manifest agree" in agreed.stdout
-    assert "rows:     1 recorded (the record is the only copy)" in agreed.stdout
-
-    manifest = engagement / MANIFEST_FILENAME
-    whole = manifest.read_bytes()
-    wb = load_workbook(manifest)
-    ws = wb[SHEET_NAME]
-    header = [str(c.value or "") for c in ws[1]]
-    ws.cell(row=2, column=header.index(COL_STATUS) + 1).value = Status.MISSING
-    wb.save(manifest)
-    wb.close()
-
-    disagreed = compare(engagement)
-    assert disagreed.returncode == 1
-    assert "they do not agree" in disagreed.stdout
-    assert "A01" in disagreed.stdout
-
-    manifest.write_bytes(whole)    # put it back: the suite's own fixture reads this folder too
+    assert refused.returncode == 2
+    assert "unrecognized arguments: --compare" in refused.stderr
 
 
 def test_the_cli_prints_what_the_folder_holds(engagement):
@@ -443,5 +392,6 @@ def test_the_cli_prints_what_the_folder_holds(engagement):
         cwd=REPO, capture_output=True, text=True, check=True,
     ).stdout
     assert f"events: {len(ledger.read_events(engagement))}" in out
-    assert "rows:   1" in out
+    assert "rows:     1" in out
+    assert f"rules:    {len(ledger.rules(ledger.read_events(engagement)))}" in out
     assert ledger.head(engagement) in out
