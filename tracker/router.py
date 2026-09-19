@@ -119,11 +119,13 @@ working copy's new name instead of reading the document a second time.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from tracker import reasons
 from tracker.content_check import (
     ContentCache,
+    ContentResult,
     Extraction,
     any_keyword_matched,
     contains_keyword,
@@ -311,6 +313,7 @@ def _explained_by(evidence: tuple[Evidence, ...], named: set[str]) -> tuple[str,
 
 def _multi_form(
     path: Path, words: str, allowed: list[RequestItem], named: tuple[str, ...],
+    keep: Callable[[RequestItem, ContentResult], None] | None = None,
 ) -> Routing | None:
     """Decision 94, the owner's: one page carrying several forms.
 
@@ -322,6 +325,16 @@ def _multi_form(
     request would otherwise never accept the page at all - and each row
     that accepts is tied back to the form it was accepted because of
     (:func:`_explained_by`).
+
+    ``keep`` is the caller's way of remembering a verdict for the scan
+    that follows. It is called once per row a copy is filed under, with
+    the second reading's verdict, *after* the ordinary reading has left
+    its own: the ordinary reading called the page one form's and refused
+    the other request, and a scan that found that refusal under the
+    second copy would fail the copy and ask the client for a form they
+    already sent. The verdict the router files on is the one the scan
+    must find. Rows that park keep nothing new - the ordinary verdicts
+    stand for a page that is going to a person anyway.
 
     A copy is filed under each request **only on a bijection**: every
     self-named form accepted by exactly one row, and every accepting row
@@ -341,12 +354,14 @@ def _multi_form(
     named_set = set(named)
     record: dict[str, tuple[Evidence, ...]] = {}
     explained: dict[str, tuple[str, ...]] = {}
+    verdicts: dict[str, tuple[RequestItem, ContentResult]] = {}
     for item in allowed:
         verdict = evaluate_rules(words, item, named_set)
         if not verdict.ok:
             continue
         record[item.identifier] = verdict.evidence
         explained[item.identifier] = _explained_by(verdict.evidence, named_set)
+        verdicts[item.identifier] = (item, verdict)
     if not explained:
         return None
     rows_for: dict[str, list[str]] = {form: [] for form in named}
@@ -358,6 +373,9 @@ def _multi_form(
     if (all(len(rows) == 1 for rows in rows_for.values())
             and all(len(forms) == 1 for forms in explained.values())):
         filed = [rows_for[form][0] for form in named]
+        if keep is not None:
+            for identifier in filed:
+                keep(*verdicts[identifier])
         return Routing(
             path=path,
             identifier=filed[0],
@@ -431,10 +449,13 @@ def route_file(
     if remember and digest is None:
         digest = cache.digest_of(path)
 
-    def verdict_for(item: RequestItem):
-        verdict = evaluate_rules(words, item)
+    def keep(item: RequestItem, verdict: ContentResult) -> None:
         if remember and digest:
             cache.put_by_digest(digest, rules_fingerprint(item), verdict)
+
+    def verdict_for(item: RequestItem):
+        verdict = evaluate_rules(words, item)
+        keep(item, verdict)
         return verdict
 
     strong: list[str] = []      # required keywords matched and every rule passed
@@ -515,7 +536,7 @@ def route_file(
     if words:
         named = self_named_forms(words)
         if len({form_family(key) for key in named}) >= MULTI_FORM_FAMILIES:
-            if split := _multi_form(path, words, allowed, named):
+            if split := _multi_form(path, words, allowed, named, keep):
                 return split
 
     # The list asks for this document one row per issuer (decision 93): the
