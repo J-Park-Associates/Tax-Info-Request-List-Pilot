@@ -18,7 +18,8 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
 - ledger        : the engagement's own append-only record of what was decided, written beside the workbooks under that lock
-- view          : the read-only workbook a person opens, regenerated from the record and the readers every pass
+- page          : the markup both of the firm's pages are drawn with: escaping, tables, the bytes a page is written as
+- view          : the page a person opens, regenerated from the record and the readers every pass
 - settings      : the settings file beside the app - the clients root and firm, written once
 - reasons       : every refusal said once: the note, the client's ask, whose problem it is
 - api           : the desktop app's command layer, one JSON command in, one JSON reply out
