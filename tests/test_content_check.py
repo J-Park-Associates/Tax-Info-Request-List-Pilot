@@ -488,6 +488,43 @@ def test_a_document_does_not_ask_for_itself():
                 "Sign Here Under penalties of perjury, I declare", "under penalties of perjury")
 
 
+def test_a_keyword_may_name_alternatives_and_the_words_one_of_them_wants_together():
+    # Decision 90. Required Keywords is an AND over its cells and Any
+    # Keywords an OR over theirs, and neither can say "these three words,
+    # or this one" - which is what the prior-year return row has to say,
+    # because a standalone state return shares none of the federal
+    # return's lines, jurat included.
+    from tracker.content_check import contains_keyword, says
+
+    prior_return = ("individual income tax return + filing status + under penalties of perjury"
+                    " | resident income tax return")
+    federal = ("Form 1040 2024 U.S. Individual Income Tax Return\n"
+               "Filing Status Single Married filing jointly\n"
+               "Sign Here Under penalties of perjury, I declare")
+    state = "TAXABLE YEAR FORM\n2024 California Resident Income Tax Return 540"
+    assert says(federal, prior_return)
+    assert says(state, prior_return)
+    # Two of the three is not the federal alternative: the firm's own
+    # organizer says both and signs nothing (decision 65).
+    assert not says("2024 Individual Income Tax Organizer\nFiling Status Single", prior_return)
+    # A keyword holding neither character is one phrase, exactly as before.
+    assert says("Trial Balance - Year-End 2025", "trial balance")
+    # A file name is read the same way, phrase by phrase.
+    assert contains_keyword("2024 california resident income tax return", prior_return)
+    assert not contains_keyword("2024 individual income tax return", prior_return)
+
+
+def test_the_alternatives_of_a_keyword_are_read_where_a_keyword_cell_is_read():
+    # In the module that owns how a keyword cell is read, so the catalog
+    # and the matcher cannot disagree about what one keyword means.
+    from tracker.manifest import keyword_alternatives
+
+    assert keyword_alternatives("trial balance") == (("trial balance",),)
+    assert keyword_alternatives("a + b | c") == (("a", "b"), ("c",))
+    assert keyword_alternatives("  spaced  +  out  ") == (("spaced", "out"),)
+    assert keyword_alternatives("|") == ()
+
+
 def test_the_any_keywords_are_read_apart_from_every_other_rule():
     # The year a Period implies is a check on a document a keyword already
     # matched, so the router can ask which rows a document's words fit
@@ -662,8 +699,10 @@ def test_a_cache_written_before_the_evidence_was_kept_is_reset(tmp_path):
     # re-extracting once. Version 7 was read before decision 85 taught
     # says() that a form heading its line with its printed title and its
     # year names itself, so a version-7 verdict would say a one-copy W-2
-    # is nobody's form.
-    assert CACHE_VERSION == 8
+    # is nobody's form. Version 8 was read before decision 90 let a
+    # keyword name alternatives, so a version-8 verdict read the "|" and
+    # the "+" in one as words to look for and found neither.
+    assert CACHE_VERSION == 9
     cache_file = tmp_path / "cache.json"
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
     rule = item(required_keywords=("Chase",))

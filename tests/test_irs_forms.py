@@ -39,8 +39,12 @@ EXPECT = [
     ("f1099int.pdf", "1040", 2025, "A02"), ("f1099div.pdf", "1040", 2025, "A02"), ("f1099oid.pdf", "1040", 2025, "A02"),
     ("f1099int.pdf", "1041", 2025, "B01"), ("f1099div.pdf", "1041", 2025, "B01"), ("f1099nec.pdf", "1041", 2025, "B01"),
     ("f1099msc.pdf", "1041", 2025, "B01"), ("f1099r.pdf", "1040", 2025, "E02"),
-    ("f1099nec.pdf", "1040", 2025, None), ("f1099nec_2024.pdf", "1040", 2025, None), ("f1099msc.pdf", "1040", 2025, None),
-    ("f1099g.pdf", "1040", 2025, None), ("f1099k.pdf", "1040", 2025, None), ("f1099s.pdf", "1040", 2025, None),
+    # Decision 90, the owner's: the 1040 catalog asks for these four by
+    # name now, so the blanks file rather than park. The two beside them
+    # still park - no 1040 row asks for a 1099-S or a 1099-SA.
+    ("f1099nec.pdf", "1040", 2025, "A03"), ("f1099nec_2024.pdf", "1040", 2025, "A03"),
+    ("f1099msc.pdf", "1040", 2025, "A04"), ("f1099k.pdf", "1040", 2025, "A05"),
+    ("f1099g.pdf", "1040", 2025, "A06"), ("f1099s.pdf", "1040", 2025, None),
     ("f1099sa.pdf", "1040", 2025, None), ("f1098.pdf", "1040", 2025, "C01"), ("f1098t.pdf", "1040", 2025, "L01"),
     ("f1095a.pdf", "1040", 2025, "I01"), ("f1095b.pdf", "1040", 2025, None), ("f1095c.pdf", "1040", 2025, None),
     ("f5498.pdf", "1040", 2025, "K01"), ("f5498sa.pdf", "1040", 2025, "K01"),
@@ -62,7 +66,10 @@ EXPECT = [
     ("f990.pdf", "990", 2026, "A01"), ("f990ez.pdf", "990", 2026, "A01"), ("f990pf.pdf", "990", 2026, None),
     ("f940.pdf", "1120", 2025, "E01"), ("f941.pdf", "1120", 2025, "E01"), ("f940.pdf", "1120S", 2025, "E01"),
     ("f941.pdf", "990", 2025, "G01"), ("f941.pdf", "1040", 2025, None), ("f940.pdf", "1041", 2025, None),
-    ("f4562.pdf", "1120", 2025, "C02"), ("f1125e.pdf", "1120", 2025, None),
+    # The same shared row, in the two catalogs decision 90 added it to:
+    # before it, Form 4562 parked in both because nothing asked for it.
+    ("f4562.pdf", "1120", 2025, "C02"), ("f4562.pdf", "1120S", 2025, "F02"), ("f4562.pdf", "1065", 2025, "D02"),
+    ("f1125e.pdf", "1120", 2025, None),
     # The ninth reading: the IRS "Attention" page ahead of every information
     # return names Form 1099-NEC by way of example, and is not a 1099; a
     # return's own lines ("dividends and distributions in exchange for

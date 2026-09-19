@@ -27,6 +27,8 @@ from tracker.manifest import (
     DEFAULT_EXPECTED_COUNT,
     DEFAULT_EXTENSIONS,
     DEFAULT_MIN_SIZE_KB,
+    KEYWORD_ALL_OF,
+    KEYWORD_ANY_OF,
     ManifestError,
     RequestItem,
     csv_tuple,
@@ -97,6 +99,32 @@ def _row(identifier: str, document: str, *, core: bool, period: str = TY, extens
     return row
 
 
+#: The line every federal return carries over its signature and the firm's
+#: own paperwork never does (decision 65). One owner: six rows ask for it.
+JURAT = "under penalties of perjury"
+
+
+def _prior_return(*federal: str, state: tuple[str, ...] = ()) -> str:
+    """The required keyword of a "Prior-Year Federal & State ..." row.
+
+    The federal return is known by the lines only it prints - its own
+    title and, since decision 65, the jurat - and a state return that
+    arrives on its own shares none of them: California heads Form 540
+    "California Resident Income Tax Return", New York heads IT-204
+    "Partnership Return", and the signature side, where the jurat is, is
+    not always the side a client sends. Required Keywords is an AND over
+    its cells and Any Keywords an OR over theirs, so neither column can
+    say "the federal words, or a state form's"; the alternatives inside
+    one keyword can (``tracker.manifest.keyword_alternatives``), and they
+    leave the row's required set *required* - a prior-year return still
+    outranks a row that matched on any keyword, and one that fails
+    another rule is still contested rather than filed elsewhere.
+
+    Another state is one more phrase in ``state``: one keyword, no rule.
+    """
+    return f" {KEYWORD_ANY_OF} ".join([f" {KEYWORD_ALL_OF} ".join(federal), *state])
+
+
 # Requests several return types share. Defined once, so a keyword fix here
 # reaches every form that asks for the document; each form only says which
 # identifier it uses and whether the row is pre-ticked.
@@ -156,6 +184,16 @@ SHARED = {
                          any_keywords="fixed asset schedule, fixed asset listing, fixed asset additions, "
                                       "asset additions and disposals",
                          extensions="xlsx, pdf"),
+    # The schedule behind Form 4562, asked for by every entity that owns
+    # anything (decision 90: the owner wanted the 1120's row in the
+    # 1120-S's and the partnership's too). Its own titles, and the form
+    # number the software prints across the top of the detail page - the
+    # row asking for a *fixed asset* register is `fixed_assets`, and a
+    # register that never says depreciation stays there.
+    "depreciation": dict(document="Depreciation Schedules",
+                         any_keywords="depreciation schedule, depreciation detail, depreciation report, "
+                                      "form 4562",
+                         extensions="xlsx, pdf"),
     "loans": dict(document="Loan Agreements & Year-End Balances",
                   any_keywords="loan agreement, promissory note, amortization schedule, loan statement, "
                                "principal balance",
@@ -182,7 +220,29 @@ FORM_TEMPLATES = {
     "1040": [
         _row("A01", "W-2 Wage Statements - All Employers", core=True, required_keywords="W-2, wage and tax statement, employee's social security number", expected_count=2),
         _row("A02", "1099-INT / 1099-DIV - Interest & Dividend Income", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-oid", expected_count=3),
-        _row("B01", "Prior-Year Federal & State Tax Returns", core=True, period=TY_PRIOR, required_keywords="individual income tax return, filing status, under penalties of perjury"),
+        # Decision 90, the owner's: a 1040 gets one row per 1099 a person
+        # actually receives, and each is known by its own number. Its
+        # printed title is not always usable: the IRS "Attention" page
+        # ahead of every information return names "Form 1099-NEC,
+        # Nonemployee Compensation", so `nonemployee compensation` is said
+        # by the blank 1098-T, 1099-G, 1099-K, 1099-R, 1099-S and 5498 as
+        # well, and `certain government payments` is said by the 1040-ES
+        # package and not by the 1099-G at all. The two printed titles no
+        # form but its own says are kept.
+        _row("A03", "1099-NEC - Nonemployee Compensation", core=False, extensions="pdf, csv", any_keywords="1099-nec"),
+        _row("A04", "1099-MISC - Miscellaneous Income", core=False, extensions="pdf, csv", any_keywords="1099-misc, miscellaneous information"),
+        # The 1099-K prints "Payment Card and Third Party Network
+        # Transactions" across three boxes, so its whole title is never on
+        # one line; `payment card` is what the form's box 1a and a
+        # processor's own year-end summary both print, and it begins the
+        # title on a checklist's line, where a menu's words are not the
+        # document's (decision 73). `third party network transactions`
+        # would not: it begins mid-title, past where the menu rule reads.
+        _row("A05", "1099-K - Payment Card & Third-Party Network Transactions", core=False, extensions="pdf, csv", any_keywords="1099-k, payment card"),
+        _row("A06", "1099-G - Certain Government Payments", core=False, extensions="pdf, csv", any_keywords="1099-g"),
+        _row("B01", "Prior-Year Federal & State Tax Returns", core=True, period=TY_PRIOR,
+             required_keywords=_prior_return("individual income tax return", "filing status", JURAT,
+                                             state=("resident income tax return",))),
         _row("C01", "Mortgage Interest Statement - Form 1098", core=True, required_keywords="1098, mortgage interest"),
         # `thank you for your donation` is a salutation every fundraiser
         # prints: a political committee's receipt and a crowdfunding site's
@@ -219,13 +279,17 @@ FORM_TEMPLATES = {
         _row("L01", "Tuition Statements - Form 1098-T", core=False, any_keywords="1098-t, qualified tuition and related expenses"),
     ],
     "1120": [
-        _row("A01", "Prior-Year Federal & State Corporate Returns", core=True, period=TY_PRIOR, required_keywords="u.s. corporation income tax return, under penalties of perjury"),
+        # No state corporate return is in the corpus the suite defends, so
+        # this row's alternatives are the federal words alone; California's
+        # Form 100 would be one more phrase (decision 90).
+        _row("A01", "Prior-Year Federal & State Corporate Returns", core=True, period=TY_PRIOR,
+             required_keywords=_prior_return("u.s. corporation income tax return", JURAT)),
         _shared("A02", "trial_balance", core=True),
         _shared("A03", "general_ledger", core=True),
         _shared("B01", "financial_statements", core=True),
         _shared("B02", "december_bank", core=True),
         _shared("C01", "fixed_assets", core=True),
-        _row("C02", "Depreciation Schedules", core=False, extensions="xlsx, pdf", any_keywords="depreciation schedule, depreciation detail, depreciation report, form 4562"),
+        _shared("C02", "depreciation", core=False),
         _shared("D01", "loans", core=False),
         _shared("E01", "payroll_returns", core=True),
         _shared("E02", "officer_comp", core=False),
@@ -235,7 +299,12 @@ FORM_TEMPLATES = {
         _row("I01", "Book-Tax Difference Support - Schedule M-1 Items", core=False, extensions="xlsx, pdf", any_keywords="book-tax difference, m-1 adjustment, m-1 support, book to tax reconciliation"),
     ],
     "1120S": [
-        _row("A01", "Prior-Year Federal & State S-Corp Returns", core=True, period=TY_PRIOR, required_keywords="income tax return for an s corporation, under penalties of perjury"),
+        # California heads Form 100S "California S Corporation / Franchise
+        # or Income Tax Return", and the second line is what survives the
+        # break; no form in tests/irs/ says it (decision 90).
+        _row("A01", "Prior-Year Federal & State S-Corp Returns", core=True, period=TY_PRIOR,
+             required_keywords=_prior_return("income tax return for an s corporation", JURAT,
+                                             state=("franchise or income tax return",))),
         _shared("A02", "trial_balance", core=True),
         _shared("A03", "general_ledger", core=True),
         _shared("B01", "financial_statements", core=True),
@@ -247,6 +316,7 @@ FORM_TEMPLATES = {
         _row("D02", "Health Insurance Premiums for >2% Shareholders", core=False, extensions="pdf, xlsx", any_keywords="health insurance premiums paid, 2% shareholder, shareholder health insurance premiums"),
         _shared("E01", "payroll_returns", core=False),
         _shared("F01", "fixed_assets", core=False),
+        _shared("F02", "depreciation", core=False),
         # `shareholder loan agreement` is inside `loan agreement`; the row
         # was missing the two words an amortisation schedule and a loan
         # statement print, which the shared loans row has always had.
@@ -254,7 +324,15 @@ FORM_TEMPLATES = {
         _shared("H01", "apportionment", core=False),
     ],
     "1065": [
-        _row("A01", "Prior-Year Federal & State Partnership Returns", core=True, period=TY_PRIOR, required_keywords="return of partnership income, under penalties of perjury"),
+        # California heads Form 568 "Limited Liability Company / Return of
+        # Income" and New York heads IT-204 "Partnership Return"; both
+        # second lines are the state form's own. `partnership return` is
+        # said by the blank Form 1065 as well, which is this same row's
+        # federal document, so it takes nothing the row must not have
+        # (decision 90).
+        _row("A01", "Prior-Year Federal & State Partnership Returns", core=True, period=TY_PRIOR,
+             required_keywords=_prior_return("return of partnership income", JURAT,
+                                             state=("return of income", "partnership return"))),
         _row("A02", "Partnership Agreement & Amendments", core=True, period="Current", any_keywords="partnership agreement, operating agreement"),
         _shared("A03", "trial_balance", core=True),
         _shared("A04", "general_ledger", core=False),
@@ -265,6 +343,7 @@ FORM_TEMPLATES = {
         _row("C03", "Contributions & Distributions by Partner", core=True, extensions="xlsx", any_keywords="contributions and distributions by partner, partner contribution detail, partner distribution detail"),
         _row("C04", "Guaranteed Payment Detail", core=False, extensions="xlsx, pdf", any_keywords="guaranteed payment detail, guaranteed payments by partner"),
         _shared("D01", "fixed_assets", core=False),
+        _shared("D02", "depreciation", core=False),
         _shared("E01", "loans", core=False),
         _row("F01", "Special Allocation Support - Section 704(b)", core=False, extensions="xlsx, pdf", any_keywords="special allocation, section 704(b)"),
         _shared("G01", "apportionment", core=False),
@@ -275,7 +354,8 @@ FORM_TEMPLATES = {
         # the estate's own instrument names the kind of trust it is.
         _row("A01", "Trust Instrument / Will & Amendments", core=True, period="Current", any_keywords="revocable trust agreement, irrevocable trust agreement, declaration of trust, certification of trust, trust instrument, amendment to the trust, last will, codicil"),
         _row("A02", "IRS EIN Assignment Letter", core=False, period="Current", any_keywords="cp 575, ein assignment, assigned you employer identification number, assigned you an employer identification number"),
-        _row("A03", "Prior-Year Fiduciary Returns", core=True, period=TY_PRIOR, required_keywords="income tax return for estates and trusts, under penalties of perjury"),
+        _row("A03", "Prior-Year Fiduciary Returns", core=True, period=TY_PRIOR,
+             required_keywords=_prior_return("income tax return for estates and trusts", JURAT)),
         # A broker's realized gain/loss export is the trust's 1099-B by
         # another name: the trust reports the same lots, and the export is
         # what arrives where the consolidated 1099 does not (decision 85).
@@ -298,7 +378,8 @@ FORM_TEMPLATES = {
         _row("F01", "Rental / Business Income & Expense Detail", core=False, extensions="xlsx, pdf", any_keywords="rental income and expenses, rent roll, schedule e detail, schedule c detail"),
     ],
     "990": [
-        _row("A01", "Prior-Year Form 990 & State Filings", core=True, period=TY_PRIOR, required_keywords="return of organization exempt from income tax, under penalties of perjury"),
+        _row("A01", "Prior-Year Form 990 & State Filings", core=True, period=TY_PRIOR,
+             required_keywords=_prior_return("return of organization exempt from income tax", JURAT)),
         _shared("A02", "trial_balance", core=True),
         _shared("B01", "financial_statements", core=True),
         _shared("B02", "december_bank", core=True),

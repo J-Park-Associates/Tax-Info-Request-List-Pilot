@@ -40,6 +40,12 @@
          "name": "W-2 2025 Copy B one to a page.pdf"
         },
         {
+         "decision": 90,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2 with state wages.pdf"
+        },
+        {
          "expected": "A01",
          "kind": "irs",
          "name": "fw2.pdf"
@@ -110,6 +116,12 @@
          "name": "W-2 2025 Copy B one to a page.pdf"
         },
         {
+         "decision": 90,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2 with state wages.pdf"
+        },
+        {
          "expected": "A01",
          "kind": "irs",
          "name": "fw2.pdf"
@@ -157,6 +169,12 @@
          "expected": "A01",
          "kind": "case",
          "name": "W-2 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "expected": "A01",
+         "kind": "case",
+         "name": "W-2 with state wages.pdf"
         },
         {
          "expected": "A01",
@@ -288,11 +306,167 @@
       }
      ]
     },
+    "A03": {
+     "document": "1099-NEC - Nonemployee Compensation",
+     "keywords": [
+      {
+       "keyword": "1099-nec",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "A03",
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 85,
+         "expected": "A03",
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "expected": "A03",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "expected": "A03",
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "A04": {
+     "document": "1099-MISC - Miscellaneous Income",
+     "keywords": [
+      {
+       "keyword": "1099-misc",
+       "reached_by": [
+        {
+         "decision": 68,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 90,
+         "expected": "A04",
+         "kind": "case",
+         "name": "1099-MISC 2025 Copy B.pdf"
+        },
+        {
+         "expected": "A04",
+         "kind": "irs",
+         "name": "f1099msc.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "miscellaneous information",
+       "reached_by": [
+        {
+         "decision": 68,
+         "expected": null,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 90,
+         "expected": "A04",
+         "kind": "case",
+         "name": "1099-MISC 2025 Copy B.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "A05": {
+     "document": "1099-K - Payment Card & Third-Party Network Transactions",
+     "keywords": [
+      {
+       "keyword": "1099-k",
+       "reached_by": [
+        {
+         "decision": 90,
+         "expected": "A05",
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "expected": "A05",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "payment card",
+       "reached_by": [
+        {
+         "decision": 90,
+         "expected": "A05",
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "expected": "A05",
+         "kind": "case",
+         "name": "merchant payment summary.pdf"
+        },
+        {
+         "expected": "A05",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "A06": {
+     "document": "1099-G - Certain Government Payments",
+     "keywords": [
+      {
+       "keyword": "1099-g",
+       "reached_by": [
+        {
+         "decision": 90,
+         "expected": "A06",
+         "kind": "case",
+         "name": "1099-G 2025 Copy B.pdf"
+        },
+        {
+         "expected": "A06",
+         "kind": "irs",
+         "name": "f1099g.pdf"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
     "B01": {
      "document": "Prior-Year Federal & State Tax Returns",
      "keywords": [
       {
-       "keyword": "individual income tax return",
+       "keyword": "individual income tax return + filing status + under penalties of perjury | resident income tax return",
        "reached_by": [
         {
          "decision": 62,
@@ -307,16 +481,22 @@
          "name": "2024 1040 with schedules.pdf"
         },
         {
-         "decision": 63,
-         "expected": null,
+         "decision": 69,
+         "expected": "B01",
          "kind": "case",
-         "name": "4868 extension.pdf"
+         "name": "CA filing instructions then 540.pdf"
         },
         {
-         "decision": 65,
-         "expected": null,
+         "decision": 90,
+         "expected": "B01",
          "kind": "case",
-         "name": "engagement letter.pdf"
+         "name": "CA 540 2024.pdf"
+        },
+        {
+         "decision": 90,
+         "expected": "B01",
+         "kind": "case",
+         "name": "NY IT-201 2024.pdf"
         },
         {
          "expected": "B01",
@@ -327,199 +507,6 @@
          "expected": "B01",
          "kind": "irs",
          "name": "f1040x.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f4868.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f8879.pdf"
-        }
-       ],
-       "rule": "required"
-      },
-      {
-       "keyword": "filing status",
-       "reached_by": [
-        {
-         "decision": 62,
-         "expected": "B01",
-         "kind": "case",
-         "name": "2024 return with Schedule A.pdf"
-        },
-        {
-         "decision": 63,
-         "expected": "B01",
-         "kind": "case",
-         "name": "2024 1040 with schedules.pdf"
-        },
-        {
-         "decision": 65,
-         "expected": null,
-         "kind": "case",
-         "name": "engagement letter.pdf"
-        },
-        {
-         "decision": 65,
-         "expected": null,
-         "kind": "case",
-         "name": "organizer.pdf"
-        },
-        {
-         "decision": 66,
-         "expected": null,
-         "kind": "case",
-         "name": "organizer with every line.pdf"
-        },
-        {
-         "expected": "B01",
-         "kind": "irs",
-         "name": "f1040.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1040es.pdf"
-        },
-        {
-         "expected": "H01",
-         "kind": "irs",
-         "name": "f1040es_2025.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1040nr.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1040s.pdf"
-        },
-        {
-         "expected": "B01",
-         "kind": "irs",
-         "name": "f1040x.pdf"
-        }
-       ],
-       "rule": "required"
-      },
-      {
-       "keyword": "under penalties of perjury",
-       "reached_by": [
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 1120-S.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 1120.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 990.pdf"
-        },
-        {
-         "decision": 62,
-         "expected": "B01",
-         "kind": "case",
-         "name": "2024 return with Schedule A.pdf"
-        },
-        {
-         "decision": 63,
-         "expected": "B01",
-         "kind": "case",
-         "name": "2024 1040 with schedules.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1120 with schedules.pdf"
-        },
-        {
-         "decision": 65,
-         "expected": null,
-         "kind": "case",
-         "name": "2024 1120-S dropped by the owner.pdf"
-        },
-        {
-         "expected": "B01",
-         "kind": "irs",
-         "name": "f1040.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1040nr.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1040s.pdf"
-        },
-        {
-         "expected": "B01",
-         "kind": "irs",
-         "name": "f1040x.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1041.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1065.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1096.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1120.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120h.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120s.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f8879.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f940.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f941.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990ez.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "fw3.pdf"
         }
        ],
        "rule": "required"
@@ -1826,120 +1813,12 @@
      "document": "Prior-Year Fiduciary Returns",
      "keywords": [
       {
-       "keyword": "income tax return for estates and trusts",
+       "keyword": "income tax return for estates and trusts + under penalties of perjury",
        "reached_by": [
         {
          "expected": "A03",
          "kind": "irs",
          "name": "f1041.pdf"
-        }
-       ],
-       "rule": "required"
-      },
-      {
-       "keyword": "under penalties of perjury",
-       "reached_by": [
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 1120-S.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 1120.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 990.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 return with Schedule A.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1040 with schedules.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1120 with schedules.pdf"
-        },
-        {
-         "decision": 65,
-         "kind": "case",
-         "name": "2024 1120-S dropped by the owner.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040nr.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040x.pdf"
-        },
-        {
-         "expected": "A03",
-         "kind": "irs",
-         "name": "f1041.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1065.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1096.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120h.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f8879.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f940.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f941.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990ez.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "fw3.pdf"
         }
        ],
        "rule": "required"
@@ -2115,6 +1994,11 @@
          "expected": null,
          "kind": "case",
          "name": "Schwab consolidated 1099 with a B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-MISC 2025 Copy B.pdf"
         },
         {
          "expected": "B01",
@@ -2558,119 +2442,24 @@
      "document": "Prior-Year Federal & State Partnership Returns",
      "keywords": [
       {
-       "keyword": "return of partnership income",
+       "keyword": "return of partnership income + under penalties of perjury | return of income | partnership return",
        "reached_by": [
         {
+         "decision": 90,
          "expected": "A01",
-         "kind": "irs",
-         "name": "f1065.pdf"
-        }
-       ],
-       "rule": "required"
-      },
-      {
-       "keyword": "under penalties of perjury",
-       "reached_by": [
-        {
-         "decision": 62,
          "kind": "case",
-         "name": "2024 1120-S.pdf"
+         "name": "CA 568 2024.pdf"
         },
         {
-         "decision": 62,
+         "decision": 90,
+         "expected": "A01",
          "kind": "case",
-         "name": "2024 1120.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 990.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 return with Schedule A.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1040 with schedules.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1120 with schedules.pdf"
-        },
-        {
-         "decision": 65,
-         "kind": "case",
-         "name": "2024 1120-S dropped by the owner.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040nr.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040x.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1041.pdf"
+         "name": "NY IT-204 2024.pdf"
         },
         {
          "expected": "A01",
          "kind": "irs",
          "name": "f1065.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1096.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1120.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120h.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f8879.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f940.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f941.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990ez.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "fw3.pdf"
         }
        ],
        "rule": "required"
@@ -2697,6 +2486,12 @@
        "reached_by": [
         {
          "decision": 62,
+         "expected": "A02",
+         "kind": "case",
+         "name": "operating agreement.pdf"
+        },
+        {
+         "decision": 90,
          "expected": "A02",
          "kind": "case",
          "name": "operating agreement.pdf"
@@ -3414,7 +3209,106 @@
       },
       {
        "keyword": "asset additions and disposals",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "asset additions and disposals.xlsx"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "asset additions and disposals.xlsx"
+        },
+        {
+         "decision": 90,
+         "expected": "D01",
+         "kind": "case",
+         "name": "asset additions and disposals.xlsx"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "D02": {
+     "document": "Depreciation Schedules",
+     "keywords": [
+      {
+       "keyword": "depreciation schedule",
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "depreciation schedule.xlsx"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation schedule.xlsx"
+        },
+        {
+         "decision": 90,
+         "expected": "D02",
+         "kind": "case",
+         "name": "depreciation schedule.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "depreciation detail",
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "depreciation detail report.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation detail.pdf"
+        },
+        {
+         "decision": 90,
+         "expected": "D02",
+         "kind": "case",
+         "name": "depreciation detail.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "depreciation report",
+       "reached_by": [
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation report.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation report.pdf"
+        },
+        {
+         "decision": 90,
+         "expected": "D02",
+         "kind": "case",
+         "name": "depreciation report.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "form 4562",
+       "reached_by": [
+        {
+         "expected": "D02",
+         "kind": "irs",
+         "name": "f4562.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -3649,10 +3543,6 @@
      "fixed asset additions"
     ],
     [
-     "D01",
-     "asset additions and disposals"
-    ],
-    [
      "G01",
      "apportionment data"
     ],
@@ -3687,7 +3577,7 @@
      "document": "Prior-Year Federal & State Corporate Returns",
      "keywords": [
       {
-       "keyword": "u.s. corporation income tax return",
+       "keyword": "u.s. corporation income tax return + under penalties of perjury",
        "reached_by": [
         {
          "decision": 62,
@@ -3705,121 +3595,6 @@
          "expected": "A01",
          "kind": "irs",
          "name": "f1120.pdf"
-        }
-       ],
-       "rule": "required"
-      },
-      {
-       "keyword": "under penalties of perjury",
-       "reached_by": [
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 1120-S.pdf"
-        },
-        {
-         "decision": 62,
-         "expected": "A01",
-         "kind": "case",
-         "name": "2024 1120.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 990.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 return with Schedule A.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1040 with schedules.pdf"
-        },
-        {
-         "decision": 63,
-         "expected": "A01",
-         "kind": "case",
-         "name": "2024 1120 with schedules.pdf"
-        },
-        {
-         "decision": 65,
-         "kind": "case",
-         "name": "2024 1120-S dropped by the owner.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040nr.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040x.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1041.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1065.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1096.pdf"
-        },
-        {
-         "expected": "A01",
-         "kind": "irs",
-         "name": "f1120.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1120h.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1120s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f8879.pdf"
-        },
-        {
-         "expected": "E01",
-         "kind": "irs",
-         "name": "f940.pdf"
-        },
-        {
-         "expected": "E01",
-         "kind": "irs",
-         "name": "f941.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990ez.pdf"
-        },
-        {
-         "expected": "E01",
-         "kind": "irs",
-         "name": "fw3.pdf"
         }
        ],
        "rule": "required"
@@ -4405,7 +4180,24 @@
       },
       {
        "keyword": "asset additions and disposals",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 90,
+         "expected": "C01",
+         "kind": "case",
+         "name": "asset additions and disposals.xlsx"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "asset additions and disposals.xlsx"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "asset additions and disposals.xlsx"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -4421,6 +4213,16 @@
          "expected": "C02",
          "kind": "case",
          "name": "depreciation schedule.xlsx"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation schedule.xlsx"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation schedule.xlsx"
         }
        ],
        "rule": "any"
@@ -4433,13 +4235,40 @@
          "expected": "C02",
          "kind": "case",
          "name": "depreciation detail report.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation detail.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation detail.pdf"
         }
        ],
        "rule": "any"
       },
       {
        "keyword": "depreciation report",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 90,
+         "expected": "C02",
+         "kind": "case",
+         "name": "depreciation report.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation report.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation report.pdf"
+        }
+       ],
        "rule": "any"
       },
       {
@@ -4989,14 +4818,6 @@
      "fixed asset additions"
     ],
     [
-     "C01",
-     "asset additions and disposals"
-    ],
-    [
-     "C02",
-     "depreciation report"
-    ],
-    [
      "G01",
      "capitalization table"
     ],
@@ -5052,7 +4873,7 @@
      "document": "Prior-Year Federal & State S-Corp Returns",
      "keywords": [
       {
-       "keyword": "income tax return for an s corporation",
+       "keyword": "income tax return for an s corporation + under penalties of perjury | franchise or income tax return",
        "reached_by": [
         {
          "decision": 62,
@@ -5066,121 +4887,15 @@
          "name": "2024 1120-S dropped by the owner.pdf"
         },
         {
-         "expected": "A01",
-         "kind": "irs",
-         "name": "f1120s.pdf"
-        }
-       ],
-       "rule": "required"
-      },
-      {
-       "keyword": "under penalties of perjury",
-       "reached_by": [
-        {
-         "decision": 62,
+         "decision": 90,
          "expected": "A01",
          "kind": "case",
-         "name": "2024 1120-S.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 1120.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 990.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 return with Schedule A.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1040 with schedules.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1120 with schedules.pdf"
-        },
-        {
-         "decision": 65,
-         "kind": "case",
-         "name": "2024 1120-S dropped by the owner.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040nr.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040x.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1041.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1065.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1096.pdf"
-        },
-        {
-         "expected": null,
-         "kind": "irs",
-         "name": "f1120.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120h.pdf"
+         "name": "CA 100S 2024.pdf"
         },
         {
          "expected": "A01",
          "kind": "irs",
          "name": "f1120s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f8879.pdf"
-        },
-        {
-         "expected": "E01",
-         "kind": "irs",
-         "name": "f940.pdf"
-        },
-        {
-         "expected": "E01",
-         "kind": "irs",
-         "name": "f941.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f990ez.pdf"
-        },
-        {
-         "expected": "E01",
-         "kind": "irs",
-         "name": "fw3.pdf"
         }
        ],
        "rule": "required"
@@ -6133,7 +5848,106 @@
       },
       {
        "keyword": "asset additions and disposals",
-       "reached_by": [],
+       "reached_by": [
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "asset additions and disposals.xlsx"
+        },
+        {
+         "decision": 90,
+         "expected": "F01",
+         "kind": "case",
+         "name": "asset additions and disposals.xlsx"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "asset additions and disposals.xlsx"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "F02": {
+     "document": "Depreciation Schedules",
+     "keywords": [
+      {
+       "keyword": "depreciation schedule",
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "depreciation schedule.xlsx"
+        },
+        {
+         "decision": 90,
+         "expected": "F02",
+         "kind": "case",
+         "name": "depreciation schedule.xlsx"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation schedule.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "depreciation detail",
+       "reached_by": [
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "depreciation detail report.pdf"
+        },
+        {
+         "decision": 90,
+         "expected": "F02",
+         "kind": "case",
+         "name": "depreciation detail.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation detail.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "depreciation report",
+       "reached_by": [
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation report.pdf"
+        },
+        {
+         "decision": 90,
+         "expected": "F02",
+         "kind": "case",
+         "name": "depreciation report.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "depreciation report.pdf"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "form 4562",
+       "reached_by": [
+        {
+         "expected": "F02",
+         "kind": "irs",
+         "name": "f4562.pdf"
+        }
+       ],
        "rule": "any"
       }
      ]
@@ -6329,10 +6143,6 @@
      "fixed asset additions"
     ],
     [
-     "F01",
-     "asset additions and disposals"
-    ],
-    [
      "H01",
      "apportionment data"
     ],
@@ -6354,7 +6164,7 @@
      "document": "Prior-Year Form 990 & State Filings",
      "keywords": [
       {
-       "keyword": "return of organization exempt from income tax",
+       "keyword": "return of organization exempt from income tax + under penalties of perjury",
        "reached_by": [
         {
          "decision": 62,
@@ -6371,117 +6181,6 @@
          "expected": "A01",
          "kind": "irs",
          "name": "f990ez.pdf"
-        }
-       ],
-       "rule": "required"
-      },
-      {
-       "keyword": "under penalties of perjury",
-       "reached_by": [
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 1120-S.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 1120.pdf"
-        },
-        {
-         "decision": 62,
-         "expected": "A01",
-         "kind": "case",
-         "name": "2024 990.pdf"
-        },
-        {
-         "decision": 62,
-         "kind": "case",
-         "name": "2024 return with Schedule A.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1040 with schedules.pdf"
-        },
-        {
-         "decision": 63,
-         "kind": "case",
-         "name": "2024 1120 with schedules.pdf"
-        },
-        {
-         "decision": 65,
-         "kind": "case",
-         "name": "2024 1120-S dropped by the owner.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040nr.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040x.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1041.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1065.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1096.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120h.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1120s.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f8879.pdf"
-        },
-        {
-         "expected": "G01",
-         "kind": "irs",
-         "name": "f940.pdf"
-        },
-        {
-         "expected": "G01",
-         "kind": "irs",
-         "name": "f941.pdf"
-        },
-        {
-         "expected": "A01",
-         "kind": "irs",
-         "name": "f990.pdf"
-        },
-        {
-         "expected": "A01",
-         "kind": "irs",
-         "name": "f990ez.pdf"
-        },
-        {
-         "expected": "G01",
-         "kind": "irs",
-         "name": "fw3.pdf"
         }
        ],
        "rule": "required"
@@ -7554,15 +7253,15 @@
  "counts": {
   "catalogs": 6,
   "documents": {
-   "case": 293,
+   "case": 316,
    "irs": 52
   },
-  "keywords": 331,
+  "keywords": 338,
   "reached_only_elsewhere": 2,
   "reached_without_expectation": 11,
-  "rows": 78,
+  "rows": 84,
   "rows_without_a_filing_document": 0,
-  "unreached": 70
+  "unreached": 66
  },
  "inputs": {
   "tests/irs/f1040.pdf": "3d31c226df0d189ced80e039d01cf0f8820c1019681a0f0ca6264de277b7e982",
@@ -7617,13 +7316,13 @@
   "tests/irs/fw2_2024.pdf": "318af9431e372ef7b92c478ef76355312de70f09ac92072d48cdd025080ef526",
   "tests/irs/fw2_2025.pdf": "6a52ad63693de54220a3326b22c4d0fb34f4c25084366537087312975a55ae96",
   "tests/irs/fw3.pdf": "2df15f40431bd52814cbac85d9843102b09a640b6fe558f201e5214ff1890656",
-  "tests/test_catalog.py": "6b15b7d5ae3c489c76dd4167f0e66121bda492f5a8121c723155cc28dc989e9b",
-  "tests/test_irs_forms.py": "f9d8ad4e53aa532dcb17ce4e6da34d08d9bb57d3faf9772d0a3242ad6679944b",
+  "tests/test_catalog.py": "48fda4e672256f929a5544ba28add4db331be41fdfffdcfeaec8c153bb66adde",
+  "tests/test_irs_forms.py": "5ede3ad6ac168fd49a1af702517e5f7376760ee72b1e7ff8bf9a8c0e3e50312a",
   "tests/test_real_corpus.py": "32c0f2def2439259f3265350e03cc9acf83c7047894609db60881b826784c08d",
   "tools/vocab_report.py": "d10b5df1ecdc629030ef69e490cc7ba93d93da5633f470cc337443869c59bd91",
-  "tracker/content_check.py": "2167980abbad90dc27e1a1e962f1369d8420bc15b9c7fa7d4e9406cdda30db73",
-  "tracker/manifest.py": "1042d12762b4f97f0defb59ea600789f3c397f459803197d66443e751769b75e",
-  "tracker/templates.py": "1a19dcaf69b35c6ba1f349b50a35dfa13f775aa6455ffb112d1b1fd7032c6a06"
+  "tracker/content_check.py": "860610877b6dd342d26925d57edfba20033735bfae7eef20d6eca3717570fa1a",
+  "tracker/manifest.py": "42e1db3371a4f0a8cc2996081349108d682022b775a6a0433f5c93f7869691ba",
+  "tracker/templates.py": "f74982ebab5dae2b97cbb633f57a39024bb75d927c07fa312df45efb64c289a1"
  },
  "note": "GENERATED by tools/vocab_report.py \u2014 do not edit by hand.",
  "schema": 1

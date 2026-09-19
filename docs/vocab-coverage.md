@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 78 rows · 331 keywords · **70 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 52 IRS forms · 293 cases
+6 catalogs · 84 rows · 338 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 52 IRS forms · 316 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -38,7 +38,6 @@ Said by no corpus form and no case. Nothing defends them.
 - **1065 C04** `guaranteed payments by partner`
 - **1065 D01** `fixed asset listing`
 - **1065 D01** `fixed asset additions`
-- **1065 D01** `asset additions and disposals`
 - **1065 G01** `apportionment data`
 - **1065 G01** `sales by state`
 - **1065 G01** `payroll by state`
@@ -47,8 +46,6 @@ Said by no corpus form and no case. Nothing defends them.
 - **1120 B02** `withdrawals and other debits`
 - **1120 C01** `fixed asset listing`
 - **1120 C01** `fixed asset additions`
-- **1120 C01** `asset additions and disposals`
-- **1120 C02** `depreciation report`
 - **1120 G01** `capitalization table`
 - **1120 H01** `apportionment data`
 - **1120 H01** `sales by state`
@@ -64,7 +61,6 @@ Said by no corpus form and no case. Nothing defends them.
 - **1120S D01** `shareholder w-2`
 - **1120S F01** `fixed asset listing`
 - **1120S F01** `fixed asset additions`
-- **1120S F01** `asset additions and disposals`
 - **1120S H01** `apportionment data`
 - **1120S H01** `sales by state`
 - **1120S H01** `payroll by state`
@@ -114,9 +110,9 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — W-2 Wage Statements - All Employers
 
-- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; W-2 2025 Copy B one to a page.pdf (d85) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw3.pdf → parks
-- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw3.pdf → parks
-- `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**
+- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw3.pdf → parks
+- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw3.pdf → parks
+- `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**
 
 ### A02 — 1099-INT / 1099-DIV - Interest & Dividend Income
 
@@ -124,11 +120,27 @@ Reached, but proven nothing: the cheapest placements to add.
 - `1099-div` (any) — 1099-DIV.pdf (d66) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → parks; Vanguard consolidated 1099.pdf (d68) → **here**; Vanguard consolidated 1099.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → ?; f1099div.pdf → **here**
 - `1099-oid` (any) — f1099oid.pdf → **here**
 
+### A03 — 1099-NEC - Nonemployee Compensation
+
+- `1099-nec` (any) — 1099-NEC.pdf (d62) → **here**; 1099-NEC 2025 Copy B one to a page.pdf (d85) → **here**; f1099nec.pdf → **here**; f1099nec_2024.pdf → **here**
+
+### A04 — 1099-MISC - Miscellaneous Income
+
+- `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → parks; Schwab consolidated 1099 with a B.pdf (d73) → ?; 1099-MISC 2025 Copy B.pdf (d90) → **here**; f1099msc.pdf → **here**
+- `miscellaneous information` (any) — Schwab consolidated 1099 with a B.pdf (d68) → parks; Schwab consolidated 1099 with a B.pdf (d73) → ?; 1099-MISC 2025 Copy B.pdf (d90) → **here**
+
+### A05 — 1099-K - Payment Card & Third-Party Network Transactions
+
+- `1099-k` (any) — 1099-K 2025 Copy B.pdf (d90) → **here**; f1099k.pdf → **here**
+- `payment card` (any) — 1099-K 2025 Copy B.pdf (d90) → **here**; merchant payment summary.pdf (d90) → **here**; f1099k.pdf → **here**
+
+### A06 — 1099-G - Certain Government Payments
+
+- `1099-g` (any) — 1099-G 2025 Copy B.pdf (d90) → **here**; f1099g.pdf → **here**
+
 ### B01 — Prior-Year Federal & State Tax Returns
 
-- `individual income tax return` (required) — 2024 return with Schedule A.pdf (d62) → **here**; 2024 1040 with schedules.pdf (d63) → **here**; 4868 extension.pdf (d63) → parks; engagement letter.pdf (d65) → parks; f1040.pdf → **here**; f1040x.pdf → **here**; f4868.pdf → parks; f8879.pdf → parks
-- `filing status` (required) — 2024 return with Schedule A.pdf (d62) → **here**; 2024 1040 with schedules.pdf (d63) → **here**; engagement letter.pdf (d65) → parks; organizer.pdf (d65) → parks; organizer with every line.pdf (d66) → parks; f1040.pdf → **here**; f1040es.pdf → parks; f1040es_2025.pdf → H01; f1040nr.pdf → parks; f1040s.pdf → parks; f1040x.pdf → **here**
-- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → ?; 2024 1120.pdf (d62) → ?; 2024 990.pdf (d62) → ?; 2024 return with Schedule A.pdf (d62) → **here**; 2024 1040 with schedules.pdf (d63) → **here**; 2024 1120 with schedules.pdf (d63) → ?; 2024 1120-S dropped by the owner.pdf (d65) → parks; f1040.pdf → **here**; f1040nr.pdf → parks; f1040s.pdf → parks; f1040x.pdf → **here**; f1041.pdf → ?; f1065.pdf → ?; f1096.pdf → parks; f1120.pdf → parks; f1120h.pdf → ?; f1120s.pdf → ?; f8879.pdf → parks; f940.pdf → ?; f941.pdf → parks; f990.pdf → ?; f990ez.pdf → ?; fw3.pdf → parks
+- `individual income tax return + filing status + under penalties of perjury | resident income tax return` (required) — 2024 return with Schedule A.pdf (d62) → **here**; 2024 1040 with schedules.pdf (d63) → **here**; CA filing instructions then 540.pdf (d69) → **here**; CA 540 2024.pdf (d90) → **here**; NY IT-201 2024.pdf (d90) → **here**; f1040.pdf → **here**; f1040x.pdf → **here**
 
 ### C01 — Mortgage Interest Statement - Form 1098
 
@@ -248,8 +260,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A03 — Prior-Year Fiduciary Returns
 
-- `income tax return for estates and trusts` (required) — f1041.pdf → **here**
-- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → ?; 2024 1120.pdf (d62) → ?; 2024 990.pdf (d62) → ?; 2024 return with Schedule A.pdf (d62) → ?; 2024 1040 with schedules.pdf (d63) → ?; 2024 1120 with schedules.pdf (d63) → ?; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1040.pdf → ?; f1040nr.pdf → ?; f1040s.pdf → ?; f1040x.pdf → ?; f1041.pdf → **here**; f1065.pdf → ?; f1096.pdf → parks; f1120.pdf → ?; f1120h.pdf → ?; f1120s.pdf → ?; f8879.pdf → ?; f940.pdf → parks; f941.pdf → ?; f990.pdf → ?; f990ez.pdf → ?; fw3.pdf → ?
+- `income tax return for estates and trusts + under penalties of perjury` (required) — f1041.pdf → **here**
 
 ### B01 — 1099s for Trust / Estate Accounts
 
@@ -258,7 +269,7 @@ Reached, but proven nothing: the cheapest placements to add.
 - `1099-b` (any) — 1099-B.pdf (d62) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → ?; 1099-B Copy B.pdf (d73) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks
 - `1099-oid` (any) — f1099oid.pdf → **here**
 - `1099-r` (any) — fax cover then 1099-R.pdf (d66) → ?; fax cover then 1099-R.pdf (d73) → **here**; f1099r.pdf → **here**
-- `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks; f1099msc.pdf → **here**
+- `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks; 1099-MISC 2025 Copy B.pdf (d90) → ?; f1099msc.pdf → **here**
 - `1099-nec` (any) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
 - `realized gain/loss` (any) — realized gain loss export.pdf (d85) → ?; realized gain loss export.pdf (d85) → **here**; realized gain loss.xlsx (d85) → ?
 - `realized gain loss` (any) — realized gain loss report.pdf (d85) → **here**; realized gain loss.xlsx (d85) → ?
@@ -307,13 +318,12 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — Prior-Year Federal & State Partnership Returns
 
-- `return of partnership income` (required) — f1065.pdf → **here**
-- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → ?; 2024 1120.pdf (d62) → ?; 2024 990.pdf (d62) → ?; 2024 return with Schedule A.pdf (d62) → ?; 2024 1040 with schedules.pdf (d63) → ?; 2024 1120 with schedules.pdf (d63) → ?; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1040.pdf → ?; f1040nr.pdf → ?; f1040s.pdf → ?; f1040x.pdf → ?; f1041.pdf → ?; f1065.pdf → **here**; f1096.pdf → ?; f1120.pdf → parks; f1120h.pdf → ?; f1120s.pdf → ?; f8879.pdf → ?; f940.pdf → ?; f941.pdf → ?; f990.pdf → ?; f990ez.pdf → ?; fw3.pdf → ?
+- `return of partnership income + under penalties of perjury | return of income | partnership return` (required) — CA 568 2024.pdf (d90) → **here**; NY IT-204 2024.pdf (d90) → **here**; f1065.pdf → **here**
 
 ### A02 — Partnership Agreement & Amendments
 
 - `partnership agreement` (any) — partnership agreement.pdf (d73) → **here**
-- `operating agreement` (any) — operating agreement.pdf (d62) → **here**
+- `operating agreement` (any) — operating agreement.pdf (d62) → **here**; operating agreement.pdf (d90) → **here**
 
 ### A03 — Trial Balance - Year-End
 
@@ -375,7 +385,14 @@ Reached, but proven nothing: the cheapest placements to add.
 - `fixed asset schedule` (any) — fixed asset schedule.xlsx (d73) → ?; fixed asset schedule.xlsx (d73) → ?; fixed asset schedule.xlsx (d73) → **here**
 - `fixed asset listing` (any) — *unreached*
 - `fixed asset additions` (any) — *unreached*
-- `asset additions and disposals` (any) — *unreached*
+- `asset additions and disposals` (any) — asset additions and disposals.xlsx (d90) → ?; asset additions and disposals.xlsx (d90) → ?; asset additions and disposals.xlsx (d90) → **here**
+
+### D02 — Depreciation Schedules
+
+- `depreciation schedule` (any) — depreciation schedule.xlsx (d73) → ?; depreciation schedule.xlsx (d90) → ?; depreciation schedule.xlsx (d90) → **here**
+- `depreciation detail` (any) — depreciation detail report.pdf (d73) → ?; depreciation detail.pdf (d90) → ?; depreciation detail.pdf (d90) → **here**
+- `depreciation report` (any) — depreciation report.pdf (d90) → ?; depreciation report.pdf (d90) → ?; depreciation report.pdf (d90) → **here**
+- `form 4562` (any) — f4562.pdf → **here**
 
 ### E01 — Loan Agreements & Year-End Balances
 
@@ -401,8 +418,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — Prior-Year Federal & State Corporate Returns
 
-- `u.s. corporation income tax return` (required) — 2024 1120.pdf (d62) → **here**; 2024 1120 with schedules.pdf (d63) → **here**; f1120.pdf → **here**
-- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → ?; 2024 1120.pdf (d62) → **here**; 2024 990.pdf (d62) → ?; 2024 return with Schedule A.pdf (d62) → ?; 2024 1040 with schedules.pdf (d63) → ?; 2024 1120 with schedules.pdf (d63) → **here**; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1040.pdf → ?; f1040nr.pdf → ?; f1040s.pdf → ?; f1040x.pdf → ?; f1041.pdf → ?; f1065.pdf → parks; f1096.pdf → parks; f1120.pdf → **here**; f1120h.pdf → parks; f1120s.pdf → parks; f8879.pdf → ?; f940.pdf → E01; f941.pdf → E01; f990.pdf → ?; f990ez.pdf → ?; fw3.pdf → E01
+- `u.s. corporation income tax return + under penalties of perjury` (required) — 2024 1120.pdf (d62) → **here**; 2024 1120 with schedules.pdf (d63) → **here**; f1120.pdf → **here**
 
 ### A02 — Trial Balance - Year-End
 
@@ -439,13 +455,13 @@ Reached, but proven nothing: the cheapest placements to add.
 - `fixed asset schedule` (any) — fixed asset schedule.xlsx (d73) → **here**; fixed asset schedule.xlsx (d73) → ?; fixed asset schedule.xlsx (d73) → ?
 - `fixed asset listing` (any) — *unreached*
 - `fixed asset additions` (any) — *unreached*
-- `asset additions and disposals` (any) — *unreached*
+- `asset additions and disposals` (any) — asset additions and disposals.xlsx (d90) → **here**; asset additions and disposals.xlsx (d90) → ?; asset additions and disposals.xlsx (d90) → ?
 
 ### C02 — Depreciation Schedules
 
-- `depreciation schedule` (any) — depreciation schedule.xlsx (d73) → **here**
-- `depreciation detail` (any) — depreciation detail report.pdf (d73) → **here**
-- `depreciation report` (any) — *unreached*
+- `depreciation schedule` (any) — depreciation schedule.xlsx (d73) → **here**; depreciation schedule.xlsx (d90) → ?; depreciation schedule.xlsx (d90) → ?
+- `depreciation detail` (any) — depreciation detail report.pdf (d73) → **here**; depreciation detail.pdf (d90) → ?; depreciation detail.pdf (d90) → ?
+- `depreciation report` (any) — depreciation report.pdf (d90) → **here**; depreciation report.pdf (d90) → ?; depreciation report.pdf (d90) → ?
 - `form 4562` (any) — f4562.pdf → **here**
 
 ### D01 — Loan Agreements & Year-End Balances
@@ -502,8 +518,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — Prior-Year Federal & State S-Corp Returns
 
-- `income tax return for an s corporation` (required) — 2024 1120-S.pdf (d62) → **here**; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1120s.pdf → **here**
-- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → **here**; 2024 1120.pdf (d62) → ?; 2024 990.pdf (d62) → ?; 2024 return with Schedule A.pdf (d62) → ?; 2024 1040 with schedules.pdf (d63) → ?; 2024 1120 with schedules.pdf (d63) → ?; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1040.pdf → ?; f1040nr.pdf → ?; f1040s.pdf → ?; f1040x.pdf → ?; f1041.pdf → ?; f1065.pdf → parks; f1096.pdf → ?; f1120.pdf → parks; f1120h.pdf → ?; f1120s.pdf → **here**; f8879.pdf → ?; f940.pdf → E01; f941.pdf → E01; f990.pdf → ?; f990ez.pdf → ?; fw3.pdf → E01
+- `income tax return for an s corporation + under penalties of perjury | franchise or income tax return` (required) — 2024 1120-S.pdf (d62) → **here**; 2024 1120-S dropped by the owner.pdf (d65) → ?; CA 100S 2024.pdf (d90) → **here**; f1120s.pdf → **here**
 
 ### A02 — Trial Balance - Year-End
 
@@ -581,7 +596,14 @@ Reached, but proven nothing: the cheapest placements to add.
 - `fixed asset schedule` (any) — fixed asset schedule.xlsx (d73) → ?; fixed asset schedule.xlsx (d73) → **here**; fixed asset schedule.xlsx (d73) → ?
 - `fixed asset listing` (any) — *unreached*
 - `fixed asset additions` (any) — *unreached*
-- `asset additions and disposals` (any) — *unreached*
+- `asset additions and disposals` (any) — asset additions and disposals.xlsx (d90) → ?; asset additions and disposals.xlsx (d90) → **here**; asset additions and disposals.xlsx (d90) → ?
+
+### F02 — Depreciation Schedules
+
+- `depreciation schedule` (any) — depreciation schedule.xlsx (d73) → ?; depreciation schedule.xlsx (d90) → **here**; depreciation schedule.xlsx (d90) → ?
+- `depreciation detail` (any) — depreciation detail report.pdf (d73) → ?; depreciation detail.pdf (d90) → **here**; depreciation detail.pdf (d90) → ?
+- `depreciation report` (any) — depreciation report.pdf (d90) → ?; depreciation report.pdf (d90) → **here**; depreciation report.pdf (d90) → ?
+- `form 4562` (any) — f4562.pdf → **here**
 
 ### G01 — Loan Agreements & Shareholder Loan Activity
 
@@ -602,8 +624,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — Prior-Year Form 990 & State Filings
 
-- `return of organization exempt from income tax` (required) — 2024 990.pdf (d62) → **here**; f990.pdf → **here**; f990ez.pdf → **here**
-- `under penalties of perjury` (required) — 2024 1120-S.pdf (d62) → ?; 2024 1120.pdf (d62) → ?; 2024 990.pdf (d62) → **here**; 2024 return with Schedule A.pdf (d62) → ?; 2024 1040 with schedules.pdf (d63) → ?; 2024 1120 with schedules.pdf (d63) → ?; 2024 1120-S dropped by the owner.pdf (d65) → ?; f1040.pdf → ?; f1040nr.pdf → ?; f1040s.pdf → ?; f1040x.pdf → ?; f1041.pdf → ?; f1065.pdf → ?; f1096.pdf → ?; f1120.pdf → ?; f1120h.pdf → ?; f1120s.pdf → ?; f8879.pdf → ?; f940.pdf → G01; f941.pdf → G01; f990.pdf → **here**; f990ez.pdf → **here**; fw3.pdf → G01
+- `return of organization exempt from income tax + under penalties of perjury` (required) — 2024 990.pdf (d62) → **here**; f990.pdf → **here**; f990ez.pdf → **here**
 
 ### A02 — Trial Balance - Year-End
 
