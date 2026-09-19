@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-18",
+  "generated": "2026-09-19",
   "generator": "tools/repo_map.py",
   "generator_sha256": "03f0550f4da063b1",
   "module_table_sha256": "f2e4fd60cdeba038",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 107,
     "edges": 466,
-    "reused": 83
+    "reused": 80
   },
   "node_types": [
     "artifact",
@@ -1287,8 +1287,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f01ef71ade157195",
-      "lines": 313,
+      "sha256": "6db00eb23ac98c83",
+      "lines": 314,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1526,9 +1526,10 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "09e35996e83063db",
-      "lines": 192,
+      "sha256": "c5899f58b6c5cc30",
+      "lines": 241,
       "exports": [
+        "held_like_excel",
         "the_record_agrees_with_the_workbooks"
       ]
     },
@@ -1801,8 +1802,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5e10cad8f504015c",
-      "lines": 2106,
+      "sha256": "9d9ca5cd18dbcef7",
+      "lines": 2150,
       "exports": [
         "DAY1",
         "DAY2",
@@ -1856,6 +1857,7 @@
         "test_after_unfiling_the_request_is_not_received_and_the_note_says_why",
         "test_an_annotated_parked_copy_is_left_behind_and_said_so",
         "test_an_empty_folder_is_cleared_by_a_pass_with_nothing_to_sort",
+        "test_an_index_held_the_way_excel_holds_one_still_records_every_moved_original",
         "test_an_index_whose_header_row_moved_is_read_from_it_and_one_with_none_is_refused",
         "test_an_index_written_with_older_columns_still_reads",
         "test_an_interrupt_after_the_index_landed_does_not_undo_the_filing",
@@ -2033,8 +2035,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "867cace8f65a43a7",
-      "lines": 820,
+      "sha256": "1990c2452a142729",
+      "lines": 852,
       "exports": [
         "K1_WORDS",
         "SAMPLE_ITEMS",
@@ -2046,6 +2048,7 @@
         "test_a_derived_year_is_a_check_not_a_reason_to_route",
         "test_a_failed_save_reports_its_own_error_not_a_locked_temp_file",
         "test_a_formula_in_the_keyword_cell_is_refused_not_rewritten",
+        "test_a_manifest_held_the_way_excel_holds_one_defers_and_lands_when_it_is_let_go",
         "test_a_manifest_that_never_recorded_a_form_loads_as_unknown",
         "test_a_manifest_without_the_sheet_loads_as_defaults",
         "test_a_period_with_a_year_implies_the_year_check",
