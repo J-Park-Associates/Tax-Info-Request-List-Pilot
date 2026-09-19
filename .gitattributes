@@ -7,3 +7,11 @@
 # stale on one OS while current on another. Pinning LF here keeps the hash
 # the same everywhere, which is what lets CI run the same check on Windows.
 * text=auto eol=lf
+
+# Rendered by the tools from docs/repo-map.json and the coverage inputs and
+# committed so a fresh clone reads them (CLAUDE.md's first instruction is to
+# read the map); collapsed in pull-request review because nobody edits them.
+docs/repo-map.md linguist-generated=true
+docs/repo-map.json linguist-generated=true
+docs/vocab-coverage.md linguist-generated=true
+docs/vocab-coverage.json linguist-generated=true

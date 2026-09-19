@@ -772,11 +772,11 @@ def test_the_pipeline_ends_with_the_view_every_pass_writes():
     assert edges(graph, **{"from": "tracker/reminder.py", "to": "tracker/view.py", "type": "precedes"})
 
 
-def test_the_deliberate_cycle_is_stated_and_the_load_time_one_named():
+def test_the_deliberate_cycle_is_stated_and_no_load_time_one_remains():
     graph = real_map()
     assert edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
                            "type": "deliberate_cycle"})
-    assert "load-time cycle" in node(graph, "tracker/__init__.py")["notes"]
+    assert "no load-time cycle" in node(graph, "tracker/__init__.py")["notes"]
     assert edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
                            "type": "imports_at_call"}), "the cycle closes at call time, not load"
     assert not edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",

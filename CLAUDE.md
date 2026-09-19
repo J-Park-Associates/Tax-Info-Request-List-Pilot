@@ -55,9 +55,11 @@ it runs when called, not when the module loads, so a cycle that closes through
 one is a cycle only at call time. `from tracker import ledger` draws both the
 module (`tracker/ledger.py`) and the package it executes (`tracker/__init__.py`).
 The one deliberate cycle, filer ↔ scanner inside `_rescan()`, is a curated
-`deliberate_cycle` edge and is stated on both nodes; the one load-time cycle,
-`tracker/__init__.py` → `manifest.py` → `from tracker import ledger`, is stated
-on the package's node.
+`deliberate_cycle` edge and is stated on both nodes. There is no load-time
+cycle: `tracker/__init__.py` imports nothing (decision 99), and
+`tests/test_layers.py` pins the layer of every module and that no load-time
+import points to a higher layer - a module that moves layers moves in that
+table, in the same commit, with a decision row.
 
 ## Keeping the map current
 
@@ -221,6 +223,12 @@ Conventions worth matching:
   filing deadline.
 - Tests are named as the claim they make
   (`test_overrides_are_never_asked_for`), not `test_case_3`.
+- Import directions hold, and `tests/test_layers.py` says which: no load-time
+  import points to a higher layer; `ledger` and `locking` import nothing of
+  the package but each other; `manifest` imports `ledger` and `locking` and
+  nothing else; `runner` never imports `scheduling` or `api`; the package's
+  `__init__` imports nothing. An import inside a function or a `__main__`
+  block is a call-time import and may point anywhere.
 
 Client data never enters the repo: `runs.log` and the
 drafts are gitignored because they carry real client names and share links.
