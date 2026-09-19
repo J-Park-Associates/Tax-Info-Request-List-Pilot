@@ -1,9 +1,10 @@
-"""Tests for tracker/registry.py — an engagement is a folder with a manifest in it.
+"""Tests for tracker/registry.py — an engagement is a folder with a record in it.
 
 The rule under test: nothing has to be registered. The scheduled run walks
-the clients folder, finds every manifest, and reads each one's Engagement
-sheet. A client nobody typed into a list is still found; a manifest nobody
-can read is still reported.
+the clients folder, finds every record, and reads each one's engagement
+details. A client nobody typed into a list is still found; a record nobody
+can read is still reported; a folder holding only the workbook the tracker
+no longer reads is listed as a legacy folder, not an engagement.
 """
 
 import datetime as dt
@@ -11,34 +12,25 @@ from pathlib import Path
 
 import pytest
 
-from tracker.manifest import (
-    ENGAGEMENT_LABELS,
-    ENGAGEMENT_SHEET_NAME,
-    NO,
-    YES,
-    EngagementInfo,
-    RequestItem,
-    create_template,
-)
+from tests.conftest import make_engagement
+from tracker import ledger
+from tracker.manifest import EngagementInfo, RequestItem
 from tracker.registry import (
+    LEGACY_FOLDER,
+    LEGACY_MANIFEST_FILENAME,
     MAX_DEPTH,
     Engagement,
     RegistryError,
     discover_engagements,
     engagement_dirs,
 )
-from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, scaffold_engagement
+from tracker.scaffold import PREPARED_DIR_NAME
 
 ITEMS = [RequestItem(identifier="A01", document="W-2")]
 
 
 def make(root, *parts, info=None, scaffold=False):
-    folder = root.joinpath(*parts)
-    folder.mkdir(parents=True)
-    create_template(folder / MANIFEST_FILENAME, ITEMS, info)
-    if scaffold:
-        scaffold_engagement(folder)
-    return folder
+    return make_engagement(root.joinpath(*parts), ITEMS, info, scaffold=scaffold)
 
 
 def test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves(tmp_path):
@@ -58,13 +50,20 @@ def test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves(tmp_pa
     assert retired["Smith - 2025"] and not retired["Smith - 2026"]
 
 
-def test_a_year_level_above_the_client_never_retires_the_new_engagement_itself(tmp_path):
+def test_a_year_level_above_the_client_never_retires_the_new_engagement_itself(tmp_path, monkeypatch):
     # The tenth reading: with Clients/2025/Smith/1040 and Clients/2026/Smith/1040
     # the last two names are the same every year, and the two-name fallback
     # retired the new engagement into itself; the run then skipped both.
     from tracker.registry import engagement_from, mark_superseded
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
     root = tmp_path / "Clients"
+    # Three engagements called "1040": the store keys them by their path
+    # under the clients root, so the root is recorded the way the app
+    # records it before any of them is made.
+    root.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    set_clients_root(root)
     prior = make(root, "2025", "Smith", "1040")
     make(root, "2026", "Smith", "1040", info=EngagementInfo(rolled_from=str(prior.resolve())))
     make(root, "Chicago", "Smith", "1040")                 # another office's live client of the same name
@@ -124,7 +123,7 @@ def test_a_client_folder_the_walk_cannot_list_is_a_problem_row_not_a_silence(tmp
     assert [e.path.name for e in registry.engagements if not e.problem] == ["Jones - 2025"]
 
 
-def test_every_folder_with_a_manifest_is_an_engagement(tmp_path):
+def test_every_folder_with_a_record_is_an_engagement(tmp_path):
     a = make(tmp_path, "Smith", "Smith 2025")
     b = make(tmp_path, "Acme Corp TY2025")
     c = make(tmp_path, "Office B", "Trusts", "Jones Trust 2025")
@@ -133,9 +132,9 @@ def test_every_folder_with_a_manifest_is_an_engagement(tmp_path):
 
 def test_an_engagements_own_subfolders_are_never_engagements(tmp_path):
     outer = make(tmp_path, "Smith 2025", scaffold=True)
-    # A stray manifest inside Prepared/ (or anywhere below) does not split
+    # A stray record inside Prepared/ (or anywhere below) does not split
     # the engagement in two.
-    create_template(outer / PREPARED_DIR_NAME / MANIFEST_FILENAME, ITEMS)
+    ledger.path_for(outer / PREPARED_DIR_NAME).write_text("", encoding="utf-8")
     assert engagement_dirs(tmp_path) == [outer]
 
 
@@ -153,7 +152,7 @@ def test_discovery_is_depth_limited(tmp_path):
     assert deep not in engagement_dirs(tmp_path)
 
 
-def test_the_engagement_sheet_drives_the_run(tmp_path):
+def test_the_engagement_details_drive_the_run(tmp_path):
     make(tmp_path, "Smith 2025", info=EngagementInfo(
         client="John Smith", link="https://drive.example/abc",
         due=dt.date(2026, 3, 15), sender="Jason Park", firm="J Park",
@@ -172,41 +171,45 @@ def test_the_engagement_sheet_drives_the_run(tmp_path):
     assert registry.source == tmp_path
 
 
-def test_a_manifest_without_the_sheet_is_still_an_engagement(tmp_path):
-    from openpyxl import load_workbook
-
-    folder = make(tmp_path, "Made Before The Sheet 2024")
-    wb = load_workbook(folder / MANIFEST_FILENAME)
-    del wb[ENGAGEMENT_SHEET_NAME]
-    wb.save(folder / MANIFEST_FILENAME)
-    [engagement] = discover_engagements(tmp_path).engagements
-    assert engagement.active and engagement.reminders and engagement.client == ""
-    assert engagement.problem == ""
-
-
-def test_an_unreadable_manifest_is_listed_with_its_problem_not_dropped(tmp_path):
+def test_an_unreadable_record_is_listed_with_its_problem_not_dropped(tmp_path):
     folder = tmp_path / "Broken 2025"
     folder.mkdir()
-    (folder / MANIFEST_FILENAME).write_bytes(b"not a workbook")
+    ledger.path_for(folder).write_text("{this line is not an event}\n", encoding="utf-8")
     make(tmp_path, "Fine 2025")
     registry = discover_engagements(tmp_path)
     broken = next(e for e in registry.engagements if e.path == folder)
-    assert "Could not open" in broken.problem
+    assert "does not read as an event" in broken.problem
     assert len(registry.engagements) == 2
 
 
-def test_a_bad_yes_no_on_the_sheet_is_reported_not_guessed(tmp_path):
-    from openpyxl import load_workbook
+def test_a_folder_with_only_a_legacy_workbook_is_not_an_engagement_and_is_named_as_such(tmp_path):
+    """Decision 104: a folder from before it, holding the workbook the
+    tracker no longer reads and no record, is listed as a legacy folder -
+    not descended into, not run, and never imported. A folder whose record
+    carries no rules with that workbook beside it is listed the same way."""
+    from tracker.runner import run_engagement
 
-    folder = make(tmp_path, "Smith 2025")
-    wb = load_workbook(folder / MANIFEST_FILENAME)
-    ws = wb[ENGAGEMENT_SHEET_NAME]
-    for row in ws.iter_rows(min_row=1, max_col=2):
-        if row[0].value == ENGAGEMENT_LABELS["reminders"]:
-            row[1].value = "maybe"
-    wb.save(folder / MANIFEST_FILENAME)
-    [engagement] = discover_engagements(tmp_path).engagements
-    assert f"{ENGAGEMENT_LABELS['reminders']} must be {YES} or {NO}" in engagement.problem
+    legacy = tmp_path / "Smith 2024"
+    (legacy / "Prepared").mkdir(parents=True)
+    (legacy / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK any bytes at all")
+    make(legacy, "Prepared", "Inner 2024")             # below it: never reached
+
+    registry = discover_engagements(tmp_path)          # a problem row is a found row
+    [found] = registry.engagements
+    assert found.path == legacy
+    assert found.problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
+    assert engagement_dirs(tmp_path) == []             # the store's CLI and the app list none
+    run = run_engagement(found, today=dt.date(2026, 3, 13))
+    assert found.problem in run.error and run.ok is False
+    assert list(legacy.glob("*.jsonl")) == []           # nothing imported, nothing written
+
+    half = tmp_path / "Jones 2024"
+    half.mkdir()
+    ledger.path_for(half).write_text("", encoding="utf-8")     # a record with no rules in it
+    (half / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK")
+    listed = {e.path.name: e for e in discover_engagements(tmp_path).engagements}
+    assert listed["Jones 2024"].problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
+    assert engagement_dirs(tmp_path) == [half]          # it holds a record, so the walk finds it
 
 
 def test_find_matches_label_or_path(tmp_path):
@@ -235,8 +238,8 @@ def test_a_root_with_no_engagement_is_an_error_not_a_quiet_no_op(tmp_path):
         discover_engagements(tmp_path)
 
 
-def test_an_engagement_is_its_sheet(tmp_path):
-    # Every field on the Engagement sheet is reachable on the Engagement
+def test_an_engagement_is_its_details(tmp_path):
+    # Every field of the engagement's details is reachable on the Engagement
     # without being declared a second time.
     from dataclasses import fields
 

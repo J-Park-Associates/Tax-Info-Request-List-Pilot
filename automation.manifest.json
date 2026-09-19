@@ -51,7 +51,7 @@
     {
       "id": "engagements",
       "label": "List what a pass would find",
-      "description": "Every engagement under the clients folder, which are active, which are chased by email, and any manifest that could not be read. Reads only.",
+      "description": "Every engagement under the clients folder, which are active, which are chased by email, and any record that could not be read. Reads only.",
       "kind": "preview",
       "command": ["python", "-m", "tracker.registry"],
       "timeout_seconds": 300,

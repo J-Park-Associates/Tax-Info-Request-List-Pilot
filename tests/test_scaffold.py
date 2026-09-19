@@ -2,9 +2,9 @@
 
 import pytest
 
-from tracker.manifest import EXPECTED_PATTERN, ManifestError, Override, RequestItem, create_template
+from tests.conftest import make_engagement
+from tracker.manifest import EXPECTED_PATTERN, ManifestError, Override, RequestItem
 from tracker.scaffold import (
-    MANIFEST_FILENAME,
     PBC_DIR_NAME,
     PREPARED_DIR_NAME,
     README_HEADING,
@@ -40,10 +40,7 @@ ITEMS = [
 
 @pytest.fixture
 def engagement(tmp_path):
-    eng = tmp_path / "TY2025 1040"
-    eng.mkdir()
-    create_template(eng / MANIFEST_FILENAME, ITEMS)
-    return eng
+    return make_engagement(tmp_path / "TY2025 1040", ITEMS, scaffold=False)
 
 
 # ------------------------------------------------------------ name rules ----
@@ -170,8 +167,8 @@ def test_readme_refreshed_on_rerun(engagement):
     assert README_HEADING in readme.read_text(encoding="utf-8")
 
 
-def test_missing_manifest_raises(tmp_path):
-    with pytest.raises(ManifestError, match="not found"):
+def test_a_folder_with_no_record_raises(tmp_path):
+    with pytest.raises(ManifestError, match="not an engagement"):
         scaffold_engagement(tmp_path)
 
 
@@ -184,13 +181,11 @@ def test_the_review_folder_is_never_assigned_to_an_identifier(tmp_path):
     assert [p.name for p in assigned["00"]] == ["00 - Opening Balances"]
 
 
-def test_the_readme_contact_comes_from_the_engagement_sheet(tmp_path):
-    from tracker.manifest import EngagementInfo, RequestItem, create_template
+def test_the_readme_contact_comes_from_the_engagement_details(tmp_path):
+    from tracker.manifest import EngagementInfo, RequestItem
 
-    folder = tmp_path / "Smith 2025"
-    folder.mkdir()
-    create_template(folder / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="W-2")],
-                    EngagementInfo(firm="J Park & Associates, CPA"))
+    folder = make_engagement(tmp_path / "Smith 2025", [RequestItem(identifier="A01", document="W-2")],
+                             EngagementInfo(firm="J Park & Associates, CPA"), scaffold=False)
     result = scaffold_engagement(folder)
     assert "Questions? Contact J Park & Associates, CPA." in result.readme.read_text(encoding="utf-8")
     result = scaffold_engagement(folder, contact="Someone Else")
@@ -221,13 +216,9 @@ def test_each_issuer_gets_its_own_client_folder(tmp_path):
     issuing entity and the filed copy carries the entity's name (decision 93)."""
     from tracker.templates import issuer_row, item_from_spec
 
-    eng = tmp_path / "TY2025 1040"
-    eng.mkdir()
     rows = [item_from_spec(issuer_row("F02", "Ashford Holdings, L.P.")),
             item_from_spec(issuer_row("F03", "Birch Lane Partners"))]
-    create_template(eng / MANIFEST_FILENAME, rows)
-
-    scaffold_engagement(eng)
+    eng = make_engagement(tmp_path / "TY2025 1040", rows)
 
     names = {f.name for f in (eng / PREPARED_DIR_NAME).iterdir() if f.is_dir()}
     assert "F02 - Schedule K-1 - Ashford Holdings LP" in names

@@ -6,8 +6,8 @@ from nothing to what these lines fold to. What is made here is the
 record's own behaviour - one line per event, a torn tail nobody trips
 over, the fold that is the index's own order, and the refusal to write a
 word outside the engagement lock - and that every reader answers from it.
-Since decision 103 there is no second answer to any of it: the index, the
-statuses and the person's imported rules are the record's alone.
+Since decisions 103 and 104 there is no second answer to any of it: the
+index, the statuses and the person's rules are the record's alone.
 """
 
 from __future__ import annotations
@@ -20,12 +20,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import make_engagement
 from tests.test_scanner import text_pdf
 from tracker import ledger, store
 from tracker.filer import (
     ASSIGNED_BY_PERSON,
     FILED,
-    INDEX_FILENAME,
     assign_review_file,
     file_drops,
     ledger_key,
@@ -35,10 +35,12 @@ from tracker.locking import engagement_lock
 from tracker.manifest import (
     RequestItem,
     Status,
-    create_template,
+    load_engagement_info,
     load_manifest,
+    save_rules,
 )
-from tracker.scaffold import MANIFEST_FILENAME, SHARED_DIR_NAME, scaffold_engagement
+from tracker.records import rule_from_json, rule_to_json
+from tracker.scaffold import SHARED_DIR_NAME
 from tracker.scanner import scan_engagement
 
 REPO = Path(__file__).resolve().parents[1]
@@ -60,11 +62,15 @@ ITEMS = [
 
 @pytest.fixture
 def engagement(tmp_path):
-    eng = tmp_path / "Smith Family 2025"
-    eng.mkdir()
-    create_template(eng / MANIFEST_FILENAME, ITEMS)
-    scaffold_engagement(eng)
-    return eng
+    return make_engagement(tmp_path / "Smith Family 2025", ITEMS)
+
+
+@pytest.fixture
+def bare(tmp_path):
+    """A folder with no record yet, for the claims about the first line."""
+    folder = tmp_path / "Bare 2025"
+    folder.mkdir()
+    return folder
 
 
 def drop(engagement, name, text):
@@ -82,70 +88,114 @@ def a_keyword(n: int) -> dict:
 # ------------------------------------------------------------ one line each ----
 
 
-def test_an_append_is_one_line_and_reads_back_as_it_was_written(engagement):
-    with engagement_lock(engagement):
-        ledger.append(engagement, a_keyword(1))
+def test_an_append_is_one_line_and_reads_back_as_it_was_written(bare):
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
 
-    assert lines(engagement)[-1] == b""             # newline-terminated, nothing after it
-    assert len(lines(engagement)) == 2
-    events = ledger.read_events(engagement)
+    assert lines(bare)[-1] == b""             # newline-terminated, nothing after it
+    assert len(lines(bare)) == 2
+    events = ledger.read_events(bare)
     assert [e[ledger.EVENT_KEY] for e in events] == [ledger.KEYWORD_LEARNED]
     assert events[0]["identifier"] == "A01" and events[0]["keyword"] == "lender"
     assert events[0][ledger.AT_KEY].endswith("Z")
 
 
-def test_two_appends_are_two_lines_in_the_order_they_happened(engagement):
-    with engagement_lock(engagement):
-        ledger.append(engagement, a_keyword(1))
-        ledger.append(engagement, a_keyword(2))
+def test_two_appends_are_two_lines_in_the_order_they_happened(bare):
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
+        ledger.append(bare, a_keyword(2))
 
-    assert len([raw for raw in lines(engagement) if raw]) == 2
-    assert [e["identifier"] for e in ledger.read_events(engagement)] == ["A01", "A02"]
+    assert len([raw for raw in lines(bare) if raw]) == 2
+    assert [e["identifier"] for e in ledger.read_events(bare)] == ["A01", "A02"]
 
 
-def test_an_append_outside_the_engagement_lock_refuses_loudly(engagement):
+def test_an_append_outside_the_engagement_lock_refuses_loudly(bare):
     with pytest.raises(ledger.LedgerError, match="engagement lock"):
-        ledger.append(engagement, a_keyword(1))
-    assert not ledger.path_for(engagement).exists()
+        ledger.append(bare, a_keyword(1))
+    assert not ledger.path_for(bare).exists()
 
 
-def test_an_event_this_version_does_not_know_is_refused(engagement):
+def test_an_event_this_version_does_not_know_is_refused(bare):
     with pytest.raises(ledger.LedgerError, match="not an event"):
         ledger.new("invented")
-    with engagement_lock(engagement), pytest.raises(ledger.LedgerError, match="not an event"):
-        ledger.append(engagement, {ledger.EVENT_KEY: "invented", ledger.AT_KEY: "now"})
+    with engagement_lock(bare), pytest.raises(ledger.LedgerError, match="not an event"):
+        ledger.append(bare, {ledger.EVENT_KEY: "invented", ledger.AT_KEY: "now"})
+
+
+def test_a_journal_that_carries_rules_imported_still_folds_and_is_never_written_again(tmp_path):
+    """The retired event of decision 103: an older journal carries it, this
+    version folds it exactly as a ``rules_changed``, and refuses to write
+    one by sentence - and a save after it carries only the difference."""
+    import json
+
+    from tracker.filer import ensure
+
+    folder = tmp_path / "Older 2025"
+    folder.mkdir()
+    old = {
+        ledger.EVENT_KEY: ledger.RULES_IMPORTED, ledger.AT_KEY: "2026-09-18T09:00:00Z",
+        ledger.RULES_KEY: [rule_to_json(RequestItem(**{**rule_to_json(item), "row": n + 2}))
+                           for n, item in enumerate(ITEMS)],
+        ledger.REMOVED_KEY: [], ledger.INFO_KEY: {"client": "John"},
+        "digest": "0" * 64,
+    }
+    ledger.path_for(folder).write_text(json.dumps(old, sort_keys=True) + "\n", encoding="utf-8")
+
+    folded = ledger.replay(ledger.read_events(folder))
+    assert list(folded.rules) == ["A01", "C01"] and folded.info == {"client": "John"}
+    assert not hasattr(folded, "rules_digest")
+    assert [i.identifier for i in load_manifest(folder)] == ["A01", "C01"]
+    assert load_engagement_info(folder).client == "John"
+
+    with pytest.raises(ledger.LedgerError, match="retired"):
+        ledger.new(ledger.RULES_IMPORTED)
+    ensure(folder)
+    with engagement_lock(folder):
+        with pytest.raises(store.StoreError, match="retired"):
+            store.record(store.connect(), folder, {**old, ledger.AT_KEY: "now"})
+
+    rows = [RequestItem(**rule_from_json(r)) for r in store.rules(store.connect(), folder)]
+    saved = save_rules(folder, rows[:1], load_engagement_info(folder))
+    # The old line numbered its rows the sheet's way (from 2); the first
+    # save gives A01 the position the list gives it, and says so.
+    assert saved.recorded and saved.changed == ("A01",) and saved.removed == ("C01",)
+    assert saved.info_fields == ()
+    assert [i.row for i in load_manifest(folder)] == [1]
+    last = ledger.read_events(folder)[-1]
+    assert last[ledger.EVENT_KEY] == ledger.RULES_CHANGED and "digest" not in last
+    assert [i.identifier for i in load_manifest(folder)] == ["A01"]
 
 
 # ------------------------------------------------------------------- torn ----
 
 
-def test_a_torn_last_line_is_ignored_by_the_reader_and_truncated_by_the_next_append(engagement):
-    with engagement_lock(engagement):
-        ledger.append(engagement, a_keyword(1))
-    path = ledger.path_for(engagement)
+def test_a_torn_last_line_is_ignored_by_the_reader_and_truncated_by_the_next_append(bare):
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
+    path = ledger.path_for(bare)
     whole = path.read_bytes()
     # A run killed mid-append: bytes with no newline after them.
     path.write_bytes(whole + b'{"event": "keyword_lear')
 
-    assert [e["identifier"] for e in ledger.read_events(engagement)] == ["A01"]
+    assert [e["identifier"] for e in ledger.read_events(bare)] == ["A01"]
 
-    with engagement_lock(engagement):
-        ledger.append(engagement, a_keyword(2))
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(2))
     assert path.read_bytes().startswith(whole)
     assert b"keyword_lear\n" not in path.read_bytes()
-    assert [e["identifier"] for e in ledger.read_events(engagement)] == ["A01", "A02"]
+    assert [e["identifier"] for e in ledger.read_events(bare)] == ["A01", "A02"]
 
 
-def test_a_line_that_is_not_an_event_in_the_middle_is_refused(engagement):
-    with engagement_lock(engagement):
-        ledger.append(engagement, a_keyword(1))
-        ledger.append(engagement, a_keyword(2))
-    path = ledger.path_for(engagement)
+def test_a_line_that_is_not_an_event_in_the_middle_is_refused(bare):
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
+        ledger.append(bare, a_keyword(2))
+    path = ledger.path_for(bare)
     whole = path.read_bytes()
     path.write_bytes(whole.replace(b'"A01"', b'"A01', 1))
 
     with pytest.raises(ledger.LedgerError, match="line 1"):
-        ledger.read_events(engagement)
+        ledger.read_events(bare)
     path.write_bytes(whole)    # put it back: the suite's own fixture reads this folder too
 
 
@@ -202,14 +252,14 @@ def test_the_statuses_are_built_up_across_the_passes_that_changed_something():
 # ------------------------------------------------------------------- head ----
 
 
-def test_the_head_changes_with_every_append_and_not_otherwise(engagement):
-    assert ledger.head(engagement) == ""
-    with engagement_lock(engagement):
-        ledger.append(engagement, a_keyword(1))
-        first = ledger.head(engagement)
-        assert first and ledger.head(engagement) == first    # looking changes nothing
-        ledger.append(engagement, a_keyword(2))
-        assert ledger.head(engagement) != first
+def test_the_head_changes_with_every_append_and_not_otherwise(bare):
+    assert ledger.head(bare) == ""
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
+        first = ledger.head(bare)
+        assert first and ledger.head(bare) == first    # looking changes nothing
+        ledger.append(bare, a_keyword(2))
+        assert ledger.head(bare) != first
 
 
 # -------------------------------------------------------------- the writers ----
@@ -263,10 +313,10 @@ def test_a_scan_that_changes_a_status_records_it(engagement):
 
 # --------------------------------------------------------- the readers ----
 #
-# Decision 88: load_manifest() answers each identifier's status from the
-# record wherever it has one and from the workbook wherever it has not.
-# Decision 102 left the index with only the first of those two. The claims
-# below are about which answered.
+# Decision 88: load_manifest() answered each identifier's status from the
+# record wherever it had one and from a workbook wherever it had not.
+# Decisions 102 to 104 left every reader with only the first of those two.
+# The claims below are about which answered.
 
 
 def test_the_index_is_the_record_folded_and_nothing_else(engagement):
@@ -281,7 +331,7 @@ def test_the_index_is_the_record_folded_and_nothing_else(engagement):
     # there is no second copy of it any more: the fold lays it and the
     # store's position column keeps it (decision 102).
     assert [asdict(e) for e in rows] == list(ledger.fold(ledger.read_events(engagement)).values())
-    assert not (engagement / INDEX_FILENAME).exists()
+    assert list(engagement.glob("*.xlsx")) == []
 
 
 def test_a_record_holding_only_a_scan_gives_an_index_of_no_rows(engagement):
@@ -296,7 +346,7 @@ def test_a_record_holding_only_a_scan_gives_an_index_of_no_rows(engagement):
     assert read_index(engagement) == []
 
 
-def test_every_status_comes_from_the_record_and_none_from_the_sheet(engagement):
+def test_every_status_comes_from_the_record_and_nowhere_else(engagement):
     """Decision 103: there is no second reading of a status to prefer.
 
     A row the record has scanned answers with what it recorded; a row it
@@ -312,8 +362,7 @@ def test_every_status_comes_from_the_record_and_none_from_the_sheet(engagement):
     assert by_id["A01"].status == Status.RECEIVED
     assert by_id["A01"].required_keywords == ("W-2",)
     assert by_id["C01"].status == Status.MISSING     # scanned, and nothing arrived
-    # And the same answer when the manifest is named rather than the folder.
-    assert load_manifest(engagement / MANIFEST_FILENAME) == list(by_id.values())
+    assert by_id["C01"].required_keywords == ("1098",)
 
 
 def test_an_unreadable_record_refuses_every_reader_by_name(engagement):
@@ -334,6 +383,8 @@ def test_an_unreadable_record_refuses_every_reader_by_name(engagement):
         read_index(engagement)
     with pytest.raises(ledger.LedgerError, match="line 1"):
         load_manifest(engagement)
+    with pytest.raises(ledger.LedgerError, match="line 1"):
+        load_engagement_info(engagement)
 
     path.write_bytes(whole)        # put it back: the suite's own fixture reads this folder too
 

@@ -2,16 +2,26 @@
 
 There is no registry file. The unattended run is pointed at the folder the
 firm keeps its clients in and walks it for engagement folders - any folder
-holding ``MANIFEST_FILENAME``. What the run needs to know about each one (who
-the client is, the share link, the due date, whether to chase them by email,
-whether the engagement is still active) lives on the manifest's own
-**Engagement** sheet, written by the wizard when the engagement is created.
+holding the engagement's own record (``ledger.LEDGER_FILENAME``). What the
+run needs to know about each one (who the client is, the share link, the
+due date, whether to chase them by email, whether the engagement is still
+active) is the engagement's details in that record, written by the wizard
+when the engagement is created and edited in the app.
 
 That is the whole point. The previous ``engagements.yaml`` was a second list
 a person had to keep in step with the folders on disk: a mistyped path or a
 client nobody added was a client silently skipped until a filing deadline.
-A folder with a manifest in it is an engagement; nothing else has to be
+A folder with a record in it is an engagement; nothing else has to be
 told.
+
+**A folder from before decision 104** may hold only the workbook the
+tracker used to read (``LEGACY_MANIFEST_FILENAME``) and no record. It is
+terminal too - the walk does not descend into it - and it is listed as a
+legacy folder with the sentence that says to set it up again in the app
+(``LEGACY_FOLDER``), never as an engagement and never imported: the owner
+said so. A folder that holds a record with no rules in it and that workbook
+beside it is listed the same way, because its rules never reached the
+journal.
 
 Discovery is bounded and predictable:
 
@@ -22,9 +32,9 @@ Discovery is bounded and predictable:
 - Depth is capped so a mistaken root (a whole drive) fails fast instead of
   crawling for an hour.
 
-A manifest that cannot be read is still an engagement: it is listed with its
+A record that cannot be read is still an engagement: it is listed with its
 error so the runner reports it and moves on, exactly as it would for a
-folder-level problem. A root that is not a folder, or one with no manifest
+folder-level problem. A root that is not a folder, or one with no record
 under it at all, raises :class:`RegistryError` - that is a typo in the
 scheduled task, not an empty practice.
 """
@@ -35,10 +45,24 @@ import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from tracker import ledger, store
+from tracker.ledger import LedgerError
 from tracker.manifest import ManifestError, load_engagement_info
 from tracker.records import EngagementInfo
-from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
+from tracker.scaffold import PREPARED_DIR_NAME, SHARED_DIR_NAME
+from tracker.store import StoreError
 from tracker.validators import OFFICE_LOCK_PREFIX, is_sync_staging
+
+#: The workbook the request list lived in until decision 104. Its only
+#: reader in the package is the walk below, which uses it to say what a
+#: folder holding one and no record is: a legacy folder, not an engagement.
+LEGACY_MANIFEST_FILENAME = "_manifest.xlsx"
+#: How such a folder is listed, and what the Status Report's "Problem or
+#: skipped" cell says of it.
+LEGACY_FOLDER = (
+    "holds a request list in a workbook the tracker no longer reads ({name}) and no "
+    "record; set the engagement up again in the app"
+)
 
 #: How a superseded engagement is described, by the run and the app alike.
 SKIP_ROLLED_FORWARD = "rolled forward into {successor}"
@@ -63,16 +87,16 @@ class RegistryError(Exception):
 class Engagement:
     """One engagement the scheduled run should process.
 
-    Everything about the client is the manifest's Engagement sheet, held
-    here as ``info`` and reachable as attributes (``engagement.client``)
-    so a field added to the sheet is one edit, in one dataclass.
+    Everything about the client is the engagement's details, held here as
+    ``info`` and reachable as attributes (``engagement.client``) so a field
+    added to the details is one edit, in one dataclass.
     """
 
     path: Path
     info: EngagementInfo = EngagementInfo()
-    problem: str = ""        # why the manifest could not be read, if it could not
+    problem: str = ""        # why the record could not be read, if it could not
     superseded_by: str = ""  # the engagement this one was rolled forward INTO
-    warning: str = ""        # what its sheet says that the registry could not act on
+    warning: str = ""        # what its details say that the registry could not act on
 
     def __getattr__(self, name: str):
         try:
@@ -121,20 +145,28 @@ def _skip(folder: Path) -> bool:
     )
 
 
-def _walk_engagements(root: Path, max_depth: int) -> tuple[list[Path], list[tuple[Path, str]]]:
-    """Every folder under ``root`` holding a manifest, sorted, without
-    descending into one - and every folder the walk could not list, with
-    why. A client's folder an ACL denies the run's account would
-    otherwise vanish from the run without a word (the tenth reading)."""
+def _walk_engagements(
+    root: Path, max_depth: int
+) -> tuple[list[Path], list[Path], list[tuple[Path, str]]]:
+    """Every folder under ``root`` holding a record, sorted, without
+    descending into one; every folder holding only the workbook the
+    tracker no longer reads, likewise terminal; and every folder the walk
+    could not list, with why. A client's folder an ACL denies the run's
+    account would otherwise vanish from the run without a word (the tenth
+    reading)."""
     found: list[Path] = []
+    legacy: list[Path] = []
     unlisted: list[tuple[Path, str]] = []
 
     def walk(folder: Path, depth: int) -> None:
         try:
             # A folder that denies the account raises here on POSIX (no
             # search permission) and only on listing on Windows.
-            if (folder / MANIFEST_FILENAME).is_file():
+            if ledger.path_for(folder).is_file():
                 found.append(folder)
+                return
+            if (folder / LEGACY_MANIFEST_FILENAME).is_file():
+                legacy.append(folder)
                 return
             if depth >= max_depth:
                 return
@@ -147,21 +179,38 @@ def _walk_engagements(root: Path, max_depth: int) -> tuple[list[Path], list[tupl
                 walk(child, depth + 1)
 
     walk(root, 0)
-    return found, unlisted
+    return found, legacy, unlisted
 
 
 def engagement_dirs(root: Path | str, *, max_depth: int = MAX_DEPTH) -> list[Path]:
-    """Every folder under ``root`` holding a manifest, sorted, without descending into one."""
+    """Every folder under ``root`` holding a record, sorted, without descending into one."""
     return _walk_engagements(Path(root), max_depth)[0]
 
 
 def engagement_from(folder: Path) -> Engagement:
-    """One engagement from its folder and Engagement sheet."""
+    """One engagement from its folder and the details its record holds.
+
+    A record the readers refuse - a journal that will not parse, a store
+    that will not open, a line of the wrong shape, anything else one
+    synced folder can surprise a reader with - is listed with the
+    sentence, not dropped: one client's record must not end the whole
+    practice's pass inside discovery. A record
+    that carries no rules with the old workbook beside it is a legacy
+    folder: an engagement made before decision 103 whose rules never
+    reached the journal, which the owner's word says is set up again in
+    the app rather than imported.
+    """
     folder = Path(folder)
     try:
-        info: EngagementInfo = load_engagement_info(folder / MANIFEST_FILENAME)
-    except ManifestError as exc:
+        info: EngagementInfo = load_engagement_info(folder)
+        rules = store.rules(store.connect(), folder) or []
+    except (ManifestError, LedgerError, StoreError) as exc:
         return Engagement(path=folder, problem=str(exc))
+    except Exception as exc:        # one folder's surprise, said, not fatal
+        return Engagement(path=folder, problem=f"{type(exc).__name__}: {exc}")
+    if not rules and (folder / LEGACY_MANIFEST_FILENAME).is_file():
+        return Engagement(path=folder, info=info,
+                          problem=LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME))
     return Engagement(path=folder, info=info)
 
 
@@ -201,7 +250,7 @@ def _prior_of(candidate: Engagement, index: int, engagements: list[Engagement]) 
     and ``2026/Smith/1040``) has two engagements sharing the last two
     names, and the third name decides; two that tie decide nothing.
     """
-    # A folder the walk could not list, or whose manifest it could not
+    # A folder the walk could not list, or whose record it could not
     # read, is never taken as the prior: retiring it would turn its report
     # into a benign skip.
     readable = [(position, prior) for position, prior in enumerate(engagements)
@@ -223,11 +272,11 @@ def mark_superseded(engagements: list[Engagement]) -> list[Engagement]:
     """An engagement another one was rolled forward from is finished.
 
     The rollover never writes to the prior year (it is read-only history),
-    so the prior cannot mark itself done. The new engagement's sheet says
+    so the prior cannot mark itself done. The new engagement's details say
     what it was rolled from, and that is enough: nobody should be chasing
     last year's list once this year's exists. Marked inactive here, with
     the successor named, rather than by a person remembering to open last
-    year's manifest and type "no".
+    year's engagement and set it inactive.
     """
     successors: dict[int, str] = {}
     unmatched: dict[int, str] = {}
@@ -253,19 +302,22 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
     root = Path(root)
     if not root.is_dir():
         raise RegistryError(f"clients root is not a folder: {root}")
-    folders, unlisted = _walk_engagements(root, max_depth)
-    if not folders and not unlisted:
+    folders, legacy, unlisted = _walk_engagements(root, max_depth)
+    if not folders and not legacy and not unlisted:
         raise RegistryError(
-            f"no engagement found under {root} (no folder holding {MANIFEST_FILENAME} "
+            f"no engagement found under {root} (no folder holding {ledger.LEDGER_FILENAME} "
             f"within {max_depth} levels) - is this the right folder?"
         )
     # A folder the walk could not list is listed with its problem, as an
-    # unreadable manifest is: whatever engagements it holds are not run,
-    # and the run must say so rather than report success without them.
+    # unreadable record is, and so is a folder holding only the workbook
+    # the tracker no longer reads: whatever engagements they hold are not
+    # run, and the run must say so rather than report success without them.
     return Registry(
         source=root,
         engagements=mark_superseded(
             [engagement_from(f) for f in folders]
+            + [Engagement(path=folder, problem=LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME))
+               for folder in legacy]
             + [Engagement(path=folder, problem=problem) for folder, problem in unlisted]
         ),
     )
@@ -298,7 +350,7 @@ if __name__ == "__main__":
         if not engagement.reminders:
             flags.append("no reminders")
         if engagement.problem:
-            flags.append(f"MANIFEST PROBLEM: {engagement.problem}")
+            flags.append(f"RECORD PROBLEM: {engagement.problem}")
         if engagement.warning:
             flags.append(f"WARNING: {engagement.warning}")
         suffix = f"  ({', '.join(flags)})" if flags else ""

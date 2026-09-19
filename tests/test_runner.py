@@ -11,33 +11,26 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import seed_index
-from tests.samples import DEMO_ITEMS, PRIOR_YEAR, YEAR, build_samples, col, row
+from tests.conftest import make_engagement, seed_index
+from tests.samples import DEMO_ITEMS, PRIOR_YEAR, YEAR, build_samples
+from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
 from tracker.manifest import (
-    COL_ALLOWED_EXTENSIONS,
-    COL_ANY_KEYWORDS,
-    COL_DATE_PATTERN,
-    COL_DOCUMENT,
-    COL_EXPECTED_COUNT,
-    COL_IDENTIFIER,
-    COL_MANUAL_OVERRIDE,
-    COL_MIN_SIZE_KB,
-    COL_PERIOD,
-    SHEET_NAME,
     EngagementInfo,
     Override,
+    RequestItem,
     Status,
-    create_template,
-    write_engagement_info,
+    load_engagement_info,
+    save_rules,
 )
+from tracker.records import rule_from_json
 from tracker.registry import SKIP_ROLLED_FORWARD, Engagement, Registry, discover_engagements
 from tracker.reminder import DRAFT_BANNER, DRAFT_FILENAME, NEW_DRAFT_FILENAME
 from tracker.runner import (
     DRAFT_WEEKDAY,
     LOG_FILENAME,
-    MANIFEST_UNREADABLE,
     NOTHING_OUTSTANDING,
+    RECORD_UNREADABLE,
     REMINDERS_ALWAYS,
     REMINDERS_AUTO,
     REMINDERS_NEVER,
@@ -56,7 +49,6 @@ from tracker.runner import (
     write_status_page,
 )
 from tracker.scaffold import (
-    MANIFEST_FILENAME,
     PBC_DIR_NAME,
     PREPARED_DIR_NAME,
     SHARED_DIR_NAME,
@@ -91,16 +83,31 @@ def test_the_runner_has_a_main_the_frozen_entry_can_call(tmp_path, samples, caps
 def build_engagement(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",),
                      name="Smith TY2025", **kwargs):
     """A scaffolded engagement with files waiting in the client's drop folder."""
-    folder = tmp_path / name
-    folder.mkdir(parents=True)
-    # The Engagement sheet is where the draft learns who the client is; the
-    # Engagement dataclass only echoes it.
-    create_template(folder / MANIFEST_FILENAME, DEMO_ITEMS,
-                    EngagementInfo(client="John Smith", firm="J Park"))
+    # The engagement's details in the record are where the draft learns
+    # who the client is; the Engagement dataclass only echoes it.
+    folder = make_engagement(tmp_path / name, DEMO_ITEMS,
+                             EngagementInfo(client="John Smith", firm="J Park"), scaffold=False)
     result = scaffold_engagement(folder)
     for drop in drops:
         (result.shared_dir / drop).write_bytes((samples / drop).read_bytes())
     return Engagement(path=folder, info=EngagementInfo(client="John Smith", firm="J Park", **kwargs))
+
+
+def edit_rows(engagement_dir, **fields_by_identifier):
+    """A person's edit of one or more rows in the app, saved as one event."""
+    from dataclasses import replace
+
+    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement_dir)]
+    edited = [replace(row, **fields_by_identifier.get(row.identifier, {})) for row in rows]
+    return save_rules(engagement_dir, edited, load_engagement_info(engagement_dir))
+
+
+def edit_details(engagement_dir, **fields):
+    """A person's edit of the engagement's details in the app."""
+    from dataclasses import replace
+
+    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement_dir)]
+    return save_rules(engagement_dir, rows, replace(load_engagement_info(engagement_dir), **fields))
 
 
 # ------------------------------------------------------------ the Saturday ----
@@ -243,9 +250,7 @@ def test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft(tm
     from tracker.runner import last_drafted
 
     only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
-    folder = tmp_path / "Settled TY2025"
-    folder.mkdir()
-    create_template(folder / MANIFEST_FILENAME, only_the_return)
+    folder = make_engagement(tmp_path / "Settled TY2025", only_the_return, scaffold=False)
     scaffolded = scaffold_engagement(folder)
     engagement = Engagement(path=folder, info=EngagementInfo(client="John Smith"))
     drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=7)).drafted
@@ -280,9 +285,7 @@ def test_an_untouched_draft_is_refreshed_in_place(tmp_path, samples):
 def test_nothing_outstanding_means_no_draft_file(tmp_path, samples):
     """Everything in: there is nothing to chase, so no draft is written."""
     only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
-    folder = tmp_path / "Settled TY2025"
-    folder.mkdir()
-    create_template(folder / MANIFEST_FILENAME, only_the_return)
+    folder = make_engagement(tmp_path / "Settled TY2025", only_the_return, scaffold=False)
     scaffolded = scaffold_engagement(folder)
     name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
     (scaffolded.shared_dir / name).write_bytes((samples / name).read_bytes())
@@ -316,10 +319,10 @@ def test_a_missing_folder_is_recorded_not_raised(tmp_path):
     assert run.error.startswith("folder not found")
 
 
-def test_an_unreadable_manifest_is_recorded_not_raised(tmp_path):
+def test_an_unreadable_record_is_recorded_not_raised(tmp_path):
     folder = tmp_path / "Broken 2025"
     folder.mkdir()
-    (folder / MANIFEST_FILENAME).write_text("this is not a workbook", encoding="utf-8")
+    ledger.path_for(folder).write_text("this is not a record\n", encoding="utf-8")
     run = run_engagement(Engagement(path=folder), today=SATURDAY)
     assert run.error and run.ok is False
 
@@ -426,9 +429,8 @@ def test_the_log_appends_rather_than_replaces(tmp_path, samples):
 
 def test_a_clients_folder_drives_a_real_run_with_nothing_registered(tmp_path, samples):
     engagement = build_engagement(tmp_path / "Clients" / "Smith", samples)
-    write_engagement_info(engagement.path / MANIFEST_FILENAME, EngagementInfo(
-        client="John Smith", due=dt.date(2026, 4, 15), firm="J Park & Associates, CPA",
-    ))
+    edit_details(engagement.path, client="John Smith", due=dt.date(2026, 4, 15),
+                 firm="J Park & Associates, CPA")
 
     report = run_registry(discover_engagements(tmp_path / "Clients"), today=SATURDAY)
 
@@ -439,56 +441,76 @@ def test_a_clients_folder_drives_a_real_run_with_nothing_registered(tmp_path, sa
     assert "J Park & Associates, CPA" in draft
 
 
-def test_an_engagement_whose_manifest_cannot_be_read_fails_alone(tmp_path, samples):
+def test_an_engagement_whose_record_cannot_be_read_fails_alone(tmp_path, samples):
     build_engagement(tmp_path / "Clients", samples, name="Good")
-    bad = tmp_path / "Clients" / "Bad 2025"
-    bad.mkdir()
-    (bad / MANIFEST_FILENAME).write_bytes(b"not a workbook")
+    bad = build_engagement(tmp_path / "Clients", samples, name="Bad 2025", drops=())
+    with ledger.path_for(bad.path).open("ab") as handle:
+        handle.write(b"{this line is not an event}\n")           # a corrupt journal line
 
     report = run_registry(discover_engagements(tmp_path / "Clients"), today=FRIDAY)
     outcomes = {r.engagement.path.name: r for r in report.runs}
     assert outcomes["Good"].ok
-    assert "manifest could not be read" in outcomes["Bad 2025"].error
+    assert outcomes["Bad 2025"].error.startswith(RECORD_UNREADABLE.split("{")[0])
+    assert "does not read as an event" in outcomes["Bad 2025"].error
 
 
-def test_the_run_names_a_manifest_typo_with_its_row_before_touching_files(tmp_path, samples):
-    from openpyxl import load_workbook
+def _a_malformed_line_is_one_folders_problem(tmp_path, samples, line: dict, said: str) -> None:
+    """One synced journal carrying a line of the right JSON and the wrong
+    shape: that engagement is listed with a problem that names the line,
+    every other engagement is run, and the pass ends by its own rule (an
+    engagement error is exit 1) rather than in a traceback inside
+    discovery before one document is filed."""
+    import json
+    import shutil
 
-    engagement = build_engagement(tmp_path, samples)
-    manifest = engagement.path / MANIFEST_FILENAME
-    wb = load_workbook(manifest)
-    wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="(unclosed")
-    wb.save(manifest)
-    run = run_engagement(engagement, today=FRIDAY)
-    assert run.error.startswith(f"Row 2: {COL_DATE_PATTERN} is not a valid regex")
-    assert (engagement.path / SHARED_DIR_NAME / f"W-2 John Smith {YEAR}.pdf").exists()   # nothing moved
+    build_engagement(tmp_path / "Clients", samples, name="Good")
+    bad = build_engagement(tmp_path / "Clients", samples, name="Bad 2025", drops=())
+    lines = ledger.read_events(bad.path)
+    with ledger.path_for(bad.path).open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({ledger.EVENT_KEY: line.pop("event"), ledger.AT_KEY: "2026-01-01T00:00:00",
+                                 **line}) + "\n")
+    try:
+        loaded = discover_engagements(tmp_path / "Clients")
+        problems = {e.path.name: e.problem for e in loaded.engagements}
+        assert problems["Good"] == ""
+        assert f"line {len(lines) + 1}" in problems["Bad 2025"] and said in problems["Bad 2025"], problems
+        assert main([str(tmp_path / "Clients"), "--date", FRIDAY.isoformat(), "--dry-run"]) == 1
+        report = run_registry(discover_engagements(tmp_path / "Clients"), today=FRIDAY)
+        outcomes = {r.engagement.path.name: r for r in report.runs}
+        assert outcomes["Good"].ok
+        assert outcomes["Bad 2025"].error.startswith(RECORD_UNREADABLE.split("{")[0])
+        assert said in outcomes["Bad 2025"].error
+    finally:
+        shutil.rmtree(bad.path)          # the store cannot hold it, so the after-test check must not meet it
+
+
+def test_a_rules_line_of_the_wrong_shape_is_one_folders_problem_and_the_pass_goes_on(tmp_path, samples):
+    _a_malformed_line_is_one_folders_problem(
+        tmp_path, samples, {"event": ledger.RULES_CHANGED, ledger.RULES_KEY: ["not-a-row"],
+                            ledger.REMOVED_KEY: [], ledger.INFO_KEY: {}},
+        "carries a rule that is not a row")
+
+
+def test_a_statuses_entry_of_the_wrong_shape_is_one_folders_problem_and_the_pass_goes_on(tmp_path, samples):
+    _a_malformed_line_is_one_folders_problem(
+        tmp_path, samples, {"event": ledger.SCANNED, ledger.STATUSES_KEY: {"A01": ["Received"]}},
+        "carries a status for 'A01' that is not a mapping")
 
 
 def test_rows_the_rules_cannot_act_on_are_reported_not_buried(tmp_path, samples):
-    from tracker.manifest import RequestItem, create_template
-
-    folder = tmp_path / "Loose 2025"
-    folder.mkdir()
-    create_template(folder / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="Anything")])
-    scaffold_engagement(folder)
+    folder = make_engagement(tmp_path / "Loose 2025", [RequestItem(identifier="A01", document="Anything")])
     engagement = Engagement(path=folder)
     run = run_engagement(engagement, today=FRIDAY)
     assert run.ok
     assert any("never be filed automatically" in w for w in run.warnings)
     text = format_report(run_registry(Registry(source=tmp_path, engagements=[engagement]), today=FRIDAY))
-    assert "! Row 2 (A01)" in text
+    assert "! Row 1 (A01)" in text
 
 
 def test_waived_and_accepted_rows_are_not_outstanding(tmp_path, samples):
-    from openpyxl import load_workbook
-
     engagement = build_engagement(tmp_path, samples, drops=())
-    manifest = engagement.path / MANIFEST_FILENAME
-    wb = load_workbook(manifest)
-    ws = wb[SHEET_NAME]
-    ws.cell(row=2, column=col(COL_MANUAL_OVERRIDE), value=Override.ACCEPTED)   # A01
-    ws.cell(row=3, column=col(COL_MANUAL_OVERRIDE), value=Override.WAIVED)     # A02
-    wb.save(manifest)
+    edit_rows(engagement.path, A01={"manual_override": Override.ACCEPTED},
+              A02={"manual_override": Override.WAIVED})
     run = run_engagement(engagement, today=FRIDAY)
     assert run.ok
     assert run.statuses.get(Status.RECEIVED) == 1          # the accepted row
@@ -496,20 +518,14 @@ def test_waived_and_accepted_rows_are_not_outstanding(tmp_path, samples):
     assert run.outstanding == len(DEMO_ITEMS) - 2
 
 
-def test_a_row_added_in_excel_has_its_folder_by_the_next_run(tmp_path, samples):
-    from openpyxl import load_workbook
-
+def test_a_row_added_in_the_editor_has_its_folder_by_the_next_run(tmp_path, samples):
     from tracker.scaffold import README_NAME
 
     engagement = build_engagement(tmp_path, samples, drops=())
-    manifest = engagement.path / MANIFEST_FILENAME
-    wb = load_workbook(manifest)
-    wb[SHEET_NAME].append(row(**{
-        COL_IDENTIFIER: "Z01", COL_DOCUMENT: "Rental Property Records", COL_PERIOD: "TY2025",
-        COL_EXPECTED_COUNT: 1, COL_ALLOWED_EXTENSIONS: "pdf", COL_MIN_SIZE_KB: 5,
-        COL_ANY_KEYWORDS: "schedule e",
-    }))
-    wb.save(manifest)
+    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement.path)]
+    rows.append(RequestItem(identifier="Z01", document="Rental Property Records", period="TY2025",
+                            allowed_extensions=("pdf",), any_keywords=("schedule e",)))
+    save_rules(engagement.path, rows, load_engagement_info(engagement.path))
     run = run_engagement(engagement, today=FRIDAY)
     assert run.ok
     assert any(p.name.startswith("Z01") for p in (engagement.path / PREPARED_DIR_NAME).iterdir())
@@ -518,14 +534,12 @@ def test_a_row_added_in_excel_has_its_folder_by_the_next_run(tmp_path, samples):
 
 
 def test_a_rolled_forward_engagement_is_retired_by_its_successor(tmp_path, samples):
-    from tracker.manifest import EngagementInfo, write_engagement_info
     from tracker.registry import discover_engagements
 
     prior = build_engagement(tmp_path / "Clients", samples, name="Smith 2025")
-    write_engagement_info(prior.path / MANIFEST_FILENAME, EngagementInfo(client="John"))
+    edit_details(prior.path, client="John")
     new = build_engagement(tmp_path / "Clients", samples, name="Smith 2026", drops=())
-    write_engagement_info(new.path / MANIFEST_FILENAME,
-                          EngagementInfo(client="John", rolled_from=str(prior.path)))
+    edit_details(new.path, client="John", rolled_from=str(prior.path))
 
     registry = discover_engagements(tmp_path / "Clients")
     by_name = {e.path.name: e for e in registry.engagements}
@@ -574,19 +588,19 @@ def test_the_page_lists_every_engagement_the_registry_finds_including_an_unreada
     tmp_path, samples, capsys
 ):
     """An engagement missing from the page is an engagement nobody chases. One
-    whose manifest cannot be read is on it by name, and named as a problem."""
+    whose record cannot be read is on it by name, and named as a problem."""
     clients = tmp_path / "Clients"
     build_engagement(clients, samples, name="Good TY2025")
     bad = clients / "Bad TY2025"
     bad.mkdir(parents=True)
-    (bad / MANIFEST_FILENAME).write_bytes(b"not a workbook")
+    ledger.path_for(bad).write_text("{this line is not an event}\n", encoding="utf-8")
 
     assert main([str(clients), "--date", FRIDAY.isoformat()]) == 1
     text = (clients / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
 
     assert "Good TY2025" in text
     assert text.count("Bad TY2025") >= 2            # its row, and the problems list
-    assert MANIFEST_UNREADABLE.split("{")[0] in text
+    assert RECORD_UNREADABLE.split("{")[0] in text
     capsys.readouterr()
 
 
@@ -671,9 +685,7 @@ def test_a_file_named_like_markup_is_shown_as_a_name_not_rendered(tmp_path):
     """Every value on the page goes through html.escape. The name cannot be
     made on Windows, so it arrives the way it would in life: an index row
     written elsewhere, from a client's folder that is not this machine's."""
-    folder = tmp_path / "Evil TY2025"
-    folder.mkdir()
-    create_template(folder / MANIFEST_FILENAME, DEMO_ITEMS)
+    folder = make_engagement(tmp_path / "Evil TY2025", DEMO_ITEMS, scaffold=False)
     name = "<b>evil</b>.pdf"
     reason = "<i>nothing matched</i>"
     seed_index(folder, [IndexEntry(
@@ -693,21 +705,19 @@ def test_a_file_named_like_markup_is_shown_as_a_name_not_rendered(tmp_path):
 
 def test_the_page_is_written_even_when_an_engagements_pass_failed(tmp_path, samples, capsys):
     """The pass that errored is exactly the one a person has to find out about,
-    so the page it would have been written by is still written, with the error."""
-    from openpyxl import load_workbook
-
+    so the page it would have been written by is still written, with the error.
+    A typo cannot reach the record (decision 104); what can is a journal
+    line something else wrote badly."""
     build_engagement(tmp_path, samples, name="Good TY2025")
     broken = build_engagement(tmp_path, samples, name="Broken TY2025")
-    manifest = broken.path / MANIFEST_FILENAME
-    wb = load_workbook(manifest)
-    wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="(unclosed")
-    wb.save(manifest)
+    with ledger.path_for(broken.path).open("ab") as handle:
+        handle.write(b"{this line is not an event}\n")
 
     assert main([str(tmp_path), "--date", FRIDAY.isoformat()]) == 1
     text = (tmp_path / STATUS_PAGE_FILENAME).read_text(encoding="utf-8")
 
     assert "Good TY2025" in text and text.count("Broken TY2025") >= 2
-    assert f"Row 2: {COL_DATE_PATTERN}" in text
+    assert "does not read as an event" in text
     capsys.readouterr()
 
 

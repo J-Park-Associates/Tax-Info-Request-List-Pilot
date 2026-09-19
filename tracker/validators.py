@@ -329,15 +329,14 @@ def sha256_of(path: Path) -> str:
 
 # --------------------------------------------------------------------- CLI ----
 # Read-only dry-run preview so the whole flow can be exercised from the
-# Desktop today. The real scan (status resolution + manifest write-back)
-# is component 5; this prints facts and changes nothing.
+# Desktop today. The real scan (status resolution, recorded) is component
+# 5; this prints facts and changes nothing.
 
 if __name__ == "__main__":
     import argparse
 
     from tracker.manifest import Override, load_manifest
     from tracker.scaffold import (
-        MANIFEST_FILENAME,
         PREPARED_DIR_NAME,
         README_NAME,
         REVIEW_DIR_NAME,
@@ -347,11 +346,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Dry-run validation preview (read-only; writes nothing)"
     )
-    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
+    parser.add_argument("engagement_dir", help="the engagement folder")
     ns = parser.parse_args()
 
     engagement = Path(ns.engagement_dir)
-    items = load_manifest(engagement / MANIFEST_FILENAME)
+    items = load_manifest(engagement)
     prepared = engagement / PREPARED_DIR_NAME
     assigned = assign_folders(prepared, [i.identifier for i in items])
 

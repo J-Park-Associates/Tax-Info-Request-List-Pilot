@@ -8,7 +8,7 @@ re-reading the repository. That only works if the map is trustworthy, so it is
   counts, which modules have a CLI, which tests cover what. They are recomputed
   and must never be hand-edited; the next update overwrites them.
 - **Curated** facts are the things no parser can know: what a module is *for*,
-  the artifacts that flow through the pipeline (``_manifest.xlsx``,
+  the artifacts that flow through the pipeline (``_ledger.jsonl``,
   ``reminder-draft.txt``), the order of the stages, and the cross-language
   hops. They live in ``docs/repo-map.curated.json`` and are merged on top.
 

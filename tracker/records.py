@@ -19,9 +19,9 @@ the shapes, the names of their values, and each record's own
 serialisation - the cell format for the Evidence column, the JSON an index
 row is stored as, the identity a row is recorded under - because those are
 facts about the record and not about the file it lands in. The writers
-stay where they are: the workbook, the sidecar and the ledger are written
-by :mod:`tracker.filer` and :mod:`tracker.manifest`, which is where the
-lock, the retry and the atomic replace belong.
+stay where they are: the journal is written by :mod:`tracker.filer`, the
+scanner and :mod:`tracker.manifest`, which is where the lock and the
+atomic replace belong.
 
 It sits at layer 1 and imports nothing of the package (``tests/test_layers.py``
 pins that), so every layer above may name a record without reaching for the
@@ -30,31 +30,33 @@ in-layer edge and allowed; nothing here imports the manifest, so the edge
 cannot become a cycle.
 
 **``RequestItem`` stays in the manifest.** It is not a record of what the
-machine decided - it is the *schema* of the workbook a person edits, read
-cell by cell with the manifest's own defaults, validation and column
-names, and it means nothing away from the sheet it is parsed from. The
+machine decided - it is the *schema* of the list a person edits, made
+out of plain values with the manifest's own defaults, validation and
+column names, and it means nothing away from that list. The
 same goes for ``FileError``, ``FileReport`` and ``ContentResult``: they are
 one run's report of what it did, produced and consumed inside the module
 that did it, and never stored.
 
 Its **rows** travel all the same since decision 103: the person's half of
-a request row is what a ``rules_imported`` event carries, so
+a request row is what a ``rules_changed`` event carries - and the
+``rules_imported`` lines journals from before decision 104 carry - so
 :data:`RULE_FIELDS`, :func:`rule_to_json` and :func:`rule_from_json` are
 here - the serialisation is a fact about the record, the parsing is a fact
-about the sheet, and the two live where each belongs. The pair is
+about the list, and the two live where each belongs. The pair is
 deliberately duck-typed on the field names rather than on the class, so
 this module still imports nothing of the package.
 
-**The old names still work, for one release.** Each module a record left
-keeps a re-export of it - ``from tracker.filer import IndexEntry`` resolves
-to exactly this class, the same object, not a copy - so no caller had to
-change in the commit that moved them. They are marked in each module, and
-the release that follows removes them.
+**The old names still work where a module still uses them.** A module a
+record left keeps a re-export of the names it still reads - ``from
+tracker.filer import IndexEntry`` resolves to exactly this class, the same
+object, not a copy. The names nothing used any more (the manifest's copies
+of the details' field table and the yes/no words) went with decision 104;
+``tests/test_records.py`` lists what is still offered.
 
 **What this is for.** The store of decision 101 reads and writes these
 records; it imports them from here and never from :mod:`tracker.filer`,
 because a store that had to import the filer to name a row would import
-the workbook writer it is meant to replace.
+the module that moves the client's files.
 """
 
 from __future__ import annotations
@@ -140,7 +142,7 @@ class Evidence:
 
 #: How one Evidence is written into a single cell, and how the whole record
 #: for a decision is: ``A01: 1098@title:1 required, TY2025@first_page:1
-#: date; L01: 1098-t@title filename``. Compact because it shares one Excel
+#: date; L01: 1098-t@title filename``. Compact because it shares one
 #: column with every other candidate's evidence, and parsed back by
 #: :func:`parse_evidence` so the shape has one owner rather than a writer
 #: here and a reader in the app. The page is left off when it is 0. Terms
@@ -200,7 +202,7 @@ def _parse_one(part: str) -> Evidence | None:
 #: it and so does every index row, which is how a filed document is tied
 #: back to the request that asked for it. Named here rather than beside the
 #: manifest's other column headers because both layouts need it and a
-#: second copy of the word would let one sheet drift from the other;
+#: second copy of the word would let one table drift from the other;
 #: :mod:`tracker.manifest` imports it and lists it first in ``HEADERS``.
 COL_IDENTIFIER = "Identifier"
 
@@ -212,11 +214,10 @@ def identifier_key(identifier: str) -> str:
     Windows folder name and Windows folder names are case-insensitive: a
     list holding both spellings would have two rows claiming one folder.
     Every reading that joins a status to a request folds it this way - the
-    manifest matching a deferred update to its row, the manifest refusing a
-    duplicate row, and the store deciding whether the engagement's record
-    has already answered for an identifier the workbook also carries - so
-    the rule is worded once here rather than as a ``.lower()`` at each of
-    them.
+    manifest refusing a duplicate row, a save diffing the list against
+    what the store holds, and the store keying a status to its request -
+    so the rule is worded once here rather than as a ``.lower()`` at each
+    of them.
     """
     return identifier.strip().lower()
 
@@ -231,9 +232,9 @@ class IndexEntry:
     """One row of the index — the audit trail for one original file.
 
     The fields ARE the columns: their order is the column order, the
-    ``INDEX_LAYOUT`` table below gives each its header and width, and the
-    workbook is read back by header name, so a column added here is one
-    edit and an older index (with columns since dropped) still reads.
+    ``INDEX_LAYOUT`` table below gives each its header and width (the
+    width is what the Status Report's table inherits), so a column added
+    here is one edit.
     Nothing stored here is a copy of something stored elsewhere: the
     working copy's name is the basename of its location, and the request's
     Document lives in the manifest, joined by Identifier.
@@ -305,7 +306,7 @@ class IndexEntry:
         return [getattr(self, f.name) for f in fields(IndexEntry)]
 
 
-#: field name -> (column header, Excel width). One table, in field order.
+#: field name -> (column header, column width). One table, in field order.
 INDEX_LAYOUT: dict[str, tuple[str, int]] = {
     "received": ("Received", 12),
     "original_name": ("Original Name", 40),
@@ -327,9 +328,9 @@ INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
 def entry_to_json(entry: IndexEntry) -> dict:
     """An index row as it is stored: every field, by name.
 
-    The one shape for it. The snapshot sidecar writes it, the engagement's
-    record writes it, and :func:`entry_from_json` reads it back, so a field
-    added to the row above is carried by all three without another edit.
+    The one shape for it. The engagement's record writes it and
+    :func:`entry_from_json` reads it back, so a field added to the row
+    above is carried by both without another edit.
     A plain dict of the fields rather than ``dataclasses.asdict`` spelled
     out at each call site, because two call sites are two owners.
     """
@@ -341,7 +342,7 @@ def entry_from_json(row: object) -> IndexEntry:
     a row for an original already moved must never be thrown away over a
     field this version does not know."""
     if not isinstance(row, dict):
-        raise TypeError(f"index sidecar row is {type(row).__name__}, not an object")
+        raise TypeError(f"index row is {type(row).__name__}, not an object")
     known = {f.name for f in fields(IndexEntry)}
     return IndexEntry(**{key: value for key, value in row.items() if key in known})
 
@@ -350,17 +351,17 @@ def ledger_key(entry: IndexEntry) -> str:
     """The identity the engagement's record keeps this row under.
 
     The index's own: where the client's preserved original is, which is what
-    the snapshot merge keys on and what the app joins a review card back by.
-    A row that names no original (only a workbook somebody built by hand has
-    one) falls back to what else the row says about the document, so two such
+    the fold keys on and what the app joins a review card back by. A row
+    that names no original (only a record somebody built by hand has one)
+    falls back to what else the row says about the document, so two such
     rows are not folded into one.
 
     It is still one location per row after decision 94, and that is why the
     index keeps one row for a page filed under several requests rather than
     one row per copy: two rows naming one preserved original would collide
     here, and the collision would be silent - the record would fold them
-    into one and the workbook would go on holding two. The copies are a
-    column of that row (``IndexEntry.also_filed``), not rows of their own.
+    into one. The copies are a column of that row
+    (``IndexEntry.also_filed``), not rows of their own.
     """
     return entry.pbc_location or f"{entry.received}|{entry.original_name}|{entry.digest}"
 
@@ -412,20 +413,19 @@ class Routing:
 
 # ------------------------------------------------------------ engagement ----
 
-#: The Engagement sheet's yes/no cells, as written; the manifest's
-#: ``_parse_yes_no`` also reads the usual spellings a person types. Here
-#: rather than beside that parser because the notes below are written from
-#: them and a record's own words are the record's.
+#: The two yes/no words the engagement's details are described in: the
+#: notes below are written from them and a record's own words are the
+#: record's.
 YES = "yes"
 NO = "no"
 
 
 @dataclass(frozen=True, slots=True)
 class EngagementInfo:
-    """The Engagement sheet: who this is for and how the run should treat it.
+    """The engagement's details: who this is for and how the run should treat it.
 
-    Every field is optional. A manifest without the sheet (one made before
-    it existed) loads as all defaults and is still processed.
+    Every field is optional. An engagement nothing has recorded details
+    for reads as all defaults and is still processed.
     """
 
     # What each field is for is said once, in ENGAGEMENT_HELP below.
@@ -440,11 +440,11 @@ class EngagementInfo:
     rolled_from: str = ""
     #: Which catalog the request list was cut from, as the catalog keys it.
     #: Blank on an engagement made before it was recorded, and blank is
-    #: unknown to every reader - nothing refuses a manifest for it.
+    #: unknown to every reader - nothing refuses an engagement for it.
     form: str = ""
 
 
-#: Row labels on the Engagement sheet, in the order they are written.
+#: The details' labels, in the order the editor and the README show them.
 ENGAGEMENT_FIELDS = (
     ("Client", "client"),
     ("Engagement Name", "name"),
@@ -455,20 +455,19 @@ ENGAGEMENT_FIELDS = (
     ("Reminders", "reminders"),
     ("Active", "active"),
     ("Rolled From", "rolled_from"),
-    # Added last so an engagement made before it existed keeps every cell
-    # where its reader and its owner left them; the sheet is read by label
-    # (manifest._engagement_from_sheet), so a missing row is simply a blank value.
+    # Added last (decision 86); a stored record that lacks it reads as a
+    # blank value (info_from_json ignores what it does not carry).
     ("Form", "form"),
 )
-#: field name -> the sheet's label, for messages that name a cell.
+#: field name -> the label, for messages that name a field.
 ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
-#: What the yes/no and Rolled From cells mean, said on the sheet and in the README.
+#: What the yes/no and Rolled From fields mean, said in the editor and in the README.
 ENGAGEMENT_NOTES = {
     "reminders": f"{NO} = this client is not chased by email",
     "active": f"{NO} = the scheduled run skips this folder",
     "rolled_from": "written by the rollover; the engagement it names is no longer chased",
 }
-#: What each cell is for, as the README tells it.
+#: What each field is for, as the README and the editor tell it.
 ENGAGEMENT_HELP = {
     "client": "greeting name in the reminder",
     "name": "label; the folder name if blank",
@@ -479,13 +478,21 @@ ENGAGEMENT_HELP = {
     "form": "which catalog the request list was cut from; blank if it was never recorded",
     **ENGAGEMENT_NOTES,
 }
+#: The fields a person may change in the app's editor once the engagement
+#: exists. ``name`` is not among them because the folder is the name;
+#: ``rolled_from`` because the rollover writes it and it is what retires
+#: the prior; ``form`` because it records which catalog the list was cut
+#: from, once. The API's ``edit`` refuses any other key by name.
+ENGAGEMENT_EDITABLE: tuple[str, ...] = ("client", "link", "due", "sender", "firm", "reminders", "active")
+assert set(ENGAGEMENT_EDITABLE) <= {field_name for _, field_name in ENGAGEMENT_FIELDS}
 
 
 def info_to_json(info: EngagementInfo) -> dict:
-    """The Engagement sheet as it is stored: its fields, the date as text.
+    """The engagement's details as they are stored: the fields, the date as text.
 
-    The shape a ``rules_imported`` event carries the engagement's own
-    details in, and the shape the store folds back. One owner, as
+    The shape a ``rules_changed`` event carries the engagement's own
+    details in (and a ``rules_imported`` line from before decision 104),
+    and the shape the store folds back. One owner, as
     :func:`status_to_json` is one owner for a status.
     """
     payload = asdict(info)
@@ -495,21 +502,28 @@ def info_to_json(info: EngagementInfo) -> dict:
 
 def info_from_json(raw: dict) -> EngagementInfo:
     """An EngagementInfo from a stored one, ignoring a field this version
-    does not know: a sheet an older or newer run recorded must not be
-    thrown away over one cell."""
+    does not know: details an older or newer run recorded must not be
+    thrown away over one field."""
     known = {f.name for f in fields(EngagementInfo)}
     values = {key: value for key, value in raw.items() if key in known}
     values["due"] = dt.date.fromisoformat(raw["due"]) if raw.get("due") else None
+    # The two yes/no fields come back as 0 and 1 from a column and as
+    # booleans from a journal line; a reader gets a boolean either way, so
+    # a record read from the store is the record that was written.
+    for name in ("reminders", "active"):
+        if name in values:
+            values[name] = bool(values[name])
     return EngagementInfo(**values)
 
 
 #: The person's half of a request row: everything the manifest's
 #: ``RequestItem`` holds that is not a status the machine decided. It is
 #: named here rather than beside that class because these rows now *travel*
-#: - a ``rules_imported`` event carries them and the store's ``requests``
-#: table is these columns - while the parsing of the cells they came from
-#: stays with the sheet. ``tracker.store`` builds its column list from this,
-#: so a field added to the sheet's record is added in one place.
+#: - a ``rules_changed`` event carries them (and the ``rules_imported``
+#: lines journals from before decision 104 carry) and the store's
+#: ``requests`` table is these columns - while the parsing of the values
+#: they came from stays with the manifest. ``tracker.store`` builds its
+#: column list from this, so a field added to the row is added in one place.
 RULE_FIELDS: tuple[str, ...] = (
     "identifier",
     "document",
@@ -559,7 +573,7 @@ def rule_from_json(raw: dict) -> dict:
     """A stored rule row as keyword arguments for ``RequestItem``.
 
     Keyword arguments rather than the record itself, for the same reason:
-    the class lives in the module that parses the sheet. A field this
+    the class lives in the module that owns the list. A field this
     version does not know is ignored and one it does not carry is left to
     the record's own default, so a row written by another version still
     loads.
@@ -603,10 +617,10 @@ def status_to_json(update: StatusUpdate) -> dict:
     """
     payload = asdict(update)
     payload["received_date"] = update.received_date.isoformat() if update.received_date else None
-    # A blank File Count cell reaches here as nothing at all, and no files
+    # A blank File Count reaches here as nothing at all, and no files
     # is a number. Coerced on the way out as well as on the way in, so
     # that reading a stored status back gives the record it was made from
-    # and two readings of one blank cell cannot differ.
+    # and two readings of one blank cannot differ.
     payload["file_count"] = int(update.file_count or 0)
     return payload
 

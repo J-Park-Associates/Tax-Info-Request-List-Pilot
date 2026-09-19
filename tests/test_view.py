@@ -27,23 +27,25 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import make_engagement
 from tests.test_scanner import text_pdf
 from tracker import ledger, review, view
 from tracker.filer import NEEDS_REVIEW, file_drops, read_index
 from tracker.manifest import (
     COL_ANY_KEYWORDS,
     COL_STATUS,
-    SHEET_NAME,
     Override,
     RequestItem,
     Status,
-    create_template,
+    load_engagement_info,
     load_manifest,
+    save_rules,
 )
 from tracker.page import slug
+from tracker.records import rule_from_json
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs
 from tracker.runner import run_engagement
-from tracker.scaffold import MANIFEST_FILENAME, SHARED_DIR_NAME, scaffold_engagement
+from tracker.scaffold import SHARED_DIR_NAME
 from tracker.scanner import scan_engagement
 
 REPO = Path(__file__).resolve().parents[1]
@@ -69,11 +71,7 @@ ITEMS = [
 
 @pytest.fixture
 def engagement(tmp_path):
-    eng = tmp_path / "Smith Family 2025"
-    eng.mkdir()
-    create_template(eng / MANIFEST_FILENAME, ITEMS)
-    scaffold_engagement(eng)
-    return eng
+    return make_engagement(tmp_path / "Smith Family 2025", ITEMS)
 
 
 def drop(engagement, name, text):
@@ -87,20 +85,16 @@ def a_pass(engagement, today=DAY1):
 
 
 def type_a_keyword(engagement, identifier, keyword):
-    """A person typing a keyword into the request list, in Excel."""
-    from openpyxl import load_workbook
+    """A person typing a keyword into the request list, in the app: one
+    saved edit, from the rows as the store holds them."""
+    from dataclasses import replace
 
-    manifest = engagement / MANIFEST_FILENAME
-    wb = load_workbook(manifest)
-    try:
-        ws = wb[SHEET_NAME]
-        at = [str(c.value or "") for c in ws[1]].index(COL_ANY_KEYWORDS) + 1
-        for row in range(2, (ws.max_row or 1) + 1):
-            if str(ws.cell(row=row, column=1).value or "").strip() == identifier:
-                ws.cell(row=row, column=at, value=keyword)
-        wb.save(manifest)
-    finally:
-        wb.close()
+    from tracker import store
+
+    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement)]
+    edited = [replace(row, any_keywords=(keyword,)) if row.identifier == identifier else row
+              for row in rows]
+    save_rules(engagement, edited, load_engagement_info(engagement))
 
 
 def teach_a_keyword(engagement, identifier, keyword):
@@ -204,10 +198,10 @@ def test_every_index_row_is_on_the_page_as_the_reader_gives_it(engagement):
 def test_every_request_row_is_on_the_page_with_the_status_the_record_holds(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     type_a_keyword(engagement, "C01", "lender")     # a person edits the list
-    a_pass(engagement)                              # and the pass imports it
+    a_pass(engagement)                              # and the pass works from it
     view.write_view(engagement)
 
-    items = load_manifest(engagement / MANIFEST_FILENAME)
+    items = load_manifest(engagement)
     rows = requests_table(engagement)
     assert rows[1:] == [[view.request_row(item)[header] for header in view.REQUEST_COLUMNS]
                         for item in items]
@@ -343,7 +337,6 @@ def test_the_head_carries_the_stamp_and_read_stamp_reads_it_back(engagement):
     assert set(stamp) == set(view.META_NAMES)
     for label, name in view.META_NAMES.items():
         assert f'<meta name="{name}" content="{html.escape(stamp[label])}">' in page
-    assert stamp[view.LABEL_RULES_DIGEST] == view.rules_digest(engagement)
     assert stamp[view.LABEL_RECORD_DIGEST] == ledger.head(engagement)
     assert stamp[view.LABEL_ENGAGEMENT] == engagement.name
     assert stamp[view.LABEL_INDEX_ROWS] == "1"
@@ -363,8 +356,8 @@ def test_the_stamp_changes_when_the_rules_change_and_when_the_record_grows(engag
     type_a_keyword(engagement, "C01", "lender")
     view.write_view(engagement)
     second = view.read_stamp(engagement)
-    assert second[view.LABEL_RULES_DIGEST] != first[view.LABEL_RULES_DIGEST]
-    assert second[view.LABEL_RECORD_DIGEST] == first[view.LABEL_RECORD_DIGEST]
+    # A rules edit is an event (decision 104): the one stamp moves with it.
+    assert second[view.LABEL_RECORD_DIGEST] != first[view.LABEL_RECORD_DIGEST]
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     a_pass(engagement)
@@ -513,18 +506,15 @@ def test_a_pass_regenerates_the_view_and_a_dry_run_writes_none(tmp_path, engagem
 
 
 def test_a_pass_writes_no_workbook_for_a_person_to_open(engagement):
-    """Decision 91: the file staff open is the page, and the only workbooks
-    left in the folder are the two the machine and the accountant share."""
+    """Decision 91: the file staff open is the page; since decision 104
+    there is no workbook in the folder at all, the accountant's included."""
     from tracker.registry import engagement_from
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     run_engagement(engagement_from(engagement), today=DAY1)
 
     assert view.path_for(engagement).suffix == ".html"
-    assert not (engagement / "_status.xlsx").exists()
-    # One workbook, and it is the one the accountant edits: since decision
-    # 102 the machine writes no workbook at all.
-    assert sorted(p.name for p in engagement.glob("*.xlsx")) == [MANIFEST_FILENAME]
+    assert sorted(p.name for p in engagement.rglob("*.xlsx")) == []
 
 
 def test_the_state_the_app_reads_carries_the_view_and_its_path(engagement):

@@ -8,15 +8,16 @@ Commands:
   list      every engagement under the clients root, plus the vocabulary the app shows
   templates the form catalog and the calendar's default tax year
   create    a new engagement from the wizard's spec (JSON on stdin)
-  state     current manifest rows, the index, the triaged review queue, the
-            one summary, useful paths
+  edit      save the request list and the engagement's details from the
+            app's editor (JSON on stdin), as one recorded event
+  state     the request rows as the record holds them, the index, the
+            triaged review queue, the one summary, useful paths
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
   scan      one pass, exactly as the scheduled run makes it (no draft)
   assign    file one Needs Review document under a request (a person's call)
   dismiss   record that no request asks for one Needs Review document
   unfile    send one filed document back to Needs Review (a person's call)
-  check     check_manifest() on demand, problems named by row
   settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
   unlock    clear a stale engagement lock (a fresh one is refused)
@@ -32,7 +33,7 @@ import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES, review, store
+from tracker import STANDING_RULES, ledger, review, store
 from tracker.filer import (
     DUPLICATE,
     FILED,
@@ -47,43 +48,55 @@ from tracker.filer import (
 )
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker.manifest import (
+    ANY_EXTENSION,
+    COLUMN_HELP,
+    COLUMNS,
     DEFAULT_EXTENSIONS,
     EXPECTED_PATTERN,
     ISO_DATE_HINT,
+    MIN_EXPECTED_COUNT,
+    MIN_SIZE_KB_FLOOR,
+    NO_DATE_CHECK,
     UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
     ManifestError,
     Override,
     Status,
-    check_manifest,
+    check_rules,
     check_tax_year,
-    create_template,
+    create_engagement,
+    item_from_fields,
     load_engagement_info,
     load_manifest,
+    save_rules,
     summarize,
-    write_engagement_info,
     write_text_atomically,
 )
 from tracker.page import slug
 from tracker.records import (
     CANDIDATE_SEP,
+    ENGAGEMENT_EDITABLE,
+    ENGAGEMENT_FIELDS,
+    ENGAGEMENT_HELP,
+    ENGAGEMENT_LABELS,
     EVIDENCE_PLACES,
     EVIDENCE_RULES,
+    NO,
     THE_RECORD,
+    YES,
     EngagementInfo,
     IndexEntry,
+    identifier_key,
 )
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
 from tracker.rollover import (
-    CARRIED_SHEET,
     ORIGIN_PRIOR,
     UNKNOWN_YEAR_LABEL,
     carry_engagement_info,
     detect_year,
     next_tax_year,
     roll_forward,
-    write_rollover_manifest,
 )
 from tracker.runner import (
     DRAFT_WEEKDAY,
@@ -99,7 +112,6 @@ from tracker.runner import (
     write_status_page,
 )
 from tracker.scaffold import (
-    MANIFEST_FILENAME,
     PBC_DIR_NAME,
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
@@ -190,6 +202,28 @@ FILED_HEADING = "Filed documents ({n})"
 #: headings, not decisions - a person may still pick anything on the list.
 SUGGESTED_HEADING = "Suggested"
 OTHER_REQUESTS_HEADING = "Other requests"
+#: Every word the request-list editor shows (decision 104): the button that
+#: opens it, its two titles, its buttons, the paste box's hint, the heading
+#: over the warnings, what the banner says after a save, and how a keyword a
+#: filing taught is shown beside the row - as taught, never as typed. The
+#: renderer shows these and types none of them.
+EDITOR_OPEN_LABEL = "Edit Request List"
+EDITOR_TITLE = "Request list"
+EDITOR_ENGAGEMENT_TITLE = "Engagement details"
+EDITOR_SAVE_LABEL = "Save"
+EDITOR_CANCEL_LABEL = "Cancel"
+EDITOR_ADD_LABEL = "Add a request"
+EDITOR_REMOVE_LABEL = "Remove"
+EDITOR_PASTE_LABEL = "Paste rows"
+EDITOR_PASTE_HINT = (
+    "Paste rows copied from a spreadsheet: one request per line, cells separated by tabs or "
+    "as CSV, in the column order above; a first line that repeats the headings is skipped. "
+    "Nothing is recorded until you save."
+)
+EDITOR_WARNINGS_HEADING = "Worth a look"
+RULES_SAVED = "Request list saved: {changed} row(s) changed, {removed} removed"
+NOTHING_CHANGED = "Nothing changed; nothing was recorded."
+LEARNED_NOTE = "taught by a filing: {keywords}"
 
 
 def _new_engagement_dir(name: str) -> Path:
@@ -323,7 +357,6 @@ def _vocab() -> dict:
         "evidence": {"rules": list(EVIDENCE_RULES), "places": list(EVIDENCE_PLACES)},
         "year_note": YEAR_NOTE,
         "extension_default_note": EXTENSION_DEFAULT_NOTE,
-        "carried_sheet": CARRIED_SHEET,
         "pbc_dir": PBC_DIR_NAME,
         "name_pattern": NAME_PATTERN,
         "rollover_name_pattern": ROLLOVER_NAME_PATTERN,
@@ -347,6 +380,29 @@ def _vocab() -> dict:
         # neither label: it shows the words the API sends and derives the
         # chip's class from one of them, exactly as it does a status.
         "view": {"label": VIEW_LABEL, "open": VIEW_OPEN_LABEL, "states": list(VIEW_STATES)},
+        # The request list's schema, as the editor draws it: each column's
+        # key in the record, its header, and the sentence under the heading.
+        "columns": [{"key": field, "label": header, "help": COLUMN_HELP[field]}
+                    for header, field in COLUMNS],
+        # Every word the editor shows, the engagement fields it lays out
+        # (and which of them a person may change), the two yes/no words,
+        # the two one-character values, and the floors its number inputs
+        # take their minimum from - none of it typed in the page.
+        "editor": {
+            "open": EDITOR_OPEN_LABEL, "title": EDITOR_TITLE,
+            "engagement_title": EDITOR_ENGAGEMENT_TITLE,
+            "save": EDITOR_SAVE_LABEL, "cancel": EDITOR_CANCEL_LABEL, "add_row": EDITOR_ADD_LABEL,
+            "remove_row": EDITOR_REMOVE_LABEL, "paste": EDITOR_PASTE_LABEL,
+            "paste_hint": EDITOR_PASTE_HINT, "warnings_heading": EDITOR_WARNINGS_HEADING,
+            "saved": RULES_SAVED, "nothing_changed": NOTHING_CHANGED, "learned_note": LEARNED_NOTE,
+            "engagement_fields": [
+                {"key": f, "label": ENGAGEMENT_LABELS[f], "help": ENGAGEMENT_HELP.get(f, ""),
+                 "editable": f in ENGAGEMENT_EDITABLE}
+                for _, f in ENGAGEMENT_FIELDS
+            ],
+            "yes": YES, "no": NO, "any_extension": ANY_EXTENSION, "no_date_check": NO_DATE_CHECK,
+            "minimums": {"expected_count": MIN_EXPECTED_COUNT, "min_size_kb": MIN_SIZE_KB_FLOOR},
+        },
     }
 
 
@@ -363,24 +419,39 @@ def _lock_payload(engagement: Path) -> dict | None:
 
 
 def _info_payload(info: EngagementInfo) -> dict:
-    """The Engagement sheet as JSON: every field, with dates as ISO text."""
+    """The engagement's details as JSON: every field, with dates as ISO text."""
     payload = asdict(info)
     payload["due"] = info.due.isoformat() if info.due else ""
     return payload
 
 
-def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None) -> EngagementInfo:
-    """The Engagement sheet for a new engagement: what the wizard sent, over
-    what last year's sheet said (rollover), over the firm default.
+def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
+                    blank_clears: bool = False) -> EngagementInfo:
+    """The engagement's details: what the wizard or the editor sent, over
+    what is carried (last year's details on a rollover, the details as
+    recorded on an edit), over the firm default.
+
+    ``blank_clears`` is the editor's rule: a key present with a blank
+    value clears the recorded value, and a key absent keeps it - a person
+    who empties the Link box means the link to go. The wizard and the
+    rollover keep their fallback: a blank there is nothing typed, and the
+    carried or default value stands.
 
     The engagement's name is not written: the folder is the name, and a
-    copy on the sheet would drift the first time the folder was renamed.
+    copy in the record would drift the first time the folder was renamed.
     """
     base = carry or EngagementInfo()
 
     def text(key: str, fallback: str) -> str:
+        # One line, whatever was pasted: a detail with a line break inside
+        # it would carry that break into the reminder draft's headers.
+        def clean(value: object) -> str:
+            return " ".join(str(value).split())
+
+        if blank_clears and key in spec:
+            return clean(spec[key] or "")
         value = spec.get(key)
-        return str(value).strip() if value not in (None, "") else fallback
+        return clean(value) if value not in (None, "") else fallback
 
     due_raw = str(spec.get("due", "") or "").strip()
     if due_raw:
@@ -388,6 +459,8 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None) -> Engag
             due = dt.date.fromisoformat(due_raw)
         except ValueError:
             raise ManifestError(f"Due date must be {ISO_DATE_HINT}, got {due_raw!r}") from None
+    elif blank_clears and "due" in spec:
+        due = None
     else:
         due = base.due
     return replace(
@@ -398,6 +471,7 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None) -> Engag
         sender=text("sender", base.sender),
         firm=text("firm", base.firm or firm()),
         reminders=bool(spec.get("reminders", base.reminders)),
+        active=bool(spec.get("active", base.active)),
     )
 
 
@@ -455,20 +529,21 @@ def _triage_payload(triaged: review.Triage) -> dict:
 
 
 def _state(engagement: Path) -> dict:
-    manifest_path = engagement / MANIFEST_FILENAME
     root = clients_root()
     # The store is brought up to the record before anything is read, and
-    # no further: migrating a folder that still keeps facts in a workbook
-    # would take the engagement lock and rewrite a sheet, and showing an
-    # engagement must stay a read - the app shows one a pass is holding,
-    # and says so. So the rules a person sees here are the ones the last
-    # pass imported, and the Engagement sheet is read off the workbook,
-    # which is the one thing they may have edited since.
-    ensure(engagement, migrate=False)
+    # showing an engagement stays a read - the app shows one a pass is
+    # holding, and says so. The rules a person sees here are the ones the
+    # record holds: ``items`` with the statuses and the taught keywords
+    # laid on, for the table; ``rules`` as stored, for the editor, so a
+    # keyword a filing taught is never shown as one somebody typed.
+    ensure(engagement)
     items = load_manifest(engagement)
-    info = load_engagement_info(manifest_path)
+    info = load_engagement_info(engagement)
     summary = summarize(items)
     entries = read_index(engagement)
+    conn = store.connect()
+    rules = store.rules(conn, engagement) or []
+    taught = store.learned_keywords(conn, engagement)      # keyed without case, as the store keys it
     view_path = engagement / VIEW_FILENAME
     return {
         # The derived page, and whether it still describes this engagement.
@@ -486,6 +561,13 @@ def _state(engagement: Path) -> dict:
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None}
             for i in items
         ],
+        # The person's rows as stored, the keywords filings taught each
+        # row, and the rows the rules cannot act on - what the editor
+        # opens on, and what it shows after a save.
+        "rules": rules,
+        "learned": {row["identifier"]: list(taught[identifier_key(row["identifier"])])
+                    for row in rules if taught.get(identifier_key(row["identifier"]))},
+        "warnings": check_rules(items),
         # The index's packed cells travel as data, not as text the app
         # would have to parse: the candidates as a list, the evidence as
         # the record it was written from keyed by candidate identifier,
@@ -509,7 +591,6 @@ def _state(engagement: Path) -> dict:
             "shared": str(engagement / SHARED_DIR_NAME),
             "pbc": str(engagement / SHARED_DIR_NAME / PBC_DIR_NAME),
             "prepared": str(engagement / PREPARED_DIR_NAME),
-            "manifest": str(manifest_path),
             # The one a person is meant to open. Named here as well as
             # above because the shell opens only paths this map holds.
             "view": str(view_path),
@@ -538,14 +619,14 @@ def _record_pass(run: EngagementRun) -> None:
 
     Neither takes a lock or touches an engagement, and neither failing is
     allowed to fail the pass: the files have already been moved and the
-    manifest written, so the person is told what happened either way.
+    statuses recorded, so the person is told what happened either way.
     """
     root = clients_root()
     if root is None or not root.is_dir():
         return
     # Broadly, both of them: the pass has already moved the client's files
-    # and written the manifest, so nothing about recording it afterwards may
-    # turn a finished pass into an error message in the app.
+    # and recorded what it found, so nothing about recording it afterwards
+    # may turn a finished pass into an error message in the app.
     try:
         append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(),
                                                   reminders=REMINDERS_NEVER, runs=[run]))
@@ -560,7 +641,7 @@ def _record_pass(run: EngagementRun) -> None:
 def _cmd_scan(argv: list[str]) -> dict:
     """One pass over this engagement - the same pass the scheduled job makes.
 
-    Scaffold, check, file, scan, in that order, with the same lock, the same
+    Scaffold, file, scan, in that order, with the same lock, the same
     error isolation and the same warnings; only the weekly draft is left
     to the scheduled run (or `python -m tracker.reminder`). There is one
     definition of a pass, in tracker.runner, and this is it - including the
@@ -597,11 +678,46 @@ def _cmd_templates(argv: list[str]) -> dict:
     return {"forms": FORM_TYPES, "templates": FORM_TEMPLATES, "default_year": default_tax_year()}
 
 
-def _cmd_check(argv: list[str]) -> dict:
-    """Say now what the next scan would fail on, and what it would let slide."""
+def _cmd_edit(argv: list[str]) -> dict:
+    """Save the request list and the engagement's details from the editor.
+
+    JSON on stdin: {"items": [row, ...], "engagement": {...}}. Each row is
+    the editor's row, keyed by the column keys ``_vocab()['columns']``
+    names: the two numbers as typed, the file types and keywords as a
+    comma-separated string or a list, the date pattern blank, ``*`` or a
+    regex, the override blank or one of its two values. The rows are
+    parsed in order (``item_from_fields``, each refusal naming its row) and
+    saved through ``manifest.save_rules``, which validates the list whole
+    and records one ``rules_changed`` event of exactly what moved - or
+    nothing, when nothing did. ``engagement`` holds only the keys
+    ``records.ENGAGEMENT_EDITABLE`` names; any other is refused by name,
+    an absent one keeps its recorded value, and one present and blank
+    clears it.
+
+    A refusal is the usual error sentence, and nothing is recorded. The
+    engagement lock is taken inside the save, so an edit of a folder a
+    pass is holding waits on the lock the way a filing does.
+    """
     engagement = _engagement_dir(argv)
-    result = check_manifest(engagement / MANIFEST_FILENAME)
-    return {"ok": result.ok, "problems": result.problems, "warnings": result.warnings}
+    spec = json.loads(sys.stdin.read() or "{}")
+    rows = spec.get("items")
+    if not isinstance(rows, list):
+        raise ManifestError("The editor sent no rows")
+    items = [item_from_fields(row if isinstance(row, dict) else {}, where=f"Row {n}")
+             for n, row in enumerate(rows, start=1)]
+    details = spec.get("engagement") or {}
+    for key in details:
+        if key not in ENGAGEMENT_EDITABLE:
+            raise ManifestError(f"'{key}' is not edited here")
+    info = _info_from_spec(details, carry=load_engagement_info(engagement), blank_clears=True)
+    saved = save_rules(engagement, items, info)
+    state = _state(engagement)
+    return {
+        "saved": {"changed": list(saved.changed), "removed": list(saved.removed),
+                  "engagement": list(saved.info_fields), "recorded": saved.recorded},
+        "warnings": state["warnings"],
+        "state": state,
+    }
 
 
 def _cmd_unlock(argv: list[str]) -> dict:
@@ -626,9 +742,9 @@ def _cmd_create(argv: list[str]) -> dict:
     {"name": "...", "form": "1040", "year": 2026, "client": "...", "link": "...",
      "due": <ISO_DATE_HINT>, "items": [{identifier, document, extensions, ...}, ...]}
     year defaults to the most recently ended year; catalog rows are shifted to it.
-    client/link/due land on the manifest's Engagement sheet, which is all the
-    scheduled run needs - there is no registry to add the engagement to, and
-    the catalog the rows came from is recorded there beside them.
+    client/link/due land in the record as the engagement's details, which is
+    all the scheduled run needs - there is no registry to add the engagement
+    to, and the catalog the rows came from is recorded there beside them.
     """
     spec = json.loads(sys.stdin.read() or "{}")
     form = str(spec.get("form", "")).strip()
@@ -652,15 +768,35 @@ def _cmd_create(argv: list[str]) -> dict:
     info = _info_from_spec(spec)
     engagement.mkdir(parents=True)
     try:
-        # The catalog the wizard chose is recorded on the sheet: an
+        # The catalog the wizard chose is recorded in the details: an
         # engagement that cannot say which checklist it came from cannot be
-        # checked against it later.
-        create_template(engagement / MANIFEST_FILENAME, items, info, form=form)
-        scaffold_engagement(engagement)  # validates the manifest too
+        # checked against it later. The list is validated whole before a
+        # line is written, so a bad row leaves nothing behind.
+        create_engagement(engagement, items, info, form=form)
+        scaffold_engagement(engagement)
     except Exception:
-        shutil.rmtree(engagement, ignore_errors=True)  # never leave a half-built one
+        # Never a half-built engagement, in the folder or in the store.
+        _undo_create(engagement)
         raise
     return {"created": name, "state": _state(engagement)}
+
+
+def _undo_create(engagement: Path) -> None:
+    """What a failed create or rollover leaves behind: nothing.
+
+    The folder first, so the name is free again whatever happens next;
+    then the store's row, in its own try, because a store that cannot be
+    reached at this moment (locked, refused by version) must not replace
+    the refusal sentence the person is owed with its own, nor leave the
+    folder standing for ``_new_engagement_dir`` to refuse by name. The
+    row it could not drop is a ghost ``create_engagement`` forgets on the
+    next attempt.
+    """
+    shutil.rmtree(engagement, ignore_errors=True)
+    try:
+        store.forget(store.connect(), engagement)
+    except Exception:
+        pass
 
 
 def _cmd_priors(argv: list[str]) -> dict:
@@ -680,7 +816,7 @@ def _cmd_priors(argv: list[str]) -> dict:
     for engagement in registry.engagements:
         if engagement.problem:
             continue
-        items = load_manifest(engagement.path / MANIFEST_FILENAME)
+        items = load_manifest(engagement.path)
         year = detect_year(items)
         priors.append({
             "name": engagement.path.name,
@@ -712,12 +848,11 @@ def _cmd_rollover(argv: list[str]) -> dict:
     if not prior.is_absolute():
         prior = _root() / prior_raw
     prior = _under_root(prior)
-    if not (prior / MANIFEST_FILENAME).is_file():
-        raise ManifestError(f"No manifest found in '{prior_raw}'")
+    if not ledger.path_for(prior).is_file():
+        raise ManifestError(f"No record found in '{prior_raw}'")
     # The prior year's rows are read out of the store, so the store has to
-    # describe the prior year: an engagement that has not been passed since
-    # decision 102 - a year that finished before it - is migrated here, once,
-    # before roll_forward() asks what never got filed.
+    # describe the prior year before roll_forward() asks what never got
+    # filed.
     ensure(prior)
 
     form = str(spec.get("form", "")).strip()
@@ -734,18 +869,16 @@ def _cmd_rollover(argv: list[str]) -> dict:
     name = _engagement_name(str(spec.get("name", "")), default_name)
     engagement = _new_engagement_dir(name)
 
-    # Last year's sheet, carried by the one rule (tracker.rollover); the
+    # Last year's details, carried by the one rule (tracker.rollover); the
     # wizard's fields go over it. Rolled From is what retires the prior.
-    carried = carry_engagement_info(load_engagement_info(prior / MANIFEST_FILENAME),
-                                    rolled_from=str(prior))
+    carried = carry_engagement_info(load_engagement_info(prior), rolled_from=str(prior))
     info = _info_from_spec(spec, carry=carried)
     engagement.mkdir(parents=True)
     try:
-        write_rollover_manifest(engagement / MANIFEST_FILENAME, report)
-        write_engagement_info(engagement / MANIFEST_FILENAME, info)
+        create_engagement(engagement, report.items, info)
         scaffold_engagement(engagement)
     except Exception:
-        shutil.rmtree(engagement, ignore_errors=True)
+        _undo_create(engagement)
         raise
 
     return {
@@ -765,7 +898,6 @@ def _cmd_rollover(argv: list[str]) -> dict:
                 for r in report.offered
             ],
             "unfiled_last_year": report.unfiled_last_year,
-            "carried_sheet": CARRIED_SHEET,
         },
         "state": _state(engagement),
     }
@@ -797,7 +929,7 @@ def _cmd_assign(argv: list[str]) -> dict:
     )
     # The re-scan puts the request's status right straight away. There is
     # one reason left for it not to (decision 103): another run holds the
-    # engagement. A workbook somebody has open in Excel cannot stop it.
+    # engagement.
     scan_note = ""
     try:
         scan_engagement(engagement)
@@ -957,7 +1089,7 @@ COMMANDS = {
     "assign": _cmd_assign,
     "dismiss": _cmd_dismiss,
     "unfile": _cmd_unfile,
-    "check": _cmd_check,
+    "edit": _cmd_edit,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,

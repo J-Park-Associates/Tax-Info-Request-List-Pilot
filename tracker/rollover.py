@@ -10,7 +10,7 @@ Precedence, precisely:
 - Every field the prior year specifies is carried forward untouched. The
   template never overwrites a value that already exists.
 - The template may only *fill blanks* — a keyword or extension the prior
-  manifest simply never had. Filling an empty field overrides nothing.
+  list simply never had. Filling an empty field overrides nothing.
 - Periods, date rules and any year inside a document name are shifted by the
   same number of years, so ``TY2025`` becomes ``TY2026`` and the row asking
   for the ``TY2024`` prior-year return now asks for ``TY2025``.
@@ -21,19 +21,22 @@ Precedence, precisely:
   ``Override.ACCEPTED`` is a judgment about specific files from one particular year,
   so it does not.
 - **A keyword a person's filing taught last year is carried as an ordinary
-  Any Keyword.** Since decision 103 those live in the engagement's record
-  rather than in its workbook, and ``load_manifest()`` lays them over the
-  row's typed keywords - so they reach ``_carry`` as keywords like any
-  other and ``create_template`` writes them into next year's sheet, where
-  a person can see and edit them. That is the one moment a taught keyword
-  becomes something typed.
+  Any Keyword.** Those live in the engagement's record (decision 103), and
+  ``load_manifest()`` lays them over the row's typed keywords - so they
+  reach ``_carry`` as keywords like any other and land in next year's
+  list, in the record, where the editor shows them and a person can edit
+  them. That is the one moment a taught keyword becomes something typed;
+  a learned row would be invisible in the editor.
 
 A template row the client has never had is **not** added. For a returning
 client the list is last year's list; a generic checklist does not get to pad
 it with nine requests they have never once needed. Those rows are reported as
-*offers* instead — visible in the CLI output and on the Carried Forward sheet
-— so a genuinely new requirement still surfaces for a person to accept.
-``include_new=True`` adds them outright.
+*offers* instead — in the CLI output and in the API's reply, once, at
+rollover time — so a genuinely new requirement still surfaces for a person
+to accept; an offer a person wants is added later in the editor.
+``include_new=True`` adds them outright. (Until decision 104 the offers and
+last year's unfiled files were also written to a Carried Forward sheet of
+next year's workbook; there is no workbook, and that sheet is not written.)
 
 Nothing here writes to the prior year's engagement — it is read-only history.
 """
@@ -44,44 +47,28 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
-
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
-    COL_DOCUMENT,
-    COL_IDENTIFIER,
     ManifestError,
     Override,
     RequestItem,
     Status,
-    as_text,
     check_tax_year,
-    create_template,
     detect_year,
     load_manifest,
-    save_workbook_atomically,
     shift_item,
     shift_years,
 )
 from tracker.records import EngagementInfo
-from tracker.scaffold import MANIFEST_FILENAME
 
-#: Why a row is on the new list. Written to the Carried Forward sheet.
+#: Why a row is on the new list. Reported in the CLI and the API's reply.
 ORIGIN_PRIOR = "carried from last year"
 ORIGIN_WAIVED = "waived last year"
 ORIGIN_NEW = "new this year"
 
 #: What stands in for the target year when the prior list gave none away.
 UNKNOWN_YEAR_LABEL = "next year"
-CARRIED_SHEET = "Carried Forward"
-#: Heads the sheet's (and the CLI's) list of last year's unmatched documents.
+#: Heads the CLI's list of last year's unmatched documents.
 UNFILED_HEADING = "Sent last year but never filed — check these are covered:"
-#: The Carried Forward sheet, described once: header -> column width.
-CARRIED_LAYOUT: dict[str, int] = {
-    COL_IDENTIFIER: 12, COL_DOCUMENT: 40, "Origin": 22, "Why it is on the list": 52,
-    "Last Year Status": 18, "Last Year Files": 14,
-}
-CARRIED_HEADERS = tuple(CARRIED_LAYOUT)
 
 @dataclass(frozen=True, slots=True)
 class RolledItem:
@@ -131,7 +118,7 @@ def next_tax_year(prior_year: int) -> int:
 
 
 def carry_engagement_info(prior: EngagementInfo, *, rolled_from: str) -> EngagementInfo:
-    """Last year's Engagement sheet as this year's starting point.
+    """Last year's details as this year's starting point.
 
     The client, the sender, the firm and the reminders decision are about
     the client and carry forward. So does the catalog the list was cut from:
@@ -161,8 +148,8 @@ def _carry(
         return mine if mine else (theirs or ())
 
     # A year check derived from Period is not carried as text: the shifted
-    # Period derives it again on load, so the new manifest stays as sparse
-    # as the old one was.
+    # Period derives it again when the list is validated, so the new list
+    # stays as sparse as the old one was.
     date_pattern = "" if prior.date_pattern_derived else shift_years(prior.date_pattern, delta)
     if not date_pattern and template and not template.date_pattern_derived:
         date_pattern = shift_years(template.date_pattern, tmpl_delta)
@@ -269,9 +256,9 @@ def roll_forward(
             )
         )
 
-    # By the identifier as load_manifest() compares it - without case - or
-    # a template row differing from a prior's only in case would be written
-    # beside it and the new manifest refused as a duplicate.
+    # By the identifier as validated() compares it - without case - or a
+    # template row differing from a prior's only in case would be added
+    # beside it and the new list refused as a duplicate.
     seen = {p.identifier.upper() for p in prior_items}
     for spec in template:
         if spec.identifier.upper() in seen:
@@ -298,10 +285,9 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
 
     try:
         # A rollover only reads the prior year, and it reads it without
-        # touching it: migrate=False leaves a folder that still keeps its
-        # index in a workbook exactly as it is, and takes its rows from
-        # the store built out of the record beside it.
-        ensure(prior_dir, migrate=False)
+        # touching it: the store is built out of the record beside it and
+        # nothing is written in the folder.
+        ensure(prior_dir)
         rows = read_index(prior_dir)
     except Exception:  # an unreadable index must never block a rollover
         return []
@@ -310,50 +296,6 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
         if row.decision == NEEDS_REVIEW and row.original_name not in seen:
             seen[row.original_name] = row.reason
     return [f"{name} — {reason}" for name, reason in seen.items()]
-
-
-# ------------------------------------------------------------------- write ----
-
-
-def write_rollover_manifest(path: Path | str, report: RolloverReport) -> Path:
-    """Write next year's manifest, plus a sheet saying where each row came from."""
-    path = Path(path)
-    create_template(path, report.items)
-
-    wb = load_workbook(path)
-    try:
-        ws = wb.create_sheet(CARRIED_SHEET)
-        ws.append(list(CARRIED_HEADERS))
-        for rolled in report.rolled:
-            ws.append([
-                rolled.item.identifier,
-                rolled.item.document,
-                rolled.origin,
-                rolled.note,
-                rolled.prior_status or "",
-                rolled.prior_file_count if rolled.prior_file_count is not None else "",
-            ])
-        if report.offered:
-            ws.append([])
-            ws.append(["Offered by the standard checklist, NOT added:"])
-            for offer in report.offered:
-                ws.append([offer.item.identifier, offer.item.document,
-                           ORIGIN_NEW, offer.note])
-        if report.unfiled_last_year:
-            ws.append([])
-            ws.append([UNFILED_HEADING])
-            for line in report.unfiled_last_year:
-                ws.append(["", line])
-        for cells in ws.iter_rows():
-            for cell in cells:
-                as_text(cell)         # a client's file name in the unfiled list is a name
-        for index, width in enumerate(CARRIED_LAYOUT.values(), start=1):
-            ws.column_dimensions[get_column_letter(index)].width = width
-        ws.freeze_panes = "A2"
-        save_workbook_atomically(wb, path)
-    finally:
-        wb.close()
-    return path
 
 
 # --------------------------------------------------------------------- CLI ----
@@ -394,11 +336,12 @@ if __name__ == "__main__":
 
     target = Path(ns.new_engagement_dir)
     target.mkdir(parents=True, exist_ok=True)
-    manifest = write_rollover_manifest(target / MANIFEST_FILENAME, result)
-    from tracker.manifest import load_engagement_info, write_engagement_info
+    from tracker.manifest import create_engagement, load_engagement_info
 
-    write_engagement_info(manifest, carry_engagement_info(
-        load_engagement_info(result.prior_dir / MANIFEST_FILENAME),
+    # Next year's list, in the record, where the editor shows it: the rows
+    # this rollover built and last year's details carried by the one rule.
+    create_engagement(target, result.items, carry_engagement_info(
+        load_engagement_info(result.prior_dir),
         rolled_from=str(result.prior_dir.resolve()),   # the runner's cwd is not this one
     ))
 
@@ -414,14 +357,14 @@ if __name__ == "__main__":
     if result.offered:
         print(f"\n  Not added — the standard {ns.form or 'checklist'} also has "
               f"{len(result.offered)} request(s) this client has never had.")
-        print("  Add any that now apply with --include-new, or by hand:")
+        print("  Add any that now apply with --include-new, or in the app's editor:")
         for offer in result.offered:
             print(f"    + {offer.item.label}")
     if result.unfiled_last_year:
         print(f"\n  {UNFILED_HEADING}")
         for line in result.unfiled_last_year:
             print(f"    ? {line}")
-    print(f"\n  Manifest: {manifest}")
+    print(f"\n  Engagement: {target}")
 
     if ns.scaffold:
         from tracker.scaffold import scaffold_engagement

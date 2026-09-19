@@ -3,7 +3,7 @@
 When a person files a parked document from the review folder they may type a
 keyword, and :func:`tracker.filer.assign_review_file` records it against
 **that one engagement's** request (decision 103; until then it was typed
-into that engagement's workbook). It is the right place for it - the person
+into that engagement's request list). It is the right place for it - the person
 is deciding about this client's document, and the next such file routes
 itself here - but it goes nowhere else. Fifty engagements hold fifty private
 vocabularies, invisible to each other and to the catalog in
@@ -23,9 +23,9 @@ written or moved: the rows come from the record, the way every reader gets
 them. The one thing written is the optional report file, which is refused
 inside the repository: client folder names would otherwise land in a commit.
 
-**What "learned" means, and the soft spot in it.** The Engagement sheet has
-recorded which form type the engagement was created from since decision 86,
-but this tool does not read it, so a manifest row is not compared against
+**What "learned" means, and the soft spot in it.** The engagement's details
+have recorded which form type the engagement was created from since decision
+86, but this tool does not read it, so a manifest row is not compared against
 *its* catalog alone. It is compared instead against every
 catalog in ``FORM_TYPES`` holding a row with the same Identifier and Document,
 and the report names which ones matched; a keyword is learned when the
@@ -121,10 +121,10 @@ def _key(identifier: str, document: str) -> tuple[str, str]:
 def catalog_index() -> dict[tuple[str, str], dict[str, frozenset[str]]]:
     """Every shipped catalog row as ``(identifier, document) -> catalog -> its keywords``.
 
-    Built the way an engagement gets a catalog - through ``create_template()``
-    and ``load_rules()``, which is what ``shipped_catalogs()`` does - so the
-    comparison is against the rows a manifest is actually written with, not
-    against the spec dicts behind them.
+    Built the way an engagement gets a catalog - through ``validated()``
+    over ``template_items()``, which is what ``shipped_catalogs()`` does -
+    so the comparison is against the rows an engagement is actually
+    recorded with, not against the spec dicts behind them.
     """
     index: dict[tuple[str, str], dict[str, frozenset[str]]] = {}
     for form, rows in shipped_catalogs().items():

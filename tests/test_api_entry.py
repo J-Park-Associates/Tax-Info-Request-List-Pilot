@@ -11,9 +11,9 @@ import sys
 import textwrap
 from pathlib import Path
 
-from tracker.manifest import RequestItem, create_template
+from tests.conftest import make_engagement
+from tracker.manifest import RequestItem
 from tracker.runner import RUNNER_MODE_FLAG
-from tracker.scaffold import MANIFEST_FILENAME, scaffold_engagement
 from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
 
 REPO = Path(__file__).resolve().parent.parent
@@ -44,10 +44,7 @@ def run_entry(args: list[str]) -> tuple[int, bool, str]:
 
 def test_runner_mode_runs_a_pass_without_importing_the_api_layer(tmp_path):
     root = tmp_path / "Clients"
-    engagement = root / "Smith 2025"
-    engagement.mkdir(parents=True)
-    create_template(engagement / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="W-2")])
-    scaffold_engagement(engagement)
+    make_engagement(root / "Smith 2025", [RequestItem(identifier="A01", document="W-2")])
 
     code, api_imported, out = run_entry([RUNNER_MODE_FLAG, str(root), "--dry-run", "--reminders", "never"])
 

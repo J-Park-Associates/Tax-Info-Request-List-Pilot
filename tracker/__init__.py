@@ -3,11 +3,11 @@
 See docs/ROADMAP.md for the build plan. Component modules:
 
 - records       : the record types every layer names - the index row, the evidence, the routing decision, the engagement - and each one's own serialisation
-- manifest      : the manifest workbook's schema, load/validate, status write-back
-- scaffold      : folder scaffolding from the manifest
+- manifest      : the request list: its schema, validation, and its reading from and writing to the record
+- scaffold      : folder scaffolding from the request list
 - validators    : tier 1-2 file checks + dry-run preview CLI
 - content_check : tier 3 text extraction + rules + verdict cache
-- scanner       : orchestrator (scan, resolve, write back)
+- scanner       : orchestrator (scan, resolve, record)
 - router        : deterministic routing of a dropped file to one request
 - filer         : sort the drop folder, preserve originals, record where every one went
 - review        : triage the parked files - a ranked shortlist with its reasons, filing nothing
@@ -18,7 +18,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - scheduling    : generate the Task Scheduler / n8n job
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
-- ledger        : the engagement's own append-only record of what was decided, written beside the workbooks under that lock
+- ledger        : the engagement's own append-only record of what was decided, written beside the client's files under that lock
 - store         : the database on this machine, rebuilt from the record; one file per clients root, and the index is read from it
 - page          : the markup both of the firm's pages are drawn with: escaping, tables, the bytes a page is written as
 - view          : the page a person opens, regenerated from the record and the readers every pass

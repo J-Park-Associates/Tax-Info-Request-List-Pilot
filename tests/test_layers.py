@@ -15,9 +15,9 @@ one deliberate cycle in the package, ``filer`` <-> ``scanner`` inside
 ``_rescan()``, is a call-time cycle and is asserted to stay one.
 
 **The layers.** In-layer edges are allowed (``ledger`` and ``manifest``
-are both L1, so ``manifest`` importing ``ledger`` is legal - and wanted,
-because decision 88 put "the record answers, the workbook falls back" in one
-place). What is never allowed is an edge from a lower layer to a higher one.
+are both L1, so ``manifest`` reaching ``ledger`` is legal - and wanted,
+because decision 104 put the request list's two writes beside its
+schema). What is never allowed is an edge from a lower layer to a higher one.
 ``settings`` sits at L1 only because it borrows the atomic write from
 ``manifest``; the ``fsio`` move (the plan's step after the storage cutover)
 takes it to L0. ``validators`` sits at L1 because ``scaffold`` reads one
@@ -26,17 +26,20 @@ half is not worth a module of its own until that call can move.
 
 **Rule 7, amended** (from the implementation plan's rules for every step):
 ``ledger`` and ``locking`` import nothing of the package but each other;
-``manifest`` imports ``records`` and nothing else; ``runner`` never imports
-``scheduling`` or ``api``; the package's ``__init__`` imports nothing at
-load time (decision 99 removed thirteen re-exports no file consumed, and
-with them the one load-time cycle the map used to name).
+``manifest`` imports ``records`` and nothing else at load time, and
+reaches ``store``, ``ledger`` and ``locking`` at call time; ``runner``
+never imports ``scheduling`` or ``api``; the package's ``__init__`` imports
+nothing at load time (decision 99 removed thirteen re-exports no file
+consumed, and with them the one load-time cycle the map used to name).
 
-The manifest's rule got *narrower* with decision 103, which is worth
-saying: it used to import ``ledger`` and ``locking`` because it wrote the
-scanner columns and appended to the journal under the lock. It writes
-nothing a pass decides now, so it parses a sheet and names shapes, and
-``load_manifest()`` reaches ``store`` and ``ledger`` at call time - an
-in-layer edge, closed where an edge is allowed to close.
+The manifest's rule got *narrower* with decision 103 and kept that width
+with 104, which is worth saying: it used to import ``ledger`` and
+``locking`` at load time because it wrote the scanner columns. Decision
+104 gave it the request list's writes - ``create_engagement()`` and
+``save_rules()`` record a ``rules_changed`` event under the engagement
+lock - and they reach ``store``, ``ledger`` and ``locking`` at call time,
+as ``load_manifest()`` already did: in-layer edges, closed where an edge
+is allowed to close.
 
 ``manifest`` -> ``records`` is the in-layer edge decision 100 added: the
 record types moved out of the modules that write them, ``records`` imports
@@ -44,11 +47,11 @@ nothing of the package at all, and the manifest names the shapes it loads.
 
 ``store`` joins L1 with decision 101 and is deliberately narrower than its
 layer allows: it imports ``records``, ``ledger`` and ``locking`` and
-nothing else of the package, not even the in-layer ``manifest``. What it
-needs from the workbooks is handed to it as records, so the database that
-will one day answer for the readers never depends on the modules that open
-the workbooks it is replacing; its command line imports them at call time,
-which is where a cycle is allowed to close.
+nothing else of the package, not even the in-layer ``manifest``.
+Everything it holds comes out of the journal, so the database that answers
+for the readers never depends on the modules that walk folders and move
+files; its command line imports the registry at call time, which is where
+a cycle is allowed to close.
 """
 
 from __future__ import annotations
@@ -175,17 +178,18 @@ def test_the_store_imports_only_the_record_the_journal_and_the_lock():
 
 
 def test_the_manifest_imports_the_record_and_nothing_else():
-    """Narrower since decision 103, and that is the point.
+    """Narrower since decision 103, and kept so by 104.
 
     The manifest used to append to the journal and take the engagement
-    lock to do it, because it wrote the scanner columns. It writes nothing
-    a pass decides any more: it parses a sheet and names the shapes it
-    parses into. ``load_manifest()`` reaches the store and the journal at
-    call time, which is where an in-layer edge is allowed to close.
+    lock at load time, because it wrote the scanner columns. Decision 104
+    gave it the request list's writes, and they reach the store, the
+    journal and the lock at call time - where an in-layer edge is allowed
+    to close - so at load time it names the shapes it validates into and
+    nothing else.
     """
     load, call = import_edges()
     assert load["manifest"] == {"records"}, load["manifest"]
-    assert {"store", "ledger"} <= call["manifest"], call["manifest"]
+    assert {"store", "ledger", "locking"} <= call["manifest"], call["manifest"]
 
 
 def test_the_package_init_imports_nothing_at_load_time():

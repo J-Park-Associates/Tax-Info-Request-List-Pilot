@@ -283,8 +283,7 @@ body {
 
 .field { display: block; margin-bottom: 14px; }
 .field span { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
-.field input,
-.custom-row input {
+.field input {
   width: 100%;
   font: inherit;
   font-size: 14px;
@@ -294,8 +293,7 @@ body {
   color: var(--text);
   background: #fbfcfe;
 }
-.field input:focus-visible,
-.custom-row input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.field input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
 .tmpl-head {
   font-size: 11.5px;
@@ -331,36 +329,90 @@ body {
 .tmpl-doc { font-weight: 600; }
 .tmpl-rules { display: block; font-weight: 400; font-size: 12px; color: var(--subtle); }
 
-.custom-row {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1.4fr auto;
-  gap: 8px;
-}
+/* ── The request-list editor, and the wizard's custom rows (one component) ── */
 
-.cu-list { list-style: none; margin-top: 8px; }
-.cu-list li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 12px;
-  font-size: 13.5px;
-  background: #f8fafc;
+.modal-wide { width: 1180px; }
+
+.editor-rows { overflow-x: auto; margin-top: 4px; }
+.editor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.editor-table th {
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--subtle);
+  padding: 6px 6px 6px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.editor-table td { padding: 4px 6px 4px 0; vertical-align: middle; }
+.editor-table input,
+.editor-table select {
+  width: 100%;
+  min-width: 72px;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: #fbfcfe;
+}
+.editor-table input:focus-visible,
+.editor-table select:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.editor-table .ed-id { width: 44px; }
+.editor-table .ed-identifier input { min-width: 64px; }
+.editor-table .ed-expected_count input,
+.editor-table .ed-min_size_kb input { min-width: 56px; width: 64px; }
+.editor-table .ed-document input { min-width: 180px; }
+.editor-table .ed-learned { font-size: 12px; color: var(--subtle); white-space: nowrap; }
+.editor-table .ed-remove { text-align: right; }
+
+.editor-actions { display: flex; justify-content: flex-start; margin-top: 8px; }
+
+.ed-engagement {
   border: 1px solid var(--border);
   border-radius: 8px;
-  margin-bottom: 6px;
+  padding: 10px 14px 4px;
+  margin-bottom: 8px;
 }
-.cu-remove {
-  margin-left: auto;
-  border: none;
-  background: none;
+.ed-engagement legend {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
   color: var(--subtle);
-  font-size: 14px;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 6px;
-  transition: color 150ms ease, background-color 150ms ease;
+  padding: 0 6px;
 }
-.cu-remove:hover { color: #b91c1c; background: #fef2f2; }
+.ed-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0 14px;
+}
+.ed-fields .field { margin-bottom: 10px; }
+.ed-fields .wiz-check { margin: 4px 0 10px; }
+.ed-readonly { display: block; font-size: 14px; padding: 6px 0; color: var(--muted); }
+
+.ed-paste { margin-top: 14px; }
+.ed-paste summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.ed-paste textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: #fbfcfe;
+  resize: vertical;
+}
+.ed-paste textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+#ed-note { margin-top: 12px; }
 
 .modal-actions {
   display: flex;

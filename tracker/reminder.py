@@ -1,6 +1,6 @@
 """Draft the "still waiting on these" email to a client (component 9).
 
-Reads a scanned ``MANIFEST_FILENAME`` and writes a plain-text draft the
+Reads a scanned engagement's record and writes a plain-text draft the
 accountant can read, edit and paste into Outlook. **It never sends anything**
 — there is no SMTP, no mail client, no network call anywhere in this module.
 A reminder goes out because a person decided to send it.
@@ -35,7 +35,7 @@ client and expose the matching rules. Every note is translated into one plain
 sentence saying what to do about it, by deterministic substring rules, and
 anything unrecognized falls back to the safe generic ask. No generative AI
 touches any of this, and no client document is read here at all — only the
-manifest the scanner already wrote.
+statuses the scanner already recorded.
 
 One more guard: files sitting in ``REVIEW_DIR_NAME`` are things the client
 *has* already sent that nobody has identified yet. Sending a reminder over
@@ -58,6 +58,7 @@ from pathlib import Path
 from tracker import reasons
 from tracker.manifest import (
     ISO_DATE_HINT,
+    ManifestError,
     RequestItem,
     Status,
     load_engagement_info,
@@ -66,7 +67,6 @@ from tracker.manifest import (
 )
 from tracker.reasons import GENERIC_ASK  # re-exported; the one generic sentence
 from tracker.scaffold import (
-    MANIFEST_FILENAME,
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
 )
@@ -400,19 +400,21 @@ def draft_reminder(
     """Draft the reminder for one engagement. Reads only; sends nothing.
 
     Who the client is, the share link, the due date and the sign-off come
-    from the manifest's Engagement sheet - the one place they are kept. The
-    keyword arguments override it for a one-off (the CLI's flags); nothing
-    else needs to pass them in.
+    from the engagement's details in the record - the one place they are
+    kept. The keyword arguments override it for a one-off (the CLI's
+    flags); nothing else needs to pass them in.
 
-    Raises :class:`ReminderError` when the manifest is missing or has never
-    been scanned — a reminder built from unscanned rows would ask for
+    Raises :class:`ReminderError` when the folder holds no record or has
+    never been scanned — a reminder built from unscanned rows would ask for
     documents the client may well have sent already.
     """
+    from tracker.ledger import LEDGER_FILENAME
+
     engagement_dir = Path(engagement_dir)
-    manifest = engagement_dir / MANIFEST_FILENAME
-    if not manifest.is_file():
-        raise ReminderError(f"no {MANIFEST_FILENAME} in {engagement_dir}")
-    info = load_engagement_info(manifest)
+    try:
+        info = load_engagement_info(engagement_dir)
+    except ManifestError:
+        raise ReminderError(f"no record in {engagement_dir} ({LEDGER_FILENAME})") from None
     client_name = client_name or info.client
     engagement_name = engagement_name or info.name
     share_link = share_link or info.link
@@ -425,10 +427,10 @@ def draft_reminder(
     # for, and there is no second reading of a workbook to disagree with.
     items = load_manifest(engagement_dir)
     if not items:
-        raise ReminderError(f"{manifest} has no request rows")
+        raise ReminderError(f"{engagement_dir} has no request rows")
     if not any(item.status for item in items):
         raise ReminderError(
-            f"{manifest} has no scan results yet; run "
+            f"{engagement_dir} has no scan results yet; run "
             f"`python -m tracker.scanner {engagement_dir}` first"
         )
 

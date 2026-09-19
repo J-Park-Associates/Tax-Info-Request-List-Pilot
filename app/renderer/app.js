@@ -10,7 +10,8 @@ let defaultYear = null;    // the tax year a new engagement is for (from the cal
 let nameIsAuto = true;     // new-client name follows client + year + form until typed
 let selectedForm = null;   // form id chosen on the wizard's first page
 let templates = [];        // template items for the chosen form
-let customItems = [];      // custom rows added in the wizard
+let customItems = [];      // custom rows added in the wizard (plain objects keyed by column)
+let editorRows = [];       // the request-list editor's rows (plain objects keyed by column)
 let priors = [];           // engagements a new year can roll forward from
 let selectedPrior = null;  // path of the prior engagement chosen on page 0
 
@@ -112,12 +113,12 @@ function render(state) {
     )));
 
   // The one count, from the same summarize() the run log and the reminder use.
-  // Nothing waits for Excel any more: the statuses are in the record
-  // (decision 103), and the request list is the person's file alone.
+  // Nothing waits for anything: the statuses and the request list are both
+  // in the record (decisions 103 and 104).
   $("summary").textContent = state.summary ? state.summary.line : "";
 
   // The catalog the engagement was cut from, beside its name in the
-  // toolbar. It is shown exactly as the sheet records it — the catalog's
+  // toolbar. It is shown exactly as the record holds it — the catalog's
   // own key is how a person names the return — so the app carries no word
   // of its own for it, and an engagement made before it was recorded shows
   // nothing rather than a guess.
@@ -208,7 +209,7 @@ function reviewRow(e, choices, ids, open, triage) {
     open && el("input", {
       type: "text", className: "r-keyword", placeholder: "keyword to learn (optional)",
       "aria-label": "Keyword to add to the request",
-      title: "A word this document contains that others like it will too. Added to the request's Any Keywords so the next one files itself.",
+      title: "A word this document contains that others like it will too. Taught to the request so the next one files itself; the editor shows it beside the row.",
     }),
     open && el("input", {
       type: "text", className: "r-note", placeholder: vocab.review_labels.dismiss_note,
@@ -366,25 +367,6 @@ async function clearLock() {
   }
 }
 
-async function checkManifest() {
-  const btn = $("btn-check");
-  btn.disabled = true;
-  try {
-    const result = await call(withEng("check"));
-    if (!result.ok) {
-      banner(`The manifest cannot be used until this is fixed:\n${result.problems.map((p) => "• " + p).join("\n")}`, "err");
-    } else if (result.warnings.length) {
-      banner(`The manifest is valid. Worth a look:\n${result.warnings.map((w) => "• " + w).join("\n")}`, "warn");
-    } else {
-      banner("The manifest is valid: every row has a rule the filer can act on.", "ok");
-    }
-  } catch (err) {
-    toast(err.message);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
 // ── data flows ──────────────────────────────────────────────────────────
 
 // Everything static on the page that names a Python-owned fact is filled
@@ -395,17 +377,27 @@ function applyVocabulary() {
   $("brand-product").textContent = vocab.product;
   $("scan-label").textContent = SCAN_LABEL;
   $("view-label").textContent = vocab.view.open;
+  $("edit-label").textContent = vocab.editor.open;
   $("root-input").placeholder = `e.g. ${vocab.example_root}`;
   $("ro-include-note").textContent =
-    `Also add checklist rows this client has never had (otherwise they are listed as offers on the ${vocab.carried_sheet} sheet)`;
+    "Also add checklist rows this client has never had (otherwise they are offered, once, when the rollover is done, and added later in the editor)";
   for (const id of ["ro-year", "ne-year"]) {
     $(id).min = vocab.year_min;
     $(id).max = vocab.year_max;
     $(id).title = vocab.year_note;
   }
   $("ro-client").placeholder = vocab.origin_prior;
-  $("cu-ext").title = vocab.extension_default_note;
-  $("cu-kw").title = `A word the document itself contains, e.g. 'Schedule E'. Keyword ${vocab.keyword_default_note}; shorten it to something the file really says.`;
+  $("cu-add").textContent = vocab.editor.add_row;
+  // The editor's every word: the two titles, the buttons, the paste hint.
+  $("ed-title").textContent = vocab.editor.title;
+  $("ed-engagement-title").textContent = vocab.editor.engagement_title;
+  $("ed-list-title").textContent = vocab.editor.title;
+  $("ed-add").textContent = vocab.editor.add_row;
+  $("ed-paste-title").textContent = vocab.editor.paste;
+  $("ed-paste-hint").textContent = vocab.editor.paste_hint;
+  $("ed-paste-btn").textContent = vocab.editor.paste;
+  $("ed-cancel").textContent = vocab.editor.cancel;
+  $("ed-save").textContent = vocab.editor.save;
   const cards = document.querySelectorAll("#assurances .assure div");
   vocab.rules.forEach((rule, i) => {
     if (!cards[i]) return;
@@ -622,8 +614,14 @@ async function rollForward() {
     await refresh(result.state.paths.engagement);
     const r = result.rollover;
     const parts = [`${r.carried.length} request(s) carried from ${r.prior}`];
-    if (r.offered.length) parts.push(`${r.offered.length} template row(s) offered but not added — see the ${r.carried_sheet} sheet`);
-    if (r.unfiled_last_year.length) parts.push(`${r.unfiled_last_year.length} file(s) sent last year were never filed — check the ${r.carried_sheet} sheet`);
+    // The offers and last year's unfiled files are said here, once: there
+    // is no sheet to point at, and an offer a person wants is added in the
+    // editor (decision 104).
+    if (r.offered.length) {
+      const offered = r.offered.map((o) => `${o.identifier}${vocab.triage.identifier_separator}${o.document}`).join(", ");
+      parts.push(`${r.offered.length} template row(s) offered but not added: ${offered}`);
+    }
+    if (r.unfiled_last_year.length) parts.push(`${r.unfiled_last_year.length} file(s) sent last year were never filed`);
     banner(`Engagement "${result.created}" rolled forward: ${parts.join("; ")}.`, "ok");
   } catch (err) {
     toast(err.message);
@@ -652,15 +650,13 @@ function chooseForm(formId) {
   $("tmpl-head-label").textContent = `${form.label} request list — tick what applies`;
   $("ne-name").value = "";
   nameIsAuto = true;
-  $("cu-ext").placeholder = vocab.default_extensions;
-  $("cu-kw").placeholder = vocab.keyword_default_note;
   $("ne-year").value = defaultYear || "";
   $("ne-name").placeholder = fill(vocab.name_pattern, { client: vocab.new_client_placeholder, year: $("ne-year").value, form: form.label });
   $("ne-client").value = "";
   $("ne-link").value = "";
   $("ne-due").value = "";
   renderTemplateList();
-  renderCustomList();
+  renderCustomRows();
   showStep("items");
   $("ne-client").focus();
 }
@@ -696,45 +692,124 @@ function renderTemplateList() {
     )));
 }
 
-function renderCustomList() {
-  show("cu-list", customItems.map((c, i) =>
-    el("li", {},
-      el("span", { className: "tmpl-id" }, c.identifier),
-      el("span", {}, c.document, " ",
-        el("span", { className: "tmpl-rules" },
-          `${c.extensions || vocab.extension_default_note} · `,
-          c.required_keywords ? `must contain "${c.required_keywords}"` : `keyword ${vocab.keyword_default_note}`)),
-      el("button", { className: "cu-remove", dataset: { index: String(i) }, "aria-label": `Remove ${c.document}` }, "✕"),
-    )));
+// ── the one row component: the wizard's custom rows and the editor's ─────
+
+// A column of the request list, as the API describes it: its key in the
+// record, its heading, and the sentence under the heading. The wizard shows
+// three of the ten; the editor shows them all.
+function columnsByKey(keys) {
+  return keys.map((key) => vocab.columns.find((c) => c.key === key)).filter(Boolean);
 }
+
+// One input for one cell. The two numbers take their floor from the
+// vocabulary (never typed here); the override is a pick of the API's two
+// values or nothing; everything else is text. Typing writes straight into
+// the row object, so the rows are always what the inputs say.
+function cellInput(row, column, onChange) {
+  const key = column.key;
+  const minimum = vocab.editor.minimums[key];
+  if (key === "manual_override") {
+    const select = el("select", { "aria-label": column.label },
+      el("option", { value: "", selected: !row[key] }, ""),
+      Object.values(vocab.overrides).map((value) =>
+        el("option", { value, selected: row[key] === value }, value)));
+    select.addEventListener("change", () => { row[key] = select.value; onChange(); });
+    return select;
+  }
+  const input = el("input", {
+    type: minimum === undefined ? "text" : "number",
+    value: row[key] === undefined || row[key] === null ? "" : String(row[key]),
+    "aria-label": column.label,
+    title: column.help,
+  });
+  if (minimum !== undefined) input.min = minimum;
+  input.addEventListener("input", () => { row[key] = input.value; onChange(); });
+  return input;
+}
+
+// The rows of a request list as a table of inputs: one column per entry of
+// `columns`, a note for the keywords a filing taught the row (the editor
+// shows them as taught, never as typed), and a Remove button. Renders from
+// plain objects keyed by column key; `onChange(rows)` is told about every
+// edit, and `onRemove(index)` about a removed row. `keyed` shows each row's
+// identifier as fixed text (the wizard assigns them); the editor passes
+// the identifier as one of its columns instead, typed like the rest.
+function requestRows(container, rows, { columns, onChange, onRemove, learned = {}, keyed = true }) {
+  const head = el("tr", {},
+    keyed ? el("th", { className: "ed-id" }, columnsByKey(["identifier"])[0].label) : null,
+    columns.map((c) => el("th", { title: c.help }, c.label)),
+    Object.keys(learned).length ? el("th", {}, "") : null,
+    el("th", {}, ""));
+  const body = rows.map((row, index) => el("tr", {},
+    keyed ? el("td", { className: "ed-id" }, el("span", { className: "req-id" }, row.identifier)) : null,
+    columns.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, () => onChange(rows)))),
+    Object.keys(learned).length
+      ? el("td", { className: "ed-learned" },
+          learned[row.identifier] && learned[row.identifier].length
+            ? fill(vocab.editor.learned_note, { keywords: learned[row.identifier].join(", ") })
+            : "")
+      : null,
+    el("td", { className: "ed-remove" },
+      el("button", { className: "btn btn-small", dataset: { index: String(index) }, "aria-label": `${vocab.editor.remove_row} ${row.identifier || ""}` },
+        vocab.editor.remove_row)),
+  ));
+  const table = el("table", { className: "editor-table" }, el("thead", {}, head), el("tbody", {}, body));
+  table.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-index]");
+    if (btn) onRemove(Number(btn.dataset.index));
+  });
+  table.addEventListener("keydown", (e) => {
+    // Enter on the last row adds another, the way the wizard always did.
+    if (e.key === "Enter" && e.target.closest("tr") === table.querySelector("tbody tr:last-child")) {
+      e.preventDefault();
+      container.dispatchEvent(new CustomEvent("addrow"));
+    }
+  });
+  container.replaceChildren(table);
+}
+
+// ── the wizard's custom requests ────────────────────────────────────────
 
 // Blank fields are sent blank: the catalog's item_from_spec() fills the
 // file types and the keyword (the document name) by the one rule, and the
-// manifest shows the result. The placeholders say what that rule does.
+// editor shows the result afterwards.
+const CUSTOM_COLUMNS = ["document", "allowed_extensions", "required_keywords"];
+
 function customIdentifier(position) {
   return `X${String(position).padStart(2, "0")}`;
 }
 
-function addCustomItem() {
-  const doc = $("cu-doc").value.trim();
-  if (!doc) {
-    toast("Give the custom request a document name first.");
-    return;
-  }
-  customItems.push({
-    identifier: customIdentifier(customItems.length + 1),
-    document: doc,
-    extensions: $("cu-ext").value.trim(),
-    required_keywords: $("cu-kw").value.trim(),
+function renumberCustom() {
+  customItems.forEach((c, i) => (c.identifier = customIdentifier(i + 1)));
+}
+
+function renderCustomRows() {
+  requestRows($("cu-rows"), customItems, {
+    columns: columnsByKey(CUSTOM_COLUMNS),
+    onChange: () => {},
+    onRemove: (index) => {
+      customItems.splice(index, 1);
+      renumberCustom();
+      renderCustomRows();
+    },
   });
-  $("cu-doc").value = "";
-  $("cu-kw").value = "";
-  renderCustomList();
+}
+
+function addCustomItem() {
+  customItems.push({ identifier: "", document: "", allowed_extensions: "", required_keywords: "" });
+  renumberCustom();
+  renderCustomRows();
+  const inputs = $("cu-rows").querySelectorAll("tbody tr:last-child input");
+  if (inputs.length) inputs[0].focus();
 }
 
 async function createEngagement() {
   const checked = [...$("tmpl-list").querySelectorAll("input:checked")]
     .map((box) => templates[Number(box.dataset.index)]);
+  if (customItems.some((c) => !String(c.document || "").trim())) {
+    toast("Give each custom request a document name first.");
+    return;
+  }
   const items = [...checked, ...customItems];
   if (!items.length) {
     toast("Select at least one request item.");
@@ -765,12 +840,191 @@ async function createEngagement() {
   }
 }
 
+// ── the request-list editor (decision 104) ──────────────────────────────
+// The list and the engagement's details are edited here and nowhere else.
+// Rows open from state.rules - the person's rows as stored, without the
+// keywords filings taught, which are shown beside each row as taught - and
+// a save is one `edit` call: refused with the row and the column named, or
+// recorded as one event of exactly what changed.
+
+let editorState = null;    // the state the editor opened on
+
+function editorRow(rule) {
+  return {
+    identifier: rule.identifier,
+    document: rule.document,
+    period: rule.period,
+    expected_count: rule.expected_count,
+    allowed_extensions: rule.allowed_extensions.length
+      ? rule.allowed_extensions.join(", ") : vocab.editor.any_extension,
+    min_size_kb: rule.min_size_kb,
+    required_keywords: rule.required_keywords.join(", "),
+    any_keywords: rule.any_keywords.join(", "),
+    // A blank pattern that is not derived is the no-date-check mark the person
+    // typed: shown and sent back as that mark, the round trip the file types column makes.
+    date_pattern: rule.date_pattern_derived ? "" : (rule.date_pattern || vocab.editor.no_date_check),
+    manual_override: rule.manual_override,
+  };
+}
+
+function blankEditorRow() {
+  return Object.fromEntries(vocab.columns.map((c) => [c.key, ""]));
+}
+
+function renderEditorRows() {
+  requestRows($("ed-rows"), editorRows, {
+    columns: vocab.columns,
+    keyed: false,
+    learned: (editorState && editorState.learned) || {},
+    onChange: () => {},
+    onRemove: (index) => {
+      editorRows.splice(index, 1);
+      renderEditorRows();
+    },
+  });
+}
+
+function addEditorRow() {
+  editorRows.push(blankEditorRow());
+  renderEditorRows();
+  const inputs = $("ed-rows").querySelectorAll("tbody tr:last-child input");
+  if (inputs.length) inputs[0].focus();
+}
+
+// The engagement's details, laid out from the vocabulary: a text box, a
+// date or a yes/no box for each field a person may change, and the value
+// as plain text for the ones they may not (the folder is the name; the
+// rollover writes Rolled From; the form was recorded once).
+function renderEngagementFields(info) {
+  show("ed-fields", vocab.editor.engagement_fields
+    .filter((f) => f.key !== "name")
+    .map((f) => {
+      const value = info[f.key];
+      if (!f.editable) {
+        return el("label", { className: "field" }, el("span", {}, f.label),
+          el("span", { className: "ed-readonly", title: f.help }, value === true ? vocab.editor.yes : value === false ? vocab.editor.no : value || "—"));
+      }
+      if (typeof value === "boolean") {
+        return el("label", { className: "wiz-check" },
+          el("input", { type: "checkbox", checked: value, dataset: { field: f.key } }),
+          el("span", {}, `${f.label} — ${f.help}`));
+      }
+      return el("label", { className: "field" }, el("span", { title: f.help }, f.label),
+        el("input", { type: f.key === "due" ? "date" : "text", value: value || "", dataset: { field: f.key }, title: f.help }));
+    }));
+}
+
+function engagementFromFields() {
+  const details = {};
+  for (const box of $("ed-fields").querySelectorAll("[data-field]")) {
+    details[box.dataset.field] = box.type === "checkbox" ? box.checked : box.value.trim();
+  }
+  return details;
+}
+
+function editorNote(text, cls) {
+  const note = $("ed-note");
+  note.textContent = text;
+  note.className = `banner ${cls}${text.includes("\n") ? " multi" : ""}`;
+  note.classList.toggle("hidden", !text);
+}
+
+async function openEditor() {
+  if (!active) return;
+  try {
+    editorState = await call(withEng("state"));
+  } catch (err) {
+    toast(err.message);
+    return;
+  }
+  editorRows = (editorState.rules || []).map(editorRow);
+  renderEngagementFields(editorState.engagement || {});
+  renderEditorRows();
+  $("ed-paste").value = "";
+  editorNote("", "ok");
+  $("editor").classList.remove("hidden");
+}
+
+function closeEditor() {
+  $("editor").classList.add("hidden");
+}
+
+// A small RFC 4180 reader: quoted fields, doubled quotes, commas inside
+// quotes. Used only when the pasted block holds no tab.
+function csvFields(line) {
+  const fields = [];
+  let field = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { field += '"'; i++; } else quoted = false;
+      } else field += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") { fields.push(field); field = ""; }
+    else field += ch;
+  }
+  fields.push(field);
+  return fields;
+}
+
+// Rows pasted from a spreadsheet, appended by position: a tab on any line
+// makes every line tab-separated, otherwise the lines are CSV; a first
+// line that repeats the headings is skipped; missing trailing cells are
+// blank. Returns how many rows were added. Nothing is recorded here.
+function pasteRows(block) {
+  const lines = block.split(/\r?\n/).filter((line) => line.trim() !== "");
+  if (!lines.length) return 0;
+  const tabbed = lines.some((line) => line.includes("\t"));
+  let rows = lines.map((line) => (tabbed ? line.split("\t") : csvFields(line)).map((cell) => cell.trim()));
+  const labels = vocab.columns.map((c) => c.label.toLowerCase());
+  // The heading line is recognised by its first ten cells, so one copied
+  // with a trailing tab is still skipped.
+  const first = rows[0].slice(0, labels.length).map((cell) => cell.toLowerCase());
+  if (first.length === labels.length && first.every((cell, i) => cell === labels[i])
+      && rows[0].slice(labels.length).every((cell) => cell === "")) rows = rows.slice(1);
+  for (const cells of rows) {
+    const row = blankEditorRow();
+    vocab.columns.forEach((c, i) => { row[c.key] = cells[i] === undefined ? "" : cells[i]; });
+    editorRows.push(row);
+  }
+  renderEditorRows();
+  return rows.length;
+}
+
+async function saveEditor() {
+  const btn = $("ed-save");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("edit"), {
+      items: editorRows,
+      engagement: engagementFromFields(),
+    });
+    render(result.state);
+    closeEditor();
+    const saved = result.saved;
+    const lines = [saved.recorded
+      ? fill(vocab.editor.saved, { changed: saved.changed.length, removed: saved.removed.length })
+      : vocab.editor.nothing_changed];
+    if (result.warnings.length) {
+      lines.push(`${vocab.editor.warnings_heading}:`);
+      for (const w of result.warnings) lines.push(`• ${w}`);
+    }
+    banner(lines.join("\n"), result.warnings.length ? "warn" : "ok");
+  } catch (err) {
+    editorNote(err.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ── wiring ──────────────────────────────────────────────────────────────
 
 $("btn-scan").addEventListener("click", runScan);
 $("btn-new").addEventListener("click", openWizard);
 $("btn-shared").addEventListener("click", () => paths && window.tracker.open(paths.shared));
-$("btn-excel").addEventListener("click", () => paths && window.tracker.open(paths.manifest));
+$("btn-edit").addEventListener("click", openEditor);
 $("btn-view").addEventListener("click", () => paths && window.tracker.open(paths.view));
 $("btn-status").addEventListener("click", () => paths && window.tracker.open(paths.status));
 $("eng-select").addEventListener("change", (e) => {
@@ -794,7 +1048,6 @@ $("prior-list").addEventListener("change", (e) => {
 });
 $("ro-create").addEventListener("click", rollForward);
 $("ro-name").addEventListener("keydown", (e) => e.key === "Enter" && rollForward());
-$("btn-check").addEventListener("click", checkManifest);
 $("btn-schedule").addEventListener("click", installSchedule);
 $("btn-save-root").addEventListener("click", saveRoot);
 $("root-input").addEventListener("keydown", (e) => e.key === "Enter" && saveRoot());
@@ -810,10 +1063,18 @@ $("ne-name").addEventListener("input", () => {
   syncNameDefault();
 });
 $("cu-add").addEventListener("click", addCustomItem);
-$("cu-doc").addEventListener("input", () => {
-  $("cu-kw").placeholder = $("cu-doc").value.trim() || vocab.keyword_default_note;
+$("cu-rows").addEventListener("addrow", addCustomItem);
+$("ed-add").addEventListener("click", addEditorRow);
+$("ed-rows").addEventListener("addrow", addEditorRow);
+$("ed-paste-btn").addEventListener("click", () => {
+  const added = pasteRows($("ed-paste").value);
+  if (added) $("ed-paste").value = "";
 });
-$("cu-doc").addEventListener("keydown", (e) => e.key === "Enter" && addCustomItem());
+$("ed-save").addEventListener("click", saveEditor);
+$("ed-cancel").addEventListener("click", closeEditor);
+$("editor").addEventListener("click", (e) => {
+  if (e.target === $("editor")) closeEditor();
+});
 $("ne-create").addEventListener("click", createEngagement);
 $("ne-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
 $("modal").addEventListener("click", (e) => {
@@ -833,16 +1094,11 @@ $("filed-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".r-unfile");
   if (btn) unfileDocument(btn.closest("li"));
 });
-$("cu-list").addEventListener("click", (e) => {
-  const btn = e.target.closest(".cu-remove");
-  if (btn) {
-    customItems.splice(Number(btn.dataset.index), 1);
-    customItems.forEach((c, i) => (c.identifier = customIdentifier(i + 1)));
-    renderCustomList();
-  }
-});
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") $("modal").classList.add("hidden");
+  if (e.key === "Escape") {
+    $("modal").classList.add("hidden");
+    closeEditor();
+  }
 });
 
 refresh();

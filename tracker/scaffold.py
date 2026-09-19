@@ -1,6 +1,7 @@
 """Folder scaffolding for the tracker (component 2, docs/ROADMAP.md).
 
-Reads an engagement's manifest (``MANIFEST_FILENAME``) and lays out both sides of one
+Reads an engagement's request list from the record
+(:func:`tracker.manifest.load_manifest`) and lays out both sides of one
 engagement:
 
 - **Client side** — ``SHARED_DIR_NAME``, a single folder the client drops
@@ -16,7 +17,7 @@ Guarantees:
 - **Idempotent.** Re-running recreates deleted folders and refreshes the
   README (only when its text changed), and does nothing else. Existing
   folders and the files inside them are never touched, renamed, or deleted.
-  The scheduled run scaffolds on every pass, so a row added in Excel has
+  The scheduled run scaffolds on every pass, so a row added in the app has
   its folder and its README line by the next run without anyone asking.
 - **Rename-tolerant.** A folder counts as existing if its name starts with
   the item's identifier followed by a non-alphanumeric boundary — the same
@@ -38,7 +39,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker.manifest import (
-    ENGAGEMENT_SHEET_NAME,
     WINDOWS_ILLEGAL_CHARS,
     Override,
     RequestItem,
@@ -52,7 +52,6 @@ from tracker.validators import google_stub_examples
 
 log = logging.getLogger("tracker.scaffold")
 
-MANIFEST_FILENAME = "_manifest.xlsx"
 SHARED_DIR_NAME = "Shared"
 README_NAME = "_README.txt"
 #: Heads the client README's request list.
@@ -156,18 +155,18 @@ def scaffold_engagement(
 ) -> ScaffoldResult:
     """Create/refresh the ``SHARED_DIR_NAME/`` tree for one engagement.
 
-    ``engagement_dir`` must contain ``MANIFEST_FILENAME``. Raises
-    :class:`tracker.manifest.ManifestError` if it is missing or invalid —
-    scaffolding never proceeds from a manifest it can't fully validate.
+    ``engagement_dir`` must hold a record. Raises
+    :class:`tracker.manifest.ManifestError` if it holds none — scaffolding
+    never proceeds from a list nobody has recorded.
 
-    The README's "Questions? Contact ..." line comes from the manifest's
-    Engagement sheet (firm, else sender) unless ``contact`` is given, so the
+    The README's "Questions? Contact ..." line comes from the engagement's
+    details (firm, else sender) unless ``contact`` is given, so the
     client's README and the reminder's sign-off never disagree.
     """
     engagement_dir = Path(engagement_dir)
-    items = load_manifest(engagement_dir / MANIFEST_FILENAME)
+    items = load_manifest(engagement_dir)
     if contact is None:
-        info = load_engagement_info(engagement_dir / MANIFEST_FILENAME)
+        info = load_engagement_info(engagement_dir)
         contact = info.firm or info.sender
 
     # Client side: one folder to drop into, plus the originals we keep.
@@ -270,11 +269,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description=f"Lay out {SHARED_DIR_NAME}/ (client drop folder) and {PREPARED_DIR_NAME}/ from {MANIFEST_FILENAME}"
+        description=f"Lay out {SHARED_DIR_NAME}/ (client drop folder) and {PREPARED_DIR_NAME}/ from the request list"
     )
-    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
+    parser.add_argument("engagement_dir", help="the engagement folder")
     parser.add_argument("--contact", default=None,
-                        help=f"contact line for {README_NAME} (default: the {ENGAGEMENT_SHEET_NAME} sheet's firm)")
+                        help=f"contact line for {README_NAME} (default: the engagement's firm)")
     ns = parser.parse_args()
 
     res = scaffold_engagement(ns.engagement_dir, contact=ns.contact)

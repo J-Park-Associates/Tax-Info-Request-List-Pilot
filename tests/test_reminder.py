@@ -16,7 +16,6 @@ from tracker.manifest import (
     RequestItem,
     Status,
     StatusUpdate,
-    create_template,
 )
 from tracker.reminder import (
     DRAFT_BANNER,
@@ -35,7 +34,7 @@ from tracker.reminder import (
     triage,
     write_draft,
 )
-from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME
+from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
 
 
@@ -63,17 +62,15 @@ SCANNED = [
 
 
 def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
-    """A request list on disk, with the record carrying these statuses.
+    """A request list in the record, with the record carrying these statuses.
 
-    The workbook holds the person's ten columns and nothing else
-    (decision 103), so the statuses are recorded the way a scan records
-    them: one ``scanned`` event through the store, under the lock.
+    The list holds the person's ten columns and nothing else, so the
+    statuses are recorded the way a scan records them: one ``scanned``
+    event through the store, under the lock.
     """
-    from tests.conftest import seed_statuses
+    from tests.conftest import make_engagement, seed_statuses
 
-    folder = tmp_path / name
-    folder.mkdir()
-    create_template(folder / MANIFEST_FILENAME, items)
+    folder = make_engagement(tmp_path / name, items, scaffold=False)
     updates = {
         i.identifier: StatusUpdate(
             status=i.status,
@@ -265,8 +262,10 @@ def test_engagement_name_defaults_to_the_folder_and_can_be_overridden(tmp_path):
     )
 
 
-def test_missing_manifest_fails_loudly(tmp_path):
-    with pytest.raises(ReminderError, match=MANIFEST_FILENAME):
+def test_a_folder_with_no_record_fails_loudly(tmp_path):
+    from tracker.ledger import LEDGER_FILENAME
+
+    with pytest.raises(ReminderError, match=f"no record in .*{LEDGER_FILENAME}"):
         draft_reminder(tmp_path / "nothing-here")
 
 
@@ -360,11 +359,11 @@ def test_needs_review_count_ignores_junk_and_sees_nested_files(tmp_path):
     assert count_needs_review(tmp_path) == 2
 
 
-def test_the_draft_reads_the_engagement_sheet_itself(tmp_path):
-    from tracker.manifest import EngagementInfo, write_engagement_info
+def test_the_draft_reads_the_engagement_details_itself(tmp_path):
+    from tracker.manifest import EngagementInfo, load_manifest, save_rules
 
     folder = engagement(tmp_path)
-    write_engagement_info(folder / MANIFEST_FILENAME, EngagementInfo(
+    save_rules(folder, load_manifest(folder), EngagementInfo(
         client="Dana Lee", link="https://drive.example/abc", due=dt.date(2026, 4, 15),
         sender="Jason Park", firm="J Park & Associates, CPA",
     ))

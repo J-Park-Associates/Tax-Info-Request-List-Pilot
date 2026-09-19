@@ -4,8 +4,8 @@ Every row's keywords are the document's own title, or a phrase only it
 carries - never a word another form prints about it. These are
 reconstructions of what the IRS forms, bookkeeping exports and statements
 actually say, routed the way an engagement routes them: through
-create_template() and load_manifest(), so the Period-derived date check
-is live. A misfiling here is the worst thing this system can do.
+validated() over template_items(), so the Period-derived date check is
+live. A misfiling here is the worst thing this system can do.
 
 Two kinds of case, because there are two kinds of document. A page of
 text is printed to a PDF and read back (``CASES``); a schedule a client
@@ -35,19 +35,15 @@ from tests.samples import (
 )
 from tests.test_real_corpus import filed_to
 from tests.test_scanner import text_pdf
-from tracker.manifest import create_template, load_manifest
+from tracker.manifest import validated
 from tracker.router import route_file
-from tracker.scaffold import MANIFEST_FILENAME
 from tracker.templates import template_items
 
 NL = chr(10)
 
 
 def shipped_rows(tmp_path, form):
-    manifest = tmp_path / MANIFEST_FILENAME
-    manifest.unlink(missing_ok=True)
-    create_template(manifest, template_items(form, year=2025))
-    return [replace(i, min_size_kb=0) for i in load_manifest(manifest)]
+    return [replace(i, min_size_kb=0) for i in validated(template_items(form, year=2025))]
 
 
 # One block per decision (docs/ROADMAP.md), oldest first. CASES, below,

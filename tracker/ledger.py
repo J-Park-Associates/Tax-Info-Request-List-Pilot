@@ -6,30 +6,31 @@ in the decision log found another way that ends with a row lost. Each
 engagement now keeps ``LEDGER_FILENAME`` instead, one JSON object per line,
 in the order the writers wrote them. It is the record of *what was decided*.
 
-**It is the index** (decision 102). The index workbook is not written any
-more and is not read for anything: what a pass decides about a document is
+**It is the index** (decision 102). What a pass decides about a document is
 appended here and folded into :mod:`tracker.store`, and
-:func:`tracker.filer.read_index` answers from those folded rows. An
-engagement that still has an index workbook beside it is migrated once -
-its rows imported here, the workbook renamed aside, a :data:`MIGRATED`
-event appended - and after that the journal and the store are the only two
-copies of the index, and the store is rebuilt from the journal.
+:func:`tracker.filer.read_index` answers from those folded rows. The
+journal and the store are the only two copies of the index, and the store
+is rebuilt from the journal. (A journal from before decision 104 may carry
+a :data:`MIGRATED` event, from the one-time migration of an index
+workbook; nothing writes one now.)
 
-**It is the statuses too** (decision 103). The request list keeps only the
-ten columns a person edits; Status, Received Date, File Count and
-Validation Notes are never written into it again. A scan appends one
+**It is the statuses too** (decision 103). A scan appends one
 :data:`SCANNED` event with what it changed, a person's filing appends
 :data:`KEYWORD_LEARNED` beside the row it taught, and
 :func:`tracker.manifest.load_manifest` answers from the store these lines
 are folded into.
 
-**And it carries the person's own rules** (decision 103). The workbook is
-read once per pass, and every difference from what the record already
-holds is appended as one :data:`RULES_IMPORTED` event: the changed and
-added rows whole, the removed identifiers, the Engagement fields that
-moved, and the workbook's digest. That is what makes the store rebuildable
-from the journals alone - without it, an engagement's rules would live only
-in a database that is meant to be disposable.
+**And it is the person's own rules** (decisions 103 and 104). The request
+list and the engagement's details are created, edited and read only here:
+the app's editor is the one way a rule is entered, and every save is one
+:data:`RULES_CHANGED` event carrying exactly the difference - the changed
+and added rows whole, the removed identifiers, the Engagement fields that
+moved. That is what makes the store rebuildable from the journals alone -
+without it, an engagement's rules would live only in a database that is
+meant to be disposable. Until decision 104 the list was a workbook read
+once a pass and its differences were journalled as :data:`RULES_IMPORTED`;
+that name is retired (:data:`RETIRED_EVENTS`): this version folds it,
+because journals from before today carry it, and refuses to write it.
 
 What keeps it honest is the agreement fixture in ``tests/conftest.py``:
 after every test in the suite a store built from nothing is held to
@@ -68,7 +69,7 @@ alone is the ledger.
 JSON values, so this module sits at the bottom beside :mod:`tracker.locking`
 and imports nothing else of the package: every writer serialises its own
 rows with the function in :mod:`tracker.records` that already owns that
-shape (an index row, a status, a rule row, the Engagement sheet). One
+shape (an index row, a status, a rule row, the engagement's details). One
 owner per fact, and no cycle.
 """
 
@@ -86,7 +87,7 @@ from tracker.locking import lock_is_held
 
 log = logging.getLogger("tracker.ledger")
 
-#: The engagement's own record, beside its workbooks. A person never edits it.
+#: The engagement's own record, beside the client's files. A person never edits it.
 LEDGER_FILENAME = "_ledger.jsonl"
 
 #: Keys every event carries.
@@ -106,23 +107,22 @@ STATUSES_KEY = "statuses"
 #: keys so the writer and every reader of the record spell them once.
 IDENTIFIER_KEY = "identifier"
 KEYWORD_KEY = "keyword"
-#: What a ``MIGRATED`` event carries: the files the migration moved aside,
-#: by the names they now have. It carries no row - it is a statement about
+#: What a ``MIGRATED`` event carried: the files the migration moved aside,
+#: by the names they then had. It carries no row - it is a statement about
 #: the folder, not about a document - which is why it is not a row event.
 FILES_KEY = "files"
-#: What a ``RULES_IMPORTED`` event carries. The rows are whole records -
+#: What a ``RULES_CHANGED`` event carries. The rows are whole records -
 #: every one that was added or changed, as ``tracker.records.rule_to_json``
 #: serialises it - rather than a patch, because a patch cannot be read
 #: without the row it patches and the whole point of the journal is that a
 #: line means something on its own. ``REMOVED_KEY`` is the identifiers the
-#: person deleted from the sheet, ``INFO_KEY`` the Engagement fields that
-#: changed (``tracker.records.info_to_json``'s names), and ``DIGEST_KEY``
-#: the SHA-256 of the workbook this reading came from, so a rebuild can say
-#: which sheet the rules describe.
+#: person removed from the list, ``INFO_KEY`` the Engagement fields that
+#: changed (``tracker.records.info_to_json``'s names). A retired
+#: ``RULES_IMPORTED`` line carries the same three and a workbook digest
+#: under a fourth key, which is simply not read.
 RULES_KEY = "rules"
 REMOVED_KEY = "removed"
 INFO_KEY = "info"
-DIGEST_KEY = "digest"
 
 #: One original was preserved and its record says where it now is. A pass
 #: that sorts a drop decides and preserves in one row, so it appends one of
@@ -149,22 +149,33 @@ BYTES_RECORDED = "bytes_recorded"
 SCANNED = "scanned"
 #: A person's filing taught a request a keyword.
 KEYWORD_LEARNED = "keyword_learned"
-#: The person's request list was read into the record (decision 103).
-#: Appended by a pass, and only when the workbook says something the record
-#: does not: a pass that finds the sheet exactly as it left it appends
-#: nothing. The first one carries the whole list, every one after it only
-#: what moved, so the fold of them all is the sheet.
+#: The person's request list or Engagement details were edited in the app
+#: (decision 104): the changed and added rows whole (``RULES_KEY``), the
+#: removed identifiers (``REMOVED_KEY``), the Engagement fields that moved
+#: (``INFO_KEY``). The first one - the create - carries the whole list and
+#: every field, every one after it only what moved, so the fold of them
+#: all is the list. Written by ``tracker.manifest.create_engagement`` and
+#: ``save_rules`` and by nothing else.
+RULES_CHANGED = "rules_changed"
+#: What decision 103 called the same event, when the list was a workbook
+#: read once a pass. Retired by decision 104: journals from before it
+#: carry these lines, so :func:`apply` folds them exactly as
+#: ``RULES_CHANGED``, and :func:`new`, :func:`append` and
+#: ``tracker.store.record`` refuse to write one.
 RULES_IMPORTED = "rules_imported"
 #: A reminder was drafted. Reserved: the reminder writes files and holds no
 #: lock, so nothing appends it yet.
 DRAFTED = "drafted"
-#: The bootstrap: what the workbooks already said when the ledger began.
+#: A row seeded into the record from an earlier reading of the index: the
+#: bootstrap of decision 87 and the migration of decision 102 wrote these,
+#: and the suite's ``seed_index`` still does.
 IMPORTED = "imported"
 #: The index workbook was moved aside, and this engagement's index now lives
 #: in the record alone (decision 102). Written once per engagement, after the
-#: rename, carrying :data:`FILES_KEY` - the names the moved files now have.
-#: It carries no row, so it is deliberately *not* a row event: a reader that
-#: folded it as one would look for a row that was never there.
+#: rename, carrying :data:`FILES_KEY`. It carries no row, so it is
+#: deliberately *not* a row event: a reader that folded it as one would
+#: look for a row that was never there. Nothing writes one since decision
+#: 104 took the migration out of the tree; it stays readable.
 MIGRATED = "migrated"
 
 #: The events that carry a whole index row. Their fold is the index.
@@ -172,8 +183,14 @@ ROW_EVENTS = frozenset({
     PRESERVED, FILED, PARKED, DUPLICATE, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
     UNFILED_BY_PERSON, BYTES_RECORDED, IMPORTED,
 })
-#: Every event name this version writes or reads.
-EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED, MIGRATED, RULES_IMPORTED})
+#: Every event name this version reads.
+EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED, MIGRATED, RULES_CHANGED,
+                                 RULES_IMPORTED})
+#: The names this version reads and never writes: an older journal may
+#: carry them, a new line may not.
+RETIRED_EVENTS = frozenset({RULES_IMPORTED})
+#: How a retired name is refused, wherever it is offered for writing.
+RETIRED_EVENT = "{name!r} is retired; this version reads it and never writes it"
 
 #: ``O_BINARY`` exists on Windows only; everywhere else the flag is not a flag.
 _BINARY = getattr(os, "O_BINARY", 0)
@@ -195,9 +212,17 @@ def new(name: str, **payload: object) -> dict:
     The stamp is UTC because the office machine's clock is local and a
     daylight-saving hour would otherwise put two passes out of order.
     """
-    if name not in EVENTS:
-        raise LedgerError(f"{name!r} is not an event this version writes ({', '.join(sorted(EVENTS))})")
+    _writable(name)
     return {EVENT_KEY: name, AT_KEY: stamp(), **payload}
+
+
+def _writable(name: object) -> None:
+    """Refuse a name this version does not write: an unknown one, or a
+    retired one an older journal may carry but a new line may not."""
+    if name in RETIRED_EVENTS:
+        raise LedgerError(RETIRED_EVENT.format(name=name))
+    if name not in EVENTS:
+        raise LedgerError(f"{name!r} is not an event this version writes ({', '.join(sorted(EVENTS - RETIRED_EVENTS))})")
 
 
 def stamp() -> str:
@@ -225,14 +250,12 @@ def append(engagement_dir: Path | str, event: dict) -> Path:
 
     There is no bootstrap here any more. Decision 87 let the first writer
     seed the record with what the workbooks already said; since decision
-    103 no workbook holds anything the record does not, and what an old
-    folder's workbooks said is imported once, by name, by the filer's
-    migration.
+    104 nothing but the record holds anything, so there is nothing to seed
+    from. A retired name is refused by sentence.
     """
     engagement_dir = Path(engagement_dir)
     name = event.get(EVENT_KEY)
-    if name not in EVENTS:
-        raise LedgerError(f"{name!r} is not an event this version writes ({', '.join(sorted(EVENTS))})")
+    _writable(name)
     if not lock_is_held(engagement_dir):
         raise LedgerError(
             f"{engagement_dir.name}: the record is appended to only while this run holds the "
@@ -349,12 +372,12 @@ def statuses(events: list[dict]) -> dict[str, dict]:
 
 
 def rules(events: list[dict]) -> dict[str, dict]:
-    """The person's request rows as the record last imported them, by
+    """The person's request rows as the record last left them, by
     identifier, in the order the record first saw each one.
 
-    Empty where no ``RULES_IMPORTED`` has ever been appended, which is how
-    :func:`tracker.store.rebuild_engagement` knows to take the workbook's
-    own reading instead: that is the first import and nothing else.
+    Empty where no rules event has ever been appended: an engagement whose
+    list nobody has recorded, which since decision 104 is not an
+    engagement anything runs.
     """
     return replay(events).rules
 
@@ -371,17 +394,14 @@ class Folded:
     rows: dict[str, dict] = field(default_factory=dict)
     statuses: dict[str, dict] = field(default_factory=dict)
     #: identifier -> the person's rule row, as ``records.rule_to_json``
-    #: writes it. Keyed by the identifier as the sheet spells it; the
-    #: loader refuses two rows whose identifiers differ only in case, so
-    #: one spelling per row is all there can be.
+    #: writes it. Keyed by the identifier as the person spelt it; the
+    #: validation refuses two rows whose identifiers differ only in case,
+    #: so one spelling per row is all there can be.
     rules: dict[str, dict] = field(default_factory=dict)
-    #: The Engagement sheet's fields, as ``records.info_to_json`` writes
-    #: them. Only the ones any import has ever recorded: a field nothing
-    #: has spoken for is the record's default, not a blank somebody typed.
+    #: The engagement's details, as ``records.info_to_json`` writes them.
+    #: Only the ones any edit has ever recorded: a field nothing has spoken
+    #: for is the record's default, not a blank somebody typed.
     info: dict[str, object] = field(default_factory=dict)
-    #: The digest of the workbook the last import read. What lets a rebuilt
-    #: engagement say which sheet its rules describe, without opening one.
-    rules_digest: str = ""
 
 
 def apply(state: Folded, event: dict) -> Folded:
@@ -408,8 +428,8 @@ def apply(state: Folded, event: dict) -> Folded:
     if name == SCANNED:
         state.statuses.update(event.get(STATUSES_KEY) or {})
         return state
-    if name == RULES_IMPORTED:
-        return _apply_rules_imported(state, event)
+    if name in (RULES_CHANGED, RULES_IMPORTED):
+        return _apply_rules_event(state, event)
     if name not in ROW_EVENTS:
         return state
     key = event.get(KEY_KEY)
@@ -428,26 +448,33 @@ def apply(state: Folded, event: dict) -> Folded:
     return state
 
 
-def _apply_rules_imported(state: Folded, event: dict) -> Folded:
-    """One import folded: the rows it carried replace the rows of those
-    identifiers, the ones it names as removed go, the Engagement fields it
-    carried are set, and the workbook's digest is the one it read.
+def _apply_rules_event(state: Folded, event: dict) -> Folded:
+    """One edit folded: the identifiers it names as removed go first, then
+    the rows it carried replace the rows of those identifiers, and the
+    Engagement fields it carried are set. The same fold for a
+    ``RULES_CHANGED`` line and for the retired ``RULES_IMPORTED`` an older
+    journal carries.
 
-    A row the import does not mention is untouched: an import carries what
-    moved and nothing else, so the fold of every import is the sheet. The
-    sheet's own order is not this mapping's - it is the ``row`` each rule
-    carries, which is the Excel row it was read from - so a row added in
-    the middle of the list folds at the end here and still comes back in
-    its place (:func:`tracker.store.rules`).
+    Removals before rows, because a rule is keyed by its identifier's
+    exact spelling and an edit that respells one by case names the old
+    spelling as removed and carries the new: applied the other way round,
+    a removal spelled the way the store held it would delete the row just
+    written and the list would lose the rule.
+
+    A row the edit does not mention is untouched: an edit carries what
+    moved and nothing else, so the fold of every edit is the list. The
+    list's own order is not this mapping's - it is the ``row`` each rule
+    carries, its position in the list - so a row added in the middle folds
+    at the end here and still comes back in its place
+    (:func:`tracker.store.rules`).
     """
+    for identifier in event.get(REMOVED_KEY) or []:
+        state.rules.pop(str(identifier), None)
     for row in event.get(RULES_KEY) or []:
         identifier = str(row.get("identifier", ""))
         if identifier:
             state.rules[identifier] = row
-    for identifier in event.get(REMOVED_KEY) or []:
-        state.rules.pop(str(identifier), None)
     state.info.update(event.get(INFO_KEY) or {})
-    state.rules_digest = str(event.get(DIGEST_KEY, "") or "")
     return state
 
 
@@ -489,10 +516,9 @@ if __name__ == "__main__":
     # There is nothing left here to compare with a workbook. Until decision
     # 103 the manifest carried each request's status as well, and
     # ``--compare`` was the operator's check that the two agreed; the
-    # workbook holds only the person's rules now, the record holds
-    # everything the machine decided, and the check that matters is the
-    # store against this file - ``python -m tracker.store <store> check
-    # <clients root>``.
+    # record holds everything now, the person's rules included, and the
+    # check that matters is the store against this file - ``python -m
+    # tracker.store <store> check <clients root>``.
     folder = Path(ns.engagement_dir)
     recorded = read_events(folder)
     folded = replay(recorded)

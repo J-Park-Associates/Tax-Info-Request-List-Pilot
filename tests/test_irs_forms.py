@@ -11,8 +11,8 @@ prior revisions whose layout changed, and the siblings that share a family's
 lines (1120 and 1120-F, W-2 and W-2c) so that no form is known only by what
 its neighbours do not print. Each is routed
 against a shipped catalog the way an engagement routes it - through
-create_template() and load_manifest() - and must land where it belongs,
-or park. A reconstruction typed from memory omits the instruction page
+validated() over template_items(), the same validation create_engagement()
+makes - and must land where it belongs, or park. A reconstruction typed from memory omits the instruction page
 that names three other forms; these do not.
 
 Two rules are lifted, as tests/test_catalog.py lifts them: the size floor
@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from tracker.manifest import create_template, load_manifest
+from tracker.manifest import validated
 from tracker.router import route_file
 from tracker.templates import template_items
 
@@ -143,15 +143,13 @@ EXPECT = [
 
 
 @pytest.fixture(scope="module")
-def catalogs(tmp_path_factory):
-    folder = tmp_path_factory.mktemp("catalogs")
+def catalogs():
     built = {}
 
     def rows(form, year):
         if (form, year) not in built:
-            manifest = folder / f"{form}-{year}.xlsx"
-            create_template(manifest, template_items(form, year=year))
-            built[(form, year)] = [replace(i, min_size_kb=0, date_pattern="") for i in load_manifest(manifest)]
+            built[(form, year)] = [replace(i, min_size_kb=0, date_pattern="")
+                                   for i in validated(template_items(form, year=year))]
         return built[(form, year)]
 
     return rows

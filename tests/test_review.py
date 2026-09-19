@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import seed_index
+from tests.conftest import make_engagement, seed_index
 from tests.test_scanner import text_pdf
 from tracker import reasons
 from tracker.content_check import (
@@ -40,7 +40,7 @@ from tracker.filer import (
     read_index,
 )
 from tracker.locking import LOCK_FILENAME
-from tracker.manifest import Override, RequestItem, Status, create_template
+from tracker.manifest import Override, RequestItem, Status
 from tracker.review import (
     MAX_SUGGESTIONS,
     NOTHING_SUGGESTED,
@@ -51,10 +51,8 @@ from tracker.review import (
 )
 from tracker.router import UNMATCHED
 from tracker.scaffold import (
-    MANIFEST_FILENAME,
     PBC_DIR_NAME,
     SHARED_DIR_NAME,
-    scaffold_engagement,
 )
 
 DAY1 = dt.date(2026, 7, 1)
@@ -90,11 +88,7 @@ ITEMS = [
 
 @pytest.fixture
 def engagement(tmp_path):
-    eng = tmp_path / "Smith Family 2025"
-    eng.mkdir()
-    create_template(eng / MANIFEST_FILENAME, ITEMS)
-    scaffold_engagement(eng)
-    return eng
+    return make_engagement(tmp_path / "Smith Family 2025", ITEMS)
 
 
 def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candidates=()):

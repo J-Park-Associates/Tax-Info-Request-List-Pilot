@@ -38,12 +38,10 @@ event itself, which is the one thing that cannot be recovered. This is
 also why the store may run with ``synchronous`` at NORMAL: a write-ahead
 log the operating system has not flushed costs at most a replay.
 
-**Rebuild is recovery, and recovery is the migration.**
-:func:`rebuild_engagement` deletes one engagement's rows and builds them
-again from seq 1 - the journal replayed, and nothing else for an
-engagement the journal has spoken for. That single function is the answer
-to three different questions: how an engagement that predates the store
-gets into it, how a store deleted by accident comes back, and how a store
+**Rebuild is recovery.** :func:`rebuild_engagement` deletes one
+engagement's rows and builds them again from seq 1 - the journal
+replayed, and nothing else. That single function is the answer to two
+questions: how a store deleted by accident comes back, and how a store
 somebody doubts is proved. It writes nothing to the journal.
 
 **The check is the gate.** :func:`check` compares these tables with
@@ -53,26 +51,21 @@ silent there across the whole suite - which is what the agreement fixture
 in ``tests/conftest.py`` does after every test: rebuild, check, and fail
 on a sentence.
 
-**The index is here** (decision 102, stage 2). The index workbook is
-never written again; the filer's ``read_index()`` answers from the
-``documents`` table, and every writer that used to rewrite the workbook
-calls :func:`record` instead - one call per decision, so one transaction.
-An engagement that still has the old workbook beside it is migrated once
-by the filer's ``ensure()``: its rows are imported into the journal,
-the workbook is renamed aside and a ``migrated`` event says which files
-were moved.
+**The index is here** (decision 102, stage 2). The filer's ``read_index()``
+answers from the ``documents`` table, and every writer calls
+:func:`record` - one call per decision, so one transaction.
 
-**And so are the statuses and the person's rules** (decision 103, stage
-3). The manifest keeps the ten columns an accountant edits and nothing
-else. ``statuses`` is what the scans recorded, ``learned_keywords`` what
+**And so are the statuses and the person's rules** (decisions 103 and
+104). ``statuses`` is what the scans recorded, ``learned_keywords`` what
 people's filings taught, and ``requests`` is the fold of every
-``rules_imported`` event - the pass reads the sheet, compares its digest
-with ``manifest_digest``, and journals what moved. So every table here is
-a derivation of the journal beside the engagement, and the workbook is
-read by the import and by nothing else. The one exception is the sheet
-nobody has imported yet: :func:`rebuild_engagement` takes the reading its
-caller passes in, stamps it :data:`WORKBOOK_SEQ`-style with an empty
-digest, and the first pass replaces it with an import of its own.
+``rules_changed`` event (and of the ``rules_imported`` lines older
+journals carry, which fold the same way and are never written again):
+the app's editor is where a rule is typed, and
+the manifest's ``save_rules()`` journals what moved. So every table here
+is a derivation of the journal beside the engagement, and nothing is
+passed in from anywhere else - no workbook reading, no first reading, no
+digest of a file. An engagement whose journal carries no rules event has
+no rules, on either side of the check.
 
 **One store per process.** :func:`connect` hands out one connection to one
 file for the life of the process, created on first use and closed by
@@ -89,18 +82,16 @@ the first :func:`connect` and nowhere else.
 
 **What it imports, and why so little.** ``records``, ``ledger``,
 ``locking`` and the standard library - nothing else of the package, at
-load time. The workbook readings it needs are **passed in** as records by
-the caller, so the store never depends on the modules that open workbooks,
-walk folders and take locks; :func:`connect` reads
-:mod:`tracker.settings` at call time and the command line at the bottom
-imports the readers at call time to feed it, which is where an edge is
-allowed to point the other way. ``RequestItem`` is the manifest's own
-schema and deliberately stays there (:mod:`tracker.records` says why), so
-the rule columns are the one field list written out here - and
-:func:`_refuse_a_request_schema_that_moved` refuses a rebuild whose rows
-carry a different set, so the table cannot drift away from the sheet in
-silence. Every other column list is derived from the frozen record it
-stores.
+load time. Everything it holds comes out of the journal, so the store
+never depends on the modules that walk folders and move files;
+:func:`connect` reads :mod:`tracker.settings` at call time and the
+command line at the bottom imports the registry at call time to find the
+folders, which is where an edge is allowed to point the other way.
+``RequestItem`` is the manifest's own schema and deliberately stays there
+(:mod:`tracker.records` says why), so the rule columns are the one field
+list written out here - ``tests/test_store.py`` holds that list to the
+record's fields, so the table cannot drift away from the list in silence.
+Every other column list is derived from the frozen record it stores.
 """
 
 from __future__ import annotations
@@ -120,16 +111,14 @@ from tracker.records import (
     BEHIND,
     CURRENT,
     RULE_FIELDS,
+    RULE_FLAG_FIELDS,
     RULE_LIST_FIELDS,
     UNKNOWN,
     EngagementInfo,
     IndexEntry,
     StatusUpdate,
-    entry_to_json,
     identifier_key,
     info_from_json,
-    ledger_key,
-    rule_to_json,
     status_from_json,
 )
 
@@ -152,21 +141,15 @@ ENV_STORE = "TRACKER_STORE"
 #: ``user_version``. A file carrying anything else is refused by name rather
 #: than opened hopefully: a schema this code does not understand is not a
 #: store, and guessing past it would write rows a later version cannot fold.
-SCHEMA_VERSION = 1
+#: Version 2 (decision 104) dropped the workbook digest from ``engagements``;
+#: a version-1 file is deleted and rebuilt, which costs nothing because the
+#: store is a derivation of the journals.
+SCHEMA_VERSION = 2
 
 #: How long a writer waits for another connection's lock before giving up.
 #: There is one writer per clients root by design, so this is slack for the
 #: app and a pass overlapping by a moment, not a queue.
 BUSY_TIMEOUT_MS = 5000
-
-#: The workbook's own reading, taken where the journal has never spoken for
-#: a row, is recorded at this sequence number: before every event there is.
-#: It is what "the record does not carry this; the workbook does" looks
-#: like in a column, and it is how a rebuilt row says which of the two
-#: readings it came from. Since decision 103 only the migration's index
-#: rows can be such a row; a first reading of the request list is marked
-#: instead by the engagement's empty ``manifest_digest``.
-WORKBOOK_SEQ = 0
 
 
 class StoreError(RuntimeError):
@@ -206,7 +189,7 @@ def _column_types(record: type) -> dict[str, str]:
 #: The index row's own columns, straight off the record that defines it, so
 #: a column added to the row is a column here without another edit.
 DOCUMENT_COLUMNS = _column_types(IndexEntry)
-#: The Engagement sheet's, likewise.
+#: The engagement's details', likewise.
 ENGAGEMENT_COLUMNS = _column_types(EngagementInfo)
 #: One identifier's scanner columns, likewise.
 STATUS_COLUMNS = _column_types(StatusUpdate)
@@ -233,23 +216,6 @@ _RULE_AFFINITIES: dict[str, str] = {
 RULE_COLUMNS: dict[str, str] = {name: _RULE_AFFINITIES[name] for name in RULE_FIELDS}
 
 
-def _refuse_a_request_schema_that_moved(item: object) -> None:
-    """Refuse a request row whose fields are not the ones the tables hold.
-
-    The manifest owns that record; this module owns the columns. A field
-    added to the sheet's record and not here would be dropped on the floor
-    by every rebuild, and the check would go on passing because both sides
-    of it would be missing the same value.
-    """
-    carried = {one.name for one in fields(item)}
-    expected = set(RULE_COLUMNS) | set(STATUS_COLUMNS)
-    if carried != expected:
-        raise StoreError(
-            f"{type(item).__name__} carries {sorted(carried)}; the store's request tables hold "
-            f"{sorted(expected)} - the sheet's record moved and the schema did not"
-        )
-
-
 def _quoted(columns: dict[str, str]) -> str:
     return ", ".join(f'"{name}" {affinity}' for name, affinity in columns.items())
 
@@ -267,7 +233,6 @@ SCHEMA: tuple[str, ...] = (
         id INTEGER PRIMARY KEY,
         "path" TEXT UNIQUE NOT NULL,
         {_quoted(ENGAGEMENT_COLUMNS)},
-        manifest_digest TEXT NOT NULL DEFAULT '',
         ledger_head TEXT NOT NULL DEFAULT '',
         applied_seq INTEGER NOT NULL DEFAULT 0,
         built_at TEXT NOT NULL
@@ -376,7 +341,7 @@ def store_path() -> Path:
 
     :mod:`tracker.settings` is imported here rather than at the top of the
     module: this module sits at the bottom of the package and must not pull
-    in, at load time, the chain that opens workbooks.
+    in, at load time, the chain that walks folders and moves files.
     """
     override = os.environ.get(ENV_STORE)
     if override:
@@ -453,7 +418,7 @@ def root_for(engagement_dir: Path | str) -> Path:
 
     :mod:`tracker.settings` is imported at call time for the same reason
     :func:`store_path` does it: this module must not pull in, at load time,
-    the chain that opens workbooks.
+    the chain that walks folders and moves files.
     """
     from tracker.settings import clients_root
 
@@ -534,30 +499,45 @@ def _to_sql(value: object) -> object:
 
 
 def _rule_from_sql(stored: sqlite3.Row) -> dict:
-    """One stored rule row in the shape a ``rules_imported`` event carries it.
+    """One stored rule row in the shape a ``rules_changed`` event carries it.
 
     The inverse of :func:`_to_sql` for the rule columns, and only for
     those: SQLite cannot tell a JSON array in a text column from a string,
-    so the columns that hold one are named once, by the record that owns
-    them (``records.RULE_LIST_FIELDS``). Everything else comes back as the
+    nor a yes/no from a number, so the columns that hold one are named
+    once, by the record that owns them (``records.RULE_LIST_FIELDS``,
+    ``records.RULE_FLAG_FIELDS``). Everything else comes back as the
     column's own affinity gave it, and ``records.rule_from_json`` turns the
-    whole into the arguments the sheet's record takes.
+    whole into the arguments the manifest's record takes. The row is the
+    shape the API hands the editor, so a flag is a boolean and not a 1.
     """
     row: dict[str, object] = {}
     for name in RULE_COLUMNS:
         value = stored[name]
-        row[name] = json.loads(value or "[]") if name in RULE_LIST_FIELDS else value
+        if name in RULE_LIST_FIELDS:
+            row[name] = json.loads(value or "[]")
+        elif name in RULE_FLAG_FIELDS:
+            row[name] = bool(value)
+        else:
+            row[name] = value
     return row
+
+
+#: A cell beginning with one of these is a formula to a spreadsheet opening
+#: the CSV, whatever the quoting - so the export prefixes it with an
+#: apostrophe, which Excel shows as text and drops.
+FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r")
 
 
 def _as_text(value: object) -> str:
     """One stored value as a CSV cell: text, always, and an empty one for
     nothing at all. A file name a client chose may begin with anything -
-    the index already has to keep such a name a name and not a formula
-    (``as_text`` in the manifest does it for a workbook cell) - so the
-    export writes every value as a text field and never as a number, a
-    date or a blank that a spreadsheet would re-type on the way in."""
-    return "" if value is None else str(value)
+    a name typed like a formula is a name - and quoting does not protect
+    it: a spreadsheet evaluates a cell that begins like a formula on the
+    way in. So a cell that begins with one of ``FORMULA_LEADS`` is written
+    behind an apostrophe, the mark a spreadsheet reads as "text follows"
+    and shows without; the name is one character away and never runs."""
+    text = "" if value is None else str(value)
+    return f"'{text}" if text.startswith(FORMULA_LEADS) else text
 
 
 # -------------------------------------------------------------- reading ----
@@ -599,34 +579,29 @@ def _stored_seqs(conn: sqlite3.Connection, engagement_id: int) -> dict[str, int]
 
 
 def rules(conn: sqlite3.Connection, engagement_dir: Path | str) -> list[dict] | None:
-    """One engagement's request rules, in the sheet's own order, or ``None``.
+    """One engagement's request rules, in the list's own order, or ``None``.
 
-    The read the manifest's ``load_manifest()`` answers from. Each row
-    is the dict ``records.rule_to_json`` writes, which is what a
-    ``rules_imported`` event carries and what ``rule_from_json`` reads
-    back, so the row the import recorded and the row a reader gets are one
-    shape. Ordered by the Excel row each was read from: the list a person
-    sees in the app is the list they typed.
+    The read the manifest's ``load_manifest()`` answers from, and what the
+    app's editor shows. Each row is the dict ``records.rule_to_json``
+    writes, which is what a ``rules_changed`` event carries and what
+    ``rule_from_json`` reads back, so the row the edit recorded and the
+    row a reader gets are one shape. Ordered by ``row``, the position the
+    person gave each: the list a person sees in the app is the list they
+    made.
 
-    ``None`` - not an empty list - where **no reading of the workbook has
-    reached this engagement**: the store has no row for the folder, or it
-    has one the journal built and nothing has ever read a rule into. That
-    is what tells ``load_manifest`` to take the first reading itself. An
-    engagement whose list a person has genuinely emptied answers ``None``
-    too, and the reading of the empty sheet that follows gives the same
-    empty answer at the cost of one open.
+    ``[]`` for an engagement the store holds and no rule has reached, and
+    ``None`` only for one it does not hold at all.
     """
     row = _engagement_row(conn, engagement_dir)
     if row is None:
         return None
-    stored = [
+    return [
         _rule_from_sql(one)
         for one in conn.execute(
             'SELECT * FROM requests WHERE engagement_id = ? ORDER BY "row", "identifier"',
             (row["id"],),
         )
     ]
-    return stored or None
 
 
 def statuses(conn: sqlite3.Connection, engagement_dir: Path | str) -> dict[str, StatusUpdate]:
@@ -656,8 +631,8 @@ def learned_keywords(
     Keyed by the identifier folded without case, as the statuses are.
     ``load_manifest`` adds them to the row's Any Keywords, so a keyword
     somebody typed in the app works on the next pass without anybody
-    editing the workbook - which is what it used to mean, when it was
-    written into the sheet.
+    editing the list; the editor shows them beside the row as taught, and
+    never as typed.
     """
     row = _engagement_row(conn, engagement_dir)
     if row is None:
@@ -672,12 +647,11 @@ def learned_keywords(
 
 
 def engagement_info(conn: sqlite3.Connection, engagement_dir: Path | str) -> EngagementInfo | None:
-    """The Engagement sheet as the store holds it, or ``None`` for an
+    """The engagement's details as the store holds them, or ``None`` for an
     engagement it does not hold.
 
-    Read by the import, to diff the sheet against what is already
-    recorded. Everything a person sees reads the sheet itself: this is
-    the record's copy, and it is only as new as the last import.
+    What ``load_engagement_info()`` answers from, and what a save diffs
+    the editor's details against.
     """
     row = _engagement_row(conn, engagement_dir)
     if row is None:
@@ -685,56 +659,43 @@ def engagement_info(conn: sqlite3.Connection, engagement_dir: Path | str) -> Eng
     return info_from_json({name: row[name] for name in ENGAGEMENT_COLUMNS})
 
 
-def manifest_digest(conn: sqlite3.Connection, engagement_dir: Path | str) -> str:
-    """The digest of the workbook the store's rules came from; "" where none
-    has been read. What the filer's ``ensure()`` compares the sheet against
-    to decide whether there is anything to import."""
-    row = _engagement_row(conn, engagement_dir)
-    return "" if row is None else row["manifest_digest"]
-
-
-def has_rules_import(conn: sqlite3.Connection, engagement_dir: Path | str) -> bool:
-    """Whether this engagement's journal has ever carried a ``rules_imported``.
+def has_rules_event(conn: sqlite3.Connection, engagement_dir: Path | str) -> bool:
+    """Whether this engagement's journal has ever carried a rules event -
+    a ``rules_changed``, or the ``rules_imported`` an older journal holds.
 
     Asked of the ``events`` table rather than of the journal file, because
-    it is asked once a pass per engagement and folding a season of lines
-    to learn it is the cost the store exists to remove. It is the same
-    answer: the store is synced to the journal before this is asked.
+    folding a season of lines to learn it is the cost the store exists to
+    remove. It is the same answer: the store is synced to the journal
+    before this is asked.
 
-    What it decides is what the next import is a difference *from*: the
-    whole sheet where the record has never carried one, and what the
-    store holds where it has. That is what makes the first import carry
-    every row, so the fold of every import is the sheet.
+    What it decides is what a save is a difference *from*: every field of
+    the details where the record has never carried any, and what the store
+    holds where it has.
     """
     row = _engagement_row(conn, engagement_dir)
     if row is None:
         return False
     return conn.execute(
-        'SELECT 1 FROM events WHERE engagement_id = ? AND "event" = ? LIMIT 1',
-        (row["id"], ledger.RULES_IMPORTED),
+        'SELECT 1 FROM events WHERE engagement_id = ? AND "event" IN (?, ?) LIMIT 1',
+        (row["id"], ledger.RULES_CHANGED, ledger.RULES_IMPORTED),
     ).fetchone() is not None
 
 
-def note_rules_digest(conn: sqlite3.Connection, engagement_dir: Path | str, digest: str) -> None:
-    """Record that the workbook at this digest has been read and said
-    nothing new.
+def forget(conn: sqlite3.Connection, engagement_dir: Path | str) -> bool:
+    """Delete one engagement's rows, and every row that hangs off them.
 
-    The store's own bookkeeping, not a fact about anybody's rules: Excel
-    rewrites a file a person only opened and looked at, and the import
-    that finds every row exactly as the record has it must not append a
-    line saying so. Stamping the digest is what stops the next pass
-    reading the same unchanged sheet again. A rebuild loses the stamp and
-    the pass after it reads once and stamps again, which is the right
-    shape for a derivation.
+    What a failed create leaves behind: nothing. The API makes the folder,
+    records the list, scaffolds, and on any failure removes the folder -
+    and this removes the store's row for it, so the next create of the
+    same name meets no ghost. Writes nothing to any journal. True when a
+    row was there to delete.
     """
     row = _engagement_row(conn, engagement_dir)
     if row is None:
-        raise StoreError(
-            f"{Path(engagement_dir).name}: the store does not hold this engagement; "
-            f"build it with rebuild_engagement() first")
+        return False
     with _transaction(conn):
-        conn.execute("UPDATE engagements SET manifest_digest = ? WHERE id = ?",
-                     (digest, row["id"]))
+        conn.execute("DELETE FROM engagements WHERE id = ?", (row["id"],))
+    return True
 
 
 # -------------------------------------------------------------- writing ----
@@ -756,7 +717,7 @@ def _write_documents(
         f"INSERT INTO documents ({columns}) VALUES ({_marks(len(DOCUMENT_COLUMNS) + 4)})",
         [
             (engagement_id, key, *[_to_sql(row.get(name)) for name in DOCUMENT_COLUMNS],
-             position, seqs.get(key, WORKBOOK_SEQ))
+             position, seqs[key])
             for position, (key, row) in enumerate(rows.items())
         ],
     )
@@ -783,9 +744,9 @@ def _write_rule(conn: sqlite3.Connection, engagement_id: int, row: dict) -> None
 
 
 def _write_engagement_info(conn: sqlite3.Connection, engagement_id: int, info: dict) -> None:
-    """The Engagement sheet's fields, as ``records.info_to_json`` shapes them.
+    """The engagement's details, as ``records.info_to_json`` shapes them.
 
-    Only the fields the caller carries: a ``rules_imported`` event names
+    Only the fields the caller carries: a ``rules_changed`` event names
     what changed, and a field nothing has ever spoken for keeps whatever
     the row was built with.
     """
@@ -797,6 +758,51 @@ def _write_engagement_info(conn: sqlite3.Connection, engagement_id: int, info: d
         f"UPDATE engagements SET {assignments} WHERE id = ?",
         (*[_to_sql(info[name]) for name in named], engagement_id),
     )
+
+
+MALFORMED_LINE = "{where}: line {seq} ({event}) {problem}; the journal is not applied past it"
+
+
+def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
+    """A line that parses as JSON and names an event but carries the wrong
+    shape is refused by name, before a value of it reaches a table.
+
+    The engagement folder is synced, so a line another machine wrote is
+    not trusted to be well formed: a ``rules_changed`` whose ``rules`` holds
+    a string, a ``scanned`` whose statuses are a list. Left to the writers
+    below, such a line surfaces as an AttributeError inside discovery and
+    ends the whole practice's pass before one document is filed. Refused
+    here it is one folder's problem, said in a sentence that names the
+    line, and the pass goes on to the next engagement.
+    """
+    name = event.get(ledger.EVENT_KEY)
+
+    def refuse(problem: str) -> None:
+        raise StoreError(MALFORMED_LINE.format(where=where, seq=seq, event=name, problem=problem))
+
+    if name in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
+        rows = event.get(ledger.RULES_KEY)
+        if rows is not None and not isinstance(rows, list):
+            refuse(f"carries {ledger.RULES_KEY!r} that is not a list")
+        for row in rows or []:
+            if not isinstance(row, dict):
+                refuse(f"carries a rule that is not a row: {row!r:.60}")
+        removed = event.get(ledger.REMOVED_KEY)
+        if removed is not None and not isinstance(removed, list):
+            refuse(f"carries {ledger.REMOVED_KEY!r} that is not a list")
+        for identifier in removed or []:
+            if not isinstance(identifier, str):
+                refuse(f"names a removed identifier that is not text: {identifier!r:.60}")
+        info = event.get(ledger.INFO_KEY)
+        if info is not None and not isinstance(info, dict):
+            refuse(f"carries {ledger.INFO_KEY!r} that is not a mapping")
+    elif name == ledger.SCANNED:
+        statuses = event.get(ledger.STATUSES_KEY)
+        if statuses is not None and not isinstance(statuses, dict):
+            refuse(f"carries {ledger.STATUSES_KEY!r} that is not a mapping")
+        for identifier, stored in (statuses or {}).items():
+            if not isinstance(stored, dict):
+                refuse(f"carries a status for {identifier!r:.40} that is not a mapping")
 
 
 def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, start: int) -> int:
@@ -813,17 +819,19 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
 
     A keyword a person's filing taught is the one thing here the journal has
     no fold for - it only ever accumulates - so it is inserted as it is met.
-    An import of the person's rules is written as it is met too: the rows
-    it carries replace those identifiers, the ones it names as removed go,
-    and the engagement's own columns and ``manifest_digest`` follow, so a
-    pass costs one upsert per changed row rather than a rewrite of the list.
+    An edit of the person's rules is written as it is met too: the rows it
+    carries replace those identifiers, the ones it names as removed go,
+    and the engagement's own columns follow, so a save costs one upsert per
+    changed row rather than a rewrite of the list.
     """
     state = ledger.Folded(rows=_stored_rows(conn, engagement_id), statuses={})
     seqs = _stored_seqs(conn, engagement_id)
     status_seqs: dict[str, int] = {}
+    where = conn.execute("SELECT path FROM engagements WHERE id = ?", (engagement_id,)).fetchone()[0]
     seq = start - 1
     for event in events:
         seq += 1
+        _refuse_a_malformed_line(event, seq, where)
         name = event.get(ledger.EVENT_KEY)
         conn.execute(
             'INSERT OR REPLACE INTO events (engagement_id, seq, at, "event", "key", payload) '
@@ -846,8 +854,8 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
                 (engagement_id, identifier_key(str(event.get(ledger.IDENTIFIER_KEY, ""))),
                  str(event.get(ledger.KEYWORD_KEY, "")), seq),
             )
-        elif name == ledger.RULES_IMPORTED:
-            _apply_rules_imported(conn, engagement_id, event)
+        elif name in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
+            _apply_rules_event(conn, engagement_id, event)
         ledger.apply(state, event)
     if any(event.get(ledger.EVENT_KEY) in ledger.ROW_EVENTS for event in events):
         _write_documents(conn, engagement_id, state.rows, seqs)
@@ -856,27 +864,26 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
     return seq
 
 
-def _apply_rules_imported(conn: sqlite3.Connection, engagement_id: int, event: dict) -> None:
-    """One import of the person's rules, written into the tables.
-
-    The rows the event carries are upserted, the identifiers it names as
-    removed are deleted, the Engagement fields it carries are set and the
-    workbook's digest is stamped on the engagement - which is what makes
-    the next pass's digest comparison cheap, and what tells a reader that
-    somebody has read the sheet at all (:func:`rules`).
+def _apply_rules_event(conn: sqlite3.Connection, engagement_id: int, event: dict) -> None:
+    """One edit of the person's rules, written into the tables: the
+    identifiers it names as removed are deleted first, then the rows the
+    event carries are upserted, and the Engagement fields it carries are
+    set. Removals first for the same reason :func:`tracker.ledger.apply`
+    folds them first: an edit that respells an identifier by case names
+    the old spelling as removed and carries the new. The delete is by the
+    identifier's exact spelling - the one keying rule the diff, the
+    journal's fold and this fold share; SQLite's ``lower()`` folds ASCII
+    only, so a delete by the folded key would leave a non-ASCII
+    identifier the journal had dropped. The same for a ``rules_changed`` line and for the
+    retired ``rules_imported`` an older journal carries; a digest on the
+    latter is not read.
     """
+    for identifier in event.get(ledger.REMOVED_KEY) or []:
+        conn.execute('DELETE FROM requests WHERE engagement_id = ? AND "identifier" = ?',
+                     (engagement_id, str(identifier)))
     for row in event.get(ledger.RULES_KEY) or []:
         _write_rule(conn, engagement_id, row)
-    for identifier in event.get(ledger.REMOVED_KEY) or []:
-        conn.execute(
-            'DELETE FROM requests WHERE engagement_id = ? AND lower("identifier") = ?',
-            (engagement_id, identifier_key(str(identifier))),
-        )
     _write_engagement_info(conn, engagement_id, dict(event.get(ledger.INFO_KEY) or {}))
-    conn.execute(
-        "UPDATE engagements SET manifest_digest = ? WHERE id = ?",
-        (str(event.get(ledger.DIGEST_KEY, "") or ""), engagement_id),
-    )
 
 
 # --------------------------------------------------------------- the write ----
@@ -903,6 +910,8 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     engagement_dir = Path(engagement_dir)
     for event in events:
         name = event.get(ledger.EVENT_KEY)
+        if name in ledger.RETIRED_EVENTS:
+            raise StoreError(ledger.RETIRED_EVENT.format(name=name) + "; nothing was written")
         if name not in ledger.EVENTS:
             raise StoreError(f"{name!r} is not an event this version writes; nothing was written")
     if not lock_is_held(engagement_dir):
@@ -976,18 +985,14 @@ def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_di
     """Bring one engagement's rows up to its journal, building them if there
     are none. Returns the applied seq.
 
-    **The reader's top-up, and it never opens a workbook.** The store is a
-    derivation of the journal, so a reader that finds it missing or behind
-    can make it right from the journal alone - no manifest, no index, no
-    lock, nothing written in the engagement folder.
-    the filer's ``read_index()`` calls this before every read, which is
-    why no reader in the package has to know whether somebody ensured the
-    engagement first.
-
-    The engagement's own details and the person's rules are *not* filled in
-    here: they are the workbook's and this must not open one. A row built
-    this way carries an empty ``manifest_digest``, which is exactly how
-    the filer's ``ensure()`` knows to read the sheet and fill them.
+    **The reader's top-up.** The store is a derivation of the journal, so
+    a reader that finds it missing or behind can make it right from the
+    journal alone - no lock, nothing written in the engagement folder. The
+    filer's ``read_index()`` and the manifest's readers call this before
+    every read, which is why no reader in the package has to know whether
+    somebody ensured the engagement first. The journal is the whole of it:
+    the rows, the statuses, the person's rules and the engagement's
+    details all come out of the lines.
     """
     engagement_dir = Path(engagement_dir)
     rel = engagement_path(root, engagement_dir)
@@ -1001,11 +1006,11 @@ def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_di
         return sync(conn, root, engagement_dir)
     events = ledger.read_events(engagement_dir)
     with _transaction(conn):
-        columns = f'"path", {_names(ENGAGEMENT_COLUMNS)}, manifest_digest, ledger_head, applied_seq, built_at'
+        columns = f'"path", {_names(ENGAGEMENT_COLUMNS)}, ledger_head, applied_seq, built_at'
         cursor = conn.execute(
-            f"INSERT INTO engagements ({columns}) VALUES ({_marks(len(ENGAGEMENT_COLUMNS) + 5)})",
+            f"INSERT INTO engagements ({columns}) VALUES ({_marks(len(ENGAGEMENT_COLUMNS) + 4)})",
             (rel, *[_to_sql(getattr(EngagementInfo(), name)) for name in ENGAGEMENT_COLUMNS],
-             "", ledger.head(engagement_dir), len(events), ledger.stamp()),
+             ledger.head(engagement_dir), len(events), ledger.stamp()),
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)
@@ -1019,34 +1024,16 @@ def rebuild_engagement(
     conn: sqlite3.Connection,
     root: Path | str,
     engagement_dir: Path | str,
-    *,
-    rules: list,
-    info: EngagementInfo,
-    manifest_digest: str,
-    workbook_rows: list[IndexEntry] = (),
 ) -> None:
     """Build one engagement's rows again from the record. Idempotent.
 
     The journal is replayed from its first line, and what it says is what
-    the rows are - the index, the statuses, the keywords people taught and,
-    since decision 103, **the person's rules and their Engagement sheet**.
-    That last one is what makes the store rebuildable from the journals
-    alone, which is the claim ``docs/storage.md`` makes for it.
-
-    The ``rules``, ``info`` and ``manifest_digest`` the caller passes in
-    are the workbook's own reading, and they are used for exactly one
-    engagement: the one whose journal carries no ``rules_imported`` yet -
-    a folder nobody has passed over since the sheet became importable.
-    That is the first reading, at :data:`WORKBOOK_SEQ`, and the first pass
-    replaces it with an import of its own. The caller reads them because
-    this module does not open workbooks.
-
-    ``workbook_rows`` is the **migration's** argument and nobody else's
-    (decision 102): the index is the record's now, so an ordinary rebuild
-    is handed none and takes every row from the journal. The one caller
-    with rows the journal has never seen is the filer's migration, which
-    reads the old workbook once - and it appends them to the journal
-    first, so even there this fallback finds nothing left to do.
+    the rows are - the index, the statuses, the keywords people taught,
+    the person's rules and the engagement's details. The journal is the
+    whole of it (decision 104): nothing is passed in from anywhere, and an
+    engagement whose journal carries no rules event is rebuilt with none.
+    That is what makes the store rebuildable from the journals alone,
+    which is the claim ``docs/storage.md`` makes for it.
 
     **Nothing is written to the journal.** A rebuild is a reading of the
     record, not an event in it, and a rebuild that appended would make the
@@ -1054,10 +1041,7 @@ def rebuild_engagement(
     """
     engagement_dir = Path(engagement_dir)
     rel = engagement_path(root, engagement_dir)
-    for item in rules:
-        _refuse_a_request_schema_that_moved(item)
     events = ledger.read_events(engagement_dir)
-    imported = any(e.get(ledger.EVENT_KEY) == ledger.RULES_IMPORTED for e in events)
     head = ledger.head(engagement_dir)
     built_at = ledger.stamp()
     with _transaction(conn):
@@ -1067,58 +1051,14 @@ def rebuild_engagement(
         known = _engagement_row(conn, engagement_dir, root)
         if known is not None:
             conn.execute("DELETE FROM engagements WHERE id = ?", (known["id"],))
-        columns = f'"path", {_names(ENGAGEMENT_COLUMNS)}, manifest_digest, ledger_head, applied_seq, built_at'
+        columns = f'"path", {_names(ENGAGEMENT_COLUMNS)}, ledger_head, applied_seq, built_at'
         cursor = conn.execute(
-            f"INSERT INTO engagements ({columns}) VALUES ({_marks(len(ENGAGEMENT_COLUMNS) + 5)})",
-            (rel, *[_to_sql(getattr(EngagementInfo() if imported else info, name))
-                    for name in ENGAGEMENT_COLUMNS],
-             "", head, len(events), built_at),
+            f"INSERT INTO engagements ({columns}) VALUES ({_marks(len(ENGAGEMENT_COLUMNS) + 4)})",
+            (rel, *[_to_sql(getattr(EngagementInfo(), name)) for name in ENGAGEMENT_COLUMNS],
+             head, len(events), built_at),
         )
-        engagement_id = cursor.lastrowid
-        if not imported:
-            # The first reading: nothing has imported this sheet yet, so
-            # the workbook is the only place its rules are. The digest
-            # stays empty - that is what says no import has read this
-            # engagement, and it is what makes the next pass import it.
-            for item in rules:
-                _write_rule(conn, engagement_id, rule_to_json(item))
         if events:
-            _apply(conn, engagement_id, events, start=1)
-        _fall_back_to_the_workbook(conn, engagement_id, workbook_rows)
-
-
-def _fall_back_to_the_workbook(
-    conn: sqlite3.Connection, engagement_id: int, workbook_rows: list[IndexEntry]
-) -> None:
-    """Take the old index workbook's rows for what the journal never recorded.
-
-    The migration's, and nobody else's: it reads that workbook once and
-    appends every row to the journal first, so by the time this runs there
-    is normally nothing left to do. A row that does slip through is marked
-    :data:`WORKBOOK_SEQ`, so the store can always say which of the two
-    readings a value came from. Rows the journal carries are left alone -
-    the journal wins, which is the whole point of having one.
-    """
-    if not workbook_rows:
-        return
-    held = {row["key"] for row in conn.execute(
-        "SELECT key FROM documents WHERE engagement_id = ?", (engagement_id,))}
-    position = conn.execute(
-        'SELECT COALESCE(MAX("position"), -1) + 1 FROM documents WHERE engagement_id = ?',
-        (engagement_id,)).fetchone()[0]
-    columns = f'engagement_id, "key", {_names(DOCUMENT_COLUMNS)}, "position", seq'
-    for entry in workbook_rows:
-        key = ledger_key(entry)
-        if key in held:
-            continue
-        held.add(key)
-        row = entry_to_json(entry)
-        conn.execute(
-            f"INSERT INTO documents ({columns}) VALUES ({_marks(len(DOCUMENT_COLUMNS) + 4)})",
-            (engagement_id, key, *[_to_sql(row.get(name)) for name in DOCUMENT_COLUMNS],
-             position, WORKBOOK_SEQ),
-        )
-        position += 1
+            _apply(conn, cursor.lastrowid, events, start=1)
 
 
 # --------------------------------------------------------------- the check ----
@@ -1134,17 +1074,12 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     sentence a person can act on: which engagement, which row or
     identifier, which field, what each side says.
 
-    **The other copy is the journal, and since decision 103 it is the only
-    one.** Until then the request rows were compared with the live manifest
-    readers, because the sheet was still behind them; the sheet holds no
-    status and no imported rule now, ``load_manifest()`` answers from these
-    very tables, and asking it would be the store compared with itself.
-    So this replays the lines and compares the fold, which is what a
-    rebuild is made of and what a rebuild must come back to.
-
-    An engagement whose journal has never carried a ``rules_imported`` is
-    checked on its documents and statuses alone: its rules are the first
-    reading of a workbook, which has no second copy to differ from.
+    **The other copy is the journal, and it is the only one.** The
+    readers answer from these very tables, so asking them would be the
+    store compared with itself. This replays the lines and compares the
+    fold, which is what a rebuild is made of and what a rebuild must come
+    back to - the rules included, always: an engagement with no rules
+    event has none on either side.
     """
     name = Path(engagement_dir).name
     rel = engagement_path(root, engagement_dir)
@@ -1155,8 +1090,7 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
                 f"{len(folded.rows)} index row(s) and {len(folded.rules)} request row(s)"]
     problems = _check_documents(conn, engagement["id"], name, folded.rows)
     problems += _check_statuses(conn, engagement["id"], name, folded.statuses)
-    if folded.rules:
-        problems += _check_rules(conn, engagement["id"], name, folded)
+    problems += _check_rules(conn, engagement["id"], name, folded)
     return problems
 
 
@@ -1223,7 +1157,7 @@ def _check_rules(
     if len(stored) != len(folded.rules):
         problems.append(
             f"{name}: the store holds {len(stored)} request row(s), "
-            f"the record's imports fold to {len(folded.rules)}")
+            f"the record's edits fold to {len(folded.rules)}")
     seen = set()
     for identifier, rule in folded.rules.items():
         key = identifier_key(identifier)
@@ -1242,10 +1176,6 @@ def _check_rules(
         problems.append(
             f"{name}: request {stored[key]['identifier']} is in the store and not in the record")
     row = conn.execute("SELECT * FROM engagements WHERE id = ?", (engagement_id,)).fetchone()
-    if row["manifest_digest"] != folded.rules_digest:
-        problems.append(
-            f"{name}: the store's rules came from {row['manifest_digest']!r}, "
-            f"the record's last import read {folded.rules_digest!r}")
     for field, value in folded.info.items():
         if field in ENGAGEMENT_COLUMNS and row[field] != _to_sql(value):
             problems.append(
@@ -1258,22 +1188,22 @@ def state(
     conn: sqlite3.Connection,
     engagement_dir: Path | str,
     *,
-    rules_digest_now: str,
     ledger_head_now: str,
 ) -> str:
     """Whether the store still describes the engagement: one of the three words.
 
     The same question the page answers about itself, asked of the rows: the
-    store is a derivation of two things that both move - the workbook a
-    person edits and the journal the passes append to - so "there are rows"
-    is not an answer. Both stamps as they were when the rows were built and
-    as they are now: the same, and the store is current; either moved, and
-    it is behind; no rows for this folder at all, and it is unknown.
+    store is a derivation of the journal, which moves with every pass and
+    every edit, so "there are rows" is not an answer. The journal's head as
+    it was when the rows were built and as it is now: the same, and the
+    store is current; moved, and it is behind; no rows for this folder at
+    all, and it is unknown. One stamp since decision 104 - a rules edit is
+    an event, so the head moves with it.
     """
     row = _engagement_row(conn, engagement_dir)
     if row is None:
         return UNKNOWN
-    if row["manifest_digest"] == rules_digest_now and row["ledger_head"] == ledger_head_now:
+    if row["ledger_head"] == ledger_head_now:
         return CURRENT
     return BEHIND
 
@@ -1290,10 +1220,10 @@ def export(conn: sqlite3.Connection, out_dir: Path | str) -> list[Path]:
     """Write the store out as three spreadsheets. Returns the files written.
 
     **On demand only, and never by a pass.** Decision 91 settled that staff
-    open Excel to edit one workbook and read everything else as a page; a
-    pass that wrote spreadsheets nobody asked for would be inventing a
-    fourth thing to keep in step. This is for the moment somebody wants the
-    season's filings in a pivot table.
+    read everything as a page, and decision 104 that they edit the one
+    list in the app; a pass that wrote spreadsheets nobody asked for would
+    be inventing a second thing to keep in step. This is for the moment
+    somebody wants the season's filings in a pivot table.
 
     Every cell is written as text, with a byte-order mark so that Excel
     opens the file as UTF-8 without being asked, and LF line endings like
@@ -1323,8 +1253,7 @@ def export(conn: sqlite3.Connection, out_dir: Path | str) -> list[Path]:
         )
     ))
 
-    engagement_columns = ["path", *ENGAGEMENT_COLUMNS,
-                          "manifest_digest", "ledger_head", "applied_seq", "built_at"]
+    engagement_columns = ["path", *ENGAGEMENT_COLUMNS, "ledger_head", "applied_seq", "built_at"]
     _write_csv(paths[2], engagement_columns, (
         [row[name] for name in engagement_columns]
         for row in conn.execute('SELECT * FROM engagements ORDER BY "path"')
@@ -1346,12 +1275,10 @@ if __name__ == "__main__":
     import argparse
 
     # Imported here and nowhere else in the file. This module sits at the
-    # bottom of the package beside the journal and the lock and imports
-    # nothing that opens a workbook; a command line nobody imports is the
-    # one place that may look upwards, and feeding a rebuild its workbook
-    # reading is exactly what it is for.
+    # bottom of the package beside the journal and the lock; a command line
+    # nobody imports is the one place that may look upwards, and finding
+    # the engagement folders under a root is what it looks up for.
     from tracker import registry
-    from tracker.filer import rules_digest, workbook_readings
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.store",
@@ -1383,11 +1310,10 @@ if __name__ == "__main__":
         else:
             for engagement in folders:
                 if ns.command == "rebuild":
-                    rebuild_engagement(connection, clients_root, engagement,
-                                       **workbook_readings(engagement))
+                    rebuild_engagement(connection, clients_root, engagement)
                     print(f"  built {engagement.name}")
                 elif ns.command == "state":
-                    print(f"  {state(connection, engagement, rules_digest_now=rules_digest(engagement), ledger_head_now=ledger.head(engagement))}"
+                    print(f"  {state(connection, engagement, ledger_head_now=ledger.head(engagement))}"
                           f"  {engagement.name}")
                 else:
                     said = check(connection, clients_root, engagement)

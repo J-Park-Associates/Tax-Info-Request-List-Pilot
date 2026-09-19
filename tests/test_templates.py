@@ -10,11 +10,9 @@ import pytest
 from tracker.content_check import has_content_rules
 from tracker.manifest import (
     ManifestError,
-    create_template,
-    load_manifest,
     narrowing_rows,
+    validated,
 )
-from tracker.scaffold import MANIFEST_FILENAME
 from tracker.templates import (
     BASE_YEAR,
     FORM_TEMPLATES,
@@ -40,9 +38,9 @@ def test_each_checklist_is_a_valid_manifest(form, tmp_path):
     items = template_items(form)
     assert any(spec["core"] for spec in FORM_TEMPLATES[form])
     assert all(has_content_rules(i) for i in items)
-    path = create_template(tmp_path / f"{form}.xlsx", items)
-    loaded = load_manifest(path)
+    loaded = validated(items)                         # the round trip an engagement makes
     assert [i.identifier for i in loaded] == [i.identifier for i in items]
+    assert [i.row for i in loaded] == list(range(1, len(items) + 1))
 
 
 def test_unknown_form_is_refused():
@@ -80,8 +78,7 @@ def test_catalog_rows_shift_to_the_engagements_year():
     shifted = {i.identifier: i for i in template_items("1040", year=2027)}
     assert shifted["A01"].period == "TY2027"
     assert shifted["A01"].date_pattern == ""            # the Period implies it...
-    path = create_template(__import__("tempfile").mkdtemp() + "/" + MANIFEST_FILENAME, shifted.values())
-    loaded = {i.identifier: i for i in load_manifest(path)}
+    loaded = {i.identifier: i for i in validated(shifted.values())}
     assert loaded["A01"].date_pattern == r"(?i)\b2027\b" and loaded["A01"].date_pattern_derived
     assert loaded["B01"].date_pattern == r"(?i)\b2026\b"   # ...for every row, one year behind here
     assert shifted["B01"].period == "TY2026"           # prior-year return stays one behind

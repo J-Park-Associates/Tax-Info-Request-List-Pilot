@@ -7,13 +7,12 @@ validation tiers 1-3, resolve each row's status deterministically, and
 **record** what it found.
 
 Recorded, not written back (decision 103). The statuses used to be four
-columns of ``MANIFEST_FILENAME``, written with a lock retry and deferred to
-a sidecar when Excel held the file; they are one ``scanned`` event now,
+columns of a workbook, written with a lock retry and deferred to a
+sidecar when Excel held the file; they are one ``scanned`` event now,
 appended to the engagement's journal and folded into the store inside one
 transaction (:func:`tracker.store.record`), under the lock this scan
-already holds. So a scan never touches the workbook - its bytes are the
-same before and after a pass - there is nothing to defer, and a person
-with the request list open in Excel no longer holds a scan up.
+already holds. There is nothing to defer, and nothing a person has open
+holds a scan up.
 
 Only what changed is recorded: a pass that finds the engagement exactly as
 it left it appends nothing at all, so the record is the list of the
@@ -64,7 +63,6 @@ from tracker.manifest import (
 )
 from tracker.records import StatusUpdate, identifier_key, status_to_json
 from tracker.scaffold import (
-    MANIFEST_FILENAME,
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
     assign_folders,
@@ -241,7 +239,7 @@ def _scan_item(
             # Accepted means "treat as Received despite the rules" (decision
             # 2), so it IS Received: status, date and every count that reads
             # the status column agree, instead of a row a person signed off
-            # on still reading Missing or Failed in the sheet and the run.
+            # on still reading Missing or Failed on the page and in the run.
             return StatusUpdate(
                 status=Status.RECEIVED,
                 file_count=count,
@@ -359,7 +357,7 @@ def _record_the_statuses(engagement_dir: Path, updates: dict[str, StatusUpdate])
     Only what *changed*: the record already holds the statuses of the last
     pass, so a pass that found the engagement exactly as it left it
     appends nothing and the journal stays the list of moments something
-    moved. Nothing is written to the workbook, here or anywhere else in a
+    moved. Nothing but the record is written, here or anywhere else in a
     pass (decision 103).
     """
     conn = store.connect()
@@ -396,19 +394,17 @@ def scan_engagement(
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
 
-    # The lock comes before the manifest is read (see tracker.locking): a
-    # sort that finished in between would otherwise be invisible to this scan.
+    # The lock comes before the request list is read (see tracker.locking):
+    # a sort that finished in between would otherwise be invisible to this scan.
     # The filer and this module are one deliberate cycle, closed at call
     # time and asserted to stay that way (tests/test_layers.py).
     from tracker.filer import ensure
 
     with nullcontext() if dry_run or lock_held else engagement_lock(engagement_dir):
-        # The store is brought up to the person's sheet and the journal
-        # before a thing is read: the rules this scan works from are the
-        # imported ones, and recording what it finds needs an engagement
-        # the store holds. A dry run migrates and imports nothing, and
-        # reads the rules the record already has.
-        ensure(engagement_dir, root, migrate=not dry_run)
+        # The store is brought up to the journal before a thing is read:
+        # the rules this scan works from are the ones the record holds,
+        # and recording what it finds needs an engagement the store holds.
+        ensure(engagement_dir, root)
         # What the record already says about each row is what this scan
         # compares against: the Received Date it carried forward ("first
         # date all validations passed") and the status a regression is
@@ -475,9 +471,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description=f"Scan an engagement's {PREPARED_DIR_NAME}/ tree and update {MANIFEST_FILENAME}"
+        description=f"Scan an engagement's {PREPARED_DIR_NAME}/ tree and record each request's status"
     )
-    parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
+    parser.add_argument("engagement_dir", help="the engagement folder")
     parser.add_argument(
         "--dry-run", action="store_true", help="report only; write nothing"
     )
@@ -498,6 +494,6 @@ if __name__ == "__main__":
         print(f"Scan skipped: {exc}")
         raise SystemExit(2) from None
     except ManifestError as exc:
-        print(f"\nMANIFEST PROBLEM - nothing was scanned or written:\n  {exc}")
-        print(f"  Fix {MANIFEST_FILENAME} in Excel (row numbers match Excel rows), save, and re-run.")
+        print(f"\nREQUEST LIST PROBLEM - nothing was scanned or written:\n  {exc}")
+        print("  Fix the request list in the app (the row number is the list's), save, and re-run.")
         raise SystemExit(1) from None

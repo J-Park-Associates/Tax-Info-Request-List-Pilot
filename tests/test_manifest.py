@@ -1,50 +1,50 @@
-"""Tests for tracker/manifest.py — the manifest layer, no OneDrive needed."""
+"""Tests for tracker/manifest.py — the request list: its schema, its validation,
+and its reading from and writing to the record. No workbook anywhere."""
 
 import datetime as dt
-from pathlib import Path
+import re
+from dataclasses import replace
 
 import pytest
-from openpyxl import Workbook, load_workbook
-from openpyxl.workbook.workbook import Workbook as WorkbookClass
 
-from tests.samples import col
+from tests.conftest import make_engagement
+from tracker import ledger, store
 from tracker.manifest import (
-    ACCOUNTANT_COLUMNS,
-    COL_ALLOWED_EXTENSIONS,
     COL_DATE_PATTERN,
     COL_DOCUMENT,
     COL_EXPECTED_COUNT,
     COL_IDENTIFIER,
     COL_MANUAL_OVERRIDE,
+    COL_MIN_SIZE_KB,
+    COLUMN_HELP,
+    COLUMNS,
     DEFAULT_MIN_SIZE_KB,
-    ENGAGEMENT_LABELS,
-    ENGAGEMENT_SHEET_NAME,
     HEADERS,
-    LEGACY_SCANNER_COLUMNS,
-    NO,
-    SHEET_NAME,
+    MIN_EXPECTED_COUNT,
+    MIN_SIZE_KB_FLOOR,
+    NOT_AN_ENGAGEMENT,
     SUMMARY_EMPTY,
     SUMMARY_SEPARATOR,
     TEMP_SUFFIX,
     UNSCANNED_LABEL,
-    YES,
+    EngagementInfo,
     ManifestError,
     Override,
     RequestItem,
     Status,
-    StatusUpdate,
-    carries_scanner_columns,
     check_narrowing_names,
-    create_template,
+    check_rules,
+    create_engagement,
     entity_keyword,
+    item_from_fields,
+    load_engagement_info,
     load_manifest,
-    load_rules,
     narrowing_rows,
-    read_scanner_columns,
-    slim_the_workbook,
+    save_rules,
     temp_path_for,
+    validated,
 )
-from tracker.scaffold import MANIFEST_FILENAME
+from tracker.records import RULE_FIELDS, info_to_json, rule_to_json
 
 SAMPLE_ITEMS = [
     RequestItem(
@@ -60,7 +60,7 @@ SAMPLE_ITEMS = [
         document="Monthly Bank Statements FY2025",
         period="FY2025",
         expected_count=12,
-        allowed_extensions=("pdf", ".CSV"),  # dot + case normalize on load
+        allowed_extensions=("pdf", "csv"),
         min_size_kb=10,
         any_keywords=("statement", "account summary"),
     ),
@@ -75,15 +75,19 @@ SAMPLE_ITEMS = [
 
 
 @pytest.fixture
-def manifest(tmp_path):
-    return create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS)
+def engagement(tmp_path):
+    return make_engagement(tmp_path / "Smith 2025", SAMPLE_ITEMS, scaffold=False)
+
+
+def rules_events(folder) -> list[dict]:
+    return [e for e in ledger.read_events(folder) if e[ledger.EVENT_KEY] == ledger.RULES_CHANGED]
 
 
 # ---------------------------------------------------------------- loading ----
 
 
-def test_template_load_roundtrip(manifest):
-    items = load_manifest(manifest)
+def test_create_then_load_round_trips_through_the_record(engagement):
+    items = load_manifest(engagement)
     assert [i.identifier for i in items] == ["A01", "A02", "B01"]
 
     a01 = items[0]
@@ -98,393 +102,317 @@ def test_template_load_roundtrip(manifest):
     assert a01.manual_override == ""
     assert a01.status == ""
     assert a01.received_date is None
-    assert a01.row == 2
+    assert a01.row == 1                     # the position in the list, 1-based
 
     a02 = items[1]
     assert a02.expected_count == 12
     assert a02.min_size_kb == 10
-    assert a02.allowed_extensions == ("pdf", "csv")  # normalized
+    assert a02.allowed_extensions == ("pdf", "csv")
     assert a02.any_keywords == ("statement", "account summary")
+    assert a02.row == 2
 
     assert items[2].manual_override == Override.WAIVED
 
 
-def test_template_refuses_overwrite(manifest):
-    with pytest.raises(ManifestError, match="Refusing to overwrite"):
-        create_template(manifest)
+def test_an_engagement_is_created_from_a_template_and_read_back_from_the_record_with_no_workbook_anywhere(tmp_path):
+    """Decision 104's first claim: one event carries the whole list and the
+    whole of the details, the derived year check is live on the way back,
+    and there is no spreadsheet under the folder."""
+    from tracker.templates import template_items
+
+    folder = make_engagement(tmp_path / "Smith 2025", template_items("1040", year=2025),
+                             EngagementInfo(client="John"), form="1040")
+    items = load_manifest(folder)
+    assert [i.identifier for i in items] == [i.identifier for i in template_items("1040", year=2025)]
+    assert all(i.date_pattern_derived for i in items if re.search(r"\d{4}", i.period))
+    assert list(folder.rglob("*.xlsx")) == []
+
+    [event] = rules_events(folder)
+    assert [row["identifier"] for row in event[ledger.RULES_KEY]] == [i.identifier for i in items]
+    assert event[ledger.REMOVED_KEY] == []
+    assert event[ledger.INFO_KEY] == info_to_json(EngagementInfo(client="John", form="1040"))
+    assert load_engagement_info(folder) == EngagementInfo(client="John", form="1040")
 
 
-def test_missing_manifest(tmp_path):
-    with pytest.raises(ManifestError, match="not found"):
-        load_manifest(tmp_path / "nope.xlsx")
+def test_a_folder_with_no_record_is_not_an_engagement(tmp_path):
+    folder = tmp_path / "nope"
+    folder.mkdir()
+    with pytest.raises(ManifestError, match=re.escape(
+            NOT_AN_ENGAGEMENT.format(name="nope", ledger=ledger.LEDGER_FILENAME))):
+        load_manifest(folder)
+    with pytest.raises(ManifestError, match="not an engagement"):
+        load_engagement_info(folder)
 
 
-def test_missing_column_rejected(tmp_path):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = SHEET_NAME
-    for idx, header in enumerate(h for h in HEADERS if h != COL_DOCUMENT):
-        ws.cell(row=1, column=idx + 1, value=header)
-    path = tmp_path / "bad.xlsx"
-    wb.save(path)
-    with pytest.raises(ManifestError, match=f"missing column.*{COL_DOCUMENT}"):
-        load_manifest(path)
+def test_create_refuses_a_folder_that_already_has_a_record(engagement):
+    before = ledger.path_for(engagement).read_bytes()
+    with pytest.raises(ManifestError, match="Refusing to overwrite an engagement that already has a record"):
+        create_engagement(engagement, SAMPLE_ITEMS)
+    assert ledger.path_for(engagement).read_bytes() == before
 
 
-def test_the_sheet_is_the_ten_columns_a_person_edits(manifest):
-    """Decision 103: the four the scanner used to write left the schema."""
-    wb = load_workbook(manifest)
-    try:
-        ws = wb[SHEET_NAME]
-        written = [str(ws.cell(row=1, column=i).value or "")
-                   for i in range(1, (ws.max_column or 0) + 1)]
-    finally:
-        wb.close()
-    assert written == list(HEADERS) == list(ACCOUNTANT_COLUMNS)
-    assert not set(written) & set(LEGACY_SCANNER_COLUMNS)
+def test_create_refuses_a_bad_list_before_a_line_is_written(tmp_path):
+    folder = tmp_path / "Smith 2025"
+    folder.mkdir()
+    with pytest.raises(ManifestError, match="Duplicate identifier"):
+        create_engagement(folder, [RequestItem(identifier="A01", document="a"),
+                                   RequestItem(identifier="a01", document="b")])
+    assert not ledger.path_for(folder).exists()
+    assert store.rules(store.connect(), folder) is None      # nothing in the store either
 
 
-def test_a_workbook_that_still_carries_the_scanner_columns_is_read_for_its_rules(tmp_path):
-    """Nothing refuses a file a person has been using all season.
-
-    An old sheet keeps its four extra columns until its engagement's next
-    pass slims it; until then the rules load exactly as they always did
-    and the cells the scanner used to fill are simply not read.
-    """
-    from tests.conftest import write_a_legacy_manifest
-
-    write_a_legacy_manifest(tmp_path, SAMPLE_ITEMS, {
-        "A01": StatusUpdate(status=Status.RECEIVED, file_count=1,
-                            received_date=dt.date(2026, 7, 8), validation_notes="all in"),
-    })
-    path = tmp_path / MANIFEST_FILENAME
-    assert carries_scanner_columns(path)
-    reading = load_rules(path)
-    assert [i.identifier for i in reading.items] == ["A01", "A02", "B01"]
-    assert [i.status for i in reading.items] == ["", "", ""]
-    assert [i.file_count for i in reading.items] == [None, None, None]
-    # and the cells are there to be read once, by the migration
-    assert read_scanner_columns(path)["A01"].status == Status.RECEIVED
+def test_the_list_is_the_ten_columns_a_person_edits():
+    """Decision 103 took the four scanner columns out of the schema; 104
+    keeps the ten, keyed by the record's own field names, each with the
+    sentence the editor shows under its heading."""
+    assert HEADERS == tuple(header for header, _ in COLUMNS)
+    assert len(HEADERS) == 10
+    assert tuple(field for _, field in COLUMNS) == tuple(
+        f for f in RULE_FIELDS if f not in ("row", "date_pattern_derived"))
+    assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
+    assert all(sentence and not sentence.endswith(".") for sentence in COLUMN_HELP.values())
 
 
-def _write_cell(path, row, header, value):
-    wb = load_workbook(path)
-    ws = wb[SHEET_NAME]
-    ws.cell(row=row, column=col(header), value=value)
-    wb.save(path)
+# ------------------------------------------------------------ validation ----
 
 
-def test_duplicate_identifier_rejected(manifest):
-    _write_cell(manifest, 3, COL_IDENTIFIER, "A01")
-    with pytest.raises(ManifestError, match="Duplicate identifier 'A01'.*rows 2 and 3"):
-        load_manifest(manifest)
+def test_duplicate_identifier_rejected():
+    rows = [*SAMPLE_ITEMS, RequestItem(identifier="A01", document="again")]
+    with pytest.raises(ManifestError, match="Duplicate identifier 'A01'.*rows 1 and 4"):
+        validated(rows)
 
 
-def test_bad_regex_rejected(manifest):
-    _write_cell(manifest, 2, COL_DATE_PATTERN, "([unclosed")
-    with pytest.raises(ManifestError, match="Row 2.*not a valid regex"):
-        load_manifest(manifest)
+def test_bad_regex_rejected():
+    rows = [RequestItem(identifier="A01", document="x", date_pattern="([unclosed")]
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_DATE_PATTERN} is not a valid regex"):
+        validated(rows)
 
 
-def test_bad_expected_count_rejected(manifest):
-    _write_cell(manifest, 2, COL_EXPECTED_COUNT, "twelve")
-    with pytest.raises(ManifestError, match="Row 2.*whole number"):
-        load_manifest(manifest)
+def test_bad_expected_count_rejected():
+    with pytest.raises(ManifestError, match=f"Row 2: {COL_EXPECTED_COUNT} must be a whole number, got 'twelve'"):
+        item_from_fields({"identifier": "A01", "document": "x", "expected_count": "twelve"}, where="Row 2")
+    with pytest.raises(ManifestError, match=f"Row 3: {COL_EXPECTED_COUNT} must be at least {MIN_EXPECTED_COUNT}"):
+        item_from_fields({"identifier": "A01", "document": "x", "expected_count": 0}, where="Row 3")
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_MIN_SIZE_KB} must be at least {MIN_SIZE_KB_FLOOR}"):
+        validated([RequestItem(identifier="A01", document="x", min_size_kb=-1)])
 
 
-def test_unknown_override_rejected(manifest):
-    _write_cell(manifest, 2, COL_MANUAL_OVERRIDE, "Maybe")
-    with pytest.raises(ManifestError, match="Row 2.*Manual Override"):
-        load_manifest(manifest)
+def test_unknown_override_rejected():
+    with pytest.raises(ManifestError, match=f"Row 2: {COL_MANUAL_OVERRIDE} must be one of"):
+        item_from_fields({"identifier": "A01", "document": "x", "manual_override": "Maybe"}, where="Row 2")
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_MANUAL_OVERRIDE}"):
+        validated([RequestItem(identifier="A01", document="x", manual_override="Maybe")])
 
 
-def test_blank_rows_skipped(manifest):
-    _write_cell(manifest, 6, COL_IDENTIFIER, "C01")  # row 5 left entirely blank
-    _write_cell(manifest, 6, COL_DOCUMENT, "Trial Balance")
-    items = load_manifest(manifest)
-    assert [i.identifier for i in items] == ["A01", "A02", "B01", "C01"]
-    assert items[-1].row == 6
-
-
-# -------------------------------------------------------- identifier safety ----
-
-
-def _manifest_with_identifiers(tmp_path, *identifiers):
-    items = [
-        RequestItem(identifier=ident, document=f"Doc {n}")
-        for n, ident in enumerate(identifiers, start=1)
-    ]
-    return create_template(tmp_path / MANIFEST_FILENAME, items)
+def test_a_row_needs_an_identifier_and_a_document():
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_IDENTIFIER} is required"):
+        validated([RequestItem(identifier=" ", document="x")])
+    with pytest.raises(ManifestError, match=f"Row 2: {COL_DOCUMENT} is required"):
+        validated([RequestItem(identifier="A01", document="x"), RequestItem(identifier="A02", document="")])
 
 
 @pytest.mark.parametrize("identifier", ["A:01", "A/01", "A?1", 'B"1', "A01.", "A<1>"])
-def test_identifier_that_cannot_name_a_folder_is_rejected(tmp_path, identifier):
+def test_identifier_that_cannot_name_a_folder_is_rejected(identifier):
     # The identifier is the folder-name prefix the scanner matches back on.
     # One the filesystem would alter is a permanent "folder not found".
-    path = _manifest_with_identifiers(tmp_path, identifier)
-    with pytest.raises(ManifestError, match="Identifier"):
-        load_manifest(path)
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_IDENTIFIER}"):
+        validated([RequestItem(identifier=identifier, document="Doc")])
 
 
-def test_identifiers_differing_only_by_case_are_duplicates(tmp_path):
+def test_identifiers_differing_only_by_case_are_duplicates():
     # Windows folder names are case-insensitive: "A01" and "a01" would fight
     # over one folder, so they are the same identifier.
-    path = _manifest_with_identifiers(tmp_path, "A01", "a01")
     with pytest.raises(ManifestError, match="Duplicate identifier"):
-        load_manifest(path)
+        validated([RequestItem(identifier="A01", document="a"), RequestItem(identifier="a01", document="b")])
 
 
-# ------------------------------------------------------------ atomic saves ----
+def test_validated_numbers_the_rows_by_their_position_and_strips_what_was_typed():
+    rows = validated([RequestItem(identifier=" A01 ", document=" W-2 ", period=" TY2025 "),
+                      RequestItem(identifier="A02", document="x")])
+    assert [(i.identifier, i.document, i.period, i.row) for i in rows] == [
+        ("A01", "W-2", "TY2025", 1), ("A02", "x", "", 2)]
 
 
-def _legacy(tmp_path):
-    """A workbook from before decision 103, for the one write that slims it."""
-    from tests.conftest import write_a_legacy_manifest
-
-    write_a_legacy_manifest(tmp_path, SAMPLE_ITEMS, {
-        "A01": StatusUpdate(status=Status.RECEIVED, file_count=1),
-    })
-    return tmp_path / MANIFEST_FILENAME
-
-
-def test_a_crash_mid_save_leaves_the_previous_manifest_intact(tmp_path, monkeypatch):
-    # openpyxl streams straight into the target; a killed task mid-write
-    # used to leave a manifest Excel could not open. The save now lands
-    # beside the file and is swapped in whole, or not at all. The slimming
-    # is the only write left that touches a workbook already in use.
-    path = _legacy(tmp_path)
-
-    def crash(self, filename):
-        Path(str(filename)).write_bytes(b"PK\x03\x04 half a zip")
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(WorkbookClass, "save", crash)
-    with pytest.raises(KeyboardInterrupt):
-        slim_the_workbook(path)
-
-    assert not path.with_name(path.name + TEMP_SUFFIX).exists()
-    assert [i.identifier for i in load_rules(path).items] == ["A01", "A02", "B01"]
-    assert carries_scanner_columns(path)         # nothing of the write landed
+def test_a_row_the_readers_gave_back_validates_to_itself(engagement):
+    """A derived year check is not typed: fed back in, it is derived again
+    rather than read as a regex somebody wrote, so a loaded list validates
+    to the same rules and a save of it records nothing."""
+    loaded = load_manifest(engagement)
+    again = validated(loaded)
+    assert [rule_to_json(i) for i in again] == [rule_to_json(i) for i in loaded]
+    assert save_rules(engagement, loaded, load_engagement_info(engagement)).recorded is False
 
 
-def test_no_temp_file_is_left_beside_the_workbook_under_any_name(tmp_path, monkeypatch):
-    # The temp name is unique per write, so the claim above has to hold for
-    # every name ending in TEMP_SUFFIX, not just one fixed spelling.
-    path = _legacy(tmp_path)
-
-    def crash(self, filename):
-        Path(str(filename)).write_bytes(b"PK\x03\x04 half a zip")
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(WorkbookClass, "save", crash)
-    with pytest.raises(KeyboardInterrupt):
-        slim_the_workbook(path)
-    assert list(path.parent.glob(f"*{TEMP_SUFFIX}")) == []
+# ---------------------------------------------------------------- writes ----
 
 
-def test_slimming_keeps_the_formatting_and_every_other_sheet(tmp_path):
-    """The one rewrite of somebody's workbook must not cost them anything.
+def test_a_persons_edit_is_one_rules_changed_event_of_exactly_the_changed_rows(engagement):
+    """Change one row's Any Keywords and remove another: the last event
+    carries that one row whole and the removed identifier; the store is the
+    fold of the journal; saving the same list again records nothing."""
+    info = load_engagement_info(engagement)
+    rows = load_manifest(engagement)
+    edited = [rows[0], replace(rows[1], any_keywords=("statement", "ledger"))]
 
-    ``delete_cols`` moves the cells left with their formatting, so a column
-    width a person set, the Engagement sheet and a sheet of their own all
-    survive - which is what makes it safe to do to a file that has been in
-    use for a season.
-    """
-    from openpyxl.utils import get_column_letter
+    saved = save_rules(engagement, edited, info)
+    assert saved.recorded and saved.changed == ("A02",) and saved.removed == ("B01",)
+    assert saved.info_fields == ()
 
-    from tracker.manifest import COLUMN_WIDTHS, load_engagement_info
+    last = rules_events(engagement)[-1]
+    assert [row["identifier"] for row in last[ledger.RULES_KEY]] == ["A02"]
+    assert last[ledger.RULES_KEY][0]["any_keywords"] == ["statement", "ledger"]
+    assert last[ledger.RULES_KEY][0]["row"] == 2
+    assert last[ledger.REMOVED_KEY] == ["B01"]
+    assert last[ledger.INFO_KEY] == {}
 
-    path = _legacy(tmp_path)
-    wb = load_workbook(path)
-    try:
-        wb[SHEET_NAME].column_dimensions["B"].width = 51
-        wb.create_sheet("Notes to self").cell(row=1, column=1, value="do not lose me")
-        wb.save(path)
-    finally:
-        wb.close()
+    stored = store.rules(store.connect(), engagement)
+    folded = ledger.replay(ledger.read_events(engagement)).rules
+    assert {row["identifier"]: row for row in stored} == {
+        identifier: {name: (row[name] if name != "date_pattern_derived" else bool(row[name]))
+                     for name in RULE_FIELDS}
+        for identifier, row in folded.items()}
+    assert [i.identifier for i in load_manifest(engagement)] == ["A01", "A02"]
 
-    assert slim_the_workbook(path) == list(LEGACY_SCANNER_COLUMNS)
-    assert not carries_scanner_columns(path)
-    assert [i.identifier for i in load_rules(path).items] == ["A01", "A02", "B01"]
-    assert load_engagement_info(path) is not None
-
-    wb = load_workbook(path)
-    try:
-        assert wb[SHEET_NAME].column_dimensions["B"].width == 51
-        assert ENGAGEMENT_SHEET_NAME in wb.sheetnames
-        assert wb["Notes to self"].cell(row=1, column=1).value == "do not lose me"
-        for index, header in enumerate(HEADERS, start=1):
-            assert wb[SHEET_NAME].cell(row=1, column=index).value == header
-            assert header in COLUMN_WIDTHS
-            assert get_column_letter(index) in wb[SHEET_NAME].column_dimensions
-    finally:
-        wb.close()
+    before = ledger.path_for(engagement).read_bytes()
+    assert save_rules(engagement, edited, info).recorded is False
+    assert ledger.path_for(engagement).read_bytes() == before
 
 
-def test_slimming_a_sheet_that_is_already_thin_changes_nothing(manifest):
-    before = manifest.read_bytes()
-    assert slim_the_workbook(manifest) == []
-    assert manifest.read_bytes() == before
+def test_a_row_moved_in_the_list_is_a_row_changed(engagement):
+    """``row`` is part of the rule: the position a person gave a request
+    is recorded, so reordering the list is an edit the record says."""
+    info = load_engagement_info(engagement)
+    rows = load_manifest(engagement)
+    saved = save_rules(engagement, [rows[1], rows[0], rows[2]], info)
+    assert saved.changed == ("A02", "A01") and saved.removed == ()
+    assert [i.identifier for i in load_manifest(engagement)] == ["A02", "A01", "B01"]
+    assert [i.row for i in load_manifest(engagement)] == [1, 2, 3]
 
 
-def test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it(manifest):
-    from tracker.validators import is_ignored
+def test_an_identifier_respelled_by_case_or_removed_leaves_the_record_holding_only_what_the_list_says(tmp_path):
+    """Retype ``A01`` as ``a01``: one event that names ``A01`` removed and
+    carries ``a01``; the store as the pass left it and the journal folded
+    both hold exactly the new spelling, ``check`` agrees, and the same
+    list again records nothing. The diff is by the exact spelling and the
+    folds apply removals first; diffed by the folded key, the record held
+    both spellings for good and no save from the app could repair it. Then
+    a non-ASCII identifier is added and removed."""
+    engagement = make_engagement(tmp_path / "Smith 2025", SAMPLE_ITEMS, scaffold=False)
+    info = load_engagement_info(engagement)
+    rows = load_manifest(engagement)
+    respelled = [replace(rows[0], identifier="a01"), *rows[1:]]
 
-    first, second = temp_path_for(manifest), temp_path_for(manifest)
-    assert first != second
-    assert first.parent == manifest.parent
-    for temp in (first, second):
-        assert temp.name.endswith(TEMP_SUFFIX)
-        assert is_ignored(temp)                   # a stranded temp is never a document
+    saved = save_rules(engagement, respelled, info)
+    assert saved.recorded and saved.changed == ("a01",) and saved.removed == ("A01",)
+    last = rules_events(engagement)[-1]
+    assert [row["identifier"] for row in last[ledger.RULES_KEY]] == ["a01"]
+    assert last[ledger.REMOVED_KEY] == ["A01"]
+
+    conn = store.connect()          # the live store, as the save left it - not a rebuild
+    assert [row["identifier"] for row in store.rules(conn, engagement)] == ["a01", "A02", "B01"]
+    assert list(ledger.replay(ledger.read_events(engagement)).rules) == ["A02", "B01", "a01"]
+    assert store.check(conn, tmp_path, engagement) == []
+    assert [i.identifier for i in load_manifest(engagement)] == ["a01", "A02", "B01"]
+
+    before = ledger.path_for(engagement).read_bytes()
+    assert save_rules(engagement, respelled, info).recorded is False
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    # A non-ASCII identifier removed leaves the store the way it leaves the
+    # journal: the delete is by the exact spelling, not SQLite's ASCII-only
+    # lower(), which would have kept an orphan the fold had dropped.
+    added = save_rules(engagement, [*respelled, RequestItem(identifier="É01", document="Foreign statement")], info)
+    assert added.changed == ("É01",)
+    gone = save_rules(engagement, respelled, info)
+    assert gone.removed == ("É01",)
+    assert [row["identifier"] for row in store.rules(conn, engagement)] == ["a01", "A02", "B01"]
+    assert list(ledger.replay(ledger.read_events(engagement)).rules) == ["A02", "B01", "a01"]
+    assert store.check(conn, tmp_path, engagement) == []
 
 
-# --------------------------------------------------------- engagement sheet ----
-
-
-def test_the_engagement_sheet_keeps_a_name_typed_like_a_formula_a_name(tmp_path):
-    # Decision 58's rule - every cell the tracker fills from data is text -
-    # had a hole on this sheet (the ninth reading).
-    from tracker.manifest import EngagementInfo, load_engagement_info, write_engagement_info
-
-    path = create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS, EngagementInfo(client="=1+1"))
-    assert load_engagement_info(path).client == "=1+1"
-    write_engagement_info(path, EngagementInfo(client="Jane", sender="=CMD|' /C calc'!A0"))
-    assert load_engagement_info(path).sender == "=CMD|' /C calc'!A0"
-
-
-def test_the_engagement_sheet_round_trips(tmp_path):
-    from tracker.manifest import EngagementInfo, load_engagement_info, write_engagement_info
-
+def test_the_engagement_details_round_trip_through_the_record(tmp_path):
     info = EngagementInfo(client="John Smith", name="Smiths 2025", link="https://drive.example/abc",
                           due=dt.date(2026, 4, 15), sender="Jason Park", firm="J Park",
                           reminders=False, active=True)
-    path = create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS, info)
-    assert load_engagement_info(path) == info
-    assert [i.identifier for i in load_manifest(path)] == ["A01", "A02", "B01"]  # Requests untouched
+    folder = make_engagement(tmp_path / "Smith 2025", SAMPLE_ITEMS, info, scaffold=False)
+    assert load_engagement_info(folder) == info
+    assert [i.identifier for i in load_manifest(folder)] == ["A01", "A02", "B01"]  # the list untouched
 
-    write_engagement_info(path, EngagementInfo(client="Jane", active=False))
-    loaded = load_engagement_info(path)
-    assert loaded.client == "Jane" and loaded.active is False and loaded.reminders is True
-
-
-def test_a_manifest_without_the_sheet_loads_as_defaults(manifest):
-    from openpyxl import load_workbook as lw
-
-    from tracker.manifest import EngagementInfo, load_engagement_info
-
-    wb = lw(manifest)
-    del wb[ENGAGEMENT_SHEET_NAME]
-    wb.save(manifest)
-    assert load_engagement_info(manifest) == EngagementInfo()
+    saved = save_rules(folder, load_manifest(folder), replace(info, due=None, client="Jane", active=False))
+    assert saved.recorded and saved.changed == () and set(saved.info_fields) == {"client", "active", "due"}
+    loaded = load_engagement_info(folder)
+    assert loaded.client == "Jane" and loaded.active is False and loaded.reminders is False
+    assert loaded.due is None and loaded.link == info.link
 
 
-def test_yes_no_cells_are_forgiving_but_not_guessing(manifest):
-    from openpyxl import load_workbook as lw
+def test_a_details_only_edit_is_recorded_as_one(engagement):
+    saved = save_rules(engagement, load_manifest(engagement), EngagementInfo(client="Jane"))
+    assert saved.recorded and saved.changed == () and saved.removed == ()
+    assert saved.info_fields == ("client",)
+    assert rules_events(engagement)[-1][ledger.INFO_KEY] == {"client": "Jane"}
 
-    from tracker.manifest import load_engagement_info
 
-    def set_cell(label, value):
-        wb = lw(manifest)
-        for row in wb[ENGAGEMENT_SHEET_NAME].iter_rows(min_row=1, max_col=2):
-            if row[0].value == label:
-                row[1].value = value
-        wb.save(manifest)
+def test_a_refused_save_records_nothing(engagement):
+    before = ledger.path_for(engagement).read_bytes()
+    rows = load_manifest(engagement)
+    with pytest.raises(ManifestError, match="Row 2"):
+        save_rules(engagement, [rows[0], RequestItem(identifier="A02", document="x", date_pattern="(")],
+                   load_engagement_info(engagement))
+    assert ledger.path_for(engagement).read_bytes() == before
+    assert [i.identifier for i in load_manifest(engagement)] == ["A01", "A02", "B01"]
 
-    set_cell(ENGAGEMENT_LABELS["reminders"], f"{NO.capitalize()} ")
-    assert load_engagement_info(manifest).reminders is False
-    set_cell(ENGAGEMENT_LABELS["active"], "TRUE")
-    assert load_engagement_info(manifest).active is True
-    set_cell(ENGAGEMENT_LABELS["active"], "later")
-    with pytest.raises(ManifestError, match=f"{ENGAGEMENT_LABELS['active']} must be {YES} or {NO}"):
-        load_engagement_info(manifest)
+
+def test_a_save_of_a_folder_with_no_record_is_refused(tmp_path):
+    folder = tmp_path / "nope"
+    folder.mkdir()
+    with pytest.raises(ManifestError, match="not an engagement"):
+        save_rules(folder, SAMPLE_ITEMS, EngagementInfo())
+    assert not ledger.path_for(folder).exists()
 
 
 def test_create_records_the_catalog_the_request_list_was_cut_from(tmp_path):
-    """Decision 86: the wizard's choice is written onto the sheet, so an
+    """Decision 86: the wizard's choice is written into the details, so an
     engagement can say which checklist it came from without the folder name."""
-    from tracker.manifest import load_engagement_info
     from tracker.templates import template_items
 
-    path = create_template(tmp_path / MANIFEST_FILENAME,
-                           template_items("1120S", year=2025), form="1120S")
-    assert load_engagement_info(path).form == "1120S"
+    folder = make_engagement(tmp_path / "S", template_items("1120S", year=2025), form="1120S", scaffold=False)
+    assert load_engagement_info(folder).form == "1120S"
 
 
-def test_the_form_a_caller_gives_never_clears_the_one_the_sheet_carries(tmp_path):
-    from tracker.manifest import EngagementInfo, load_engagement_info
-
+def test_the_form_a_caller_gives_never_clears_the_one_the_details_carry(tmp_path):
     info = EngagementInfo(client="John Smith", form="1065")
-    path = create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS, info)
-    assert load_engagement_info(path) == info          # no form= given; the info's stands
+    folder = make_engagement(tmp_path / "S", SAMPLE_ITEMS, info, scaffold=False)
+    assert load_engagement_info(folder) == info          # no form= given; the info's stands
 
 
-def test_a_manifest_that_never_recorded_a_form_loads_as_unknown(tmp_path):
-    """An engagement made before the cell existed keeps every other cell
-    where it was, and its form reads as blank rather than as a guess."""
-    from openpyxl import load_workbook as lw
-
-    from tracker.manifest import ENGAGEMENT_FIELDS, load_engagement_info
-
-    path = create_template(tmp_path / MANIFEST_FILENAME, SAMPLE_ITEMS, form="1040")
-    before = {label: None for label, _ in ENGAGEMENT_FIELDS}
-    wb = lw(path)
-    ws = wb[ENGAGEMENT_SHEET_NAME]
-    for row in ws.iter_rows(min_row=1, max_col=2):
-        if _cell_text(row[0]) in before:
-            before[_cell_text(row[0])] = row[0].row
-    ws.delete_rows(before[ENGAGEMENT_LABELS["form"]])      # the sheet as it was before
-    wb.save(path)
-
-    loaded = load_engagement_info(path)
-    assert loaded.form == ""
-    wb = lw(path)
-    for label, _ in ENGAGEMENT_FIELDS:
-        if label == ENGAGEMENT_LABELS["form"]:
-            continue
-        found = [c.row for c in wb[ENGAGEMENT_SHEET_NAME]["A"] if _cell_text(c) == label]
-        assert found == [before[label]], label
-
-
-def test_a_blank_form_cell_is_unknown_not_a_refusal(manifest):
-    """Nothing reads the cell yet, and a blank must never fail a load."""
-    from tracker.manifest import check_manifest, load_engagement_info
-
-    assert load_engagement_info(manifest).form == ""      # created without a form
-    assert check_manifest(manifest).problems == []
-
-
-def _cell_text(cell) -> str:
-    return "" if cell.value is None else str(cell.value).strip()
+def test_an_engagement_that_never_recorded_a_form_reads_as_unknown(tmp_path):
+    """Blank is unknown to every reader, never a refusal."""
+    folder = make_engagement(tmp_path / "S", SAMPLE_ITEMS, scaffold=False)
+    assert load_engagement_info(folder).form == ""
+    assert check_rules(load_manifest(folder)) == []
 
 
 # ------------------------------------------------------ allowed extensions ----
 
 
-def test_a_blank_allowed_extensions_means_the_safe_default_not_anything(tmp_path):
-    from openpyxl import load_workbook as lw
-
+def test_a_blank_allowed_extensions_means_the_safe_default_not_anything():
     from tracker.manifest import DEFAULT_EXTENSIONS
 
-    path = create_template(tmp_path / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="W-2")])
-    wb = lw(path)
-    wb[SHEET_NAME].cell(row=2, column=col(COL_ALLOWED_EXTENSIONS)).value = None   # the accountant cleared the cell
-    wb.save(path)
-    assert load_manifest(path)[0].allowed_extensions == DEFAULT_EXTENSIONS
+    item = item_from_fields({"identifier": "A01", "document": "W-2", "allowed_extensions": ""}, where="Row 1")
+    assert item.allowed_extensions == DEFAULT_EXTENSIONS
 
 
-def test_accepting_any_file_type_has_to_be_said_with_a_star(tmp_path):
-    from openpyxl import load_workbook as lw
+def test_accepting_any_file_type_has_to_be_said_with_a_star():
+    from tracker.manifest import ANY_EXTENSION
 
-    path = create_template(tmp_path / MANIFEST_FILENAME, [RequestItem(identifier="A01", document="W-2")])
-    # An item built with no extensions means anything; the template writes "*"
-    # so the workbook says so and the loader reads it back the same way.
-    wb = lw(path)
-    assert wb[SHEET_NAME].cell(row=2, column=col(COL_ALLOWED_EXTENSIONS)).value == "*"
-    wb.close()
-    assert load_manifest(path)[0].allowed_extensions == ()
+    item = item_from_fields({"identifier": "A01", "document": "W-2", "allowed_extensions": ANY_EXTENSION},
+                            where="Row 1")
+    assert item.allowed_extensions == ()
+    # And it comes back the same way through the record.
+    assert validated([item])[0].allowed_extensions == ()
 
 
-def test_a_spec_that_gives_its_extensions_as_a_list_gets_those_extensions(tmp_path):
+def test_a_spec_that_gives_its_extensions_as_a_list_gets_those_extensions():
     # The thirteenth reading: a spec typed as JSON holds ["pdf"], and
     # stringifying it made one extension called "['pdf']" - which no
     # document has, so every document parked against that row for ever.
@@ -499,58 +427,101 @@ def test_a_spec_that_gives_its_extensions_as_a_list_gets_those_extensions(tmp_pa
                            "required_keywords": ["W-2", "wage"]})
     assert item.allowed_extensions == ("pdf", "xlsx")
     assert item.required_keywords == ("W-2", "wage")
+    # The editor's key works too, and the file types are normalised.
+    item = item_from_fields({"identifier": "A01", "document": "W-2", "allowed_extensions": "PDF, .CSV"},
+                            where="Row 1")
+    assert item.allowed_extensions == ("pdf", "csv")
+
+
+def test_item_from_fields_defaults_no_keyword_and_folds_the_override():
+    item = item_from_fields({"identifier": "A01", "document": "Anything", "manual_override": "waived",
+                             "expected_count": "2", "min_size_kb": ""}, where="Row 1")
+    assert item.required_keywords == () and item.any_keywords == ()
+    assert item.manual_override == Override.WAIVED
+    assert item.expected_count == 2 and item.min_size_kb == DEFAULT_MIN_SIZE_KB
+    assert item.row == 0                       # the position is validated()'s to give
 
 
 # ------------------------------------------------------------------ check ----
 
 
-def test_check_manifest_reports_problems_with_their_row(manifest):
-    from openpyxl import load_workbook as lw
-
-    from tracker.manifest import check_manifest
-
-    assert check_manifest(manifest).ok
-    wb = lw(manifest)
-    wb[SHEET_NAME].cell(row=3, column=col(COL_DATE_PATTERN), value="(unclosed")   # A02 Date Pattern
-    wb.save(manifest)
-    result = check_manifest(manifest)
-    assert not result.ok
-    assert result.problems[0].startswith(f"Row 3: {COL_DATE_PATTERN} is not a valid regex")
-
-
-def test_check_manifest_warns_about_rows_the_rules_cannot_act_on(tmp_path):
-    from tracker.manifest import check_manifest
-
-    path = create_template(tmp_path / MANIFEST_FILENAME, [
+def test_check_rules_warns_about_rows_the_rules_cannot_act_on():
+    rows = validated([
         RequestItem(identifier="A01", document="Anything goes"),              # no rule, "*"
         RequestItem(identifier="A02", document="W-2", required_keywords=("W-2",),
                     allowed_extensions=("pdf",)),
         RequestItem(identifier="A03", document="Waived", manual_override=Override.WAIVED),
     ])
-    result = check_manifest(path)
-    assert result.ok
-    assert [w[:14] for w in result.warnings] == ["Row 2 (A01): n", "Row 2 (A01): A"]
-    assert "never be filed automatically" in result.warnings[0]
-    assert "any file type counts" in result.warnings[1]
+    warnings = check_rules(rows)
+    assert [w[:14] for w in warnings] == ["Row 1 (A01): n", "Row 1 (A01): A"]
+    assert "never be filed automatically" in warnings[0]
+    assert "any file type counts" in warnings[1]
 
 
-def test_check_manifest_reads_the_sheet_not_the_record(tmp_path):
-    """The question is what the next import would make of the workbook.
+def test_check_rules_names_the_rows_position_in_the_list(engagement):
+    """The row a warning names is the one the editor shows, not a cell."""
+    rows = load_manifest(engagement)
+    rows.append(RequestItem(identifier="C01", document="Nothing to go on", allowed_extensions=("pdf",)))
+    save_rules(engagement, rows, load_engagement_info(engagement))
+    [warning] = check_rules(load_manifest(engagement))
+    assert warning.startswith("Row 4 (C01):")
 
-    A person edits the sheet and presses Check before a pass has read it;
-    an answer from the record would be an answer about the sheet as it was
-    the last time anybody looked.
-    """
-    from tracker.manifest import check_manifest
 
-    path = create_template(tmp_path / MANIFEST_FILENAME,
-                           [RequestItem(identifier="A01", document="W-2",
-                                        any_keywords=("w-2",), allowed_extensions=("pdf",))])
-    assert check_manifest(path).warnings == []
-    _write_cell(path, 2, COL_DATE_PATTERN, "([unclosed")
-    problems = check_manifest(path).problems
-    assert len(problems) == 1
-    assert problems[0].startswith("Row 2: Date Pattern is not a valid regex")
+def test_check_rules_warns_when_a_keyword_names_a_family_of_forms():
+    from tracker.manifest import BARE_FORM_NUMBER_WARNING, FORM_FAMILIES
+
+    rows = validated([
+        RequestItem(identifier="B01", document="1099s", allowed_extensions=("pdf",), any_keywords=("1099",)),
+        RequestItem(identifier="C01", document="Mortgage", allowed_extensions=("pdf",), required_keywords=("1098",)),
+    ])
+    assert check_rules(rows) == [BARE_FORM_NUMBER_WARNING.format(
+        row=1, identifier="B01", keyword="1099", example=FORM_FAMILIES["1099"])]
+
+
+def test_check_rules_warns_about_a_keyword_with_nothing_in_it():
+    from tracker.manifest import EMPTY_KEYWORD_WARNING
+
+    rows = validated([RequestItem(identifier="A01", document="x", allowed_extensions=("pdf",),
+                                  any_keywords=("w-2", "--"))])
+    assert check_rules(rows) == [EMPTY_KEYWORD_WARNING.format(row=1, identifier="A01", keyword="--")]
+
+
+# ---------------------------------------------------------- atomic writes ----
+
+
+def test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it(tmp_path):
+    from tracker.validators import is_ignored
+
+    target = tmp_path / "settings.json"
+    first, second = temp_path_for(target), temp_path_for(target)
+    assert first != second
+    assert first.parent == target.parent
+    for temp in (first, second):
+        assert temp.name.endswith(TEMP_SUFFIX)
+        assert is_ignored(temp)                   # a stranded temp is never a document
+
+
+def test_a_failed_save_reports_its_own_error_not_a_locked_temp_file(tmp_path, monkeypatch):
+    # A writer may leave the half-written file open when it raises; on
+    # Windows the temp then cannot be deleted. That must not turn a full
+    # disk into "held by another program".
+    import tracker.manifest as manifest_module
+    from tracker.manifest import atomic_replacement
+
+    target = tmp_path / "x.json"
+    target.write_bytes(b"before")
+    real_unlink = manifest_module.Path.unlink
+
+    def held(self, *args, **kwargs):
+        if self.name.endswith(manifest_module.TEMP_SUFFIX):
+            raise PermissionError("[WinError 32] still open")
+        return real_unlink(self, *args, **kwargs)
+    monkeypatch.setattr(manifest_module.Path, "unlink", held)
+    with pytest.raises(OSError, match="No space left"):
+        with atomic_replacement(target) as temp:
+            temp.write_bytes(b"half")
+            raise OSError(28, "No space left on device")
+    assert target.read_bytes() == b"before"
 
 
 # --------------------------------------------------------------- summary ----
@@ -587,8 +558,6 @@ def test_summarize_is_the_one_count():
 
 
 def test_a_period_with_a_year_implies_the_year_check(tmp_path):
-    import re
-
     from tracker.manifest import derived_date_pattern
 
     assert derived_date_pattern("TY2025") == r"(?i)\b2025\b"
@@ -603,28 +572,23 @@ def test_a_period_with_a_year_implies_the_year_check(tmp_path):
     assert derived_date_pattern("Current") == ""
     assert derived_date_pattern("Acct 120250") == ""      # not a year
 
-    path = create_template(tmp_path / MANIFEST_FILENAME, [
+    folder = make_engagement(tmp_path / "S", [
         RequestItem(identifier="A01", document="W-2", period="TY2025", required_keywords=("W-2",)),
         RequestItem(identifier="A02", document="Trust deed", period="Current", required_keywords=("trust",)),
         RequestItem(identifier="A03", document="Typed", period="TY2025", required_keywords=("x",),
                     date_pattern=r"2025|2026"),
-    ])
-    rows = {i.identifier: i for i in load_manifest(path)}
+    ], scaffold=False)
+    rows = {i.identifier: i for i in load_manifest(folder)}
     assert rows["A01"].date_pattern == r"(?i)\b2025\b" and rows["A01"].date_pattern_derived
     assert rows["A02"].date_pattern == "" and not rows["A02"].date_pattern_derived
     assert rows["A03"].date_pattern == r"2025|2026" and not rows["A03"].date_pattern_derived
 
 
-def test_a_star_in_date_pattern_means_no_year_check(tmp_path):
-    from openpyxl import load_workbook as lw
+def test_a_star_in_date_pattern_means_no_year_check():
+    from tracker.manifest import NO_DATE_CHECK
 
-    path = create_template(tmp_path / MANIFEST_FILENAME, [
-        RequestItem(identifier="A01", document="W-2", period="TY2025", required_keywords=("W-2",)),
-    ])
-    wb = lw(path)
-    wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="*")
-    wb.save(path)
-    [row] = load_manifest(path)
+    [row] = validated([RequestItem(identifier="A01", document="W-2", period="TY2025",
+                                   required_keywords=("W-2",), date_pattern=NO_DATE_CHECK)])
     assert row.date_pattern == "" and not row.date_pattern_derived
 
 
@@ -637,66 +601,6 @@ def test_a_derived_year_is_a_check_not_a_reason_to_route():
     keyed = RequestItem(identifier="A03", document="x", any_keywords=("w-2",))
     assert has_routing_rules(typed) and has_routing_rules(keyed)
     assert not has_routing_rules(derived)
-
-
-def test_check_manifest_warns_when_a_keyword_names_a_family_of_forms(tmp_path):
-    from tracker.manifest import BARE_FORM_NUMBER_WARNING, FORM_FAMILIES, check_manifest
-
-    path = tmp_path / "m.xlsx"
-    create_template(path, [
-        RequestItem(identifier="B01", document="1099s", allowed_extensions=("pdf",), any_keywords=("1099",)),
-        RequestItem(identifier="C01", document="Mortgage", allowed_extensions=("pdf",), required_keywords=("1098",)),
-    ])
-    check = check_manifest(path)
-    assert check.ok
-    assert check.warnings == [BARE_FORM_NUMBER_WARNING.format(
-        row=2, identifier="B01", keyword="1099", example=FORM_FAMILIES["1099"])]
-
-
-def test_a_failed_save_reports_its_own_error_not_a_locked_temp_file(tmp_path, monkeypatch):
-    # openpyxl leaves the half-written zip open when save() raises; on
-    # Windows the temp then cannot be deleted. That must not turn a full
-    # disk into "open in Excel" retried five times.
-    import tracker.manifest as manifest_module
-    from tracker.manifest import atomic_replacement
-
-    target = tmp_path / "x.xlsx"
-    target.write_bytes(b"before")
-    real_unlink = manifest_module.Path.unlink
-
-    def held(self, *args, **kwargs):
-        if self.name.endswith(manifest_module.TEMP_SUFFIX):
-            raise PermissionError("[WinError 32] still open")
-        return real_unlink(self, *args, **kwargs)
-    monkeypatch.setattr(manifest_module.Path, "unlink", held)
-    with pytest.raises(OSError, match="No space left"):
-        with atomic_replacement(target) as temp:
-            temp.write_bytes(b"half")
-            raise OSError(28, "No space left on device")
-    assert target.read_bytes() == b"before"
-
-
-def test_a_person_may_keep_a_formula_in_a_keyword_cell(manifest):
-    """Nothing writes into that cell any more, so nothing can refuse it.
-
-    ``add_any_keyword`` used to refuse a formula there and tell the person
-    to type the keyword by hand; a keyword a filing teaches is recorded
-    now (decision 103), and a formula a person built is just a cell whose
-    cached value the loader reads.
-    """
-    from tracker.manifest import COL_ANY_KEYWORDS
-
-    wb = load_workbook(manifest)
-    try:
-        ws = wb[SHEET_NAME]
-        headers = [c.value for c in ws[1]]
-        at = headers.index(COL_ANY_KEYWORDS) + 1
-        ws.cell(row=2, column=at, value="=B2")
-        wb.save(manifest)
-    finally:
-        wb.close()
-    load_rules(manifest)                      # it loads; the cached value is read
-    assert load_workbook(manifest)[SHEET_NAME].cell(row=2, column=at).value == "=B2"
 
 
 # ------------------------------------------- a row per issuer (decision 93) ----
@@ -734,13 +638,14 @@ def test_two_typings_of_one_entity_make_one_row():
 
 
 def test_an_issuer_name_typed_with_commas_loads_as_one_keyword(tmp_path):
-    """The point of normalising before the cell is written: read back, the
+    """The point of normalising before the row is made: read back, the
     row asks for one name and not for two."""
     from tracker.templates import issuer_row, item_from_spec
 
-    path = create_template(tmp_path / MANIFEST_FILENAME,
-                           [*k1_rows(), item_from_spec(issuer_row("F02", "Ashford Holdings, L.P."))])
-    loaded = {i.identifier: i for i in load_manifest(path)}
+    folder = make_engagement(tmp_path / "S",
+                             [*k1_rows(), item_from_spec(issuer_row("F02", "Ashford Holdings, L.P."))],
+                             scaffold=False)
+    loaded = {i.identifier: i for i in load_manifest(folder)}
 
     assert loaded["F02"].required_keywords == ("Ashford Holdings LP",)
     assert loaded["F02"].document == "Schedule K-1 - Ashford Holdings LP"
@@ -758,17 +663,18 @@ def test_a_row_sharing_no_word_with_the_generic_row_narrows_nothing():
     assert narrowing_rows(rows) == {}
 
 
-def test_two_issuer_rows_whose_names_nest_are_refused_when_the_manifest_is_read(tmp_path):
+def test_two_issuer_rows_whose_names_nest_are_refused_when_the_list_is_validated(tmp_path):
     """Both accept the same K-1, so every one of them would park with
-    nothing said about why. The person renames one."""
-    path = create_template(tmp_path / MANIFEST_FILENAME,
-                           k1_rows(("F02", "Ashford"), ("F03", "Ashford Holdings")))
-
+    nothing said about why. The person renames one - and nothing is
+    recorded until they do."""
+    folder = tmp_path / "S"
+    folder.mkdir()
     with pytest.raises(ManifestError) as caught:
-        load_manifest(path)
+        create_engagement(folder, k1_rows(("F02", "Ashford"), ("F03", "Ashford Holdings")))
 
     assert "F02" in str(caught.value) and "F03" in str(caught.value)
     assert "F01" in str(caught.value), "the row they both narrow is named too"
+    assert not ledger.path_for(folder).exists()
 
 
 def test_two_issuer_names_that_merely_share_a_word_are_allowed():
@@ -782,5 +688,5 @@ def test_two_unrelated_rows_may_share_a_name(tmp_path):
         RequestItem(identifier="A01", document="W-2", required_keywords=("Ashford",)),
         RequestItem(identifier="A02", document="1099", required_keywords=("Ashford Holdings",)),
     ]
-    path = create_template(tmp_path / MANIFEST_FILENAME, rows)
-    assert len(load_manifest(path)) == 2
+    folder = make_engagement(tmp_path / "S", rows, scaffold=False)
+    assert len(load_manifest(folder)) == 2

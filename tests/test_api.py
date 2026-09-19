@@ -16,25 +16,21 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
-from tests.samples import PRIOR_YEAR, col, row
+from tests.conftest import make_engagement
+from tests.samples import PRIOR_YEAR
+from tracker import ledger, store
 from tracker.filer import FILED, NEEDS_REVIEW
 from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
-    COL_ALLOWED_EXTENSIONS,
-    COL_ANY_KEYWORDS,
     COL_DATE_PATTERN,
-    COL_DOCUMENT,
     COL_EXPECTED_COUNT,
-    COL_IDENTIFIER,
-    COL_MIN_SIZE_KB,
-    COL_PERIOD,
-    SHEET_NAME,
     ManifestError,
     Status,
+    load_engagement_info,
     load_manifest,
 )
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
-from tracker.scaffold import MANIFEST_FILENAME, PREPARED_DIR_NAME, SHARED_DIR_NAME
+from tracker.scaffold import PREPARED_DIR_NAME, SHARED_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
 
@@ -74,10 +70,10 @@ def test_unknown_command_is_a_json_error(capsys):
     assert payload["error"].startswith("usage:")
 
 
-def test_a_manifest_problem_is_a_json_error_not_a_traceback(capsys, demo_root):
+def test_a_request_list_problem_is_a_json_error_not_a_traceback(capsys, demo_root):
     code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(demo_root / "nowhere"))
     assert code == 1
-    assert "Manifest not found" in payload["error"]
+    assert "not an engagement" in payload["error"]
 
 
 def test_the_engagement_flag_needs_a_folder_under_the_root(capsys, demo_root, tmp_path):
@@ -102,12 +98,10 @@ def test_an_unplugged_clients_root_is_not_a_licence_to_read_anywhere(capsys, dem
 
 
 def test_a_rollover_takes_its_prior_only_from_under_the_root(capsys, demo_root, tmp_path):
-    from tracker.manifest import create_template
     from tracker.templates import template_items
 
-    elsewhere = tmp_path / "Elsewhere" / "Smith TY2025"
-    elsewhere.mkdir(parents=True)
-    create_template(elsewhere / MANIFEST_FILENAME, template_items("1040", year=2025))
+    elsewhere = make_engagement(tmp_path / "Elsewhere" / "Smith TY2025",
+                                template_items("1040", year=2025), scaffold=False)
     code, payload = run(capsys, "rollover", stdin={"prior": str(elsewhere)})
     assert code == 1 and "not under the clients root" in payload["error"]
 
@@ -125,7 +119,7 @@ def test_templates_lists_every_form_with_its_checklist(capsys):
 # ------------------------------------------------------------------ create ----
 
 
-def test_create_builds_manifest_and_folders(capsys, demo_root):
+def test_create_builds_the_record_and_folders(capsys, demo_root):
     spec = {
         "name": "Smith Family 2025 Form 1040",
         "form": "1040",
@@ -136,10 +130,12 @@ def test_create_builds_manifest_and_folders(capsys, demo_root):
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
     engagement = demo_root / payload["created"]
-    assert (engagement / MANIFEST_FILENAME).is_file()
+    assert ledger.path_for(engagement).is_file()
+    assert list(engagement.glob("*.xlsx")) == []
     assert (engagement / SHARED_DIR_NAME).is_dir()
     assert any(p.name.startswith("X01") for p in (engagement / PREPARED_DIR_NAME).iterdir())
     assert [i["identifier"] for i in payload["state"]["items"]][-1] == "X01"
+    assert [r["identifier"] for r in payload["state"]["rules"]][-1] == "X01"
 
 
 def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_root):
@@ -150,7 +146,7 @@ def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_r
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
     created = demo_root / payload["created"]
-    assert created.parent == demo_root and (created / MANIFEST_FILENAME).is_file()
+    assert created.parent == demo_root and ledger.path_for(created).is_file()
     assert not (demo_root.parent.parent / "escaped TY2025 Form 1040").exists()
     for outside in ("../outside", "sub/child"):          # a separator either platform reads
         with pytest.raises(api.ManifestError, match="not a folder name"):
@@ -186,7 +182,7 @@ def test_create_refuses_a_non_numeric_count_with_a_sentence(capsys, demo_root):
     ]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
-    assert payload["error"] == f"{COL_EXPECTED_COUNT} for A01 must be a whole number, got 'two'"
+    assert payload["error"] == f"A01: {COL_EXPECTED_COUNT} must be a whole number, got 'two'"
 
 
 def test_create_refuses_a_duplicate_identifier(capsys, demo_root):
@@ -246,8 +242,8 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
     assert "vacation photo.jpg" in reviewed
     assert payload["state"]["summary"]["outstanding"] == run_result["outstanding"]
     assert f"{Status.RECEIVED}: 4" in payload["state"]["summary"]["line"]   # A01, B01, C01, D01
-    # What the scanner wrote is what the state command reads back.
-    rows = {i.identifier: i for i in load_manifest(engagement / MANIFEST_FILENAME)}
+    # What the scanner recorded is what the state command reads back.
+    rows = {i.identifier: i for i in load_manifest(engagement)}
     assert rows["A01"].status == Status.RECEIVED
 
 
@@ -335,7 +331,7 @@ def test_priors_then_rollover_is_the_desktop_returning_client_path(capsys, demo_
 def test_rollover_refuses_a_missing_prior(capsys, demo_root):
     code, payload = run(capsys, "rollover", stdin={"prior": "Nobody 2020"})
     assert code == 1
-    assert "No manifest found" in payload["error"]
+    assert "No record found" in payload["error"]
 
 
 def test_a_name_of_only_illegal_characters_falls_back(capsys, demo_root):
@@ -346,8 +342,8 @@ def test_a_name_of_only_illegal_characters_falls_back(capsys, demo_root):
 
 
 def test_state_shows_the_status_the_record_holds(capsys, demo_root):
-    """Nothing waits for Excel any more (decision 103): a status is
-    recorded, and what the app shows is what the record says."""
+    """Nothing waits for anything (decision 103): a status is recorded,
+    and what the app shows is what the record says."""
     from tests.conftest import seed_statuses
     from tracker.manifest import StatusUpdate
 
@@ -395,13 +391,12 @@ def test_rule_two_is_rendered_in_the_record_and_names_no_file(capsys, demo_root,
     """Decision 102, the owner's wording of 2026-09-19: the rule used to
     name the index workbook, and there is no such file any more."""
     from tracker import api
-    from tracker.filer import INDEX_FILENAME
     from tracker.records import THE_RECORD
 
     (rule,) = [r for r in api.standing_rules() if r["headline"].startswith("Originals")]
 
     assert rule["detail"].endswith(f"every move is recorded in {THE_RECORD}.")
-    assert INDEX_FILENAME not in rule["detail"]
+    assert ".xlsx" not in rule["detail"]
 
 
 def test_the_state_the_app_reads_carries_no_deferred_index(capsys, demo_root, tmp_path):
@@ -417,7 +412,7 @@ def test_the_state_the_app_reads_carries_no_deferred_index(capsys, demo_root, tm
     state = api._state(demo_root / "Smith 2025")
 
     assert "index_deferred" not in state
-    assert "index" not in state["paths"]
+    assert "index" not in state["paths"] and "manifest" not in state["paths"]
     assert not hasattr(EngagementRun(engagement=None), "index_deferred")
     assert "index_deferred" not in json.dumps(api._vocab())
 
@@ -643,10 +638,10 @@ def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_pat
     assert "nothing in the index is called 'ghost.pdf'" in payload["error"]
 
 
-# --------------------------------------------------------- engagement sheet ----
+# ------------------------------------------------------- engagement details ----
 
 
-def test_create_writes_the_engagement_sheet_the_scheduled_run_reads(capsys, demo_root):
+def test_create_records_the_engagement_details_the_scheduled_run_reads(capsys, demo_root):
     from tracker.registry import discover_engagements
 
     spec = {"name": "Smith Family 2025", "form": "1040", "client": "John Smith",
@@ -664,16 +659,15 @@ def test_create_writes_the_engagement_sheet_the_scheduled_run_reads(capsys, demo
 
 
 def test_create_records_the_catalog_the_wizard_chose_and_state_carries_it(capsys, demo_root):
-    """Decision 86: the engagement says which checklist it was cut from, on
-    the sheet a person opens and in the state the app draws from."""
-    from tracker.manifest import load_engagement_info
+    """Decision 86: the engagement says which checklist it was cut from, in
+    the record and in the state the app draws from."""
 
     spec = {"name": "Willow Inc 2025", "form": "1120S", "client": "Willow Inc",
             "items": [t for t in api.FORM_TEMPLATES["1120S"] if t["core"]]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
     assert payload["state"]["engagement"]["form"] == "1120S"
-    assert load_engagement_info(demo_root / "Willow Inc 2025" / MANIFEST_FILENAME).form == "1120S"
+    assert load_engagement_info(demo_root / "Willow Inc 2025").form == "1120S"
 
 
 def test_an_engagement_created_without_a_form_says_nothing_rather_than_guessing(capsys, demo_root):
@@ -681,32 +675,6 @@ def test_an_engagement_created_without_a_form_says_nothing_rather_than_guessing(
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
     assert payload["state"]["engagement"]["form"] == ""
-
-
-def test_rollover_reads_a_prior_year_that_still_had_an_index_workbook(capsys, demo_root, tmp_path):
-    """Last year finished before decision 102, so its index is still a
-    workbook. The rollover names it, so the rollover migrates it - and then
-    reads last year's unfiled documents out of the record like any other."""
-    from tests.conftest import write_a_legacy_index
-    from tracker.filer import INDEX_FILENAME, INDEX_MIGRATED_FILENAME, NEEDS_REVIEW, IndexEntry
-
-    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
-            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
-    assert run(capsys, "create", stdin=spec)[0] == 0
-    prior = demo_root / "Smith 2025"
-    write_a_legacy_index(prior, [IndexEntry(
-        received="2026-03-01", original_name="K-1 Redwood LP.pdf", size_kb=12.0, digest="abc",
-        identifier="", prepared_location="", pbc_location="Shared/PBC/K-1 Redwood LP.pdf",
-        decision=NEEDS_REVIEW, reason="matched no request")])
-
-    code, payload = run(capsys, "rollover",
-                        stdin={"prior": prior.name, "name": "Rolled 2026"})
-
-    assert code == 0, payload
-    assert any("K-1 Redwood LP.pdf" in line
-               for line in payload["rollover"]["unfiled_last_year"]), payload["rollover"]
-    assert not (prior / INDEX_FILENAME).exists()
-    assert (prior / INDEX_MIGRATED_FILENAME).exists()
 
 
 def test_rollover_carries_the_catalog_the_prior_was_cut_from(capsys, demo_root):
@@ -740,24 +708,238 @@ def test_a_bad_due_date_is_a_sentence(capsys, demo_root):
     assert not (demo_root / "X").exists()
 
 
-# ---------------------------------------------------- check, lock and names ----
+# ---------------------------------------------------- edit, lock and names ----
 
 
-def test_check_reports_problems_and_warnings_with_rows(capsys, demo_root):
-    from openpyxl import load_workbook
+def test_an_invalid_row_is_refused_by_the_api_with_the_row_and_column_named_and_nothing_is_recorded(capsys, demo_root):
+    from tests.test_manifest import k1_rows
+    from tracker.records import rule_to_json
+
+    spec = {"name": "Smith", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+        {"identifier": "A02", "document": "1098", "required_keywords": "1098"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    before = ledger.path_for(engagement).read_bytes()
+    rows = payload_of_state(capsys, engagement)["rules"]
+
+    bad = [dict(rows[0]), {**rows[1], "expected_count": "two"}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": bad, "engagement": {}})
+    assert code == 1
+    assert payload["error"] == f"Row 2: {COL_EXPECTED_COUNT} must be a whole number, got 'two'"
+    assert ledger.path_for(engagement).read_bytes() == before
+    assert payload_of_state(capsys, engagement)["rules"] == rows
+
+    nesting = [rule_to_json(i) for i in k1_rows(("F02", "Ashford"), ("F03", "Ashford Holdings"))]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": nesting, "engagement": {}})
+    assert code == 1 and "F02" in payload["error"] and "F03" in payload["error"]
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"rolled_from": "last year"}})
+    assert code == 1 and payload["error"] == "'rolled_from' is not edited here"
+    assert ledger.path_for(engagement).read_bytes() == before
+    assert payload_of_state(capsys, engagement)["rules"] == rows
+
+
+def test_edit_saves_the_list_and_the_details_as_one_event_and_says_what_moved(capsys, demo_root):
+    spec = {"name": "Smith", "client": "John", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+        {"identifier": "A02", "document": "1098", "required_keywords": "1098"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    rows = payload_of_state(capsys, engagement)["rules"]
+
+    # The editor's rows: the file types as a string, a new row typed with
+    # nothing but a name and a keyword, and one row gone.
+    edited = [
+        {**rows[0], "allowed_extensions": "pdf, jpg", "any_keywords": "wage statement"},
+        {"identifier": "Z01", "document": "Rental Records", "period": "TY2025", "any_keywords": "schedule e"},
+    ]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": edited, "engagement": {"client": "Jane", "reminders": False}})
+    assert code == 0, payload
+    assert payload["saved"] == {"changed": ["A01", "Z01"], "removed": ["A02"],
+                                "engagement": ["client", "reminders"], "recorded": True}
+    assert payload["warnings"] == []
+    state = payload["state"]
+    assert [r["identifier"] for r in state["rules"]] == ["A01", "Z01"]
+    assert state["rules"][0]["allowed_extensions"] == ["pdf", "jpg"]
+    assert state["rules"][1]["row"] == 2 and state["rules"][1]["date_pattern_derived"] is True
+    assert state["engagement"]["client"] == "Jane" and state["engagement"]["reminders"] is False
+    events = [e for e in ledger.read_events(engagement) if e[ledger.EVENT_KEY] == ledger.RULES_CHANGED]
+    assert len(events) == 2 and events[-1][ledger.REMOVED_KEY] == ["A02"]
+
+    # The same list again records nothing, and says so.
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": state["rules"], "engagement": {"client": "Jane"}})
+    assert code == 0 and payload["saved"]["recorded"] is False
+    assert len(ledger.read_events(engagement)) == 2
+
+
+def test_the_editor_clears_a_detail_it_sends_blank_and_keeps_one_it_leaves_out(capsys, demo_root):
+    """A person who empties the Link box means the link to go: for ``edit``
+    a key present with a blank value clears the recorded value, and a key
+    absent keeps it. The wizard's fallback (a blank is nothing typed) is
+    the create's and the rollover's, not the editor's."""
+    spec = {"name": "Smith", "client": "John", "link": "https://y", "due": "2026-04-15",
+            "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    rows = payload_of_state(capsys, engagement)["rules"]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"link": "", "due": ""}})
+    assert code == 0, payload
+    assert payload["saved"] == {"changed": [], "removed": [], "engagement": ["link", "due"], "recorded": True}
+    details = payload["state"]["engagement"]
+    assert details["link"] == "" and details["due"] == "" and details["client"] == "John"
+    assert load_engagement_info(engagement).due is None
+
+    # Absent keys keep what is recorded: nothing moved, nothing written.
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {}})
+    assert code == 0 and payload["saved"]["recorded"] is False
+    assert payload["state"]["engagement"]["client"] == "John"
+
+
+def test_a_date_pattern_of_star_survives_an_unchanged_resave(capsys, demo_root):
+    """A row whose Date Pattern the person set to ``*`` (no year check) is
+    recorded with a blank pattern that is not derived; ``state`` hands it
+    back that way, the editor shows and sends it as ``*`` again
+    (``vocab.editor.no_date_check``), and a resave of the same list records
+    nothing - sent blank instead, ``validated()`` would derive the year
+    check and record the row as changed on every Save."""
+    spec = {"name": "Smith", "items": [
+        {"identifier": "A01", "document": "W-2", "period": "TY2025", "required_keywords": "W-2",
+         "date_pattern": "*"},
+        {"identifier": "A02", "document": "1098", "period": "TY2025", "required_keywords": "1098"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    rows = payload_of_state(capsys, engagement)["rules"]
+    assert rows[0]["date_pattern"] == "" and rows[0]["date_pattern_derived"] is False
+    assert rows[1]["date_pattern_derived"] is True
+
+    star = api.NO_DATE_CHECK
+    as_the_editor_sends = [{**rows[0], "date_pattern": star}, {**rows[1], "date_pattern": ""}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": as_the_editor_sends, "engagement": {}})
+    assert code == 0 and payload["saved"]["recorded"] is False, payload["saved"]
+    assert payload["state"]["rules"][0]["date_pattern"] == ""
+    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    assert "(rule.date_pattern || vocab.editor.no_date_check)" in js
+
+
+def test_a_count_typed_as_infinity_is_refused_with_the_row_and_column_named(capsys, demo_root):
+    for typed in ("inf", "Infinity", "1e400"):
+        spec = {"name": f"Bad {typed}", "items": [
+            {"identifier": "A01", "document": "W-2", "expected_count": typed}]}
+        code, payload = run(capsys, "create", stdin=spec)
+        assert code == 1 and f"{COL_EXPECTED_COUNT} must be a whole number, got" in payload["error"], payload
+
+
+def test_a_name_whose_folder_was_deleted_by_hand_can_be_created_again(capsys, demo_root):
+    """The store still holds the row of a folder someone deleted in
+    Explorer; without forgetting it first, the new, shorter journal would
+    read as truncated and the create would fail once with that sentence."""
+    import shutil
 
     spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    manifest = demo_root / "Smith" / MANIFEST_FILENAME
-    code, payload = run(capsys, "check", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))
-    assert code == 0 and payload["ok"] and payload["warnings"] == []
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))[0] == 0
+    shutil.rmtree(demo_root / "Smith")
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    assert [r["identifier"] for r in payload["state"]["rules"]] == ["A01"]
 
-    wb = load_workbook(manifest)
-    wb[SHEET_NAME].cell(row=2, column=col(COL_EXPECTED_COUNT), value="two")
-    wb.save(manifest)
-    code, payload = run(capsys, "check", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))
-    assert code == 0 and payload["ok"] is False
-    assert payload["problems"] == [f"Row 2: {COL_EXPECTED_COUNT} must be a whole number, got 'two'"]
+
+def test_a_detail_with_a_line_break_inside_it_is_recorded_on_one_line(capsys, demo_root):
+    """A sender pasted with a CRLF inside it would carry that break into
+    the reminder draft's headers; every detail is one line, inner
+    whitespace folded to a space."""
+    spec = {"name": "Smith", "sender": "Jason Park\r\nBcc: x@evil.example", "client": " John\tSmith ",
+            "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    details = payload["state"]["engagement"]
+    assert details["sender"] == "Jason Park Bcc: x@evil.example" and details["client"] == "John Smith"
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"),
+                        stdin={"items": payload["state"]["rules"], "engagement": {"firm": "J Park\n& Associates"}})
+    assert code == 0 and payload["state"]["engagement"]["firm"] == "J Park & Associates"
+
+
+def test_a_failed_create_leaves_no_folder_and_no_store_row(capsys, demo_root, monkeypatch):
+    spec = {"name": "Bad", "items": [
+        {"identifier": "A01", "document": "W-2"},
+        {"identifier": "A02", "document": "x", "date_pattern": "(unclosed"},
+    ]}
+    conn = store.connect()
+    rows_before = conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0]
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 1 and payload["error"].startswith(f"Row 2: {COL_DATE_PATTERN}")
+    assert not (demo_root / "Bad").exists()
+    conn = store.connect()
+    assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == rows_before
+    assert store.rules(conn, demo_root / "Bad") is None
+
+    # A store that cannot be reached at that moment neither replaces the
+    # refusal sentence with its own nor leaves the half-built folder behind.
+    def cannot(*a, **k):
+        raise store.StoreError("the store is locked")
+
+    monkeypatch.setattr(store, "forget", cannot)
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 1 and payload["error"].startswith(f"Row 2: {COL_DATE_PATTERN}")
+    assert not (demo_root / "Bad").exists()
+
+
+def test_the_editor_shows_the_persons_rows_and_never_a_taught_keyword_as_a_typed_one(capsys, demo_root, tmp_path):
+    from tests.test_scanner import text_pdf
+
+    spec = {"name": "Smith", "items": [
+        {"identifier": "A01", "document": "W-2", "any_keywords": "w-2"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    text_pdf(engagement / SHARED_DIR_NAME / "scan0012.pdf", "nothing the rules recognise")
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": "scan0012.pdf", "identifier": "A01", "keyword": "wage statement"})
+    assert code == 0, payload
+
+    state = payload["state"]
+    [rule] = state["rules"]
+    assert rule["any_keywords"] == ["w-2"]                       # typed, as stored
+    assert state["learned"] == {"A01": ["wage statement"]}      # taught, beside it
+    [item] = state["items"]
+    assert item["any_keywords"] == ["w-2", "wage statement"]     # both, for the pass
+
+
+def test_state_carries_the_warnings_the_pass_reports(capsys, demo_root):
+    from tracker.registry import engagement_from
+    from tracker.runner import REMINDERS_NEVER, run_engagement
+
+    spec = {"name": "Smith", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    rows = payload_of_state(capsys, engagement)["rules"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [*rows, {"identifier": "Z01", "document": "Anything", "allowed_extensions": "pdf"}],
+        "engagement": {},
+    })
+    assert code == 0, payload
+    [warning] = payload["warnings"]
+    assert warning.startswith("Row 2 (Z01)") and "never be filed automatically" in warning
+    assert payload["state"]["warnings"] == [warning]
+    run_result = run_engagement(engagement_from(engagement), root=demo_root, reminders=REMINDERS_NEVER)
+    assert run_result.warnings == [warning]
 
 
 def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_root):
@@ -782,30 +964,6 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
     os.utime(lock, (old, old))
     code, payload = run(capsys, "unlock", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0 and payload["cleared"] and payload["state"]["lock"] is None
-
-
-def test_state_leaves_an_old_sidecar_where_it_is(capsys, demo_root):
-    """Showing an engagement is a read.
-
-    A folder from before decision 102 or 103 may still have a sidecar
-    beside it. Nothing writes either any more; the app shows the
-    engagement without touching them, and the next real pass is what
-    reads them into the record and renames them.
-    """
-    from tracker.filer import INDEX_PENDING_FILENAME, MANIFEST_PENDING_FILENAME
-
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
-    assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
-    manifest_sidecar = engagement / MANIFEST_PENDING_FILENAME
-    index_sidecar = engagement / INDEX_PENDING_FILENAME
-    manifest_sidecar.write_text("{not json", encoding="utf-8")
-    index_sidecar.write_text("{not json", encoding="utf-8")
-
-    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
-
-    assert code == 0 and payload["index"] == []
-    assert manifest_sidecar.exists() and index_sidecar.exists()
 
 
 def test_a_new_client_engagement_is_named_from_client_year_and_form(capsys, demo_root):
@@ -851,20 +1009,19 @@ def test_rollover_retires_the_prior_in_the_priors_list(capsys, demo_root):
 
 
 def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
-    # A row added in Excel gets its folder from the scan button, exactly as the
-    # scheduled run would give it: one definition of a pass.
-    from openpyxl import load_workbook
-
+    # A row added in the editor gets its folder from the scan button,
+    # exactly as the scheduled run would give it: one definition of a pass.
     spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     engagement = demo_root / "Smith"
-    wb = load_workbook(engagement / MANIFEST_FILENAME)
-    wb[SHEET_NAME].append(row(**{
-        COL_IDENTIFIER: "Z01", COL_DOCUMENT: "Rental Records", COL_PERIOD: "TY2025",
-        COL_EXPECTED_COUNT: 1, COL_ALLOWED_EXTENSIONS: "pdf", COL_MIN_SIZE_KB: 5,
-        COL_ANY_KEYWORDS: "schedule e",
-    }))
-    wb.save(engagement / MANIFEST_FILENAME)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [*rows, {"identifier": "Z01", "document": "Rental Records", "period": "TY2025",
+                           "expected_count": 1, "allowed_extensions": "pdf", "min_size_kb": 5,
+                           "any_keywords": "schedule e"}],
+        "engagement": {},
+    })
+    assert code == 0, payload
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, payload
     assert any(p.name.startswith("Z01") for p in (engagement / PREPARED_DIR_NAME).iterdir())
@@ -877,18 +1034,17 @@ def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     assert code == 0 and payload["run"]["skipped"].startswith("another run")
     (engagement / LOCK_FILENAME).unlink()
 
-    # A manifest typo stops the pass with its row, and the app is told so
-    # in the run's own error. The engagement still *shows*: nothing is
-    # imported from a workbook that will not validate, so the last rules
-    # the record holds stay in force for every reader (decision 103).
+    # A refused edit records nothing, and the pass runs on the last saved
+    # list: a typo cannot reach the record (decision 104).
     before = [i["identifier"] for i in payload_of_state(capsys, engagement)["items"]]
-    wb = load_workbook(engagement / MANIFEST_FILENAME)
-    wb[SHEET_NAME].cell(row=2, column=col(COL_DATE_PATTERN), value="(unclosed")
-    wb.save(engagement / MANIFEST_FILENAME)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "date_pattern": "(unclosed"}, *rows[1:]], "engagement": {},
+    })
+    assert code == 1 and payload["error"].startswith(f"Row 1: {COL_DATE_PATTERN}")
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0
-    assert payload["run"]["ok"] is False
-    assert payload["run"]["error"].startswith(f"Row 2: {COL_DATE_PATTERN}")
+    assert payload["run"]["ok"] is True
     assert [i["identifier"] for i in payload["state"]["items"]] == before
 
 
@@ -981,8 +1137,8 @@ def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys,
 def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     from tracker import STANDING_RULES
     from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW, NOT_REQUESTED
-    from tracker.manifest import DEFAULT_EXTENSIONS, Override, Status
-    from tracker.rollover import CARRIED_SHEET
+    from tracker.manifest import COLUMN_HELP, COLUMNS, DEFAULT_EXTENSIONS, Override, Status
+    from tracker.records import ENGAGEMENT_EDITABLE, ENGAGEMENT_FIELDS
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
     from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START
 
@@ -1002,7 +1158,22 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "suggested": api.SUGGESTED_HEADING, "other_requests": api.OTHER_REQUESTS_HEADING,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
-    assert vocab["carried_sheet"] == CARRIED_SHEET
+    assert "carried_sheet" not in vocab
+    # The editor's every word, and the request list's schema.
+    assert vocab["columns"] == [{"key": f, "label": h, "help": COLUMN_HELP[f]} for h, f in COLUMNS]
+    editor = vocab["editor"]
+    assert editor["open"] == api.EDITOR_OPEN_LABEL and editor["title"] == api.EDITOR_TITLE
+    assert editor["engagement_title"] == api.EDITOR_ENGAGEMENT_TITLE
+    assert editor["save"] == api.EDITOR_SAVE_LABEL and editor["cancel"] == api.EDITOR_CANCEL_LABEL
+    assert editor["add_row"] == api.EDITOR_ADD_LABEL and editor["remove_row"] == api.EDITOR_REMOVE_LABEL
+    assert editor["paste"] == api.EDITOR_PASTE_LABEL and editor["paste_hint"] == api.EDITOR_PASTE_HINT
+    assert editor["warnings_heading"] == api.EDITOR_WARNINGS_HEADING
+    assert editor["saved"] == api.RULES_SAVED and editor["nothing_changed"] == api.NOTHING_CHANGED
+    assert editor["learned_note"] == api.LEARNED_NOTE
+    assert [f["key"] for f in editor["engagement_fields"]] == [f for _, f in ENGAGEMENT_FIELDS]
+    assert {f["key"] for f in editor["engagement_fields"] if f["editable"]} == set(ENGAGEMENT_EDITABLE)
+    assert editor["minimums"] == {"expected_count": 1, "min_size_kb": 0}
+    assert editor["any_extension"] == "*" and editor["no_date_check"] == "*"
     assert vocab["unscanned_key"] == api._slug(vocab["unscanned_label"])
     assert vocab["commands"] == sorted(api.COMMANDS)
     assert [r["headline"] for r in vocab["rules"]] == [h for h, _ in STANDING_RULES]

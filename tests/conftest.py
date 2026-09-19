@@ -1,10 +1,10 @@
 """The agreement checks every test in the suite pays for once.
 
 `tracker/ledger.py` is the engagement's own record. Since decision 102 it
-is the whole of the index, and since decision 103 it is the whole of the
-statuses and of the person's imported rules too - there is nothing in a
-workbook left for it to disagree with. Three autouse fixtures hold that
-honest after **every** test.
+is the whole of the index, since decision 103 the whole of the statuses,
+and since decision 104 the whole of the person's rules and the engagement's
+details too - there is nothing anywhere else for it to disagree with.
+Three autouse fixtures hold that honest after **every** test.
 
 **A store of its own** (``a_store_of_its_own``). The store keeps one
 connection per process and the file it would otherwise open sits beside
@@ -13,14 +13,6 @@ the settings file, which on a developer's machine is the repository.
 the connection is closed at teardown before the temporary folder goes,
 because Windows will not delete a database a handle is open on. No test
 can see another's rows.
-
-**The record against the manifest is gone** (decision 103). The statuses
-the record's ``scanned`` events add up to used to be compared with the
-workbook's own scanner columns after every test; there are no such
-columns, no second copy of a status, and nothing to compare. What took
-its place is the store fixture below, which holds the store's
-``statuses`` - and its ``requests``, and its ``documents`` - to
-``ledger.replay()`` over the journal.
 
 **And the view agrees with the readers** (decisions 89 and 91). Wherever a
 test left a view behind, the page is **drawn again from the live readers**
@@ -35,55 +27,52 @@ render. A view ``view_state()`` does not call current is passed over,
 because that is exactly what a pass reports as ``view_stale``.
 
 **The store agrees with the record** (``the_store_agrees_with_the_record``,
-decision 101, re-aimed by 102 and again by 103). Every engagement folder
-under ``tmp_path`` that carries a request list is built into a store in a
-throwaway database - ``rebuild_engagement()``, which takes the journal
-where the journal has spoken and the workbook's first reading where it has
-not - and ``check()`` must return nothing at all. The other copy is
-``ledger.replay()`` over the journal, for all three halves now: the
-**documents**, the **statuses** and the **rules** the imports fold to. It
-is the only other copy there is, because the readers answer from these
-very tables and asking them would be the store compared with itself.
-An engagement the readers themselves refuse is passed over: that refusal
-is what the test is about.
+decision 101, re-aimed by 102, 103 and 104). Every engagement folder under
+``tmp_path`` that carries a journal is built into a store in a throwaway
+database - ``rebuild_engagement()``, from the journal and nothing else -
+and ``check()`` must return nothing at all. The other copy is
+``ledger.replay()`` over the journal, for all three halves: the
+**documents**, the **statuses** and the **rules** the edits fold to. It is
+the only other copy there is, because the readers answer from these very
+tables and asking them would be the store compared with itself. A journal
+the reader refuses raises, which is what that test is about.
 
 One store per test rather than one for the suite, because the claim is
 about a build from nothing. This runs the store over every drop sorted,
 every file a person filed, every rules edit and every ledger path the
 suite has, and it is the gate each stage was built on.
 
+**Making an engagement** (``make_engagement``) **is one call**: the folder,
+the list and the details recorded through ``create_engagement()`` - the
+same call the API makes - and the scaffold on top when asked. It is the
+one way a test makes an engagement, so a seeded engagement is the one the
+app would have made.
+
 **Seeding an index** (``seed_index``) **and a status**
 (``seed_statuses``). A test that needs rows or statuses to exist records
 them, because recording them is the only way they can exist: the helpers
 append ``imported`` and ``scanned`` events under the engagement lock
 through the store, which is the same call every writer in the package
-makes. ``seed_statuses`` replaces the ``write_statuses()`` every such test
-used to call.
+makes.
 
-Looking changes nothing: these fixtures read the record and fingerprint
-the workbooks, and never write in an engagement folder.
+Looking changes nothing: these fixtures read the record and never write in
+an engagement folder.
 """
 from __future__ import annotations
 
-import contextlib
 import datetime as dt
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from tracker import ledger, store, view
-from tracker.filer import FilingError, ensure, workbook_readings
+from tracker.filer import ensure
+from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
-from tracker.manifest import (
-    LEGACY_SCANNER_COLUMNS,
-    SHEET_NAME,
-    ManifestError,
-    legacy_scanner_columns,
-)
+from tracker.manifest import EngagementInfo, create_engagement
 from tracker.records import entry_to_json, ledger_key, status_to_json
-from tracker.scaffold import MANIFEST_FILENAME
+from tracker.scaffold import scaffold_engagement
 
 
 @pytest.fixture(autouse=True)
@@ -124,45 +113,23 @@ def a_store_of_its_own(tmp_path):
 KNOWN_DISAGREEMENTS: dict[str, str] = {}
 
 
-def sheet_headers(engagement_dir) -> list[str]:
-    """The Requests sheet's column headings, in order; [] where there is no
-    sheet to read.
+def make_engagement(folder, items, info: EngagementInfo | None = None, *,
+                    form: str = "", scaffold: bool = True) -> Path:
+    """The one way a test makes an engagement: the folder, its record and,
+    unless told not to, its scaffold.
 
-    A test's way of asking what a person's workbook actually holds, so no
-    test opens openpyxl to find out and none of them disagree about where
-    the header row is.
+    ``create_engagement()`` is the API's own create, so what a test seeds
+    is exactly what the app would have made: one ``rules_changed`` event
+    carrying the whole list and the details, validated on the way in. The
+    scaffold is the folders the filer and the scanner need; a test that
+    wants only the record says ``scaffold=False``. Returns the folder.
     """
-    from openpyxl import load_workbook
-
-    path = Path(engagement_dir) / MANIFEST_FILENAME
-    if not path.is_file():
-        return []
-    wb = load_workbook(path, data_only=True)
-    try:
-        if SHEET_NAME not in wb.sheetnames:
-            return []
-        ws = wb[SHEET_NAME]
-        return [text for text in
-                (str(ws.cell(row=1, column=i).value or "").strip()
-                 for i in range(1, (ws.max_column or 0) + 1))
-                if text]
-    finally:
-        wb.close()
-
-
-def scanner_columns_left(engagement_dir) -> dict[str, int]:
-    """Which of the four columns the scanner used to write this sheet still
-    carries, by column index; empty on a sheet that is the person's alone."""
-    from openpyxl import load_workbook
-
-    path = Path(engagement_dir) / MANIFEST_FILENAME
-    if not path.is_file():
-        return {}
-    wb = load_workbook(path, data_only=True)
-    try:
-        return {} if SHEET_NAME not in wb.sheetnames else legacy_scanner_columns(wb[SHEET_NAME])
-    finally:
-        wb.close()
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    create_engagement(folder, list(items), info, form=form)
+    if scaffold:
+        scaffold_engagement(folder)
+    return folder
 
 
 def _check_view(engagement_dir) -> None:
@@ -197,11 +164,11 @@ def the_view_agrees_with_the_readers(tmp_path):
     """After every test: every view the test left behind is the page the
     readers draw now.
 
-    Its other half - the record's statuses against the workbook's scanner
-    columns - went with those columns in decision 103. There is no second
-    copy of a status to disagree with any more, and what took its place is
-    the store fixture below, which holds all three halves of the store to
-    the journal.
+    Its other half - the record's statuses against the scanner columns a
+    workbook used to carry - went with those columns in decision 103.
+    There is no second copy of a status to disagree with any more, and
+    what took its place is the store fixture below, which holds all three
+    halves of the store to the journal.
     """
     yield
     for path in sorted(tmp_path.rglob(view.VIEW_FILENAME)):
@@ -210,22 +177,22 @@ def the_view_agrees_with_the_readers(tmp_path):
 
 
 def _store_check(root, engagement_dir, conn) -> None:
-    """Build one engagement into the store and hold it to the record."""
+    """Build one engagement into the store, from its journal alone, and
+    hold it to the record."""
     try:
-        readings = workbook_readings(engagement_dir)
-    except (ManifestError, FilingError, OSError):
-        return          # what the readers refuse is what that test is about
-    store.rebuild_engagement(conn, root, engagement_dir, **readings)
+        store.rebuild_engagement(conn, root, engagement_dir)
+    except LedgerError:
+        return          # a journal the reader refuses is what that test is about
     said = store.check(conn, root, engagement_dir)
     assert said == [], "; ".join(said)
 
 
 @pytest.fixture(autouse=True)
 def the_store_agrees_with_the_record(tmp_path):
-    """After every test: a store built from the record and the workbooks for
-    every engagement the test left behind says what the other copies say."""
+    """After every test: a store built from the journal alone, for every
+    engagement the test left behind, says what the journal says."""
     yield
-    folders = sorted({path.parent for path in tmp_path.rglob(MANIFEST_FILENAME)})
+    folders = sorted({path.parent for path in tmp_path.rglob(ledger.LEDGER_FILENAME)})
     if not folders:
         return
     with tempfile.TemporaryDirectory() as scratch:
@@ -277,121 +244,3 @@ def seed_statuses(engagement_dir, updates):
             **{ledger.STATUSES_KEY: {i: status_to_json(u) for i, u in updates.items()}},
         ))
     return updates
-
-
-def write_a_legacy_manifest(engagement_dir, items, statuses=()):
-    """Write a Requests sheet the way it looked before decision 103: the
-    ten accountant columns and the four the scanner used to fill.
-
-    ``create_template()`` writes ten columns now, so a folder from before
-    the upgrade cannot be made with it. This is the shape of the past,
-    kept only so the migration can be tested against it: the scanner
-    columns are appended to the sheet the template wrote, and
-    ``statuses`` fills them, identifier -> ``StatusUpdate``.
-    """
-    from openpyxl import load_workbook
-
-    from tracker.manifest import DATE_FORMAT, create_template
-
-    path = Path(engagement_dir) / MANIFEST_FILENAME
-    if not path.exists():
-        create_template(path, items)
-    wb = load_workbook(path)
-    try:
-        ws = wb[SHEET_NAME]
-        at = {}
-        for offset, header in enumerate(LEGACY_SCANNER_COLUMNS):
-            at[header] = (ws.max_column or 0) + 1 + offset
-            ws.cell(row=1, column=at[header], value=header)
-        identifier_at = 1
-        for row in range(2, (ws.max_row or 1) + 1):
-            identifier = str(ws.cell(row=row, column=identifier_at).value or "").strip()
-            update = dict(statuses).get(identifier)
-            if update is None:
-                continue
-            for header, value in zip(LEGACY_SCANNER_COLUMNS,
-                                     (update.status, update.received_date,
-                                      update.file_count, update.validation_notes),
-                                     strict=True):
-                cell = ws.cell(row=row, column=at[header], value=value)
-                if isinstance(value, dt.date):
-                    cell.number_format = DATE_FORMAT
-        wb.save(path)
-    finally:
-        wb.close()
-    return path
-
-
-def write_a_legacy_index(engagement_dir, entries):
-    """Write the index workbook nothing writes any more, for the migration
-    to find. Returns the file.
-
-    Decision 102 deleted ``write_index()``, and with it the only way to
-    produce an ``_index.xlsx``. A folder from before that decision still
-    has one, so the suite has to be able to make one: the header row and
-    the columns in ``INDEX_LAYOUT``'s order, which is exactly what the
-    workbook always held. Nothing in the package calls this - it is the
-    shape of the past, kept only so the migration can be tested against
-    it.
-    """
-    from openpyxl import Workbook
-
-    from tracker.filer import INDEX_FILENAME, INDEX_SHEET
-    from tracker.records import INDEX_COLUMNS
-
-    path = Path(engagement_dir) / INDEX_FILENAME
-    wb = Workbook()
-    ws = wb.active
-    ws.title = INDEX_SHEET
-    ws.append(list(INDEX_COLUMNS))
-    for entry in entries:
-        ws.append(entry.as_row())
-    wb.save(path)
-    return path
-
-
-@pytest.fixture
-def held_like_excel():
-    """A context manager that holds a file the way Excel holds a workbook it
-    has open: ``CreateFileW`` with ``GENERIC_READ`` and share mode
-    ``FILE_SHARE_READ`` and nothing else. Another reader still opens the
-    file; a writer's ``os.replace`` onto it is refused for as long as the
-    handle is held, which is the refusal every lock-retry path in the
-    package is written for.
-
-    The one real evidence of Windows share modes the suite has. Every other
-    "Excel has it open" test monkeypatches ``Workbook.save`` or the atomic
-    replace and so proves the retry logic, never the file system; the
-    tests that take this fixture prove both, one workbook each. It skips
-    off Windows, because share modes are a Windows file-system behaviour
-    and CI runs the Windows jobs.
-    """
-    if sys.platform != "win32":
-        pytest.skip("Excel's share modes are a Windows file-system behaviour")
-    import ctypes
-    from ctypes import wintypes
-
-    GENERIC_READ = 0x80000000
-    FILE_SHARE_READ = 0x00000001
-    OPEN_EXISTING = 3
-    FILE_ATTRIBUTE_NORMAL = 0x80
-    INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
-                                     wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
-                                     wintypes.HANDLE)
-    kernel32.CreateFileW.restype = wintypes.HANDLE
-    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-
-    @contextlib.contextmanager
-    def hold(path):
-        handle = kernel32.CreateFileW(str(path), GENERIC_READ, FILE_SHARE_READ, None,
-                                      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, None)
-        assert handle != INVALID_HANDLE_VALUE, ctypes.get_last_error()
-        try:
-            yield
-        finally:
-            kernel32.CloseHandle(handle)
-
-    return hold
