@@ -59,6 +59,13 @@ COLUMN_CATALOG = "catalog"
 COLUMN_YEAR = "year"
 COLUMN_EXPECTED = "expected"
 EXPECTATIONS_COLUMNS = (COLUMN_FILE, COLUMN_CATALOG, COLUMN_YEAR, COLUMN_EXPECTED)
+#: How the ``expected`` column names more than one request: ``A01+A02``
+#: means "filed to exactly these, and to nothing else". One document can
+#: belong to several when it carries several forms (decision 94), and a
+#: harness that could only say one identifier would have had to call the
+#: other filing a miss. Blank still means "parks"; a single identifier
+#: still means "filed there and nowhere else".
+EXPECTED_SEP = "+"
 
 
 class SettingsError(Exception):

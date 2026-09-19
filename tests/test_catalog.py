@@ -13,13 +13,27 @@ keeps in Excel is written to a real workbook and read as a sheet
 (``XLSX_CASES``), where a row is a line and its cells are set apart by a
 tab. Half of every catalog asks for a workbook, and typing one as prose
 would prove the wrong reading.
+
+``expected`` is where the document belongs, written the way the firm's own
+expectations file writes it (``tests.test_real_corpus.filed_to``): one
+identifier, ``None`` for a document that must park, and the identifiers
+joined by ``EXPECTED_SEP`` where one page carries several forms and files a
+copy under each (decision 94). One shape for both corpora, so a case and a
+row of the firm's expectations say where a document goes in the same words.
 """
 
 from dataclasses import replace
 
 import pytest
 
-from tests.samples import sheet_xlsx
+from tests.samples import (
+    brokerage_cover_lines,
+    scanned_1098_lines,
+    scanned_1099_int_lines,
+    scanned_w2_lines,
+    sheet_xlsx,
+)
+from tests.test_real_corpus import filed_to
 from tests.test_scanner import text_pdf
 from tracker.manifest import create_template, load_manifest
 from tracker.router import route_file
@@ -1590,6 +1604,49 @@ _DECISION_93 = [
 ]
 
 
+# The owner's rule (decision 94): a client's scanner takes a stack in one
+# pass and the sheet that comes out is several forms. Where each of them
+# prints its own number, title and year - a dated self-mention, decision
+# 85's - and each is asked for by exactly one row, a copy is filed under
+# each and the ``expected`` column names them all (``EXPECTED_SEP``).
+# Everything that is not that still parks: a page that *lists* forms is a
+# menu (decision 73), prose about forms names none of them, and a row
+# accepted on a phrase that names no form leaves the page unsplittable.
+_DECISION_94 = [
+    ("1040", "W-2 and 1099-INT scanned together.pdf",
+     scanned_w2_lines(2025) + scanned_1099_int_lines(2025), "A01+A02"),
+    ("1040", "W-2 1099-INT and 1098 scanned together.pdf",
+     scanned_w2_lines(2025) + scanned_1099_int_lines(2025) + scanned_1098_lines(2025),
+     "A01+A02+C01"),
+    # E01 asks for a brokerage statement by a phrase and gets it; no form
+    # this page names explains that row, so the page will not sort one to
+    # one and the whole of it parks rather than two thirds of it filing.
+    ("1040", "W-2 1099-INT and a brokerage cover.pdf",
+     scanned_w2_lines(2025) + scanned_1099_int_lines(2025) + brokerage_cover_lines(2025), None),
+    # A checklist naming three forms with their years: decision 73's menu,
+    # untouched. Two self-naming lines inside one title window is a menu,
+    # and a menu names nothing.
+    ("1040", "2025 organizer checklist.pdf", [
+        "Willow & Reed CPAs 2025 Individual Tax Organizer",
+        "Please send us the following documents for 2025:",
+        "Form W-2 - Wage and Tax Statement 2025",
+        "Form 1099-INT - Interest Income 2025",
+        "Form 1098 - Mortgage Interest Statement 2025",
+        "Return this checklist with your documents.",
+    ], None),
+    # A cover letter in prose. It says two form numbers and a year and
+    # names neither form: an ask governs its sentence (decision 90's
+    # ``_asked_for``), so nothing here is a form naming itself.
+    ("1040", "engagement cover letter.pdf", [
+        "Willow & Reed CPAs",
+        "January 31, 2026",
+        "Dear Client,",
+        "Please send us your W-2 and 1099-INT for 2025 so that we can begin work on your return.",
+        "Our portal is open and we are happy to answer questions.",
+    ], None),
+]
+
+
 #: (decision, form, file name, lines, expected) - every case, tagged with the
 #: decision that introduced it. tools/vocab_report.py reads this list too.
 CASES = [
@@ -1597,7 +1654,7 @@ CASES = [
     for decision, block in (
         (62, _DECISION_62), (63, _DECISION_63), (65, _DECISION_65), (66, _DECISION_66),
         (67, _DECISION_67), (68, _DECISION_68), (69, _DECISION_69), (73, _DECISION_73),
-        (85, _DECISION_85), (90, _DECISION_90), (93, _DECISION_93),
+        (85, _DECISION_85), (90, _DECISION_90), (93, _DECISION_93), (94, _DECISION_94),
     )
     for case in block
 ]
@@ -1614,7 +1671,7 @@ XLSX_CASES = ([(73, *case) for case in _DECISION_73_XLSX]
 def test_every_shipped_catalog_files_real_forms_where_they_belong(tmp_path, decision, form, name, lines, expected):
     items = shipped_rows(tmp_path, form)
     routing = route_file(text_pdf(tmp_path / name, NL.join(lines)), items)
-    assert routing.identifier == expected, (f"decision {decision}", name, routing.reason)
+    assert filed_to(routing) == expected, (f"decision {decision}", name, routing.reason)
 
 
 @pytest.mark.parametrize("decision, form, name, rows, expected", XLSX_CASES,
@@ -1622,4 +1679,4 @@ def test_every_shipped_catalog_files_real_forms_where_they_belong(tmp_path, deci
 def test_every_shipped_catalog_files_the_workbooks_clients_send(tmp_path, decision, form, name, rows, expected):
     items = shipped_rows(tmp_path, form)
     routing = route_file(sheet_xlsx(tmp_path / name, rows), items)
-    assert routing.identifier == expected, (f"decision {decision}", name, routing.reason)
+    assert filed_to(routing) == expected, (f"decision {decision}", name, routing.reason)

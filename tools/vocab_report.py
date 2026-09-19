@@ -73,7 +73,7 @@ if str(ROOT) not in sys.path:
 
 from tracker.content_check import dominant_forms, extract_text, says  # noqa: E402
 from tracker.manifest import RequestItem, create_template, load_manifest  # noqa: E402
-from tracker.settings import ENV_REAL_CORPUS, EXPECTATIONS_FILENAME  # noqa: E402
+from tracker.settings import ENV_REAL_CORPUS, EXPECTATIONS_FILENAME, EXPECTED_SEP  # noqa: E402
 from tracker.templates import FORM_TEMPLATES, template_items  # noqa: E402
 
 REPORT_PATH = ROOT / "docs" / "vocab-coverage.json"
@@ -153,6 +153,15 @@ def _placements(rows: list[tuple[str, str, int, str | None]]) -> dict[str, dict[
             raise ReportError(f"{name} is expected at both {known[form]} and {where} in the {form} catalog")
         known[form] = where
     return expected
+
+
+def _expected_rows(hit: dict) -> tuple[str, ...]:
+    """The rows a hit's document is expected to file under: none where the
+    document is expected to park or carries no expectation for this
+    catalog, and more than one where it carries several forms and files a
+    copy under each (``EXPECTED_SEP``, decision 94)."""
+    where = hit.get("expected")
+    return tuple(where.split(EXPECTED_SEP)) if where else ()
 
 
 def corpus_documents() -> list[Document]:
@@ -263,7 +272,7 @@ def report(catalogs: dict[str, list[RequestItem]], documents: list[Document]) ->
                     hits.append(hit)
                 hits.sort(key=lambda h: (h["kind"], h.get("decision", 0), h["name"]))
                 listed.append({"keyword": keyword, "rule": rule, "reached_by": hits})
-                here = any(h.get("expected") == row.identifier for h in hits)
+                here = any(row.identifier in _expected_rows(h) for h in hits)
                 filed_here = filed_here or here
                 if not hits:
                     unreached.append([row.identifier, keyword])
@@ -317,6 +326,9 @@ def _arrow(hit: dict, identifier: str) -> str:
         return "?"
     if hit["expected"] == identifier:
         return "**here**"
+    if identifier in _expected_rows(hit):
+        return "**here**, and " + EXPECTED_SEP.join(
+            r for r in _expected_rows(hit) if r != identifier)
     return "parks" if hit["expected"] is None else hit["expected"]
 
 

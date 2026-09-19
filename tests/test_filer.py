@@ -2003,6 +2003,42 @@ def test_filing_an_unfiled_document_puts_it_under_the_canonical_name_again(engag
     )
 
 
+def test_a_page_that_prints_two_forms_files_a_copy_under_each_and_unfiles_as_one(engagement):
+    """Decision 94: one original, one index row, one working copy per request
+    that asked for a form the page names - and unfiling takes every copy
+    back with the row, because the row is one row."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.filer import unfile_document
+    from tracker.validators import sha256_of
+
+    original = drop(engagement, "scan0003.pdf",
+                    "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    before = original.read_bytes()
+
+    (entry,) = file_drops(engagement, today=DAY1).filed
+
+    assert entry.identifier == "A01"
+    assert entry.filed_names == [
+        "A01 - W-2 Wage Statements - TY2025.pdf",
+        "C01 - Mortgage Interest Statement - TY2025.pdf",
+    ]
+    assert entry.filed_as == entry.filed_names[0]
+    copies = [engagement / location for location in entry.filed_locations]
+    assert all(copy.read_bytes() == before for copy in copies)
+    assert "A01, C01" in entry.reason
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.also_filed == entry.also_filed and row.also_filed
+    assert row.filed_locations == entry.filed_locations
+
+    unfile_document(engagement, entry.pbc_location, today=DAY2)
+
+    assert not any(copy.exists() for copy in copies)
+    [parked] = list(review_dir(engagement).iterdir())
+    assert parked.name == "scan0003.pdf" and sha256_of(parked) == entry.digest
+    [row] = read_index(engagement / INDEX_FILENAME)
+    assert row.decision == NEEDS_REVIEW and row.also_filed == "" and row.identifier == ""
+
+
 def test_unfiling_something_that_is_not_filed_says_what_it_is(engagement):
     """Each of the other decisions needs a different answer, so none of them is guessed."""
     from tracker.filer import (

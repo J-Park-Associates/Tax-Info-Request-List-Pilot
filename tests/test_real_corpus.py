@@ -43,13 +43,28 @@ from tracker.settings import (
     ENV_REAL_CORPUS,
     EXPECTATIONS_COLUMNS,
     EXPECTATIONS_FILENAME,
+    EXPECTED_SEP,
     real_corpus_dir,
 )
 from tracker.templates import template_items
 
 #: One row of the expectations file: (file, catalog, year, expected).
 #: ``expected`` is None where the column is blank - the document must park.
+#: Where it carries ``EXPECTED_SEP`` it names every request the document
+#: must file under and no others (``A01+A02``, decision 94): one document
+#: can carry two forms, and a harness that could only say one identifier
+#: would have had to score the second filing as a miss.
 Expectation = tuple[str, str, int, str | None]
+
+
+def filed_to(routing) -> str | None:
+    """Where one routing filed the document, as the ``expected`` column
+    writes it: None for a park, one identifier for the ordinary filing,
+    and the identifiers ``EXPECTED_SEP``-joined where decision 94 filed a
+    copy under each. One reader for both sides of the comparison, and the
+    one ``tools/backtest.py`` scores the firm's real mail with."""
+    filed = routing.filed_to
+    return EXPECTED_SEP.join(filed) if filed else None
 
 
 def read_expectations(path: Path) -> list[Expectation]:
@@ -130,7 +145,7 @@ def test_the_firms_own_documents_file_where_they_belong_or_park(catalogs, name, 
     path = FOLDER / name
     assert path.is_file(), f"{EXPECTATIONS_FILENAME} names {name}, which is not in {FOLDER}"
     routing = route_file(path, catalogs(form, year))
-    assert routing.identifier == expected, (name, form, routing.reason)
+    assert filed_to(routing) == expected, (name, form, routing.reason)
 
 
 # ------------------------------------------------- the harness itself ----
@@ -168,7 +183,7 @@ def test_a_corpus_is_read_and_routed_the_way_the_shipped_catalogs_route(tmp_path
     built: dict = {}
     for name, form, year, expected in rows:
         routing = route_file(folder / name, catalog_rows(tmp_path, form, year, built))
-        assert routing.identifier == expected, (name, routing.reason)
+        assert filed_to(routing) == expected, (name, routing.reason)
 
 
 def test_a_blank_expected_column_means_the_document_must_park(tmp_path, monkeypatch):

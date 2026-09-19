@@ -63,6 +63,23 @@ Two things deliberately do *not* route a file:
   parks with ``reasons.ISSUER_NOT_NAMED``, the issuer rows named, for a
   person to file or to add the missing row.
 
+**One document, several forms.** A page can be two documents: a client's
+scanner takes a W-2 and a 1099-INT in one pass, and the sheet that comes
+out prints both forms' own names. The owner's rule (2026-09-18) is that
+such a page files a copy under each form it covers, and the exception is
+deliberately narrow (:func:`_multi_form`): each form must name *itself*
+the way decision 85 means it - its number heading a line, with or without
+its printed title, and its year after
+(:func:`tracker.content_check.self_named_forms`) - two families of them
+must do it, the menu rules must not fire, and the forms must sort one to
+a request and one request to a form. A cover letter or a checklist that
+merely lists several forms is a menu and parks, exactly as it did before.
+Where the bijection fails - a form no request asks for, two requests
+wanting one form, a request accepted on a phrase that names no form - the
+whole page parks for a person with the rows as its shortlist. This is the
+one place a document is filed under more than one request, and standing
+rule 3 says so in those words.
+
 When a file is not routed, the reason says why in the most useful terms
 available: a document whose content fits a request but which that request
 refused (too small, wrong type, unreadable) is reported as ``CONTESTED_PREFIX``
@@ -103,8 +120,10 @@ from pathlib import Path
 
 from tracker import reasons
 from tracker.content_check import (
+    RULE_ANY,
     RULE_FILENAME,
     RULE_REFUSED,
+    RULE_REQUIRED,
     WHERE_TITLE,
     ContentCache,
     Evidence,
@@ -113,9 +132,12 @@ from tracker.content_check import (
     contains_keyword,
     evaluate_rules,
     extract,
+    form_family,
+    form_key,
     format_evidence,
     rules_fingerprint,
     says,
+    self_named_forms,
 )
 from tracker.manifest import Override, RequestItem, has_routing_rules, narrowing_rows
 from tracker.validators import (
@@ -147,6 +169,16 @@ NO_REQUEST_ACCEPTS = "no request accepts .{extension} files"
 #: The list asks for this document one row per issuer and the document
 #: names none of them. Worded once, in :mod:`tracker.reasons`.
 ISSUER_NOT_NAMED = reasons.ISSUER_NOT_NAMED
+#: One page, several forms (decision 94): what the index says when it files
+#: a copy under each, and what it says when the forms will not sort one to
+#: a request. Both worded once, in :mod:`tracker.reasons`.
+SEVERAL_FORMS = reasons.NAMES_SEVERAL_FORMS
+SEVERAL_FORMS_UNSORTED = reasons.SEVERAL_FORMS_UNSORTED
+#: How many distinct form families naming themselves make one page two
+#: documents. A broker's consolidated statement prints "1099-INT" and
+#: "1099-DIV" and is one family's document (``content_check._title_forms``
+#: says so of a title); two families is two forms on one sheet.
+MULTI_FORM_FAMILIES = 2
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 #: What a file name uses between words, read as spaces; a hyphen stays,
@@ -170,10 +202,23 @@ class Routing:
     #: identifiers the decision names, so the index's cell stays readable.
     evidence_record: dict[str, tuple[Evidence, ...]] = field(default_factory=dict)
     pending: bool = False           # still syncing; leave it where it is
+    #: The *other* requests one document belongs to (decision 94, the
+    #: owner's): a page that prints two forms' own names is two documents,
+    #: and each form's request gets a working copy of it. Empty on every
+    #: ordinary decision, which is nearly all of them - ``identifier`` is
+    #: the first request either way, so a reader that knows only about it
+    #: reads a real request and a real filing, never half a sentence.
+    also: tuple[str, ...] = ()
 
     @property
     def routed(self) -> bool:
         return self.identifier is not None
+
+    @property
+    def filed_to(self) -> tuple[str, ...]:
+        """Every request this document is filed under, in the order the
+        page names their forms; empty when it is not filed at all."""
+        return () if self.identifier is None else (self.identifier, *self.also)
 
 
 def _filename_evidence(path: Path, item: RequestItem) -> tuple[Evidence, ...]:
@@ -274,6 +319,93 @@ def _contested(
     )
 
 
+def _explained_by(evidence: tuple[Evidence, ...], named: set[str]) -> tuple[str, ...]:
+    """Which of the page's self-named forms a row was accepted because of.
+
+    A row is accepted *because of* a form when one of the keywords that
+    matched it - a required keyword or an any-keyword, never the Period's
+    year check, which is a check and not evidence (decision 40) - is that
+    form's number (``content_check.form_key``, the one normalisation).
+    A row whose whole case rests on a phrase ("statement period",
+    "brokerage") names no form and comes back empty, which is what stops a
+    page being split on a row that only happened to be nearby.
+    """
+    return tuple(dict.fromkeys(
+        key for found in evidence
+        if found.rule in (RULE_REQUIRED, RULE_ANY)
+        and (key := form_key(found.term)) in named
+    ))
+
+
+def _multi_form(
+    path: Path, words: str, allowed: list[RequestItem], named: tuple[str, ...],
+) -> Routing | None:
+    """Decision 94, the owner's: one page carrying several forms.
+
+    ``named`` is every form the page prints its own name on
+    (:func:`tracker.content_check.self_named_forms`), and this is called
+    only when two or more *families* of them do. The page is read a second
+    time with all of them counted as the document's own - the ordinary
+    reading calls at most one form a page's own, so the second form's
+    request would otherwise never accept the page at all - and each row
+    that accepts is tied back to the form it was accepted because of
+    (:func:`_explained_by`).
+
+    A copy is filed under each request **only on a bijection**: every
+    self-named form accepted by exactly one row, and every accepting row
+    explained by exactly one self-named form. Anything short of it parks
+    with the contested sentence and the rows as the shortlist - a form no
+    request asks for parks the whole page, because filing the half we can
+    place would put the other half somewhere nobody will look for it, and
+    two rows wanting one of the forms is the ordinary contest a person
+    settles. Returns None where no row accepted at all, so the ordinary
+    reading keeps its own honest reason for parking.
+
+    OCR text is read here like any other: this rests on a form printing
+    its number at the head of a line with its year beside it, which a
+    misread word does not manufacture, and on a bijection far stricter
+    than the any-keyword tier ``OCR_ONLY`` exists to distrust.
+    """
+    named_set = set(named)
+    record: dict[str, tuple[Evidence, ...]] = {}
+    explained: dict[str, tuple[str, ...]] = {}
+    for item in allowed:
+        verdict = evaluate_rules(words, item, named_set)
+        if not verdict.ok:
+            continue
+        record[item.identifier] = verdict.evidence
+        explained[item.identifier] = _explained_by(verdict.evidence, named_set)
+    if not explained:
+        return None
+    rows_for: dict[str, list[str]] = {form: [] for form in named}
+    for identifier, forms in explained.items():
+        for form in forms:
+            rows_for[form].append(identifier)
+
+    shortlist = tuple(explained)
+    if (all(len(rows) == 1 for rows in rows_for.values())
+            and all(len(forms) == 1 for forms in explained.values())):
+        filed = [rows_for[form][0] for form in named]
+        return Routing(
+            path=path,
+            identifier=filed[0],
+            also=tuple(filed[1:]),
+            reason=SEVERAL_FORMS.format(n=len(named), listed=", ".join(filed)),
+            candidates=tuple(filed),
+            evidence=EVIDENCE_CONTENT,
+            evidence_record=_recorded_for(record, filed),
+        )
+    return Routing(
+        path=path,
+        identifier=None,
+        reason=(f"{CONTESTED_PREFIX} {', '.join(shortlist)} - "
+                f"{SEVERAL_FORMS_UNSORTED.format(n=len(named))}; a person should confirm"),
+        candidates=shortlist,
+        evidence=EVIDENCE_CONTENT,
+        evidence_record=_recorded_for(record, shortlist),
+    )
+
+
 def _read(path: Path, text: str | None) -> Extraction:
     """The document's words, the way the scanner will read them.
 
@@ -348,6 +480,10 @@ def route_file(
     #: Kept for every row considered and cut down at the end to the rows
     #: the decision names (``_recorded_for``).
     record: dict[str, tuple[Evidence, ...]] = {}
+    #: The rows this file got as far as tier 3 on: considered, and their
+    #: own tier-2 rules did not refuse the file. The only rows a page that
+    #: names several forms could be split across (decision 94).
+    allowed: list[RequestItem] = []
 
     for item in items:
         if not _considers(item):
@@ -365,6 +501,7 @@ def route_file(
                 blocked.append((item.identifier, tier2.reason))
                 record[item.identifier] = verdict.evidence + refused
             continue
+        allowed.append(item)
         if words:
             verdict = verdict_for(item)
             record[item.identifier] = verdict.evidence
@@ -391,6 +528,23 @@ def route_file(
     # that request's other rules is contested — never file it somewhere else.
     if near and not strong:
         return _contested(path, near, record)
+
+    # One page, two forms (decision 94, the owner's): a page on which two
+    # or more form families each print their own name - the way a real
+    # W-2 and a real 1099-INT each print their number and their year - is
+    # two documents, and each request that asked for one of them gets a
+    # copy. The menu rules come first and are untouched: a page that
+    # *lists* forms names none of them (``self_named_forms``), so a
+    # checklist and a cover letter park exactly as they did. This is read
+    # after the contested check and before anything is filed, because a
+    # page whose forms will not sort one to a request parks whether or not
+    # one of them would have filed on its own - filing the half we can
+    # place would put the other half where nobody will look for it.
+    if words:
+        named = self_named_forms(words)
+        if len({form_family(key) for key in named}) >= MULTI_FORM_FAMILIES:
+            if split := _multi_form(path, words, allowed, named):
+                return split
 
     # The list asks for this document one row per issuer (decision 93): the
     # broad row accepted it on its looser words, every issuer row wanted a

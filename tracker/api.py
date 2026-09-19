@@ -480,10 +480,15 @@ def _state(engagement: Path) -> dict:
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None}
             for i in items
         ],
-        # The index's two packed cells travel as data, not as text the app
+        # The index's packed cells travel as data, not as text the app
         # would have to parse: the candidates as a list, the evidence as
-        # the record it was written from, keyed by candidate identifier.
-        "index": [asdict(e) | {"filed_as": e.filed_as, "candidates": e.candidate_list,
+        # the record it was written from keyed by candidate identifier,
+        # and every working copy's name as a list - one name for nearly
+        # every row, and one per request for a page decision 94 filed
+        # under several, so the app shows each destination without
+        # knowing a separator or how to cut a path.
+        "index": [asdict(e) | {"filed_as": e.filed_as, "filed_names": e.filed_names,
+                               "candidates": e.candidate_list,
                                "evidence": _evidence_payload(e)}
                   for e in entries],
         # The review queue, triaged: one entry per parked file, its

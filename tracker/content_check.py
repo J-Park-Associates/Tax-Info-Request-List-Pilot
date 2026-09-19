@@ -474,6 +474,22 @@ def _form_key(number: str, variant: str | None) -> str:
     return _DASHES.sub("", number) + (variant or "")
 
 
+def form_key(keyword: str) -> str | None:
+    """The form a keyword names, keyed the way a mention is (``w2``,
+    ``1099int``), or None for a keyword that is not a form number.
+
+    The one normalisation, so a manifest row's own word and a number read
+    off a document are compared as one thing: :func:`_one_says_where` asks
+    it of the row's keyword, and :mod:`tracker.router` asks it of the
+    keyword an :class:`Evidence` kept, to say which form a row was
+    accepted because of (decision 94).
+    """
+    if not is_form_number(keyword):
+        return None
+    bare = _DASHES.sub("", keyword.strip().lower())
+    return bare[4:] if bare.startswith("form") else bare
+
+
 def _title(text: str) -> str:
     """The first ``TITLE_CHARS``, extended to the end of the word it cuts."""
     if len(text) <= TITLE_CHARS:
@@ -773,6 +789,63 @@ def _title_forms(low: str) -> set[str]:
     return forms if len(families) < _LIST_OF_FORMS else set()
 
 
+def form_family(key: str) -> str:
+    """The family a form key belongs to: ``1099int`` and ``1099div`` are
+    both ``1099``, ``w2`` is ``w2``. A broker's consolidated statement
+    prints several of one family's numbers and is one document
+    (``_title_forms``' note); two families on one page are two documents
+    (decision 94)."""
+    return _FAMILY.match(key).group(0)
+
+
+def self_named_forms(text: str) -> tuple[str, ...]:
+    """Every form ``text`` prints its *own* name on, first mention first.
+
+    Decision 85's predicate asked of every mention rather than only of the
+    page's first: a form number heading its own line with its year after
+    it, with the form's printed title in between (``_names_itself``, both
+    shapes a title wears) or with nothing in between (``_SELF_AFTER``'s
+    dated self-mention, "Form 1040 (2025)", "941 for 2026"). Anything a
+    page says *about* another form - quoted, told to the reader, asked for
+    - names nothing, and a page the menu rules call a menu
+    (``_lists_forms``, decision 73) names none at all: a checklist lists
+    forms, it is not one, which is what stops a cover letter buying itself
+    a filing per line.
+
+    Where :func:`dominant_forms` asks which one form the page *is* and
+    answers with at most one - weighing every mention against every other
+    - this asks which forms print their own name on it. Two families of
+    them (:func:`form_family`) is two documents on one sheet, which is the
+    owner's decision 94: the page files a copy under each, but only when
+    each of those forms is asked for by exactly one request. Nothing here
+    decides that; :mod:`tracker.router` does, and this says only what the
+    page names.
+    """
+    low = text.lower()
+    if _lists_forms(low):
+        return ()
+    first: dict[str, int] = {}
+    for match in _FORM_MENTION.finditer(low):
+        span = _mention_span(low, match)
+        if span is None:
+            continue
+        number, variant, end = span
+        shape = _weigh_mention(low, match, end)[1]
+        if _asked_for(low, match.start()):
+            continue
+        if shape == _BY_YEAR:
+            # A dated self-mention still has to head its own line to be
+            # this page's own: "the 2025 Form 1098 from each lender" in a
+            # cover's prose is a sentence about a form.
+            left, _right = _line_of(low, match.start(), end)
+            if _HEADS_ITS_LINE.fullmatch(low, left, match.start()) is None:
+                continue
+        elif not _names_itself(low, match.start(), end, shape):
+            continue
+        first.setdefault(_form_key(number, variant), match.start())
+    return tuple(sorted(first, key=first.__getitem__))
+
+
 #: The words a document asks for a document with. What one of them
 #: introduces is what the page wants, not what the page is: the firm's own
 #: organizer prints "If yes, attach your brokerage statement and any
@@ -946,8 +1019,7 @@ def _one_says_where(text: str, keyword: str, dominant: set[str]) -> tuple[str, i
     at = _first_said_at(low, keyword)
     if at is None:
         return None
-    bare = _DASHES.sub("", keyword.strip().lower())
-    key = bare[4:] if bare.startswith("form") else bare
+    key = form_key(keyword)
     if key in _title_forms(low):
         # It is the title that accepted it, so it is the title's occurrence
         # the evidence names, not whichever came first in a long document.
@@ -993,15 +1065,25 @@ def _found(rule: str, text: str, keyword: str, dominant: set[str]) -> Evidence |
     return None if place is None else Evidence(rule, keyword, place[0], place[1])
 
 
-def evaluate_rules(text: str, item: RequestItem) -> ContentResult:
+def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = None) -> ContentResult:
     """Apply the manifest row's content rules to extracted text.
 
     The verdict and the reason are what they have always been; what is new
     is that every rule that *did* find its word leaves an :class:`Evidence`
     behind, on a failing verdict as much as on a passing one, because what
     matched is the lead a person works a parked file from.
+
+    ``dominant`` is which form numbers count as the document's own, and is
+    :func:`dominant_forms`'s answer unless a caller says otherwise - which
+    exactly one does. A page that names two forms as itself is two
+    documents (:func:`self_named_forms`, decision 94), and the ordinary
+    reading calls at most one of them the page's own; the router reads
+    such a page a second time with both, and files only under the strict
+    rule decision 94 sets. Every other caller, and therefore every verdict
+    the cache keeps, is the reading it always was.
     """
-    dominant = dominant_forms(text)
+    if dominant is None:
+        dominant = dominant_forms(text)
     found: list[Evidence] = []
     missing: list[str] = []
     for keyword in item.required_keywords:
