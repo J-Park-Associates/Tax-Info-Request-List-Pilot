@@ -1,6 +1,6 @@
 """The firm's own documents, routed the way the IRS's own forms are.
 
-``tests/irs/`` holds fifty-two blank forms as the IRS publishes them and
+``tests/irs/`` holds the blank forms as the IRS and two states publish them and
 ``tests/test_catalog.py`` holds cases typed from what the documents say.
 Neither is a client's document: a real W-2 comes out of a payroll
 provider's portal with that provider's layout, a real broker statement

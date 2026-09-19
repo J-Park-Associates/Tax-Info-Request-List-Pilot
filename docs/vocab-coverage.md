@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 84 rows · 339 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 52 IRS forms · 318 cases
+6 catalogs · 84 rows · 339 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 318 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -110,9 +110,9 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — W-2 Wage Statements - All Employers
 
-- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw3.pdf → parks
-- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw3.pdf → parks
-- `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**
+- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → ?; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → ?; fw3pr.pdf → ?; fw3ss.pdf → ?
+- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; f941x.pdf → parks; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → ?; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → ?; fw3ss.pdf → ?; nyit201.pdf → B01
+- `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2gu.pdf → **here**; fw2vi.pdf → **here**
 
 ### A02 — 1099-INT / 1099-DIV - Interest & Dividend Income
 
@@ -140,7 +140,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### B01 — Prior-Year Federal & State Tax Returns
 
-- `individual income tax return + filing status + under penalties of perjury | resident income tax return` (required) — 2024 return with Schedule A.pdf (d62) → **here**; 2024 1040 with schedules.pdf (d63) → **here**; CA filing instructions then 540.pdf (d69) → **here**; CA 540 2024.pdf (d90) → **here**; NY IT-201 2024.pdf (d90) → **here**; f1040.pdf → **here**; f1040x.pdf → **here**
+- `individual income tax return + filing status + under penalties of perjury | resident income tax return` (required) — 2024 return with Schedule A.pdf (d62) → **here**; 2024 1040 with schedules.pdf (d63) → **here**; CA filing instructions then 540.pdf (d69) → **here**; CA 540 2024.pdf (d90) → **here**; NY IT-201 2024.pdf (d90) → **here**; ca540.pdf → **here**; f1040.pdf → **here**; f1040x.pdf → **here**; nyit201.pdf → **here**
 
 ### C01 — Mortgage Interest Statement - Form 1098
 
@@ -181,10 +181,10 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### F01 — Schedule K-1s Received
 
-- `partner's share of income` (any) — K-1 1065 in a trust.pdf (d63) → ?; K-1 with its footer under box 19.pdf (d66) → ?; f1065sk1.pdf → **here**; f1065sk1_2024.pdf → **here**
-- `shareholder's share of income` (any) — K-1 with its footer under box 16.pdf (d66) → ?; f1120ssk.pdf → **here**; f1120ssk_2024.pdf → **here**
+- `partner's share of income` (any) — K-1 1065 in a trust.pdf (d63) → ?; K-1 with its footer under box 19.pdf (d66) → ?; f1065sk1.pdf → **here**; f1065sk1_2024.pdf → **here**; nyit204ip.pdf → **here**
+- `shareholder's share of income` (any) — K-1 with its footer under box 16.pdf (d66) → ?; ca100s.pdf → ?; f1120ssk.pdf → **here**; f1120ssk_2024.pdf → **here**
 - `beneficiary's share of income` (any) — f1041sk1.pdf → **here**
-- `member's share of income` (any) — CA Schedule K-1 568 2025.pdf (d93) → **here**; CA Schedule K-1 568 2025.pdf (d93) → ?
+- `member's share of income` (any) — CA Schedule K-1 568 2025.pdf (d93) → **here**; CA Schedule K-1 568 2025.pdf (d93) → ?; ca568k1.pdf → **here**
 
 ### G01 — Property Tax Statements
 
@@ -201,7 +201,7 @@ Reached, but proven nothing: the cheapest placements to add.
 - `estimated tax payment voucher 3` (any) — 1040-ES voucher 3.pdf (d73) → **here**
 - `estimated tax payment voucher 4` (any) — paid voucher stub.pdf (d67) → **here**; paid voucher stub in a corporation.pdf (d73) → ?
 - `estimated tax payment voucher for individuals` (any) — NY IT-2105 voucher.pdf (d73) → **here**
-- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → **here**; 1040-ES voucher 2.pdf (d73) → **here**; paid voucher stub in a corporation.pdf (d73) → ?; f1040es_2025.pdf → **here**
+- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → **here**; 1040-ES voucher 2.pdf (d73) → **here**; paid voucher stub in a corporation.pdf (d73) → ?; f1040es_2025.pdf → **here**; f1041es.pdf → ?
 - `estimated tax voucher` (any) — corporation estimated tax voucher.pdf (d73) → ?; estimated tax voucher 4th quarter.pdf (d73) → **here**
 - `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → ?; estimated payments made schedule.xlsx (d73) → **here**
 
@@ -282,7 +282,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### C01 — Distributions to Beneficiaries - Dates & Amounts
 
-- `distributions to beneficiaries` (any) — distributions to beneficiaries.xlsx (d73) → **here**
+- `distributions to beneficiaries` (any) — distributions to beneficiaries.xlsx (d73) → **here**; f1041n.pdf → parks
 - `beneficiary distribution` (any) — beneficiary distribution letter.pdf (d73) → **here**
 
 ### C02 — Beneficiary Names, Addresses & Tax IDs
@@ -294,7 +294,7 @@ Reached, but proven nothing: the cheapest placements to add.
 ### D01 — Fiduciary, Attorney & Accounting Fees Paid
 
 - `fiduciary fees paid` (any) — trustee fee statement.pdf (d73) → **here**
-- `trustee fees` (any) — fees paid schedule.xlsx (d73) → **here**; trustee fee statement.pdf (d73) → **here**
+- `trustee fees` (any) — fees paid schedule.xlsx (d73) → **here**; trustee fee statement.pdf (d73) → **here**; f1041a.pdf → ?; f1041n.pdf → parks; f1041qft.pdf → ?; f1120nd.pdf → ?
 - `accounting fees paid` (any) — fees paid schedule.xlsx (d73) → **here**
 - `legal fees paid` (any) — fees paid schedule.xlsx (d73) → **here**; law firm fee invoice.pdf (d73) → **here**
 - `attorney fees paid` (any) — *unreached*
@@ -319,7 +319,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — Prior-Year Federal & State Partnership Returns
 
-- `return of partnership income + under penalties of perjury | return of income | partnership return` (required) — CA 568 2024.pdf (d90) → **here**; NY IT-204 2024.pdf (d90) → **here**; f1065.pdf → **here**
+- `return of partnership income + under penalties of perjury | return of income | partnership return` (required) — CA 568 2024.pdf (d90) → **here**; NY IT-204 2024.pdf (d90) → **here**; ca565.pdf → **here**; ca568.pdf → **here**; f1065.pdf → **here**; nyit204.pdf → **here**
 
 ### A02 — Partnership Agreement & Amendments
 
@@ -405,7 +405,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### F01 — Special Allocation Support - Section 704(b)
 
-- `special allocation` (any) — special allocation 704(b) support.xlsx (d73) → **here**; CA Schedule K-1 568 2025.pdf (d93) → ?
+- `special allocation` (any) — special allocation 704(b) support.xlsx (d73) → **here**; CA Schedule K-1 568 2025.pdf (d93) → ?; ca568k1.pdf → ?
 - `section 704(b)` (any) — special allocation 704(b) support.xlsx (d73) → **here**
 
 ### G01 — State Apportionment Data - Sales, Payroll, Property by State
@@ -419,7 +419,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — Prior-Year Federal & State Corporate Returns
 
-- `u.s. corporation income tax return + under penalties of perjury` (required) — 2024 1120.pdf (d62) → **here**; 2024 1120 with schedules.pdf (d63) → **here**; f1120.pdf → **here**
+- `u.s. corporation income tax return + under penalties of perjury` (required) — 2024 1120.pdf (d62) → **here**; 2024 1120 with schedules.pdf (d63) → **here**; f1120.pdf → **here**; f1120x.pdf → **here**
 
 ### A02 — Trial Balance - Year-End
 
@@ -475,8 +475,8 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### E01 — Payroll Tax Returns - Forms 941 & W-3
 
-- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**
-- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**
+- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**; f941x.pdf → **here**
+- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**; f941x.pdf → **here**
 - `form 940` (any) — f940.pdf → **here**
 - `employer's annual federal unemployment` (any) — f940.pdf → **here**
 - `form w-3` (any) — W-3.pdf (d62) → ?; W-3.pdf (d73) → **here**; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?
@@ -492,7 +492,7 @@ Reached, but proven nothing: the cheapest placements to add.
 - `corporation estimated tax` (any) — corporation estimated tax voucher.pdf (d73) → **here**
 - `estimated tax voucher` (any) — corporation estimated tax voucher.pdf (d73) → **here**; estimated tax voucher 4th quarter.pdf (d73) → ?
 - `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → **here**; estimated payments made schedule.xlsx (d73) → ?
-- `estimated tax payments made` (any) — organizer with every line.pdf (d66) → ?; corporate estimated tax payments made.xlsx (d73) → **here**
+- `estimated tax payments made` (any) — organizer with every line.pdf (d66) → ?; corporate estimated tax payments made.xlsx (d73) → **here**; f1041t.pdf → ?
 
 ### G01 — Shareholder List & Ownership Changes
 
@@ -519,7 +519,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — Prior-Year Federal & State S-Corp Returns
 
-- `income tax return for an s corporation + under penalties of perjury | franchise or income tax return` (required) — 2024 1120-S.pdf (d62) → **here**; 2024 1120-S dropped by the owner.pdf (d65) → ?; CA 100S 2024.pdf (d90) → **here**; f1120s.pdf → **here**
+- `income tax return for an s corporation + under penalties of perjury | franchise or income tax return` (required) — 2024 1120-S.pdf (d62) → **here**; 2024 1120-S dropped by the owner.pdf (d65) → ?; CA 100S 2024.pdf (d90) → **here**; ca100s.pdf → **here**; f1120s.pdf → **here**
 
 ### A02 — Trial Balance - Year-End
 
@@ -585,8 +585,8 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### E01 — Payroll Tax Returns - Forms 941 & W-3
 
-- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → **here**; f941.pdf → **here**
-- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → **here**; f941.pdf → **here**
+- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → **here**; f941.pdf → **here**; f941x.pdf → **here**
+- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → **here**; f941.pdf → **here**; f941x.pdf → **here**
 - `form 940` (any) — f940.pdf → **here**
 - `employer's annual federal unemployment` (any) — f940.pdf → **here**
 - `form w-3` (any) — W-3.pdf (d62) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → **here**; W-3.pdf (d73) → ?
@@ -674,7 +674,7 @@ Reached, but proven nothing: the cheapest placements to add.
 - `donor list` (any) — *unreached*
 - `donor detail` (any) — donor detail.xlsx (d73) → **here**
 - `contributions by donor` (any) — *unreached*
-- `schedule b` (any) — 2024 1040 with schedules.pdf (d63) → ?; schedule b support workbook.xlsx (d73) → **here**; f1040sb.pdf → ?; f1041.pdf → ?; f1065.pdf → ?; f1099div.pdf → ?; f1099oid.pdf → ?; f1120s.pdf → ?; f941.pdf → G01; f990.pdf → A01
+- `schedule b` (any) — 2024 1040 with schedules.pdf (d63) → ?; schedule b support workbook.xlsx (d73) → **here**; ca568.pdf → ?; f1040c.pdf → ?; f1040sb.pdf → ?; f1041.pdf → ?; f1065.pdf → ?; f1099div.pdf → ?; f1099oid.pdf → ?; f1120l.pdf → ?; f1120pc.pdf → ?; f1120ric.pdf → ?; f1120s.pdf → ?; f941.pdf → G01; f990.pdf → A01
 
 ### D02 — Grants Made - Recipients & Amounts
 
@@ -696,8 +696,8 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### G01 — Payroll Tax Returns - Forms 941 & W-3
 
-- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**
-- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**
+- `form 941` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**; f941x.pdf → **here**
+- `employer's quarterly federal tax return` (any) — 941.pdf (d62) → ?; 941.pdf (d62) → ?; 941.pdf (d73) → ?; f941.pdf → **here**; f941x.pdf → **here**
 - `form 940` (any) — f940.pdf → **here**
 - `employer's annual federal unemployment` (any) — f940.pdf → **here**
 - `form w-3` (any) — W-3.pdf (d62) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → **here**
@@ -705,6 +705,6 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### H01 — Unrelated Business Income Detail
 
-- `form 990-t` (any) — 990-T for 2025.pdf (d73) → **here**
+- `form 990-t` (any) — 990-T for 2025.pdf (d73) → **here**; f990t.pdf → **here**
 - `unrelated business income detail` (any) — UBTI schedule.xlsx (d73) → **here**
 - `ubti schedule` (any) — *unreached*

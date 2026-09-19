@@ -49,7 +49,7 @@ cannot be read is named either way, with its problem: a report that quietly
 skipped it would say the firm has taught nothing where it may have taught
 most.
 
-``--lint`` runs each candidate over the fifty-two IRS forms in ``tests/irs/`` the
+``--lint`` runs each candidate over the blank forms in ``tests/irs/`` the
 way ``tools/vocab_report.py`` runs the catalog's own keywords - the same
 extraction, the same :func:`tracker.content_check.says`, about thirty seconds -
 and reports which forms would say it. Where a form that says it belongs
@@ -276,7 +276,7 @@ def lint(report: Report) -> Report:
     """Mark every candidate the IRS corpus says, and refuse the ones that would misfile.
 
     The corpus and the reading are ``tools/vocab_report.py``'s: the
-    fifty-two forms in ``tests/irs/`` extracted once, then each keyword tested with
+    blank forms in ``tests/irs/`` extracted once, then each keyword tested with
     ``says()`` against the whole text, which is how the router and the scanner
     read. A form that says the keyword and belongs elsewhere in one of the
     row's matching catalogs is a placement ``tests/test_irs_forms.py`` already
