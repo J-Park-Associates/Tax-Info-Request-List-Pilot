@@ -69,6 +69,17 @@ BEHIND = "behind"
 UNKNOWN = "unknown"
 STATES = (CURRENT, BEHIND, UNKNOWN)
 
+#: What the machine keeps about an engagement, in the words the owner
+#: settled on 2026-09-19: **the record** is the journal
+#: (``tracker.ledger``) and the store (``tracker.store``) together; the
+#: *ledger* is the journal alone and the *store* is the database alone.
+#: Standing rule 2 says "every move is recorded in the record" and fills
+#: the phrase from here, because it used to name the index workbook and
+#: there is no such file any more (decision 102). One home for the phrase: the
+#: rule, the runbook, the README and ``docs/storage.md`` all use these
+#: words and ``tests/test_single_source.py`` holds them to it.
+THE_RECORD = "the record"
+
 # ---------------------------------------------------------------- evidence ----
 
 #: Which of the manifest row's rules found the term. ``required`` and ``any``

@@ -289,10 +289,15 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
     chooses. But a document that arrived and fitted nowhere is exactly the
     gap next year's list should close.
     """
-    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, read_index
+    from tracker.filer import NEEDS_REVIEW, ensure, read_index
 
     try:
-        rows = read_index(prior_dir / INDEX_FILENAME, quarantine=False)  # a rollover only reads the prior year
+        # A rollover only reads the prior year, and it reads it without
+        # touching it: migrate=False leaves a folder that still keeps its
+        # index in a workbook exactly as it is, and takes its rows from
+        # the store built out of the record beside it.
+        ensure(prior_dir, migrate=False)
+        rows = read_index(prior_dir)
     except Exception:  # an unreadable index must never block a rollover
         return []
     seen: dict[str, str] = {}

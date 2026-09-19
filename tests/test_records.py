@@ -147,7 +147,7 @@ def test_the_engagement_labels_name_exactly_the_engagement_records_fields():
 #: re-exports is that these exact names go on working, and a list computed
 #: from the modules would pass whatever they happen to say today.
 RE_EXPORTED = {
-    filer: ("IndexEntry", "INDEX_LAYOUT", "INDEX_COLUMNS", "ledger_key",
+    filer: ("IndexEntry", "INDEX_LAYOUT", "ledger_key",
             "Evidence", "format_evidence", "parse_evidence"),
     content_check: ("Evidence", "EVIDENCE_RULES", "EVIDENCE_PLACES",
                     "RULE_REQUIRED", "RULE_ANY", "RULE_DATE", "RULE_FILENAME", "RULE_REFUSED",

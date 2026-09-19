@@ -19,7 +19,7 @@ module:
   and status decision comes from deterministic rules in the manifest.
 - **Originals are never altered.** Files are moved byte for byte under their
   own names into `Shared/PBC/`; all work happens on copies, and every move is
-  recorded in `_index.xlsx`.
+  recorded in the record.
 - **Nothing is guessed.** A document is filed only when exactly one request
   accepts it - or, when one document names several forms as itself, when each
   of those forms is accepted by exactly one request. Ambiguous, contested and
@@ -42,10 +42,10 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 ```
 {EngagementName}/
 ├── _manifest.xlsx        ← accountant-owned: requests, rules, statuses
-├── _index.xlsx           ← every original: where it went, what it became
-├── _index.pending.json   ← only while Excel has the index open; merged next run
+├── _ledger.jsonl         ← the machine's own record: every original, where it went, what it became
 ├── _content_cache.json   ← verdict cache (no client text is ever stored)
 ├── _manifest.pending.json← statuses a locked Excel kept out of the sheet, merged next write
+├── Status Report.html    ← this engagement on one page, redrawn by every pass
 ├── Prepared/             ← the firm's working set (the client never sees it)
 │   ├── A01 - W-2 Wage Statements - All Employers/
 │   │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
@@ -55,6 +55,13 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
     └── PBC/              ← their originals: same names, same bytes
         └── scan0012.pdf
 ```
+
+The index used to be a workbook (`_index.xlsx`) beside the manifest.
+Decision 102 moved it into the record: the journal above, folded into one
+database on the machine that runs the schedule
+([docs/storage.md](docs/storage.md)). A folder that still has the workbook
+is migrated by its next pass, which renames it `_index.migrated.xlsx` and
+never writes one again.
 
 1. Roll a returning client's list forward from last year (the default), or
    pick the tax form type for a new client — the catalog lives in
@@ -67,13 +74,14 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
    whole job
 5. `python -m tracker.filer <engagement_dir>` — moves each original into
    `Shared/PBC/` untouched, files a renamed copy into the matching
-   `Prepared/` folder, and appends a row to `_index.xlsx`
+   `Prepared/` folder, and records what it did in the engagement's record
 6. `python -m tracker.scanner <engagement_dir>` — validates `Prepared/` in
    three deterministic tiers (existence → integrity → content
    keywords/dates) and stamps each row with one of the scanner's statuses
    (`Status.ALL` in `tracker/manifest.py`), with plain-English notes
-7. Open the manifest in Excel to see where everything stands, and the index
-   to see how any given file got there
+7. Open the manifest in Excel to see where everything stands, and the
+   Status Report (double-click it; it is a web page) to see how any given
+   file got there
 8. `python -m tracker.reminder <engagement_dir>` — drafts the "still waiting
    on these" email from what the scanner found. **It only drafts it** — there
    is no SMTP anywhere in the module; a person reads it, edits it and sends it

@@ -261,20 +261,66 @@ def test_a_rebuild_run_twice_says_and_holds_exactly_the_same(conn, root, engagem
     assert first == second
 
 
-def test_a_row_only_the_workbook_holds_is_taken_from_it_and_marked_as_the_workbooks(
+def test_a_reader_finding_no_rows_at_all_builds_them_from_the_journal_alone(
         conn, root, engagement):
+    """What ``read_index()`` does before every read: the store is a
+    derivation of the journal, so a database that has never seen this
+    engagement is made to describe it without opening a workbook, taking a
+    lock or writing a byte in the folder."""
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
-    # A folder that has been running a season: the index is full, the record
-    # has not been invented yet.
-    ledger.path_for(engagement).unlink()
-    assert read_index(engagement / INDEX_FILENAME)
+    recorded = len(ledger.read_events(engagement))
+    fresh = store.open(tmp_store(engagement))
+    try:
+        assert store.documents(fresh, engagement) == []
 
-    build(conn, root, engagement)
+        assert store.follow_the_journal(fresh, root, engagement) == recorded
 
-    stored = conn.execute("SELECT key, seq FROM documents").fetchall()
-    assert len(stored) == 1 and stored[0]["seq"] == store.WORKBOOK_SEQ == 0
-    assert said(conn, root, engagement) == []
+        rows = store.documents(fresh, engagement)
+        assert [row["pbc_location"] for row in rows] == [
+            entry.pbc_location for entry in read_index(engagement)]
+        # The person's half is left blank on purpose: the journal cannot
+        # answer for it, and an empty digest is how ensure() knows to read
+        # the sheet.
+        assert fresh.execute("SELECT manifest_digest FROM engagements").fetchone()[0] == ""
+        assert fresh.execute("SELECT COUNT(*) FROM requests").fetchone()[0] == 0
+        # And again is a digest of the journal and nothing else.
+        assert store.follow_the_journal(fresh, root, engagement) == recorded
+    finally:
+        fresh.close()
+
+
+def tmp_store(engagement: Path) -> Path:
+    return engagement.parent.parent / "another" / store.STORE_FILENAME
+
+
+def test_one_process_has_one_connection_and_a_second_file_is_refused(tmp_path):
+    """One store per process: every writer deep in the package asks for the
+    connection by name rather than being handed one, so two files open at
+    once would mean two answers to the same question."""
+    first = store.connect()
+    assert store.connect() is first                 # the same one, not another
+
+    with pytest.raises(store.StoreError, match="close"):
+        store.connect(tmp_path / "elsewhere" / store.STORE_FILENAME)
+
+    store.close()
+    second = store.connect(tmp_path / "elsewhere" / store.STORE_FILENAME)
+    assert second is not first
+    store.close()
+
+
+def test_the_store_is_the_one_the_environment_names(tmp_path, monkeypatch):
+    """The suite gives every test its own database this way, and a person
+    asking a question of a copy does the same."""
+    named = tmp_path / "somewhere else" / store.STORE_FILENAME
+    monkeypatch.setenv(store.ENV_STORE, str(named))
+    store.close()
+
+    assert store.store_path() == named
+    store.connect().execute("SELECT 1")
+    assert named.exists()
+    store.close()
 
 
 def test_a_row_the_record_holds_wins_over_the_workbooks_own_reading(conn, root, by_hand):

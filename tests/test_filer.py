@@ -2,7 +2,15 @@
 
 The promises being tested: the client's original is preserved byte-for-byte
 under its own name in PBC, a renamed working copy appears in Prepared, every
-decision is written to the index, and running twice changes nothing.
+decision is recorded, and running twice changes nothing.
+
+Since decision 102 "recorded" means the engagement's own record and the
+store, in one transaction: there is no index workbook, no snapshot sidecar
+and nothing deferred, so the tests that proved that machinery are gone with
+it. What is here instead is the migration - one pass over a folder that
+still has an ``_index.xlsx``, which is the last time this code will ever
+read one - and the claim that every decision is one call and one
+transaction.
 """
 
 import datetime as dt
@@ -12,22 +20,26 @@ import sys
 import pytest
 from openpyxl import load_workbook
 
+from tests.conftest import write_a_legacy_index
 from tests.samples import col
 from tests.test_scanner import text_pdf
+from tracker import ledger, store
 from tracker.filer import (
     DUPLICATE,
     FILED,
-    INDEX_COLUMNS,
     INDEX_FILENAME,
     INDEX_LAYOUT,
+    INDEX_MIGRATED_FILENAME,
     INDEX_PENDING_FILENAME,
+    INDEX_PENDING_MIGRATED_FILENAME,
     INDEX_SHEET,
     NEEDS_REVIEW,
+    FilingError,
     IndexEntry,
+    ensure,
     file_drops,
     prepared_name_for,
     read_index,
-    read_index_from_workbook,
 )
 from tracker.manifest import COL_DOCUMENT, SHEET_NAME, TEMP_SUFFIX, RequestItem, create_template
 from tracker.router import UNMATCHED
@@ -74,6 +86,17 @@ def pbc(engagement):
     return engagement / SHARED_DIR_NAME / PBC_DIR_NAME
 
 
+def a_row(name, decision=FILED):
+    """One index row as an old workbook held it."""
+    return IndexEntry(
+        received=DAY1.isoformat(), original_name=name, size_kb=1.0, digest=f"digest-of-{name}",
+        identifier="C01" if decision == FILED else "",
+        prepared_location=f"{PREPARED_DIR_NAME}/C01/{name}" if decision == FILED else "",
+        pbc_location=f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/{name}",
+        decision=decision, reason="content matched" if decision == FILED else UNMATCHED,
+    )
+
+
 def prepared(engagement, folder_prefix):
     root = engagement / PREPARED_DIR_NAME
     return next(p for p in root.iterdir() if p.name.startswith(folder_prefix))
@@ -106,7 +129,7 @@ def test_file_is_sorted_renamed_and_indexed(engagement):
     assert entry.pbc_location == f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/scan0012.pdf"
     assert entry.prepared_location.endswith("A01 - W-2 Wage Statements - TY2025.pdf")
 
-    rows = read_index(engagement / INDEX_FILENAME)
+    rows = read_index(engagement)
     assert [r.original_name for r in rows] == ["scan0012.pdf"]
     assert rows[0].digest == entry.digest
 
@@ -250,21 +273,21 @@ def test_dry_run_moves_nothing(engagement):
     assert not (engagement / INDEX_FILENAME).exists()
 
 
-def test_a_dry_run_never_quarantines_a_corrupt_index_sidecar(engagement, caplog):
-    # "Moves nothing" includes the sidecar: a preview must not rename a file
-    # a real run would have moved aside as evidence.
-    from tracker.manifest import CORRUPT_SUFFIX
-
-    sidecar = engagement / INDEX_PENDING_FILENAME
-    sidecar.write_text("{not json", encoding="utf-8")
+def test_a_dry_run_never_migrates_a_folder_that_still_has_an_index_workbook(engagement):
+    """"Moves nothing" includes the migration: a preview must not rename
+    the workbook, append to the record or leave the folder any different
+    from how it found it."""
+    write_a_legacy_index(engagement, [a_row("older.pdf")])
+    before = sorted(p.name for p in engagement.iterdir())
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
 
     report = file_drops(engagement, today=DAY1, dry_run=True)
 
     assert len(report.filed) == 1
-    assert sidecar.read_text(encoding="utf-8") == "{not json"
-    assert list(engagement.glob(f"*{CORRUPT_SUFFIX}")) == []
-    assert "ignored for this read" in caplog.text
+    assert (engagement / INDEX_FILENAME).exists()
+    assert not (engagement / INDEX_MIGRATED_FILENAME).exists()
+    assert sorted(p.name for p in engagement.iterdir()) == before
+    assert ledger.read_events(engagement) == []
 
 
 def test_filing_leaves_verdicts_the_scan_reuses(engagement, monkeypatch):
@@ -290,30 +313,22 @@ def test_filing_leaves_verdicts_the_scan_reuses(engagement, monkeypatch):
 # --------------------------------------------------------------------- index ----
 
 
-def test_index_workbook_is_readable_in_excel(engagement):
-    from tracker.filer import INDEX_COLUMNS, INDEX_LAYOUT
-
+def test_no_pass_leaves_an_index_workbook_behind(engagement):
+    """Decision 102: the index is the record, and there is no file beside
+    the engagement for Excel to hold, sort, re-type or save stale."""
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
-    wb = load_workbook(engagement / INDEX_FILENAME)
-    ws = wb[INDEX_SHEET]
-    headers = [c.value for c in ws[1]]
-    assert headers == list(INDEX_COLUMNS)
-    # Read the row by header name, the way the filer itself reads it back.
-    row = dict(zip(headers, [c.value for c in ws[2]], strict=True))
-    assert row[INDEX_LAYOUT["decision"][0]] == FILED
-    assert row[INDEX_LAYOUT["identifier"][0]] == "A01"
-    assert row[INDEX_LAYOUT["prepared_location"][0]].endswith(".pdf")
-    assert ws.freeze_panes == "A2"
-    wb.close()
+
+    assert not (engagement / INDEX_FILENAME).exists()
+    assert not (engagement / INDEX_PENDING_FILENAME).exists()
+    assert [e.identifier for e in read_index(engagement)] == ["A01"]
 
 
-def test_an_index_written_with_older_columns_still_reads(tmp_path):
+def test_an_index_workbook_written_with_older_columns_still_migrates(engagement):
     # Filed As and Document were stored copies and are gone; Candidates is
-    # new. An index from before either change reads by header name.
+    # new. A workbook from before either change reads by header name, which
+    # is what the migration needs of it.
     from openpyxl import Workbook
-
-    from tracker.filer import read_index
 
     wb = Workbook()
     ws = wb.active
@@ -324,9 +339,11 @@ def test_an_index_written_with_older_columns_still_reads(tmp_path):
                "A01 - W-2 Wage Statements - TY2025.pdf",
                f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements/A01 - W-2 Wage Statements - TY2025.pdf",
                f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2.pdf", FILED, "content matched"])
-    path = tmp_path / INDEX_FILENAME
-    wb.save(path)
-    [entry] = read_index(path)
+    wb.save(engagement / INDEX_FILENAME)
+
+    ensure(engagement)
+
+    [entry] = read_index(engagement)
     assert entry.identifier == "A01" and entry.decision == FILED
     assert entry.filed_as == "A01 - W-2 Wage Statements - TY2025.pdf"   # derived, not stored
     assert entry.candidates == ""
@@ -341,7 +358,7 @@ def test_the_routers_candidates_travel_as_data_in_the_index(engagement):
     report = file_drops(engagement, today=DAY1)
     [parked] = report.review
     assert parked.candidates == "A01"
-    assert read_index(engagement / INDEX_FILENAME)[0].candidates == "A01"
+    assert read_index(engagement)[0].candidates == "A01"
 
 
 def test_a_filed_row_and_a_parked_row_both_say_what_the_rules_saw(engagement):
@@ -352,7 +369,7 @@ def test_a_filed_row_and_a_parked_row_both_say_what_the_rules_saw(engagement):
     drop(engagement, "old.pdf", "Form W-2 Wage and Tax Statement 2024")   # contested: wrong year
     file_drops(engagement, today=DAY1)
 
-    by_name = {e.original_name: e for e in read_index(engagement / INDEX_FILENAME)}
+    by_name = {e.original_name: e for e in read_index(engagement)}
     for name, decision in (("w2.pdf", FILED), ("old.pdf", NEEDS_REVIEW)):
         entry = by_name[name]
         assert entry.decision == decision
@@ -362,25 +379,6 @@ def test_a_filed_row_and_a_parked_row_both_say_what_the_rules_saw(engagement):
         ], name
     # The cell carries the firm's own keyword and nothing the document said.
     assert "W-2@" in by_name["w2.pdf"].evidence
-
-
-def test_the_evidence_column_round_trips_through_the_snapshot_sidecar(tmp_path):
-    from tracker.content_check import RULE_ANY, WHERE_FOOTER, Evidence, format_evidence
-    from tracker.filer import _read_pending_index, _save_pending_index
-
-    entry = IndexEntry(
-        received="2026-01-01", original_name="w2.pdf", size_kb=9.4, digest="abc",
-        identifier="A01", prepared_location="", pbc_location="", decision=NEEDS_REVIEW,
-        reason="matched no request", candidates="A01",
-        evidence=format_evidence({"A01": (Evidence(RULE_ANY, "dividend", WHERE_FOOTER, 3),)}),
-    )
-    path = tmp_path / INDEX_FILENAME
-    _save_pending_index(path, [entry])
-    pending = _read_pending_index(path)
-    assert pending is not None and pending.entries == [entry]
-    assert pending.entries[0].evidence_record == {
-        "A01": (Evidence(RULE_ANY, "dividend", WHERE_FOOTER, 3),),
-    }
 
 
 def test_prepared_name_for_collides_safely():
@@ -404,222 +402,205 @@ def test_dry_run_previews_real_numbering(engagement):
     ]
 
 
-# ------------------------------------------- one bad file never costs the trail ----
+# ------------------------------- the index moves into the record (d102) ----
 
 
-def test_a_locked_index_never_orphans_files_already_moved(engagement, monkeypatch):
-    # Originals are moved into PBC before the index is written. If Excel
-    # holds _index.xlsx, the rows must still be recorded somewhere the next
-    # run reads — a moved file that is nowhere in the index is lost to the
-    # workflow, because PBC is never re-sorted.
-    import tracker.filer as filer_module
+def test_a_folder_that_still_has_an_index_workbook_is_migrated_by_its_next_pass(engagement):
+    """The one time this code will ever read an ``_index.xlsx``.
 
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    drop(engagement, "mortgage.pdf", "Form 1098 Mortgage Interest Statement 2025")
-
-    def locked(wb, path):
-        raise PermissionError(f"[Errno 13] locked: {path}")
-
-    monkeypatch.setattr(filer_module, "save_workbook_atomically", locked)
-    monkeypatch.setattr(filer_module, "LOCK_RETRY_DELAY", 0.001)
-    report = file_drops(engagement, today=DAY1)
-    assert report.handled == 2
-    assert report.index_deferred is True
-    assert (engagement / filer_module.INDEX_PENDING_FILENAME).exists()
-    assert not (engagement / INDEX_FILENAME).exists()
-    # The deferred rows are already visible to whoever reads the index.
-    assert {e.original_name for e in read_index(engagement / INDEX_FILENAME)} == {
-        "w2.pdf", "mortgage.pdf",
-    }
-
-    # Excel closed; the next run has nothing to sort but folds the rows in.
-    monkeypatch.undo()
-    report = file_drops(engagement, today=DAY2)
-    assert report.index_deferred is False
-    assert (engagement / INDEX_FILENAME).exists()
-    assert not (engagement / filer_module.INDEX_PENDING_FILENAME).exists()
-    rows = read_index(engagement / INDEX_FILENAME)
-    assert {e.original_name for e in rows} == {"w2.pdf", "mortgage.pdf"}
-    assert all(e.decision == FILED for e in rows)
-
-
-def test_an_index_held_the_way_excel_holds_one_still_records_every_moved_original(
-    engagement, monkeypatch, held_like_excel,
-):
-    """``test_a_locked_index_never_orphans_files_already_moved``'s twin with a
-    real handle.
-
-    That test raises ``PermissionError`` from the atomic save by hand; this
-    one holds ``_index.xlsx`` the way Excel holds a workbook it has open and
-    proves what Windows does. The first pass writes the index so there is
-    one to hold. With it held, the second pass still moves the original into
-    PBC and files the copy, the workbook keeps its old bytes, no temp file is
-    left beside it, the snapshot sidecar holds every row, and the readers
-    already see both originals. Let the handle go and a pass with nothing to
-    sort lands the snapshot in the workbook and clears it.
+    Every row the workbook held is in the record afterwards, in the order
+    the workbook held it; the workbook and its sidecar are beside the
+    engagement under their migrated names; and the last thing the record
+    says before this pass's own work is that they were moved.
     """
-    import tracker.filer as filer_module
-
+    rows = [a_row("older.pdf"), a_row("oldest.pdf", decision=NEEDS_REVIEW)]
+    write_a_legacy_index(engagement, rows)
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    assert file_drops(engagement, today=DAY1).index_deferred is False
+
+    report = file_drops(engagement, today=DAY1)
+
+    assert report.handled == 1
+    assert not (engagement / INDEX_FILENAME).exists()
+    assert (engagement / INDEX_MIGRATED_FILENAME).exists()
+    assert [e.original_name for e in read_index(engagement)] == [
+        "older.pdf", "oldest.pdf", "w2.pdf"]
+    names = [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)]
+    assert names == [ledger.IMPORTED, ledger.IMPORTED, ledger.MIGRATED, ledger.FILED]
+    migrated = ledger.read_events(engagement)[2]
+    assert migrated[ledger.FILES_KEY] == [INDEX_MIGRATED_FILENAME]
+
+
+def test_the_migration_folds_in_the_snapshot_the_last_run_could_not_land(engagement):
+    """The sidecar may be the only copy of a row the workbook never took,
+    so the migration reads both and renames both."""
+    import json
+
+    from tracker.records import entry_to_json
+
+    write_a_legacy_index(engagement, [a_row("older.pdf")])
+    (engagement / INDEX_PENDING_FILENAME).write_text(
+        json.dumps({"version": 2, "entries": [entry_to_json(a_row("older.pdf")),
+                                              entry_to_json(a_row("deferred.pdf"))]}),
+        encoding="utf-8")
+
+    ensure(engagement)
+
+    assert [e.original_name for e in read_index(engagement)] == ["older.pdf", "deferred.pdf"]
+    assert not (engagement / INDEX_PENDING_FILENAME).exists()
+    assert (engagement / INDEX_PENDING_MIGRATED_FILENAME).exists()
+    assert ledger.read_events(engagement)[-1][ledger.FILES_KEY] == [
+        INDEX_MIGRATED_FILENAME, INDEX_PENDING_MIGRATED_FILENAME]
+
+
+def test_the_migration_is_idempotent_and_a_second_ensure_writes_no_event(engagement):
+    write_a_legacy_index(engagement, [a_row("older.pdf")])
+    ensure(engagement)
+    after = ledger.path_for(engagement).read_bytes()
+    rows = read_index(engagement)
+    files = sorted(p.name for p in engagement.iterdir())
+
+    ensure(engagement)
+    ensure(engagement)
+
+    assert ledger.path_for(engagement).read_bytes() == after
+    assert read_index(engagement) == rows
+    assert sorted(p.name for p in engagement.iterdir()) == files
+
+
+def test_an_engagement_that_never_had_a_workbook_is_simply_created(engagement):
+    """A brand new folder has nothing to migrate and is not treated as if
+    it had: no ``migrated`` event, no rows, no files moved."""
+    assert ensure(engagement) == store.CURRENT
+    assert read_index(engagement) == []
+    assert ledger.read_events(engagement) == []
+    assert not (engagement / INDEX_MIGRATED_FILENAME).exists()
+
+
+def test_an_engagement_whose_record_already_carries_every_row_migrates_the_same_way(engagement):
+    """Ledger-first since decision 88: the workbook contributes nothing,
+    the rows keep the record's order, and nothing is imported twice."""
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    recorded = read_index(engagement)
+    write_a_legacy_index(engagement, recorded)          # the workbook a pass used to leave
+
+    ensure(engagement)
+
+    assert read_index(engagement) == recorded
+    names = [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)]
+    assert names == [ledger.FILED, ledger.MIGRATED]
+    assert (engagement / INDEX_MIGRATED_FILENAME).exists()
+
+
+def test_a_workbook_held_the_way_excel_holds_one_refuses_the_migration_loudly(
+    engagement, held_like_excel,
+):
+    """Excel has the index open when the migration wants to move it aside.
+
+    The rename is the last step, so nothing is half-migrated: the pass
+    fails for this engagement and says why, the workbook keeps its bytes,
+    and the next pass - with the handle let go - does the whole thing.
+    """
+    write_a_legacy_index(engagement, [a_row("older.pdf")])
     index = engagement / INDEX_FILENAME
     before = index.read_bytes()
-    drop(engagement, "mortgage.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
 
-    monkeypatch.setattr(filer_module, "LOCK_RETRY_DELAY", 0.001)   # the retries, not the refusal
     with held_like_excel(index):
-        report = file_drops(engagement, today=DAY2)
-        assert report.handled == 1
-        assert report.index_deferred is True
-        assert index.read_bytes() == before                         # not a byte of it moved
-        assert list(engagement.glob(f"*{TEMP_SUFFIX}")) == []
-        assert (engagement / INDEX_PENDING_FILENAME).exists()
-        assert {p.name for p in pbc(engagement).iterdir()} == {"w2.pdf", "mortgage.pdf"}
-        assert {e.original_name for e in read_index(index)} == {"w2.pdf", "mortgage.pdf"}
+        with pytest.raises(FilingError, match="open in Excel"):
+            file_drops(engagement, today=DAY1)
+        assert index.read_bytes() == before
+        assert not (engagement / INDEX_MIGRATED_FILENAME).exists()
+        assert not any(e[ledger.EVENT_KEY] == ledger.MIGRATED
+                       for e in ledger.read_events(engagement))
 
     report = file_drops(engagement, today=DAY2)
-    assert report.handled == 0
-    assert report.index_deferred is False
-    assert not (engagement / INDEX_PENDING_FILENAME).exists()
-    assert index.read_bytes() != before
-    rows = read_index_from_workbook(index)
-    assert {e.original_name for e in rows} == {"w2.pdf", "mortgage.pdf"}
-    assert all(e.decision == FILED for e in rows)
+
+    assert report.handled == 1
+    assert not index.exists() and (engagement / INDEX_MIGRATED_FILENAME).exists()
+    assert [e.original_name for e in read_index(engagement)] == ["older.pdf", "w2.pdf"]
 
 
-def _lock_the_index(monkeypatch):
-    """Excel has _index.xlsx open: every save of it fails, quickly."""
-    import tracker.filer as filer_module
+def test_a_migrated_workbook_never_overwrites_one_an_earlier_migration_left(engagement):
+    """Nothing this system does deletes a file it did not make."""
+    write_a_legacy_index(engagement, [a_row("older.pdf")])
+    ensure(engagement)
+    write_a_legacy_index(engagement, [a_row("newer.pdf")])      # a second one turned up
+    ensure(engagement)
 
-    def locked(wb, path):
-        raise PermissionError(f"[Errno 13] locked: {path}")
-
-    monkeypatch.setattr(filer_module, "save_workbook_atomically", locked)
-    monkeypatch.setattr(filer_module, "LOCK_RETRY_DELAY", 0.001)
-
-
-def test_a_locked_index_keeps_a_persons_filing_decision(engagement, monkeypatch):
-    # The row a person rewrote is an edit to a row the workbook already
-    # holds. Deferring only the rows past the workbook's end lost it, while
-    # the working copy had already been moved under the canonical name.
-    from tracker.filer import ASSIGNED_BY_PERSON, assign_review_file
-
-    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    parked = file_drops(engagement, today=DAY1).review[0]
-    sidecar = engagement / INDEX_PENDING_FILENAME
-
-    _lock_the_index(monkeypatch)
-    result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
-    assert result.index_deferred is True
-    assert sidecar.exists()
-    assert (engagement / result.entry.prepared_location).exists()
-    [row] = read_index(engagement / INDEX_FILENAME)
-    assert row.decision == FILED and row.identifier == "C01"
-    assert row.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: ")
-    assert row.prepared_location == result.entry.prepared_location
-
-    monkeypatch.undo()                            # Excel closed
-    assert file_drops(engagement, today=DAY2).index_deferred is False
-    assert not sidecar.exists()
-    [row] = read_index(engagement / INDEX_FILENAME)        # the workbook alone now
-    assert row.decision == FILED and row.identifier == "C01"
+    aside = sorted(p.name for p in engagement.glob("_index.migrated*.xlsx"))
+    assert len(aside) == 2 and INDEX_MIGRATED_FILENAME in aside
 
 
-def test_the_pending_index_is_a_versioned_snapshot_of_every_row(engagement, monkeypatch):
-    import json
+def test_read_index_keeps_the_place_of_a_row_that_changed_identity(engagement):
+    """Decision 88's claim, answered from the store: the client renamed an
+    original, the row followed the bytes, and it keeps the place it held -
+    the audit trail is not reordered by a rename."""
+    drop(engagement, "a first.pdf", "Form W-2 Wage and Tax Statement 2025 A")
+    drop(engagement, "b second.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    drop(engagement, "c third.pdf", "Form W-2 Wage and Tax Statement 2025 C")
+    file_drops(engagement, today=DAY1)
+    before = [e.original_name for e in read_index(engagement)]
+    assert before == ["a first.pdf", "b second.pdf", "c third.pdf"]
 
-    from tracker.filer import INDEX_SIDECAR_VERSION
-
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)                     # one row in the workbook
-    drop(engagement, "mortgage.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    _lock_the_index(monkeypatch)
+    (pbc(engagement) / "a first.pdf").rename(pbc(engagement) / "z renamed.pdf")
     file_drops(engagement, today=DAY2)
 
-    payload = json.loads((engagement / INDEX_PENDING_FILENAME).read_text(encoding="utf-8"))
-    assert payload["version"] == INDEX_SIDECAR_VERSION
-    rows = read_index(engagement / INDEX_FILENAME)
-    assert [e["original_name"] for e in payload["entries"]] == [e.original_name for e in rows]
-    assert [e.original_name for e in rows] == ["w2.pdf", "mortgage.pdf"]
+    rows = read_index(engagement)
+    assert [e.original_name for e in rows] == before          # the place, not the new name
+    assert rows[0].pbc_location.endswith("z renamed.pdf")
+    assert list(ledger.fold(ledger.read_events(engagement))) == [
+        e.pbc_location for e in rows]
 
 
-def test_mixed_append_and_edit_survive_a_locked_index(engagement, monkeypatch):
-    from tracker.filer import assign_review_file
+def counted_records(monkeypatch) -> list[tuple]:
+    """Every call to ``store.record``, with the events it was given."""
+    calls: list[tuple] = []
+    real = store.record
+
+    def counting(conn, engagement_dir, *events):
+        calls.append(tuple(e[ledger.EVENT_KEY] for e in events))
+        return real(conn, engagement_dir, *events)
+
+    monkeypatch.setattr(store, "record", counting)
+    return calls
+
+
+def test_filing_a_drop_is_one_call_and_one_transaction(engagement, monkeypatch):
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    calls = counted_records(monkeypatch)
+
+    file_drops(engagement, today=DAY1)
+
+    # In the order the drops were sorted, which is the order they are named.
+    assert calls == [(ledger.PARKED, ledger.FILED)]
+
+
+def test_a_person_filing_dismissing_or_unfiling_is_one_call_each(engagement, monkeypatch):
+    from tracker.filer import assign_review_file, dismiss_review_file, unfile_document
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    parked = file_drops(engagement, today=DAY1).review[0]
+    drop(engagement, "notice.pdf", "an agency notice nothing asks for")
+    parked = {e.original_name: e for e in file_drops(engagement, today=DAY1).review}
+    calls = counted_records(monkeypatch)
 
-    _lock_the_index(monkeypatch)
-    assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)   # an edit
+    assign_review_file(engagement, parked["scan0012.pdf"].pbc_location, "C01", today=DAY2)
+    dismiss_review_file(engagement, parked["notice.pdf"].pbc_location, today=DAY2)
+    unfile_document(engagement, parked["scan0012.pdf"].pbc_location, today=DAY2)
+
+    assert calls == [(ledger.ASSIGNED_BY_PERSON,), (ledger.DISMISSED_BY_PERSON,),
+                     (ledger.UNFILED_BY_PERSON,)]
+
+
+def test_a_pass_that_changed_nothing_records_nothing(engagement, monkeypatch):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY2)                                       # an append
-    by_name = {e.original_name: e for e in read_index(engagement / INDEX_FILENAME)}
-    assert by_name["scan0012.pdf"].decision == FILED and by_name["scan0012.pdf"].identifier == "C01"
-    assert by_name["w2.pdf"].decision == FILED and by_name["w2.pdf"].identifier == "A01"
+    file_drops(engagement, today=DAY1)
+    calls = counted_records(monkeypatch)
 
-    monkeypatch.undo()
     file_drops(engagement, today=DAY2)
-    assert not (engagement / INDEX_PENDING_FILENAME).exists()
-    from openpyxl import load_workbook
-    wb = load_workbook(engagement / INDEX_FILENAME, read_only=True)
-    written = [r for r in wb[INDEX_SHEET].iter_rows(values_only=True)][1:]
-    wb.close()
-    assert sorted((r[1], r[4], r[7]) for r in written) == [
-        ("scan0012.pdf", "C01", FILED), ("w2.pdf", "A01", FILED),
-    ]
 
-
-def test_a_bare_list_sidecar_from_an_older_version_is_appended_once(engagement):
-    import json
-    from dataclasses import asdict
-
-    from tracker.filer import IndexEntry
-
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
-    old_row = IndexEntry(
-        received=DAY1.isoformat(), original_name="older.pdf", size_kb=1.0, digest="abc",
-        identifier="C01", prepared_location="Prepared/C01/x.pdf",
-        pbc_location="Shared/PBC/older.pdf", decision=FILED, reason="",
-    )
-    (engagement / INDEX_PENDING_FILENAME).write_text(json.dumps([asdict(old_row)]), encoding="utf-8")
-
-    assert [e.original_name for e in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf", "older.pdf"]
-    assert file_drops(engagement, today=DAY2).index_deferred is False       # nothing to sort
-    assert not (engagement / INDEX_PENDING_FILENAME).exists()
-    assert [e.original_name for e in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf", "older.pdf"]
-
-
-def test_a_sidecar_of_an_unknown_version_is_quarantined_not_guessed(engagement, caplog):
-    import json
-
-    from tracker.manifest import CORRUPT_SUFFIX
-
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
-    sidecar = engagement / INDEX_PENDING_FILENAME
-    sidecar.write_text(json.dumps({"version": 99, "entries": []}), encoding="utf-8")
-
-    assert [e.original_name for e in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
-    assert not sidecar.exists()
-    assert sidecar.with_suffix(CORRUPT_SUFFIX).exists()
-    assert "version 99" in caplog.text
-
-
-def test_deferred_rows_are_folded_in_even_when_the_only_drop_is_still_syncing(engagement, monkeypatch):
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    _lock_the_index(monkeypatch)
-    assert file_drops(engagement, today=DAY1).index_deferred is True
-    monkeypatch.undo()
-
-    waiting = drop(engagement, "big.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    monkeypatch.setattr("tracker.filer.is_cloud_placeholder", lambda p: True)
-    report = file_drops(engagement, today=DAY2)
-
-    assert report.waiting == [waiting] and report.index_deferred is False
-    assert not (engagement / INDEX_PENDING_FILENAME).exists()
-    assert (engagement / INDEX_FILENAME).exists()
-    assert [e.original_name for e in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+    assert calls == []
 
 
 def test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed(engagement, monkeypatch):
@@ -645,7 +626,7 @@ def test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed(engagemen
     assert {p.name for p in pbc(engagement).iterdir()} == {
         "a-w2.pdf", "b-mortgage.pdf", "c-w2.pdf",
     }
-    rows = {e.original_name: e for e in read_index(engagement / INDEX_FILENAME)}
+    rows = {e.original_name: e for e in read_index(engagement)}
     assert set(rows) == {"a-w2.pdf", "b-mortgage.pdf", "c-w2.pdf"}
     assert rows["b-mortgage.pdf"].decision == NEEDS_REVIEW
     assert "No space left" in rows["b-mortgage.pdf"].reason
@@ -676,7 +657,7 @@ def test_a_drop_still_held_open_is_left_for_the_next_run(engagement, monkeypatch
     assert report.errors[0].left_in_place is True
     assert (engagement / SHARED_DIR_NAME / "a-w2.pdf").exists()  # untouched
     assert not any("a-w2" in p.name for p in (engagement / SHARED_DIR_NAME / PBC_DIR_NAME).iterdir())
-    assert {e.original_name for e in read_index(engagement / INDEX_FILENAME)} == {
+    assert {e.original_name for e in read_index(engagement)} == {
         "b-mortgage.pdf",
     }
 
@@ -775,7 +756,7 @@ def test_a_file_dropped_straight_into_pbc_is_filed_and_indexed(engagement):
     report = file_drops(engagement, today=DAY1)
     assert [e.original_name for e in report.filed] == ["w2.pdf"]
     assert original.read_bytes() == before                    # not moved, not touched
-    rows = read_index(engagement / INDEX_FILENAME)
+    rows = read_index(engagement)
     assert rows[0].pbc_location == f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2.pdf"
     assert (engagement / rows[0].prepared_location).exists()
     # Recorded now, so the next run leaves it alone.
@@ -816,24 +797,6 @@ def test_empty_client_folders_are_cleared_after_sorting(engagement):
     assert left == [PBC_DIR_NAME, "keep"]
 
 
-def test_a_hand_edited_index_cell_does_not_stop_the_next_run(engagement):
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
-    wb = load_workbook(engagement / INDEX_FILENAME)
-    size_col = INDEX_COLUMNS.index(INDEX_LAYOUT["size_kb"][0]) + 1
-    wb.active.cell(row=2, column=size_col, value="about 9 KB")
-    wb.save(engagement / INDEX_FILENAME)
-    wb.close()
-    drop(engagement, "jane.pdf", "Form W-2 Wage and Tax Statement 2025 Jane")
-    assert [e.original_name for e in file_drops(engagement, today=DAY2).filed] == ["jane.pdf"]
-    # Decision 88: the cell is not only survived, it is put back. The reader
-    # answers from the engagement's record, which never held what was typed
-    # over it, and the pass rewrote the workbook from there.
-    recorded = read_index(engagement / INDEX_FILENAME)[0].size_kb
-    assert recorded > 0.0
-    assert read_index_from_workbook(engagement / INDEX_FILENAME)[0].size_kb == recorded
-
-
 # ------------------------------------------------- a person files a parked file ----
 
 
@@ -853,7 +816,7 @@ def test_assigning_a_parked_file_moves_it_under_the_canonical_name(engagement):
     assert working.name == "C01 - Mortgage Interest Statement - TY2025.pdf"
     assert working.read_bytes() == (engagement / parked.pbc_location).read_bytes()
     assert (engagement / parked.pbc_location).exists()               # original untouched
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == FILED and row.identifier == "C01"
     assert row.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: ")
     assert result.keyword == "Home Lending" and result.keyword_note == ""
@@ -917,78 +880,6 @@ def test_assigning_still_files_when_excel_holds_the_manifest(engagement, monkeyp
 # ---------------------------------------------- what a review found (decision 54) ----
 
 
-def _age(path, seconds):
-    """Push a file's mtime into the past so a later write is unmistakably newer."""
-    old = path.stat().st_mtime - seconds
-    os.utime(path, (old, old))
-
-
-def test_a_snapshot_the_workbook_has_outlived_does_not_hide_the_workbooks_rows(engagement, monkeypatch):
-    # The write landed but the sidecar could not be deleted (something held
-    # it open). The workbook is the newer of the two; a later run must not
-    # read the stale snapshot, re-route the original the workbook alone
-    # knows, and copy it a second time.
-    import tracker.filer as filer_module
-
-    drop(engagement, "w2-a.pdf", "Form W-2 Wage and Tax Statement 2025 alpha")
-    _lock_the_index(monkeypatch)
-    file_drops(engagement, today=DAY1)                    # snapshot: [w2-a]
-    monkeypatch.undo()
-    sidecar = engagement / INDEX_PENDING_FILENAME
-    assert sidecar.exists()
-
-    def held(path):
-        return False                                       # unlink refused
-    monkeypatch.setattr(filer_module, "_discard_pending_index", held)
-    drop(engagement, "w2-b.pdf", "Form W-2 Wage and Tax Statement 2025 beta")
-    _age(sidecar, 60)
-    report = file_drops(engagement, today=DAY2)           # workbook: [w2-a, w2-b]
-    assert report.index_deferred is False and sidecar.exists()
-    monkeypatch.undo()
-
-    rows = read_index(engagement / INDEX_FILENAME)
-    assert [r.original_name for r in rows] == ["w2-a.pdf", "w2-b.pdf"]
-    assert file_drops(engagement, today=DAY2).handled == 0    # nothing re-sorted
-    assert len(list(prepared(engagement, "A01").iterdir())) == 2
-
-
-def test_a_persons_decision_survives_excel_saving_the_stale_workbook(engagement, monkeypatch):
-    # Excel saved the (older) workbook after the filing was deferred: the
-    # workbook is newer, but its parked row is not the truth.
-    from tracker.filer import assign_review_file
-
-    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    parked = file_drops(engagement, today=DAY1).review[0]
-    _lock_the_index(monkeypatch)
-    assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
-    monkeypatch.undo()
-    _age(engagement / INDEX_PENDING_FILENAME, 60)
-    os.utime(engagement / INDEX_FILENAME, None)           # Excel's save, no change to the row
-    [row] = read_index(engagement / INDEX_FILENAME)
-    assert row.decision == FILED and row.identifier == "C01"
-
-
-def test_a_sidecar_that_cannot_be_read_stops_the_run_rather_than_being_guessed_past(engagement, monkeypatch):
-    import tracker.filer as filer_module
-
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    _lock_the_index(monkeypatch)
-    file_drops(engagement, today=DAY1)
-    monkeypatch.undo()
-    sidecar = engagement / INDEX_PENDING_FILENAME
-    real = filer_module.Path.read_text
-
-    def unreadable(self, *args, **kwargs):
-        if self == sidecar:
-            raise OSError("[Errno 5] Input/output error")
-        return real(self, *args, **kwargs)
-    monkeypatch.setattr(filer_module.Path, "read_text", unreadable)
-    with pytest.raises(OSError, match="could not read"):
-        read_index(engagement / INDEX_FILENAME)
-    monkeypatch.undo()
-    assert sidecar.exists()                               # not quarantined
-
-
 def test_an_original_replaced_under_its_own_name_is_said_out_loud_every_run(engagement):
     from tracker.filer import REPLACED_IN_PBC
 
@@ -1002,24 +893,23 @@ def test_an_original_replaced_under_its_own_name_is_said_out_loud_every_run(enga
         assert error.name == "w2.pdf" and error.left_in_place
         assert error.error == REPLACED_IN_PBC.format(
             location=first.pbc_location, received=DAY1.isoformat(), prepared=first.prepared_location)
-    assert len(read_index(engagement / INDEX_FILENAME)) == 1
+    assert len(read_index(engagement)) == 1
 
 
 def test_a_run_killed_after_copying_does_not_leave_a_second_copy_behind(engagement, monkeypatch):
     # The working copy was made, the process died before the index recorded
     # it. The next run finds the original unrecorded and reuses the copy.
-    import tracker.filer as filer_module
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
 
     def killed(*args, **kwargs):
         raise KeyboardInterrupt
-    monkeypatch.setattr(filer_module, "write_index", killed)
+    monkeypatch.setattr(store, "record", killed)
     with pytest.raises(KeyboardInterrupt):
         file_drops(engagement, today=DAY1)
     monkeypatch.undo()
-    assert not (engagement / INDEX_FILENAME).exists()
+    assert read_index(engagement) == []
 
     report = file_drops(engagement, today=DAY2)
     assert len(report.filed) == 1 and len(report.review) == 1
@@ -1027,8 +917,7 @@ def test_a_run_killed_after_copying_does_not_leave_a_second_copy_behind(engageme
     assert [p.name for p in prepared(engagement, REVIEW_DIR_NAME).iterdir()] == ["scan0012.pdf"]
 
 
-def test_a_failed_index_write_puts_the_filed_copy_back_where_the_index_says(engagement, monkeypatch):
-    import tracker.filer as filer_module
+def test_a_failed_record_puts_the_filed_copy_back_where_the_record_says(engagement, monkeypatch):
     from tracker.filer import assign_review_file
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
@@ -1036,12 +925,9 @@ def test_a_failed_index_write_puts_the_filed_copy_back_where_the_index_says(enga
 
     def disk_full(*args, **kwargs):
         raise OSError(28, "No space left on device")
-    # A full disk takes the workbook and the snapshot alike (the tenth
-    # reading made every write failure retry and then snapshot, as Excel's
-    # lock always did); with nowhere to write, the error is the caller's.
-    monkeypatch.setattr(filer_module, "_save_index", disk_full)
-    monkeypatch.setattr(filer_module, "_save_pending_index", disk_full)
-    monkeypatch.setattr(filer_module.time, "sleep", lambda _: None)
+    # One transaction: it either committed or it did not, and it did not,
+    # so the copy goes back to review and a retry files it once.
+    monkeypatch.setattr(store, "record", disk_full)
     with pytest.raises(OSError):
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     monkeypatch.undo()
@@ -1055,7 +941,6 @@ def test_a_failed_index_write_puts_the_filed_copy_back_where_the_index_says(enga
 
 
 def test_a_file_still_being_written_is_reported_as_waiting_not_passed_over(engagement):
-    from tracker.manifest import TEMP_SUFFIX
 
     half = engagement / SHARED_DIR_NAME / f"upload{TEMP_SUFFIX}"
     half.write_bytes(b"%PDF-1.4 partial")
@@ -1091,6 +976,8 @@ def test_an_original_the_sync_client_dehydrated_is_not_downloaded_to_be_checked(
     monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p.name == "w2.pdf")
 
     def never(path):
+        if path.name == MANIFEST_FILENAME:
+            return "the rules workbook is not the client's document"
         raise AssertionError(f"hashed {path.name}")
     monkeypatch.setattr(filer_module, "sha256_of", never)
     assert file_drops(engagement, today=DAY2).errors == []
@@ -1112,23 +999,25 @@ def test_a_copy_that_fails_half_way_leaves_no_truncated_working_copy(engagement,
     assert (pbc(engagement) / "w2.pdf").exists()                    # the record is safe
 
 
-def test_an_interrupt_after_the_index_landed_does_not_undo_the_filing(engagement, monkeypatch):
-    # write_index wrote the workbook; the interrupt hit while the sidecar
-    # was being removed. The index says Filed at the request folder, so
-    # the copy stays there - moving it back would leave the index lying.
-    import tracker.filer as filer_module
+def test_an_interrupt_after_the_record_landed_does_not_undo_the_filing(engagement, monkeypatch):
+    # The transaction committed and then the interrupt hit. The record says
+    # Filed at the request folder, so the copy stays there - moving it back
+    # would leave the record lying about where the document is.
     from tracker.filer import assign_review_file
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = file_drops(engagement, today=DAY1).review[0]
 
-    def interrupted(path):
+    real = store.record
+
+    def interrupted(*args, **kwargs):
+        real(*args, **kwargs)
         raise KeyboardInterrupt
-    monkeypatch.setattr(filer_module, "_discard_pending_index", interrupted)
+    monkeypatch.setattr(store, "record", interrupted)
     with pytest.raises(KeyboardInterrupt):
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     monkeypatch.undo()
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == FILED and (engagement / row.prepared_location).exists()
     assert not (engagement / parked.prepared_location).exists()
 
@@ -1197,7 +1086,7 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
     result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     original = engagement / parked.pbc_location
     assert result.entry.digest == sha256_of(original) and result.entry.size_kb > 0
-    (row,) = read_index(engagement / INDEX_FILENAME)
+    (row,) = read_index(engagement)
     assert row.digest == result.entry.digest
 
     # And a pass, with nothing to sort, fills in the row the earlier pass could not.
@@ -1205,9 +1094,9 @@ def test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them
     monkeypatch.setattr(filer_module, "sha256_of", unreadable_once)
     file_drops(engagement, today=DAY2)
     monkeypatch.undo()
-    assert [r.digest for r in read_index(engagement / INDEX_FILENAME) if r.original_name == "scan0013.pdf"] == [""]
+    assert [r.digest for r in read_index(engagement) if r.original_name == "scan0013.pdf"] == [""]
     file_drops(engagement, today=DAY2)
-    later = next(r for r in read_index(engagement / INDEX_FILENAME) if r.original_name == "scan0013.pdf")
+    later = next(r for r in read_index(engagement) if r.original_name == "scan0013.pdf")
     assert later.digest == sha256_of(engagement / later.pbc_location) and later.size_kb > 0
 
 
@@ -1245,7 +1134,7 @@ def test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded(engag
     text_pdf(engagement / parked["scan0012.pdf"].prepared_location, "nothing the rules recognise, annotated")
 
     report = file_drops(engagement, today=DAY2)
-    rows = {r.original_name: r for r in read_index(engagement / INDEX_FILENAME)}
+    rows = {r.original_name: r for r in read_index(engagement)}
     assert rows["w2.pdf"].digest == "" and rows["scan0012.pdf"].digest == ""              # nothing adopted
     assert rows["scan0013.pdf"].digest == sha256_of(pbc(engagement) / "scan0013.pdf")   # tied: copy and original agree
     assert (engagement / filed.prepared_location).read_bytes() == first_bytes            # untouched
@@ -1282,18 +1171,15 @@ def test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_byt
     assert sha256_of(engagement / row_b.prepared_location) == row_b.digest
 
 
-def test_an_index_whose_header_row_moved_is_read_from_it_and_one_with_none_is_refused(engagement):
-    # The twelfth reading: a header row that was not row 1 (a title typed
-    # above it; Excel sorting with "my data has headers" unchecked) read as
-    # no rows at all, and the next pass rebuilt the workbook without its
-    # history - a person's filing included. The header is found; an index
-    # with rows and no header is refused before anything is moved.
+def test_a_legacy_index_whose_header_row_moved_still_migrates_every_row(engagement):
+    # Decision 69: an index whose header was not the first row (a title
+    # typed above it; Excel sorting with "my data has headers" unchecked)
+    # read as no rows at all. The header is found, and the migration is
+    # the last reading of that workbook there will ever be, so a row it
+    # left behind would be a row nothing could recover.
     from openpyxl import load_workbook
 
-    from tracker.filer import FilingError
-
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    write_a_legacy_index(engagement, [a_row("w2.pdf")])
     index = engagement / INDEX_FILENAME
     wb = load_workbook(index)
     ws = wb[INDEX_SHEET]
@@ -1301,22 +1187,33 @@ def test_an_index_whose_header_row_moved_is_read_from_it_and_one_with_none_is_re
     ws["A1"] = "Smith Family - index of everything received"
     wb.save(index)
     wb.close()
-    assert [r.original_name for r in read_index(index)] == ["w2.pdf"]
-    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    assert file_drops(engagement, today=DAY2).handled == 1
-    rows = read_index(index)
-    assert [r.original_name for r in rows] == ["w2.pdf", "1098.pdf"] and rows[0].received == DAY1.isoformat()
 
+    ensure(engagement)
+
+    assert [r.original_name for r in read_index(engagement)] == ["w2.pdf"]
+    assert (engagement / INDEX_MIGRATED_FILENAME).exists()
+
+
+def test_a_legacy_index_with_rows_and_no_header_refuses_the_migration_by_name(engagement):
+    """Nothing is guessed: a sheet somebody rebuilt by hand is refused,
+    and the pass for that engagement fails rather than migrating half of
+    it or an empty index over the top of it."""
+    from openpyxl import load_workbook
+
+    write_a_legacy_index(engagement, [a_row("w2.pdf")])
+    index = engagement / INDEX_FILENAME
     wb = load_workbook(index)
     wb[INDEX_SHEET].delete_rows(1)                               # the header itself, gone
+    wb.create_sheet("Notes")["A1"] = "a tab of my own"
     wb.save(index)
     wb.close()
-    with pytest.raises(FilingError, match="no header row"):
-        read_index(index)
+
     drop(engagement, "later.pdf", "Form W-2 Wage and Tax Statement 2025 later")
-    with pytest.raises(FilingError, match="no header row"):
+    with pytest.raises(FilingError) as refused:
         file_drops(engagement, today=DAY2)
+    assert "no header row" in str(refused.value) and "Notes" in str(refused.value)
     assert (engagement / SHARED_DIR_NAME / "later.pdf").exists()   # nothing was moved
+    assert index.exists() and not (engagement / INDEX_MIGRATED_FILENAME).exists()
 
 
 def test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone(engagement, monkeypatch):
@@ -1364,24 +1261,23 @@ def test_an_annotated_parked_copy_is_left_behind_and_said_so(engagement):
     assert (engagement / result.entry.prepared_location).read_bytes() == (pbc(engagement) / "scan0012.pdf").read_bytes()
 
 
-def test_a_column_inserted_into_the_index_does_not_read_as_no_rows(engagement):
+def test_a_column_inserted_into_a_legacy_index_does_not_read_as_no_rows(engagement):
     # The eleventh reading: the blank-row test looked at the first physical
     # cell, so one column a person inserted at A read every row as blank,
     # and the next write dropped them all - a person's filing included.
     from openpyxl import load_workbook
 
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    write_a_legacy_index(engagement, [a_row("w2.pdf")])
     wb = load_workbook(engagement / INDEX_FILENAME)
     wb[INDEX_SHEET].insert_cols(1)
     wb[INDEX_SHEET]["A1"] = "Checked"
     wb.save(engagement / INDEX_FILENAME)
     wb.close()
 
-    assert [r.original_name for r in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
     report = file_drops(engagement, today=DAY2)
+
     assert report.handled == 0
-    assert [r.original_name for r in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+    assert [r.original_name for r in read_index(engagement)] == ["w2.pdf"]
 
 
 def test_the_unlistable_walk_covers_the_same_ground_as_the_others(engagement, tmp_path):
@@ -1451,12 +1347,12 @@ def test_a_name_the_index_cannot_hold_is_reported_not_allowed_to_take_the_index_
     report = file_drops(engagement, today=DAY1)
     assert [e.original_name for e in report.filed] == ["w2.pdf"]
     assert [e.left_in_place for e in report.errors] == [True] and "rename it" in report.errors[0].error
-    assert bad.exists() and [r.original_name for r in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+    assert bad.exists() and [r.original_name for r in read_index(engagement)] == ["w2.pdf"]
     # Dropped straight into PBC, it is reported there too and never sorted as a stray.
     bad.rename(pbc(engagement) / bad.name)
     report = file_drops(engagement, today=DAY2)
     assert report.filed == [] and len(report.errors) == 1
-    assert [r.original_name for r in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+    assert [r.original_name for r in read_index(engagement)] == ["w2.pdf"]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="names Windows cannot open")
@@ -1493,7 +1389,7 @@ def test_what_lies_behind_a_junction_is_not_a_drop(engagement, tmp_path):
 def test_a_file_named_like_a_formula_is_recorded_as_its_name(engagement):
     drop(engagement, "=SUM scan.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.original_name == "=SUM scan.pdf"
 
 
@@ -1506,7 +1402,7 @@ def test_assigning_a_replaced_original_is_refused_not_recorded_under_the_old_byt
     text_pdf(pbc(engagement) / "scan0012.pdf", "the client replaced it with something else")
     with pytest.raises(FilingError, match="replaced after it arrived"):
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and row.digest == parked.digest
 
 
@@ -1530,25 +1426,22 @@ def excel_sorted(index, header):
     return [str(row[1] or "") for row in rows]
 
 
-def test_a_sheet_sorted_until_the_header_is_last_keeps_every_row_above_it(engagement):
+def test_a_legacy_sheet_sorted_until_the_header_is_last_migrates_every_row_above_it(engagement):
     # Decision 69 found the header row but read only what was below it. A
     # sort on Received puts the header last - every date sorts before the
-    # word - so the whole index read as no rows, and the next pass rebuilt
-    # it, re-adopting each original as a stray and re-dating the trail.
-    drop(engagement, "w2 employer a.pdf", "Form W-2 Wage and Tax Statement 2025 A")
-    drop(engagement, "1098 from the bank.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    file_drops(engagement, today=DAY1)
+    # word - so the whole index read as no rows. The migration is the last
+    # chance those rows have.
+    write_a_legacy_index(engagement, [a_row("w2 employer a.pdf"), a_row("1098 from the bank.pdf")])
     index = engagement / INDEX_FILENAME
 
     order = excel_sorted(index, INDEX_LAYOUT["received"][0])
     assert order[-1] == INDEX_LAYOUT["original_name"][0]         # the header sorted to the bottom
 
-    rows = read_index(index)
-    assert sorted(r.original_name for r in rows) == ["1098 from the bank.pdf", "w2 employer a.pdf"]
     drop(engagement, "w2 employer b.pdf", "Form W-2 Wage and Tax Statement 2025 B")
     report = file_drops(engagement, today=DAY2)
+
     assert report.handled == 1 and report.duplicates == []      # nothing was adopted a second time
-    rows = read_index(index)
+    rows = read_index(engagement)
     assert sorted((r.original_name, r.received) for r in rows) == [
         ("1098 from the bank.pdf", DAY1.isoformat()),
         ("w2 employer a.pdf", DAY1.isoformat()),
@@ -1556,45 +1449,14 @@ def test_a_sheet_sorted_until_the_header_is_last_keeps_every_row_above_it(engage
     ]
 
 
-def test_a_persons_filing_above_a_sorted_header_is_not_undone(engagement):
-    # The same sort on Original Name leaves the header in the middle, so
-    # only the rows above it were dropped - and with them the row a person
-    # filed by hand, whose working copy then satisfied a request that no
-    # index row named.
-    from tracker.filer import ASSIGNED_BY_PERSON, assign_review_file
-
-    drop(engagement, "a bank letter.pdf", "nothing the rules recognise")
-    drop(engagement, "b w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    drop(engagement, "zz 1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    parked = file_drops(engagement, today=DAY1).review[0]
-    assign_review_file(engagement, parked.pbc_location, "C01", today=DAY1)
-    index = engagement / INDEX_FILENAME
-
-    order = excel_sorted(index, INDEX_LAYOUT["original_name"][0])
-    assert order.index(INDEX_LAYOUT["original_name"][0]) == 2    # the header sorted into the middle
-
-    assert [r.original_name for r in read_index(index)] == [
-        "a bank letter.pdf", "b w2.pdf", "zz 1098.pdf",
-    ]
-    file_drops(engagement, today=DAY2)
-    rows = read_index(index)
-    (person,) = [r for r in rows if r.reason.startswith(ASSIGNED_BY_PERSON)]
-    assert person.original_name == "a bank letter.pdf" and person.decision == FILED
-    named = {r.prepared_location for r in rows}
-    assert all(
-        p.relative_to(engagement).as_posix() in named
-        for p in (engagement / PREPARED_DIR_NAME).rglob("*") if p.is_file()
-    )                                                            # no working copy is an orphan
-
-
-def test_the_index_is_read_from_the_sheet_carrying_its_header_not_the_selected_one(engagement):
+def test_a_legacy_index_is_read_from_the_sheet_carrying_its_header_not_the_selected_one(engagement):
     # `wb.active` is whatever tab a person left selected. One who renamed
     # the index's tab and added a tab of their own got an index that read
-    # as no rows - decision 69's refusal never fired, because an empty
-    # sheet holds nothing - and the next write rebuilt the workbook over
-    # both sheets and the whole history.
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    # as no rows, and the next write rebuilt the workbook over both sheets
+    # and the whole history. Nothing rebuilds it now - the whole file is
+    # moved aside as it stands, the person's own tab with it - but the
+    # rows still have to be found before it goes.
+    write_a_legacy_index(engagement, [a_row("w2.pdf")])
     index = engagement / INDEX_FILENAME
     wb = load_workbook(index)
     wb[INDEX_SHEET].title = "Index 2025"
@@ -1603,34 +1465,15 @@ def test_the_index_is_read_from_the_sheet_carrying_its_header_not_the_selected_o
     wb.save(index)
     wb.close()
 
-    assert [r.original_name for r in read_index(index)] == ["w2.pdf"]
-    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    assert file_drops(engagement, today=DAY2).handled == 1
-    wb = load_workbook(index)
+    ensure(engagement)
+
+    assert [r.original_name for r in read_index(engagement)] == ["w2.pdf"]
+    wb = load_workbook(engagement / INDEX_MIGRATED_FILENAME)
     try:
-        assert wb.sheetnames == ["Index 2025", "Notes"]           # the person's sheets are still here
+        assert wb.sheetnames == ["Index 2025", "Notes"]           # the person's sheets travel with it
         assert wb["Notes"]["A1"].value == "ask about the second W-2"
     finally:
         wb.close()
-    assert [(r.original_name, r.received) for r in read_index(index)] == [
-        ("w2.pdf", DAY1.isoformat()), ("1098.pdf", DAY2.isoformat()),
-    ]
-
-
-def test_a_workbook_with_rows_and_no_header_on_any_sheet_is_refused_by_name(engagement):
-    from tracker.filer import FilingError
-
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
-    index = engagement / INDEX_FILENAME
-    wb = load_workbook(index)
-    wb[INDEX_SHEET].delete_rows(1)                               # the header itself, gone
-    wb.create_sheet("Notes")["A1"] = "a tab of my own"
-    wb.save(index)
-    wb.close()
-    with pytest.raises(FilingError) as refused:
-        read_index(index)
-    assert "no header row" in str(refused.value) and "Notes" in str(refused.value)
 
 
 def test_an_original_deleted_from_pbc_is_said_every_pass(engagement):
@@ -1651,7 +1494,7 @@ def test_an_original_deleted_from_pbc_is_said_every_pass(engagement):
         assert [(e.name, e.left_in_place) for e in report.attention] == [("w2 employer a.pdf", True)]
         assert report.attention[0].error == MISSING_IN_PBC.format(
             location=filed["w2 employer a.pdf"].pbc_location, received=DAY1.isoformat())
-    rows = read_index(engagement / INDEX_FILENAME)
+    rows = read_index(engagement)
     assert [r.decision for r in rows] == [FILED, FILED]
     # The working copy is the scan's business and is left exactly as it was.
     assert (engagement / filed["w2 employer a.pdf"].prepared_location).exists()
@@ -1670,7 +1513,7 @@ def test_an_original_the_client_renamed_in_pbc_is_followed_not_filed_again(engag
     assert [e.error for e in report.attention] == [
         MOVED_IN_PBC.format(location=filed.pbc_location, now=now)
     ]
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.pbc_location == now                                # the row followed the bytes
     assert row.original_name == filed.original_name               # what it arrived as is the record
     assert filed.pbc_location in row.reason
@@ -1686,7 +1529,7 @@ def test_an_original_the_client_moved_into_a_subfolder_of_pbc_is_followed(engage
 
     report = file_drops(engagement, today=DAY2)
     assert report.duplicates == [] and report.handled == 0 and len(report.attention) == 1
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.pbc_location == f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/2025/w2 employer a.pdf"
     assert row.decision == FILED and row.prepared_location == filed.prepared_location
 
@@ -1704,7 +1547,7 @@ def test_a_duplicate_rows_own_original_is_watched_like_every_other(engagement):
     assert [e.error for e in report.attention] == [
         MISSING_IN_PBC.format(location=twice.pbc_location, received=DAY1.isoformat())
     ]
-    assert [r.decision for r in read_index(engagement / INDEX_FILENAME)] == [FILED, DUPLICATE]
+    assert [r.decision for r in read_index(engagement)] == [FILED, DUPLICATE]
 
 
 def test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file(engagement, monkeypatch):
@@ -1730,7 +1573,7 @@ def test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file(engag
     gone = [e for e in report.attention
             if e.error == MISSING_IN_PBC.format(location=row.pbc_location, received=DAY1.isoformat())]
     assert len(gone) == 1
-    rows = read_index(engagement / INDEX_FILENAME)
+    rows = read_index(engagement)
     assert rows[0].pbc_location == row.pbc_location               # never relocated
     assert [r.original_name for r in rows] == ["w2.pdf", "renamed w2.pdf"]
 
@@ -1768,15 +1611,14 @@ def test_a_name_the_workbook_cannot_hold_is_refused_like_one_utf8_cannot(engagem
     assert [e.original_name for e in report.filed] == ["w2.pdf"]
     assert [e.left_in_place for e in report.errors] == [True] and "rename it" in report.errors[0].error
     assert bad.exists()
-    assert [r.original_name for r in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+    assert [r.original_name for r in read_index(engagement)] == ["w2.pdf"]
 
 
-def test_a_failed_index_write_puts_back_a_parked_copy_a_reused_one_stood_in_for(engagement, monkeypatch):
+def test_a_failed_record_puts_back_a_parked_copy_a_reused_one_stood_in_for(engagement, monkeypatch):
     # Assign reuses a killed attempt's copy and removes the parked one it
     # stands in for (decision 69). The rollback covered the moved copy and
-    # the fresh copy but not that removal, so a killed index write left the
-    # row still naming a parked copy that was no longer there.
-    import tracker.filer as filer_module
+    # the fresh copy but not that removal, so a refused write left the row
+    # still naming a parked copy that was no longer there.
     from tracker.filer import assign_review_file
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
@@ -1788,9 +1630,7 @@ def test_a_failed_index_write_puts_back_a_parked_copy_a_reused_one_stood_in_for(
 
     def disk_full(*args, **kwargs):
         raise OSError(28, "No space left on device")
-    monkeypatch.setattr(filer_module, "_save_index", disk_full)
-    monkeypatch.setattr(filer_module, "_save_pending_index", disk_full)
-    monkeypatch.setattr(filer_module.time, "sleep", lambda _: None)
+    monkeypatch.setattr(store, "record", disk_full)
     with pytest.raises(OSError):
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     monkeypatch.undo()
@@ -1798,7 +1638,7 @@ def test_a_failed_index_write_puts_back_a_parked_copy_a_reused_one_stood_in_for(
     back = engagement / parked.prepared_location
     assert back.is_file() and back.read_bytes() == attempt.read_bytes()
     assert [p.name for p in c01.iterdir()] == [attempt.name]      # the reused copy stays where it is
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and (engagement / row.prepared_location).is_file()
 
     result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
@@ -1834,14 +1674,13 @@ def test_dismissing_a_parked_file_rewrites_its_row_and_moves_nothing(engagement)
 
     result = dismiss_review_file(engagement, parked.pbc_location, "an IRS notice", today=DAY2)
 
-    assert result.index_deferred is False
     assert result.entry.decision == NOT_REQUESTED
     assert result.entry.reason == (
         f"{DISMISSED_BY_PERSON} on {DAY2.isoformat()} (an IRS notice); was: {parked.reason}"
     )
     assert copy.is_file() and copy.read_bytes() == original.read_bytes()
     assert original.is_file()
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == NOT_REQUESTED
     assert row.prepared_location == parked.prepared_location
 
@@ -1862,7 +1701,7 @@ def test_the_same_document_sent_again_after_a_dismissal_is_a_duplicate(engagemen
     review_dir = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
     assert [p.name for p in review_dir.iterdir()] == ["notice.pdf"]
     assert (pbc(engagement) / "notice again.pdf").exists()        # preserved, as always
-    decisions = [r.decision for r in read_index(engagement / INDEX_FILENAME)]
+    decisions = [r.decision for r in read_index(engagement)]
     assert decisions == [NOT_REQUESTED, DUPLICATE]
 
 
@@ -1878,41 +1717,10 @@ def test_filing_a_dismissed_document_is_how_the_decision_is_undone(engagement):
 
     assert result.moved_review_copy is True
     assert result.entry.filed_as == "C01 - Mortgage Interest Statement - TY2025.pdf"
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == FILED and row.identifier == "C01"
     assert row.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: ")
     assert (engagement / row.prepared_location).is_file()
-
-
-def test_a_dismissal_excel_kept_out_of_the_workbook_is_not_lost(engagement, monkeypatch):
-    """The snapshot is the index while Excel holds it, and it keeps the decision.
-
-    A dismissal is an edit to a row the workbook already holds, so the same
-    trap as a person's filing: deferring only what is past the workbook's
-    end would lose it, and a stale workbook saved from Excel would undo it.
-    """
-    from tracker.filer import NOT_REQUESTED, dismiss_review_file
-
-    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    parked = file_drops(engagement, today=DAY1).review[0]
-    sidecar = engagement / INDEX_PENDING_FILENAME
-
-    _lock_the_index(monkeypatch)
-    result = dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
-    assert result.index_deferred is True and sidecar.exists()
-    [row] = read_index(engagement / INDEX_FILENAME)
-    assert row.decision == NOT_REQUESTED
-
-    monkeypatch.undo()                            # Excel closed - having saved
-    _age(sidecar, 60)
-    os.utime(engagement / INDEX_FILENAME, None)   # the workbook is newer, and stale
-    [row] = read_index(engagement / INDEX_FILENAME)
-    assert row.decision == NOT_REQUESTED
-
-    assert file_drops(engagement, today=DAY2).index_deferred is False
-    assert not sidecar.exists()
-    [row] = read_index(engagement / INDEX_FILENAME)       # the workbook alone now
-    assert row.decision == NOT_REQUESTED
 
 
 def test_dismissing_something_that_is_not_parked_says_what_it_is(engagement):
@@ -1938,7 +1746,7 @@ def test_dismissing_takes_the_engagement_lock(engagement):
     (engagement / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
     with pytest.raises(EngagementLockedError):
         dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW               # nothing was written
 
     (engagement / LOCK_FILENAME).unlink()
@@ -1971,7 +1779,7 @@ def test_unfiling_puts_the_working_copy_back_under_the_clients_own_name(engageme
     assert parked.name == "w2 john.pdf" and parked.parent == review_dir(engagement)
     assert parked.read_bytes() == (engagement / filed.pbc_location).read_bytes()
     assert (engagement / filed.pbc_location).is_file()          # the original is untouched
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and row.identifier == ""
     assert row.reason == (
         f"{UNFILED_BY_PERSON} on {DAY2.isoformat()} (wrong client); was: {filed.reason}"
@@ -1996,7 +1804,7 @@ def test_filing_an_unfiled_document_puts_it_under_the_canonical_name_again(engag
     assert result.moved_review_copy is True
     assert result.entry.filed_as == "C01 - Mortgage Interest Statement - TY2025.pdf"
     assert not list(review_dir(engagement).iterdir())
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == FILED and row.identifier == "C01"
     assert row.reason.startswith(
         f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: {UNFILED_BY_PERSON}"
@@ -2026,7 +1834,7 @@ def test_a_page_that_prints_two_forms_files_a_copy_under_each_and_unfiles_as_one
     copies = [engagement / location for location in entry.filed_locations]
     assert all(copy.read_bytes() == before for copy in copies)
     assert "A01, C01" in entry.reason
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.also_filed == entry.also_filed and row.also_filed
     assert row.filed_locations == entry.filed_locations
 
@@ -2035,7 +1843,7 @@ def test_a_page_that_prints_two_forms_files_a_copy_under_each_and_unfiles_as_one
     assert not any(copy.exists() for copy in copies)
     [parked] = list(review_dir(engagement).iterdir())
     assert parked.name == "scan0003.pdf" and sha256_of(parked) == entry.digest
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW and row.also_filed == "" and row.identifier == ""
 
 
@@ -2125,7 +1933,7 @@ def test_the_next_pass_leaves_an_unfiled_original_where_the_row_says(engagement)
 
     assert report.handled == 0 and report.errors == [] and report.attention == []
     assert sorted(p.name for p in review_dir(engagement).iterdir()) == parked
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == NEEDS_REVIEW
 
     # And the same document sent again is what a re-send of a parked one is.
@@ -2135,35 +1943,8 @@ def test_the_next_pass_leaves_an_unfiled_original_where_the_row_says(engagement)
     assert sorted(p.name for p in review_dir(engagement).iterdir()) == parked
 
 
-def test_an_unfiling_excel_kept_out_of_the_workbook_is_not_lost(engagement, monkeypatch):
-    """The copy has already moved, so the row that says where it is cannot be."""
-    from tracker.filer import UNFILED_BY_PERSON, unfile_document
-
-    drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025")
-    filed = file_drops(engagement, today=DAY1).filed[0]
-    sidecar = engagement / INDEX_PENDING_FILENAME
-
-    _lock_the_index(monkeypatch)
-    result = unfile_document(engagement, filed.pbc_location, today=DAY2)
-    assert result.index_deferred is True and sidecar.exists()
-    [row] = read_index(engagement / INDEX_FILENAME)
-    assert row.decision == NEEDS_REVIEW
-
-    monkeypatch.undo()                            # Excel closed - having saved
-    _age(sidecar, 60)
-    os.utime(engagement / INDEX_FILENAME, None)   # the workbook is newer, and stale
-    [row] = read_index(engagement / INDEX_FILENAME)
-    assert row.decision == NEEDS_REVIEW and row.reason.startswith(UNFILED_BY_PERSON)
-
-    assert file_drops(engagement, today=DAY2).index_deferred is False
-    assert not sidecar.exists()
-    [row] = read_index(engagement / INDEX_FILENAME)       # the workbook alone now
-    assert row.decision == NEEDS_REVIEW and row.reason.startswith(UNFILED_BY_PERSON)
-
-
-def test_a_failed_index_write_puts_the_unfiled_copy_back_where_the_index_says(engagement, monkeypatch):
-    """A retry does this once, not twice: the file goes where the index on disk says."""
-    import tracker.filer as filer_module
+def test_a_failed_record_puts_the_unfiled_copy_back_where_the_record_says(engagement, monkeypatch):
+    """A retry does this once, not twice: the file goes where the record says."""
     from tracker.filer import unfile_document
 
     drop(engagement, "w2 john.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -2173,14 +1954,12 @@ def test_a_failed_index_write_puts_the_unfiled_copy_back_where_the_index_says(en
     def disk_full(*args, **kwargs):
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr(filer_module, "_save_index", disk_full)
-    monkeypatch.setattr(filer_module, "_save_pending_index", disk_full)
-    monkeypatch.setattr(filer_module.time, "sleep", lambda _: None)
+    monkeypatch.setattr(store, "record", disk_full)
     with pytest.raises(OSError):
         unfile_document(engagement, filed.pbc_location, today=DAY2)
     monkeypatch.undo()
 
     assert working.is_file()
     assert not list(review_dir(engagement).iterdir())
-    [row] = read_index(engagement / INDEX_FILENAME)
+    [row] = read_index(engagement)
     assert row.decision == FILED and row.prepared_location == filed.prepared_location

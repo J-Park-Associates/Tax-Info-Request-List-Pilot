@@ -221,11 +221,6 @@ function reviewRow(e, choices, ids, open, triage) {
   );
 }
 
-// What the app says when Excel had the index: the row is not lost, and the
-// person is told rather than left to wonder why the sheet has not changed.
-const INDEX_DEFERRED_NOTE =
-  "the index is open in Excel — the row is saved beside it and merges on the next run";
-
 function typed(li, className) {
   const box = li.querySelector(className);
   return box ? box.value.trim() : "";
@@ -250,10 +245,9 @@ async function assignParked(li) {
     const notes = [`${a.original_name} filed as ${a.filed_as}`];
     if (a.keyword) notes.push(`"${a.keyword}" added to ${a.identifier} so the next one files itself`);
     if (a.keyword_note) notes.push(a.keyword_note);
-    if (a.index_deferred) notes.push(INDEX_DEFERRED_NOTE);
     if (a.left_in_review) notes.push(a.left_in_review);
     if (a.scan_note) notes.push(a.scan_note);
-    banner(notes.join(". ") + ".", a.keyword_note || a.index_deferred || a.left_in_review || a.scan_note ? "warn" : "ok");
+    banner(notes.join(". ") + ".", a.keyword_note || a.left_in_review || a.scan_note ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
     btn.disabled = false;
@@ -297,8 +291,7 @@ async function dismissParked(li) {
     render(result.state);
     const d = result.dismissed;
     const notes = [`${d.original_name}: ${d.decision}`, d.reason];
-    if (d.index_deferred) notes.push(INDEX_DEFERRED_NOTE);
-    banner(notes.join(". ") + ".", d.index_deferred ? "warn" : "ok");
+    banner(notes.join(". ") + ".", "ok");
   } catch (err) {
     toast(err.message);
     btn.disabled = false;
@@ -320,9 +313,8 @@ async function unfileDocument(li) {
     const u = result.unfiled;
     const notes = [`${u.original_name}: ${u.decision}`];
     if (u.left_filed) notes.push(u.left_filed);
-    if (u.index_deferred) notes.push(INDEX_DEFERRED_NOTE);
     if (u.scan_note) notes.push(u.scan_note);
-    banner(notes.join(". ") + ".", u.left_filed || u.index_deferred || u.scan_note ? "warn" : "ok");
+    banner(notes.join(". ") + ".", u.left_filed || u.scan_note ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
     btn.disabled = false;
@@ -522,7 +514,6 @@ async function runScan() {
     if (run.waiting) did.push(`${run.waiting} still syncing`);
     const problems = [];
     if (run.file_errors.length) problems.push(`${run.file_errors.length} file(s) could not be sorted`);
-    if (run.index_deferred) problems.push("the index is open in Excel — new rows wait beside it");
     if (run.manifest_deferred) problems.push("the manifest is open in Excel — statuses wait in the sidecar");
     const lines = [`Pass complete — ${did.join(", ")}.   ${summary}`];
     if (problems.length) lines.push(`But ${problems.join("; ")}.`);
@@ -782,7 +773,6 @@ $("btn-scan").addEventListener("click", runScan);
 $("btn-new").addEventListener("click", openWizard);
 $("btn-shared").addEventListener("click", () => paths && window.tracker.open(paths.shared));
 $("btn-excel").addEventListener("click", () => paths && window.tracker.open(paths.manifest));
-$("btn-index").addEventListener("click", () => paths && window.tracker.open(paths.index));
 $("btn-view").addEventListener("click", () => paths && window.tracker.open(paths.view));
 $("btn-status").addEventListener("click", () => paths && window.tracker.open(paths.status));
 $("eng-select").addEventListener("change", (e) => {

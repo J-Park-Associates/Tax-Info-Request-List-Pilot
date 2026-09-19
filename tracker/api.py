@@ -32,16 +32,16 @@ import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES, review
+from tracker import STANDING_RULES, review, store
 from tracker.filer import (
     DUPLICATE,
     FILED,
-    INDEX_FILENAME,
     NEEDS_REVIEW,
     NOT_REQUESTED,
     FilingError,
     assign_review_file,
     dismiss_review_file,
+    ensure,
     read_index,
     unfile_document,
 )
@@ -72,6 +72,7 @@ from tracker.records import (
     CANDIDATE_SEP,
     EVIDENCE_PLACES,
     EVIDENCE_RULES,
+    THE_RECORD,
     EngagementInfo,
     IndexEntry,
 )
@@ -268,7 +269,7 @@ _slug = slug
 def standing_rules() -> list[dict]:
     """The package's standing rules with the folder names filled in."""
     names = {"shared": SHARED_DIR_NAME, "pbc": PBC_DIR_NAME, "review": REVIEW_DIR_NAME,
-             "index": INDEX_FILENAME}
+             "record": THE_RECORD}
     return [{"headline": headline, "detail": detail.format(**names)}
             for headline, detail in STANDING_RULES]
 
@@ -464,7 +465,12 @@ def _state(engagement: Path) -> dict:
     items = with_pending(load_manifest(manifest_path), deferred)
     info = load_engagement_info(manifest_path)
     summary = summarize(items)
-    entries = read_index(engagement / INDEX_FILENAME, quarantine=False)
+    # The store is brought up to the record before the rows are read, and
+    # no further: migrating a folder that still keeps its index in a
+    # workbook would take the engagement lock, and showing an engagement
+    # must stay a read - the app shows one a pass is holding, and says so.
+    ensure(engagement, migrate=False)
+    entries = read_index(engagement)
     view_path = engagement / VIEW_FILENAME
     return {
         "pending_statuses": len(deferred),
@@ -506,7 +512,6 @@ def _state(engagement: Path) -> dict:
             "shared": str(engagement / SHARED_DIR_NAME),
             "pbc": str(engagement / SHARED_DIR_NAME / PBC_DIR_NAME),
             "prepared": str(engagement / PREPARED_DIR_NAME),
-            "index": str(engagement / INDEX_FILENAME),
             "manifest": str(manifest_path),
             # The one a person is meant to open. Named here as well as
             # above because the shell opens only paths this map holds.
@@ -577,7 +582,6 @@ def _cmd_scan(argv: list[str]) -> dict:
             "waiting": run.waiting,
             "file_errors": run.file_errors,
             "warnings": run.warnings,
-            "index_deferred": run.index_deferred,
             "manifest_deferred": run.manifest_deferred,
             "statuses": run.statuses,
             "outstanding": run.outstanding,
@@ -714,6 +718,11 @@ def _cmd_rollover(argv: list[str]) -> dict:
     prior = _under_root(prior)
     if not (prior / MANIFEST_FILENAME).is_file():
         raise ManifestError(f"No manifest found in '{prior_raw}'")
+    # The prior year's rows are read out of the store, so the store has to
+    # describe the prior year: an engagement that has not been passed since
+    # decision 102 - a year that finished before it - is migrated here, once,
+    # before roll_forward() asks what never got filed.
+    ensure(prior)
 
     form = str(spec.get("form", "")).strip()
     template = template_items(form) if form else []
@@ -806,7 +815,6 @@ def _cmd_assign(argv: list[str]) -> dict:
             "moved_review_copy": result.moved_review_copy,
             "keyword": result.keyword,
             "keyword_note": result.keyword_note,
-            "index_deferred": result.index_deferred,
             "left_in_review": result.left_in_review,
             "scan_note": scan_note,
         },
@@ -839,7 +847,6 @@ def _cmd_dismiss(argv: list[str]) -> dict:
             "decision": result.entry.decision,
             "reason": result.entry.reason,
             "prepared_location": result.entry.prepared_location,
-            "index_deferred": result.index_deferred,
         },
         "state": _state(engagement),
     }
@@ -871,7 +878,6 @@ def _cmd_unfile(argv: list[str]) -> dict:
             "prepared_location": result.entry.prepared_location,
             "moved_working_copy": result.moved_working_copy,
             "left_filed": result.left_filed,
-            "index_deferred": result.index_deferred,
             "scan_note": result.scan_note,
         },
         "state": _state(engagement),
@@ -974,6 +980,11 @@ def main(argv: list[str]) -> int:
     except Exception as exc:  # surface anything else as JSON, not a traceback
         print(json.dumps({"error": f"{exc.__class__.__name__}: {exc}"}))
         return 1
+    finally:
+        # The store is opened on first use by whatever command needed it;
+        # closing it here checkpoints the write-ahead log and takes its two
+        # side files with it, so the app's folder is left as it was found.
+        store.close()
     print(json.dumps(payload))
     return 0
 

@@ -29,7 +29,7 @@ import pytest
 
 from tests.test_scanner import text_pdf
 from tracker import ledger, review, view
-from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, file_drops, read_index
+from tracker.filer import NEEDS_REVIEW, file_drops, read_index
 from tracker.manifest import (
     COL_ANY_KEYWORDS,
     COL_STATUS,
@@ -167,7 +167,7 @@ def test_every_index_row_is_on_the_page_as_the_reader_gives_it(engagement):
     a_pass(engagement)
     view.write_view(engagement)
 
-    entries = read_index(engagement / INDEX_FILENAME)
+    entries = read_index(engagement)
     assert len(entries) == 2
     assert index_table(engagement)[1:] == [view.index_row(entry) for entry in entries]
 
@@ -235,7 +235,7 @@ def test_a_parked_file_carries_the_shortlist_the_app_would_show(engagement):
     view.write_view(engagement)
     page = page_of(engagement)
 
-    triaged = review.triage(engagement, read_index(engagement / INDEX_FILENAME, quarantine=False))
+    triaged = review.triage(engagement, read_index(engagement))
     assert len(triaged) == 1 and triaged[0].shortlist
     assert review_table(engagement)[1:] == [
         [str(getattr(one.entry, name)) for name in view.NEEDS_REVIEW_FIELDS]
@@ -251,7 +251,7 @@ def test_a_parked_file_the_evidence_says_nothing_about_says_so(engagement):
     a_pass(engagement)
     view.write_view(engagement)
 
-    parked = [e for e in read_index(engagement / INDEX_FILENAME) if e.decision == NEEDS_REVIEW]
+    parked = [e for e in read_index(engagement) if e.decision == NEEDS_REVIEW]
     assert [e.original_name for e in parked] == ["puzzle.pdf"]
     assert f'<p class="nothing">{html.escape(review.NOTHING_SUGGESTED)}</p>' in page_of(engagement)
 
@@ -283,7 +283,7 @@ def test_the_page_sorts_with_a_script_and_is_a_plain_table_without_one(engagemen
     assert 'data-sort=""' in page
     # The rows are in the markup, not built by the script: a parser that
     # runs nothing still reads every one of them.
-    entries = read_index(engagement / INDEX_FILENAME)
+    entries = read_index(engagement)
     without_script = page.split("<script>")[0]
     assert index_table(engagement)[1:] == [view.index_row(entry) for entry in entries]
     assert "</tbody>" in without_script and "<thead>" in without_script
@@ -467,7 +467,7 @@ def test_a_pass_regenerates_the_view_and_a_dry_run_writes_none(tmp_path, engagem
     assert not run.view_stale
     assert view.view_state(engagement) == view.CURRENT
     assert index_table(engagement)[1:] == [
-        view.index_row(e) for e in read_index(engagement / INDEX_FILENAME)
+        view.index_row(e) for e in read_index(engagement)
     ]
 
 
@@ -481,9 +481,9 @@ def test_a_pass_writes_no_workbook_for_a_person_to_open(engagement):
 
     assert view.path_for(engagement).suffix == ".html"
     assert not (engagement / "_status.xlsx").exists()
-    assert sorted(p.name for p in engagement.glob("*.xlsx")) == [
-        INDEX_FILENAME, MANIFEST_FILENAME,
-    ]
+    # One workbook, and it is the one the accountant edits: since decision
+    # 102 the machine writes no workbook at all.
+    assert sorted(p.name for p in engagement.glob("*.xlsx")) == [MANIFEST_FILENAME]
 
 
 def test_the_state_the_app_reads_carries_the_view_and_its_path(engagement):

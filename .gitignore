@@ -58,6 +58,13 @@ runs.log
 status.html
 # The clients root, written once by the app (or python -m tracker.settings).
 settings.json
+# The store (decision 101): one SQLite database beside the settings file,
+# which in a source checkout is this folder. It is rebuilt from each
+# engagement's own journal, so it is never worth committing - and it holds
+# every client's index rows, so it must never be.
+tracker.db
+tracker.db-wal
+tracker.db-shm
 tax-tracker.xml
 reminder-draft.txt
 reminder-draft.NEW.txt

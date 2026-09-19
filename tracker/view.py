@@ -76,11 +76,11 @@ from pathlib import Path
 
 from tracker import ledger, review
 from tracker.filer import (
-    INDEX_FILENAME,
     INDEX_SHEET,
     NEEDS_REVIEW,
     FilingError,
     read_index,
+    rules_digest,
 )
 from tracker.manifest import (
     ANY_EXTENSION,
@@ -118,7 +118,6 @@ from tracker.records import (
     IndexEntry,
 )
 from tracker.scaffold import MANIFEST_FILENAME
-from tracker.validators import sha256_of
 
 log = logging.getLogger("tracker.view")
 
@@ -349,16 +348,6 @@ def _request_cells(item: RequestItem) -> Row:
 # ------------------------------------------------------------------ write ----
 
 
-def rules_digest(engagement_dir: Path | str) -> str:
-    """The SHA-256 of the workbook the person's requests live in; "" if it
-    cannot be read. Hashed with the digest every other reader of bytes in
-    this package uses, so there is one answer to "are these the same bytes"."""
-    try:
-        return sha256_of(Path(engagement_dir) / MANIFEST_FILENAME)
-    except OSError:
-        return ""
-
-
 def _readers(
     engagement_dir: Path,
     items: list[RequestItem] | None,
@@ -369,7 +358,7 @@ def _readers(
         if items is None:
             items = load_manifest(engagement_dir / MANIFEST_FILENAME)
         if entries is None:
-            entries = read_index(engagement_dir / INDEX_FILENAME, quarantine=False)
+            entries = read_index(engagement_dir)
     except (ManifestError, FilingError, OSError) as exc:
         # A manifest the loader refuses or an index the tracker will not
         # touch: there is nothing to draw, and the caller decides what that

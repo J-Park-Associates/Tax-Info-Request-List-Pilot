@@ -1,29 +1,34 @@
 """The machine's own record of one engagement, appended to and never rewritten.
 
-Every fact the system holds about an engagement lives today in a workbook a
+Every fact the system holds about an engagement used to live in a workbook a
 person can open, sort, re-type and save from Excel - and each of the readings
-in the decision log found another way that ends with a row lost. The
-workbooks stay; beside them each engagement now keeps ``LEDGER_FILENAME``, one
-JSON object per line, in the order the writers wrote them. It is the record
-of *what was decided*; the workbooks remain the thing a person reads.
+in the decision log found another way that ends with a row lost. Each
+engagement now keeps ``LEDGER_FILENAME`` instead, one JSON object per line,
+in the order the writers wrote them. It is the record of *what was decided*.
 
-**The readers believe it, and fall back to the workbooks** (decision 88,
-stage A step 2). :func:`tracker.filer.read_index` answers from :func:`fold`
-wherever the record holds an index-shaped event, and
-:func:`tracker.manifest.load_manifest` takes each identifier's scanner
-columns from :func:`statuses` wherever the record has ever recorded one -
-per identifier, so a row the record has never seen still reads off the
-workbook. An engagement with no record here reads exactly as it always did,
-which is what makes the step reversible: delete the file and the workbooks
-answer again. Both workbooks are still written exactly as before; dropping a
-write is stage B.
+**It is the index** (decision 102). The index workbook is not written any
+more and is not read for anything: what a pass decides about a document is
+appended here and folded into :mod:`tracker.store`, and
+:func:`tracker.filer.read_index` answers from those folded rows. An
+engagement that still has an index workbook beside it is migrated once -
+its rows imported here, the workbook renamed aside, a :data:`MIGRATED`
+event appended - and after that the journal and the store are the only two
+copies of the index, and the store is rebuilt from the journal.
 
-What made that safe to switch on is the agreement fixture in
-``tests/conftest.py``: after every test in the suite, the record is folded
-back and compared with the *workbooks' own* readings
-(``filer.read_index_from_workbook()``, ``manifest.statuses_from_workbook()``,
-kept public for exactly this). ``python -m tracker.ledger <folder> --compare``
-is the same check for one engagement, for a person.
+**The manifest's scanner columns are still the workbook's, with this as the
+answer** (decision 88, stage A step 2):
+:func:`tracker.manifest.load_manifest` takes each identifier's status from
+:func:`statuses` wherever the record has ever recorded one - per identifier,
+so a row the record has never seen still reads off the sheet - and
+``write_statuses`` still writes them back. That half goes in decision 103.
+
+What keeps it honest is the agreement fixture in ``tests/conftest.py``:
+after every test in the suite the record's statuses are compared with the
+*workbook's own* reading (``manifest.statuses_from_workbook()``, kept
+public for exactly this) and the store's ``documents`` table is compared
+with :func:`replay` over these lines. ``python -m tracker.ledger <folder>
+--compare`` is the manifest half of that check for one engagement, for a
+person; ``python -m tracker.store <store> check <root>`` is the other.
 
 **Append-only, one line per event.** A line is written with a single
 ``os.write`` under ``O_APPEND`` and then ``fsync``-ed, so a run killed
@@ -94,6 +99,10 @@ STATUSES_KEY = "statuses"
 #: keys so the writer and every reader of the record spell them once.
 IDENTIFIER_KEY = "identifier"
 KEYWORD_KEY = "keyword"
+#: What a ``MIGRATED`` event carries: the files the migration moved aside,
+#: by the names they now have. It carries no row - it is a statement about
+#: the folder, not about a document - which is why it is not a row event.
+FILES_KEY = "files"
 
 #: One original was preserved and its record says where it now is. A pass
 #: that sorts a drop decides and preserves in one row, so it appends one of
@@ -125,16 +134,20 @@ KEYWORD_LEARNED = "keyword_learned"
 DRAFTED = "drafted"
 #: The bootstrap: what the workbooks already said when the ledger began.
 IMPORTED = "imported"
-#: Reserved for the migration that renames the engagement's files later.
+#: The index workbook was moved aside, and this engagement's index now lives
+#: in the record alone (decision 102). Written once per engagement, after the
+#: rename, carrying :data:`FILES_KEY` - the names the moved files now have.
+#: It carries no row, so it is deliberately *not* a row event: a reader that
+#: folded it as one would look for a row that was never there.
 MIGRATED = "migrated"
 
 #: The events that carry a whole index row. Their fold is the index.
 ROW_EVENTS = frozenset({
     PRESERVED, FILED, PARKED, DUPLICATE, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
-    UNFILED_BY_PERSON, BYTES_RECORDED, IMPORTED, MIGRATED,
+    UNFILED_BY_PERSON, BYTES_RECORDED, IMPORTED,
 })
 #: Every event name this version writes or reads.
-EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED})
+EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED, MIGRATED})
 
 #: ``O_BINARY`` exists on Windows only; everywhere else the flag is not a flag.
 _BINARY = getattr(os, "O_BINARY", 0)
@@ -296,11 +309,11 @@ def fold(events: list[dict]) -> dict[str, dict]:
 
     **In the index's order.** The rows come back in the order the record
     first saw each original, and a row that changed identity keeps the place
-    the one it left held, because the index keeps it too: the writer rewrites
-    that row where it sits rather than moving it to the end. Since
-    :func:`tracker.filer.read_index` answers from this fold, an order that
-    drifted from the workbook's would reorder the audit trail on the next
-    write.
+    the one it left held: the writer rewrites that row where it sits rather
+    than moving it to the end. The order is the audit trail's own and there
+    is no second copy of it to drift from - :mod:`tracker.store` lays its
+    ``position`` column from this fold, and
+    :func:`tracker.filer.read_index` reads it back.
 
     An event whose name this version does not know as index-shaped is passed
     over rather than refused: a later version may write one, and a reader
@@ -406,51 +419,34 @@ if __name__ == "__main__":
     import argparse
 
     def _compare_with_the_workbooks(folder: Path, events: list[dict]) -> int:
-        """Print whether the record and the workbooks agree, and name every
+        """Print whether the record and the manifest agree, and name every
         place they do not. Returns the exit code: 0 agree, 1 disagree.
 
-        The operator's check (``docs/runbook.md``). Both sides of it are the
-        workbooks' *own* readings - ``filer.read_index_from_workbook()`` and
-        ``manifest.statuses_from_workbook()`` - because since decision 88 the
-        live readers answer from the record, and asking them would only be
-        the record compared with itself.
+        The operator's check (``docs/runbook.md``). Its side of the
+        comparison is the workbook's *own* reading -
+        ``manifest.statuses_from_workbook()`` - because since decision 88
+        the live readers answer from the record, and asking them would only
+        be the record compared with itself.
+
+        **The index half is gone** (decision 102): there is no index
+        workbook to disagree with any more. What was the index is the
+        record's own rows and the store's ``documents`` table, and
+        ``python -m tracker.store <store> check <root>`` is the check for
+        those two. This is the manifest half, and it goes the same way when
+        the scanner columns leave the workbook (decision 103).
 
         Imported here rather than at the top of the module: this module sits
         at the bottom of the package beside :mod:`tracker.locking` and
         imports nothing else of it, and a command line nobody imports is the
         one place that may look upwards.
         """
-        from tracker.filer import INDEX_FILENAME, ledger_key, read_index_from_workbook
         from tracker.manifest import statuses_from_workbook
         from tracker.scaffold import MANIFEST_FILENAME
 
         disagreements: list[str] = []
-        index_path, manifest_path = folder / INDEX_FILENAME, folder / MANIFEST_FILENAME
+        manifest_path = folder / MANIFEST_FILENAME
 
-        folded = fold(events)
-        workbook_rows = {
-            ledger_key(entry): {f: getattr(entry, f) for f in entry.__dataclass_fields__}
-            for entry in read_index_from_workbook(index_path, quarantine=False)
-        }
-        print(f"  rows:     {len(folded)} recorded, {len(workbook_rows)} in {INDEX_FILENAME}")
-        for key in folded:
-            if key not in workbook_rows:
-                disagreements.append(f"  rows      {key}: recorded, and {INDEX_FILENAME} does not hold it")
-        for key, row in workbook_rows.items():
-            if key not in folded:
-                disagreements.append(f"  rows      {key}: in {INDEX_FILENAME}, and the record does not hold it")
-                continue
-            for field, value in row.items():
-                if folded[key].get(field) != value:
-                    disagreements.append(
-                        f"  rows      {key}, {field}: the record says {folded[key].get(field)!r}, "
-                        f"{INDEX_FILENAME} says {value!r}"
-                    )
-        if set(folded) == set(workbook_rows) and list(folded) != list(workbook_rows):
-            disagreements.append(
-                f"  rows      the same originals in a different order: the record has "
-                f"{list(folded)}, {INDEX_FILENAME} has {list(workbook_rows)}"
-            )
+        print(f"  rows:     {len(fold(events))} recorded (the record is the only copy)")
 
         recorded_statuses = statuses(events)
         workbook_statuses = (
@@ -479,22 +475,22 @@ if __name__ == "__main__":
                 print(line)
             print()
             return 1
-        print("\n  the record and the workbooks agree\n")
+        print("\n  the record and the manifest agree\n")
         return 0
 
     parser = argparse.ArgumentParser(description="Show one engagement's own record")
     parser.add_argument("engagement_dir", help="the engagement folder")
     parser.add_argument(
         "--compare", action="store_true",
-        help="check the record against _index.xlsx and _manifest.xlsx, row by row and "
-             "status by status, naming every disagreement; exit 1 if they disagree",
+        help="check the record against _manifest.xlsx, status by status, naming every "
+             "disagreement; exit 1 if they disagree",
     )
     ns = parser.parse_args()
 
     folder = Path(ns.engagement_dir)
     recorded = read_events(folder)
     if ns.compare:
-        print(f"\n{path_for(folder)} against the workbooks beside it")
+        print(f"\n{path_for(folder)} against the manifest beside it")
         raise SystemExit(_compare_with_the_workbooks(folder, recorded))
     print(f"\n{path_for(folder)}")
     print(f"  events: {len(recorded)}")

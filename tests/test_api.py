@@ -235,7 +235,7 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
     assert code == 0, payload
     run_result = payload["run"]
     assert run_result["ok"] and not run_result["skipped"]
-    assert run_result["file_errors"] == [] and run_result["index_deferred"] is False
+    assert run_result["file_errors"] == []
     assert run_result["manifest_deferred"] is False
     statuses = {i["identifier"]: i["status"] for i in payload["state"]["items"]}
     assert statuses["A01"] == Status.RECEIVED   # both current-year W-2s, duplicate ignored
@@ -388,6 +388,37 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
     assert ACCEPTED_NOTE.format(n=1) in d01["validation_notes"]
 
 
+def test_rule_two_is_rendered_in_the_record_and_names_no_file(capsys, demo_root, tmp_path):
+    """Decision 102, the owner's wording of 2026-09-19: the rule used to
+    name the index workbook, and there is no such file any more."""
+    from tracker import api
+    from tracker.filer import INDEX_FILENAME
+    from tracker.records import THE_RECORD
+
+    (rule,) = [r for r in api.standing_rules() if r["headline"].startswith("Originals")]
+
+    assert rule["detail"].endswith(f"every move is recorded in {THE_RECORD}.")
+    assert INDEX_FILENAME not in rule["detail"]
+
+
+def test_the_state_the_app_reads_carries_no_deferred_index(capsys, demo_root, tmp_path):
+    """There is nothing left for Excel to hold the index rows out of, so
+    there is no word for it - in the reply, in the pass's own report, or in
+    the vocabulary the renderer derives from."""
+    from tracker import api
+    from tracker.runner import EngagementRun
+
+    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    state = api._state(demo_root / "Smith 2025")
+
+    assert "index_deferred" not in state
+    assert "index" not in state["paths"]
+    assert not hasattr(EngagementRun(engagement=None), "index_deferred")
+    assert "index_deferred" not in json.dumps(api._vocab())
+
+
 def test_dismiss_records_that_nothing_asks_for_a_parked_document(capsys, demo_root, tmp_path):
     # The app's other half of Needs Review: a file no request asks for stops
     # being a thing to do without anything being deleted, and the word for it
@@ -406,7 +437,6 @@ def test_dismiss_records_that_nothing_asks_for_a_parked_document(capsys, demo_ro
     assert dismissed["decision"] == NOT_REQUESTED
     assert dismissed["reason"].startswith(DISMISSED_BY_PERSON)
     assert "an IRS notice" in dismissed["reason"]
-    assert dismissed["index_deferred"] is False
     # The row is rewritten in place and the working copy is still parked.
     assert not [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     [row] = [e for e in payload["state"]["index"] if e["decision"] == NOT_REQUESTED]
@@ -648,6 +678,32 @@ def test_an_engagement_created_without_a_form_says_nothing_rather_than_guessing(
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
     assert payload["state"]["engagement"]["form"] == ""
+
+
+def test_rollover_reads_a_prior_year_that_still_had_an_index_workbook(capsys, demo_root, tmp_path):
+    """Last year finished before decision 102, so its index is still a
+    workbook. The rollover names it, so the rollover migrates it - and then
+    reads last year's unfiled documents out of the record like any other."""
+    from tests.conftest import write_a_legacy_index
+    from tracker.filer import INDEX_FILENAME, INDEX_MIGRATED_FILENAME, NEEDS_REVIEW, IndexEntry
+
+    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    prior = demo_root / "Smith 2025"
+    write_a_legacy_index(prior, [IndexEntry(
+        received="2026-03-01", original_name="K-1 Redwood LP.pdf", size_kb=12.0, digest="abc",
+        identifier="", prepared_location="", pbc_location="Shared/PBC/K-1 Redwood LP.pdf",
+        decision=NEEDS_REVIEW, reason="matched no request")])
+
+    code, payload = run(capsys, "rollover",
+                        stdin={"prior": prior.name, "name": "Rolled 2026"})
+
+    assert code == 0, payload
+    assert any("K-1 Redwood LP.pdf" in line
+               for line in payload["rollover"]["unfiled_last_year"]), payload["rollover"]
+    assert not (prior / INDEX_FILENAME).exists()
+    assert (prior / INDEX_MIGRATED_FILENAME).exists()
 
 
 def test_rollover_carries_the_catalog_the_prior_was_cut_from(capsys, demo_root):

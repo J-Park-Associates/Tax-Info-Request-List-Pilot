@@ -48,32 +48,50 @@ to three different questions: how an engagement that predates the store
 gets into it, how a store deleted by accident comes back, and how a store
 somebody doubts is proved. It writes nothing to the journal.
 
-**The check is the gate.** :func:`check` asks the live readers what they
-say and names every place the store disagrees, in sentences. Stage 2 (the
-readers answer from the store) and stage 3 (a workbook write becomes a
-render) may only be built on a store that has been silent here across the
-whole suite - which is what the agreement fixture in ``tests/conftest.py``
-does after every test: rebuild, check, and fail on a sentence.
+**The check is the gate.** :func:`check` asks what else holds the same
+facts and names every place the store disagrees, in sentences. Stage 2 was
+built on a store that had been silent there across the whole suite - which
+is what the agreement fixture in ``tests/conftest.py`` does after every
+test: rebuild, check, and fail on a sentence.
 
-**Nothing reads it yet.** This is stage 1 and it is purely additive. No
-reader answers from these tables, no writer stops writing what it wrote
-before, both workbooks and both sidecars are written exactly as they were,
-and deleting the database changes no behaviour at all. That is what makes
-the step reversible, and it is the same shape decision 87 used for the
-journal.
+**The index is here now** (decision 102, stage 2). The index workbook is
+never written again; the filer's ``read_index()`` answers from the
+``documents`` table, and every writer that used to rewrite the workbook
+calls :func:`record` instead - one call per decision, so one transaction.
+An engagement that still has the old workbook beside it is migrated once
+by the filer's ``ensure()``: its rows are imported into the journal,
+the workbook is renamed aside and a ``migrated`` event says which files
+were moved. The manifest's scanner columns are still the workbook's
+(decision 103 takes them), so ``requests`` and ``statuses`` are still
+rebuilt from the sheet the person edits.
+
+**One store per process.** :func:`connect` hands out one connection to one
+file for the life of the process, created on first use and closed by
+:func:`close`. One file per clients root is the placement rule and one
+connection per process is what makes it cheap: a pass over two hundred
+engagements opens the database once, and the app's command opens it once.
+Where that file is comes from :func:`path_for` over the settings file,
+**unless** the environment variable :data:`ENV_STORE` names an absolute
+path. The variable exists because two callers legitimately need a store
+that is not the machine's: the suite, which gives every test a database
+under its own temporary folder so no test can leak rows into another, and
+a person on the command line asking a question of a copy. It is read on
+the first :func:`connect` and nowhere else.
 
 **What it imports, and why so little.** ``records``, ``ledger``,
 ``locking`` and the standard library - nothing else of the package, at
 load time. The workbook readings it needs are **passed in** as records by
 the caller, so the store never depends on the modules that open workbooks,
-walk folders and take locks; the command line at the bottom imports them
-at call time to feed it, which is the one place that may look upwards.
-``RequestItem`` is the manifest's own schema and deliberately stays there
-(:mod:`tracker.records` says why), so the rule columns are the one field
-list written out here - and :func:`_refuse_a_request_schema_that_moved`
-refuses a rebuild whose rows carry a different set, so the table cannot
-drift away from the sheet in silence. Every other column list is derived
-from the frozen record it stores.
+walk folders and take locks; :func:`connect` reads
+:mod:`tracker.settings` at call time and the command line at the bottom
+imports the readers at call time to feed it, which is where an edge is
+allowed to point the other way. ``RequestItem`` is the manifest's own
+schema and deliberately stays there (:mod:`tracker.records` says why), so
+the rule columns are the one field list written out here - and
+:func:`_refuse_a_request_schema_that_moved` refuses a rebuild whose rows
+carry a different set, so the table cannot drift away from the sheet in
+silence. Every other column list is derived from the frozen record it
+stores.
 """
 
 from __future__ import annotations
@@ -81,6 +99,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import fields
@@ -105,6 +124,16 @@ from tracker.records import (
 #: file. One per clients root; a person never opens it and never backs it up
 #: (the journals are the backup).
 STORE_FILENAME = "tracker.db"
+#: The two files SQLite keeps beside it while a write-ahead log is live.
+#: Named here because ``.gitignore`` has to know all three and a name typed
+#: twice is a name that drifts.
+STORE_WAL_FILENAME = f"{STORE_FILENAME}-wal"
+STORE_SHM_FILENAME = f"{STORE_FILENAME}-shm"
+
+#: An absolute path to a store to use instead of the one beside the settings
+#: file. The suite sets it per test; a person may set it to ask a question of
+#: a copy. Read by :func:`connect` and nowhere else.
+ENV_STORE = "TRACKER_STORE"
 
 #: What this version of the code knows how to read, written into the file as
 #: ``user_version``. A file carrying anything else is refused by name rather
@@ -318,6 +347,64 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     return conn
 
 
+#: The one connection this process has, and the file it is to. Module level
+#: rather than passed down from an entry point because every writer deep in
+#: the package needs it and threading a handle through twelve signatures is
+#: how one of them ends up opening a second.
+_CONNECTION: sqlite3.Connection | None = None
+_CONNECTION_PATH: Path | None = None
+
+
+def store_path() -> Path:
+    """The store this process uses: :data:`ENV_STORE` if it is set, else the
+    one beside the settings file.
+
+    :mod:`tracker.settings` is imported here rather than at the top of the
+    module: this module sits at the bottom of the package and must not pull
+    in, at load time, the chain that opens workbooks.
+    """
+    override = os.environ.get(ENV_STORE)
+    if override:
+        return Path(override)
+    from tracker.settings import settings_path
+
+    return path_for(settings_path())
+
+
+def connect(path: Path | str | None = None) -> sqlite3.Connection:
+    """The process's one connection to the store, opened on first use.
+
+    ``path`` is for a caller that knows which file it means (the command
+    line); everything else asks for the machine's. Asking for a *different*
+    file while one is open is refused rather than quietly answered from the
+    wrong database - :func:`close` first.
+    """
+    global _CONNECTION, _CONNECTION_PATH
+    wanted = Path(path) if path is not None else store_path()
+    if _CONNECTION is not None:
+        if _CONNECTION_PATH != wanted:
+            raise StoreError(
+                f"this process already has {_CONNECTION_PATH} open; it cannot also answer "
+                f"from {wanted} - close() the first one"
+            )
+        return _CONNECTION
+    _CONNECTION = open(wanted)
+    _CONNECTION_PATH = wanted
+    return _CONNECTION
+
+
+def close() -> None:
+    """Let go of the process's connection. Safe to call when there is none.
+
+    A database with an open connection cannot be deleted on Windows, which
+    is why the suite closes it before the temporary folder goes.
+    """
+    global _CONNECTION, _CONNECTION_PATH
+    if _CONNECTION is not None:
+        _CONNECTION.close()
+    _CONNECTION, _CONNECTION_PATH = None, None
+
+
 @contextmanager
 def _transaction(conn: sqlite3.Connection):
     """One immediate transaction: everything in it, or none of it.
@@ -410,6 +497,22 @@ def _stored_rows(conn: sqlite3.Connection, engagement_id: int) -> dict[str, dict
             'SELECT * FROM documents WHERE engagement_id = ? ORDER BY "position"', (engagement_id,)
         )
     }
+
+
+def documents(conn: sqlite3.Connection, engagement_dir: Path | str) -> list[dict]:
+    """One engagement's index rows, in the index's own order.
+
+    The read the filer's ``read_index()`` answers from. Each row is the
+    dict an index-shaped event carries, which is what
+    :func:`tracker.records.entry_from_json` reads back, so the row the
+    writer recorded and the row a reader gets are one shape.
+
+    An engagement the store has never seen has no rows and says so with an
+    empty list rather than an error: it is a folder nothing has been
+    recorded for yet, which is what a brand new engagement is.
+    """
+    row = _engagement_row(conn, engagement_dir)
+    return [] if row is None else list(_stored_rows(conn, row["id"]).values())
 
 
 def _stored_seqs(conn: sqlite3.Connection, engagement_id: int) -> dict[str, int]:
@@ -605,6 +708,46 @@ def sync(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str)
     return seq
 
 
+def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
+    """Bring one engagement's rows up to its journal, building them if there
+    are none. Returns the applied seq.
+
+    **The reader's top-up, and it never opens a workbook.** The store is a
+    derivation of the journal, so a reader that finds it missing or behind
+    can make it right from the journal alone - no manifest, no index, no
+    lock, nothing written in the engagement folder.
+    the filer's ``read_index()`` calls this before every read, which is
+    why no reader in the package has to know whether somebody ensured the
+    engagement first.
+
+    The engagement's own details and the person's rules are *not* filled in
+    here: they are the workbook's and this must not open one. A row built
+    this way carries an empty ``manifest_digest``, which is exactly how
+    the filer's ``ensure()`` knows to read the sheet and fill them.
+    """
+    engagement_dir = Path(engagement_dir)
+    rel = engagement_path(root, engagement_dir)
+    row = conn.execute("SELECT * FROM engagements WHERE path = ?", (rel,)).fetchone()
+    if row is not None:
+        # The journal's digest first, and the lines only if it moved: this
+        # runs before every read, and parsing a season of events to learn
+        # that nothing has happened is the cost the store exists to remove.
+        if row["ledger_head"] == ledger.head(engagement_dir):
+            return row["applied_seq"]
+        return sync(conn, root, engagement_dir)
+    events = ledger.read_events(engagement_dir)
+    with _transaction(conn):
+        columns = f'"path", {_names(ENGAGEMENT_COLUMNS)}, manifest_digest, ledger_head, applied_seq, built_at'
+        cursor = conn.execute(
+            f"INSERT INTO engagements ({columns}) VALUES ({_marks(len(ENGAGEMENT_COLUMNS) + 5)})",
+            (rel, *[_to_sql(getattr(EngagementInfo(), name)) for name in ENGAGEMENT_COLUMNS],
+             "", ledger.head(engagement_dir), len(events), ledger.stamp()),
+        )
+        if events:
+            _apply(conn, cursor.lastrowid, events, start=1)
+    return len(events)
+
+
 # ------------------------------------------------------------- the rebuild ----
 
 
@@ -616,18 +759,23 @@ def rebuild_engagement(
     rules: list,
     info: EngagementInfo,
     manifest_digest: str,
-    workbook_rows: list[IndexEntry],
     workbook_statuses: dict[str, StatusUpdate],
+    workbook_rows: list[IndexEntry] = (),
 ) -> None:
     """Build one engagement's rows again from the record. Idempotent.
 
-    The journal is replayed from its first line, and then - for every index
-    row and every identifier's status the journal does not carry - the
-    workbook reading the caller passed in is taken instead, at
-    :data:`WORKBOOK_SEQ`. That is decision 88's rule ("the record answers,
-    the workbook falls back, per row and per identifier") done once here
-    rather than on every read, and it is why a store built this way says
-    what the live readers say.
+    The journal is replayed from its first line, and then - for every
+    identifier's status the journal does not carry - the workbook reading
+    the caller passed in is taken instead, at :data:`WORKBOOK_SEQ`. That is
+    decision 88's rule ("the record answers, the workbook falls back, per
+    row and per identifier") done once here rather than on every read.
+
+    ``workbook_rows`` is the **migration's** argument and nobody else's
+    (decision 102): the index is the record's now, so an ordinary rebuild
+    is handed none and takes every row from the journal. The one caller
+    with rows the journal has never seen is the filer's migration, which
+    reads the old workbook once - and it appends them to the journal
+    first, so even there this fallback finds nothing left to do.
 
     The rules and the Engagement sheet are the person's and are never the
     journal's: they come from the workbook every time, through the values
@@ -705,6 +853,52 @@ def _fall_back_to_the_workbook(
         _write_status(conn, engagement_id, identifier, status_to_json(update), WORKBOOK_SEQ)
 
 
+def reimport_rules(
+    conn: sqlite3.Connection,
+    root: Path | str,
+    engagement_dir: Path | str,
+    *,
+    rules: list,
+    info: EngagementInfo,
+    manifest_digest: str,
+    workbook_statuses: dict[str, StatusUpdate],
+) -> None:
+    """Read the person's sheet into the store again, leaving the record alone.
+
+    The rules and the Engagement sheet are the person's and never the
+    journal's, so when the workbook's digest moves the store has to read
+    them again - but replaying the whole journal to do it would make every
+    pass after every edit cost the engagement's whole history. This
+    replaces the ``requests`` rows and the engagement's own columns, and
+    takes the workbook's status for an identifier the record has never
+    spoken for (:data:`WORKBOOK_SEQ`, the same per-identifier fallback
+    :func:`rebuild_engagement` applies). ``documents`` and ``events`` are
+    not touched: they are the record's.
+    """
+    rel = engagement_path(root, engagement_dir)
+    row = conn.execute("SELECT * FROM engagements WHERE path = ?", (rel,)).fetchone()
+    if row is None:
+        raise StoreError(f"{rel}: the store does not hold this engagement; rebuild it")
+    for item in rules:
+        _refuse_a_request_schema_that_moved(item)
+    with _transaction(conn):
+        conn.execute("DELETE FROM requests WHERE engagement_id = ?", (row["id"],))
+        for item in rules:
+            _write_request(conn, row["id"], item)
+        assignments = ", ".join(f'"{name}" = ?' for name in ENGAGEMENT_COLUMNS)
+        conn.execute(
+            f"UPDATE engagements SET {assignments}, manifest_digest = ?, built_at = ? WHERE id = ?",
+            (*[_to_sql(getattr(info, name)) for name in ENGAGEMENT_COLUMNS],
+             manifest_digest, ledger.stamp(), row["id"]),
+        )
+        carried = {stored["identifier"] for stored in conn.execute(
+            "SELECT identifier FROM statuses WHERE engagement_id = ? AND seq > ?",
+            (row["id"], WORKBOOK_SEQ))}
+        for identifier, update in workbook_statuses.items():
+            if identifier_key(identifier) not in carried:
+                _write_status(conn, row["id"], identifier, status_to_json(update), WORKBOOK_SEQ)
+
+
 # --------------------------------------------------------------- the check ----
 
 
@@ -725,12 +919,15 @@ def check(
     named in a sentence a person can act on: which engagement, which row or
     identifier, which field, what each side says.
 
-    The right-hand side is the *live* readers, which since decision 88
-    answer from the journal and fall back to the workbook per row. A
-    rebuild is fed the workbook's own reading instead, so that a store
-    built from journal-plus-workbook agrees with a reader answering from
-    journal-plus-workbook. Comparing a rebuild against the readings it was
-    built from would be the store compared with itself.
+    **The two sides have to be different readings, and since decision 102
+    each half gets its own.** The index rows are compared with
+    :func:`tracker.ledger.replay` over the journal - the only other copy
+    there is, now that the workbook is gone and ``read_index()`` answers
+    from these very tables. The request rows and their statuses are
+    compared with the live manifest readers, which still answer from the
+    journal and fall back to the sheet per identifier, while a rebuild is
+    fed the sheet's own reading; comparing a rebuild against the readings
+    it was built from would be the store compared with itself.
     """
     name = Path(engagement_dir).name
     rel = engagement_path(root, engagement_dir)
@@ -913,36 +1110,23 @@ if __name__ == "__main__":
     # nothing that opens a workbook; a command line nobody imports is the
     # one place that may look upwards, and feeding the store its workbook
     # readings is exactly what it is for.
-    from tracker import registry, view
-    from tracker.filer import INDEX_FILENAME, read_index, read_index_from_workbook
-    from tracker.manifest import (
-        load_engagement_info,
-        load_manifest,
-        load_manifest_from_workbook,
-        statuses_from_workbook,
-    )
-    from tracker.records import status_from_json
+    from tracker import registry
+    from tracker.filer import rules_digest, workbook_readings
+    from tracker.manifest import load_manifest
+    from tracker.records import entry_from_json
     from tracker.scaffold import MANIFEST_FILENAME
 
-    def _workbook_readings(folder: Path) -> dict:
-        """What the workbooks themselves say - the right inputs for a rebuild."""
-        manifest_path, index_path = folder / MANIFEST_FILENAME, folder / INDEX_FILENAME
-        return {
-            "rules": load_manifest_from_workbook(manifest_path),
-            "info": load_engagement_info(manifest_path),
-            "manifest_digest": view.rules_digest(folder),
-            "workbook_rows": read_index_from_workbook(index_path, quarantine=False),
-            "workbook_statuses": {
-                identifier: status_from_json(stored)
-                for identifier, stored in statuses_from_workbook(manifest_path).items()
-            },
-        }
-
     def _live_readings(folder: Path) -> dict:
-        """What the readers answer today - the right side of the check."""
+        """The other copies of what the store holds - the check's right side.
+
+        The index rows come from the journal, which is the only other copy
+        of them since decision 102; the request rows come from the live
+        manifest readers, which still have the sheet behind them.
+        """
         return {
             "live_items": load_manifest(folder / MANIFEST_FILENAME),
-            "live_rows": read_index(folder / INDEX_FILENAME, quarantine=False),
+            "live_rows": [entry_from_json(row)
+                          for row in ledger.replay(ledger.read_events(folder)).rows.values()],
         }
 
     parser = argparse.ArgumentParser(
@@ -958,13 +1142,13 @@ if __name__ == "__main__":
     ns = parser.parse_args()
 
     given = Path(ns.store)
-    store_path = given if given.name == STORE_FILENAME else path_for(given)
+    chosen = given if given.name == STORE_FILENAME else path_for(given)
     clients_root = Path(ns.root)
     folders = ([Path(ns.engagement)] if ns.engagement
                else registry.engagement_dirs(clients_root))
 
-    print(f"\n{store_path}")
-    connection = open(store_path)
+    print(f"\n{chosen}")
+    connection = connect(chosen)
     failures = 0
     try:
         if ns.command == "export":
@@ -976,10 +1160,10 @@ if __name__ == "__main__":
             for engagement in folders:
                 if ns.command == "rebuild":
                     rebuild_engagement(connection, clients_root, engagement,
-                                       **_workbook_readings(engagement))
+                                       **workbook_readings(engagement))
                     print(f"  built {engagement.name}")
                 elif ns.command == "state":
-                    print(f"  {state(connection, engagement, rules_digest_now=view.rules_digest(engagement), ledger_head_now=ledger.head(engagement))}"
+                    print(f"  {state(connection, engagement, rules_digest_now=rules_digest(engagement), ledger_head_now=ledger.head(engagement))}"
                           f"  {engagement.name}")
                 else:
                     said = check(connection, clients_root, engagement, **_live_readings(engagement))
@@ -989,7 +1173,7 @@ if __name__ == "__main__":
                     if not said:
                         print(f"  agrees  {engagement.name}")
     finally:
-        connection.close()
+        close()
     if failures:
         print(f"\n  the store and the readers do not agree ({failures})\n")
     else:

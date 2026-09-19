@@ -126,15 +126,23 @@ def test_ci_tests_the_python_floor_pyproject_declares():
 
 
 def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
+    """The store counts, and so do the two files SQLite keeps beside it.
+
+    It lives beside the settings file, which in a source checkout is the
+    repository root: a developer who runs the app, or a subprocess test
+    that does not name a store of its own, writes one into the tree.
+    """
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
+    from tracker.store import STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
     ignored = [line.strip() for line in read(".gitignore").splitlines()
                if line.strip() and not line.startswith("#")]
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME,
-                 SCHEDULE_XML_FILENAME, SETTINGS_FILENAME):
+                 SCHEDULE_XML_FILENAME, SETTINGS_FILENAME,
+                 STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME):
         assert ignored.count(name) == 1, name
 
 
@@ -354,7 +362,12 @@ def test_documents_name_only_runtime_files_the_code_owns():
     """Every `something.ext` a document quotes is a file the code names, or a repo file."""
     import subprocess
 
-    from tracker.filer import INDEX_FILENAME, INDEX_PENDING_FILENAME
+    from tracker.filer import (
+        INDEX_FILENAME,
+        INDEX_MIGRATED_FILENAME,
+        INDEX_PENDING_FILENAME,
+        INDEX_PENDING_MIGRATED_FILENAME,
+    )
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import pending_path
@@ -367,7 +380,9 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
-    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_PENDING_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
+    owned = {CACHE_FILENAME, INDEX_FILENAME, INDEX_MIGRATED_FILENAME,
+             INDEX_PENDING_FILENAME, INDEX_PENDING_MIGRATED_FILENAME,
+             LEDGER_FILENAME, LOCK_FILENAME,
              pending_path(Path(MANIFEST_FILENAME)).name, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, MANIFEST_FILENAME, README_NAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME}

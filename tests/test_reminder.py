@@ -201,7 +201,8 @@ def test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft(
     the draft over the top of it. The count is still the folder's, though:
     a file dragged in by hand has no row and is nobody's decision yet.
     """
-    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, NOT_REQUESTED, IndexEntry, write_index
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, NOT_REQUESTED, IndexEntry
 
     folder = engagement(tmp_path)
     review = folder / PREPARED_DIR_NAME / REVIEW_DIR_NAME
@@ -216,7 +217,7 @@ def test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft(
             pbc_location=f"pbc/{name}", decision=decision, reason="unrecognized",
         )
 
-    write_index(folder / INDEX_FILENAME, [
+    seed_index(folder, [
         row("irs-notice.pdf", NOT_REQUESTED), row("scan0012.pdf", NEEDS_REVIEW),
     ])
     assert count_needs_review(folder) == 2

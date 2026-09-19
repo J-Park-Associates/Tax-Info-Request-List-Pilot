@@ -1,42 +1,31 @@
-"""The agreement check every test in the suite pays for once.
+"""The agreement checks every test in the suite pays for once.
 
-`tracker/ledger.py` is the engagement's own record, and since decision 88 it
-is what ``read_index()`` and ``load_manifest()`` answer from wherever it has
-anything to say. What keeps that honest is this: after **every** test, every
-engagement folder the test left under its ``tmp_path`` that carries a record
-is folded back and compared with what the *workbooks* say. One fixture, and
-the whole suite - every drop sorted, every parked file filed, every scan,
-every locked-Excel sidecar, every one of the storage readings in the decision
-log - becomes a test of the record too.
+`tracker/ledger.py` is the engagement's own record. Since decision 102 it
+is the whole of the index - there is no ``_index.xlsx`` to disagree with
+any more - and since decision 88 it is what ``load_manifest()`` answers
+each identifier's status from, with the workbook behind it. Three autouse
+fixtures hold all of that honest after **every** test.
 
-**Compared against the workbooks' own readings, never the live ones.** The
-live readers now believe the record, so ``read_index()`` and
-``load_manifest()`` here would be the record compared with itself - a check
-that can only pass. This fixture therefore reads
-``filer.read_index_from_workbook()`` and ``manifest.statuses_from_workbook()``
-(the reading every reader made before decision 88, kept public for exactly
-this) and compares the record with those.
+**A store of its own** (``a_store_of_its_own``). The store keeps one
+connection per process and the file it would otherwise open sits beside
+the settings file, which on a developer's machine is the repository.
+``TRACKER_STORE`` points it at this test's own ``tmp_path`` instead, and
+the connection is closed at teardown before the temporary folder goes,
+because Windows will not delete a database a handle is open on. No test
+can see another's rows.
 
-What is compared, and what is not:
-
-- The fold of the record's index-shaped events against the workbook reading
-  with its snapshot overlay: the same identities, **in the same order**, and
-  for each the same row, field for field. Order matters now that the fold is
-  what ``read_index()`` returns and every write rebuilds the workbook from
-  it. Only when the record carries at least one index-shaped event - an
-  engagement whose record holds nothing but a scan has had no index write go
-  through a writer that records.
-- The statuses the record's ``scanned`` events add up to against the
-  workbook's scanner columns with the pending sidecar overlaid, for every
-  identifier the record has ever seen a status for. An identifier the
-  manifest no longer carries is passed over: a row deleted or renamed in
-  Excel since the scan is dropped by ``_apply_updates`` and by
-  ``with_pending`` alike, and the record is right that it was written.
-
-An engagement with no record at all is skipped - a test that hand-builds a
-legacy workbook and never writes through the writers has nothing to agree
-with - and so is one whose index the tracker refuses to read, which is itself
-what that test is about.
+**The record agrees with the manifest**
+(``the_record_agrees_with_the_manifest``). For every engagement the test
+left a record in, the statuses the record's ``scanned`` events add up to
+are compared with the workbook's scanner columns, the pending sidecar
+overlaid, for every identifier the record has ever seen a status for. An
+identifier the manifest no longer carries is passed over: a row deleted or
+renamed in Excel since the scan is dropped by ``_apply_updates`` and by
+``with_pending`` alike, and the record is right that it was written. The
+comparison is against ``manifest.statuses_from_workbook()``, never
+``load_manifest()``, which would be the record compared with itself. The
+index half of this check is gone with the workbook it compared against;
+the store fixture below is what took its place.
 
 **And the view agrees with the readers** (decisions 89 and 91). Wherever a
 test left a view behind, the page is **drawn again from the live readers**
@@ -47,46 +36,38 @@ the readers do not have, or missing one they do, differs somewhere in those
 bytes, while a reader written in the test would only ever check the part
 somebody thought to parse. The one thing excluded is the clock: the
 generated time is read out of the page's own stamp and handed back to the
-render. Here the *live* readers are the right side to compare against: the
-view is a derivation of them, not another record of the same facts, and the
-whole claim is that what a person opens says what the readers say.
+render. A view ``view_state()`` does not call current is passed over,
+because that is exactly what a pass reports as ``view_stale``.
 
-A view ``view_state()`` does not call current is passed over, because that
-is exactly what a pass reports as ``view_stale``: the replace did not land
-and the view on disk is honestly one pass behind. Passing it over is not a
-hole - the state itself is asserted by ``tests/test_view.py``, including
-the Windows test that really holds the file open while a pass tries to
-replace it.
-
-**And the store agrees with the readers** (decision 101). After every test,
-every engagement folder under ``tmp_path`` that carries a request list is
-built into a store in a throwaway database - ``rebuild_engagement()`` from
-the *workbooks' own* readings, exactly as the migration will - and
-``check()`` against the *live* readers must return nothing at all. The two
-sides are deliberately different readings: the rebuild is fed the workbook,
-the check asks ``read_index()`` and ``load_manifest()``, which answer from
-the record and fall back per row, and the claim is that those two meet.
-Both sides see the deferred sidecar - ``statuses_from_workbook()`` overlays
-it on the way in and ``with_pending()`` overlays it on the way out -
-because a status a locked Excel kept out of the workbook is a status that
-was applied, and a store that could not say so would be a store the
-reminder could not be moved onto. An engagement the live readers
-themselves refuse is passed over, exactly as the record's comparison
-passes over an index the tracker will not read: that refusal is what the
-test is about.
+**The store agrees with the record** (``the_store_agrees_with_the_record``,
+decision 101, re-aimed by 102). Every engagement folder under ``tmp_path``
+that carries a request list is built into a store in a throwaway database -
+``rebuild_engagement()`` from the record and the workbooks - and ``check()``
+against the other copies must return nothing at all. The two sides are
+deliberately different readings, and since the index left the workbook
+each half has a different other copy: the **documents** are compared with
+``ledger.replay()`` over the journal, which is now the only second copy
+of them; the **requests and statuses** are compared with the live manifest
+readers, which answer from the record and fall back to the sheet per
+identifier while the rebuild is fed the sheet's own reading. Both sides see
+the deferred sidecar, because a status a locked Excel kept out of the
+workbook is a status that was applied. An engagement the readers themselves
+refuse is passed over: that refusal is what the test is about.
 
 One store per test rather than one for the suite, because the claim is
-about a build from nothing and because a database left open cannot be
-deleted on Windows - the connection is closed before the temporary folder
-goes. This runs the store over every drop sorted, every file a person
-filed, every locked-Excel sidecar and every ledger path the suite has, and
-it is the gate stages 2 and 3 are built on.
+about a build from nothing. This runs the store over every drop sorted,
+every file a person filed, every locked-Excel sidecar and every ledger path
+the suite has, and it is the gate decision 102 was built on.
+
+**Seeding an index** (``seed_index``). A test that needs rows to exist
+records them, because recording them is the only way they can exist: the
+helper appends ``imported`` events under the engagement lock through the
+store, which is the same call every writer in the package makes.
 
 Looking changes nothing: the workbooks are read with ``quarantine=False``, so
 a sidecar this fixture cannot parse is reported and left exactly where the
 test put it.
 """
-
 from __future__ import annotations
 
 import contextlib
@@ -98,38 +79,55 @@ from pathlib import Path
 import pytest
 
 from tracker import ledger, store, view
-from tracker.filer import (
-    INDEX_FILENAME,
-    FilingError,
-    ledger_key,
-    read_index,
-    read_index_from_workbook,
-)
+from tracker.filer import FilingError, ensure, workbook_readings
+from tracker.locking import engagement_lock
 from tracker.manifest import (
     ManifestError,
-    load_engagement_info,
     load_manifest,
-    load_manifest_from_workbook,
     pending_updates,
     statuses_from_workbook,
     with_pending,
 )
-from tracker.records import status_from_json
+from tracker.records import entry_from_json, entry_to_json, ledger_key
 from tracker.scaffold import MANIFEST_FILENAME
+
+
+@pytest.fixture(autouse=True)
+def a_store_of_its_own(tmp_path):
+    """Every test gets its own database, and no test leaks one into another.
+
+    ``tracker.store`` keeps one connection per process, to the file beside
+    the settings file - which on a developer's machine is the repository
+    itself. A suite that used it would write every test's rows into one
+    database, and the next test would read the last one's engagements.
+    ``TRACKER_STORE`` is what the store reads instead, and it is pointed at
+    a file under this test's own ``tmp_path``.
+
+    Defined first in this file so it is set up before every other autouse
+    fixture and torn down after all of them: the connection is closed
+    before the temporary folder goes, because Windows will not delete a
+    database a handle is open on. It is closed on the way in too, in case
+    a test left one open to a file that no longer exists.
+
+    A ``MonkeyPatch`` of its own, not the ``monkeypatch`` fixture: that one
+    is shared with the test, and a test calling ``monkeypatch.undo()`` -
+    several do, to put a patched writer back - would take this variable
+    with it and point the next line at the repository's own database.
+    """
+    patch = pytest.MonkeyPatch()
+    patch.setenv(store.ENV_STORE, str(tmp_path / "app" / store.STORE_FILENAME))
+    store.close()
+    try:
+        yield
+    finally:
+        store.close()
+        patch.undo()
+
 
 #: Engagements the comparison passes over, by folder name, with the decision
 #: that will make them agree. Empty: the fixture found nothing the writers and
-#: the index disagreed about.
+#: the record disagreed about.
 KNOWN_DISAGREEMENTS: dict[str, str] = {}
-
-
-def _index_rows(engagement_dir):
-    """The index as the *workbook* reads it, by the identity the record keys
-    rows on. Never ``read_index()``, which answers from the record."""
-    return {
-        ledger_key(entry): {f: getattr(entry, f) for f in entry.__dataclass_fields__}
-        for entry in read_index_from_workbook(engagement_dir / INDEX_FILENAME, quarantine=False)
-    }
 
 
 def _manifest_statuses(engagement_dir):
@@ -143,25 +141,6 @@ def _manifest_statuses(engagement_dir):
     except ManifestError:
         return None        # a manifest the loader refuses; that is what the test is about
     return {identifier.lower(): status for identifier, status in recorded.items()}
-
-
-def _compare_rows(name, folded, actual):
-    assert set(folded) == set(actual), (
-        f"{name}: the record and the index do not hold the same originals; "
-        f"only in the record: {sorted(set(folded) - set(actual))}; "
-        f"only in the index: {sorted(set(actual) - set(folded))}"
-    )
-    assert list(folded) == list(actual), (
-        f"{name}: the record and the index hold the same originals in different "
-        f"orders; the record says {list(folded)}, the index says {list(actual)}"
-    )
-    for key, row in actual.items():
-        recorded = folded[key]
-        for field, value in row.items():
-            assert recorded.get(field) == value, (
-                f"{name}: row {key!r}, field {field!r}: the record says "
-                f"{recorded.get(field)!r}, the index says {value!r}"
-            )
 
 
 def _compare_statuses(name, recorded, actual):
@@ -178,14 +157,7 @@ def _check(engagement_dir) -> None:
     name = engagement_dir.name
     if name in KNOWN_DISAGREEMENTS:
         return
-    events = ledger.read_events(engagement_dir)
-    if any(event.get(ledger.EVENT_KEY) in ledger.ROW_EVENTS for event in events):
-        try:
-            actual = _index_rows(engagement_dir)
-        except FilingError:
-            return             # an index the tracker refuses to read; that is the test
-        _compare_rows(name, ledger.fold(events), actual)
-    recorded = ledger.statuses(events)
+    recorded = ledger.statuses(ledger.read_events(engagement_dir))
     if recorded:
         actual = _manifest_statuses(engagement_dir)
         if actual is not None:
@@ -220,9 +192,10 @@ def _check_view(engagement_dir) -> None:
 
 
 @pytest.fixture(autouse=True)
-def the_record_agrees_with_the_workbooks(tmp_path):
-    """After every test: every engagement it wrote a record for still agrees,
-    and every view it left behind says what the readers say."""
+def the_record_agrees_with_the_manifest(tmp_path):
+    """After every test: every status the record holds is the status the
+    manifest workbook holds, and every view the test left behind says what
+    the readers say."""
     yield
     for path in sorted(tmp_path.rglob(ledger.LEDGER_FILENAME)):
         _check(path.parent)
@@ -230,47 +203,28 @@ def the_record_agrees_with_the_workbooks(tmp_path):
         _check_view(path.parent)
 
 
-def workbook_readings(engagement_dir) -> dict:
-    """What the *workbooks* say, as ``rebuild_engagement()`` takes it.
-
-    The migration's inputs: the request list, the Engagement sheet, the
-    rules workbook's digest, the index as the workbook and its snapshot
-    read it, and every identifier's scanner columns with the deferred
-    sidecar overlaid. Public because ``tests/test_store.py`` builds the
-    same way and two spellings of "what the workbooks say" would be two
-    migrations.
-    """
-    manifest_path = engagement_dir / MANIFEST_FILENAME
-    return {
-        "rules": load_manifest_from_workbook(manifest_path),
-        "info": load_engagement_info(manifest_path),
-        "manifest_digest": view.rules_digest(engagement_dir),
-        "workbook_rows": read_index_from_workbook(
-            engagement_dir / INDEX_FILENAME, quarantine=False),
-        "workbook_statuses": {
-            identifier: status_from_json(stored)
-            for identifier, stored in statuses_from_workbook(manifest_path).items()
-        },
-    }
-
-
 def live_readings(engagement_dir) -> dict:
-    """What the readers answer today, as ``check()`` takes it.
+    """The other copies of what the store holds, as ``check()`` takes them.
 
-    The fullest reading the package has, and the one the reminder makes:
-    the record's rows and statuses over the workbooks', and over both a
-    status a locked Excel deferred to the sidecar.
+    Two different readings, because since decision 102 the two halves have
+    two different other copies. The **index rows** come from the journal
+    replayed - the only other copy there is, now that the workbook is gone
+    and ``read_index()`` answers from the store's own tables. The
+    **request rows** come from the live manifest readers, which still
+    answer from the record and fall back to the sheet per identifier, with
+    a status a locked Excel deferred overlaid on top.
     """
     manifest_path = engagement_dir / MANIFEST_FILENAME
     return {
         "live_items": with_pending(
             load_manifest(manifest_path), pending_updates(manifest_path, quarantine=False)),
-        "live_rows": read_index(engagement_dir / INDEX_FILENAME, quarantine=False),
+        "live_rows": [entry_from_json(row) for row in
+                      ledger.replay(ledger.read_events(engagement_dir)).rows.values()],
     }
 
 
 def _store_check(root, engagement_dir, conn) -> None:
-    """Build one engagement into the store and hold it to the readers."""
+    """Build one engagement into the store and hold it to the other copies."""
     try:
         readings, live = workbook_readings(engagement_dir), live_readings(engagement_dir)
     except (ManifestError, FilingError, OSError):
@@ -281,9 +235,9 @@ def _store_check(root, engagement_dir, conn) -> None:
 
 
 @pytest.fixture(autouse=True)
-def the_store_agrees_with_the_readers(tmp_path):
-    """After every test: a store built from the workbooks and the record for
-    every engagement the test left behind says what the readers say."""
+def the_store_agrees_with_the_record(tmp_path):
+    """After every test: a store built from the record and the workbooks for
+    every engagement the test left behind says what the other copies say."""
     yield
     folders = sorted({path.parent for path in tmp_path.rglob(MANIFEST_FILENAME)})
     if not folders:
@@ -295,6 +249,56 @@ def the_store_agrees_with_the_readers(tmp_path):
                 _store_check(tmp_path, folder, conn)
         finally:
             conn.close()
+
+
+def seed_index(engagement_dir, entries):
+    """Put ``entries`` in the engagement's record, the way a pass would.
+
+    The one way a test seeds an index. There is no workbook to write any
+    more, so a test that wants rows to exist records them: ``imported``
+    events, under the engagement lock, through the store - the same call
+    every writer in the package makes, so a seeded engagement is
+    indistinguishable from one a pass left behind. Returns the entries, so
+    a test can seed and keep them in one line.
+    """
+    engagement_dir = Path(engagement_dir)
+    entries = list(entries)
+    with engagement_lock(engagement_dir):
+        ensure(engagement_dir)
+        store.record(store.connect(), engagement_dir, *[
+            ledger.new(ledger.IMPORTED, **{ledger.KEY_KEY: ledger_key(entry),
+                                           ledger.ROW_KEY: entry_to_json(entry)})
+            for entry in entries
+        ])
+    return entries
+
+
+def write_a_legacy_index(engagement_dir, entries):
+    """Write the index workbook nothing writes any more, for the migration
+    to find. Returns the file.
+
+    Decision 102 deleted ``write_index()``, and with it the only way to
+    produce an ``_index.xlsx``. A folder from before that decision still
+    has one, so the suite has to be able to make one: the header row and
+    the columns in ``INDEX_LAYOUT``'s order, which is exactly what the
+    workbook always held. Nothing in the package calls this - it is the
+    shape of the past, kept only so the migration can be tested against
+    it.
+    """
+    from openpyxl import Workbook
+
+    from tracker.filer import INDEX_FILENAME, INDEX_SHEET
+    from tracker.records import INDEX_COLUMNS
+
+    path = Path(engagement_dir) / INDEX_FILENAME
+    wb = Workbook()
+    ws = wb.active
+    ws.title = INDEX_SHEET
+    ws.append(list(INDEX_COLUMNS))
+    for entry in entries:
+        ws.append(entry.as_row())
+    wb.save(path)
+    return path
 
 
 @pytest.fixture

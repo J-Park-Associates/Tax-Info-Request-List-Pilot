@@ -1,15 +1,14 @@
 """Tests for tracker/ledger.py - the engagement's own append-only record.
 
-The record's main claim is not made here: it is the autouse fixture in
-tests/conftest.py, which folds the record back after every test in the suite
-and compares it with the workbooks' own readings. What is made here is the
-record's own behaviour - one line per event, a torn tail nobody trips over,
-the bootstrap that makes an engagement already a season old agree from its
-first line, and the refusal to write a word outside the engagement lock -
-and, since decision 88, which of the record and the workbooks answered a
-read: read_index() and load_manifest() believe the record wherever it has
-anything to say, per row and per identifier, and fall back to the workbooks
-wherever it has not.
+The record's main claim is not made here: it is the autouse fixtures in
+tests/conftest.py, which after every test in the suite hold the record's
+statuses to the manifest's and the store's rows to the record's. What is
+made here is the record's own behaviour - one line per event, a torn tail
+nobody trips over, the fold that is the index's own order, and the refusal
+to write a word outside the engagement lock - and which of the record and
+the manifest answered a read. Since decision 102 the index has only one
+answer: the record. The manifest's scanner columns still have two, per
+identifier, which is decision 88's rule and what decision 103 finishes.
 """
 
 from __future__ import annotations
@@ -24,18 +23,15 @@ import pytest
 from openpyxl import load_workbook
 
 from tests.test_scanner import text_pdf
-from tracker import ledger
+from tracker import ledger, store
 from tracker.filer import (
+    ASSIGNED_BY_PERSON,
     FILED,
     INDEX_FILENAME,
-    INDEX_SHEET,
-    IndexEntry,
     assign_review_file,
     file_drops,
     ledger_key,
     read_index,
-    read_index_from_workbook,
-    write_index,
 )
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -234,7 +230,7 @@ def test_a_pass_records_what_it_filed_and_what_it_parked(engagement):
     names = [e[ledger.EVENT_KEY] for e in events if e[ledger.EVENT_KEY] in ledger.ROW_EVENTS]
     assert sorted(names) == [ledger.FILED, ledger.PARKED]
     folded = ledger.fold(events)
-    assert folded == {ledger_key(e): asdict(e) for e in read_index(engagement / INDEX_FILENAME)}
+    assert folded == {ledger_key(e): asdict(e) for e in read_index(engagement)}
 
 
 def test_a_person_filing_a_parked_file_is_recorded_as_theirs(engagement):
@@ -246,23 +242,6 @@ def test_a_person_filing_a_parked_file_is_recorded_as_theirs(engagement):
     names = [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)]
     assert names[-2:] == [ledger.ASSIGNED_BY_PERSON, ledger.KEYWORD_LEARNED]
     assert ledger.read_events(engagement)[-1]["keyword"] == "lender"
-
-
-def test_an_engagement_with_rows_and_no_record_is_seeded_before_its_first_new_event(engagement):
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
-    # A folder that has been running a season: the index is full, the record
-    # has not been invented yet.
-    ledger.path_for(engagement).unlink()
-    assert read_index(engagement / INDEX_FILENAME)
-
-    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    file_drops(engagement, today=DAY2)
-
-    events = ledger.read_events(engagement)
-    assert events[0][ledger.EVENT_KEY] == ledger.IMPORTED
-    assert events[-1][ledger.EVENT_KEY] == ledger.FILED
-    assert len(ledger.fold(events)) == len(read_index(engagement / INDEX_FILENAME)) == 2
 
 
 def test_a_quiet_pass_appends_no_scan(engagement):
@@ -290,61 +269,37 @@ def test_a_scan_that_changes_a_status_records_it(engagement):
 
 # --------------------------------------------------------- the readers ----
 #
-# Decision 88: read_index() and load_manifest() answer from the record
-# wherever it has anything to say, and from the workbooks wherever it has
-# not. The claims below are about which of the two answered.
+# Decision 88: load_manifest() answers each identifier's status from the
+# record wherever it has one and from the workbook wherever it has not.
+# Decision 102 left the index with only the first of those two. The claims
+# below are about which answered.
 
 
-def a_legacy_row(name: str, received: dt.date) -> IndexEntry:
-    """A row as a workbook holds it, written by no writer here."""
-    return IndexEntry(
-        received=received.isoformat(), original_name=name, size_kb=1.0, digest="abc",
-        identifier="C01", prepared_location=f"Prepared/C01/{name}",
-        pbc_location=f"Shared/PBC/{name}", decision=FILED, reason="",
-    )
-
-
-def test_the_index_is_read_from_the_record_and_says_what_the_workbook_says(engagement):
+def test_the_index_is_the_record_folded_and_nothing_else(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     file_drops(engagement, today=DAY1)
     drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
     file_drops(engagement, today=DAY2)
 
-    rows = read_index(engagement / INDEX_FILENAME)
+    rows = read_index(engagement)
+    # The same rows, in the same order. The order is the audit trail's and
+    # there is no second copy of it any more: the fold lays it and the
+    # store's position column keeps it (decision 102).
     assert [asdict(e) for e in rows] == list(ledger.fold(ledger.read_events(engagement)).values())
-    # The same rows in the same order: the workbook is rebuilt from what this
-    # reader returns, so an order that drifted would reorder the audit trail.
-    assert rows == read_index_from_workbook(engagement / INDEX_FILENAME)
+    assert not (engagement / INDEX_FILENAME).exists()
 
 
-def test_a_folder_with_no_record_reads_its_index_from_the_workbook(engagement):
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
-    ledger.path_for(engagement).unlink()          # a folder from before the record
-    index = engagement / INDEX_FILENAME
-    wb = load_workbook(index)
-    wb[INDEX_SHEET].append(a_legacy_row("older.pdf", DAY2).as_row())
-    wb.save(index)
-    wb.close()
-
-    assert [e.original_name for e in read_index(index)] == ["w2.pdf", "older.pdf"]
-    assert read_index(index) == read_index_from_workbook(index)
-    assert not ledger.path_for(engagement).exists()      # looking wrote nothing
-
-
-def test_a_record_holding_only_a_scan_still_reads_its_index_from_the_workbook(engagement):
-    # A scan takes the lock and records what it applied; no index write has
-    # gone through a writer, so the record has nothing to say about the index
-    # and must not be read as saying there are no rows.
+def test_a_record_holding_only_a_scan_gives_an_index_of_no_rows(engagement):
+    """A scan takes the lock and records what it applied; no row event has
+    been written, so the engagement has no index rows - and that is an
+    answer, not a gap, because there is nowhere else a row could be."""
     scan_engagement(engagement, today=DAY1)
     events = ledger.read_events(engagement)
     assert any(e[ledger.EVENT_KEY] == ledger.SCANNED for e in events)
     assert not any(e[ledger.EVENT_KEY] in ledger.ROW_EVENTS for e in events)
 
-    index = engagement / INDEX_FILENAME
-    write_index(index, [a_legacy_row("older.pdf", DAY1)])   # a workbook, recorded by nothing
-    assert [e.original_name for e in read_index(index)] == ["older.pdf"]
+    assert read_index(engagement) == []
 
 
 def test_a_recorded_identifier_reads_from_the_record_and_an_unrecorded_one_from_the_workbook(engagement):
@@ -375,19 +330,28 @@ def test_a_recorded_identifier_reads_from_the_record_and_an_unrecorded_one_from_
     manifest.write_bytes(whole)    # put it back: the suite's own fixture reads this folder too
 
 
-def test_an_unreadable_record_falls_back_to_the_workbooks_and_names_the_engagement(engagement, caplog):
+def test_an_unreadable_record_refuses_the_index_and_falls_back_for_the_statuses(engagement, caplog):
+    """Two different answers, because there are two different second copies.
+
+    The index has none any more, so a record that does not read as one is
+    refused by name and the line: guessing past it would answer a question
+    about a client's documents with a shrug. The manifest's scanner columns
+    still have the sheet behind them, so that reader says so loudly and
+    reads it.
+    """
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
     path = ledger.path_for(engagement)
     whole = path.read_bytes()
     path.write_bytes(whole.replace(b'"event"', b'"even', 1))   # corruption in the middle
+    store.close()                  # the rows this process already read are not the question
 
     caplog.clear()
-    assert [e.original_name for e in read_index(engagement / INDEX_FILENAME)] == ["w2.pdf"]
+    with pytest.raises(ledger.LedgerError, match="line 1"):
+        read_index(engagement)
     assert {i.identifier for i in load_manifest(engagement / MANIFEST_FILENAME)} == {"A01", "C01"}
-    assert engagement.name in caplog.text and "line 1" in caplog.text
-    assert caplog.text.count(engagement.name) >= 2      # both readers said so; neither was silent
+    assert engagement.name in caplog.text
 
     path.write_bytes(whole)        # put it back: the suite's own fixture reads this folder too
 
@@ -426,11 +390,9 @@ def test_the_app_shows_a_persons_filing_the_moment_they_make_it(engagement):
 
     [row] = api._state(engagement)["index"]
     assert row["decision"] == FILED and row["identifier"] == "C01"
-    # The record and the workbook say the same thing at that moment, which is
-    # what makes reading either of them the same answer.
-    assert read_index(engagement / INDEX_FILENAME) == read_index_from_workbook(
-        engagement / INDEX_FILENAME
-    )
+    # One copy, one answer: what the app shows is the row the person's
+    # decision was recorded as, in the same transaction as the move.
+    assert read_index(engagement)[0].reason.startswith(ASSIGNED_BY_PERSON)
 
 
 # -------------------------------------------------------------------- CLI ----
@@ -444,27 +406,32 @@ def compare(engagement):
 
 
 def test_the_compare_check_says_they_agree_and_names_a_disagreement(engagement):
+    """The operator's check, now the manifest half only: the index has no
+    workbook to disagree with since decision 102, and `python -m
+    tracker.store <store> check <root>` is the check for the store."""
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
 
     agreed = compare(engagement)
-    assert agreed.returncode == 0 and "the record and the workbooks agree" in agreed.stdout
-    assert "rows:     1 recorded, 1 in" in agreed.stdout
+    assert agreed.returncode == 0 and "the record and the manifest agree" in agreed.stdout
+    assert "rows:     1 recorded (the record is the only copy)" in agreed.stdout
 
-    index = engagement / INDEX_FILENAME
-    whole = index.read_bytes()
-    wb = load_workbook(index)
-    wb[INDEX_SHEET].delete_rows(2)          # the row deleted in Excel
-    wb.save(index)
+    manifest = engagement / MANIFEST_FILENAME
+    whole = manifest.read_bytes()
+    wb = load_workbook(manifest)
+    ws = wb[SHEET_NAME]
+    header = [str(c.value or "") for c in ws[1]]
+    ws.cell(row=2, column=header.index(COL_STATUS) + 1).value = Status.MISSING
+    wb.save(manifest)
     wb.close()
 
     disagreed = compare(engagement)
     assert disagreed.returncode == 1
     assert "they do not agree" in disagreed.stdout
-    assert "Shared/PBC/w2.pdf" in disagreed.stdout
+    assert "A01" in disagreed.stdout
 
-    index.write_bytes(whole)       # put it back: the suite's own fixture reads this folder too
+    manifest.write_bytes(whole)    # put it back: the suite's own fixture reads this folder too
 
 
 def test_the_cli_prints_what_the_folder_holds(engagement):
