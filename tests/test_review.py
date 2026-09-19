@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import seed_index
 from tests.test_scanner import text_pdf
 from tracker import reasons
 from tracker.content_check import (
@@ -32,13 +33,11 @@ from tracker.content_check import (
 )
 from tracker.filer import (
     _CANDIDATE_SEP,
-    INDEX_FILENAME,
     NEEDS_REVIEW,
     NOT_REQUESTED,
     IndexEntry,
     file_drops,
     read_index,
-    write_index,
 )
 from tracker.locking import LOCK_FILENAME
 from tracker.manifest import Override, RequestItem, Status, create_template
@@ -111,8 +110,8 @@ def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candida
 
 
 def park(engagement, *entries):
-    """Write those rows into the engagement's real index workbook."""
-    assert write_index(engagement / INDEX_FILENAME, list(entries))
+    """Record those rows in the engagement's real record."""
+    seed_index(engagement, entries)
     return engagement
 
 
@@ -123,7 +122,7 @@ def triage_of(engagement, **kwargs):
     and hands it over, which is what the app, the view and the CLI all do.
     These tests are that caller, and read it the way the CLI does.
     """
-    return triage(engagement, read_index(engagement / INDEX_FILENAME, quarantine=False), **kwargs)
+    return triage(engagement, read_index(engagement), **kwargs)
 
 
 def identifiers(triaged):

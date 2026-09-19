@@ -123,10 +123,10 @@ def _filed_by_a_person(engagement_dir: Path) -> frozenset[Path]:
     took is not theirs), and the file must still hold the bytes that row
     recorded - the decision was about those bytes, not the name.
     """
-    from tracker.filer import ASSIGNED_BY_PERSON, FILED, INDEX_FILENAME, read_index
+    from tracker.filer import ASSIGNED_BY_PERSON, FILED, read_index
 
     try:
-        rows = read_index(engagement_dir / INDEX_FILENAME, quarantine=False)
+        rows = read_index(engagement_dir)
     except Exception as exc:   # an unreadable index is the filer's problem, not the scan's
         log.warning("Could not read the index for a person's decisions: %s", exc)
         return frozenset()
@@ -310,8 +310,9 @@ def _prepared_warnings(prepared_dir: Path, claimed: set[Path]) -> list[str]:
 
     Loose files in the root and folders matching no identifier - somebody
     dragged something in by hand. Parked documents are NOT listed here:
-    ``INDEX_FILENAME`` is their record, with the reason each was parked, and
-    the app works from it. Reporting them twice was how the two disagreed.
+    the engagement's record holds them, with the reason each was parked,
+    and the app works from it. Reporting them twice was how the two
+    disagreed.
     """
     warnings: list[str] = []
     if not prepared_dir.is_dir():
@@ -339,18 +340,25 @@ def scan_engagement(
     *,
     today: dt.date | None = None,
     dry_run: bool = False,
+    lock_held: bool = False,
 ) -> ScanReport:
     """Scan one engagement and (unless ``dry_run``) write the manifest back.
 
     Dry runs read everything but write nothing — no manifest update, no
     cache save, no lock file — safe to run alongside a real scan.
+
+    ``lock_held`` says the caller already holds this engagement's lock and
+    this call must not take it again: that is
+    :func:`tracker.runner.run_engagement`, which since decision 102 holds
+    one lock across sort, scan and view rather than one per step, so that
+    nothing can slip into the gap between two of them.
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
 
     # The lock comes before the manifest is read (see tracker.locking): a
     # sort that finished in between would otherwise be invisible to this scan.
-    with engagement_lock(engagement_dir) if not dry_run else nullcontext():
+    with nullcontext() if dry_run or lock_held else engagement_lock(engagement_dir):
         manifest_path = engagement_dir / MANIFEST_FILENAME
         # The statuses a locked Excel kept out of the workbook last time are
         # what this scan compares against: the Received Date it carried

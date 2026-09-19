@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import seed_index
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, YEAR, build_samples, col, row
-from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry, read_index, write_index
+from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
 from tracker.manifest import (
     COL_ALLOWED_EXTENSIONS,
     COL_ANY_KEYWORDS,
@@ -604,11 +605,66 @@ def test_the_review_queue_lists_parked_files_newest_first_with_their_reasons(tmp
     assert text.index("Mortgage Notes.docx") < text.index("vacation photo.jpg")
     assert SATURDAY.isoformat() in text and FRIDAY.isoformat() in text
     for engagement in (older, newer):
-        parked = [e for e in read_index(engagement.path / INDEX_FILENAME)
+        parked = [e for e in read_index(engagement.path)
                   if e.decision == NEEDS_REVIEW]
         assert parked
         for entry in parked:
             assert html.escape(entry.reason) in text, entry.reason
+
+
+def test_the_pass_holds_one_lock_from_the_sort_through_the_scan(tmp_path, samples, monkeypatch):
+    """Decision 102: one lock across the whole pass, not one per step.
+
+    The filer and the scanner used to take it one after the other, and the
+    gap between them is a real one: a click in the app could file something
+    into a folder the scan was about to read but had not decided from. The
+    test asks the only question that distinguishes the two - while the scan
+    step is running, can anybody else take this engagement's lock?
+    """
+    from tracker import runner as runner_module
+    from tracker.locking import EngagementLockedError, acquire_lock
+
+    engagement = build_engagement(tmp_path, samples)
+
+    refused: list[bool] = []
+    real = runner_module.scan_engagement
+
+    def scan(engagement_dir, **kwargs):
+        try:
+            acquire_lock(Path(engagement_dir))
+        except EngagementLockedError:
+            refused.append(True)
+        else:
+            refused.append(False)
+        return real(engagement_dir, **kwargs)
+
+    monkeypatch.setattr(runner_module, "scan_engagement", scan)
+    run = run_engagement(engagement, today=FRIDAY, reminders=REMINDERS_NEVER)
+
+    assert run.ok, run.error
+    assert refused == [True], "the scan step ran with the pass's lock let go"
+
+
+def test_a_dry_run_takes_no_lock_at_all(tmp_path, samples, monkeypatch):
+    """It writes nothing, so it must never block a real pass."""
+    from tracker import runner as runner_module
+    from tracker.locking import acquire_lock, release_lock
+
+    engagement = build_engagement(tmp_path, samples)
+
+    taken: list[bool] = []
+    real = runner_module.scan_engagement
+
+    def scan(engagement_dir, **kwargs):
+        held = acquire_lock(Path(engagement_dir))
+        taken.append(True)
+        release_lock(held)
+        return real(engagement_dir, **kwargs)
+
+    monkeypatch.setattr(runner_module, "scan_engagement", scan)
+    run = run_engagement(engagement, today=FRIDAY, reminders=REMINDERS_NEVER, dry_run=True)
+
+    assert run.ok and taken == [True]
 
 
 def test_a_file_named_like_markup_is_shown_as_a_name_not_rendered(tmp_path):
@@ -620,7 +676,7 @@ def test_a_file_named_like_markup_is_shown_as_a_name_not_rendered(tmp_path):
     create_template(folder / MANIFEST_FILENAME, DEMO_ITEMS)
     name = "<b>evil</b>.pdf"
     reason = "<i>nothing matched</i>"
-    write_index(folder / INDEX_FILENAME, [IndexEntry(
+    seed_index(folder, [IndexEntry(
         received=FRIDAY.isoformat(), original_name=name, size_kb=1.0, digest="0" * 8,
         identifier="", prepared_location="",
         pbc_location=f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/{name}",

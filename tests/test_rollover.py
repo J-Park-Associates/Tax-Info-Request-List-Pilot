@@ -277,9 +277,10 @@ def test_offers_reach_the_workbook_without_becoming_requests(prior, tmp_path):
 
 def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
     """What arrived and fitted nowhere is exactly next year's gap."""
-    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry, write_index
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
 
-    write_index(prior / INDEX_FILENAME, [
+    seed_index(prior, [
         IndexEntry(received="2026-03-01", original_name="K-1 Redwood LP.pdf",
                    size_kb=12.0, digest="abc", identifier="",
                    prepared_location=f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/K-1 Redwood LP.pdf",
@@ -388,16 +389,20 @@ def test_a_derived_year_check_is_not_carried_as_text(prior, tmp_path):
 
 
 def test_a_rollover_reads_the_prior_year_without_moving_anything_in_it(prior):
-    """The prior engagement is read, never written: an unreadable index
-    sidecar there is left where it is, not quarantined by a rollover."""
-    from tracker.filer import INDEX_FILENAME
-    from tracker.manifest import pending_path
+    """The prior engagement is read, never written: a prior year that still
+    keeps its index in a workbook is not migrated by a rollover, because a
+    rollover is a reading of last year and last year is finished with."""
+    from tests.conftest import write_a_legacy_index
+    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry
 
-    sidecar = pending_path(prior / INDEX_FILENAME)
-    sidecar.write_text("{not json", encoding="utf-8")
+    write_a_legacy_index(prior, [IndexEntry(
+        received="2026-03-01", original_name="K-1 Redwood LP.pdf", size_kb=12.0,
+        digest="abc", identifier="", prepared_location="", pbc_location="",
+        decision=NEEDS_REVIEW, reason=UNMATCHED)])
     before = sorted(p.name for p in prior.iterdir())
     roll_forward(prior)
-    assert sidecar.exists() and sorted(p.name for p in prior.iterdir()) == before
+    assert (prior / INDEX_FILENAME).exists()
+    assert sorted(p.name for p in prior.iterdir()) == before
 
 
 def test_a_rollover_learns_from_the_prior_years_deferred_scan_too(prior, monkeypatch):
@@ -482,11 +487,12 @@ def test_the_rollover_command_line_writes_the_carried_form_into_next_year(prior)
 def test_a_file_named_like_a_formula_is_a_name_on_the_carried_sheet(prior, tmp_path):
     from openpyxl import load_workbook
 
-    from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, IndexEntry, write_index
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW, IndexEntry
     from tracker.rollover import CARRIED_SHEET, write_rollover_manifest
     from tracker.scaffold import MANIFEST_FILENAME
 
-    write_index(prior / INDEX_FILENAME, [
+    seed_index(prior, [
         IndexEntry(received="2026-03-01", original_name="=SUM scan.pdf", size_kb=12.0, digest="abc",
                    identifier="", prepared_location="", pbc_location="", decision=NEEDS_REVIEW, reason=UNMATCHED),
     ])

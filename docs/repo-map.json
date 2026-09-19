@@ -15,8 +15,8 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 114,
-    "edges": 511,
+    "nodes": 113,
+    "edges": 531,
     "reused": 89
   },
   "node_types": [
@@ -93,14 +93,14 @@
       "id": "rule:originals-are-never-altered",
       "type": "concept",
       "layer": "constraint",
-      "role": "Originals are never altered. Files are moved byte for byte under their own names into Shared/PBC/; all work happens on copies, and every move is recorded in _index.xlsx."
+      "role": "Originals are never altered. Files are moved byte for byte under their own names into Shared/PBC/; all work happens on copies, and every move is recorded in the record."
     },
     {
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2b4e4d9bc49383b0",
-      "lines": 59,
+      "sha256": "850263ec0cc15620",
+      "lines": 60,
       "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
       "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one."
     },
@@ -108,8 +108,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ea0a27d48ac76eb6",
-      "lines": 982,
+      "sha256": "75d64ce804bdcb8e",
+      "lines": 993,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -149,7 +149,7 @@
         "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it.",
-      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike. Decision 72: it bounds it through manifest.check_tax_year(), which the rollover's own flag now goes through too. Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends runner.append_log()'s line to the run log and redraws the status page from every engagement under the root, neither taking a lock nor being allowed to fail the pass that has already moved the files - and state reports the page's path, so the shell will open it for the app's Open Status button. Decision 76: dismiss records that no request asks for a parked document and does not re-scan - nothing was filed under a request, so no row's status can have changed. _vocab() carries the new decision under the key 'dismissed', not the word: the renderer may not hold the word 'Requested' in any form (it is manifest.UNSCANNED_LABEL, and the guard that keeps the app from typing a status reads the whole file), and review_labels carries the card's own labels so the renderer types none of them. Decision 77: unfile sends one filed document back for review and returns the rewritten row and state; the scan summary is state's, because summarize() over the rows the re-scan left has one home and a second copy in the payload would be a second answer. The re-scan itself belongs to filer.unfile_document(), not here: the status reverting is part of the correction, not part of being asked over JSON. Decision 82: state's index rows carry evidence as data, not as text - _evidence_payload() parses the cell with content_check.parse_evidence() and ships a record keyed by candidate identifier, so the renderer never splits a string of the tracker's on separators of its own; _vocab()['evidence'] carries EVIDENCE_RULES and EVIDENCE_PLACES, the two lists of words the app may label. Decision 84: state carries 'review' - tracker.review.triage() over the manifest rows and index entries state has already loaded, so each is read once for the whole screen, serialised by _triage_payload() as one entry per parked file joined to its index row by pbc_location, its shortlist in triage order, each suggestion carrying identifier, reason and rank. The reason ships whole, with its leading identifier, exactly as review.py wrote it: one owner for the sentence, and the identifier travels beside it as data because that is what assign is given. There is no review command - the card draws from the one state the app already reads. _vocab() owns every word that card shows: review_labels gained FILE_LABEL, SUGGESTED_HEADING and OTHER_REQUESTS_HEADING, and 'triage' carries review.NOTHING_SUGGESTED, review.IDENTIFIER_SEPARATOR, review.PLACE_WORDS and review.MAX_SUGGESTIONS from the module that owns them. Decision 86: create passes the wizard's catalog choice to create_template(form=...) so the Engagement sheet records which checklist the list was cut from, and _state() ships it with the rest of the sheet (_info_payload() is asdict() over EngagementInfo, so a field added there travels without a second edit). The app prints it beside the engagement picker exactly as the catalog keys it, so _vocab() gains no word for it. Decision 89: _state() ships view: {state, path} from tracker.view.view_state() - a read that takes no lock and tolerates another program holding the file - and paths gains 'view', because the shell opens only the paths this map names. _vocab() owns the label and the three state words; the app types none of them. Decision 91: paths['view'] is now an .html file, which shell.openPath() opens in the default browser by its extension, and _vocab()['view'] gained 'open', the button's own label (tracker.view.VIEW_OPEN_LABEL), so the renderer types neither word. _slug is tracker.page.slug, one function for a status chip's class in the app and a status badge's on the page."
+      "notes": "Every command prints one JSON object and returns an exit code \u2014 errors are JSON too, never a traceback. This is the only module the Electron app knows about. The create path validates identifiers and counts with the same sentences the manifest loader uses, and never leaves a half-built engagement folder behind. state overlays deferred statuses and reports pending_statuses; an engagement name with nothing alphanumeric left after sanitizing falls back to a default. list/priors use the same discovery as the scheduled run; create and rollover write the Engagement sheet from the wizard's client/link/due (rollover carries client, sender, firm and reminders, never last year's link or due); assign files a parked document by a person's choice and re-scans. check validates the manifest on demand; unlock clears a stale lock; state carries the lock; templates carries each form's tax year and create names a new-client engagement from client, year and form when no name is given. create takes the tax year (calendar default) and shifts catalog rows to it; rollover writes Rolled From so the prior retires; priors report superseded_by. scan is run_engagement() with reminders=REMINDERS_NEVER - the app's button and the scheduled job make the same pass; state carries summarize(). The clients root comes from tracker.settings (settings, set-root, install-schedule commands); the wizard never writes Engagement Name, and reads the firm from settings.firm(). install-schedule works in the packaged app too: frozen, it registers its own executable in runner mode (working folder = the executable's) and reports frozen=True; from source it registers the Python it runs under. ENGAGEMENT_FLAG with nothing after it, or an empty folder, gets the same sentence as no flag; once a root is set the folder must lie under it. assign takes the lock twice on purpose (file, then re-scan), each step whole under its own lock. _vocab() hands the renderer every word it shows for a status, decision or reason - the app carries no Python vocabulary of its own. NAME_PATTERN / ROLLOVER_NAME_PATTERN are the only two engagement-name shapes. Decision 55: _under_root() checks containment whenever a root is set and for a rollover's prior too. Decision 67: a blank name falls back to the client's name sanitised, and _new_engagement_dir() refuses a name that is not a folder straight under the root. Decision 68: _tax_year() bounds the year on create and rollover alike. Decision 72: it bounds it through manifest.check_tax_year(), which the rollover's own flag now goes through too. Decision 75: a pass made from the app is on the record the scheduled run leaves - _record_pass() appends runner.append_log()'s line to the run log and redraws the status page from every engagement under the root, neither taking a lock nor being allowed to fail the pass that has already moved the files - and state reports the page's path, so the shell will open it for the app's Open Status button. Decision 76: dismiss records that no request asks for a parked document and does not re-scan - nothing was filed under a request, so no row's status can have changed. _vocab() carries the new decision under the key 'dismissed', not the word: the renderer may not hold the word 'Requested' in any form (it is manifest.UNSCANNED_LABEL, and the guard that keeps the app from typing a status reads the whole file), and review_labels carries the card's own labels so the renderer types none of them. Decision 77: unfile sends one filed document back for review and returns the rewritten row and state; the scan summary is state's, because summarize() over the rows the re-scan left has one home and a second copy in the payload would be a second answer. The re-scan itself belongs to filer.unfile_document(), not here: the status reverting is part of the correction, not part of being asked over JSON. Decision 82: state's index rows carry evidence as data, not as text - _evidence_payload() parses the cell with content_check.parse_evidence() and ships a record keyed by candidate identifier, so the renderer never splits a string of the tracker's on separators of its own; _vocab()['evidence'] carries EVIDENCE_RULES and EVIDENCE_PLACES, the two lists of words the app may label. Decision 84: state carries 'review' - tracker.review.triage() over the manifest rows and index entries state has already loaded, so each is read once for the whole screen, serialised by _triage_payload() as one entry per parked file joined to its index row by pbc_location, its shortlist in triage order, each suggestion carrying identifier, reason and rank. The reason ships whole, with its leading identifier, exactly as review.py wrote it: one owner for the sentence, and the identifier travels beside it as data because that is what assign is given. There is no review command - the card draws from the one state the app already reads. _vocab() owns every word that card shows: review_labels gained FILE_LABEL, SUGGESTED_HEADING and OTHER_REQUESTS_HEADING, and 'triage' carries review.NOTHING_SUGGESTED, review.IDENTIFIER_SEPARATOR, review.PLACE_WORDS and review.MAX_SUGGESTIONS from the module that owns them. Decision 86: create passes the wizard's catalog choice to create_template(form=...) so the Engagement sheet records which checklist the list was cut from, and _state() ships it with the rest of the sheet (_info_payload() is asdict() over EngagementInfo, so a field added there travels without a second edit). The app prints it beside the engagement picker exactly as the catalog keys it, so _vocab() gains no word for it. Decision 89: _state() ships view: {state, path} from tracker.view.view_state() - a read that takes no lock and tolerates another program holding the file - and paths gains 'view', because the shell opens only the paths this map names. _vocab() owns the label and the three state words; the app types none of them. Decision 91: paths['view'] is now an .html file, which shell.openPath() opens in the default browser by its extension, and _vocab()['view'] gained 'open', the button's own label (tracker.view.VIEW_OPEN_LABEL), so the renderer types neither word. _slug is tracker.page.slug, one function for a status chip's class in the app and a status badge's on the page. Decision 102: standing_rules() fills rule 2 from records.THE_RECORD rather than from the index workbook's name, because there is no such file; _state() calls filer.ensure(migrate=False) before reading the rows, so showing an engagement stays a read and never takes the lock; rollover ensures the prior year it names, because last year's rows are read out of the store; index_deferred is gone from every reply and paths no longer names an index file, so the app's Open Index button went with it - the Status Report is where a person reads the index now."
     },
     {
       "id": "tracker/content_check.py",
@@ -201,8 +201,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "96e86f2b80a6c77d",
-      "lines": 2359,
+      "sha256": "3ef41e6193ee8681",
+      "lines": 2215,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -215,10 +215,12 @@
         "FileReport",
         "FilingError",
         "INDEX_FILENAME",
+        "INDEX_MIGRATED_FILENAME",
         "INDEX_PENDING_FILENAME",
+        "INDEX_PENDING_MIGRATED_FILENAME",
         "INDEX_SHEET",
-        "INDEX_SIDECAR_VERSION",
         "LEFT_FILED",
+        "MIGRATION_REFUSED",
         "MISSING_IN_PBC",
         "MOVED_FROM_IN_PBC",
         "MOVED_IN_PBC",
@@ -231,29 +233,31 @@
         "UNTIED_IN_PBC",
         "UnfileResult",
         "assign_review_file",
+        "clients_root_of",
         "dismiss_review_file",
+        "ensure",
         "file_drops",
-        "index_as_recorded",
         "iter_drops",
         "missing_in_pbc",
         "numbered",
         "prepared_location",
         "prepared_name_for",
         "read_index",
-        "read_index_from_workbook",
         "replaced_in_pbc",
         "request_folder",
+        "rules_digest",
         "unfile_document",
         "unfinished_drops",
         "unlistable_folders",
         "unreachable_drops",
         "unrecorded_in_pbc",
-        "write_index"
+        "workbook_readings"
       ],
       "constants": {
         "INDEX_FILENAME": "'_index.xlsx'",
+        "INDEX_MIGRATED_FILENAME": "'_index.migrated.xlsx'",
+        "INDEX_PENDING_MIGRATED_FILENAME": "'_index.pending.migrated.json'",
         "INDEX_SHEET": "'Index'",
-        "INDEX_SIDECAR_VERSION": "2",
         "FILED": "'Filed'",
         "NEEDS_REVIEW": "'Needs Review'",
         "DUPLICATE": "'Duplicate'",
@@ -261,6 +265,7 @@
         "ASSIGNED_BY_PERSON": "'assigned by a person'",
         "DISMISSED_BY_PERSON": "'not requested, by a person'",
         "UNFILED_BY_PERSON": "'unfiled by a person'",
+        "MIGRATION_REFUSED": "'{name} could not be moved aside ({why}) - it is open in Excel, most likely. Nothing was left half-migrated; close it and the next pass does it.'",
         "REPLACED_IN_PBC": "'{location} no longer holds the bytes recorded on {received}; its working copy {prepared} was made from the earlier file - a person should look'",
         "MISSING_IN_PBC": "'the original recorded at {location} on {received} is no longer there - deleted, renamed or moved after it was preserved; a person should look'",
         "MOVED_IN_PBC": "'the original recorded at {location} is now at {now} - the client renamed or moved it and the bytes are the same, so the row follows it'",
@@ -270,15 +275,15 @@
         "RESCAN_DEFERRED": "'the manifest is open in Excel; the status went to the sidecar and lands on the next pass'",
         "RESCAN_REFUSED": "'the status was not put back now ({why}); the next pass does it'"
       },
-      "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and appends every move to _index.xlsx.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is indexed as Needs Review with the error, and the index is written in a finally block so nothing moved into PBC/ is ever unrecorded. If Excel holds _index.xlsx, the whole index as it should now read waits in _index.pending.json as a versioned snapshot (INDEX_SIDECAR_VERSION) and read_index() returns that snapshot in the workbook's place until the next write lands it; a bare-list sidecar from before the version key holds only rows to append and is folded in once. A snapshot, not a tail, because the row assign_review_file() rewrites is as much at stake as a row that was added - deferring only the rows past the workbook's end lost it while the working copy had already moved. A waiting sidecar is landed on every real run, even one whose drops were all left in place. Holds the engagement lock (tracker.locking) while it runs, so a sort and a scan never overlap - taken before the manifest, the index or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of _index.xlsx (header and width per IndexEntry field); the index is written and read back by header name, so a reordered column cannot shift a value. The IndexEntry record itself, INDEX_LAYOUT and INDEX_COLUMNS now live in tracker/records.py (decision 100) and are re-exported here for one release; what stays is every read and write of the workbook. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; write_index() never reports a landed write as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback checks _index_records() first; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row. Decision 67: bytes recorded late are the working copy's, never the original's as it is now (_record_missing_digests(); assign refuses a replaced original by the parked copy's bytes); a name UTF-8 cannot hold is reported and never sorted (_storable(), in PBC too); write_index() retries and snapshots on any OSError; a link is a mount point or a symlink by reparse tag (_LINK_TAGS), a cloud placeholder is not one; unlistable_folders() reports a folder the run cannot list; PBC is not walked through a link; a failed rollback inside assign is logged and the write's error raised. Decision 68: a row recorded without its bytes is tied to them only while its working copy and its original agree (UNTIED_IN_PBC says the rest every pass); assign moves the parked copy only while it holds the row's bytes; a row is blank when no known column holds anything; unlistable_folders() prunes links, PBC and staging. Decision 69: _read_index_workbook() finds the header row (_MANDATORY_COLUMNS, _HEADER_WITHIN) and refuses a sheet with rows and no header; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's (_copy_taken_by_a_later_row); assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so (AssignResult.left_in_review); unlistable_folders() walks PBC. Decision 72: the rows above the header row are data too (a sort with 'my data has headers' unchecked puts the header last or in the middle, and everything above it was dropped in silence) - only a row with no mandatory column filled is a typed title, and a pass that found rows above the header logs how many; the index's sheet is chosen by the header, not wb.active (_sheet_with_the_header(); a renamed tab beside a person's own empty tab read as no rows and the next write rebuilt the workbook over both), and _index_workbook() rewrites only that sheet in the workbook already there, so a sheet a person added survives; a recorded original that has left PBC/ is reported every pass (missing_in_pbc(), MISSING_IN_PBC) and, where a stray carries its bytes, the row follows the file instead of a Duplicate row being written (_follow_moved_originals(), MOVED_IN_PBC; a row with no digest is never relocated); _storable() also refuses a name openpyxl cannot write (a control character, reachable on POSIX); the tidy-up (the content cache, _prune_empty_dirs()) runs on a pass with nothing to sort, and the sort loop is _sort_all(); the assign rollback puts back a parked copy a reused attempt's copy stood in for. Decision 76: dismiss_review_file() is the other thing a person may do to a parked row - it rewrites it NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing at all, because a document the client sent is never deleted over a decision about the request list. _find_parked() takes a dismissed row too, so filing it is the undo and there is no second path; known (the duplicate test) already held it, so the same bytes sent again are a Duplicate rather than a second review item; _by_a_person() is the one reading of who decided a row, and read_index()'s snapshot merge keeps either decision over a workbook Excel saved stale. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with no identifier and the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself) so the request reverts with its regression note; the alternative people had was dragging the file in Explorer, which the index never learns. A working copy that is no longer the row's bytes is left in the request folder and said out loud (LEFT_FILED), the way assign leaves an annotated parked copy. _the_later_row() is how the snapshot merge tells which of two rows for one original was written last - the later one carries the other's whole Reason inside its own - because an unfiled row is parked again and 'the workbook still shows it parked' had stopped meaning 'before the decision'. Decision 82: IndexEntry.evidence is the last column of INDEX_LAYOUT (header Evidence), written from routing.evidence_record through records.format_evidence() and read back through records.parse_evidence() by IndexEntry.evidence_record - one owner for the cell's shape, a writer here and a reader in the app would have been two. A filed row and a parked row both carry it, and a person's decision (assign, dismiss, unfile) leaves it alone: what the rules saw is the audit trail the override was made against. _MANDATORY_COLUMNS is unchanged, so an index written before the column reads with '', and the snapshot sidecar round-trips it without a version bump (records.entry_from_json() already ignores what it does not know and defaults what is missing). Decision 87: every locked write of the index is followed, in the same locked section, by the events that write added or changed, appended to the engagement's own record through tracker/ledger.py - one rule, _rows_changed(), read off the rows themselves rather than collected as the pass goes, so a drop sorted, bytes recorded on a row preserved without them, a row that followed an original the client moved and a row a person rewrote are all recorded and none can be forgotten by a later edit somewhere else. ledger_key() is the identity a row is recorded under (its PBC location) and entry_to_json() is the shape the snapshot sidecar already writes; both went to tracker/records.py with the row itself (decision 100), so row serialisation keeps one owner and the record can be read back without this module. Where the record already carries rows it is the record, not the pass's own reading of the index, that the new rows are compared against, so a row that reached the workbook by a road no writer took - an older bare-list sidecar folded in, a cell somebody typed over in Excel - is learned on the very next write; the person's decisions record in a finally when _index_records() says the write landed, so an interrupt between the workbook landing and the append cannot lose the one decision a person made. Decision 88: read_index() now ANSWERS FROM THAT RECORD wherever it holds an index-shaped event - the rows the writers recorded, in the index's order - and falls back to the workbook where it does not (a legacy folder, or one whose record holds nothing but a scan); every reader above it (runner, scanner, reminder, api._state, review.triage, rollover reading last year) switches with it because they all come through here and none gained a call of its own. read_index_from_workbook() is the workbook's own reading, public because the record's bootstrap imports from it, _index_records() must ask it (it is asked between a write landing and the record learning of it, and the record would say no to the write in question, rolling a person's filing back), and the agreement fixture would otherwise compare the record with itself. A record that does not read as one falls back to the workbook and says so loudly with the engagement and the line (_recorded_rows()), never a silent skip; a row a sidecar holds that the record has never seen is read, said out loud and recorded by the next write (_sidecar_rows_off_the_record()); and a workbook with rows and no header row the tracker knows is still refused before the record answers (_refuse_an_index_edited_past_reading(), the one wording shared with the workbook reading through _the_index_sheet()), because the index is still rewritten every pass. The workbook and both sidecars are written exactly as before - dropping a write is stage B. THE DELIBERATE CYCLE: _rescan() imports tracker/scanner.py at call time so a person's filing is scanned the moment it lands, and the scanner imports this module's index reader at call time; neither runs at load, the code says so beside the import, and the curated deliberate_cycle edge is the statement."
+      "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and records every move in the engagement's own record - the journal and the store together, in one transaction per decision. Owns read_index(), which answers from the store, and ensure(), which migrates an engagement that still keeps its index in a workbook.",
+      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (manifest, index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's content cache (content_check.CACHE_FILENAME, keyed by content), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is recorded as Needs Review with the error, and the record is written in a finally block so nothing moved into PBC/ is ever unrecorded. (Until decision 102 the index was a workbook, and everything in the numbered readings below about a snapshot sidecar, a deferred write and a stale workbook is the history of that; the DECISION 102 paragraph at the end says what replaced it.) Runs under the engagement lock - its own when it is called alone, the pass's when runner.run_engagement() is holding one - taken before the manifest, the record or the drop folder is read, so a run that finished in between is never invisible to this one. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in Excel keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, learns a keyword onto the request, all under the engagement lock (the manifest read and the keyword written back included). INDEX_LAYOUT is the one description of an index row - header and width per IndexEntry field - and the migration's reader still matches an old workbook's columns by those headers, so a reordered column cannot shift a value. The IndexEntry record itself and INDEX_LAYOUT live in tracker/records.py (decision 100) and are re-exported here for one release; what stays here is every reading and writing of the record. Decision 54: read_index() prefers a snapshot only while the workbook is older than it, keeping a snapshot-only row and a person's decision either way; a landed write is never reported as deferred; replaced_in_pbc() says when an original in PBC/ no longer holds the bytes its row recorded; _existing_copy() reuses a working copy a killed run left behind; assign_review_file() rolls the move back when the index write fails for a reason other than Excel. Decision 56: replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; the assign rollback asks whether the write landed before putting anything back; unfinished_drops() covers every UNFINISHED_SUFFIXES name. Decision 58: a Duplicate row never shadows the Filed row; assign_review_file() reuses a copy a killed attempt left and copies whole-or-nothing; index cells are written as text whatever they start with. Decision 59: assign refuses a replaced or still-syncing original; the rollback removes only a copy it made. Decision 61: the preserved original is hashed after the move, where it now is. Decision 65: an empty digest is nobody's duplicate. Decision 66: every move is a rename (_move_whole(); shutil.move copied a held-open drop, truncated, into PBC); assign_review_file() records the bytes of a row that has none and _record_missing_digests() does so on a later pass; what lies behind a junction is not a drop (_through_a_link()) and a junction is never rmdir'd; a name Windows cannot open is reported every pass (unreachable_drops()); the index is written with a row counter, not max_row. Decision 67: bytes recorded late are the working copy's, never the original's as it is now (_record_missing_digests(); assign refuses a replaced original by the parked copy's bytes); a name UTF-8 cannot hold is reported and never sorted (_storable(), in PBC too); the index write retries and snapshots on any OSError; a link is a mount point or a symlink by reparse tag (_LINK_TAGS), a cloud placeholder is not one; unlistable_folders() reports a folder the run cannot list; PBC is not walked through a link; a failed rollback inside assign is logged and the write's error raised. Decision 68: a row recorded without its bytes is tied to them only while its working copy and its original agree (UNTIED_IN_PBC says the rest every pass); assign moves the parked copy only while it holds the row's bytes; a row is blank when no known column holds anything; unlistable_folders() prunes links, PBC and staging. Decision 69: the index workbook's reader finds the header row (_MANDATORY_COLUMNS, _HEADER_WITHIN) and refuses a sheet with rows and no header; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's (_copy_taken_by_a_later_row); assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so (AssignResult.left_in_review); unlistable_folders() walks PBC. Decision 72: the rows above the header row are data too (a sort with 'my data has headers' unchecked puts the header last or in the middle, and everything above it was dropped in silence) - only a row with no mandatory column filled is a typed title, and a pass that found rows above the header logs how many; the index's sheet is chosen by the header, not wb.active (_sheet_with_the_header(); a renamed tab beside a person's own empty tab read as no rows and the next write rebuilt the workbook over both), and the write rebuilt only that sheet in the workbook already there, so a sheet a person added survived; a recorded original that has left PBC/ is reported every pass (missing_in_pbc(), MISSING_IN_PBC) and, where a stray carries its bytes, the row follows the file instead of a Duplicate row being written (_follow_moved_originals(), MOVED_IN_PBC; a row with no digest is never relocated); _storable() also refuses a name openpyxl cannot write (a control character, reachable on POSIX); the tidy-up (the content cache, _prune_empty_dirs()) runs on a pass with nothing to sort, and the sort loop is _sort_all(); the assign rollback puts back a parked copy a reused attempt's copy stood in for. Decision 76: dismiss_review_file() is the other thing a person may do to a parked row - it rewrites it NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing at all, because a document the client sent is never deleted over a decision about the request list. _find_parked() takes a dismissed row too, so filing it is the undo and there is no second path; known (the duplicate test) already held it, so the same bytes sent again are a Duplicate rather than a second review item; the reason prefix is the one reading of who decided a row, so a pass writing the same decision value cannot be mistaken for a person's. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with no identifier and the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself) so the request reverts with its regression note; the alternative people had was dragging the file in Explorer, which the index never learns. A working copy that is no longer the row's bytes is left in the request folder and said out loud (LEFT_FILED), the way assign leaves an annotated parked copy. the snapshot merge told which of two rows for one original was written last from the rows themselves - the later one carries the other's whole Reason inside its own - because an unfiled row is parked again and 'the workbook still shows it parked' had stopped meaning 'before the decision'. Decision 82: IndexEntry.evidence is the last column of INDEX_LAYOUT (header Evidence), written from routing.evidence_record through records.format_evidence() and read back through records.parse_evidence() by IndexEntry.evidence_record - one owner for the cell's shape, a writer here and a reader in the app would have been two. A filed row and a parked row both carry it, and a person's decision (assign, dismiss, unfile) leaves it alone: what the rules saw is the audit trail the override was made against. _MANDATORY_COLUMNS is unchanged, so an index written before the column reads with '', and the snapshot sidecar round-trips it without a version bump (records.entry_from_json() already ignores what it does not know and defaults what is missing). Decision 87: every decision a pass or a person makes is appended to the engagement's own record through tracker/ledger.py - one rule, _rows_changed(), read off the rows themselves rather than collected as the pass goes, so a drop sorted, bytes recorded on a row preserved without them, a row that followed an original the client moved and a row a person rewrote are all recorded and none can be forgotten by a later edit somewhere else. ledger_key() is the identity a row is recorded under (its PBC location) and entry_to_json() is the shape it is stored in; both went to tracker/records.py with the row itself (decision 100), so row serialisation keeps one owner and the record can be read back without this module. Decision 88: read_index() ANSWERS FROM THAT RECORD, and every reader above it (runner, scanner, reminder, api._state, review.triage, rollover reading last year) switched with it because they all come through here and none gained a call of its own. DECISION 102 - THE INDEX MOVES INTO THE RECORD, AND THE WORKBOOK IS GONE. Nothing writes _index.xlsx any more. read_index() takes the engagement FOLDER (the workbook's own path still resolves to its parent for one release) and reads the store's documents table, in the index's own order, after store.follow_the_journal() has brought the store up to the journal - which costs one digest of the journal file when nothing has happened, and is why no reader has to know whether anything prepared the engagement first. _record() is the one write: every event a decision produces in a single store.record() call, so the journal append and the fold into the tables are one transaction, and the rollback that puts a moved file back asks _the_record_holds() rather than re-reading a workbook. What went with the workbook: the whole deferred-write machinery (the snapshot sidecar, its merge, the quarantine of an unreadable one, the retry-with-backoff, the stale-snapshot readings of decisions 44 and 54) and index_deferred from every report and reply. What is left of the workbook is ensure(): under the engagement lock, once per engagement, it reads the old workbook and its sidecar the generous way (_legacy_index_reading(), which still hunts for the header row, still reads the rows above it and still prefers the sidecar's), appends every row the record does not already carry as imported, builds the engagement into the store, renames both files aside and records one migrated event naming them. The rename is the last step, so Excel holding the workbook refuses the whole engagement's pass loudly (MIGRATION_REFUSED) and the next pass does all of it again, harmlessly. The rows go into the JOURNAL and not only into the database, because the database is disposable and a row that lived only there would go with it. ensure() also builds an engagement the store has never seen, syncs one that is behind, and re-reads the request list when rules_digest() moves; migrate=False is for a caller that must not write in the folder (a dry run, the practice's Status Report, the app showing an engagement a pass is holding). clients_root_of() is how a module handed an engagement and no registry works out the key the store names it under. rules_digest() lives here, not in the manifest, because the manifest may not import the hasher; tracker/view.py re-exports it under the name it has always had there. THE DELIBERATE CYCLE: _rescan() imports tracker/scanner.py at call time so a person's filing is scanned the moment it lands, and the scanner imports this module's index reader at call time; neither runs at load, the code says so beside the import, and the curated deliberate_cycle edge is the statement."
     },
     {
       "id": "tracker/ledger.py",
       "type": "module",
       "layer": "core",
-      "sha256": "62d6735e7ef151e4",
-      "lines": 510,
+      "sha256": "2c4db35bfc35e6a4",
+      "lines": 506,
       "cli": "python -m tracker.ledger",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -290,6 +295,7 @@
         "EVENTS",
         "EVENT_KEY",
         "FILED",
+        "FILES_KEY",
         "Folded",
         "IDENTIFIER_KEY",
         "IMPORTED",
@@ -328,6 +334,7 @@
         "STATUSES_KEY": "'statuses'",
         "IDENTIFIER_KEY": "'identifier'",
         "KEYWORD_KEY": "'keyword'",
+        "FILES_KEY": "'files'",
         "PRESERVED": "'preserved'",
         "FILED": "'filed'",
         "PARKED": "'parked'",
@@ -342,8 +349,8 @@
         "IMPORTED": "'imported'",
         "MIGRATED": "'migrated'"
       },
-      "role": "The engagement's own append-only record: one JSON object per line in LEDGER_FILENAME, appended under the engagement lock by every writer that changes the index, the snapshot sidecar, the manifest's scanner columns or the pending manifest updates, and - since decision 88 - read back by filer.read_index() and manifest.load_manifest() as the answer wherever it has one. Owns the event names (preserved, filed, parked, duplicate, assigned_by_person, dismissed_by_person, unfiled_by_person, bytes_recorded, keyword_learned, scanned, imported; drafted and migrated reserved), append() / read_events() / fold() / statuses() / head(), the file name, and the CLI's --compare check of the record against the workbooks.",
-      "notes": "Decision 87 wrote it beside the files that already exist and had nothing read it; decision 88 is stage A step 2 - THE READERS BELIEVE IT AND FALL BACK TO THE WORKBOOKS. filer.read_index() answers from fold() wherever the record holds an index-shaped event, manifest.load_manifest() takes each identifier's scanner columns from statuses() wherever the record has recorded one, and both read the workbook for what the record has not - per row and per identifier. Both workbooks and both sidecars are still written exactly as before (dropping a write is stage B) and standing rule 2 still names the index, so deleting the record puts the reading back: that is what makes the step reversible. fold() returns rows in the index's own order, and a row that changed identity keeps the place the one it left held, because the index rewrites that row where it sits and the next write rebuilds the workbook from this fold. What makes all that safe is the autouse fixture in tests/conftest.py, which folds the record back after every test in the suite and compares it with the WORKBOOKS' own readings - read_index_from_workbook() and statuses_from_workbook(), which exist by name for exactly this, since the live readers would be the record compared with itself - row for row, field for field and now in order too. `python -m tracker.ledger <folder> --compare` is the same check for one engagement, for a person, and exits 1 on a disagreement; it imports the filer and the manifest inside the CLI block, so the module itself still imports nothing of the package but locking. Sits at the bottom beside tracker/locking.py and imports only it: the events are plain dicts, so tracker/filer.py and tracker/manifest.py each serialise their own rows with the function that already owns that shape (dataclasses.asdict for an IndexEntry, exactly as the index sidecar writes it; manifest._update_to_json for a StatusUpdate), and no cycle is created. One os.write of the whole line under O_APPEND then fsync, so a kill mid-append leaves at most a torn tail with no newline after it: read_events() ignores it and the next append() truncates it, and nothing else ever rewrites the file. O_APPEND is atomic for concurrent writers on POSIX and is not on Windows, which is why append() refuses unless locking.lock_is_held() says this process holds the engagement lock - one writer and one protocol rather than a second protocol for Windows. Not SQLite: a database file a cloud client syncs is a corrupted database file, and one database per clients root would put every client's history in one file, the opposite of the rule that an engagement folder carries everything about that engagement and nothing about anyone else's. The bootstrap is what makes an engagement already a season old agree from its first line - the first writer to append imports the index as it now stands (imported), and the first scanned event imports the manifest's statuses. Rows are keyed by the original's PBC location, the identity the snapshot merge and the app's review cards already join on; a row that followed an original the client moved carries the identity it left (was), so the fold drops the vacated one. fold() passes over an event name it does not know and read_events() refuses a bad line anywhere but the tail, so a record written by a later version still reads. The reminder writes files and takes no lock, so drafted is reserved and nothing appends it; runner and api reach the writers through the filer and the scanner and make no call of their own."
+      "role": "The engagement's own append-only record: one JSON object per line in LEDGER_FILENAME, appended under the engagement lock by every writer that changes the index or the manifest's scanner columns, and read back as the answer to both - the index through tracker/store.py, which folds these lines into the table filer.read_index() reads, and each identifier's status through manifest.load_manifest(), with the sheet behind it. Owns the event names (preserved, filed, parked, duplicate, assigned_by_person, dismissed_by_person, unfiled_by_person, bytes_recorded, keyword_learned, scanned, imported, migrated; drafted reserved), append() / read_events() / fold() / statuses() / apply() / replay() / head(), the file name, and the CLI's --compare check of the record against the manifest.",
+      "notes": "Decision 87 wrote it beside the files that already exist and had nothing read it; decision 88 made the readers believe it with the workbooks behind it; DECISION 102 MADE IT THE INDEX. There is no index workbook any more, so the fold of these lines - through tracker/store.py, which is where the fold is kept so that no reader pays for it twice - IS what filer.read_index() returns, and nothing else holds those rows. manifest.load_manifest() still takes each identifier's scanner columns from statuses() wherever the record has recorded one and reads the sheet where it has not, per identifier; that half goes in decision 103. fold() returns rows in the index's own order, and a row that changed identity keeps the place the one it left held - the order is the audit trail's own and the store's position column is laid from it. What keeps it honest are the autouse fixtures in tests/conftest.py: after every test the statuses are compared with the WORKBOOK's own reading (statuses_from_workbook(), which exists by name for exactly this, since load_manifest() would be the record compared with itself) and the store's documents are compared with replay() over these lines. `python -m tracker.ledger <folder> --compare` is the manifest half of that for one engagement, for a person, and exits 1 on a disagreement; `python -m tracker.store <store> check <root>` is the other half. The CLI imports the manifest inside its own block, so the module itself still imports nothing of the package but locking. Sits at the bottom beside tracker/locking.py and imports only it: the events are plain dicts, so tracker/filer.py and tracker/manifest.py each serialise their own rows with the function that already owns that shape (records.entry_to_json() for an IndexEntry, records.status_to_json() for a StatusUpdate), and no cycle is created. One os.write of the whole line under O_APPEND then fsync, so a kill mid-append leaves at most a torn tail with no newline after it: read_events() ignores it and the next append() truncates it, and nothing else ever rewrites the file. O_APPEND is atomic for concurrent writers on POSIX and is not on Windows, which is why append() refuses unless locking.lock_is_held() says this process holds the engagement lock - one writer and one protocol rather than a second protocol for Windows. Not SQLite: a database file a cloud client syncs is a corrupted database file, and one database per clients root would put every client's history in one file, the opposite of the rule that an engagement folder carries everything about that engagement and nothing about anyone else's. The bootstrap is what makes an engagement already a season old agree from its first line - the migration imports the old index workbook's rows (imported), and the first scanned event imports the manifest's statuses. migrated is the one event that carries no row: it names the files the migration moved aside, which is a statement about the folder rather than about a document, so it is deliberately not in ROW_EVENTS. Rows are keyed by the original's PBC location, the identity the snapshot merge and the app's review cards already join on; a row that followed an original the client moved carries the identity it left (was), so the fold drops the vacated one. fold() passes over an event name it does not know and read_events() refuses a bad line anywhere but the tail, so a record written by a later version still reads. The reminder writes files and takes no lock, so drafted is reserved and nothing appends it; runner and api reach the writers through the filer and the scanner and make no call of their own."
     },
     {
       "id": "tracker/locking.py",
@@ -373,8 +380,8 @@
         "LOCK_FILENAME": "'_scan.lock'",
         "RELEASED_LINE": "'released=1'"
       },
-      "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by the filer while sorting and by the scanner while scanning. EngagementLock (the open handle and its token), EngagementLockedError; engagement_lock() context manager, taken before the manifest, index or drop folder is read.",
-      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's index rows were overwritten. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it, so a lock is presumed dead only after Task Scheduler must have killed its owner (they were typed apart before, 3600 s against a two-hour limit). One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice: a stale lock can be cleared from the app, a fresh one is refused with how long to wait. Decision 54: pid_alive() - a lock whose owner process is gone is stale at any age, so the desktop shell's timeout kill does not block the engagement until the scheduled job's limit. Decision 56: the lock line carries host=; another host's pid is unknowable, never dead. Decision 59: a lock that cannot be deleted on release is marked RELEASED_LINE, read as an owner that is gone."
+      "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by runner.run_engagement() across a whole pass and by the filer or the scanner on its own when either is run alone. EngagementLock (the open handle and its token), EngagementLockedError; engagement_lock() context manager, taken before the manifest, the record or the drop folder is read.",
+      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's index rows were overwritten. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it, so a lock is presumed dead only after Task Scheduler must have killed its owner (they were typed apart before, 3600 s against a two-hour limit). One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice: a stale lock can be cleared from the app, a fresh one is refused with how long to wait. Decision 54: pid_alive() - a lock whose owner process is gone is stale at any age, so the desktop shell's timeout kill does not block the engagement until the scheduled job's limit. Decision 56: the lock line carries host=; another host's pid is unknowable, never dead. Decision 59: a lock that cannot be deleted on release is marked RELEASED_LINE, read as an owner that is gone. Decision 102: the lock is not re-entrant - it is an O_EXCL file, and this process's own second attempt reads as another run - so the steps a pass makes take a lock_held flag and skip taking it, and the one place that has to ask rather than be told (the filer's migration, reached from a reader as well as from a writer) asks lock_is_held() first."
     },
     {
       "id": "tracker/manifest.py",
@@ -590,8 +597,8 @@
       "id": "tracker/records.py",
       "type": "module",
       "layer": "core",
-      "sha256": "39c306f381013660",
-      "lines": 507,
+      "sha256": "cfc7e1562a52ea00",
+      "lines": 518,
       "exports": [
         "BEHIND",
         "CANDIDATE_SEP",
@@ -615,6 +622,7 @@
         "Routing",
         "STATES",
         "StatusUpdate",
+        "THE_RECORD",
         "UNKNOWN",
         "WHERE_DEEP",
         "WHERE_FIRST_PAGE",
@@ -634,6 +642,7 @@
         "CURRENT": "'current'",
         "BEHIND": "'behind'",
         "UNKNOWN": "'unknown'",
+        "THE_RECORD": "'the record'",
         "RULE_REQUIRED": "'required'",
         "RULE_ANY": "'any'",
         "RULE_DATE": "'date'",
@@ -649,8 +658,8 @@
         "YES": "'yes'",
         "NO": "'no'"
       },
-      "role": "The record types every layer above names, and each one's own serialisation: IndexEntry with INDEX_LAYOUT (the index's columns, header and width per field), Evidence with the one cell format format_evidence() writes and parse_evidence() reads back, Routing (where one dropped file belongs and why), EngagementInfo and StatusUpdate, entry_to_json() / entry_from_json() for a row as it is stored, and ledger_key() for the identity a row is recorded under.",
-      "notes": "Decision 100, the structural review's D4: each record lived in whichever module wrote it first, so a module that only wanted to NAME a row had to import the one that opens workbooks, walks folders and takes the engagement lock to produce it. Nothing here reads a file, opens a workbook, takes a lock or knows where an engagement folder is - values in, values out - which is why it imports nothing of the package at all and every layer above can name a record without loading its writer. tracker/manifest.py imports it, an in-layer edge and the only one that way round; tests/test_layers.py pins both halves. What did NOT move: RequestItem stays in the manifest because it is the schema of a sheet a person edits, read cell by cell with that module's defaults and validation, and means nothing away from it; FileError, FileReport and ContentResult stay where they are because they are one run's report of what it did, produced and consumed in the module that did it and never stored. COL_IDENTIFIER is here rather than beside the manifest's other column headers because the request list and the index are joined by that header and a second copy of the word would let one sheet drift from the other. Each module a record left keeps a re-export of it for one release, so no caller had to change in the commit that moved them, and tests/test_records.py pins that every one of those names is this module's own object rather than a copy. The store of decision 101 reads and writes these records and will import them from here, never from tracker/filer.py - a store that had to import the filer to name a row would import the workbook writer it is meant to replace."
+      "role": "The record types every layer above names, and each one's own serialisation: IndexEntry with INDEX_LAYOUT (the index's columns, header and width per field), Evidence with the one cell format format_evidence() writes and parse_evidence() reads back, Routing (where one dropped file belongs and why), EngagementInfo and StatusUpdate, entry_to_json() / entry_from_json() for a row as it is stored, ledger_key() for the identity a row is recorded under, and THE_RECORD - the phrase standing rule 2 is worded in.",
+      "notes": "Decision 100, the structural review's D4: each record lived in whichever module wrote it first, so a module that only wanted to NAME a row had to import the one that opens workbooks, walks folders and takes the engagement lock to produce it. Nothing here reads a file, opens a workbook, takes a lock or knows where an engagement folder is - values in, values out - which is why it imports nothing of the package at all and every layer above can name a record without loading its writer. tracker/manifest.py imports it, an in-layer edge and the only one that way round; tests/test_layers.py pins both halves. What did NOT move: RequestItem stays in the manifest because it is the schema of a sheet a person edits, read cell by cell with that module's defaults and validation, and means nothing away from it; FileError, FileReport and ContentResult stay where they are because they are one run's report of what it did, produced and consumed in the module that did it and never stored. COL_IDENTIFIER is here rather than beside the manifest's other column headers because the request list and the index are joined by that header and a second copy of the word would let one sheet drift from the other. Each module a record left keeps a re-export of it for one release, so no caller had to change in the commit that moved them, and tests/test_records.py pins that every one of those names is this module's own object rather than a copy. The store of decision 101 reads and writes these records and will import them from here, never from tracker/filer.py - a store that had to import the filer to name a row would import the workbook writer it is meant to replace. Decision 102: THE_RECORD is here because standing rule 2 says a move is recorded in the record and the record is the journal and the store together - the rule used to name the index workbook, and there is no such file any more. One home for the phrase, filled into the rule by api.standing_rules() and quoted by the four documents that tests/test_single_source.py pins."
     },
     {
       "id": "tracker/registry.py",
@@ -683,7 +692,7 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "55cc23765e17d107",
+      "sha256": "7f77696213b0a602",
       "lines": 630,
       "cli": "python -m tracker.reminder",
       "exports": [
@@ -744,8 +753,8 @@
       "id": "tracker/review.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7894e4b302313c14",
-      "lines": 330,
+      "sha256": "c2181fabb4d57a67",
+      "lines": 331,
       "cli": "python -m tracker.review",
       "exports": [
         "FILENAME_WORDS",
@@ -778,14 +787,14 @@
         "REFUSAL_SEPARATOR": "'; '"
       },
       "role": "Triages the review queue: turns the evidence an index row kept - the rows handed to triage(), which since decision 100 the caller must read and pass - into a ranked shortlist of at most three requests a parked file might belong to, each with the one-line reason it is on the list. Layer 2 - it suggests, and it files nothing.",
-      "notes": "Decision 83. triage(engagement_dir) returns one Triage per index row decided NEEDS_REVIEW, each holding the row and a tuple of Suggestion(identifier, reason, rank). It writes no artifact at all: no sidecar, no status, no move, no lock, and no client document is opened - the index's Evidence column is already the store, and a second one could disagree with it the moment somebody filed a row by hand. It reads the manifest and the index (read_index with quarantine off, so not even an unreadable sidecar is moved aside); a caller that already loaded either passes it in. rank sorts ascending as (identity, strength, catalog): identity is a slot reserved for a later step and constant today, strength is RULE_STRENGTH before PLACE_STRENGTH so a required keyword said deep outranks an any-keyword in a title - the way the router already weighs the two rules - and the manifest's own order breaks a tie as a tie. Evidence only: the request list's Missing/Received state is deliberately not a tiebreaker and never fills a shortlist (owner, 2026-09-18), because a nudge with nothing behind it is how a tired reviewer files the wrong document into the last open row. So a row whose evidence says nothing - matched no request, a scan whose name says nothing either, a record carrying only a refusal - gets an empty shortlist and keeps the router's own reason, and a waived row is never suggested. Since decision 92 an unreadable scan whose name DOES carry a row's keyword arrives here with RULE_FILENAME evidence and is offered as 'A01 - the file name says W-2' at the bottom of the ranking: the one piece of evidence the client wrote rather than the form, so it starts a person reading and can never outrank a word the document itself said. A RULE_REFUSED entry is never a suggestion by itself; beside content evidence its cause is said in that suggestion's sentence, in the words reasons.py gives it. PLACE_WORDS is the one mapping from an evidence place to the words for it, so api._vocab() can expose it rather than the app typing a word of its own. Nothing below it imports it, and it imports neither runner, scheduling, settings nor api; genre and group are reserved for later steps."
+      "notes": "Decision 83. triage(engagement_dir) returns one Triage per index row decided NEEDS_REVIEW, each holding the row and a tuple of Suggestion(identifier, reason, rank). It writes no artifact at all: no sidecar, no status, no move, no lock, and no client document is opened - the index's Evidence column is already the store, and a second one could disagree with it the moment somebody filed a row by hand. It reads the manifest and the index (read_index over the engagement folder, which since decision 102 answers from the store and moves nothing at all); a caller that already loaded either passes it in. rank sorts ascending as (identity, strength, catalog): identity is a slot reserved for a later step and constant today, strength is RULE_STRENGTH before PLACE_STRENGTH so a required keyword said deep outranks an any-keyword in a title - the way the router already weighs the two rules - and the manifest's own order breaks a tie as a tie. Evidence only: the request list's Missing/Received state is deliberately not a tiebreaker and never fills a shortlist (owner, 2026-09-18), because a nudge with nothing behind it is how a tired reviewer files the wrong document into the last open row. So a row whose evidence says nothing - matched no request, a scan whose name says nothing either, a record carrying only a refusal - gets an empty shortlist and keeps the router's own reason, and a waived row is never suggested. Since decision 92 an unreadable scan whose name DOES carry a row's keyword arrives here with RULE_FILENAME evidence and is offered as 'A01 - the file name says W-2' at the bottom of the ranking: the one piece of evidence the client wrote rather than the form, so it starts a person reading and can never outrank a word the document itself said. A RULE_REFUSED entry is never a suggestion by itself; beside content evidence its cause is said in that suggestion's sentence, in the words reasons.py gives it. PLACE_WORDS is the one mapping from an evidence place to the words for it, so api._vocab() can expose it rather than the app typing a word of its own. Nothing below it imports it, and it imports neither runner, scheduling, settings nor api; genre and group are reserved for later steps."
     },
     {
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "cc7f2026e6608ac7",
-      "lines": 421,
+      "sha256": "96ad3be2d3be6de8",
+      "lines": 426,
       "cli": "python -m tracker.rollover",
       "exports": [
         "CARRIED_HEADERS",
@@ -850,12 +859,11 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "87331d07f0ee3353",
-      "lines": 873,
+      "sha256": "efc0af5752b6b5a1",
+      "lines": 889,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
-        "DEFERRED_INDEX",
         "DEFERRED_STATUSES",
         "DRAFT_DAY_NAME",
         "DRAFT_WEEKDAY",
@@ -920,12 +928,11 @@
         "STATUS_NO_PROBLEMS": "'Nothing failed.'",
         "STATUS_NOT_PASSED": "'not this pass'",
         "STATUS_INDEX_UNREADABLE": "'{label}: the index could not be read ({error})'",
-        "DEFERRED_INDEX": "'index rows'",
         "DEFERRED_STATUSES": "'statuses'",
         "REVIEW_COLUMNS": "('Received', 'Engagement', 'File the client sent', 'Reason', 'Candidates')"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57/60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) so it is neither stale nor a missed week. Decision 58, as decision 60 settled it: on a quiet draft day the run's own unedited draft is rewritten by _refresh_stale_draft() and one a person has edited is never touched (the earlier rule that retired the draft is gone with its function). Decision 67: main() reconfigures stdout and stderr to replace what the console cannot encode, so a client's file name never turns a finished run into a traceback. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run - the practice on one page, drawn from a report rather than from a fresh pass. status_report() folds the runs just made into every engagement the registry found and reads the rest (manifest and sidecar, no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; write_status_page() escapes every value, fetches nothing and takes no lock, and reads each engagement's index for the review queue. skipped_because() is the one wording of why an engagement is passed over, shared with _worth_a_pass(); EngagementRun.last_pass is None on a row the page read rather than ran. Decision 87: the pass gained no call of its own on tracker/ledger.py - run_engagement() takes no lock (file_drops() and scan_engagement() each take their own) and has no run identifier, so what the pass did is recorded by the writers it calls, once per decision, and a second call here would be a second record of the same one. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates its read-only view (tracker/view.py). It follows the status page rather than the writers - drawn from what the readers now say, no lock, never on a dry run, and never able to fail a pass - and a view whose replace did not land leaves run.view_stale set (VIEW_NOT_REGENERATED in the summary line) on a run that still succeeds, because the view holds no fact of its own. Decision 91: write_status_page() is drawn through tracker/page.py - esc(), the table builder and page_text() live there now, shared with the engagement's own page, so neither can grow a second escaper. The page itself is unchanged except that its tables gained thead/tbody from that builder."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed (exit non-zero) after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose manifest could not be read fails alone with the reason. Runs check_manifest() before touching files: problems fail the engagement with the row, warnings ride the report. Scaffolds each engagement before filing (a row added in Excel gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too (_worth_a_pass() is its pre-checks, _draft_step() its draft). main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed (last_drafted() from the draft files); an engagement never drafted waits for its first draft day. Decision 57/60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) so it is neither stale nor a missed week. Decision 58, as decision 60 settled it: on a quiet draft day the run's own unedited draft is rewritten by _refresh_stale_draft() and one a person has edited is never touched (the earlier rule that retired the draft is gone with its function). Decision 67: main() reconfigures stdout and stderr to replace what the console cannot encode, so a client's file name never turns a finished run into a traceback. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run - the practice on one page, drawn from a report rather than from a fresh pass. status_report() folds the runs just made into every engagement the registry found and reads the rest (manifest and sidecar, no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; write_status_page() escapes every value, fetches nothing and takes no lock, and reads each engagement's index for the review queue. skipped_because() is the one wording of why an engagement is passed over, shared with _worth_a_pass(); EngagementRun.last_pass is None on a row the page read rather than ran. Decision 87: the pass gained no call of its own on tracker/ledger.py - it has no run identifier, so what the pass did is recorded by the writers it calls, once per decision, and a second call here would be a second record of the same one. Decision 102: run_engagement() now holds ONE engagement lock across scaffold, file, scan and view, and tells each step the lock is held. The filer and the scanner used to take it one after the other, which left a gap between them a click in the app could step into - the sort's rows landed, another run filed something, and the scan read a folder neither had decided from. A dry run takes none. A lock it cannot get is a skip, not a failure, the same answer the scan step always gave. index_deferred is gone from EngagementRun and from the status page's deferred-writes cell, which now names only the manifest's statuses. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates its read-only view (tracker/view.py). It follows the status page rather than the writers - drawn from what the readers now say, no lock, never on a dry run, and never able to fail a pass - and a view whose replace did not land leaves run.view_stale set (VIEW_NOT_REGENERATED in the summary line) on a run that still succeeds, because the view holds no fact of its own. Decision 91: write_status_page() is drawn through tracker/page.py - esc(), the table builder and page_text() live there now, shared with the engagement's own page, so neither can grow a second escaper. The page itself is unchanged except that its tables gained thead/tbody from that builder."
     },
     {
       "id": "tracker/scaffold.py",
@@ -965,8 +972,8 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "948906aeeb0e906f",
-      "lines": 449,
+      "sha256": "05ead941973deefd",
+      "lines": 457,
       "cli": "python -m tracker.scanner",
       "exports": [
         "ACCEPTED_NOTE",
@@ -1113,8 +1120,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2640f65674fcdf06",
-      "lines": 997,
+      "sha256": "3604c89987239343",
+      "lines": 1181,
       "cli": "python -m tracker.store",
       "exports": [
         "BUSY_TIMEOUT_MS",
@@ -1122,24 +1129,34 @@
         "DOCUMENT_COLUMNS",
         "ENGAGEMENTS_CSV",
         "ENGAGEMENT_COLUMNS",
+        "ENV_STORE",
         "REQUESTS_CSV",
         "SCHEMA_VERSION",
         "STATUS_COLUMNS",
         "STORE_FILENAME",
+        "STORE_SHM_FILENAME",
+        "STORE_WAL_FILENAME",
         "StoreError",
         "WORKBOOK_SEQ",
         "check",
+        "close",
+        "connect",
+        "documents",
         "engagement_path",
         "export",
+        "follow_the_journal",
         "open",
         "path_for",
         "rebuild_engagement",
         "record",
+        "reimport_rules",
         "state",
+        "store_path",
         "sync"
       ],
       "constants": {
         "STORE_FILENAME": "'tracker.db'",
+        "ENV_STORE": "'TRACKER_STORE'",
         "SCHEMA_VERSION": "1",
         "BUSY_TIMEOUT_MS": "5000",
         "WORKBOOK_SEQ": "0",
@@ -1147,8 +1164,8 @@
         "REQUESTS_CSV": "'requests.csv'",
         "ENGAGEMENTS_CSV": "'engagements.csv'"
       },
-      "role": "The store: one SQLite file per clients root (STORE_FILENAME) on the designated machine's local disk, beside the settings file, holding engagements, requests, statuses, learned_keywords, documents and events for every engagement under that root. Owns the file name, the schema and its user_version, path_for(), open(), record() (the journal first, then one immediate transaction), sync() (replay the lines the store has not applied), rebuild_engagement() (delete and build again from the journal, then the workbook's own reading for what the journal does not carry), check() (every disagreement with the live readers, as sentences), state() (current / behind / unknown for one engagement's rows), export() (three CSVs on demand, every cell text) and the CLI that rebuilds, checks, exports or states a whole clients root.",
-      "notes": "Decision 101, stage 1 of the storage plan, and PURELY ADDITIVE: nothing in production reads or writes it, both workbooks and both sidecars are written exactly as before, and deleting the database changes no behaviour. WHERE IT LIVES IS THE POINT: never under the clients root and never in an engagement folder, because those sync and a synced database file is a corrupted one - decision 87's finding, kept, with the owner's 2026-09-19 decision adding the local database the other side of that line. The journal stays in the folder and travels with the engagement; the store is local and disposable, and the arrow only points one way - the store is rebuilt from the journal, never the reverse. THE GUARANTEE is journal-then-apply: record() refuses outside the engagement lock, appends each event through append() and only then folds them in one BEGIN IMMEDIATE, so a machine that dies between the two leaves the journal ahead and sync() replays the difference. The fold has one owner, apply() in tracker/ledger.py, which fold() and statuses() are each one half of, so a line-at-a-time replay and a whole-file fold cannot differ - including the place a row that changed identity keeps. rebuild_engagement() is the migration and the recovery in one function, idempotent, writing nothing to the journal, taking the workbook's reading only per row and per identifier the journal never recorded (marked with the workbook's own sequence number). It imports records, ledger and locking and nothing else of the package - narrower than its layer allows, so the database that will one day answer for the readers never depends on the modules that open the workbooks it replaces; the CLI reaches them at call time. The gate for stages 2 and 3 is check(), run by the autouse fixture in tests/conftest.py over every engagement the suite leaves behind."
+      "role": "The store: one SQLite file per clients root (STORE_FILENAME) on the designated machine's local disk, beside the settings file, holding engagements, requests, statuses, learned_keywords, documents and events for every engagement under that root. Owns the file name, the schema and its user_version, path_for(), open(), connect() / close() (one connection per process, to the file TRACKER_STORE names or the one beside the settings file), documents() (one engagement's index rows, in the index's own order - what read_index() answers from), record() (the journal first, then one immediate transaction), sync() and follow_the_journal() (replay the lines the store has not applied, building the engagement from the journal alone where it has none), rebuild_engagement() (delete and build again from the journal, with the workbook's own reading for a status the journal does not carry), reimport_rules() (read the person's sheet again without replaying the record), check() (every disagreement with the other copies, as sentences), state() (current / behind / unknown for one engagement's rows), export() (three CSVs on demand, every cell text) and the CLI that rebuilds, checks, exports or states a whole clients root.",
+      "notes": "Decision 101 built it and had nothing read it; DECISION 102 MOVED THE INDEX INTO IT. read_index() answers from the documents table and every writer that used to rewrite the index workbook calls record() instead, one call per decision. The manifest's scanner columns are still the workbook's (decision 103 takes them), so requests and statuses are still built from the sheet a person edits. WHERE IT LIVES IS THE POINT: never under the clients root and never in an engagement folder, because those sync and a synced database file is a corrupted one - decision 87's finding, kept, with the owner's 2026-09-19 decision adding the local database the other side of that line. The journal stays in the folder and travels with the engagement; the store is local and disposable, and the arrow only points one way - the store is rebuilt from the journal, never the reverse, which is why the migration writes the old workbook's rows into the JOURNAL. THE GUARANTEE is journal-then-apply: record() refuses outside the engagement lock, appends each event through append() and only then folds them in one BEGIN IMMEDIATE, so a machine that dies between the two leaves the journal ahead and sync() replays the difference. The fold has one owner, apply() in tracker/ledger.py, which fold() and statuses() are each one half of, so a line-at-a-time replay and a whole-file fold cannot differ - including the place a row that changed identity keeps. ONE CONNECTION PER PROCESS: connect() opens it on first use and every writer deep in the package asks for it by name rather than being handed one, because threading a handle through twelve signatures is how one of them ends up opening a second; close() lets it go, which Windows needs before a database file can be deleted. TRACKER_STORE overrides where it is - the suite points every test at its own file so no test can leak rows into another, and a person may point a command at a copy. It imports records, ledger and locking and nothing else of the package at load time - narrower than its layer allows, so the database the readers answer from never depends on the modules that open the workbooks it replaced; connect() reads tracker/settings.py at call time and the CLI reaches the readers the same way. The gate is check(), run by the autouse fixture in tests/conftest.py over every engagement the suite leaves behind, and since decision 102 each half of it has a different other copy: the documents against ledger.replay() over the journal, the requests and statuses against the live manifest readers."
     },
     {
       "id": "tracker/templates.py",
@@ -1232,8 +1249,8 @@
       "id": "tracker/view.py",
       "type": "module",
       "layer": "core",
-      "sha256": "8a5897c42d5ae32c",
-      "lines": 645,
+      "sha256": "e695c9ef8ed8432c",
+      "lines": 634,
       "cli": "python -m tracker.view",
       "exports": [
         "BADGE_CLASS",
@@ -1261,7 +1278,6 @@
         "read_stamp",
         "render_page",
         "request_row",
-        "rules_digest",
         "view_state",
         "write_view"
       ],
@@ -1321,8 +1337,8 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "145842d5088e2c2d",
-      "lines": 860,
+      "sha256": "134e3481bb4522f2",
+      "lines": 850,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a note typed in Excel or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser."
     },
@@ -1330,8 +1346,8 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "a6e07f1b78696980",
-      "lines": 284,
+      "sha256": "dbbedeef5b5f5767",
+      "lines": 283,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files."
     },
     {
@@ -1353,8 +1369,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6976b5ffa31bf717",
-      "lines": 234,
+      "sha256": "3f104e074310d4c4",
+      "lines": 235,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -1362,16 +1378,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f1fb9a70da29bd74",
-      "lines": 365,
+      "sha256": "d2a51781ade181ce",
+      "lines": 373,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6e0a3708c063db20",
-      "lines": 319,
+      "sha256": "b7508e290ae33558",
+      "lines": 321,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1388,8 +1404,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "d2cfce154325c9d4",
-      "lines": 831,
+      "sha256": "deecbfff18bc6cbb",
+      "lines": 827,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1397,8 +1413,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7a644a906903185d",
-      "lines": 412,
+      "sha256": "86227bfdea96a14a",
+      "lines": 433,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1406,8 +1422,8 @@
       "id": "docs/storage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0156190fdf4ee61b",
-      "lines": 182,
+      "sha256": "b68b1a41b09a5ae9",
+      "lines": 241,
       "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, rebuild as recovery and as the migration, the check as the gate, and what stages 2 and 3 take away.",
       "notes": "Written with decision 101. It is the page to read before touching storage, because it says what the next two stages remove and why neither may start before the gate has been silent for the one before it."
     },
@@ -1432,7 +1448,7 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "66eb22820387a3f4",
+      "sha256": "5ba9199063e81c96",
       "lines": 117,
       "role": "How the day-to-day workflow runs."
     },
@@ -1565,22 +1581,17 @@
       "role": "Tier-3 verdict cache beside the manifest: pass/fail, reason and the evidence behind it per file, never extracted client text. Disposable - an unreadable one, or one written at an older CACHE_VERSION (the constant in tracker/content_check.py; the evidence column arrived with decision 82), is reset - and written whole or not at all."
     },
     {
-      "id": "artifact:_index.pending.json",
+      "id": "artifact:_index.migrated.xlsx",
       "type": "artifact",
       "layer": "runtime",
-      "role": "A versioned snapshot of the whole _index.xlsx (INDEX_SIDECAR_VERSION) written when Excel had the workbook open: every row, including one a person rewrote. read_index_from_workbook() returns it in the workbook's place until the next successful write lands it. An older bare-list sidecar holds only rows to append after the workbook's and is folded in once. Written whole or not at all; an unreadable one is moved aside only by a real run, never by a reader or a dry run. Decision 88: it is still read whichever way read_index() answers - it may be the only copy of rows the workbook has not taken, an I/O error reading it is never guessed past, and a row it holds that the record has never seen (a bare list, or a snapshot an older version left) is read, said out loud and recorded by the next write."
-    },
-    {
-      "id": "artifact:_index.xlsx",
-      "type": "artifact",
-      "layer": "runtime",
-      "role": "Every original the client sent: where it came from, where it went, and what it was renamed to. The audit trail. Its last column, Evidence, says what each candidate request was a candidate on: which of that request's own keywords the document said and where it said them (content_check.format_evidence()), or the code of the reason that refused the file. Catalog words and file names only, never a word of the client's document. Since decision 88 it is written on every pass exactly as before but READ ONLY AS THE FALLBACK: filer.read_index() answers from _ledger.jsonl wherever that record holds an index-shaped event, and reads this workbook where it does not - a folder from before the record, or one whose record holds nothing but a scan. read_index_from_workbook() is this file's own reading, kept public for the record's bootstrap, for _index_records() (asked between a write landing and the record learning of it) and for the suite's agreement fixture. It is still asked one thing whichever way a read answers: whether it is an index the tracker may touch at all (rows and no header row it knows are refused), because it is still rewritten every pass."
+      "role": "What the index workbook became (decision 102). An engagement that was running before that decision has an _index.xlsx and sometimes a snapshot sidecar beside it; the migration in tracker/filer.py reads both once, imports every row the record does not already carry into _ledger.jsonl, and renames them to this and to _index.pending.migrated.json. Nothing ever reads them again - the rename is the statement that the index is in the record now, and a migrated event in the journal names the files that moved. Kept rather than deleted, beside the engagement they describe: docs/runbook.md tells a person they may go once that engagement's Status Report shows the same documents. A rename onto a name already taken is numbered instead, so a second workbook that turns up cannot erase the first one's copy.",
+      "write_only": true
     },
     {
       "id": "artifact:_ledger.jsonl",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The engagement's own append-only record (decision 87): one JSON event per line, in the order the writers wrote them - what was preserved, filed, parked, called a duplicate, decided by a person, had its bytes recorded, taught a keyword, and the statuses each scan applied. Written only under the engagement lock, with O_APPEND and fsync, one line per event and never rewritten; a torn last line is ignored by the reader and truncated by the next append. Since decision 88 it is what the readers BELIEVE: filer.read_index() answers from its fold wherever it holds an index-shaped event and manifest.load_manifest() takes each identifier's scanner columns from it wherever it has recorded one, with the workbooks as the per-row, per-identifier fallback. The workbooks are still written exactly as before, so deleting this file puts the reading back - that is what makes the step reversible. A record that does not read as one falls back to the workbook and says so loudly, naming the engagement and the line. A person never edits it, and `python -m tracker.ledger <folder> --compare` is how a person checks it against the workbooks."
+      "role": "The engagement's own append-only record (decision 87): one JSON event per line, in the order the writers wrote them - what was preserved, filed, parked, called a duplicate, decided by a person, had its bytes recorded, taught a keyword, and the statuses each scan applied. Written only under the engagement lock, with O_APPEND and fsync, one line per event and never rewritten; a torn last line is ignored by the reader and truncated by the next append. Since decision 88 it is what the readers BELIEVE, and since decision 102 it is the whole of the index: filer.read_index() returns the fold of these lines (through the store, which keeps the fold so no reader pays for it twice) and there is no other copy of those rows. manifest.load_manifest() still takes each identifier's scanner columns from it wherever it has recorded one, with the sheet as the per-identifier fallback, until decision 103. A record that does not read as one is refused by name and the line for the index - there is nothing to guess past - and falls back to the sheet, loudly, for the statuses. A person never edits it, and `python -m tracker.ledger <folder> --compare` is how a person checks it against the manifest (`python -m tracker.store <store> check <root>` is the other half)."
     },
     {
       "id": "artifact:_manifest.pending.json",
@@ -1618,20 +1629,22 @@
       "id": "artifact:tracker.db",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The store (decision 101): one SQLite file per clients root, on the designated machine's local disk beside the settings file, holding every engagement's requests, statuses, learned keywords, index rows and journal events under that root. NEVER under the clients root and never in an engagement folder - those sync, and a synced database file is a corrupted database file. Written and read only by tracker/store.py, and by nothing in production at all in this step: it is built by rebuild_engagement() and by the module's own command line, and every reader still answers from the journal and the workbooks. Disposable - delete it and every fact it held is still in the journals - so it is never backed up and a person never opens it. A file whose user_version this code does not know is refused by name rather than opened."
+      "role": "The store (decision 101): one SQLite file per clients root, on the designated machine's local disk beside the settings file, holding every engagement's requests, statuses, learned keywords, index rows and journal events under that root. NEVER under the clients root and never in an engagement folder - those sync, and a synced database file is a corrupted database file. Written and read only by tracker/store.py, and since decision 102 it is what every reader of the index answers from: filer.read_index() reads its documents table, brought up to the journal first. Disposable all the same - delete it and every fact it held is still in the journals - so it is never backed up, never synced and a person never opens it. One connection per process (connect(), close()), to the file beside the settings file unless TRACKER_STORE names another; the suite sets that per test. A file whose user_version this code does not know is refused by name rather than opened."
     },
     {
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7706d68f2cea5493",
-      "lines": 344,
+      "sha256": "6b7417dc245465c6",
+      "lines": 348,
       "exports": [
+        "a_store_of_its_own",
         "held_like_excel",
         "live_readings",
-        "the_record_agrees_with_the_workbooks",
-        "the_store_agrees_with_the_readers",
-        "workbook_readings"
+        "seed_index",
+        "the_record_agrees_with_the_manifest",
+        "the_store_agrees_with_the_record",
+        "write_a_legacy_index"
       ]
     },
     {
@@ -1675,8 +1688,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ced1b2ebbfc7a975",
-      "lines": 992,
+      "sha256": "0749050ff0af631f",
+      "lines": 1048,
       "exports": [
         "demo_root",
         "run",
@@ -1714,8 +1727,10 @@
         "test_priors_then_rollover_is_the_desktop_returning_client_path",
         "test_rollover_carries_the_catalog_the_prior_was_cut_from",
         "test_rollover_carries_the_client_but_not_last_years_link_or_due",
+        "test_rollover_reads_a_prior_year_that_still_had_an_index_workbook",
         "test_rollover_refuses_a_missing_prior",
         "test_rollover_retires_the_prior_in_the_priors_list",
+        "test_rule_two_is_rendered_in_the_record_and_names_no_file",
         "test_set_root_records_the_folder_the_job_will_walk",
         "test_state_carries_the_path_of_the_practices_status_page",
         "test_state_reads_a_corrupt_sidecar_without_moving_it",
@@ -1732,6 +1747,7 @@
         "test_the_packaged_app_installs_a_schedule_against_its_own_executable",
         "test_the_renderer_gets_its_vocabulary_from_the_api",
         "test_the_state_carries_each_rows_evidence_as_data_not_as_a_string",
+        "test_the_state_the_app_reads_carries_no_deferred_index",
         "test_the_state_triages_each_parked_file_best_first_with_the_reason_behind_each",
         "test_the_tax_year_is_within_the_bounds_the_wizard_shows",
         "test_the_vocabulary_carries_every_word_the_review_card_shows",
@@ -1907,46 +1923,49 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c904101e667e097c",
-      "lines": 2186,
+      "sha256": "718be8c31221fcbd",
+      "lines": 1965,
       "exports": [
         "DAY1",
         "DAY2",
         "ITEMS",
+        "a_row",
+        "counted_records",
         "drop",
         "engagement",
         "excel_sorted",
         "pbc",
         "prepared",
         "review_dir",
-        "test_a_bare_list_sidecar_from_an_older_version_is_appended_once",
         "test_a_cloud_placeholder_is_not_a_link",
-        "test_a_column_inserted_into_the_index_does_not_read_as_no_rows",
+        "test_a_column_inserted_into_a_legacy_index_does_not_read_as_no_rows",
         "test_a_copy_that_fails_half_way_leaves_no_truncated_working_copy",
-        "test_a_dismissal_excel_kept_out_of_the_workbook_is_not_lost",
         "test_a_document_renamed_in_excel_keeps_filing_into_its_existing_folder",
         "test_a_drop_still_held_open_is_left_for_the_next_run",
-        "test_a_dry_run_never_quarantines_a_corrupt_index_sidecar",
+        "test_a_dry_run_never_migrates_a_folder_that_still_has_an_index_workbook",
         "test_a_duplicate_rows_own_original_is_watched_like_every_other",
-        "test_a_failed_index_write_puts_back_a_parked_copy_a_reused_one_stood_in_for",
-        "test_a_failed_index_write_puts_the_filed_copy_back_where_the_index_says",
-        "test_a_failed_index_write_puts_the_unfiled_copy_back_where_the_index_says",
+        "test_a_failed_record_puts_back_a_parked_copy_a_reused_one_stood_in_for",
+        "test_a_failed_record_puts_the_filed_copy_back_where_the_record_says",
+        "test_a_failed_record_puts_the_unfiled_copy_back_where_the_record_says",
         "test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed",
         "test_a_file_dropped_straight_into_pbc_is_filed_and_indexed",
         "test_a_file_named_like_a_formula_is_recorded_as_its_name",
         "test_a_file_still_being_written_is_reported_as_waiting_not_passed_over",
         "test_a_filed_row_and_a_parked_row_both_say_what_the_rules_saw",
+        "test_a_folder_that_still_has_an_index_workbook_is_migrated_by_its_next_pass",
         "test_a_folder_the_run_cannot_list_is_reported_every_pass",
-        "test_a_hand_edited_index_cell_does_not_stop_the_next_run",
-        "test_a_locked_index_keeps_a_persons_filing_decision",
-        "test_a_locked_index_never_orphans_files_already_moved",
+        "test_a_legacy_index_is_read_from_the_sheet_carrying_its_header_not_the_selected_one",
+        "test_a_legacy_index_whose_header_row_moved_still_migrates_every_row",
+        "test_a_legacy_index_with_rows_and_no_header_refuses_the_migration_by_name",
+        "test_a_legacy_sheet_sorted_until_the_header_is_last_migrates_every_row_above_it",
+        "test_a_migrated_workbook_never_overwrites_one_an_earlier_migration_left",
         "test_a_name_the_index_cannot_hold_is_reported_not_allowed_to_take_the_index_down",
         "test_a_name_the_workbook_cannot_hold_is_refused_like_one_utf8_cannot",
         "test_a_name_windows_cannot_open_is_reported_not_passed_over",
         "test_a_page_that_prints_two_forms_files_a_copy_under_each_and_unfiles_as_one",
         "test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone",
-        "test_a_persons_decision_survives_excel_saving_the_stale_workbook",
-        "test_a_persons_filing_above_a_sorted_header_is_not_undone",
+        "test_a_pass_that_changed_nothing_records_nothing",
+        "test_a_person_filing_dismissing_or_unfiling_is_one_call_each",
         "test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_bytes",
         "test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them",
         "test_a_persons_keyword_is_learned_under_the_lock",
@@ -1954,26 +1973,21 @@
         "test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file",
         "test_a_run_killed_after_copying_does_not_leave_a_second_copy_behind",
         "test_a_same_size_replacement_with_an_old_date_is_still_noticed",
-        "test_a_sheet_sorted_until_the_header_is_last_keeps_every_row_above_it",
-        "test_a_sidecar_of_an_unknown_version_is_quarantined_not_guessed",
-        "test_a_sidecar_that_cannot_be_read_stops_the_run_rather_than_being_guessed_past",
-        "test_a_snapshot_the_workbook_has_outlived_does_not_hide_the_workbooks_rows",
-        "test_a_workbook_with_rows_and_no_header_on_any_sheet_is_refused_by_name",
+        "test_a_workbook_held_the_way_excel_holds_one_refuses_the_migration_loudly",
         "test_a_working_copy_somebody_re_saved_is_left_where_it_is_and_said_so",
         "test_after_unfiling_the_request_is_not_received_and_the_note_says_why",
         "test_an_annotated_parked_copy_is_left_behind_and_said_so",
         "test_an_empty_folder_is_cleared_by_a_pass_with_nothing_to_sort",
-        "test_an_index_held_the_way_excel_holds_one_still_records_every_moved_original",
-        "test_an_index_whose_header_row_moved_is_read_from_it_and_one_with_none_is_refused",
-        "test_an_index_written_with_older_columns_still_reads",
-        "test_an_interrupt_after_the_index_landed_does_not_undo_the_filing",
+        "test_an_engagement_that_never_had_a_workbook_is_simply_created",
+        "test_an_engagement_whose_record_already_carries_every_row_migrates_the_same_way",
+        "test_an_index_workbook_written_with_older_columns_still_migrates",
+        "test_an_interrupt_after_the_record_landed_does_not_undo_the_filing",
         "test_an_original_deleted_from_pbc_is_said_every_pass",
         "test_an_original_replaced_under_its_own_name_is_said_out_loud_every_run",
         "test_an_original_the_client_moved_into_a_subfolder_of_pbc_is_followed",
         "test_an_original_the_client_renamed_in_pbc_is_followed_not_filed_again",
         "test_an_original_the_sync_client_dehydrated_is_not_called_gone",
         "test_an_original_the_sync_client_dehydrated_is_not_downloaded_to_be_checked",
-        "test_an_unfiling_excel_kept_out_of_the_workbook_is_not_lost",
         "test_assigning_a_parked_file_moves_it_under_the_canonical_name",
         "test_assigning_a_replaced_original_is_refused_not_recorded_under_the_old_bytes",
         "test_assigning_copies_from_pbc_when_the_review_copy_is_gone",
@@ -1982,7 +1996,6 @@
         "test_assigning_still_files_when_excel_holds_the_manifest",
         "test_bytes_recorded_after_the_fact_are_tied_to_the_row_or_not_recorded",
         "test_client_subfolders_are_flattened",
-        "test_deferred_rows_are_folded_in_even_when_the_only_drop_is_still_syncing",
         "test_dismissing_a_parked_file_rewrites_its_row_and_moves_nothing",
         "test_dismissing_something_that_is_not_parked_says_what_it_is",
         "test_dismissing_takes_the_engagement_lock",
@@ -1992,25 +2005,25 @@
         "test_every_unfinished_transfer_name_is_reported_as_waiting",
         "test_file_is_sorted_renamed_and_indexed",
         "test_filing_a_dismissed_document_is_how_the_decision_is_undone",
+        "test_filing_a_drop_is_one_call_and_one_transaction",
         "test_filing_an_unfiled_document_puts_it_under_the_canonical_name_again",
         "test_filing_leaves_verdicts_the_scan_reuses",
-        "test_index_workbook_is_readable_in_excel",
-        "test_mixed_append_and_edit_survive_a_locked_index",
         "test_name_collision_in_pbc_never_overwrites",
+        "test_no_pass_leaves_an_index_workbook_behind",
         "test_pbc_contents_are_never_re_sorted",
         "test_placeholders_are_left_where_they_are",
         "test_prepared_name_for_collides_safely",
+        "test_read_index_keeps_the_place_of_a_row_that_changed_identity",
         "test_rerunning_changes_nothing",
         "test_review_copies_keep_the_clients_own_name",
         "test_same_document_dropped_twice_is_kept_but_filed_once",
         "test_second_file_for_the_same_request_is_numbered",
         "test_sync_junk_is_ignored",
-        "test_the_evidence_column_round_trips_through_the_snapshot_sidecar",
         "test_the_filer_holds_the_engagement_lock",
         "test_the_filer_reads_nothing_before_it_holds_the_lock",
-        "test_the_index_is_read_from_the_sheet_carrying_its_header_not_the_selected_one",
+        "test_the_migration_folds_in_the_snapshot_the_last_run_could_not_land",
+        "test_the_migration_is_idempotent_and_a_second_ensure_writes_no_event",
         "test_the_next_pass_leaves_an_unfiled_original_where_the_row_says",
-        "test_the_pending_index_is_a_versioned_snapshot_of_every_row",
         "test_the_routers_candidates_travel_as_data_in_the_index",
         "test_the_same_document_sent_again_after_a_dismissal_is_a_duplicate",
         "test_the_unlistable_walk_covers_the_same_ground_as_the_others",
@@ -2094,26 +2107,24 @@
       "id": "tests/test_ledger.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cc05762ad1295171",
-      "lines": 480,
+      "sha256": "28e4b58924120477",
+      "lines": 447,
       "exports": [
         "DAY1",
         "DAY2",
         "ITEMS",
         "REPO",
         "a_keyword",
-        "a_legacy_row",
         "compare",
         "drop",
         "engagement",
         "lines",
         "row",
-        "test_a_folder_with_no_record_reads_its_index_from_the_workbook",
         "test_a_line_that_is_not_an_event_in_the_middle_is_refused",
         "test_a_pass_records_what_it_filed_and_what_it_parked",
         "test_a_person_filing_a_parked_file_is_recorded_as_theirs",
         "test_a_quiet_pass_appends_no_scan",
-        "test_a_record_holding_only_a_scan_still_reads_its_index_from_the_workbook",
+        "test_a_record_holding_only_a_scan_gives_an_index_of_no_rows",
         "test_a_recorded_identifier_reads_from_the_record_and_an_unrecorded_one_from_the_workbook",
         "test_a_row_that_changed_identity_keeps_the_place_the_index_keeps_it_in",
         "test_a_row_that_followed_a_moved_original_leaves_no_ghost_behind",
@@ -2121,15 +2132,14 @@
         "test_a_torn_last_line_is_ignored_by_the_reader_and_truncated_by_the_next_append",
         "test_an_append_is_one_line_and_reads_back_as_it_was_written",
         "test_an_append_outside_the_engagement_lock_refuses_loudly",
-        "test_an_engagement_with_rows_and_no_record_is_seeded_before_its_first_new_event",
         "test_an_event_this_version_does_not_know_is_refused",
-        "test_an_unreadable_record_falls_back_to_the_workbooks_and_names_the_engagement",
+        "test_an_unreadable_record_refuses_the_index_and_falls_back_for_the_statuses",
         "test_the_app_shows_a_persons_filing_the_moment_they_make_it",
         "test_the_cli_prints_what_the_folder_holds",
         "test_the_compare_check_says_they_agree_and_names_a_disagreement",
         "test_the_fold_is_the_last_event_for_each_original",
         "test_the_head_changes_with_every_append_and_not_otherwise",
-        "test_the_index_is_read_from_the_record_and_says_what_the_workbook_says",
+        "test_the_index_is_the_record_folded_and_nothing_else",
         "test_the_rollover_reads_last_years_statuses_through_the_record_and_otherwise_the_workbook",
         "test_the_statuses_are_built_up_across_the_passes_that_changed_something",
         "test_two_appends_are_two_lines_in_the_order_they_happened"
@@ -2266,7 +2276,7 @@
       "id": "tests/test_records.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c28e0fd44cb2b8e0",
+      "sha256": "000bb2cd1c0776ca",
       "lines": 198,
       "exports": [
         "A_ROW",
@@ -2316,8 +2326,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3180534743b66ab9",
-      "lines": 379,
+      "sha256": "a44654dc3a06947e",
+      "lines": 380,
       "exports": [
         "SCANNED",
         "engagement",
@@ -2438,8 +2448,8 @@
       "id": "tests/test_review.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9ab0d48e8ca0f5e6",
-      "lines": 370,
+      "sha256": "efd15768dbe71c9d",
+      "lines": 369,
       "exports": [
         "DAY1",
         "ITEMS",
@@ -2473,8 +2483,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ce457477144df29b",
-      "lines": 537,
+      "sha256": "f255bc332c19b0d4",
+      "lines": 543,
       "exports": [
         "PRIOR",
         "TEMPLATE",
@@ -2590,8 +2600,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9c4e23a5282046ce",
-      "lines": 705,
+      "sha256": "8d1cca4e763e7784",
+      "lines": 761,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -2602,6 +2612,7 @@
         "test_a_clients_folder_drives_a_real_run_with_nothing_registered",
         "test_a_draft_day_the_machine_missed_is_caught_up_on_the_next_pass",
         "test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft",
+        "test_a_dry_run_takes_no_lock_at_all",
         "test_a_dry_run_writes_nothing_at_all",
         "test_a_file_named_like_markup_is_shown_as_a_name_not_rendered",
         "test_a_manual_run_drafts_on_a_weekday",
@@ -2636,6 +2647,7 @@
         "test_the_page_is_written_even_when_an_engagements_pass_failed",
         "test_the_page_lists_every_engagement_the_registry_finds_including_an_unreadable_one",
         "test_the_page_still_has_a_heading_where_nothing_can_say_what_the_product_is_called",
+        "test_the_pass_holds_one_lock_from_the_sort_through_the_scan",
         "test_the_report_says_what_day_it_is_and_never_claims_a_send",
         "test_the_review_queue_lists_parked_files_newest_first_with_their_reasons",
         "test_the_run_names_a_manifest_typo_with_its_row_before_touching_files",
@@ -2768,8 +2780,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8ebfa23dfc447f07",
-      "lines": 669,
+      "sha256": "c197dcf368910c17",
+      "lines": 684,
       "exports": [
         "DOCUMENTS",
         "REPO",
@@ -2830,8 +2842,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "969826c99b283469",
-      "lines": 528,
+      "sha256": "2f443cf513cb31a3",
+      "lines": 574,
       "exports": [
         "DAY1",
         "DAY2",
@@ -2848,9 +2860,9 @@
         "rows",
         "said",
         "test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it_up",
+        "test_a_reader_finding_no_rows_at_all_builds_them_from_the_journal_alone",
         "test_a_rebuild_run_twice_says_and_holds_exactly_the_same",
         "test_a_record_whose_type_the_store_cannot_store_is_refused_before_it_is_written",
-        "test_a_row_only_the_workbook_holds_is_taken_from_it_and_marked_as_the_workbooks",
         "test_a_row_that_changed_identity_keeps_the_place_the_index_keeps_it_in",
         "test_a_row_the_record_holds_wins_over_the_workbooks_own_reading",
         "test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name",
@@ -2858,6 +2870,7 @@
         "test_an_engagement_the_store_has_never_seen_is_said_so_rather_than_passed",
         "test_every_request_the_manifest_holds_has_a_rule_and_a_status_in_the_store",
         "test_one_call_is_one_transaction_over_the_journal_and_the_tables",
+        "test_one_process_has_one_connection_and_a_second_file_is_refused",
         "test_opening_a_file_that_is_not_there_creates_the_schema",
         "test_recording_outside_the_lock_writes_to_neither_the_journal_nor_the_store",
         "test_recording_while_the_store_is_behind_the_journal_is_refused",
@@ -2870,7 +2883,9 @@
         "test_the_rebuilt_rows_are_the_readers_rows_after_a_person_files_a_parked_one",
         "test_the_state_is_current_behind_or_unknown",
         "test_the_store_is_placed_beside_the_settings_file_and_never_in_the_synced_folder",
-        "test_the_store_names_no_reader_at_load_time"
+        "test_the_store_is_the_one_the_environment_names",
+        "test_the_store_names_no_reader_at_load_time",
+        "tmp_store"
       ]
     },
     {
@@ -2930,7 +2945,7 @@
       "id": "tests/test_view.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "805631fc51e99287",
+      "sha256": "331ff4f920d1815f",
       "lines": 539,
       "exports": [
         "DAY1",
@@ -3401,6 +3416,12 @@
     },
     {
       "from": "tests/conftest.py",
+      "to": "pkg:openpyxl",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
       "to": "pkg:pytest",
       "type": "depends_on",
       "source": "derived"
@@ -3420,6 +3441,12 @@
     {
       "from": "tests/conftest.py",
       "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -3527,6 +3554,12 @@
     },
     {
       "from": "tests/test_api.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
       "to": "tracker/registry.py",
       "type": "exercises",
       "source": "derived"
@@ -3577,6 +3610,12 @@
       "from": "tests/test_api.py",
       "to": "tracker/templates.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -3797,7 +3836,19 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -3810,6 +3861,12 @@
     {
       "from": "tests/test_filer.py",
       "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -3833,8 +3890,20 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tracker/validators.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -3978,6 +4047,12 @@
     {
       "from": "tests/test_ledger.py",
       "to": "tracker/scanner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ledger.py",
+      "to": "tracker/store.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -4235,6 +4310,12 @@
     },
     {
       "from": "tests/test_reminder.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
       "to": "tracker/reminder.py",
       "type": "tests",
       "source": "derived"
@@ -4307,6 +4388,12 @@
     },
     {
       "from": "tests/test_review.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
       "to": "tests/test_scanner.py",
       "type": "imports",
       "source": "derived"
@@ -4357,6 +4444,12 @@
       "from": "tests/test_rollover.py",
       "to": "tracker/templates.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_rollover.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -4445,7 +4538,19 @@
     },
     {
       "from": "tests/test_runner.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
       "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
+      "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -4477,6 +4582,12 @@
       "from": "tests/test_runner.py",
       "to": "tracker/settings.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -5207,6 +5318,12 @@
     },
     {
       "from": "tracker/api.py",
+      "to": "tracker/store.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
       "to": "tracker/templates.py",
       "type": "imports",
       "source": "derived"
@@ -5225,13 +5342,13 @@
     },
     {
       "from": "tracker/api.py",
-      "to": "artifact:_index.xlsx",
+      "to": "artifact:_manifest.xlsx",
       "type": "reads",
       "source": "curated"
     },
     {
       "from": "tracker/api.py",
-      "to": "artifact:_manifest.xlsx",
+      "to": "artifact:tracker.db",
       "type": "reads",
       "source": "curated"
     },
@@ -5393,6 +5510,12 @@
     },
     {
       "from": "tracker/filer.py",
+      "to": "tracker/store.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/filer.py",
       "to": "tracker/validators.py",
       "type": "imports",
       "source": "derived"
@@ -5400,6 +5523,12 @@
     {
       "from": "tracker/filer.py",
       "to": "tracker/scanner.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "tracker/settings.py",
       "type": "imports_at_call",
       "source": "derived"
     },
@@ -5417,18 +5546,6 @@
     },
     {
       "from": "tracker/filer.py",
-      "to": "artifact:_index.pending.json",
-      "type": "reads",
-      "source": "curated"
-    },
-    {
-      "from": "tracker/filer.py",
-      "to": "artifact:_index.xlsx",
-      "type": "reads",
-      "source": "curated"
-    },
-    {
-      "from": "tracker/filer.py",
       "to": "artifact:_ledger.jsonl",
       "type": "reads",
       "source": "curated"
@@ -5436,6 +5553,12 @@
     {
       "from": "tracker/filer.py",
       "to": "artifact:_manifest.xlsx",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:tracker.db",
       "type": "reads",
       "source": "curated"
     },
@@ -5453,13 +5576,19 @@
     },
     {
       "from": "tracker/filer.py",
-      "to": "artifact:_index.pending.json",
+      "to": "artifact:_index.migrated.xlsx",
       "type": "writes",
       "source": "curated"
     },
     {
       "from": "tracker/filer.py",
-      "to": "artifact:_index.xlsx",
+      "to": "artifact:_ledger.jsonl",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:tracker.db",
       "type": "writes",
       "source": "curated"
     },
@@ -5467,12 +5596,6 @@
       "from": "tracker/ledger.py",
       "to": "tracker/locking.py",
       "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/ledger.py",
-      "to": "tracker/filer.py",
-      "type": "imports_at_call",
       "source": "derived"
     },
     {
@@ -5645,12 +5768,6 @@
     },
     {
       "from": "tracker/reminder.py",
-      "to": "artifact:_index.xlsx",
-      "type": "reads",
-      "source": "curated"
-    },
-    {
-      "from": "tracker/reminder.py",
       "to": "artifact:_manifest.xlsx",
       "type": "reads",
       "source": "curated"
@@ -5658,6 +5775,12 @@
     {
       "from": "tracker/reminder.py",
       "to": "artifact:reminder-draft.txt",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "artifact:tracker.db",
       "type": "reads",
       "source": "curated"
     },
@@ -5711,13 +5834,13 @@
     },
     {
       "from": "tracker/review.py",
-      "to": "artifact:_index.xlsx",
+      "to": "artifact:_manifest.xlsx",
       "type": "reads",
       "source": "curated"
     },
     {
       "from": "tracker/review.py",
-      "to": "artifact:_manifest.xlsx",
+      "to": "artifact:tracker.db",
       "type": "reads",
       "source": "curated"
     },
@@ -5759,13 +5882,13 @@
     },
     {
       "from": "tracker/rollover.py",
-      "to": "artifact:_index.xlsx",
+      "to": "artifact:_manifest.xlsx",
       "type": "reads",
       "source": "curated"
     },
     {
       "from": "tracker/rollover.py",
-      "to": "artifact:_manifest.xlsx",
+      "to": "artifact:tracker.db",
       "type": "reads",
       "source": "curated"
     },
@@ -5831,7 +5954,19 @@
     },
     {
       "from": "tracker/runner.py",
+      "to": "tracker/__init__.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
       "to": "tracker/filer.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "tracker/locking.py",
       "type": "imports",
       "source": "derived"
     },
@@ -5885,19 +6020,25 @@
     },
     {
       "from": "tracker/runner.py",
+      "to": "tracker/store.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
       "to": "tracker/view.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tracker/runner.py",
-      "to": "artifact:_index.xlsx",
+      "to": "artifact:_manifest.xlsx",
       "type": "reads",
       "source": "curated"
     },
     {
       "from": "tracker/runner.py",
-      "to": "artifact:_manifest.xlsx",
+      "to": "artifact:tracker.db",
       "type": "reads",
       "source": "curated"
     },
@@ -6023,13 +6164,13 @@
     },
     {
       "from": "tracker/scanner.py",
-      "to": "artifact:_index.xlsx",
+      "to": "artifact:_manifest.xlsx",
       "type": "reads",
       "source": "curated"
     },
     {
       "from": "tracker/scanner.py",
-      "to": "artifact:_manifest.xlsx",
+      "to": "artifact:tracker.db",
       "type": "reads",
       "source": "curated"
     },
@@ -6137,7 +6278,7 @@
     },
     {
       "from": "tracker/store.py",
-      "to": "tracker/view.py",
+      "to": "tracker/settings.py",
       "type": "imports_at_call",
       "source": "derived"
     },
@@ -6257,19 +6398,7 @@
     },
     {
       "from": "tracker/view.py",
-      "to": "tracker/validators.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/view.py",
       "to": "artifact:Status Report.html",
-      "type": "reads",
-      "source": "curated"
-    },
-    {
-      "from": "tracker/view.py",
-      "to": "artifact:_index.xlsx",
       "type": "reads",
       "source": "curated"
     },
@@ -6282,6 +6411,12 @@
     {
       "from": "tracker/view.py",
       "to": "artifact:_manifest.xlsx",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "artifact:tracker.db",
       "type": "reads",
       "source": "curated"
     },

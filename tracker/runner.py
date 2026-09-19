@@ -63,10 +63,13 @@ import datetime as dt
 import logging
 import traceback
 from collections.abc import Iterable
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker.filer import INDEX_FILENAME, NEEDS_REVIEW, file_drops, read_index
+from tracker import store
+from tracker.filer import NEEDS_REVIEW, ensure, file_drops, read_index
+from tracker.locking import engagement_lock
 from tracker.manifest import (
     ENGAGEMENT_SHEET_NAME,
     ISO_DATE_HINT,
@@ -154,7 +157,6 @@ class EngagementRun:
     waiting: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
-    index_deferred: bool = False     # the index was locked; rows in the sidecar
     manifest_deferred: bool = False  # the manifest was locked; statuses in the sidecar
     #: The view was not regenerated because somebody had it open. Not a
     #: failure: it holds no fact of its own, so it simply stays one pass
@@ -186,8 +188,6 @@ class EngagementRun:
             parts.append(f"syncing {self.waiting}")
         if self.file_errors:
             parts.append(f"could not sort {len(self.file_errors)}")
-        if self.index_deferred:
-            parts.append("index locked (rows deferred)")
         if self.manifest_deferred:
             parts.append("manifest locked (statuses deferred)")
         if self.view_stale:
@@ -304,33 +304,48 @@ def run_engagement(
         return run
 
     try:
-        # A row added or un-waived in Excel gets its folder and its README
-        # line here, on the next pass, rather than when somebody remembers
-        # to re-run scaffold. Idempotent: nothing existing is touched.
-        if not dry_run:
-            scaffold_engagement(engagement.path)   # contact line from the Engagement sheet
-        filed = file_drops(engagement.path, today=today, dry_run=dry_run)
-        run.filed = len(filed.filed)
-        run.review = len(filed.review)
-        run.waiting = len(filed.waiting)
-        run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]
-        # An original already sorted whose record no longer fits the disk
-        # is for a person to look at, every pass - but nothing was left
-        # unsorted, so it rides the warnings rather than failing the run.
-        run.warnings.extend(f"{e.name}: {e.error}" for e in filed.attention)
-        run.index_deferred = filed.index_deferred
+        # **One lock, across the whole pass** (decision 102). The filer and
+        # the scanner used to take the engagement's lock one after the
+        # other, which left a gap between them that a click in the app
+        # could step into: the sort's rows landed, another run filed
+        # something, and the scan then read a folder neither of them had
+        # decided from. What a pass decides from must not change under it,
+        # and that is one section, not two. Each step is told the lock is
+        # already held so it does not try to take it again. A dry run takes
+        # none: it writes nothing and must never block a real run.
+        with nullcontext() if dry_run else engagement_lock(engagement.path):
+            # A row added or un-waived in Excel gets its folder and its README
+            # line here, on the next pass, rather than when somebody remembers
+            # to re-run scaffold. Idempotent: nothing existing is touched.
+            if not dry_run:
+                scaffold_engagement(engagement.path)   # contact line from the Engagement sheet
+            filed = file_drops(engagement.path, today=today, dry_run=dry_run,
+                               lock_held=not dry_run)
+            run.filed = len(filed.filed)
+            run.review = len(filed.review)
+            run.waiting = len(filed.waiting)
+            run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]
+            # An original already sorted whose record no longer fits the disk
+            # is for a person to look at, every pass - but nothing was left
+            # unsorted, so it rides the warnings rather than failing the run.
+            run.warnings.extend(f"{e.name}: {e.error}" for e in filed.attention)
 
-        scanned = scan_engagement(engagement.path, today=today, dry_run=dry_run)
-        summary = scanned.summary
-        run.statuses = summary.counts
-        run.outstanding = summary.outstanding
-        run.warnings.extend(scanned.warnings)
-        run.manifest_deferred = scanned.deferred
+            scanned = scan_engagement(engagement.path, today=today, dry_run=dry_run,
+                                      lock_held=not dry_run)
+            summary = scanned.summary
+            run.statuses = summary.counts
+            run.outstanding = summary.outstanding
+            run.warnings.extend(scanned.warnings)
+            run.manifest_deferred = scanned.deferred
 
-        if should_draft(engagement, today, reminders, weekday, drafted=last_drafted(engagement.path)):
-            _draft_step(run, dry_run=dry_run)
-        else:
-            run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
+            if should_draft(engagement, today, reminders, weekday,
+                            drafted=last_drafted(engagement.path)):
+                _draft_step(run, dry_run=dry_run)
+            else:
+                run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
+
+            if not dry_run and not run.error:
+                _view_step(run)
 
     except ScanLockedError as exc:
         run.skipped = f"another run is still going ({exc})"
@@ -339,9 +354,6 @@ def run_engagement(
     except Exception as exc:  # one client's surprise must not stop the rest
         run.error = f"{exc.__class__.__name__}: {exc}"
         run.draft_note = traceback.format_exc(limit=3).strip().splitlines()[-1]
-
-    if not dry_run and not run.skipped and not run.error:
-        _view_step(run)
 
     if run.file_errors and not run.error:
         # The rest of the pass went ahead, but a drop that could not be
@@ -569,8 +581,9 @@ STATUS_NO_PROBLEMS = "Nothing failed."
 #: What the last-pass cell says for an engagement the page read rather than ran.
 STATUS_NOT_PASSED = "not this pass"
 STATUS_INDEX_UNREADABLE = "{label}: the index could not be read ({error})"
-#: What the deferred-writes cell names, by what Excel was holding open.
-DEFERRED_INDEX = "index rows"
+#: What the deferred-writes cell names. One thing is left that Excel can
+#: hold open against a pass: the manifest's scanner columns (decision 103
+#: takes them out of the workbook too, and this goes with them).
 DEFERRED_STATUSES = "statuses"
 _DEFERRED_SEP = ", "
 
@@ -627,7 +640,8 @@ def _parked_files(report: RunReport) -> tuple[dict[Path, list[ParkedFile]], list
     for run in report.runs:
         engagement = run.engagement
         try:
-            entries = read_index(engagement.path / INDEX_FILENAME, quarantine=False)
+            ensure(engagement.path, migrate=False)
+            entries = read_index(engagement.path)
         except Exception as exc:
             problems.append(STATUS_INDEX_UNREADABLE.format(label=engagement.label, error=exc))
             continue
@@ -662,8 +676,7 @@ def _page_title(root: Path) -> str:
 
 def _engagement_cells(run: EngagementRun, parked: list[ParkedFile]) -> tuple:
     """One engagement's row, in ``STATUS_COLUMNS`` order."""
-    deferred = [name for name, held in ((DEFERRED_INDEX, run.index_deferred),
-                                        (DEFERRED_STATUSES, run.manifest_deferred)) if held]
+    deferred = [DEFERRED_STATUSES] if run.manifest_deferred else []
     return (
         run.engagement.label,
         run.engagement.client,
@@ -864,6 +877,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"\n  The practice: {page}")
 
+    # Checkpoint the store's write-ahead log and take its two side files
+    # with it: a scheduled pass leaves the app's folder as it found it.
+    store.close()
     return 1 if result.errors else 0
 
 

@@ -182,7 +182,7 @@ the knowledge map quoting them exactly:
   and status decision comes from deterministic rules in the manifest.
 - **Originals are never altered.** Files are moved byte for byte under their
   own names into `Shared/PBC/`; all work happens on copies, and every move is
-  recorded in `_index.xlsx`.
+  recorded in the record.
 - **Nothing is guessed.** A document is filed only when exactly one request
   accepts it — or, when one document names several forms as itself, when each
   of those forms is accepted by exactly one request. Ambiguous, contested and
@@ -225,8 +225,9 @@ Conventions worth matching:
   (`test_overrides_are_never_asked_for`), not `test_case_3`.
 - Import directions hold, and `tests/test_layers.py` says which: no load-time
   import points to a higher layer; `ledger` and `locking` import nothing of
-  the package but each other; `manifest` imports `ledger`, `locking` and
-  `records` and nothing else; `runner` never imports `scheduling` or `api`;
+  the package but each other; `manifest` and `store` import `ledger`,
+  `locking` and `records` and nothing else; `runner` never imports
+  `scheduling` or `api`;
   the package's `__init__` imports nothing. An import inside a function or a `__main__`
   block is a call-time import and may point anywhere.
 

@@ -301,14 +301,14 @@ def count_needs_review(engagement_dir: Path) -> int:
     the loud side of the choice, and the index is the filer's to complain
     about, not the draft's.
     """
-    from tracker.filer import INDEX_FILENAME, NOT_REQUESTED, read_index
+    from tracker.filer import NOT_REQUESTED, read_index
 
     review = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
     parked = iter_candidate_files(review)
     if not parked:
         return 0
     try:
-        rows = read_index(engagement_dir / INDEX_FILENAME, quarantine=False)
+        rows = read_index(engagement_dir)
     except Exception as exc:
         log.warning("Could not read the index for the files a person has seen: %s", exc)
         return len(parked)

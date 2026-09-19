@@ -60,7 +60,7 @@ The scanner owns the status column; people own the override column.
   because they carry real names and share links.
   Client documents live in the synced engagement folders, never here.
 - **Originals are never altered.** Work from the `Prepared/` copies; the
-  `PBC/` originals are the record and `_index.xlsx` says where each one went.
+  `PBC/` originals are the record and the Status Report says where each one went.
 - **Nothing is guessed.** If a file is in `00 - Needs Review`, a person
   decides — in the app, by picking the request and clicking *File it*. The
   filer does the move, the rename, the index row and the re-scan.

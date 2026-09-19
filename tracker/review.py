@@ -317,10 +317,11 @@ if __name__ == "__main__":
     parser.add_argument("engagement_dir", help=f"folder containing {MANIFEST_FILENAME}")
     ns = parser.parse_args()
 
-    from tracker.filer import INDEX_FILENAME, read_index
+    from tracker.filer import ensure, read_index
 
     engagement = Path(ns.engagement_dir)
-    parked = triage(engagement, read_index(engagement / INDEX_FILENAME, quarantine=False))
+    ensure(engagement, migrate=False)
+    parked = triage(engagement, read_index(engagement))
     print(f"{len(parked)} file(s) parked for a person in {engagement}\n")
     for triaged in parked:
         print(f"  {triaged.entry.original_name}  ({triaged.entry.reason})")
