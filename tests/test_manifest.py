@@ -16,6 +16,7 @@ from tracker.manifest import (
     COL_IDENTIFIER,
     COL_MANUAL_OVERRIDE,
     COL_MIN_SIZE_KB,
+    COL_OVERRIDE_REASON,
     COLUMN_HELP,
     COLUMNS,
     DEFAULT_MIN_SIZE_KB,
@@ -23,6 +24,9 @@ from tracker.manifest import (
     MIN_EXPECTED_COUNT,
     MIN_SIZE_KB_FLOOR,
     NOT_AN_ENGAGEMENT,
+    NOT_APPLICABLE_LABEL,
+    OVERRIDE_REASON_OTHER,
+    OVERRIDE_REASONS,
     SUMMARY_EMPTY,
     SUMMARY_SEPARATOR,
     TEMP_SUFFIX,
@@ -40,6 +44,7 @@ from tracker.manifest import (
     load_engagement_info,
     load_manifest,
     narrowing_rows,
+    override_label,
     save_rules,
     temp_path_for,
     validated,
@@ -69,7 +74,7 @@ SAMPLE_ITEMS = [
         document="Payroll Register Q4",
         period="Q4 2025",
         allowed_extensions=("xlsx", "csv"),
-        manual_override=Override.WAIVED,
+        manual_override=Override.NOT_APPLICABLE,
     ),
 ]
 
@@ -111,7 +116,7 @@ def test_create_then_load_round_trips_through_the_record(engagement):
     assert a02.any_keywords == ("statement", "account summary")
     assert a02.row == 2
 
-    assert items[2].manual_override == Override.WAIVED
+    assert items[2].manual_override == Override.NOT_APPLICABLE
 
 
 def test_an_engagement_is_created_from_a_template_and_read_back_from_the_record_with_no_workbook_anywhere(tmp_path):
@@ -161,12 +166,14 @@ def test_create_refuses_a_bad_list_before_a_line_is_written(tmp_path):
     assert store.rules(store.connect(), folder) is None      # nothing in the store either
 
 
-def test_the_list_is_the_ten_columns_a_person_edits():
+def test_the_list_is_the_eleven_columns_a_person_edits():
     """Decision 103 took the four scanner columns out of the schema; 104
     keeps the ten, keyed by the record's own field names, each with the
-    sentence the editor shows under its heading."""
+    sentence the editor shows under its heading; 116 adds the eleventh,
+    the reason an override was made."""
     assert HEADERS == tuple(header for header, _ in COLUMNS)
-    assert len(HEADERS) == 10
+    assert len(HEADERS) == 11
+    assert HEADERS[-1] == COL_OVERRIDE_REASON
     assert tuple(field for _, field in COLUMNS) == tuple(
         f for f in RULE_FIELDS if f not in ("row", "date_pattern_derived"))
     assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
@@ -202,6 +209,120 @@ def test_unknown_override_rejected():
         item_from_fields({"identifier": "A01", "document": "x", "manual_override": "Maybe"}, where="Row 2")
     with pytest.raises(ManifestError, match=f"Row 1: {COL_MANUAL_OVERRIDE}"):
         validated([RequestItem(identifier="A01", document="x", manual_override="Maybe")])
+
+
+# ------------------------------------------------- the override's reason (116) ----
+
+
+def test_an_accepted_override_with_no_reason_is_refused_naming_the_row_and_the_column():
+    rows = [SAMPLE_ITEMS[0], RequestItem(identifier="A02", document="x", manual_override=Override.ACCEPTED)]
+    with pytest.raises(ManifestError, match=(
+            f"Row 2: {COL_OVERRIDE_REASON} is required when {COL_MANUAL_OVERRIDE} is {Override.ACCEPTED}")):
+        validated(rows)
+    # And one of the offered reasons, or a person's own words, is enough.
+    for reason in (*OVERRIDE_REASONS, "the client walked it in on Tuesday"):
+        [row] = validated([RequestItem(identifier="A02", document="x", manual_override=Override.ACCEPTED,
+                                       override_reason=reason)])
+        assert row.override_reason == reason
+
+
+def test_other_with_nothing_typed_is_refused_and_typed_words_are_the_reason():
+    """The editor's last entry opens a box; what is saved is what was typed,
+    never the word that opened it."""
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_OVERRIDE_REASON} {OVERRIDE_REASON_OTHER} needs the reason typed"):
+        validated([RequestItem(identifier="A01", document="x", manual_override=Override.ACCEPTED,
+                               override_reason=OVERRIDE_REASON_OTHER)])
+    with pytest.raises(ManifestError, match="needs the reason typed"):
+        validated([RequestItem(identifier="A01", document="x", manual_override=Override.ACCEPTED,
+                               override_reason=OVERRIDE_REASON_OTHER.lower())])
+    [row] = validated([item_from_fields(
+        {"identifier": "A01", "document": "x", "manual_override": Override.ACCEPTED,
+         "override_reason": "  confirmed by phone with the client  "}, where="Row 1")])
+    assert row.override_reason == "confirmed by phone with the client"
+    assert OVERRIDE_REASON_OTHER not in OVERRIDE_REASONS
+
+
+def test_a_reason_without_an_override_is_refused():
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_OVERRIDE_REASON} needs a {COL_MANUAL_OVERRIDE}"):
+        validated([RequestItem(identifier="A01", document="x", override_reason="because")])
+    # A set-aside row may carry one or not.
+    for reason in ("", "no foreign accounts this year"):
+        [row] = validated([RequestItem(identifier="A01", document="x", period="TY2025",
+                                       manual_override=Override.NOT_APPLICABLE, override_reason=reason)])
+        assert row.override_reason == reason
+
+
+def test_a_waived_row_in_an_old_journal_reads_as_not_applicable_and_saving_the_list_back_records_nothing(tmp_path):
+    """The retired-value rule of decision 104, applied to a value: the
+    journal keeps the spelling it holds, every reader sees the successor,
+    and an untouched list is not an event."""
+    from tests.conftest import ensure
+    from tracker.locking import engagement_lock
+
+    folder = make_engagement(tmp_path / "Old 2025", SAMPLE_ITEMS[:2], scaffold=False)
+    retired = rule_to_json(validated(SAMPLE_ITEMS)[2])       # as an older version stored it
+    retired["manual_override"] = "Waived"
+    del retired["override_reason"]                      # written by a version that had no such field
+    with engagement_lock(folder):
+        ensure(folder)
+        store.record(store.connect(), folder, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [retired], ledger.REMOVED_KEY: [], ledger.INFO_KEY: {},
+        }))
+    before = ledger.path_for(folder).read_bytes()
+    assert b'"Waived"' in before
+
+    items = load_manifest(folder)
+    assert items[2].manual_override == Override.NOT_APPLICABLE
+    assert items[2].override_reason == ""
+    assert override_label(items[2]) == NOT_APPLICABLE_LABEL.format(year=2025)
+
+    assert save_rules(folder, items, load_engagement_info(folder)).recorded is False
+    assert ledger.path_for(folder).read_bytes() == before        # the bytes are the bytes
+    conn = store.connect()
+    assert store.check(conn, store.root_for(folder), folder) == []
+    assert store.rules(conn, folder)[2]["manual_override"] == "Waived"   # the store keeps them too
+
+
+def test_the_label_carries_the_rows_period_year_or_the_bare_value():
+    set_aside = RequestItem(identifier="A01", document="x", period="TY2025",
+                            manual_override=Override.NOT_APPLICABLE)
+    assert override_label(set_aside) == "Not Applicable in TY2025" == NOT_APPLICABLE_LABEL.format(year=2025)
+    assert set_aside.year == 2025
+    no_year = replace(set_aside, period="quarterly")
+    assert override_label(no_year) == Override.NOT_APPLICABLE and no_year.year is None
+    assert override_label(replace(set_aside, manual_override=Override.ACCEPTED)) == Override.ACCEPTED
+    assert override_label(replace(set_aside, manual_override="")) == ""
+
+
+def test_summarize_counts_not_applicable_apart_and_check_rules_skips_it():
+    from tracker.manifest import summarize
+
+    rows = validated([
+        RequestItem(identifier="A01", document="W-2", required_keywords=("W-2",), allowed_extensions=("pdf",)),
+        RequestItem(identifier="A02", document="Nothing to go on", period="TY2025",
+                    manual_override=Override.NOT_APPLICABLE),        # no rule, "*": nobody's to warn about
+    ])
+    summary = summarize(rows)
+    assert summary.total == 1 and summary.not_applicable == 1 and summary.unscanned == 1
+    assert summary.line.endswith(f"{Override.NOT_APPLICABLE}: 1")
+    assert NOT_APPLICABLE_LABEL.format(year=2025) not in summary.line       # the count says the value
+    assert check_rules(rows) == []
+
+
+def test_the_retired_spelling_is_folded_on_every_read_and_never_written(engagement):
+    """A value typed by hand in the retired spelling is stored as the
+    successor: nothing this version writes carries the old word."""
+    typed = item_from_fields({"identifier": "C01", "document": "Old habit", "manual_override": "waived"},
+                             where="Row 4")
+    assert typed.manual_override == Override.NOT_APPLICABLE
+    rows = [*load_manifest(engagement), typed]
+    saved = save_rules(engagement, rows, load_engagement_info(engagement))
+    assert saved.recorded and saved.changed == ("C01",)
+    last = rules_events(engagement)[-1]
+    assert last[ledger.RULES_KEY][0]["manual_override"] == Override.NOT_APPLICABLE
+    assert b"Waived" not in ledger.path_for(engagement).read_bytes()
+    assert Override.RETIRED == {"Waived": Override.NOT_APPLICABLE}
+    assert not hasattr(Override, "WAIVED")
 
 
 def test_a_row_needs_an_identifier_and_a_document():
@@ -434,10 +555,10 @@ def test_a_spec_that_gives_its_extensions_as_a_list_gets_those_extensions():
 
 
 def test_item_from_fields_defaults_no_keyword_and_folds_the_override():
-    item = item_from_fields({"identifier": "A01", "document": "Anything", "manual_override": "waived",
+    item = item_from_fields({"identifier": "A01", "document": "Anything", "manual_override": "not applicable",
                              "expected_count": "2", "min_size_kb": ""}, where="Row 1")
     assert item.required_keywords == () and item.any_keywords == ()
-    assert item.manual_override == Override.WAIVED
+    assert item.manual_override == Override.NOT_APPLICABLE
     assert item.expected_count == 2 and item.min_size_kb == DEFAULT_MIN_SIZE_KB
     assert item.row == 0                       # the position is validated()'s to give
 
@@ -450,7 +571,7 @@ def test_check_rules_warns_about_rows_the_rules_cannot_act_on():
         RequestItem(identifier="A01", document="Anything goes"),              # no rule, "*"
         RequestItem(identifier="A02", document="W-2", required_keywords=("W-2",),
                     allowed_extensions=("pdf",)),
-        RequestItem(identifier="A03", document="Waived", manual_override=Override.WAIVED),
+        RequestItem(identifier="A03", document="Set aside", manual_override=Override.NOT_APPLICABLE),
     ])
     warnings = check_rules(rows)
     assert [w[:14] for w in warnings] == ["Row 1 (A01): n", "Row 1 (A01): A"]
@@ -535,21 +656,22 @@ def test_summarize_is_the_one_count():
         RequestItem(identifier="A02", document="b", status=Status.MISSING),
         RequestItem(identifier="A03", document="c", status=Status.PARTIAL),
         RequestItem(identifier="A04", document="d", status=Status.FAILED,
-                    manual_override=Override.ACCEPTED),          # signed off: counts as in
+                    manual_override=Override.ACCEPTED,
+                    override_reason=OVERRIDE_REASONS[0]),        # signed off: counts as in
         RequestItem(identifier="A05", document="e", status=Status.MISSING,
-                    manual_override=Override.WAIVED),            # nobody is waiting
+                    manual_override=Override.NOT_APPLICABLE),    # nobody is waiting
         RequestItem(identifier="A06", document="f"),             # never scanned
         RequestItem(identifier="A07", document="g", status=Status.PENDING_SYNC),
     ]
     summary = summarize(items)
-    assert summary.total == 6 and summary.waived == 1
+    assert summary.total == 6 and summary.not_applicable == 1
     assert summary.received == 2
     assert summary.outstanding == 2
     assert summary.unscanned == 1
     assert summary.counts == {Status.RECEIVED: 2, Status.MISSING: 1, Status.PARTIAL: 1, Status.PENDING_SYNC: 1}
     assert summary.line == SUMMARY_SEPARATOR.join([
         f"{Status.MISSING}: 1", f"{Status.PARTIAL}: 1", f"{Status.PENDING_SYNC}: 1",
-        f"{Status.RECEIVED}: 2", f"{UNSCANNED_LABEL}: 1", f"{Override.WAIVED}: 1",
+        f"{Status.RECEIVED}: 2", f"{UNSCANNED_LABEL}: 1", f"{Override.NOT_APPLICABLE}: 1",
     ])
     assert summarize([]).line == SUMMARY_EMPTY
 

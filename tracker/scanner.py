@@ -24,7 +24,8 @@ Status policy (docs/ROADMAP.md decision log):
   Received item whose files changed or vanished regresses, keeping its
   original Received Date plus a note.
 - **Manual Override wins** — an Accepted row is Received (date stamped
-  once, as for any other), a Waived row keeps whatever status it has; the
+  once, as for any other), a Not Applicable row keeps whatever status it
+  has; the
   scanner still refreshes File Count and records what the rules saw in the
   notes, prefixed ``OVERRIDE_NOTE``.
 - **Pending Sync** — cloud-only placeholders are never read; if they are

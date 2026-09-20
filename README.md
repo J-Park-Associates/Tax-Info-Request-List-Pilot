@@ -54,7 +54,7 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 ```
 
 **The request list and the engagement's details are in the record.** The
-ten columns an accountant edits, and the client, link, due date and the
+eleven columns an accountant edits, and the client, link, due date and the
 rest, are edited in the app's **Edit Request List** editor and nowhere
 else; every save is journalled as one event and folded into one database
 on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
@@ -88,7 +88,10 @@ spreadsheet, and the machine reads and writes no workbook.
 Run steps 5 and 6 together on a schedule (Task Scheduler or cron).
 `--dry-run` works on both and previews without writing or moving anything.
 A `Manual Override` column (the values in `Override.ALL`) lets accountant
-judgment beat the rules.
+judgment beat the rules: `Accepted` counts the row as Received and carries
+an `Override Reason` (picked from a list, or typed), `Not Applicable` takes
+the request out of every count for the year, shown as "Not Applicable in
+TY<year>" and kept in a folded section of the Status Report.
 
 ### Chasing what's still outstanding
 
@@ -245,8 +248,10 @@ Prior-year data takes precedence over the template, absolutely:
 - Counts learn from what actually arrived: expected 2 W-2s, received 3 → ask
   for 3. Counts never shrink, so a client who under-delivered still owes what
   was asked.
-- `Waived` carries forward (it is a decision about the client). `Accepted`
-  does not — that was a judgment about one year's particular files.
+- `Not Applicable` carries forward (it is a decision about the client), under
+  its own "Previous Year Not Applicable" heading for a fresh decision: clear
+  the override in the editor to ask for it this year, or leave it set aside.
+  `Accepted` does not — that was a judgment about one year's particular files.
 - Checklist rows this client has never had are **offered, not added**. They
   are listed in the output, once; `--include-new` adds them, and an offer
   you want later is added in the app's editor.

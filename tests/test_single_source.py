@@ -287,7 +287,7 @@ def test_the_workflow_document_names_every_status_and_override():
 
     text = read("docs/workflow.md")
     for value in (*Status.ALL, *Override.ALL):
-        assert f"**{value}**" in text or f"**{Override.ACCEPTED} / {Override.WAIVED}**" in text, value
+        assert f"**{value}**" in text or f"**{' / '.join(Override.ALL)}**" in text, value
 
 
 def test_the_roadmap_schema_table_lists_the_status_and_override_values():
@@ -299,6 +299,56 @@ def test_the_roadmap_schema_table_lists_the_status_and_override_values():
     override_row = next(line for line in roadmap.splitlines() if line.startswith("| Manual Override |"))
     for value in Override.ALL:
         assert f"`{value}`" in override_row, value
+
+
+def test_the_retired_override_word_survives_only_in_the_decision_logs_history():
+    """Decision 116 retired the override's old second value. The code folds
+    it on every read (``Override.RETIRED``) and never writes it; no document,
+    docstring, comment, curated note or renderer may still say it, and no
+    name may carry it - the decision log's rows are history and are the one
+    place it stays, with the row that retired it."""
+    import ast
+
+    from tracker.manifest import Override
+
+    [retired] = Override.RETIRED
+    assert not hasattr(Override, "WAIVED")
+    for rel in ("README.md", "docs/workflow.md", "docs/runbook.md", "docs/storage.md", "CLAUDE.md",
+                "docs/repo-map.curated.json", "app/renderer/app.js", "app/renderer/index.html",
+                "app/renderer/style.css"):
+        assert retired.lower() not in read(rel).lower(), rel
+    for path in [*(REPO / "tracker").glob("*.py"), *(REPO / "tools").glob("*.py")]:
+        text = path.read_text(encoding="utf-8")
+        assert f"{retired.upper()} " not in text and f"{retired.upper()}\n" not in text, path.name
+        tree = ast.parse(text)
+        prose = [ast.get_docstring(tree) or ""]
+        prose += [ast.get_docstring(node) or "" for node in ast.walk(tree)
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+        prose += [line.split("#", 1)[1] for line in text.splitlines() if line.lstrip().startswith("#")]
+        assert retired.lower() not in "\n".join(prose).lower(), path.name
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Name, ast.Attribute, ast.FunctionDef, ast.ClassDef, ast.arg)):
+                name = getattr(node, "id", None) or getattr(node, "attr", None) or getattr(node, "name", None) \
+                    or getattr(node, "arg", None)
+                assert retired.lower() not in (name or "").lower(), (path.name, name)
+    # The one literal is the fold's own key.
+    literals = [node.value for node in ast.walk(ast.parse(read("tracker/manifest.py")))
+                if isinstance(node, ast.Constant) and node.value == retired]
+    assert literals == [retired]
+    for path in (REPO / "tracker").glob("*.py"):
+        if path.name != "manifest.py":
+            assert retired not in path.read_text(encoding="utf-8"), path.name
+    # The roadmap: the schema table and the component table say the new value; the
+    # decision log's rows are history.
+    roadmap = read("docs/ROADMAP.md").splitlines()
+    for line in roadmap:
+        if retired.lower() in line.lower():
+            assert line.startswith("| ") and line.split("|")[1].strip().isdigit(), line[:80]
+    # And the tests name the new claim, not the old word.
+    for path in (REPO / "tests").glob("test_*.py"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("def test_"):
+                assert retired.lower() not in line.lower() or "old_journal" in line, (path.name, line)
 
 
 def test_the_scan_button_label_is_typed_once():
@@ -362,8 +412,8 @@ def test_the_readme_engagement_details_table_matches_the_fields():
 
 
 def test_the_roadmap_schema_table_lists_exactly_the_manifest_headers():
-    """The list is the ten columns a person edits (decision 103), and the
-    schema table is those ten and no others: a row left in it for a column
+    """The list is the eleven columns a person edits (decisions 103 and 116),
+    and the schema table is those eleven and no others: a row left in it for a column
     the machine stopped writing is a column somebody will go looking for."""
     from tracker.manifest import HEADERS
 

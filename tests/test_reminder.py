@@ -53,8 +53,9 @@ SCANNED = [
          validation_notes="prior.pdf: " + reasons.PASSWORD_PROTECTED.format()),
     item("A04", "Mortgage Interest Statement", Status.RECEIVED,
          period="TY2025", file_count=1, received_date=dt.date(2026, 2, 1)),
-    item("A05", "Charitable Donations", Status.MISSING, manual_override=Override.WAIVED),
+    item("A05", "Charitable Donations", Status.MISSING, manual_override=Override.NOT_APPLICABLE),
     item("A06", "Brokerage Statements", Status.FAILED, manual_override=Override.ACCEPTED,
+         override_reason="Client confirmed this is the final version",
          validation_notes=f"{OVERRIDE_NOTE.format(override=Override.ACCEPTED)}; 1099.pdf: {reasons.WRONG_PERIOD.marker}"),
     item("A07", "K-1 Statements", Status.PENDING_SYNC, file_count=0,
          validation_notes=SYNCING_NOTE.format(n=1)),
@@ -64,7 +65,7 @@ SCANNED = [
 def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
     """A request list in the record, with the record carrying these statuses.
 
-    The list holds the person's ten columns and nothing else, so the
+    The list holds the person's eleven columns and nothing else, so the
     statuses are recorded the way a scan records them: one ``scanned``
     event through the store, under the lock.
     """
@@ -101,7 +102,8 @@ def test_received_and_pending_sync_are_never_asked_for():
 
 
 def test_overrides_are_never_asked_for():
-    """Waived is no longer needed; Accepted was judged good enough by a person."""
+    """Not Applicable does not apply this year; Accepted was judged good
+    enough by a person."""
     lines, attention, gaps = triage(SCANNED)
     everything = {f.item.identifier for f in attention + gaps}
     everything |= {line.item.identifier for line in lines}
@@ -247,7 +249,7 @@ def test_draft_greets_signs_and_counts(tmp_path):
 
 def test_draft_with_nothing_outstanding_says_so(tmp_path):
     rows = [item("A01", "W-2", Status.RECEIVED, file_count=1),
-            item("A02", "Donations", Status.MISSING, manual_override=Override.WAIVED)]
+            item("A02", "Donations", Status.MISSING, manual_override=Override.NOT_APPLICABLE)]
     draft = draft_reminder(engagement(tmp_path, rows), client_name="Dana")
     assert draft.has_outstanding is False
     assert "we have everything" in draft.subject

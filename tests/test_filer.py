@@ -860,7 +860,6 @@ def test_assigning_copies_from_pbc_when_the_review_copy_is_gone(engagement):
 
 def test_assigning_refuses_what_a_person_should_not_do(engagement):
     from tracker.filer import assign_review_file
-    from tracker.manifest import Override
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -872,12 +871,60 @@ def test_assigning_refuses_what_a_person_should_not_do(engagement):
     with pytest.raises(FilingError, match="nothing in the index is called"):
         assign_review_file(engagement, "ghost.pdf", "C01")
 
-    waived = make_engagement(engagement.parent / "Waived", [
-        RequestItem(identifier="A01", document="W-2", manual_override=Override.WAIVED)])
-    drop(waived, "x.pdf", "nothing")
-    file_drops(waived, today=DAY1)
-    with pytest.raises(FilingError, match="waived"):
-        assign_review_file(waived, "x.pdf", "A01")
+
+def test_filing_to_a_not_applicable_row_is_refused_with_its_label(tmp_path):
+    from tracker.filer import assign_review_file
+    from tracker.manifest import Override
+
+    set_aside = make_engagement(tmp_path / "Set aside 2025", [
+        RequestItem(identifier="A01", document="W-2", period="TY2025",
+                    manual_override=Override.NOT_APPLICABLE)])
+    drop(set_aside, "x.pdf", "nothing")
+    file_drops(set_aside, today=DAY1)
+    with pytest.raises(FilingError, match="A01 is Not Applicable in TY2025; clear the override first"):
+        assign_review_file(set_aside, "x.pdf", "A01")
+
+
+def test_a_drop_for_a_not_applicable_row_parks_and_nothing_under_the_engagement_is_deleted_or_moved_by_the_override(
+    engagement,
+):
+    """Rule 3 and decision 116: the router does not consider a set-aside
+    row, so its document parks and its parked copy is its working copy;
+    setting the override on a row with a filed copy moves and alters
+    nothing - the copy and the original are the bytes they were - and the
+    row leaves the counts."""
+    from dataclasses import replace
+
+    from tracker.manifest import Override, load_engagement_info, load_manifest, save_rules, summarize
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    [filed] = [e for e in read_index(engagement) if e.original_name == "w2.pdf"]
+    assert filed.decision == FILED and filed.identifier == "A01"
+    original = engagement / filed.pbc_location
+    copy = engagement / filed.prepared_location
+    before = {p.relative_to(engagement): p.read_bytes() for p in engagement.rglob("*") if p.is_file()
+              and p.name != ledger.LEDGER_FILENAME}
+
+    rows = [replace(row, manual_override=Override.NOT_APPLICABLE) if row.identifier == "A01" else row
+            for row in load_manifest(engagement)]
+    save_rules(engagement, rows, load_engagement_info(engagement))
+
+    after = {p.relative_to(engagement): p.read_bytes() for p in engagement.rglob("*") if p.is_file()
+             and p.name != ledger.LEDGER_FILENAME}
+    assert after == before, "the override moves and alters nothing under the engagement"
+    assert original.read_bytes() == copy.read_bytes()
+    summary = summarize(load_manifest(engagement))
+    assert summary.not_applicable == 1 and summary.total == len(rows) - 1
+
+    # A second W-2 for the set-aside row parks - it is not filed under a row
+    # a person said does not apply - and its parked copy is kept, whole.
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025 second employer")
+    file_drops(engagement, today=DAY1)
+    [parked] = [e for e in read_index(engagement) if e.original_name == "w2 again.pdf"]
+    assert parked.decision == NEEDS_REVIEW
+    assert (engagement / parked.pbc_location).is_file()
+    assert (engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / "w2 again.pdf").is_file()
 
 
 # ---------------------------------------------- what a review found (decision 54) ----

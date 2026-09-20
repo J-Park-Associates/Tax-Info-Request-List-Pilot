@@ -26,8 +26,8 @@ Guarantees:
 - **Windows-safe names.** Illegal characters (``manifest.WINDOWS_ILLEGAL_CHARS``)
   are replaced, trailing dots/spaces stripped, and names length-capped.
 
-Waived items (Manual Override = Waived) get no new folder; their existing
-folders are left alone and they are dropped from the README.
+Not Applicable items (``Override.NOT_APPLICABLE``) get no new folder;
+their existing folders are left alone and they are dropped from the README.
 """
 
 from __future__ import annotations
@@ -140,7 +140,7 @@ class ScaffoldResult:
     pbc_dir: Path | None = None                             # client's originals
     created: list[Path] = field(default_factory=list)       # new folders made
     existing: list[str] = field(default_factory=list)       # identifiers already present
-    waived: list[str] = field(default_factory=list)         # skipped (Override=Waived)
+    not_applicable: list[str] = field(default_factory=list)  # skipped (Override.NOT_APPLICABLE)
     readme: Path | None = None
 
     def describe(self) -> list[str]:
@@ -186,8 +186,8 @@ def scaffold_engagement(
 
     assigned = assign_folders(prepared_dir, [i.identifier for i in items])
     for item in items:
-        if item.manual_override == Override.WAIVED:
-            result.waived.append(item.identifier)
+        if item.manual_override == Override.NOT_APPLICABLE:
+            result.not_applicable.append(item.identifier)
             continue
         if assigned[item.identifier]:
             result.existing.append(item.identifier)
@@ -196,7 +196,7 @@ def scaffold_engagement(
         folder.mkdir(exist_ok=True)  # identifiers are unique, so names are too
         result.created.append(folder)
 
-    active = [i for i in items if i.manual_override != Override.WAIVED]
+    active = [i for i in items if i.manual_override != Override.NOT_APPLICABLE]
     result.readme = _write_readme(shared_dir, engagement_dir.name, active, contact)
     return result
 
@@ -287,6 +287,6 @@ if __name__ == "__main__":
         print(f"  + created  {folder.name}")
     for ident in res.existing:
         print(f"  = exists   {ident}")
-    for ident in res.waived:
-        print(f"  ~ waived   {ident} (no folder created)")
+    for ident in res.not_applicable:
+        print(f"  ~ set aside {ident} (no folder created)")
     print(f"  * refreshed {res.readme.name}")

@@ -33,7 +33,7 @@ ITEMS = [
     RequestItem(
         identifier="C01",
         document="Fixed Asset Register.",  # trailing dot is illegal on Windows
-        manual_override=Override.WAIVED,
+        manual_override=Override.NOT_APPLICABLE,
     ),
 ]
 
@@ -99,13 +99,13 @@ def test_creates_folders_and_readme(engagement):
         "A02 - Monthly Bank Statements FY2025",
         "B01 - Q4- A-R -Aging- -Final--",
     ]
-    assert result.waived == ["C01"]
+    assert result.not_applicable == ["C01"]
     assert not (prepared / "C01 - Fixed Asset Register").exists()
 
     readme = (shared / README_NAME).read_text(encoding="utf-8")
     assert "A01 - Dec 2025 Bank Statement" in readme
     assert f"[{EXPECTED_PATTERN.format(n=12)}]" in readme
-    assert "C01" not in readme                    # waived items dropped
+    assert "C01" not in readme                    # set-aside items dropped
     assert "J Park & Associates" in readme
     assert "Google Docs" in readme                # export-first guidance
 
@@ -145,8 +145,8 @@ def test_existing_client_files_never_touched(engagement):
     assert client_file.read_bytes() == b"%PDF-1.7 fake"
 
 
-def test_waived_folder_left_alone_if_it_exists(engagement):
-    # Client already uploaded to C01 before the item was waived.
+def test_not_applicable_folder_left_alone_if_it_exists(engagement):
+    # Client already uploaded to C01 before the item was set aside.
     prepared = engagement / PREPARED_DIR_NAME
     prepared.mkdir()
     stale = prepared / "C01 - Fixed Asset Register"
@@ -154,7 +154,7 @@ def test_waived_folder_left_alone_if_it_exists(engagement):
     (stale / "far.xlsx").write_bytes(b"data")
 
     result = scaffold_engagement(engagement)
-    assert result.waived == ["C01"]
+    assert result.not_applicable == ["C01"]
     assert (stale / "far.xlsx").exists()          # never deleted
 
 

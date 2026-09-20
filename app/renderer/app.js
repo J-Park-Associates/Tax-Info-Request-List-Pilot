@@ -51,12 +51,26 @@ function show(id, nodes) {
   $(id).replaceChildren(...nodes);
 }
 
-function chip(status, override) {
-  if (override === vocab.overrides.waived) {
-    return el("span", { className: `chip chip-${vocab.unscanned_key}` }, vocab.overrides.waived);
+// How a row's override is said to a person: a set-aside row carries the
+// year the API gave the row (state.items[].year, from its own Period), in
+// the API's label pattern; a row with no year is said with the bare value.
+// The renderer reads nothing out of the Period's text.
+function isSetAside(override) {
+  return override === vocab.overrides.not_applicable;
+}
+
+function overrideLabel(override, year) {
+  if (isSetAside(override) && year) return fill(vocab.not_applicable_label, { year });
+  return override || "";
+}
+
+function chip(item) {
+  if (isSetAside(item.manual_override)) {
+    return el("span", { className: `chip chip-${vocab.unscanned_key}` },
+      overrideLabel(item.manual_override, item.year));
   }
-  const label = status || vocab.unscanned_label;
-  return el("span", { className: `chip chip-${statusKey(status)}` }, label);
+  const label = item.status || vocab.unscanned_label;
+  return el("span", { className: `chip chip-${statusKey(item.status)}` }, label);
 }
 
 function fill(pattern, values) {
@@ -102,11 +116,15 @@ function render(state) {
       el("td", {},
         el("div", { className: "req-doc" }, item.document),
         el("div", { className: "req-period" },
-          item.period, item.manual_override ? ` · override: ${item.manual_override}` : ""),
+          item.period,
+          item.manual_override ? ` · override: ${overrideLabel(item.manual_override, item.year)}` : ""),
       ),
       el("td", { className: "col-num" },
         `${item.file_count ?? "–"}${item.expected_count > 1 ? ` / ${item.expected_count}` : ""}`),
-      el("td", { className: "col-status" }, chip(item.status, item.manual_override)),
+      el("td", { className: "col-status" }, chip(item),
+        // The reason the person gave beside the override: the judgment,
+        // not only the fact that the rules were overridden.
+        item.override_reason ? el("div", { className: "req-reason", title: item.override_reason }, item.override_reason) : null),
       el("td", { className: "col-recv" }, el("span", { className: "req-recv" }, item.received_date || "—")),
       el("td", {}, el("div", { className: "req-notes", title: item.validation_notes || "" },
         item.validation_notes || "—")),
@@ -150,7 +168,7 @@ function renderReview(state) {
   // it is out of the way, not gone, and filing it undoes the decision.
   const dismissed = rows.filter((e) => e.decision === vocab.decisions.dismissed);
   $("review-card").classList.toggle("hidden", parked.length === 0 && dismissed.length === 0);
-  const choices = state.items.filter((i) => i.manual_override !== vocab.overrides.waived);
+  const choices = state.items.filter((i) => !isSetAside(i.manual_override));
   const ids = new Set(state.items.map((i) => i.identifier));
   // The triage the API computed, by the same handle every review command
   // takes. Only a parked row has one; a set-aside row is not triaged.
@@ -205,7 +223,11 @@ function reviewRow(e, choices, ids, open, triage) {
     open && el("ul", { className: "r-reasons" },
       shortlist.length
         ? shortlist.map((s) => el("li", {}, s.reason))
-        : el("li", { className: "r-nothing" }, vocab.triage.nothing_suggested)),
+        : el("li", { className: "r-nothing" }, vocab.triage.nothing_suggested),
+      // A set-aside row the evidence points at is named, never offered:
+      // the API's sentence, with the row's year label, one line each.
+      ((triage && triage.set_aside) || []).map((s) =>
+        el("li", { className: "r-set-aside" }, fill(vocab.triage.set_aside_note, s)))),
     open && el("input", {
       type: "text", className: "r-keyword", placeholder: "keyword to learn (optional)",
       "aria-label": "Keyword to add to the request",
@@ -613,7 +635,13 @@ async function rollForward() {
     $("modal").classList.add("hidden");
     await refresh(result.state.paths.engagement);
     const r = result.rollover;
-    const parts = [`${r.carried.length} request(s) carried from ${r.prior}`];
+    // The reply carries every rolled row with its origin; last year's
+    // set-aside rows are grouped on the API's origin value and said in
+    // the API's one line, apart from the carried count.
+    const setAside = r.carried.filter((c) => c.origin === vocab.origin_not_applicable);
+    const carried = r.carried.length - setAside.length;
+    const parts = [`${carried} request(s) carried from ${r.prior}`];
+    if (setAside.length) parts.push(fill(vocab.not_applicable_carried, { n: setAside.length }));
     // The offers and last year's unfiled files are said here, once: there
     // is no sheet to point at, and an offer a person wants is added in the
     // editor (decision 104).
@@ -696,7 +724,7 @@ function renderTemplateList() {
 
 // A column of the request list, as the API describes it: its key in the
 // record, its heading, and the sentence under the heading. The wizard shows
-// three of the ten; the editor shows them all.
+// three of the eleven; the editor shows them all.
 function columnsByKey(keys) {
   return keys.map((key) => vocab.columns.find((c) => c.key === key)).filter(Boolean);
 }
@@ -715,6 +743,34 @@ function cellInput(row, column, onChange) {
         el("option", { value, selected: row[key] === value }, value)));
     select.addEventListener("change", () => { row[key] = select.value; onChange(); });
     return select;
+  }
+  if (key === "override_reason") {
+    // A pick from the API's reasons, and a box for the person's own words
+    // when they pick the last entry. What is saved is the text: one of
+    // the reasons, or what was typed - never the word that opened the box.
+    const current = row[key] || "";
+    const listed = vocab.override_reasons.includes(current);
+    const ownWords = vocab.override_reason_other;
+    const select = el("select", { "aria-label": column.label, title: column.help },
+      el("option", { value: "", selected: !current }, ""),
+      vocab.override_reasons.map((value) =>
+        el("option", { value, selected: current === value }, value)),
+      el("option", { value: ownWords, selected: Boolean(current) && !listed }, ownWords));
+    const typed = el("input", {
+      type: "text", className: "ed-reason-typed", value: listed ? "" : current,
+      "aria-label": `${column.label} (${ownWords})`, placeholder: ownWords,
+    });
+    typed.classList.toggle("hidden", !(Boolean(current) && !listed));
+    select.addEventListener("change", () => {
+      const picked = select.value;
+      const typing = picked === ownWords;
+      typed.classList.toggle("hidden", !typing);
+      row[key] = typing ? typed.value : picked;
+      if (typing) typed.focus();
+      onChange();
+    });
+    typed.addEventListener("input", () => { row[key] = typed.value; onChange(); });
+    return el("span", { className: "ed-reason" }, select, typed);
   }
   const input = el("input", {
     type: minimum === undefined ? "text" : "number",
@@ -762,7 +818,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, learned = {
     // Enter on the last row adds another, the way the wizard always did.
     if (e.key === "Enter" && e.target.closest("tr") === table.querySelector("tbody tr:last-child")) {
       e.preventDefault();
-      container.dispatchEvent(new CustomEvent("addrow"));
+      container.dispatchEvent(new CustomEvent("addrow", { bubbles: true }));
     }
   });
   container.replaceChildren(table);
@@ -864,6 +920,7 @@ function editorRow(rule) {
     // typed: shown and sent back as that mark, the round trip the file types column makes.
     date_pattern: rule.date_pattern_derived ? "" : (rule.date_pattern || vocab.editor.no_date_check),
     manual_override: rule.manual_override,
+    override_reason: rule.override_reason || "",
   };
 }
 
@@ -871,17 +928,51 @@ function blankEditorRow() {
   return Object.fromEntries(vocab.columns.map((c) => [c.key, ""]));
 }
 
+// The year a row's Period gives, as the API computed it for the row the
+// editor opened on (state.items[].year); a row typed since has none, and
+// is labelled with the bare value until it is saved and read back.
+function editorRowYear(row) {
+  const known = ((editorState && editorState.items) || []).find((i) => i.identifier === row.identifier);
+  return known ? known.year : null;
+}
+
+function editorGroupKey(row) {
+  return isSetAside(row.manual_override) ? overrideLabel(row.manual_override, editorRowYear(row)) : "";
+}
+
+// The active rows in one table; the rows set aside as not applicable in a
+// folded group per label below it, headed as the Status Report heads its
+// own folded block. Removal is by the row's place in editorRows whichever
+// group it is drawn in, and a row whose override changes moves between
+// the groups before anything is saved.
 function renderEditorRows() {
-  requestRows($("ed-rows"), editorRows, {
+  const grouping = () => editorRows.map(editorGroupKey).join("\u0000");
+  const drawn = grouping();
+  const options = (rows) => ({
     columns: vocab.columns,
     keyed: false,
     learned: (editorState && editorState.learned) || {},
-    onChange: () => {},
+    onChange: () => { if (grouping() !== drawn) renderEditorRows(); },
     onRemove: (index) => {
-      editorRows.splice(index, 1);
+      editorRows.splice(editorRows.indexOf(rows[index]), 1);
       renderEditorRows();
     },
   });
+  const active = editorRows.filter((row) => !editorGroupKey(row));
+  const groups = new Map();
+  for (const row of editorRows) {
+    const key = editorGroupKey(row);
+    if (key) groups.set(key, [...(groups.get(key) || []), row]);
+  }
+  const activeBox = el("div", { className: "editor-rows" });
+  requestRows(activeBox, active, options(active));
+  const folded = [...groups.entries()].map(([label, rows]) => {
+    const box = el("div", { className: "editor-rows" });
+    requestRows(box, rows, options(rows));
+    return el("details", { className: "ed-set-aside" },
+      el("summary", {}, fill(vocab.editor.set_aside_heading, { label, n: rows.length })), box);
+  });
+  $("ed-rows").replaceChildren(activeBox, ...folded);
 }
 
 function addEditorRow() {

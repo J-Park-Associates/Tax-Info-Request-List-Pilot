@@ -249,14 +249,14 @@ def test_ambiguous_match_goes_to_review(tmp_path):
     assert set(routing.candidates) == {"A02", "E01"}
 
 
-def test_waived_rows_never_receive_files(tmp_path):
-    waived = RequestItem(
+def test_not_applicable_rows_never_receive_files(tmp_path):
+    set_aside = RequestItem(
         identifier="A01", document="W-2 Wage Statements",
         allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("W-2",),
-        manual_override=Override.WAIVED,
+        manual_override=Override.NOT_APPLICABLE,
     )
     f = text_pdf(tmp_path / "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    assert route_file(f, [waived]).identifier is None
+    assert route_file(f, [set_aside]).identifier is None
 
 
 def test_wrong_extension_is_not_routed(tmp_path):
@@ -797,10 +797,10 @@ def test_the_issuer_rule_is_silent_when_no_issuer_row_exists(tmp_path):
     assert route_file(f, [K1]).identifier == "F01"
 
 
-def test_a_waived_issuer_row_does_not_park_anybody_elses_k_1(tmp_path):
-    """Waived rows want nothing, so they are not issuers the list is asking about."""
+def test_a_not_applicable_issuer_row_does_not_park_anybody_elses_k_1(tmp_path):
+    """Set-aside rows want nothing, so they are not issuers the list is asking about."""
     from dataclasses import replace as _replace
 
-    rows = [K1, _replace(issuer("F02", "Ashford Holdings"), manual_override=Override.WAIVED)]
+    rows = [K1, _replace(issuer("F02", "Ashford Holdings"), manual_override=Override.NOT_APPLICABLE)]
     f = text_pdf(tmp_path / "k-1.pdf", federal_k1("Dunmore Capital Group"))
     assert route_file(f, rows).identifier == "F01"

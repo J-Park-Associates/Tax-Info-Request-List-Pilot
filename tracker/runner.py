@@ -316,7 +316,7 @@ def run_engagement(
             # below answers from it; a rules edit a person saved since the
             # last pass is already in the journal (decision 104).
             ensure(engagement.path, root)
-            # A row added or un-waived in the app gets its folder and its
+            # A row added, or made applicable again, in the app gets its folder and its
             # README line here, on the next pass, rather than when somebody
             # remembers to re-run scaffold. Idempotent: nothing existing is
             # touched.

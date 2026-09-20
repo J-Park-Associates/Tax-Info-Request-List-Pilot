@@ -172,6 +172,7 @@ def test_manual_override_status_untouched(tmp_path):
             identifier="A01", document="Bank Statement",
             allowed_extensions=("pdf",), min_size_kb=0,
             required_keywords=("Chase",), manual_override=Override.ACCEPTED,
+            override_reason="Client confirmed this is the final version",
             status=Status.RECEIVED, received_date=DAY1,
         ),
     ]
@@ -505,7 +506,8 @@ def test_accepted_means_received_with_a_date(engagement):
     # Decision 2: Accepted = treat as Received despite the rules. The status
     # column, the date and every count that reads the column agree.
     scan_engagement(engagement, today=DAY1)          # A01 Missing: no file at all
-    edit_row(engagement, "A01", manual_override=Override.ACCEPTED)
+    edit_row(engagement, "A01", manual_override=Override.ACCEPTED,
+             override_reason="Client confirmed this is the final version")
     report = scan_engagement(engagement, today=DAY2)
     update = report.updates["A01"]
     assert update.status == Status.RECEIVED
@@ -516,10 +518,10 @@ def test_accepted_means_received_with_a_date(engagement):
     assert scan_engagement(engagement, today=DAY2 + dt.timedelta(days=3)).updates["A01"].received_date == DAY2
 
 
-def test_waived_rows_are_named_so_counts_can_leave_them_out(engagement):
-    edit_row(engagement, "B01", manual_override=Override.WAIVED)
+def test_not_applicable_rows_are_named_so_counts_can_leave_them_out(engagement):
+    edit_row(engagement, "B01", manual_override=Override.NOT_APPLICABLE)
     report = scan_engagement(engagement, today=DAY1)
-    assert report.summary.waived == 1
+    assert report.summary.not_applicable == 1
     assert report.summary.total == 2
 
 

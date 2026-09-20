@@ -1,7 +1,7 @@
 """Carry a returning client's request list into the next year (component 8).
 
 A client who filed with us last year is not a blank form. What they actually
-sent, what we waived, how many W-2s really turned up — that is better
+sent, what we set aside, how many W-2s really turned up — that is better
 information than any generic checklist, so for an existing client **the prior
 year takes precedence and the form template does not get a vote.**
 
@@ -17,7 +17,10 @@ Precedence, precisely:
 - Counts learn from reality: a row that expected 2 W-2s and received 3 asks
   for 3 next year. Counts are never lowered — a client who under-delivered
   still owes what was asked.
-- ``Override.WAIVED`` is a decision about the client, so it carries forward.
+- ``Override.NOT_APPLICABLE`` is a decision about the client, so it carries
+  forward - under its own heading, for a fresh decision: the row keeps the
+  override and its note says so, and a person clears it in the editor if
+  this year is different (decision 116; decision 10 stands).
   ``Override.ACCEPTED`` is a judgment about specific files from one particular year,
   so it does not.
 - **A keyword a person's filing taught last year is carried as an ordinary
@@ -55,6 +58,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     check_tax_year,
     detect_year,
     load_manifest,
+    override_label,
     shift_item,
     shift_years,
 )
@@ -62,8 +66,16 @@ from tracker.records import EngagementInfo
 
 #: Why a row is on the new list. Reported in the CLI and the API's reply.
 ORIGIN_PRIOR = "carried from last year"
-ORIGIN_WAIVED = "waived last year"
+ORIGIN_NOT_APPLICABLE = "not applicable last year"
 ORIGIN_NEW = "new this year"
+#: The note on a row carried as not applicable: last year's call, named
+#: with its year, and the two things a person may do about it.
+NOT_APPLICABLE_NOTE = (
+    "{label} last year - decide afresh: clear the override in the editor to ask for it, "
+    "or leave it set aside"
+)
+#: Heads the CLI's list of those rows, printed after the carried and new ones.
+PREVIOUS_NOT_APPLICABLE_HEADING = "Previous Year Not Applicable - decide afresh:"
 
 #: What stands in for the target year when the prior list gave none away.
 UNKNOWN_YEAR_LABEL = "next year"
@@ -98,15 +110,17 @@ class RolloverReport:
 
     @property
     def carried(self) -> list[RolledItem]:
-        return [r for r in self.rolled if r.origin != ORIGIN_NEW]
+        """Last year's active rows, carried: not the new ones, and not the
+        rows set aside, which are their own list (``not_applicable``)."""
+        return [r for r in self.rolled if r.origin == ORIGIN_PRIOR]
 
     @property
     def added(self) -> list[RolledItem]:
         return [r for r in self.rolled if r.origin == ORIGIN_NEW]
 
     @property
-    def waived(self) -> list[RolledItem]:
-        return [r for r in self.rolled if r.origin == ORIGIN_WAIVED]
+    def not_applicable(self) -> list[RolledItem]:
+        return [r for r in self.rolled if r.origin == ORIGIN_NOT_APPLICABLE]
 
 
 # ------------------------------------------------------------- carry rules ----
@@ -169,15 +183,20 @@ def _carry(
         any_keywords=fill(prior.any_keywords,
                           template.any_keywords if template else ()),
         date_pattern=date_pattern,
-        # "Waived" is about the client and persists. "Accepted" was a call on
-        # last year's particular files and must not pre-approve this year's.
+        # Not Applicable is about the client and persists, with its reason
+        # if one was given. Accepted was a call on last year's particular
+        # files and must not pre-approve this year's, so neither it nor its
+        # reason carries.
         manual_override=(
-            Override.WAIVED if prior.manual_override == Override.WAIVED else ""
+            Override.NOT_APPLICABLE if prior.manual_override == Override.NOT_APPLICABLE else ""
+        ),
+        override_reason=(
+            prior.override_reason if prior.manual_override == Override.NOT_APPLICABLE else ""
         ),
     )
 
-    if prior.manual_override == Override.WAIVED:
-        return item, ORIGIN_WAIVED, f"{ORIGIN_WAIVED}; clear the override to request it again"
+    if prior.manual_override == Override.NOT_APPLICABLE:
+        return item, ORIGIN_NOT_APPLICABLE, NOT_APPLICABLE_NOTE.format(label=override_label(prior))
     if prior.status == Status.RECEIVED:
         note = f"received last year ({prior.file_count or 0} file(s))"
         if expected > prior.expected_count:
@@ -364,12 +383,18 @@ if __name__ == "__main__":
     span = f"{result.prior_year} → {result.target_year}" if result.prior_year else UNKNOWN_YEAR_LABEL
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")
     for rolled in result.carried:
-        flag = "WAIVED " if rolled.origin == ORIGIN_WAIVED else "CARRIED"
-        print(f"  {flag} {rolled.item.label}")
+        print(f"  CARRIED {rolled.item.label}")
         print(f"          {rolled.note}")
     for rolled in result.added:
         print(f"  NEW     {rolled.item.label}")
         print(f"          {rolled.note}")
+    if result.not_applicable:
+        # Last year's set-aside rows, after the active list and under their
+        # own heading: shown for a fresh decision, never back in the list.
+        print(f"\n  {PREVIOUS_NOT_APPLICABLE_HEADING}")
+        for rolled in result.not_applicable:
+            print(f"    ~ {override_label(rolled.item)}  {rolled.item.label}")
+            print(f"          {rolled.note}")
     if result.offered:
         print(f"\n  Not added — the standard {ns.form or 'checklist'} also has "
               f"{len(result.offered)} request(s) this client has never had.")

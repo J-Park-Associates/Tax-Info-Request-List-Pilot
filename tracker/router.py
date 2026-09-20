@@ -267,10 +267,10 @@ def _required_matched(text: str, item: RequestItem) -> bool:
 def _considers(item: RequestItem) -> bool:
     """Could this request accept any file at all?
 
-    Waived rows want nothing, and a row with no content rule has no way to
-    recognise a document — it never auto-routes, by design.
+    Not Applicable rows want nothing, and a row with no content rule has no
+    way to recognise a document — it never auto-routes, by design.
     """
-    return item.manual_override != Override.WAIVED and has_routing_rules(item)
+    return item.manual_override != Override.NOT_APPLICABLE and has_routing_rules(item)
 
 
 #: How a contested file's reason starts. The candidates travel as data
@@ -667,7 +667,7 @@ def route_file(
         return _contested(path, leads, record)
 
     rule_less = [i.identifier for i in items if not _considers(i)
-                 and i.manual_override != Override.WAIVED]
+                 and i.manual_override != Override.NOT_APPLICABLE]
     hint = ""
     if rule_less:
         hint = (

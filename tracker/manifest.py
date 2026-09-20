@@ -2,7 +2,7 @@
 writing to the record (component 1, docs/ROADMAP.md).
 
 **The manifest is the record's request list** (decision 104). It is the
-ten columns an accountant edits (:data:`COLUMNS`, whose headers are
+eleven columns an accountant edits (:data:`COLUMNS`, whose headers are
 :data:`HEADERS`) and the engagement's own details
 (:class:`tracker.records.EngagementInfo`), and it lives in exactly one
 place: the engagement's record - the journal beside the client's files
@@ -115,16 +115,18 @@ COL_REQUIRED_KEYWORDS = "Required Keywords"
 COL_ANY_KEYWORDS = "Any Keywords"
 COL_DATE_PATTERN = "Date Pattern"
 COL_MANUAL_OVERRIDE = "Manual Override"
+COL_OVERRIDE_REASON = "Override Reason"
 COL_STATUS = "Status"
 COL_RECEIVED_DATE = "Received Date"
 COL_FILE_COUNT = "File Count"
 COL_VALIDATION_NOTES = "Validation Notes"
 
-#: Each column's key in the record and the API, beside its header: the ten
-#: columns a person edits, in the order the editor shows them. The keys are
-#: ``records.RULE_FIELDS`` less the two the person never types (``row`` is
-#: the position, ``date_pattern_derived`` is what ``validated()`` decided),
-#: and the assertion below holds the two lists together.
+#: Each column's key in the record and the API, beside its header: the
+#: eleven columns a person edits, in the order the editor shows them. The
+#: keys are ``records.RULE_FIELDS`` less the two the person never types
+#: (``row`` is the position, ``date_pattern_derived`` is what
+#: ``validated()`` decided), and the assertion below holds the two lists
+#: together.
 COLUMNS: tuple[tuple[str, str], ...] = (
     (COL_IDENTIFIER, "identifier"),
     (COL_DOCUMENT, "document"),
@@ -136,8 +138,9 @@ COLUMNS: tuple[tuple[str, str], ...] = (
     (COL_ANY_KEYWORDS, "any_keywords"),
     (COL_DATE_PATTERN, "date_pattern"),
     (COL_MANUAL_OVERRIDE, "manual_override"),
+    (COL_OVERRIDE_REASON, "override_reason"),
 )
-#: The ten headers, in order. The roadmap's schema table lists exactly
+#: The headers, in order. The roadmap's schema table lists exactly
 #: these (``tests/test_single_source.py`` holds it to that), the Status
 #: Report draws them, and every message that names a column uses one.
 HEADERS = tuple(header for header, _ in COLUMNS)
@@ -172,7 +175,11 @@ COLUMN_HELP: dict[str, str] = {
         "Blank with a year in Period checks for that year; * turns the year check off; "
         "a typed regex wins"
     ),
-    "manual_override": "Accepted counts as Received; Waived takes the request out of every count",
+    "manual_override": (
+        "Accepted counts as Received; Not Applicable takes the request out of every count "
+        "for the year"
+    ),
+    "override_reason": "Why the rules were overridden; required when Manual Override is Accepted",
 }
 assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
 
@@ -248,12 +255,45 @@ TEMP_SUFFIX = ".tmp"
 
 
 class Override:
-    """Accountant judgment values that beat the automated rules."""
+    """Accountant judgment values that beat the automated rules.
 
-    ACCEPTED = "Accepted"  # treat as Received despite failed checks
-    WAIVED = "Waived"      # item no longer needed
+    ``ACCEPTED`` treats the row as Received despite the checks, and carries
+    a reason (:data:`OVERRIDE_REASONS`, decision 116). ``NOT_APPLICABLE``
+    says the request does not apply this year - shown to people with the
+    row's own year (:func:`override_label`) - and takes the row out of
+    every count, every reminder and the active table.
 
-    ALL = (ACCEPTED, WAIVED)
+    ``RETIRED`` is the retired-value rule of decision 104 applied to a
+    value: the spelling journals written before decision 116 hold for the
+    second value, folded to its successor on every read by
+    :func:`_override` and never written again.
+    """
+
+    ACCEPTED = "Accepted"
+    NOT_APPLICABLE = "Not Applicable"
+
+    ALL = (ACCEPTED, NOT_APPLICABLE)
+    RETIRED: dict[str, str] = {"Waived": NOT_APPLICABLE}
+
+
+#: The reasons a person may give for an ``Override.ACCEPTED`` override, offered as a
+#: list so a reason is usually one click. The stored value is the reason's
+#: text: one of these, or the person's own words when they chose
+#: :data:`OVERRIDE_REASON_OTHER` - the word "Other" itself is never stored,
+#: because a reason that says "other" records nothing.
+OVERRIDE_REASONS: tuple[str, ...] = (
+    "Client confirmed this is the final version",
+    "Correct document, validation flagged formatting only",
+    "Received outside the system (in person, fax, confirmed in a meeting)",
+    "Prior-year or substitute document accepted",
+)
+OVERRIDE_REASON_OTHER = "Other"
+
+#: How a Not Applicable row is named to people: with the year its Period
+#: gives, so "does not apply" is always "does not apply *this year*". The
+#: value stored is ``Override.NOT_APPLICABLE``; the year is derived from
+#: the row's Period, which is the year's one home, and is never stored.
+NOT_APPLICABLE_LABEL = "Not Applicable in TY{year}"
 
 
 
@@ -272,7 +312,7 @@ NOT_AN_ENGAGEMENT = "{name}: no record here ({ledger}); it is not an engagement"
 class RequestItem:
     """One request: the person's rule, and what the record says about it.
 
-    ``records.RULE_FIELDS`` names the person's half - the ten columns
+    ``records.RULE_FIELDS`` names the person's half - the eleven columns
     (:data:`COLUMNS`) plus ``row``, the request's 1-based position in the
     list - and that half is what a ``rules_changed`` event and the
     store's ``requests`` table carry. The four status fields are the
@@ -290,18 +330,25 @@ class RequestItem:
     any_keywords: tuple[str, ...] = ()
     date_pattern: str = ""                     # validated to compile on load
     date_pattern_derived: bool = False         # True: made from Period's year, not typed
-    manual_override: str = ""                  # "", Override.ACCEPTED, Override.WAIVED
+    manual_override: str = ""                  # "", Override.ACCEPTED, Override.NOT_APPLICABLE
     status: str = ""                           # the record's, never typed
     received_date: dt.date | None = None
     file_count: int | None = None
     validation_notes: str = ""
     row: int = 0                               # 1-based position in the list
+    override_reason: str = ""                  # why; required with Override.ACCEPTED
 
     @property
     def label(self) -> str:
         """``A01 - W-2 Wage Statements (TY2025)`` - how a request is named to people."""
         text = label_for(self.identifier, self.document)
         return f"{text} ({self.period})" if self.period else text
+
+    @property
+    def year(self) -> int | None:
+        """The tax year this one row is about, from its own Period and typed
+        date rule (:func:`detect_year` over the row alone), or None."""
+        return detect_year([self])
 
     @property
     def expected_text(self) -> str:
@@ -353,6 +400,23 @@ def detect_year(items: Iterable[RequestItem]) -> int | None:
         return None
     best = max(years.values())
     return max(year for year, count in years.items() if count == best)
+
+
+def override_label(item: RequestItem) -> str:
+    """The word a person sees for the row's override.
+
+    ``Override.ACCEPTED`` is its own word. ``Override.NOT_APPLICABLE`` is
+    said with the year the row's Period gives
+    (:data:`NOT_APPLICABLE_LABEL`), because a
+    request that does not apply does not apply *this year*; a row whose
+    Period names no year is said with the bare value. A blank override is
+    a blank. The value stored is never the label: the year is derived
+    every time from the Period, which is the one place it is kept.
+    """
+    if item.manual_override != Override.NOT_APPLICABLE:
+        return item.manual_override
+    year = detect_year([item])
+    return NOT_APPLICABLE_LABEL.format(year=year) if year else Override.NOT_APPLICABLE
 
 
 #: How a request's parts are joined into one name: the README line, the
@@ -635,10 +699,20 @@ def _whole_number(value: object, default: int, minimum: int, column: str, where:
 
 
 def _override(value: object, where: str) -> str:
-    """A Manual Override as typed, folded to the one spelling, or blank."""
+    """A Manual Override as typed or as stored, folded to the one spelling,
+    or blank.
+
+    A retired spelling (``Override.RETIRED``) folds to its successor before
+    the match, so every read of a rule row - the store's rows becoming
+    ``RequestItem``s, the editor's round trip, a value typed by hand - sees
+    the current value, and the retired one is never written again.
+    """
     text = "" if value is None else str(value).strip()
     if not text:
         return ""
+    for retired, successor in Override.RETIRED.items():
+        if text.lower() == retired.lower():
+            text = successor
     for candidate in Override.ALL:
         if text.lower() == candidate.lower():
             return candidate
@@ -646,6 +720,25 @@ def _override(value: object, where: str) -> str:
         f"{where}: {COL_MANUAL_OVERRIDE} must be one of {', '.join(Override.ALL)} (or blank), "
         f"got {value!r}"
     )
+
+
+def _override_reason(value: object, override: str, where: str) -> str:
+    """An Override Reason as typed: required with ``Override.ACCEPTED``,
+    never the word :data:`OVERRIDE_REASON_OTHER` itself, and nothing on a
+    row with no override - a reason for a decision nobody made."""
+    text = "" if value is None else str(value).strip()
+    if override == Override.ACCEPTED and not text:
+        raise ManifestError(
+            f"{where}: {COL_OVERRIDE_REASON} is required when {COL_MANUAL_OVERRIDE} is "
+            f"{Override.ACCEPTED}"
+        )
+    if text.lower() == OVERRIDE_REASON_OTHER.lower():
+        raise ManifestError(
+            f"{where}: {COL_OVERRIDE_REASON} {OVERRIDE_REASON_OTHER} needs the reason typed"
+        )
+    if text and not override:
+        raise ManifestError(f"{where}: {COL_OVERRIDE_REASON} needs a {COL_MANUAL_OVERRIDE}")
+    return text
 
 
 def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem:
@@ -692,7 +785,33 @@ def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem
         any_keywords=csv_tuple(fields.get("any_keywords")),
         date_pattern="" if fields.get("date_pattern_derived") else text("date_pattern"),
         manual_override=_override(fields.get("manual_override"), where),
+        override_reason=text("override_reason"),
     )
+
+
+def item_from_record(row: Mapping[str, object]) -> RequestItem:
+    """One request row as the record holds it, read as this version reads it.
+
+    The one reader of a stored rule row - :func:`load_manifest`, the diff
+    in :func:`save_rules` and the rows the API hands the editor all come
+    through here - so a retired override spelling folds to its successor
+    (:func:`_override`) on every read, and a field the row was written
+    without (a reason, on a row stored before decision 116) is its default
+    rather than the column's null. The store and the journal keep the bytes
+    they hold; what changes is only what is read out of them.
+    """
+    values = rule_from_json(dict(row))
+    identifier = str(values.get("identifier", ""))
+    values["manual_override"] = _override(values.get("manual_override"), identifier)
+    if values.get("override_reason") is None:
+        values["override_reason"] = ""
+    return RequestItem(**values)
+
+
+def rule_as_read(row: Mapping[str, object]) -> dict:
+    """A stored rule row in the shape a ``rules_changed`` event carries it,
+    as this version reads it (:func:`item_from_record`)."""
+    return rule_to_json(item_from_record(row))
 
 
 def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
@@ -706,7 +825,10 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
     folder name is not case-sensitive); a document on every row; the two
     numbers within their floors; ``NO_DATE_CHECK`` made blank, a typed
     pattern made to compile, and a blank one derived from the Period with
-    ``date_pattern_derived`` set; and last, no two issuer rows whose names
+    ``date_pattern_derived`` set; the override folded to its one spelling
+    and its reason read against it (:func:`_override_reason`: required
+    with ``Override.ACCEPTED``, never the word :data:`OVERRIDE_REASON_OTHER`,
+    none without an override); and last, no two issuer rows whose names
     nest (:func:`check_narrowing_names`). Returns new items with ``row``
     set to 1..n - the position is part of the rule (decision 104).
 
@@ -749,6 +871,7 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
         else:
             date_pattern = derived_date_pattern(period)
             derived = bool(date_pattern)
+        override = _override(item.manual_override, where)
         out.append(replace(
             item,
             identifier=identifier,
@@ -756,7 +879,8 @@ def validated(items: Iterable[RequestItem]) -> list[RequestItem]:
             period=period,
             date_pattern=date_pattern,
             date_pattern_derived=derived,
-            manual_override=_override(item.manual_override, where),
+            manual_override=override,
+            override_reason=_override_reason(item.override_reason, override, where),
             row=n,
         ))
     # Two issuer rows whose names nest make each other useless and say
@@ -806,7 +930,7 @@ def load_manifest(engagement_dir: Path | str) -> list[RequestItem]:
 
     folder = Path(engagement_dir)
     conn = _the_record(folder)
-    items = [RequestItem(**rule_from_json(row)) for row in store.rules(conn, folder) or []]
+    items = [item_from_record(row) for row in store.rules(conn, folder) or []]
     return _with_the_record(
         items, store.statuses(conn, folder), store.learned_keywords(conn, folder)
     )
@@ -989,8 +1113,12 @@ def save_rules(
         # removal of the old spelling and an addition of the new, in one
         # event; diffing by the folded key here would carry the new
         # spelling and never name the old one, and the record would hold
-        # both for good.
-        was = {str(row["identifier"]): row for row in held}
+        # both for good. The stored side is read the way every reader
+        # reads it (rule_as_read: a retired override spelling folded, a
+        # field the row never had at its default), so a list read out of
+        # the record and saved back unchanged is not an event, and a
+        # retired value is rewritten only when the row itself changes.
+        was = {str(row["identifier"]): rule_as_read(row) for row in held}
         changed = [row for row in rows if was.get(str(row["identifier"])) != row]
         still_there = {str(row["identifier"]) for row in rows}
         removed = [str(row["identifier"]) for row in held if str(row["identifier"]) not in still_there]
@@ -1093,36 +1221,39 @@ class Summary:
     The runner's log line, the reminder's "N of M are in", the scanner CLI
     and the desktop summary all used to count for themselves, each with a
     slightly different idea of what an override meant. This is the count.
-    Waived rows are nobody's to wait on and are outside every figure except
-    ``waived``; an Accepted row is Received whatever its status cell says,
-    so a signed-off row counts as in even before the next scan writes it.
+    Not Applicable rows are nobody's to wait on and are outside every figure
+    except ``not_applicable``; an Accepted row is Received whatever its
+    status cell says, so a signed-off row counts as in even before the next
+    scan writes it.
     """
 
-    counts: dict[str, int]   # status -> rows with it (waived rows excluded)
-    total: int               # rows anybody is waiting on (waived excluded)
+    counts: dict[str, int]   # status -> rows with it (Not Applicable rows excluded)
+    total: int               # rows anybody is waiting on (Not Applicable excluded)
     received: int
     outstanding: int         # Missing + Partial + Failed Validation
-    waived: int
+    not_applicable: int
     unscanned: int           # rows with no status yet
 
     @property
     def line(self) -> str:
-        """``Received: 3 · Missing: 2 · Waived: 1`` - the same everywhere."""
+        """``Received: 3 · Missing: 2 · Not Applicable: 1`` - the same
+        everywhere. The count is said with the bare value, not the year's
+        label: a list may hold rows of more than one year."""
         parts = [f"{status}: {n}" for status, n in sorted(self.counts.items())]
         if self.unscanned:
             parts.append(f"{UNSCANNED_LABEL}: {self.unscanned}")
-        if self.waived:
-            parts.append(f"{Override.WAIVED}: {self.waived}")
+        if self.not_applicable:
+            parts.append(f"{Override.NOT_APPLICABLE}: {self.not_applicable}")
         return SUMMARY_SEPARATOR.join(parts) or SUMMARY_EMPTY
 
 
 def summarize(items: Iterable[RequestItem]) -> Summary:
     """Count ``items`` the one agreed way (see :class:`Summary`)."""
     counts: dict[str, int] = {}
-    total = received = outstanding = waived = unscanned = 0
+    total = received = outstanding = not_applicable = unscanned = 0
     for item in items:
-        if item.manual_override == Override.WAIVED:
-            waived += 1
+        if item.manual_override == Override.NOT_APPLICABLE:
+            not_applicable += 1
             continue
         total += 1
         status = item.status
@@ -1137,7 +1268,7 @@ def summarize(items: Iterable[RequestItem]) -> Summary:
         elif status in Status.OUTSTANDING:
             outstanding += 1
     return Summary(counts=counts, total=total, received=received,
-                   outstanding=outstanding, waived=waived, unscanned=unscanned)
+                   outstanding=outstanding, not_applicable=not_applicable, unscanned=unscanned)
 
 
 
@@ -1168,11 +1299,12 @@ def check_rules(items: Iterable[RequestItem]) -> list[str]:
     at a deadline: a row with no keyword and no typed date rule, a row
     accepting any file type (an .exe would count), a keyword with no
     letter or digit in it, and a bare family number that matches none of
-    the family's forms. A waived row is nobody's to act on and is skipped.
+    the family's forms. A Not Applicable row is nobody's to act on and is
+    skipped.
     """
     warnings: list[str] = []
     for item in items:
-        if item.manual_override == Override.WAIVED:
+        if item.manual_override == Override.NOT_APPLICABLE:
             continue
         if not has_routing_rules(item):
             warnings.append(

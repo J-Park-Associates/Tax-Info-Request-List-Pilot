@@ -335,7 +335,7 @@ def sha256_of(path: Path) -> str:
 if __name__ == "__main__":
     import argparse
 
-    from tracker.manifest import Override, load_manifest
+    from tracker.manifest import Override, load_manifest, override_label
     from tracker.page import tolerant_console
     from tracker.scaffold import (
         PREPARED_DIR_NAME,
@@ -359,9 +359,9 @@ if __name__ == "__main__":
 
     print(f"Dry-run validation of {prepared}  (nothing is written)\n")
     for item in items:
-        if item.manual_override == Override.WAIVED:
+        if item.manual_override == Override.NOT_APPLICABLE:
             print(f"[{item.identifier}] {item.document}")
-            print("    ~ waived - skipped\n")
+            print(f"    ~ {override_label(item)} - skipped\n")
             continue
         folders = assigned[item.identifier]
         print(f"[{item.identifier}] {item.document}")

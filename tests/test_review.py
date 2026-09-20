@@ -81,7 +81,7 @@ ITEMS = [
     RequestItem(
         identifier="W01", document="Rental Property Statements", period="TY2025",
         allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("rental",),
-        manual_override=Override.WAIVED,
+        manual_override=Override.NOT_APPLICABLE,
     ),
 ]
 
@@ -176,7 +176,7 @@ def test_two_rows_with_equal_evidence_keep_catalog_order(engagement):
 def test_the_shortlist_is_capped(engagement):
     park(engagement, parked_row("everything.pdf", {
         item.identifier: (Evidence(RULE_REQUIRED, item.identifier, WHERE_TITLE, 1),)
-        for item in ITEMS if item.manual_override != Override.WAIVED
+        for item in ITEMS if item.manual_override != Override.NOT_APPLICABLE
     }))
 
     [triaged] = triage_of(engagement)
@@ -189,15 +189,32 @@ def test_the_shortlist_is_capped(engagement):
 # ------------------------------------------------------ what is never offered ----
 
 
-def test_a_shortlist_never_names_a_waived_row(engagement):
+def test_a_not_applicable_row_is_named_as_set_aside_and_never_suggested(engagement):
+    """Decision 83 amended by 116: the row is never a Suggestion, and when
+    the evidence points at it the shortlist says so in one sentence, with
+    the row's year label, so the person who set it aside decides."""
+    from tracker.review import SET_ASIDE_NOTE, SetAside, set_aside_note
+
     park(engagement, parked_row("rental.pdf", {
         "W01": (Evidence(RULE_REQUIRED, "rental", WHERE_TITLE, 1),),
         "C01": (Evidence(RULE_ANY, "1098", WHERE_DEEP, 4),),
-    }))
+    }), parked_row("mystery.pdf", {}))
 
-    [triaged] = triage_of(engagement)
+    rental, mystery = triage_of(engagement)
 
-    assert identifiers(triaged) == ["C01"], "a row that wants nothing is never suggested"
+    assert identifiers(rental) == ["C01"], "a row that wants nothing is never suggested"
+    assert rental.set_aside == (SetAside("W01", "Not Applicable in TY2025"),)
+    assert set_aside_note(rental.set_aside[0]) == SET_ASIDE_NOTE.format(
+        identifier="W01", label="Not Applicable in TY2025")
+    assert set_aside_note(rental.set_aside[0]) == (
+        "W01 is Not Applicable in TY2025 - clear it in the editor to file here")
+    assert mystery.set_aside == () and mystery.shortlist == ()
+
+    # Named when it is a candidate the router refused, too - evidence or not.
+    park(engagement, parked_row("rental2.pdf", {}, candidates=("W01",)))
+    by_name = {t.entry.original_name: t for t in triage_of(engagement)}
+    assert by_name["rental2.pdf"].set_aside == (SetAside("W01", "Not Applicable in TY2025"),)
+    assert by_name["rental2.pdf"].shortlist == ()
 
 
 @pytest.mark.parametrize("state", [Status.MISSING, Status.RECEIVED])
