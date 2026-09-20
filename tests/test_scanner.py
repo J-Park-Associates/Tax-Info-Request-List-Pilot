@@ -1,7 +1,6 @@
 """Tests for tracker/scanner.py — full-loop orchestration on local folders."""
 
 import datetime as dt
-import json
 import os
 from dataclasses import replace
 
@@ -9,6 +8,7 @@ import pytest
 
 from tests.conftest import make_engagement
 from tracker import reasons, store
+from tracker.content_check import CACHE_VERSION, RETIRED_CACHE_FILENAME
 from tracker.locking import LOCK_FILENAME, STALE_LOCK_SECONDS
 from tracker.manifest import (
     SUMMARY_SEPARATOR,
@@ -22,7 +22,6 @@ from tracker.manifest import (
 from tracker.records import rule_from_json
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME, scaffold_engagement
 from tracker.scanner import (
-    CACHE_FILENAME,
     DUPLICATES_NOTE,
     OVERRIDE_NOTE,
     PARTIAL_NOTE,
@@ -109,6 +108,11 @@ def folder(engagement, prefix):
 
 def statuses(engagement):
     return {i.identifier: i for i in load_manifest(engagement)}
+
+
+def cache_rows(engagement):
+    """The engagement's verdict cache as the store holds it: (memos, verdicts)."""
+    return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
 
 
 # ------------------------------------------------------------ resolution ----
@@ -293,7 +297,7 @@ def test_dry_run_writes_nothing(engagement):
     assert report.dry_run and report.recorded == 0
     assert report.updates["A01"].status == Status.RECEIVED  # facts computed
     assert statuses(engagement)["A01"].status == ""          # nothing written
-    assert not (engagement / CACHE_FILENAME).exists()
+    assert cache_rows(engagement) == ({}, {})                # no verdict, no memo
     assert not (engagement / LOCK_FILENAME).exists()
 
 
@@ -332,18 +336,46 @@ def test_the_scanner_reads_the_request_list_only_under_the_lock(engagement, monk
     assert not (engagement / LOCK_FILENAME).exists()
 
 
-def test_content_cache_created_and_pruned(engagement):
-    pdf = text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec")
+def test_the_scan_leaves_its_verdicts_in_the_store_and_prunes_what_is_gone(engagement):
+    from tracker.content_check import rules_fingerprint
+
+    pdf = text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
     scan_engagement(engagement, today=DAY1)
-    cache_file = engagement / CACHE_FILENAME
-    assert cache_file.exists()
-    data = json.loads(cache_file.read_text(encoding="utf-8"))
-    assert any("chase.pdf" in k for k in data["files"])
+    memos, verdicts = cache_rows(engagement)
+    [memo] = [memo for key, memo in memos.items() if "chase.pdf" in key]
+    assert memo["digest"] in verdicts
+    assert rules_fingerprint(ITEMS[0]) in verdicts[memo["digest"]]
+    assert not (engagement / RETIRED_CACHE_FILENAME).exists()   # nothing of it in the folder
 
     pdf.unlink()
-    scan_engagement(engagement, today=DAY2)            # prune removes entry
-    data = json.loads(cache_file.read_text(encoding="utf-8"))
-    assert not any("chase.pdf" in k for k in data["files"])
+    scan_engagement(engagement, today=DAY2)            # prune removes the memo and its verdict
+    memos, verdicts = cache_rows(engagement)
+    assert not any("chase.pdf" in key for key in memos)
+    assert memo["digest"] not in verdicts
+
+
+def test_a_second_scan_over_an_unchanged_tree_hashes_nothing(engagement, monkeypatch):
+    """Step 0's number: the memo makes an unchanged tree cost stats, not reads."""
+    import tracker.content_check as content_check_module
+
+    text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
+    (folder(engagement, "A02") / "jan.csv").write_text("jan data", encoding="utf-8")
+    calls = {"n": 0}
+    real = content_check_module.sha256_of
+
+    def counted(path):
+        calls["n"] += 1
+        return real(path)
+
+    monkeypatch.setattr(content_check_module, "sha256_of", counted)
+    monkeypatch.setattr("tracker.scanner.sha256_of", counted)    # the scanner's own hashing too
+    scan_engagement(engagement, today=DAY1)
+    assert calls["n"] >= 1                                   # the first pass hashes
+
+    calls["n"] = 0
+    report = scan_engagement(engagement, today=DAY2)
+    assert calls["n"] == 0                                   # the second stats and hashes nothing
+    assert report.updates["A01"].status == Status.RECEIVED
 
 
 def test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan(engagement, monkeypatch):

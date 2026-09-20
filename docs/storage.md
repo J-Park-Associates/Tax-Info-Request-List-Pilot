@@ -103,10 +103,11 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 2` (decision 104 dropped the workbook's
-digest column; a version-1 file is refused by name, and is deleted and
-rebuilt — nothing is lost, the journals are what it is made of). A file at
-any other version is refused by name rather than opened hopefully.
+One file, `PRAGMA user_version = 3` (decision 104 dropped the workbook's
+digest column; decision 107 added the verdict cache's two tables; a file at
+version 1 or 2 is refused by name, and is deleted and rebuilt — nothing is
+lost, the journals are what it is made of). A file at any other version is
+refused by name rather than opened hopefully.
 
 | table | what it holds |
 |---|---|
@@ -116,6 +117,8 @@ any other version is refused by name rather than opened hopefully.
 | `documents` | the index: one row per preserved original, every column the index row has, plus the identity it is keyed under, the place it holds in the index's own order, and the sequence number that last wrote it |
 | `learned_keywords` | a keyword a person's filing taught one request |
 | `events` | every journal line, in order, with the whole line kept as JSON text |
+| `verdicts` | the tier-3 verdict cache (decision 107): one row per content digest and rules fingerprint, the verdict as JSON text - pass/fail, reason, the firm's own evidence terms, never client text - and the `CACHE_VERSION` it was written under. **Not the record's**: see below |
+| `file_memos` | the cache's memo: one row per working copy or drop the pass has hashed, its size, mtime and digest, so an unchanged file is not read again. **Not the record's** either |
 
 Indexes: documents by decision within an engagement, documents by digest,
 statuses by status.
@@ -131,6 +134,48 @@ together, so the table cannot drift away from the record in silence.
 
 Every row carries the sequence number of the journal line that last wrote
 it. There is no other reading a row could have come from.
+
+## The cache is in the store and not in the record
+
+The verdict cache — what tier 3 decided about each document's bytes under
+each row's rules, and the memo that spares an unchanged file its hash —
+used to be a JSON file in the engagement folder that every pass rewrote.
+The owner's rule, 2026-09-19 (decision 107): **nothing the machine can
+derive lives in the synced folder.** A file rewritten every two hours
+beside the client's documents is the workbook failure class one file over.
+So it is two tables here, `verdicts` and `file_memos`, per engagement.
+
+**Why it is not journalled.** A verdict is not a fact about the engagement;
+it is a derivation of two things the record already holds or can
+recompute — the bytes in the folder and the rules in `requests`. The
+journal is the list of moments something *happened*, and a cache hit is
+not one; journalling every reading of every document would make
+`_ledger.jsonl` grow with every pass, which is the sync-churn problem moved
+one file over. So: no event, no line. A `rebuild` cascade-deletes the two
+tables with the rest of the engagement's rows and does **not** refill
+them — the next pass reads each document once and is slower, never wrong.
+`check` compares only what the journal can vouch for and never looks at
+them; `state` is untouched; `export` does not export them.
+
+**The write is the store's own transaction, under the lock, never
+`record()`.** `record()` is for events — it appends to the journal first and
+numbers a `seq`. A cache save has neither, so it goes in one immediate
+transaction of its own (`store.remember_verdicts()`), whole or nothing. It
+still refuses outside the engagement lock, by the same sentence `record()`
+uses: every writer already holds it, and the memo ties a *path* to a
+digest, so a writer racing a pass over the same files could memo a path
+against bytes the pass had just replaced. Reads take no lock. A cache built
+with no engagement — the command line's, a test's — is memory only and
+never touches the store.
+
+**The same key, the same rule.** `(digest, rules_fingerprint)` is still the
+key, the `(size, mtime_ns)` memo still spares the hash, a transient verdict
+(no OCR installed, OCR failed this once) is still never cached, and
+`CACHE_VERSION` is carried on every verdict row: a row at another version is
+ignored on load and deleted on save, so a matcher change still invalidates
+every earlier verdict without a store version. **Nothing was read from the
+old file.** The next real pass removes it from the folder and reads each
+document once.
 
 ## Keeping it in step
 
@@ -260,3 +305,10 @@ client's own spreadsheet and for nothing else.
 
 **The plan is finished.** What a person typed and what the machine decided
 are both in the record, and the only file a person opens is the page.
+
+**Afterwards (decision 107) — the verdict cache leaves the synced folder.**
+Not a stage of the plan, but the same lesson applied to the one derived
+file the plan had left in the engagement folder: the tier-3 verdict cache
+moved into two tables of the store, `user_version` 3, not journalled, and
+a pass now writes nothing under the clients root but the journal, the
+Status Report and the client's own files.

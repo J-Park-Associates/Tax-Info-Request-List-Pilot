@@ -78,6 +78,13 @@ def pbc(engagement):
     return engagement / SHARED_DIR_NAME / PBC_DIR_NAME
 
 
+def cache_rows(engagement):
+    """The engagement's verdict cache as the store holds it: (memos, verdicts)."""
+    from tracker.content_check import CACHE_VERSION
+
+    return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
+
+
 def prepared(engagement, folder_prefix):
     root = engagement / PREPARED_DIR_NAME
     return next(p for p in root.iterdir() if p.name.startswith(folder_prefix))
@@ -252,26 +259,107 @@ def test_dry_run_moves_nothing(engagement):
     assert original.exists()
     assert not any(pbc(engagement).iterdir())
     assert ledger.read_events(engagement)[1:] == []      # nothing after the create
+    assert cache_rows(engagement) == ({}, {})            # and no verdict, no memo
 
 
 def test_filing_leaves_verdicts_the_scan_reuses(engagement, monkeypatch):
     # Route once, scan once, read the document once: the router's verdicts
     # are the scanner's, keyed by content so the working copy is a hit.
     from tests.test_content_check import counting_extractor
-    from tracker.content_check import CACHE_FILENAME
     from tracker.scanner import scan_engagement
 
     calls = counting_extractor(monkeypatch)
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     file_drops(engagement, today=DAY1, dry_run=True)
-    assert not (engagement / CACHE_FILENAME).exists()      # a dry run writes nothing
+    assert cache_rows(engagement) == ({}, {})               # a dry run writes nothing
     assert file_drops(engagement, today=DAY1).handled == 1
-    assert (engagement / CACHE_FILENAME).exists()
+    _memos, verdicts = cache_rows(engagement)
+    assert verdicts                                         # the run left its verdicts (by digest)
     assert calls["n"] == 2                                  # the preview and the run
 
     report = scan_engagement(engagement, today=DAY1)
     assert report.updates["A01"].file_count == 1
     assert calls["n"] == 2                                  # the scan read nothing again
+
+
+def test_a_retired_cache_file_is_removed_by_the_next_real_pass_and_never_read(engagement, monkeypatch):
+    """Decision 107: nothing is read from the old file. A well-formed cache
+    of the last layout, whose memo and verdict would have spared the scan
+    its one reading, is removed by the first real pass and the scan reads
+    the document all the same."""
+    import json
+
+    from tests.test_content_check import counting_extractor
+    from tracker.content_check import CACHE_VERSION, RETIRED_CACHE_FILENAME, rules_fingerprint
+    from tracker.scanner import scan_engagement
+    from tracker.validators import sha256_of
+
+    calls = counting_extractor(monkeypatch)
+    prepared = engagement / PREPARED_DIR_NAME
+    a01 = next(p for p in prepared.iterdir() if p.is_dir() and p.name.startswith("A01"))
+    working_copy = text_pdf(a01 / "A01 - W-2 Wage Statements - TY2025.pdf",
+                            "Form W-2 Wage and Tax Statement 2025")
+    stat = working_copy.stat()
+    digest = sha256_of(working_copy)
+    old_file = engagement / RETIRED_CACHE_FILENAME
+    old_file.write_text(json.dumps({
+        "version": CACHE_VERSION,
+        "files": {str(working_copy.resolve()).lower(): {
+            "size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "digest": digest}},
+        "verdicts": {digest: {rules_fingerprint(ITEMS[0]): {
+            "ok": True, "reason": "", "extractable": True, "transient": False, "evidence": []}}},
+    }), encoding="utf-8")
+    old_temp = engagement / f"{RETIRED_CACHE_FILENAME}.4242.abcd{TEMP_SUFFIX}"
+    old_temp.write_text("{", encoding="utf-8")
+
+    file_drops(engagement, today=DAY1, dry_run=True)
+    assert old_file.exists() and old_temp.exists()          # a dry run leaves it where it is
+
+    from tracker.filer import RETIRED_CACHE_REMOVED
+
+    report = file_drops(engagement, today=DAY1)
+    assert report.handled == 0                              # nothing to sort; the tidy-up still runs
+    assert not old_file.exists() and not old_temp.exists()
+    assert cache_rows(engagement) == ({}, {})               # and nothing of it reached the store
+    said = [a for a in report.attention if a.error == RETIRED_CACHE_REMOVED]
+    assert sorted(a.name for a in said) == sorted([old_file.name, old_temp.name])  # said once each
+    assert not any(a.error == RETIRED_CACHE_REMOVED
+                   for a in file_drops(engagement, today=DAY2).attention)          # and not again
+
+    report = scan_engagement(engagement, today=DAY1)
+    assert calls["n"] == 1                                  # read once: the file was never a hit
+    assert report.updates["A01"].file_count == 1
+
+
+def test_a_pass_writes_nothing_under_the_clients_root_but_the_record_and_the_page(tmp_path, monkeypatch):
+    """Decision 101's walk, extended by 107: after a real sort and scan, the
+    only files a pass has put under the clients root are the journal and
+    the Status Report - no verdict cache, no temp file, no database."""
+    from tracker.content_check import RETIRED_CACHE_FILENAME
+    from tracker.ledger import LEDGER_FILENAME
+    from tracker.scanner import scan_engagement
+    from tracker.view import VIEW_FILENAME
+
+    root = tmp_path / "Clients"
+    engagement = make_engagement(root / "Smith Family 2025", ITEMS)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    before = {p.name for p in root.rglob("*") if p.is_file()}
+
+    file_drops(engagement, today=DAY1)
+    scan_engagement(engagement, today=DAY1)
+
+    names = {p.name for p in root.rglob("*") if p.is_file()}
+    assert RETIRED_CACHE_FILENAME not in names
+    assert not any(name.endswith(TEMP_SUFFIX) for name in names)
+    assert not any(name.endswith((store.STORE_FILENAME, store.STORE_WAL_FILENAME,
+                                  store.STORE_SHM_FILENAME, ".db")) for name in names)
+    # What the pass did put there: the client's own files, moved and copied,
+    # and the record. The page is the runner's, so a bare sort and scan
+    # leave none - and nothing else either.
+    new = names - before
+    assert new <= {"w2.pdf", "scan0012.pdf", "A01 - W-2 Wage Statements - TY2025.pdf",
+                   LEDGER_FILENAME, VIEW_FILENAME}, new
 
 
 # --------------------------------------------------------------------- index ----
@@ -1631,6 +1719,73 @@ def test_the_scan_after_a_two_form_split_accepts_the_copy_under_each_request(eng
     assert report.updates["C01"].file_count == 1
     assert report.updates["A01"].status == Status.PARTIAL        # the row expects two
     assert report.updates["A01"].file_count == 1
+
+
+def test_a_scan_with_an_empty_cache_reaches_the_verdict_the_router_filed_on_for_a_split_copy(
+        engagement):
+    """Decision 107's amendment: the split is derivable from the bytes, so a
+    miss reads the page as the router read it - both forms its own - and
+    the second copy passes without the cache."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.content_check import ContentCache, check_content
+
+    drop(engagement, "scan0003.pdf",
+         "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    (entry,) = file_drops(engagement, today=DAY1).filed
+    assert entry.identifier == "A01" and entry.also_filed
+    second_copy = engagement / entry.also_filed.split(";")[0].strip()
+    assert second_copy.exists(), entry.also_filed
+    c01 = next(i for i in ITEMS if i.identifier == "C01")
+
+    verdict = check_content(second_copy, c01, ContentCache())   # memory only, empty
+    assert verdict.ok, verdict.reason
+    a01 = next(i for i in ITEMS if i.identifier == "A01")
+    assert check_content(engagement / entry.prepared_location, a01, ContentCache()).ok
+
+
+def test_deleting_the_store_and_rebuilding_leaves_every_status_and_note_byte_identical(
+        tmp_path, monkeypatch):
+    """The runbook's own upgrade path, on a split: delete the store, rebuild
+    from the journals, run a full pass - nothing is recorded and the
+    statuses table is byte for byte what it held."""
+    import os
+
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.content_check import CACHE_VERSION
+    from tracker.ledger import EVENT_KEY, SCANNED, read_events
+    from tracker.scanner import scan_engagement
+
+    root = tmp_path / "Clients"
+    engagement = make_engagement(root / "Smith Family 2025", ITEMS)
+    drop(engagement, "scan0003.pdf",
+         "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    scan_engagement(engagement, today=DAY1)
+    live = store.connect()
+    engagement_id = store._engagement_row(live, engagement)["id"]
+    held = [tuple(row) for row in live.execute(
+        "SELECT * FROM statuses WHERE engagement_id = ? ORDER BY identifier", (engagement_id,))]
+    assert {row[1] for row in held} == {"a01", "c01"}
+    events = len(read_events(engagement))
+
+    db = os.environ[store.ENV_STORE]
+    store.close()
+    os.unlink(db)
+    fresh = store.connect()
+    store.rebuild_engagement(fresh, root, engagement)
+    assert store.cached_verdicts(fresh, engagement, version=CACHE_VERSION) == ({}, {})
+
+    file_drops(engagement, today=DAY2)
+    report = scan_engagement(engagement, today=DAY2)
+
+    assert report.recorded == 0                                    # nothing changed, nothing appended
+    assert len(read_events(engagement)) == events
+    assert read_events(engagement)[-1][EVENT_KEY] == SCANNED     # the first pass's scan is the last line
+    rebuilt_id = store._engagement_row(fresh, engagement)["id"]
+    again = [tuple(row) for row in fresh.execute(
+        "SELECT * FROM statuses WHERE engagement_id = ? ORDER BY identifier", (rebuilt_id,))]
+    assert [row[1:] for row in again] == [row[1:] for row in held]  # every column but the row id
 
 
 def test_unfiling_something_that_is_not_filed_says_what_it_is(engagement):

@@ -194,7 +194,7 @@ def test_the_router_and_the_scanner_reach_one_verdict_for_one_document(tmp_path,
     from tracker.content_check import ContentCache, check_content
 
     calls = counting_extractor(monkeypatch)
-    cache = ContentCache(tmp_path / "cache.json")
+    cache = ContentCache()
     dropped = text_pdf(tmp_path / "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
     assert route_file(dropped, ITEMS, cache=cache).identifier == "A01"
     assert calls["n"] == 1
@@ -204,6 +204,31 @@ def test_the_router_and_the_scanner_reach_one_verdict_for_one_document(tmp_path,
     assert check_content(working_copy, W2, cache).ok
     assert not check_content(working_copy, MORTGAGE, cache).ok
     assert calls["n"] == 1                        # the scan never read it again
+
+
+def test_a_page_naming_two_forms_never_files_on_a_third_and_the_miss_path_agrees(tmp_path):
+    """Decision 94's rule, by construction (decision 107): the ordinary
+    reading and the scanner's miss path both count the page's own forms
+    through own_forms(), so a W-2+1098 page that mentions a 1099 eight
+    times deep in its text is those two documents - it parks on a list that
+    asks only for a 1099, and an empty cache reaches the same verdict."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tests.test_scanner import text_pdf as pdf_of_lines
+    from tracker.content_check import ContentCache, check_content, rules_fingerprint
+
+    third = RequestItem(identifier="A02", document="1099 Statements", period="TY2025",
+                        allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("1099",))
+    lines = scanned_w2_lines(2025) + scanned_1098_lines(2025) + ["see 1099 for details"] * 8
+    page = pdf_of_lines(tmp_path / "scan0021.pdf", chr(10).join(lines))
+    kept = ContentCache()
+
+    routing = route_file(page, [third], cache=kept)
+    assert routing.identifier is None and routing.reason.startswith(UNMATCHED), routing
+    remembered = kept.get(page, rules_fingerprint(third))
+    assert remembered is not None and not remembered.ok
+
+    miss = check_content(page, third, ContentCache())
+    assert (miss.ok, miss.reason, miss.evidence) == (remembered.ok, remembered.reason, remembered.evidence)
 
 
 # ---------------------------------------------------------- not routed ----

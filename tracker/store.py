@@ -67,6 +67,26 @@ passed in from anywhere else - no workbook reading, no first reading, no
 digest of a file. An engagement whose journal carries no rules event has
 no rules, on either side of the check.
 
+**And the verdict cache, which is not the record's** (decision 107). The
+tier-3 verdict cache - the per-path memo of size, mtime and digest that
+spares an unchanged file its hash, and the verdicts keyed by content
+digest and rules fingerprint - lived in a JSON file the pass rewrote in
+the engagement folder every two hours, which is the synced-database
+failure one file over. It is two tables here now, ``verdicts`` and
+``file_memos``, and they are the one thing in this file that is **not a
+derivation of the journal**: a verdict is a derivation of the bytes in
+the folder and the rules in ``requests``, not a fact about the
+engagement, so nothing is journalled, :func:`rebuild_engagement` leaves
+the two tables empty (the next pass reads each document once - slower,
+never wrong), and :func:`check`, :func:`state` and :func:`export` neither
+read nor compare them. Their write, :func:`remember_verdicts`, is one
+immediate transaction of its own and never :func:`record` - there is no
+journal line and no ``seq`` - but it still refuses outside the engagement
+lock, because the memo ties a path to bytes and every writer already
+holds it. The version each verdict was written under is carried per row
+(``tracker.content_check.CACHE_VERSION``), so a matcher change still
+invalidates without a store version.
+
 **One store per process.** :func:`connect` hands out one connection to one
 file for the life of the process, created on first use and closed by
 :func:`close`. One file per clients root is the placement rule and one
@@ -144,7 +164,17 @@ ENV_STORE = "TRACKER_STORE"
 #: Version 2 (decision 104) dropped the workbook digest from ``engagements``;
 #: a version-1 file is deleted and rebuilt, which costs nothing because the
 #: store is a derivation of the journals.
-SCHEMA_VERSION = 2
+#: Version 3 (decision 107) added the verdict cache's two tables,
+#: ``verdicts`` and ``file_memos``; a version-2 file is refused by the same
+#: sentence and deleted and rebuilt the same way - the cache it never held
+#: is refilled by the next pass, one reading per document.
+SCHEMA_VERSION = 3
+
+#: The verdict cache's two tables (decision 107). Named once, here, because
+#: the cache in :mod:`tracker.content_check` and the tests both speak of
+#: them, and a table name typed twice is a table name that drifts.
+VERDICTS_TABLE = "verdicts"
+FILE_MEMOS_TABLE = "file_memos"
 
 #: How long a writer waits for another connection's lock before giving up.
 #: There is one writer per clients root by design, so this is slack for the
@@ -272,6 +302,27 @@ SCHEMA: tuple[str, ...] = (
         "key" TEXT,
         payload TEXT NOT NULL,
         PRIMARY KEY (engagement_id, seq)
+    )""",
+    # The verdict cache (decision 107). Per engagement, not per root, so the
+    # cascade, the prune and "the same bytes in two engagements" all keep the
+    # semantics the per-engagement file had. The store knows nothing of the
+    # verdict's record: ``verdict`` is JSON text the cache hands in and reads
+    # back, and ``version`` is the cache's own layout version, per row.
+    f"""CREATE TABLE IF NOT EXISTS {VERDICTS_TABLE} (
+        engagement_id INTEGER NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+        digest TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        verdict TEXT NOT NULL,
+        PRIMARY KEY (engagement_id, digest, fingerprint)
+    )""",
+    f"""CREATE TABLE IF NOT EXISTS {FILE_MEMOS_TABLE} (
+        engagement_id INTEGER NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+        path_key TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        mtime_ns INTEGER NOT NULL,
+        digest TEXT NOT NULL,
+        PRIMARY KEY (engagement_id, path_key)
     )""",
     'CREATE INDEX IF NOT EXISTS documents_by_decision ON documents (engagement_id, "decision")',
     'CREATE INDEX IF NOT EXISTS documents_by_digest ON documents ("digest")',
@@ -930,6 +981,28 @@ def _apply_rules_event(conn: sqlite3.Connection, engagement_id: int, event: dict
 # --------------------------------------------------------------- the write ----
 
 
+def _held_under_the_lock(conn: sqlite3.Connection, engagement_dir: Path,
+                         *, unwritten: str, doing: str) -> sqlite3.Row:
+    """The engagement's row, for a writer: refused by name outside the
+    engagement lock and for an engagement the store does not hold.
+
+    The two sentences every writer here refuses with - :func:`record` and
+    :func:`remember_verdicts` - worded once so they are the same sentence.
+    """
+    if not lock_is_held(engagement_dir):
+        raise StoreError(
+            f"{engagement_dir.name}: the record is written to only while this run holds the "
+            f"engagement lock; {unwritten} not written"
+        )
+    row = _engagement_row(conn, engagement_dir)
+    if row is None:
+        raise StoreError(
+            f"{engagement_dir.name}: the store does not hold this engagement; build it with "
+            f"rebuild_engagement() before {doing}"
+        )
+    return row
+
+
 def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) -> int:
     """Append ``events`` to the journal, then apply them. Returns the new applied seq.
 
@@ -955,17 +1028,8 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
             raise StoreError(ledger.RETIRED_EVENT.format(name=name) + "; nothing was written")
         if name not in ledger.EVENTS:
             raise StoreError(f"{name!r} is not an event this version writes; nothing was written")
-    if not lock_is_held(engagement_dir):
-        raise StoreError(
-            f"{engagement_dir.name}: the record is written to only while this run holds the "
-            f"engagement lock; {len(events)} event(s) were not written"
-        )
-    row = _engagement_row(conn, engagement_dir)
-    if row is None:
-        raise StoreError(
-            f"{engagement_dir.name}: the store does not hold this engagement; build it with "
-            f"rebuild_engagement() before recording to it"
-        )
+    row = _held_under_the_lock(conn, engagement_dir,
+                               unwritten=f"{len(events)} event(s) were", doing="recording to it")
     already = len(ledger.read_events(engagement_dir))
     if already != row["applied_seq"]:
         raise StoreError(
@@ -1058,6 +1122,117 @@ def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_di
     return len(events)
 
 
+# --------------------------------------------------------- the verdict cache ----
+
+
+def cached_verdicts(
+    conn: sqlite3.Connection, engagement_dir: Path | str, *, version: int
+) -> tuple[dict[str, dict], dict[str, dict[str, dict]]]:
+    """One engagement's verdict cache at ``version``: the memos and the verdicts.
+
+    The two shapes ``tracker.content_check.ContentCache`` holds in memory -
+    ``path_key -> {size, mtime_ns, digest}`` and ``digest -> fingerprint ->
+    verdict`` - so the cache is loaded once when it is built and the pass's
+    hot path stays in memory exactly as it was when the cache was a file.
+    The verdict comes back as the dict the cache handed in; this module
+    never learns the record it is (:mod:`tracker.content_check` is above it).
+    A row at another ``version`` is not returned: a verdict written under
+    an older reading of the rules is not a verdict, and :func:`remember_verdicts`
+    deletes such rows on the next save.
+
+    No lock: a read is a read. An engagement the store does not hold is
+    refused by name rather than answered with an empty cache that has
+    nowhere to be saved - both writers ``ensure()`` before building one.
+    """
+    engagement_dir = Path(engagement_dir)
+    row = _engagement_row(conn, engagement_dir)
+    if row is None:
+        raise StoreError(
+            f"{engagement_dir.name}: the store does not hold this engagement; build it with "
+            f"rebuild_engagement() before caching verdicts for it"
+        )
+    memos = {
+        memo["path_key"]: {"size": memo["size"], "mtime_ns": memo["mtime_ns"],
+                           "digest": memo["digest"]}
+        for memo in conn.execute(
+            f"SELECT path_key, size, mtime_ns, digest FROM {FILE_MEMOS_TABLE} "
+            f"WHERE engagement_id = ?", (row["id"],))
+    }
+    verdicts: dict[str, dict[str, dict]] = {}
+    for stored in conn.execute(
+        f"SELECT digest, fingerprint, verdict FROM {VERDICTS_TABLE} "
+        f"WHERE engagement_id = ? AND version = ?", (row["id"], version),
+    ):
+        verdicts.setdefault(stored["digest"], {})[stored["fingerprint"]] = json.loads(stored["verdict"])
+    return memos, verdicts
+
+
+def remember_verdicts(
+    conn: sqlite3.Connection,
+    engagement_dir: Path | str,
+    *,
+    version: int,
+    memos: dict[str, dict],
+    verdicts: dict[str, dict[str, dict]],
+    forget_paths: set[str],
+    forget_digests: set[str],
+) -> None:
+    """Write one save of the verdict cache: what it learned and what it forgot.
+
+    **One immediate transaction, and never** :func:`record`. A cache save
+    has no journal line and no ``seq`` - a verdict is a derivation of the
+    bytes and the rules, not a fact about the engagement - so it goes in
+    a transaction of its own, which is SQLite's whole-or-nothing, the
+    property the atomic file write used to give it. In it: the
+    engagement's verdict rows at any other ``version`` are deleted (a
+    matcher change invalidates every verdict from before it, as it always
+    has), the paths and digests the cache pruned are deleted, and the
+    memos and verdicts given are upserted.
+
+    **Under the engagement lock all the same.** Every writer already holds
+    it, so the rule costs nothing; and the memo ties a *path* to a digest,
+    so a writer racing a pass over the same files could memo a path
+    against bytes the pass has just replaced. Refused by the same two
+    sentences :func:`record` uses. The caller must not be inside
+    :func:`record`'s transaction (a nested ``BEGIN`` fails), and no caller is.
+    """
+    engagement_dir = Path(engagement_dir)
+    row = _held_under_the_lock(conn, engagement_dir,
+                               unwritten="the verdicts were", doing="caching verdicts for it")
+    with _transaction(conn):
+        conn.execute(f"DELETE FROM {VERDICTS_TABLE} WHERE engagement_id = ? AND version != ?",
+                     (row["id"], version))
+        for path_key in sorted(forget_paths):
+            conn.execute(f"DELETE FROM {FILE_MEMOS_TABLE} WHERE engagement_id = ? AND path_key = ?",
+                         (row["id"], path_key))
+        for digest in sorted(forget_digests):
+            conn.execute(f"DELETE FROM {VERDICTS_TABLE} WHERE engagement_id = ? AND digest = ?",
+                         (row["id"], digest))
+        for path_key, memo in memos.items():
+            _write_memo(conn, row["id"], path_key, memo)
+        for digest, by_fingerprint in verdicts.items():
+            for fingerprint, verdict in by_fingerprint.items():
+                _write_verdict(conn, row["id"], digest, fingerprint, version, verdict)
+
+
+def _write_memo(conn: sqlite3.Connection, engagement_id: int, path_key: str, memo: dict) -> None:
+    conn.execute(
+        f"INSERT OR REPLACE INTO {FILE_MEMOS_TABLE} (engagement_id, path_key, size, mtime_ns, digest) "
+        f"VALUES (?, ?, ?, ?, ?)",
+        (engagement_id, path_key, int(memo["size"]), int(memo["mtime_ns"]), str(memo["digest"])),
+    )
+
+
+def _write_verdict(conn: sqlite3.Connection, engagement_id: int, digest: str, fingerprint: str,
+                   version: int, verdict: dict) -> None:
+    conn.execute(
+        f"INSERT OR REPLACE INTO {VERDICTS_TABLE} (engagement_id, digest, fingerprint, version, verdict) "
+        f"VALUES (?, ?, ?, ?, ?)",
+        (engagement_id, digest, fingerprint, version,
+         json.dumps(verdict, ensure_ascii=False, sort_keys=True)),
+    )
+
+
 # ------------------------------------------------------------- the rebuild ----
 
 
@@ -1079,6 +1254,11 @@ def rebuild_engagement(
     **Nothing is written to the journal.** A rebuild is a reading of the
     record, not an event in it, and a rebuild that appended would make the
     record grow every time somebody checked it.
+
+    **The verdict cache goes with the rows and is not refilled** (decision
+    107): its two tables cascade with the engagement like every other, and
+    nothing in the journal can rebuild them, because nothing in the
+    journal ever held them. The next pass reads each document once.
     """
     engagement_dir = Path(engagement_dir)
     rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
@@ -1312,6 +1492,32 @@ def _write_csv(path: Path, header: list[str], rows) -> None:
 
 # -------------------------------------------------------------------- CLI ----
 
+
+def store_named(given: Path) -> Path | None:
+    """The store file a command-line argument means, or None for one it cannot mean.
+
+    Three spellings, because the runbook says "the app folder" and a person
+    at the office will type any of them: an existing folder is the app
+    folder and the store is :data:`STORE_FILENAME` inside it; a path named
+    :data:`STORE_FILENAME` is the store itself, whether or not it exists yet
+    (``rebuild`` creates it); an existing file is the settings file and the
+    store sits beside it (:func:`path_for`). Anything else is refused rather
+    than resolved, because the resolution used to be ``with_name`` on
+    whatever was typed, and the integration run of decision 107 typed the
+    app folder as the runbook said and silently got an empty store *beside*
+    it - ``check`` then reported an engagement the store did not hold, and a
+    ``rebuild`` typed next would have built into the wrong file. A typo must
+    never create a store.
+    """
+    if given.is_dir():
+        return given / STORE_FILENAME
+    if given.name == STORE_FILENAME:
+        return given
+    if given.is_file():
+        return path_for(given)
+    return None
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -1329,7 +1535,7 @@ if __name__ == "__main__":
         description="Build, check and export the store: one database on this machine, "
                     "rebuilt from each engagement's own record.",
     )
-    parser.add_argument("store", help="the store file, or the settings file it sits beside")
+    parser.add_argument("store", help="the app folder, the settings file in it, or the store file itself")
     parser.add_argument("command", choices=("rebuild", "check", "export", "state"))
     parser.add_argument("root", help="the clients root")
     parser.add_argument("--engagement", help="one engagement folder instead of every one")
@@ -1337,15 +1543,21 @@ if __name__ == "__main__":
     ns = parser.parse_args()
 
     given = Path(ns.store)
-    chosen = given if given.name == STORE_FILENAME else path_for(given)
+    chosen = store_named(given)
+    if chosen is None:
+        parser.error(f"{given} is not the app folder, a settings file in it, or a {STORE_FILENAME}; "
+                     f"nothing was opened and no store was created")
     clients_root = Path(ns.root)
     folders = ([Path(ns.engagement)] if ns.engagement
                else registry.engagement_dirs(clients_root))
 
     print(f"\n{chosen}")
-    connection = connect(chosen)
     failures = 0
     try:
+        # A store this code cannot open - another version's, a file that is
+        # not one - is refused by open() in a sentence; the command line
+        # says that sentence and exits 1, never a traceback (decision 107).
+        connection = connect(chosen)
         if ns.command == "export":
             if not ns.out:
                 parser.error("export needs --out")
@@ -1366,6 +1578,8 @@ if __name__ == "__main__":
                         print(f"  {line}")
                     if not said:
                         print(f"  agrees  {engagement.name}")
+    except StoreError as exc:
+        parser.exit(1, f"{exc}\n")
     finally:
         close()
     if failures:

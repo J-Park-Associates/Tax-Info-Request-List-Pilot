@@ -77,11 +77,16 @@ changes nothing:
 
 - `python -m tracker.store "<the app folder>" check "<clients root>"` — the
   database against the ledgers, document by document, status by status and
-  rule by rule. If it ever disagrees, `rebuild` in place of `check` builds
+  rule by rule. The first argument is the folder the app runs from, where
+  the settings file and the database sit; the settings file's own path, or
+  the database file's, is taken the same way. Anything else — a mistyped
+  folder, a file that is neither — is refused, so a typo can never create
+  an empty database somewhere and check it against the ledgers. If it ever disagrees, `rebuild` in place of `check` builds
   the database again from the ledgers; nothing is lost either way, because
   the ledgers are what it is made of. A `tracker.db` from before decision
-  104 is refused by name; delete it and run `rebuild` — nothing is lost,
-  the ledgers are what it is made of.
+  107 is refused by name; delete it and run `rebuild` — nothing is lost,
+  the ledgers are what it is made of, and the first pass after it reads
+  every document once to fill the verdict cache the database also keeps.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
@@ -307,7 +312,10 @@ machine signed into the same Drive account has all of it already.
 itself, and the Tesseract OCR engine if it was installed. **The database
 is not worth carrying over.** It is built from the ledgers in the
 engagement folders, and the new machine builds its own on the first pass;
-copying the old one would only be copying something it can make.
+copying the old one would only be copying something it can make. The first
+pass there reads every document once - the verdicts the old machine had
+cached were in its database, not in the folders - and is slower for it,
+never wrong.
 
 1. Install Google Drive for desktop on the new machine, sign in with the
    firm account, and wait for the clients folder to finish syncing. Do not

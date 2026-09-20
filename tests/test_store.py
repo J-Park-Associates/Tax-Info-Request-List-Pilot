@@ -132,11 +132,11 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 2
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 3
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
-                          "documents", "events"}
+                          "documents", "events", store.VERDICTS_TABLE, store.FILE_MEMOS_TABLE}
     finally:
         conn.close()
 
@@ -151,6 +151,21 @@ def test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name(tmp_pat
     with pytest.raises(store.StoreError) as raised:
         store.open(path)
     assert str(path) in str(raised.value) and str(store.SCHEMA_VERSION + 1) in str(raised.value)
+
+
+def test_a_version_two_store_is_refused_by_name(tmp_path):
+    """Decision 107 added the verdict cache's two tables; a file from before
+    it has no ``verdicts`` table, and is refused by the same sentence a
+    version-1 file was - delete it and rebuild, nothing is lost."""
+    path = tmp_path / "app" / store.STORE_FILENAME
+    store.open(path).close()
+    written_earlier = sqlite3.connect(path)
+    written_earlier.execute("PRAGMA user_version = 2")
+    written_earlier.close()
+
+    with pytest.raises(store.StoreError, match="user_version 2") as raised:
+        store.open(path)
+    assert str(path) in str(raised.value) and "delete it and rebuild" in str(raised.value)
 
 
 def test_a_record_whose_type_the_store_cannot_store_is_refused_before_it_is_written():
@@ -456,6 +471,117 @@ def test_a_rebuild_from_the_journal_alone_equals_the_store(root, engagement):
         fresh.close()
 
 
+# ----------------------------------------------------------- the verdict cache ----
+
+
+def cache_rows(engagement):
+    """The engagement's verdict cache as the store holds it: (memos, verdicts)."""
+    from tracker.content_check import CACHE_VERSION
+
+    return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
+
+
+def a_pass(engagement):
+    from tracker.scanner import scan_engagement
+
+    file_drops(engagement, today=DAY1)
+    return scan_engagement(engagement, today=DAY1)
+
+
+def test_a_rebuild_forgets_the_engagements_verdicts_and_the_next_pass_reads_again(
+        root, engagement, monkeypatch):
+    """The cache is not the record's (decision 107): nothing in the journal
+    holds it, so a rebuild leaves the two tables empty, the check has
+    nothing to say about them, and the next pass reads each document once
+    and comes to the same statuses."""
+    from tests.test_content_check import counting_extractor
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    before = a_pass(engagement).updates
+    live = store.connect()
+    memos, verdicts = cache_rows(engagement)
+    assert memos and verdicts
+
+    store.rebuild_engagement(live, root, engagement)
+
+    assert cache_rows(engagement) == ({}, {})
+    assert store.check(live, root, engagement) == []
+    assert len(ledger.read_events(engagement)) == 3          # the create, the filing, the scan
+
+    calls = counting_extractor(monkeypatch)
+    from tracker.scanner import scan_engagement
+    after = scan_engagement(engagement, today=DAY1).updates
+    assert calls["n"] == 1                                    # read again, once
+    assert after == before
+    # Refilled with the scan's own verdicts - the working copy's memo and
+    # its verdict for the row that holds it - every one the same row the
+    # sort had left (the sort also kept the router's verdict for the other
+    # row, which a scan of an empty folder has no cause to reach).
+    refilled_memos, refilled_verdicts = cache_rows(engagement)
+    assert refilled_memos == memos and refilled_verdicts
+    assert all(verdicts[digest][fingerprint] == verdict
+               for digest, by_fingerprint in refilled_verdicts.items()
+               for fingerprint, verdict in by_fingerprint.items())
+
+
+def test_the_verdict_tables_are_not_in_the_check_and_not_in_the_export(root, engagement, tmp_path):
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025 Jane Q Client")
+    a_pass(engagement)
+    live = store.connect()
+    engagement_id = store._engagement_row(live, engagement)["id"]
+    stored = list(live.execute(f"SELECT digest, fingerprint, verdict FROM {store.VERDICTS_TABLE} "
+                               "WHERE engagement_id = ?", (engagement_id,)))
+    assert stored
+    # No client text: a verdict row carries the firm's words - the keyword,
+    # the Period - and never a word of the document that is not a keyword.
+    for row in stored:
+        assert "Jane" not in row["verdict"] and "Client" not in row["verdict"]
+
+    assert store.check(live, root, engagement) == []
+    live.execute(f"DELETE FROM {store.VERDICTS_TABLE} WHERE engagement_id = ?", (engagement_id,))
+    live.execute(f"DELETE FROM {store.FILE_MEMOS_TABLE} WHERE engagement_id = ?", (engagement_id,))
+    assert store.check(live, root, engagement) == []          # the check never looked
+    live.execute(f"INSERT INTO {store.VERDICTS_TABLE} VALUES (?, ?, ?, ?, ?)",
+                 (engagement_id, "feedface", "0123456789abcdef", 1, '{"ok": false}'))
+    assert store.check(live, root, engagement) == []          # nor at a row nothing wrote
+
+    written = store.export(live, tmp_path / "out")
+    assert [path.name for path in written] == [store.DOCUMENTS_CSV, store.REQUESTS_CSV,
+                                               store.ENGAGEMENTS_CSV]
+    for path in written:
+        text = path.read_text(encoding="utf-8-sig")
+        assert "feedface" not in text and "0123456789abcdef" not in text
+        assert stored[0]["fingerprint"] not in text
+
+
+def test_remembering_verdicts_refuses_outside_the_lock_and_for_an_unknown_engagement(
+        conn, root, engagement, tmp_path):
+    from tracker.content_check import CACHE_VERSION
+
+    build(conn, root, engagement)
+    a_save = dict(version=CACHE_VERSION, memos={"k": {"size": 1, "mtime_ns": 2, "digest": "d"}},
+                  verdicts={"d": {"f": {"ok": True}}}, forget_paths=set(), forget_digests=set())
+
+    with pytest.raises(store.StoreError, match="engagement lock"):
+        store.remember_verdicts(conn, engagement, **a_save)
+    assert rows(conn, store.VERDICTS_TABLE) == [] and rows(conn, store.FILE_MEMOS_TABLE) == []
+
+    stranger = tmp_path / "Clients" / "Nobody 2025"
+    stranger.mkdir(parents=True)
+    with engagement_lock(stranger):
+        with pytest.raises(store.StoreError, match="does not hold this engagement"):
+            store.remember_verdicts(conn, stranger, **a_save)
+    with pytest.raises(store.StoreError, match="does not hold this engagement"):
+        store.cached_verdicts(conn, stranger, version=CACHE_VERSION)
+
+    with engagement_lock(engagement):
+        store.remember_verdicts(conn, engagement, **a_save)   # the same save, held and known
+    assert store.cached_verdicts(conn, engagement, version=CACHE_VERSION) == (
+        {"k": {"size": 1, "mtime_ns": 2, "digest": "d"}}, {"d": {"f": {"ok": True}}})
+    assert store.cached_verdicts(conn, engagement, version=CACHE_VERSION + 1) == (
+        {"k": {"size": 1, "mtime_ns": 2, "digest": "d"}}, {})  # the memo is versionless
+
+
 def test_the_request_tables_hold_every_field_the_request_item_has():
     """The guard the store used to make at rebuild time: a field added to
     the manifest's record and not to the tables would be dropped on the
@@ -523,6 +649,51 @@ def test_the_command_lines_check_exits_one_and_names_what_disagrees(root, engage
     disagreed = cli(path, "check", root)
     assert disagreed.returncode == 1
     assert "index row" in disagreed.stdout
+
+
+def test_the_command_line_takes_the_app_folder_the_settings_file_or_the_store_and_refuses_a_typo(
+        root, engagement, tmp_path):
+    """The runbook says "the app folder"; the integration run of decision 107
+    typed it and got an empty store beside the folder, because the argument
+    was resolved with ``with_name``. Three spellings mean one file, and a
+    typo means no file at all."""
+    from tracker.settings import SETTINGS_FILENAME
+
+    app = tmp_path / "app"                                          # where the suite's store already is
+    app.mkdir(exist_ok=True)
+    settings = app / SETTINGS_FILENAME
+    settings.write_text("{}", encoding="utf-8")
+    the_store = app / store.STORE_FILENAME
+
+    assert store.store_named(app) == the_store
+    assert store.store_named(settings) == the_store
+    assert store.store_named(the_store) == the_store                # exists or not: rebuild creates it
+    assert store.store_named(tmp_path / "apps") is None            # a typo of a folder
+    assert store.store_named(app / f"{store.STORE_FILENAME}x") is None   # a typo of the file
+
+    assert cli(app, "rebuild", root).returncode == 0                # the runbook's line, in fact
+    assert the_store.exists()
+    assert cli(settings, "check", root).returncode == 0
+    assert cli(the_store, "check", root).returncode == 0
+
+    refused = cli(tmp_path / "apps", "check", root)
+    assert refused.returncode == 2 and "nothing was opened" in refused.stderr
+    assert set(tmp_path.rglob(store.STORE_FILENAME)) == {the_store}  # and no store beside the typo
+
+
+def test_the_command_line_says_a_refused_store_in_one_sentence(root, tmp_path):
+    """A version this code does not know is refused by open() in a sentence;
+    the command line repeats it and exits 1 - never a traceback."""
+    path = tmp_path / "app" / store.STORE_FILENAME
+    store.open(path).close()
+    older = sqlite3.connect(path)
+    older.execute("PRAGMA user_version = 2")
+    older.close()
+
+    refused = cli(path, "check", root)
+    assert refused.returncode == 1
+    assert "user_version 2" in refused.stderr and "delete it and rebuild" in refused.stderr
+    assert "Traceback" not in refused.stderr and "Traceback" not in refused.stdout
 
 
 # -------------------------------------------------------------- the placement ----

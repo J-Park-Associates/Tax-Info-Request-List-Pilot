@@ -24,7 +24,7 @@ the rest, and the Reason naming the requests. Its Evidence
 column carries the *why* behind the verdict: which of the manifest row's
 own keywords matched, and where in the document they were said. Catalog
 words and file names only, never a word of the client's document, which is
-the same line the content cache draws.
+the same line the verdict cache - in the store since decision 107 - draws.
 
 **The index is not a workbook any more** (decision 102). It was a
 workbook rewritten whole on every pass, and thirteen readings of the
@@ -115,9 +115,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker import ledger, store
-from tracker.content_check import CACHE_FILENAME, ContentCache
+from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
 from tracker.locking import engagement_lock
-from tracker.manifest import Override, RequestItem, label_for, load_manifest
+from tracker.manifest import TEMP_SUFFIX, Override, RequestItem, label_for, load_manifest
 
 # The records themselves live in tracker/records.py (decision 100). The two
 # names this module no longer uses are re-exported from here so that every
@@ -718,6 +718,15 @@ def replaced_in_pbc(
 #: client can see that folder and Explorer offers Delete, Rename and drag:
 #: every other disagreement between the index and the disk is said every
 #: pass, and this one was said by nothing at all while the row went on
+#: The verdict cache's old file, found in the engagement folder and removed
+#: by a real pass (decision 107: the cache lives in the store and nothing
+#: reads the file). Said once, on the pass that removed it - on the console,
+#: in the app's warnings, and counted on the practice page - one line per
+#: file removed; the next pass finds nothing and says nothing.
+RETIRED_CACHE_REMOVED = (
+    "removed from the engagement folder: the verdict cache lives in the store since "
+    "decision 107 and nothing reads the file"
+)
 #: naming a path that holds no file. Said every pass until it is back or a
 #: person has looked; the working copy is not touched over it.
 MISSING_IN_PBC = (
@@ -1037,10 +1046,11 @@ def file_drops(
         known = {e.digest: e for e in entries if e.digest and e.decision != DUPLICATE}
         # What the router learns about each document is what the scan will
         # want to know about its working copy (same bytes): the verdicts go
-        # into the engagement's content cache, keyed by content. It is made
-        # whether or not there is anything to sort, because the tidy-up at
-        # the end of a pass is owed to a pass that sorted nothing too.
-        cache = ContentCache(engagement_dir / CACHE_FILENAME)
+        # into the engagement's verdict cache in the store, keyed by content
+        # (decision 107). It is made whether or not there is anything to
+        # sort, because the tidy-up at the end of a pass is owed to a pass
+        # that sorted nothing too.
+        cache = ContentCache(engagement_dir)
         # Names claimed during this run, so a dry run previews the same numbering
         # a real run would produce (nothing is on disk to collide with yet).
         reserved: dict[Path, set[str]] = {}
@@ -1073,8 +1083,41 @@ def file_drops(
         # to leave it there for ever.
         if not dry_run:
             cache.save()
+            for name in _remove_the_retired_cache(engagement_dir):
+                report.attention.append(FileError(name, RETIRED_CACHE_REMOVED, False))
             _prune_empty_dirs(shared_dir, keep=pbc_dir)
     return report
+
+
+def _remove_the_retired_cache(engagement_dir: Path) -> list[str]:
+    """Take the verdict cache's old file out of the engagement folder.
+    Returns the names removed, for the report to say once.
+
+    Until decision 107 the cache was a JSON file here that every pass
+    rewrote; it lives in the store now and **nothing reads the file** -
+    the owner's rule is that nothing the machine can derive stays in the
+    synced folder, and reading it once would keep its loader alive for a
+    release to save one cold pass. So the first real pass after the
+    upgrade removes it, and any temp file the atomic write it used to go
+    through left beside it (``manifest.temp_path_for`` put the process id
+    and a token between the name and ``TEMP_SUFFIX``), and the report says
+    so on ``FileReport.attention`` for that one pass, as ``MOVED_IN_PBC``
+    is said - on the console, in the app's warnings, and counted on the
+    practice page. A dry run leaves it where it is, like everything else.
+    """
+    leftovers = [engagement_dir / RETIRED_CACHE_FILENAME,
+                 *engagement_dir.glob(f"{RETIRED_CACHE_FILENAME}*{TEMP_SUFFIX}")]
+    removed: list[str] = []
+    for path in leftovers:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            log.warning("Could not remove the retired verdict cache file %s: %s", path.name, exc)
+            continue
+        removed.append(path.name)
+    return removed
 
 
 def _sort_all(
