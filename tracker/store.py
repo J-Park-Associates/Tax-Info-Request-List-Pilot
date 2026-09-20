@@ -168,7 +168,11 @@ ENV_STORE = "TRACKER_STORE"
 #: ``verdicts`` and ``file_memos``; a version-2 file is refused by the same
 #: sentence and deleted and rebuilt the same way - the cache it never held
 #: is refilled by the next pass, one reading per document.
-SCHEMA_VERSION = 3
+#: Version 4 (decision 116) added the ``override_reason`` column to
+#: ``requests``: a version-3 file has no column for the reason a person
+#: gives, so it is refused, deleted and rebuilt from the journals like the
+#: others - the reason itself travels in the ``rules_changed`` event.
+SCHEMA_VERSION = 4
 
 #: The verdict cache's two tables (decision 107). Named once, here, because
 #: the cache in :mod:`tracker.content_check` and the tests both speak of
@@ -242,6 +246,7 @@ _RULE_AFFINITIES: dict[str, str] = {
     "date_pattern_derived": "INTEGER",
     "manual_override": "TEXT",
     "row": "INTEGER",
+    "override_reason": "TEXT",
 }
 RULE_COLUMNS: dict[str, str] = {name: _RULE_AFFINITIES[name] for name in RULE_FIELDS}
 

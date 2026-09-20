@@ -64,7 +64,7 @@ ITEMS = [
     RequestItem(
         identifier="E01", document="Prior Year Return", period="TY2025",
         allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("1040",),
-        manual_override=Override.WAIVED,
+        manual_override=Override.NOT_APPLICABLE,
     ),
 ]
 
@@ -150,16 +150,29 @@ def tables(text: str) -> list[list[list[str]]]:
     return parser.tables
 
 
+def table_headed(engagement, columns):
+    """The one table on the page whose header row is ``columns`` - found by
+    its heading, because the Requests section may fold a second table of
+    the same columns below the first (the set-aside rows)."""
+    return next(t for t in tables(page_of(engagement)) if t[0] == list(columns))
+
+
 def requests_table(engagement):
-    return tables(page_of(engagement))[0]
+    return table_headed(engagement, view.REQUEST_COLUMNS)
+
+
+def not_applicable_tables(engagement):
+    """The folded tables of set-aside rows, after the active Requests table."""
+    found = [t for t in tables(page_of(engagement)) if t[0] == list(view.REQUEST_COLUMNS)]
+    return found[1:]
 
 
 def index_table(engagement):
-    return tables(page_of(engagement))[1]
+    return table_headed(engagement, view.INDEX_COLUMNS)
 
 
 def review_table(engagement):
-    return tables(page_of(engagement))[2]
+    return table_headed(engagement, [view.INDEX_LAYOUT[name][0] for name in view.NEEDS_REVIEW_FIELDS])
 
 
 # ------------------------------------------------------ the four sections ----
@@ -174,9 +187,11 @@ def test_the_page_has_the_four_sections_and_a_navigation_to_each(engagement):
         assert f'<section id="{slug(section)}">' in page, section
         assert f'<a href="#{slug(section)}">{section}</a>' in page, section
         assert f">{html.escape(section)}" in page, section
-    # And the three tables are the three the sections own, headed by the
-    # columns their own modules name.
+    # And the tables are the ones the sections own, headed by the columns
+    # their own modules name: the Requests table, the folded table of the
+    # one set-aside row under it, the Index and Needs Review.
     assert [table[0] for table in tables(page)] == [
+        list(view.REQUEST_COLUMNS),
         list(view.REQUEST_COLUMNS),
         list(view.INDEX_COLUMNS),
         [view.INDEX_LAYOUT[name][0] for name in view.NEEDS_REVIEW_FIELDS],
@@ -204,7 +219,7 @@ def test_every_request_row_is_on_the_page_with_the_status_the_record_holds(engag
     items = load_manifest(engagement)
     rows = requests_table(engagement)
     assert rows[1:] == [[view.request_row(item)[header] for header in view.REQUEST_COLUMNS]
-                        for item in items]
+                        for item in items if item.manual_override != Override.NOT_APPLICABLE]
 
     by_identifier = {row[0]: dict(zip(view.REQUEST_COLUMNS, row, strict=True)) for row in rows[1:]}
     assert by_identifier["A01"][COL_STATUS] == Status.RECEIVED
@@ -229,16 +244,71 @@ def test_a_keyword_a_filing_taught_is_on_the_page_beside_the_typed_ones(engageme
     assert row[COL_ANY_KEYWORDS] == "mortgage, lender"
 
 
-def test_a_row_the_firm_no_longer_wants_is_on_the_page_and_marked(engagement):
-    """Waived is a decision about a request, not a reason to hide it: it was
-    asked for once, and the page is what a person reads the list from."""
+def test_not_applicable_rows_sit_in_a_collapsed_section_per_year_and_the_active_table_holds_the_rest(
+    engagement,
+):
+    """Decision 91 kept a set-aside row on the page, dimmed; 116 folds it
+    away as well: out of the active table, under a details block headed
+    by its year's label and count, in the same columns, still dimmed.
+    With none, nothing is drawn."""
+    from tracker.manifest import load_engagement_info, save_rules
+
     view.write_view(engagement)
     page = page_of(engagement)
 
-    waived = [row for row in requests_table(engagement)[1:]
-              if row[0] == "E01"]
-    assert waived and Override.WAIVED in waived[0]
-    assert page.count(f'<tr class="{view.WAIVED_CLASS}">') == 1
+    assert [row[0] for row in requests_table(engagement)[1:]] == ["A01", "C01"]
+    [folded] = not_applicable_tables(engagement)
+    assert [row[0] for row in folded[1:]] == ["E01"]
+    assert "Not Applicable in TY2025" in folded[1]
+    heading = view.NOT_APPLICABLE_SECTION.format(label="Not Applicable in TY2025", n=1)
+    assert f"<details><summary>{html.escape(heading)}</summary>" in page
+    assert page.count(f'<tr class="{view.NOT_APPLICABLE_CLASS}">') == 1
+    assert f"{view.BADGE_CLASS}-{slug(Override.NOT_APPLICABLE)}" in page
+    assert "<h2>Requests (2)</h2>" in page
+
+    # A second year is its own block, in year order.
+    rows = load_manifest(engagement)
+    rows.append(RequestItem(identifier="F01", document="Older thing", period="TY2024",
+                            manual_override=Override.NOT_APPLICABLE))
+    save_rules(engagement, rows, load_engagement_info(engagement))
+    view.write_view(engagement)
+    page = page_of(engagement)
+    blocks = re.findall(r"<details><summary>(.*?)</summary>", page)
+    assert blocks == [
+        view.NOT_APPLICABLE_SECTION.format(label="Not Applicable in TY2024", n=1),
+        view.NOT_APPLICABLE_SECTION.format(label="Not Applicable in TY2025", n=1),
+    ]
+
+    # With none set aside, no block at all.
+    rows = [r for r in load_manifest(engagement) if r.manual_override != Override.NOT_APPLICABLE]
+    save_rules(engagement, rows, load_engagement_info(engagement))
+    view.write_view(engagement)
+    assert "<details>" not in page_of(engagement)
+    assert not_applicable_tables(engagement) == []
+
+
+def test_the_override_reason_is_a_column_of_the_requests_table(engagement):
+    from dataclasses import replace
+
+    from tracker.manifest import (
+        COL_MANUAL_OVERRIDE,
+        COL_OVERRIDE_REASON,
+        OVERRIDE_REASONS,
+        load_engagement_info,
+        save_rules,
+    )
+
+    rows = [replace(r, manual_override=Override.ACCEPTED, override_reason=OVERRIDE_REASONS[1])
+            if r.identifier == "C01" else r for r in load_manifest(engagement)]
+    save_rules(engagement, rows, load_engagement_info(engagement))
+    view.write_view(engagement)
+
+    table = requests_table(engagement)
+    assert COL_OVERRIDE_REASON in table[0]
+    by_identifier = {row[0]: dict(zip(view.REQUEST_COLUMNS, row, strict=True)) for row in table[1:]}
+    assert by_identifier["C01"][COL_OVERRIDE_REASON] == OVERRIDE_REASONS[1]
+    assert by_identifier["C01"][COL_MANUAL_OVERRIDE] == Override.ACCEPTED
+    assert by_identifier["A01"][COL_OVERRIDE_REASON] == ""
 
 
 def test_a_value_shaped_like_markup_is_shown_as_its_own_text(engagement):

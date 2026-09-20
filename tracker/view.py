@@ -20,11 +20,17 @@ might be. Four sections, in the order a person reads them:
   sentence that says it is regenerated every pass and holds nothing of its
   own.
 - **Requests** - the person's rules, the keywords a filing taught, and each
-  row's status as a badge.
+  row's status as a badge. The rows a person set aside as
+  ``Override.NOT_APPLICABLE`` are not in that table: they sit below it in
+  a folded block per year (:data:`NOT_APPLICABLE_SECTION`), dimmed, in
+  the same columns - off the working view, kept and findable (decision
+  116).
 - **Index** - every original, in the index's own column order.
 - **Needs Review** - the rows parked for a person, and under each the
   shortlist the app's review card shows, in the words
-  :mod:`tracker.review` gives them.
+  :mod:`tracker.review` gives them - and, where a set-aside row is among
+  the file's candidates, the one line that names it and says how to file
+  there.
 
 **Why a page and not a workbook.** A workbook is a thing a person types
 into, and this is a thing nobody may type into: the read-only attribute,
@@ -94,6 +100,7 @@ from tracker.manifest import (
     COL_IDENTIFIER,
     COL_MANUAL_OVERRIDE,
     COL_MIN_SIZE_KB,
+    COL_OVERRIDE_REASON,
     COL_PERIOD,
     COL_RECEIVED_DATE,
     COL_REQUIRED_KEYWORDS,
@@ -105,9 +112,10 @@ from tracker.manifest import (
     RequestItem,
     Status,
     load_manifest,
+    override_label,
     write_text_atomically,
 )
-from tracker.page import Cell, Row, esc, page_text, slug, table, tolerant_console, unesc
+from tracker.page import Cell, Row, details, esc, page_text, slug, table, tolerant_console, unesc
 from tracker.records import (
     BEHIND,
     CURRENT,
@@ -178,10 +186,15 @@ VIEW_OPEN_LABEL = "Open Status Report"
 NEEDS_REVIEW_FIELDS = ("received", "original_name", "pbc_location", "reason",
                        "candidates", "evidence")
 
-#: What a coloured status word is classed as, and what a row nobody wants
-#: any more is classed as. The colours are matched to each value below.
+#: What a coloured status word is classed as, and what a row set aside as
+#: not applicable is classed as. The colours are matched to each value
+#: below; the Not Applicable badge is classed by the value, whatever year
+#: its label says.
 BADGE_CLASS = "badge"
-WAIVED_CLASS = "waived"
+NOT_APPLICABLE_CLASS = "not-applicable"
+#: The folded block's heading on the Requests section: the label (the
+#: value with the rows' year) and how many rows it holds.
+NOT_APPLICABLE_SECTION = "{label} ({n})"
 _BADGE_COLOURS: dict[str, str] = {
     Status.RECEIVED: "background: #ecfdf5; border-color: #a7f3d0; color: #047857;",
     Status.PARTIAL: "background: #fffbeb; border-color: #fde68a; color: #b45309;",
@@ -189,7 +202,7 @@ _BADGE_COLOURS: dict[str, str] = {
     Status.MISSING: "background: #f1f5f9; border-color: #d8e0ea; color: #475569;",
     Status.PENDING_SYNC: "background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8;",
     Override.ACCEPTED: "background: #ecfdf5; border-color: #a7f3d0; color: #047857;",
-    Override.WAIVED: "background: #f8fafc; border-color: #e2e8f0; color: #64748b;",
+    Override.NOT_APPLICABLE: "background: #f8fafc; border-color: #e2e8f0; color: #64748b;",
 }
 
 #: Inline, because the page is one file that must render from a share, a
@@ -221,7 +234,10 @@ th::after { content: ""; color: #9b978f; }
 th[data-sort="up"]::after { content: " \\2191"; }
 th[data-sort="down"]::after { content: " \\2193"; }
 tr:hover td { background: #f6f5f2; }
-tr.waived td { color: #9b978f; }
+tr.not-applicable td { color: #9b978f; }
+details { margin: 0.6rem 0 0; font-size: 0.87rem; }
+summary { cursor: pointer; color: #6b6862; }
+li.set-aside { color: #6b6862; }
 ul { margin: 0.2rem 0 0; padding-left: 1.2rem; font-size: 0.87rem; }
 li { margin-bottom: 0.2rem; }
 p.nothing { margin: 0.2rem 0 0; color: #6b6862; font-size: 0.87rem; }
@@ -288,7 +304,7 @@ def _text(value: object) -> str:
     return str(value)
 
 
-#: What the page shows about a request: the ten columns a person edits
+#: What the page shows about a request: the eleven columns a person edits
 #: (``manifest.HEADERS``) and the four the record holds. A person wants to
 #: read them side by side, and this is the page that shows them. The
 #: status columns come last, as they always did.
@@ -316,7 +332,9 @@ def request_row(item: RequestItem) -> dict[str, str]:
         COL_REQUIRED_KEYWORDS: ", ".join(item.required_keywords),
         COL_ANY_KEYWORDS: ", ".join(item.any_keywords),
         COL_DATE_PATTERN: _text(item.date_pattern),
-        COL_MANUAL_OVERRIDE: _text(item.manual_override),
+        # The override as a person reads it: a set-aside row says its year.
+        COL_MANUAL_OVERRIDE: override_label(item),
+        COL_OVERRIDE_REASON: _text(item.override_reason),
         COL_STATUS: _text(item.status),
         COL_RECEIVED_DATE: _text(item.received_date),
         COL_FILE_COUNT: _text(item.file_count),
@@ -340,16 +358,41 @@ def _badge(word: str) -> Cell:
 
 def _request_cells(item: RequestItem) -> Row:
     """One Requests row as it is drawn: the statuses as badges, a row the
-    firm no longer wants dimmed rather than dropped - it was asked for once
-    and the page is the record of what was asked."""
+    firm set aside dimmed rather than dropped - it was asked for once and
+    the page is the record of what was asked. The override badge is
+    classed by the *value*, so every year's label is coloured alike."""
     row = request_row(item)
+    set_aside = item.manual_override == Override.NOT_APPLICABLE
     values: list[object] = []
     for header in REQUEST_COLUMNS:
         word = row[header]
-        badged = header in (COL_STATUS, COL_MANUAL_OVERRIDE) and word
-        values.append(_badge(word) if badged else word)
-    dimmed = row[COL_MANUAL_OVERRIDE] == Override.WAIVED
-    return Row(tuple(values), class_name=WAIVED_CLASS if dimmed else "")
+        if header == COL_MANUAL_OVERRIDE and word:
+            values.append(Cell(word, class_name=f"{BADGE_CLASS} {BADGE_CLASS}-{slug(item.manual_override)}",
+                               badge=True))
+        elif header == COL_STATUS and word:
+            values.append(_badge(word))
+        else:
+            values.append(word)
+    return Row(tuple(values), class_name=NOT_APPLICABLE_CLASS if set_aside else "")
+
+
+def _not_applicable_blocks(items: list[RequestItem]) -> list[str]:
+    """The rows set aside as not applicable, folded away under the Requests
+    table: one ``<details>`` per distinct label, in year order, each
+    holding its rows in the same columns, dimmed. Nothing is drawn when
+    there are none - the page does not announce an empty section."""
+    by_label: dict[str, list[RequestItem]] = {}
+    for item in items:
+        if item.manual_override == Override.NOT_APPLICABLE:
+            by_label.setdefault(override_label(item), []).append(item)
+    drawn: list[str] = []
+    for label in sorted(by_label, key=lambda word: (by_label[word][0].year or 0, word)):
+        rows = by_label[label]
+        drawn += details(
+            NOT_APPLICABLE_SECTION.format(label=label, n=len(rows)),
+            table(REQUEST_COLUMNS, (_request_cells(item) for item in rows), sortable=True),
+        )
+    return drawn
 
 
 # ------------------------------------------------------------------ write ----
@@ -424,13 +467,22 @@ def _triage_block(triaged: review.Triage) -> list[str]:
     """One parked file's shortlist, in the words :mod:`tracker.review` gives
     it - the same sentences the app's review card shows, so a person reading
     the page sees what the app would suggest."""
+    # A set-aside row the evidence points at is named, never offered: one
+    # line per identifier under the shortlist, in the sentence review.py
+    # owns, classed apart so a reader can tell a name from a suggestion.
+    set_aside = [
+        f'<li class="set-aside">{esc(review.set_aside_note(one))}</li>'
+        for one in triaged.set_aside
+    ]
     if not triaged.shortlist:
         return [f"<h3>{esc(triaged.entry.original_name)}</h3>",
-                f'<p class="nothing">{esc(review.NOTHING_SUGGESTED)}</p>']
+                f'<p class="nothing">{esc(review.NOTHING_SUGGESTED)}</p>',
+                *(["<ul>", *set_aside, "</ul>"] if set_aside else [])]
     return [
         f"<h3>{esc(triaged.entry.original_name)}</h3>",
         "<ul>",
         *(f"<li>{esc(suggestion.reason)}</li>" for suggestion in triaged.shortlist),
+        *set_aside,
         "</ul>",
     ]
 
@@ -442,6 +494,7 @@ def _body(
     triaged: list[review.Triage],
     stamp: dict[str, str],
 ) -> list[str]:
+    active = [item for item in items if item.manual_override != Override.NOT_APPLICABLE]
     return [
         f"<h1>{esc(engagement_dir.name)} — {esc(VIEW_LABEL)}</h1>",
         f'<p class="stamp">{esc(VIEW_NOTE)}</p>',
@@ -449,8 +502,12 @@ def _body(
         *(f'<a href="#{esc(_anchor(section))}">{esc(section)}</a>' for section in SECTIONS),
         "</nav>",
         *_summary(stamp),
-        *_heading(REQUESTS_SECTION, len(items)),
-        *table(REQUEST_COLUMNS, (_request_cells(item) for item in items), sortable=True),
+        # The active rows in the table; the rows set aside as not applicable
+        # folded below it, per year, so the working view is the working
+        # view and what was set aside is one click away.
+        *_heading(REQUESTS_SECTION, len(active)),
+        *table(REQUEST_COLUMNS, (_request_cells(item) for item in active), sortable=True),
+        *_not_applicable_blocks(items),
         "</section>",
         *_heading(INDEX_HEADING, len(entries)),
         *table(INDEX_COLUMNS, (index_row(entry) for entry in entries), sortable=True),

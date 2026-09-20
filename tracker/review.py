@@ -37,11 +37,18 @@ the bottom of the ranking. That is the right place for it: it is the one
 piece of evidence the *client* wrote rather than the form, so it starts a
 person reading and cannot outrank a word the document itself said.
 
-**A row that wants nothing is never suggested.** ``Override.WAIVED`` says
-the firm no longer needs that document; offering it is offering a known
-wrong answer. Rows a person marked ``NOT_REQUESTED`` (decision 76) are not
-``NEEDS_REVIEW``, so they are never triaged at all, and a row sent back by
-``UNFILED_BY_PERSON`` (decision 77) is parked and is.
+**A row that wants nothing is never suggested - but it is named.**
+``Override.NOT_APPLICABLE`` says the request does not apply this year;
+offering it as a filing target is offering a known wrong answer. When the
+evidence points at such a row anyway, the shortlist says so in one
+sentence (:data:`SET_ASIDE_NOTE`, carried as ``Triage.set_aside``) - the
+row's identifier and its year's label, and that clearing the override in
+the editor is how to file there - so the person who set it aside decides,
+and the machine never files under a row somebody said does not apply
+(decision 116, amending 83). Rows a person marked ``NOT_REQUESTED``
+(decision 76) are not ``NEEDS_REVIEW``, so they are never triaged at all,
+and a row sent back by ``UNFILED_BY_PERSON`` (decision 77) is parked and
+is.
 
 **Three at most.** A shortlist is something a person reads at a glance and
 acts on. Every row that ever said "1099", ranked, is the request list
@@ -61,7 +68,7 @@ from pathlib import Path
 
 from tracker import reasons
 from tracker.filer import NEEDS_REVIEW
-from tracker.manifest import Override, RequestItem, load_manifest
+from tracker.manifest import Override, RequestItem, load_manifest, override_label
 from tracker.records import (
     RULE_ANY,
     RULE_DATE,
@@ -138,6 +145,11 @@ FILENAME_WORDS = "the file name says {term}"
 TERM_WORDS = "'{term}'"
 #: Said of a parked file the evidence says nothing about.
 NOTHING_SUGGESTED = "nothing to suggest - the evidence says nothing about which request this is"
+#: Said of a set-aside row the evidence points at: named, with its year's
+#: label, and never offered as a filing target. ``{identifier}`` and
+#: ``{label}`` are filled from the row; the app fills the same pattern from
+#: the vocabulary.
+SET_ASIDE_NOTE = "{identifier} is {label} - clear it in the editor to file here"
 
 #: How a reason sentence is put together: the request, then what was found,
 #: then the rule that refused it.
@@ -169,8 +181,28 @@ class Suggestion:
 
 
 @dataclass(frozen=True, slots=True)
+class SetAside:
+    """One request the evidence points at that a person set aside as not
+    applicable: its identifier, and the label its year gives it. Named to
+    the person, never suggested (decision 116)."""
+
+    identifier: str
+    label: str
+
+
+def set_aside_note(one: SetAside) -> str:
+    """The one sentence a set-aside row is named with (:data:`SET_ASIDE_NOTE`)."""
+    return SET_ASIDE_NOTE.format(identifier=one.identifier, label=one.label)
+
+
+@dataclass(frozen=True, slots=True)
 class Triage:
     """One parked index row and the shortlist computed for it.
+
+    ``set_aside`` names the rows the evidence pointed at that the shortlist
+    may not offer - rows set aside as not applicable - so the person sees
+    why a document that plainly says "1040" has no suggestion, and what to
+    do about it.
 
     ``genre`` and ``group`` are reserved: what kind of document this looks
     like, and which other parked files belong with it. Both arrive later
@@ -180,6 +212,7 @@ class Triage:
 
     entry: IndexEntry
     shortlist: tuple[Suggestion, ...] = ()
+    set_aside: tuple[SetAside, ...] = ()
     genre: str = ""
     group: str = ""
 
@@ -264,7 +297,7 @@ def shortlist_for(entry: IndexEntry, items: list[RequestItem]) -> tuple[Suggesti
         if known is None:
             continue
         position, item = known
-        if item.manual_override == Override.WAIVED:
+        if item.manual_override == Override.NOT_APPLICABLE:
             continue
         content = tuple(e for e in found if e.rule != RULE_REFUSED)
         if not content:
@@ -273,6 +306,24 @@ def shortlist_for(entry: IndexEntry, items: list[RequestItem]) -> tuple[Suggesti
         suggestions.append(Suggestion(identifier, _reason_for(entry, identifier, found), rank))
     suggestions.sort(key=lambda suggestion: suggestion.rank)
     return tuple(suggestions[:MAX_SUGGESTIONS])
+
+
+def set_aside_for(entry: IndexEntry, items: list[RequestItem]) -> tuple[SetAside, ...]:
+    """The set-aside rows one parked file points at, in the list's order.
+
+    A row is named when it is among the file's candidates or its record
+    carries evidence for it, and a person set it aside as not applicable.
+    It is a name and a sentence, never a :class:`Suggestion`: the person
+    who set the row aside decides whether this document changes that, by
+    clearing the override in the editor - the machine does not file under
+    a row somebody said does not apply (decision 116).
+    """
+    pointed_at = set(entry.candidate_list) | set(entry.evidence_record)
+    return tuple(
+        SetAside(item.identifier, override_label(item))
+        for item in items
+        if item.manual_override == Override.NOT_APPLICABLE and item.identifier in pointed_at
+    )
 
 
 def triage(
@@ -298,7 +349,7 @@ def triage(
     if items is None:
         items = load_manifest(engagement_dir)
     return [
-        Triage(entry, shortlist_for(entry, items))
+        Triage(entry, shortlist_for(entry, items), set_aside_for(entry, items))
         for entry in entries
         if entry.decision == NEEDS_REVIEW
     ]
@@ -332,3 +383,5 @@ if __name__ == "__main__":
             print(f"      {suggestion.reason}")
         if not triaged.shortlist:
             print(f"      {NOTHING_SUGGESTED}")
+        for one in triaged.set_aside:
+            print(f"      {set_aside_note(one)}")

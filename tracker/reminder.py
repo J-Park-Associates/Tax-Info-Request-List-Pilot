@@ -16,9 +16,9 @@ What the client is deliberately *not* asked for:
 - ``Status.RECEIVED`` — it is in.
 - ``Status.PENDING_SYNC`` — it is in; the cloud is still copying it down. Nothing for
   the client to do, so nothing to say.
-- Any row with a Manual Override. ``Override.WAIVED`` is no longer needed and
-  ``Override.ACCEPTED`` has already been judged good enough by a person; re-asking
-  would contradict that person.
+- Any row with a Manual Override. ``Override.NOT_APPLICABLE`` does not apply
+  this year and ``Override.ACCEPTED`` has already been judged good enough by a
+  person; re-asking would contradict that person.
 - Rows whose only problem is that *we* have not looked yet ("review
   manually", an un-OCR'd scan). The document may be perfect. Asking a client
   to resend something we simply have not read is how a firm looks careless,

@@ -117,7 +117,7 @@ from pathlib import Path
 from tracker import ledger, store
 from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
 from tracker.locking import engagement_lock
-from tracker.manifest import TEMP_SUFFIX, Override, RequestItem, label_for, load_manifest
+from tracker.manifest import TEMP_SUFFIX, Override, RequestItem, label_for, load_manifest, override_label
 
 # The records themselves live in tracker/records.py (decision 100). The two
 # names this module no longer uses are re-exported from here so that every
@@ -1409,8 +1409,10 @@ def assign_review_file(
         item = items.get(identifier)
         if item is None:
             raise FilingError(f"no request {identifier!r} in the request list")
-        if item.manual_override == Override.WAIVED:
-            raise FilingError(f"{identifier} is waived; clear the override first")
+        if item.manual_override == Override.NOT_APPLICABLE:
+            # A row a person set aside does not take a filing: the person
+            # clears the override in the editor and files, or leaves it.
+            raise FilingError(f"{identifier} is {override_label(item)}; clear the override first")
 
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}

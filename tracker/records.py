@@ -524,6 +524,8 @@ def info_from_json(raw: dict) -> EngagementInfo:
 #: ``requests`` table is these columns - while the parsing of the values
 #: they came from stays with the manifest. ``tracker.store`` builds its
 #: column list from this, so a field added to the row is added in one place.
+#: ``override_reason`` (decision 116) is last: every row stored before it
+#: existed reads as blank through :func:`rule_from_json`'s default.
 RULE_FIELDS: tuple[str, ...] = (
     "identifier",
     "document",
@@ -537,6 +539,7 @@ RULE_FIELDS: tuple[str, ...] = (
     "date_pattern_derived",
     "manual_override",
     "row",
+    "override_reason",
 )
 
 

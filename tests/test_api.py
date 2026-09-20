@@ -18,12 +18,14 @@ import pytest
 import tracker.api as api
 from tests.conftest import make_engagement
 from tests.samples import PRIOR_YEAR
-from tracker import ledger, store
+from tracker import ledger, store, view
 from tracker.filer import FILED, NEEDS_REVIEW
 from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
     COL_DATE_PATTERN,
     COL_EXPECTED_COUNT,
+    COL_MANUAL_OVERRIDE,
+    COL_OVERRIDE_REASON,
     ManifestError,
     Status,
     load_engagement_info,
@@ -604,6 +606,7 @@ def test_the_vocabulary_carries_every_word_the_review_card_shows(capsys, demo_ro
         MAX_SUGGESTIONS,
         NOTHING_SUGGESTED,
         PLACE_WORDS,
+        SET_ASIDE_NOTE,
     )
 
     vocab = run(capsys, "list")[1]["vocab"]
@@ -620,14 +623,110 @@ def test_the_vocabulary_carries_every_word_the_review_card_shows(capsys, demo_ro
         "identifier_separator": IDENTIFIER_SEPARATOR,
         "places": dict(PLACE_WORDS),
         "max_suggestions": MAX_SUGGESTIONS,
+        "set_aside_note": SET_ASIDE_NOTE,
     }
     # Nothing the card shows is typed in the renderer: every one of these
     # reaches the screen through vocab, never as a literal of its own.
     renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
         encoding="utf-8"
     )
-    for word in (*labels.values(), NOTHING_SUGGESTED, *PLACE_WORDS.values()):
+    for word in (*labels.values(), NOTHING_SUGGESTED, SET_ASIDE_NOTE, *PLACE_WORDS.values()):
         assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
+
+
+def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_label(capsys, demo_root):
+    """Decision 116: every word the editor and the table show about an
+    override is the API's - the reasons, the word that opens the box, the
+    label pattern, the set-aside sentence and the returning-client line -
+    and the reason the editor saves travels in the one rules_changed event
+    beside the override."""
+    from tracker.manifest import (
+        NOT_APPLICABLE_LABEL,
+        OVERRIDE_REASON_OTHER,
+        OVERRIDE_REASONS,
+        Override,
+    )
+    from tracker.review import SET_ASIDE_NOTE
+    from tracker.rollover import ORIGIN_NOT_APPLICABLE
+
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["override_reasons"] == list(OVERRIDE_REASONS)
+    assert vocab["override_reason_other"] == OVERRIDE_REASON_OTHER
+    assert vocab["not_applicable_label"] == NOT_APPLICABLE_LABEL
+    assert vocab["triage"]["set_aside_note"] == SET_ASIDE_NOTE
+    assert vocab["origin_not_applicable"] == ORIGIN_NOT_APPLICABLE
+    assert vocab["not_applicable_carried"] == api.NOT_APPLICABLE_CARRIED
+    assert [c["key"] for c in vocab["columns"]][-2:] == ["manual_override", "override_reason"]
+    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8"
+    )
+    for word in (*OVERRIDE_REASONS, OVERRIDE_REASON_OTHER, *Override.ALL, NOT_APPLICABLE_LABEL,
+                 SET_ASIDE_NOTE, api.NOT_APPLICABLE_CARRIED, view.NOT_APPLICABLE_SECTION):
+        assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
+    for word in (*Override.ALL, OVERRIDE_REASON_OTHER, "Not Applicable in"):
+        assert word not in renderer, word
+
+    spec = {"name": "Smith", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+        {"identifier": "A02", "document": "1098", "required_keywords": "1098", "period": "TY2025"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    rows = payload_of_state(capsys, engagement)["rules"]
+    assert all(row["override_reason"] == "" for row in rows)
+
+    # Accepted with no reason is refused, by row and column, and nothing is recorded.
+    before = ledger.path_for(engagement).read_bytes()
+    refused = [{**rows[0], "manual_override": Override.ACCEPTED}, rows[1]]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": refused, "engagement": {}})
+    assert code == 1 and payload["error"] == (
+        f"Row 1: {COL_OVERRIDE_REASON} is required when {COL_MANUAL_OVERRIDE} is {Override.ACCEPTED}")
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    # The word that opens the box is refused; the typed words are the reason.
+    typed = [{**rows[0], "manual_override": Override.ACCEPTED, "override_reason": OVERRIDE_REASON_OTHER},
+             rows[1]]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": typed, "engagement": {}})
+    assert code == 1 and "needs the reason typed" in payload["error"]
+    edited = [{**rows[0], "manual_override": Override.ACCEPTED, "override_reason": "walked in on Tuesday"},
+              {**rows[1], "manual_override": Override.NOT_APPLICABLE}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": edited, "engagement": {}})
+    assert code == 0, payload
+    assert payload["saved"]["changed"] == ["A01", "A02"]
+    [event] = [e for e in ledger.read_events(engagement) if e[ledger.EVENT_KEY] == ledger.RULES_CHANGED][1:]
+    by_id = {row["identifier"]: row for row in event[ledger.RULES_KEY]}
+    assert by_id["A01"]["manual_override"] == Override.ACCEPTED
+    assert by_id["A01"]["override_reason"] == "walked in on Tuesday"
+    assert by_id["A02"]["manual_override"] == Override.NOT_APPLICABLE
+
+    state = payload["state"]
+    assert state["rules"][0]["override_reason"] == "walked in on Tuesday"
+    assert state["summary"]["not_applicable"] == 1 and state["summary"]["total"] == 1
+    # And the same list again records nothing.
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": state["rules"], "engagement": {}})
+    assert code == 0 and payload["saved"]["recorded"] is False
+
+
+def test_state_ships_each_rows_year_for_the_label(capsys, demo_root):
+    """The renderer labels a set-aside row with the year the API gives the
+    row, from its own Period, and reads nothing out of the Period's text."""
+    from tracker.manifest import Override
+
+    spec = {"name": "Smith", "items": [
+        {"identifier": "A01", "document": "W-2", "period": "TY2025", "manual_override": Override.NOT_APPLICABLE},
+        {"identifier": "A02", "document": "Prior return", "period": "TY2024", "date_pattern": "*"},
+        {"identifier": "A03", "document": "Whenever", "period": "quarterly"},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    state = payload_of_state(capsys, demo_root / "Smith")
+    years = {item["identifier"]: item["year"] for item in state["items"]}
+    assert years == {"A01": 2025, "A02": 2024, "A03": None}
+    [set_aside] = [item for item in state["items"] if item["manual_override"] == Override.NOT_APPLICABLE]
+    assert set_aside["identifier"] == "A01" and set_aside["override_reason"] == ""
 
 
 def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_path):
@@ -1146,7 +1245,8 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     vocab = payload["vocab"]
     assert [s["value"] for s in vocab["statuses"]] == list(Status.ALL)
     assert {s["key"] for s in vocab["statuses"]} == {api._slug(s) for s in Status.ALL}
-    assert vocab["overrides"] == {"accepted": Override.ACCEPTED, "waived": Override.WAIVED}
+    assert vocab["overrides"] == {"accepted": Override.ACCEPTED,
+                                  "not_applicable": Override.NOT_APPLICABLE}
     assert vocab["decisions"] == {"filed": FILED, "needs_review": NEEDS_REVIEW,
                                   "duplicate": DUPLICATE, "dismissed": NOT_REQUESTED}
     assert vocab["review_labels"] == {
@@ -1174,6 +1274,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert {f["key"] for f in editor["engagement_fields"] if f["editable"]} == set(ENGAGEMENT_EDITABLE)
     assert editor["minimums"] == {"expected_count": 1, "min_size_kb": 0}
     assert editor["any_extension"] == "*" and editor["no_date_check"] == "*"
+    assert editor["set_aside_heading"] == view.NOT_APPLICABLE_SECTION
     assert vocab["unscanned_key"] == api._slug(vocab["unscanned_label"])
     assert vocab["commands"] == sorted(api.COMMANDS)
     assert [r["headline"] for r in vocab["rules"]] == [h for h, _ in STANDING_RULES]

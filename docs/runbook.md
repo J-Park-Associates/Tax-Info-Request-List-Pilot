@@ -31,9 +31,9 @@ open:**
 | `_ledger.jsonl` | Never open it. It is the machine's own record of what it decided — the audit trail of every document, every status, and every edit you make to the request list. |
 
 The request list is edited in the app — **Edit Request List** — and nowhere
-else. The ten columns you edit there are Identifier, Document, Period,
+else. The eleven columns you edit there are Identifier, Document, Period,
 Expected Count, Allowed Extensions, Min Size KB, Required Keywords, Any
-Keywords, Date Pattern and Manual Override; **each request's status,
+Keywords, Date Pattern, Manual Override and Override Reason; **each request's status,
 Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
 date, sender, firm, reminders, active — are edited in the same place.
@@ -167,8 +167,10 @@ same day, and the tool's card there prints that sentence.
    where it said it, and the rule that refused it. It is a shortlist and
    never a filing: nothing is moved, no status changes and no lock is taken
    until you press **File it**, the picker is still the whole list so you
-   may file to anything on it, and a request the firm has waived is never
-   offered. A file whose evidence says nothing gets no suggestion at all
+   may file to anything on it, and a request the firm set aside as Not
+   Applicable is never offered — it is named in one line under the
+   shortlist ("C01 is Not Applicable in TY2025 - clear it in the editor to
+   file here"), so you decide whether this document changes that call. A file whose evidence says nothing gets no suggestion at all
    rather than a guess — where the card says so, read the document. The
    same answer is on the command line, without the app:
    `python -m tracker.review` against the engagement folder prints it.
@@ -258,7 +260,7 @@ Two more appear as warnings on the run rather than as index rows:
 **Where to read them:** on the engagement's **Status Report**, in the
 Requests section, beside each row's status — and in the app. They used to
 be a column of the request list; since September 2026 the list holds only
-the ten columns you edit, and every note the machine writes is in the
+the eleven columns you edit, and every note the machine writes is in the
 record and on the page.
 
 Some rows failed because of something the client did. Some failed because
@@ -449,7 +451,8 @@ refused, by name, if they do.
 
 **Next year.** The rollover carries the issuer rows like any other row,
 with their names, statuses cleared. A partnership the client left is a row
-you delete or waive; a new one is a new row, added the same way.
+you delete or set aside as Not Applicable; a new one is a new row, added
+the same way.
 
 ## 9. Who to ask, and where the record is
 

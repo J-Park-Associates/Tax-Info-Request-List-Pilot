@@ -55,9 +55,11 @@ person types.
    Translated into a plain instruction for the client, never quoted.
 5. **Received** — every check passed; the date is stamped once and kept
    through any later regression.
-6. **Accepted / Waived** (Manual Override) — a person's decision. The
+6. **Accepted / Not Applicable** (Manual Override) — a person's decision. The
    scanner keeps refreshing the facts but never touches the status again,
-   and the reminder never asks for the row.
+   and the reminder never asks for the row. Accepted carries the reason the
+   person gave; Not Applicable is shown with the row's year and folded away
+   on the Status Report and in the editor.
 
 ## Rules
 

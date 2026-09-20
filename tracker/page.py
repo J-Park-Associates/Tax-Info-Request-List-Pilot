@@ -81,7 +81,7 @@ class Cell:
 
 @dataclass(frozen=True, slots=True)
 class Row:
-    """One row that wants a class - a waived request, dimmed."""
+    """One row that wants a class - a request set aside as not applicable, dimmed."""
 
     values: tuple[object, ...] = ()
     class_name: str = ""
@@ -129,6 +129,17 @@ def table(columns: Iterable[object], rows: Iterable[Iterable[object] | Row], *,
             drawn.append(cells(row))
     drawn += ["</tbody>", "</table>"]
     return drawn
+
+
+def details(summary: str, lines: Iterable[str]) -> list[str]:
+    """A folded block: a ``<details>`` whose ``<summary>`` is ``summary``,
+    holding ``lines`` of markup already drawn (a :func:`table`, a list).
+
+    A browser folds and unfolds it with no script, so a page with scripts
+    off still opens it on a click; the summary is escaped like every value,
+    the lines are markup this module drew and are not escaped again.
+    """
+    return [f"<details><summary>{esc(summary)}</summary>", *lines, "</details>"]
 
 
 def page_text(lines: Iterable[str]) -> str:

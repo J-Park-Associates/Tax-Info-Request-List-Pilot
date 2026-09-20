@@ -57,6 +57,9 @@ from tracker.manifest import (
     MIN_EXPECTED_COUNT,
     MIN_SIZE_KB_FLOOR,
     NO_DATE_CHECK,
+    NOT_APPLICABLE_LABEL,
+    OVERRIDE_REASON_OTHER,
+    OVERRIDE_REASONS,
     UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
@@ -69,6 +72,7 @@ from tracker.manifest import (
     item_from_fields,
     load_engagement_info,
     load_manifest,
+    rule_as_read,
     save_rules,
     summarize,
     write_text_atomically,
@@ -91,6 +95,7 @@ from tracker.records import (
 )
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
 from tracker.rollover import (
+    ORIGIN_NOT_APPLICABLE,
     ORIGIN_PRIOR,
     UNKNOWN_YEAR_LABEL,
     carry_engagement_info,
@@ -158,6 +163,7 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     template_items,
 )
 from tracker.view import (
+    NOT_APPLICABLE_SECTION,
     VIEW_FILENAME,
     VIEW_LABEL,
     VIEW_OPEN_LABEL,
@@ -224,6 +230,9 @@ EDITOR_WARNINGS_HEADING = "Worth a look"
 RULES_SAVED = "Request list saved: {changed} row(s) changed, {removed} removed"
 NOTHING_CHANGED = "Nothing changed; nothing was recorded."
 LEARNED_NOTE = "taught by a filing: {keywords}"
+#: What the returning-client page says of last year's set-aside rows, in
+#: one line beside the carried and offered counts.
+NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them in the editor"
 
 
 def _new_engagement_dir(name: str) -> Path:
@@ -311,8 +320,9 @@ def _vocab() -> dict:
 
     The app never types a status, an override, a decision, a default or a
     sentence pattern of its own: it reads this once and derives everything
-    (chip classes from the status key, waived from the override value, the
-    parked list from the decision value, the picker from candidates).
+    (chip classes from the status key, a set-aside row from the override
+    value and its label from the row's year, the parked list from the
+    decision value, the picker from candidates).
     """
     return {
         "product": product_name(),
@@ -320,7 +330,19 @@ def _vocab() -> dict:
         "statuses": [{"value": status, "key": _slug(status)} for status in Status.ALL],
         "unscanned_label": UNSCANNED_LABEL,
         "unscanned_key": _slug(UNSCANNED_LABEL),
-        "overrides": {"accepted": Override.ACCEPTED, "waived": Override.WAIVED},
+        "overrides": {"accepted": Override.ACCEPTED, "not_applicable": Override.NOT_APPLICABLE},
+        # How a set-aside row is named to a person: the value with the
+        # row's year, which travels per item as ``year`` in the state so
+        # the renderer computes nothing from the Period's text. The
+        # reasons a person may give for Accepted, and the word that opens
+        # the box for their own words - which is never itself stored.
+        "not_applicable_label": NOT_APPLICABLE_LABEL,
+        "override_reasons": list(OVERRIDE_REASONS),
+        "override_reason_other": OVERRIDE_REASON_OTHER,
+        # The one line the returning-client page adds for last year's
+        # set-aside rows, and the origin value it groups them on.
+        "origin_not_applicable": ORIGIN_NOT_APPLICABLE,
+        "not_applicable_carried": NOT_APPLICABLE_CARRIED,
         # The key a decision is looked up by is the app's handle on it, not
         # the word: NOT_REQUESTED is keyed by the action that writes it,
         # because the renderer may not carry the word "Requested" in any
@@ -345,7 +367,8 @@ def _vocab() -> dict:
         "triage": {"nothing_suggested": review.NOTHING_SUGGESTED,
                    "identifier_separator": review.IDENTIFIER_SEPARATOR,
                    "places": dict(review.PLACE_WORDS),
-                   "max_suggestions": review.MAX_SUGGESTIONS},
+                   "max_suggestions": review.MAX_SUGGESTIONS,
+                   "set_aside_note": review.SET_ASIDE_NOTE},
         "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
         "expected_pattern": EXPECTED_PATTERN,
         "period_pattern": PERIOD_PATTERN,
@@ -402,6 +425,9 @@ def _vocab() -> dict:
             ],
             "yes": YES, "no": NO, "any_extension": ANY_EXTENSION, "no_date_check": NO_DATE_CHECK,
             "minimums": {"expected_count": MIN_EXPECTED_COUNT, "min_size_kb": MIN_SIZE_KB_FLOOR},
+            # The folded group the editor keeps the set-aside rows in,
+            # headed as the Status Report heads its own (decision 116).
+            "set_aside_heading": NOT_APPLICABLE_SECTION,
         },
     }
 
@@ -523,6 +549,9 @@ def _triage_payload(triaged: review.Triage) -> dict:
         "original_name": triaged.entry.original_name,
         "pbc_location": triaged.entry.pbc_location,
         "shortlist": [asdict(suggestion) for suggestion in triaged.shortlist],
+        # The set-aside rows the evidence points at, named with their
+        # year's label and never in the shortlist (decision 116).
+        "set_aside": [asdict(one) for one in triaged.set_aside],
         "genre": triaged.genre,
         "group": triaged.group,
     }
@@ -555,16 +584,21 @@ def _state(engagement: Path) -> dict:
         "summary": {
             "line": summary.line, "counts": summary.counts, "total": summary.total,
             "received": summary.received, "outstanding": summary.outstanding,
-            "waived": summary.waived, "unscanned": summary.unscanned,
+            "not_applicable": summary.not_applicable, "unscanned": summary.unscanned,
         },
+        # Each row with the year its own Period gives, so the renderer
+        # labels a set-aside row without reading the Period's text.
         "items": [
-            asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None}
+            asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None,
+                         "year": i.year}
             for i in items
         ],
-        # The person's rows as stored, the keywords filings taught each
-        # row, and the rows the rules cannot act on - what the editor
+        # The person's rows as stored - read the way every reader reads
+        # them, so a retired override spelling in an old journal reaches
+        # the editor as its successor - the keywords filings taught each
+        # row, and the rows the rules cannot act on: what the editor
         # opens on, and what it shows after a save.
-        "rules": rules,
+        "rules": [rule_as_read(row) for row in rules],
         "learned": {row["identifier"]: list(taught[identifier_key(row["identifier"])])
                     for row in rules if taught.get(identifier_key(row["identifier"]))},
         "warnings": check_rules(items),

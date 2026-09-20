@@ -524,14 +524,15 @@ def test_rows_the_rules_cannot_act_on_are_reported_not_buried(tmp_path, samples)
     assert "! Row 1 (A01)" in text
 
 
-def test_waived_and_accepted_rows_are_not_outstanding(tmp_path, samples):
+def test_not_applicable_and_accepted_rows_are_not_outstanding(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples, drops=())
-    edit_rows(engagement.path, A01={"manual_override": Override.ACCEPTED},
-              A02={"manual_override": Override.WAIVED})
+    edit_rows(engagement.path, A01={"manual_override": Override.ACCEPTED,
+                                    "override_reason": "Client confirmed this is the final version"},
+              A02={"manual_override": Override.NOT_APPLICABLE})
     run = run_engagement(engagement, today=FRIDAY)
     assert run.ok
     assert run.statuses.get(Status.RECEIVED) == 1          # the accepted row
-    assert Override.WAIVED not in run.statuses
+    assert Override.NOT_APPLICABLE not in run.statuses
     assert run.outstanding == len(DEMO_ITEMS) - 2
 
 

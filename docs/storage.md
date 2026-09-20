@@ -11,7 +11,7 @@ row 104 retired the last workbook: **everything is in the record.**
 
 | | |
 |---|---|
-| **the record** holds the person's rules | the ten accountant columns, and nothing else: a request's identifier, its document, its period, how many files are expected, which types and how small, its keywords, its date rule and a Manual Override. Edited in the app's **Edit Request List** editor and nowhere else; every save is one `rules_changed` event. |
+| **the record** holds the person's rules | the eleven accountant columns, and nothing else: a request's identifier, its document, its period, how many files are expected, which types and how small, its keywords, its date rule, a Manual Override and its Override Reason. Edited in the app's **Edit Request List** editor and nowhere else; every save is one `rules_changed` event. |
 | **the record** holds the engagement's details | the client, the share link, the due date, the sender, the firm, whether they are chased, whether the run skips them, what the engagement was rolled from and which catalog it was cut from. Written by the wizard, edited in the same editor, carried in the same event. |
 | **the record** holds what the machine decided | every document and where it went, every request's Status, Received Date, File Count and Validation Notes, every keyword a person's filing taught a request. |
 
@@ -103,10 +103,11 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 3` (decision 104 dropped the workbook's
-digest column; decision 107 added the verdict cache's two tables; a file at
-version 1 or 2 is refused by name, and is deleted and rebuilt — nothing is
-lost, the journals are what it is made of). A file at any other version is
+One file, `PRAGMA user_version = 4` (decision 104 dropped the workbook's
+digest column; decision 107 added the verdict cache's two tables; decision
+116 added the `override_reason` column to `requests`; a file at an earlier
+version is refused by name, and is deleted and rebuilt — nothing is lost,
+the journals are what it is made of). A file at any other version is
 refused by name rather than opened hopefully.
 
 | table | what it holds |
@@ -312,3 +313,12 @@ file the plan had left in the engagement folder: the tier-3 verdict cache
 moved into two tables of the store, `user_version` 3, not journalled, and
 a pass now writes nothing under the clients root but the journal, the
 Status Report and the client's own files.
+
+**Afterwards (decision 116) — the override is recorded with its reason.**
+`override_reason` is a rule field: it travels in the `rules_changed` event
+beside the override and is a column of `requests` (`user_version` 4). The
+second override value is `Not Applicable`; the spelling journals written
+before that decision hold for it is folded to it on every read by the one
+reader of a stored rule row and is never written again — the retired-value
+rule of decision 104 applied to a value. The journal and the store keep
+their bytes; a list read out and saved back unchanged is not an event.

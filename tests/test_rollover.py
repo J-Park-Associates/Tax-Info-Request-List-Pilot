@@ -21,9 +21,11 @@ from tracker.manifest import (
     load_manifest,
 )
 from tracker.rollover import (
+    NOT_APPLICABLE_NOTE,
     ORIGIN_NEW,
+    ORIGIN_NOT_APPLICABLE,
     ORIGIN_PRIOR,
-    ORIGIN_WAIVED,
+    PREVIOUS_NOT_APPLICABLE_HEADING,
     detect_year,
     roll_forward,
     shift_years,
@@ -50,7 +52,7 @@ PRIOR = [
     RequestItem(
         identifier="D01", document="Marketplace Health Insurance", period="TY2025",
         allowed_extensions=("pdf",), min_size_kb=0,
-        manual_override=Override.WAIVED,
+        manual_override=Override.NOT_APPLICABLE, override_reason="no marketplace plan",
     ),
 ]
 
@@ -178,12 +180,24 @@ def test_custom_rows_survive(prior):
 # ------------------------------------------------------------------ decisions ----
 
 
-def test_waived_stays_waived(prior):
-    """Don't ask again for something we decided this client doesn't have."""
-    d01 = rolled_by_id(roll_forward(prior, template=TEMPLATE))["D01"]
-    assert d01.item.manual_override == Override.WAIVED
-    assert d01.origin == ORIGIN_WAIVED
-    assert "clear the override" in d01.note
+def test_not_applicable_rolls_forward_under_its_own_heading_with_the_fresh_decision_note_and_accepted_does_not(prior):
+    """Decision 10 stands and decision 116 groups it: the row carries the
+    override and its reason, under its own origin with last year's label
+    and the two things a person may do; it is not among the carried rows.
+    Accepted is the other half, below."""
+    from tracker.manifest import override_label
+
+    report = roll_forward(prior, template=TEMPLATE)
+    d01 = rolled_by_id(report)["D01"]
+    assert d01.item.manual_override == Override.NOT_APPLICABLE
+    assert d01.item.override_reason == "no marketplace plan"
+    assert d01.origin == ORIGIN_NOT_APPLICABLE
+    assert d01.note == NOT_APPLICABLE_NOTE.format(label="Not Applicable in TY2025")
+    assert "decide afresh" in d01.note and "clear the override in the editor" in d01.note
+    assert override_label(d01.item) == "Not Applicable in TY2026"        # this year's row, this year's label
+    assert [r.item.identifier for r in report.not_applicable] == ["D01"]
+    assert "D01" not in [r.item.identifier for r in report.carried]
+    assert {r.origin for r in report.carried} == {ORIGIN_PRIOR}
 
 
 def test_accepted_does_not_carry(prior):
@@ -195,13 +209,14 @@ def test_accepted_does_not_carry(prior):
     eng = prior
     seed_statuses(eng,
                    {"C01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
-    rows = [replace(row, manual_override=Override.ACCEPTED) if row.identifier == "C01" else row
+    rows = [replace(row, manual_override=Override.ACCEPTED, override_reason="client confirmed")
+            if row.identifier == "C01" else row
             for row in load_manifest(eng)]
     save_rules(eng, rows, load_engagement_info(eng))       # the edit, saved in the app
     ensure(eng)
 
     c01 = rolled_by_id(roll_forward(eng))["C01"].item
-    assert c01.manual_override == ""
+    assert c01.manual_override == "" and c01.override_reason == ""      # nor does its reason
 
 
 def test_unreceived_rows_are_carried_with_a_flag(prior):
@@ -317,13 +332,13 @@ def test_the_created_engagement_loads_back_from_the_record_and_the_report_explai
     items = {i.identifier: i for i in load_manifest(out)}
     assert items["A01"].period == "TY2026"
     assert items["A01"].expected_count == 3
-    assert items["D01"].manual_override == Override.WAIVED
+    assert items["D01"].manual_override == Override.NOT_APPLICABLE
     # Fresh year: no scanner state carried over.
     assert items["A01"].status == "" and items["A01"].received_date is None
 
     origins = {r.item.identifier: r.origin for r in [*report.rolled, *report.offered]}
     assert origins["A01"] == ORIGIN_PRIOR
-    assert origins["D01"] == ORIGIN_WAIVED
+    assert origins["D01"] == ORIGIN_NOT_APPLICABLE
     assert origins["E01"] == ORIGIN_NEW
 
 
@@ -494,6 +509,30 @@ def test_the_rollover_command_line_finishes_its_work_on_a_console_that_cannot_pr
     assert (target / PREPARED_DIR_NAME).is_dir()
     assert (target / SHARED_DIR_NAME / README_NAME).is_file()
     assert "2025 \\u2192 2026" in shown            # the arrow, as its escape
+
+
+def test_the_rollover_command_line_prints_previous_year_not_applicable_after_carried_and_new(
+    prior, monkeypatch,
+):
+    import io
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    target = prior.parent / "Smith TY2026"
+    code = run_the_command_line(
+        monkeypatch, [str(prior), str(target), "--form", "1040", "--include-new"], console,
+    )
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+    assert code == 0, shown
+
+    heading = shown.index(PREVIOUS_NOT_APPLICABLE_HEADING)
+    assert shown.index("CARRIED A01") < shown.index("NEW     E01") < heading
+    assert "Not Applicable in TY2026  D01" in shown[heading:]
+    assert NOT_APPLICABLE_NOTE.format(label="Not Applicable in TY2025") in shown[heading:]
+    assert "WAIVED" not in shown
+    # The row is on next year's list, set aside, not in the active rows.
+    items = {i.identifier: i for i in load_manifest(target)}
+    assert items["D01"].manual_override == Override.NOT_APPLICABLE
 
 
 def test_the_rollover_command_line_scaffolds_before_it_reports(prior, monkeypatch):
