@@ -54,7 +54,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
-import socket
+import platform
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -295,7 +295,10 @@ def lock_is_held(engagement_dir: Path | str) -> bool:
 
 
 def _this_host() -> str:
-    return socket.gethostname().lower()
+    """This machine's name, as the lock line carries it. From ``platform``,
+    not ``socket``: the name is a local fact, and no module under the
+    package imports a network module (decision 115's guard)."""
+    return platform.node().lower()
 
 
 def lock_line(pid: int, started: dt.datetime) -> str:

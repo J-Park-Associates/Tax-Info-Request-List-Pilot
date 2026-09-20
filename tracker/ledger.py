@@ -20,6 +20,13 @@ workbook; nothing writes one now.)
 :func:`tracker.manifest.load_manifest` answers from the store these lines
 are folded into.
 
+**And it is the week's reminder** (decision 115). The pass appends one
+:data:`DRAFTED` event saying which requests the draft asked for, or which
+held the whole draft back for a person, and which file it wrote - when
+that differs from the last one - so ``tracker.runner.last_drafted()`` reads
+the day of the draft from the record rather than from a file time a sync
+client may have set, and the next draft can say what changed since it.
+
 **And it is the person's own rules** (decisions 103 and 104). The request
 list and the engagement's details are created, edited and read only here:
 the app's editor is the one way a rule is entered, and every save is one
@@ -163,9 +170,23 @@ RULES_CHANGED = "rules_changed"
 #: ``RULES_CHANGED``, and :func:`new`, :func:`append` and
 #: ``tracker.store.record`` refuse to write one.
 RULES_IMPORTED = "rules_imported"
-#: A reminder was drafted. Reserved: the reminder writes files and holds no
-#: lock, so nothing appends it yet.
+#: The week's reminder was decided (decision 115). Reserved since decision
+#: 87 because the reminder wrote files and held no lock; written since 115
+#: by the pass, under the lock it has held across the whole pass since
+#: decision 102, and by ``python -m tracker.reminder --write`` under a lock
+#: it takes. It carries identifiers and nothing a client would read: the
+#: requests the draft asked for (:data:`ASKED_KEY`, in the draft's order,
+#: ``[]`` on a quiet week), or the requests that held the whole draft back
+#: for a person (:data:`HELD_KEY`, present only on a hold), and - when a file
+#: was written - which draft file (:data:`FILE_KEY`) and the fingerprint in
+#: its header (:data:`FINGERPRINT_KEY`). Appended only when something moved:
+#: a repeat on the draft day that finds the engagement as the last draft
+#: left it appends nothing (the ``scanned`` rule).
 DRAFTED = "drafted"
+ASKED_KEY = "asked"
+HELD_KEY = "held"
+FILE_KEY = "file"
+FINGERPRINT_KEY = "fingerprint"
 #: A row seeded into the record from an earlier reading of the index: the
 #: bootstrap of decision 87 and the migration of decision 102 wrote these,
 #: and the suite's ``seed_index`` still does.
@@ -235,6 +256,21 @@ def stamp() -> str:
     formats to read back.
     """
     return dt.datetime.now(dt.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def day_of(at: str) -> dt.date:
+    """The local calendar day a :func:`stamp` fell on.
+
+    The stamp is UTC and the runner's day is the office's: a draft written
+    late on the draft day is that day's draft, not the next one's. The one
+    reading of a stamp, beside the one writing of it; a stamp that will not
+    parse is the earliest day there is, so a reader that compares dates
+    treats it as long ago rather than failing on it.
+    """
+    try:
+        return dt.datetime.fromisoformat(at.replace("Z", "+00:00")).astimezone().date()
+    except ValueError:
+        return dt.date.min
 
 
 # ----------------------------------------------------------------- write ----

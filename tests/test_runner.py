@@ -2,7 +2,12 @@
 
 The rules that matter here: reminders are drafted on Saturday and only on
 Saturday, an edited draft survives the weekly run, one client's failure never
-stops another client's run, and nothing is ever sent.
+stops another client's run, an ambiguous request holds the whole reminder
+and the draft is on the record (decision 115), and nothing is ever sent.
+
+The pass reads the day of the last draft from the record, so a test that
+tells the pass ``today`` is a day in March must stamp what the pass records
+on that day: ``stamped_on`` does, and ``pass_on`` is a pass with it.
 """
 
 import datetime as dt
@@ -23,9 +28,17 @@ from tracker.manifest import (
     load_engagement_info,
     save_rules,
 )
-from tracker.records import rule_from_json
+from tracker.records import YES, rule_from_json
 from tracker.registry import SKIP_ROLLED_FORWARD, Engagement, Registry, discover_engagements
-from tracker.reminder import DRAFT_BANNER, DRAFT_FILENAME, NEW_DRAFT_FILENAME
+from tracker.reminder import (
+    CHANGED_ADDED,
+    CHANGED_HEADING,
+    DRAFT_BANNER,
+    DRAFT_FILENAME,
+    HELD_REFUSAL,
+    NEW_DRAFT_FILENAME,
+    is_unedited,
+)
 from tracker.runner import (
     DRAFT_WEEKDAY,
     LOG_FILENAME,
@@ -35,6 +48,7 @@ from tracker.runner import (
     REMINDERS_AUTO,
     REMINDERS_NEVER,
     STATUS_GENERATED,
+    STATUS_HELD,
     STATUS_PAGE_FILENAME,
     WEEKDAY_NAMES,
     EngagementRun,
@@ -42,6 +56,7 @@ from tracker.runner import (
     append_log,
     format_report,
     is_draft_day,
+    last_drafted,
     main,
     run_engagement,
     run_registry,
@@ -70,6 +85,34 @@ def samples(tmp_path_factory):
     folder = tmp_path_factory.mktemp("samples")
     build_samples(folder)
     return folder
+
+
+@pytest.fixture
+def stamped_on(monkeypatch):
+    """Stamp every line the record writes as if written at noon on ``day``.
+
+    Since decision 115 the pass reads the day of the last draft from the
+    ``drafted`` event's own stamp, not from a file time - so a test that
+    tells the pass today is a Saturday in March must let the record say
+    March too. ``ledger.stamp()`` is the one place a stamp is made.
+    """
+    def _on(day: dt.date) -> None:
+        noon = dt.datetime.combine(day, dt.time(12)).astimezone(dt.UTC)
+        monkeypatch.setattr(
+            ledger, "stamp", lambda: noon.isoformat(timespec="seconds").replace("+00:00", "Z"))
+    return _on
+
+
+def pass_on(stamped_on, engagement, day, **kwargs):
+    """One pass on ``day``, with the record stamped that day."""
+    stamped_on(day)
+    return run_engagement(engagement, today=day, **kwargs)
+
+
+def drafted_events(engagement_dir):
+    """The ``drafted`` lines on the record, without their stamps."""
+    return [{k: v for k, v in e.items() if k not in (ledger.EVENT_KEY, ledger.AT_KEY)}
+            for e in ledger.read_events(engagement_dir) if e[ledger.EVENT_KEY] == ledger.DRAFTED]
 
 
 def test_the_runner_has_a_main_the_frozen_entry_can_call(tmp_path, samples, capsys):
@@ -174,16 +217,12 @@ def test_a_draft_day_the_machine_missed_is_caught_up_on_the_next_pass():
     assert should_draft(engagement, SUNDAY, REMINDERS_AUTO, drafted=None) is False
 
 
-def test_a_pass_after_a_missed_saturday_writes_the_weeks_draft(tmp_path, samples):
-    import os
-
+def test_a_pass_after_a_missed_saturday_writes_the_weeks_draft(tmp_path, samples, stamped_on):
     engagement = build_engagement(tmp_path, samples)
-    drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=7)).drafted
-    assert drafted is not None
-    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=7), dt.time(9)).timestamp()
-    os.utime(drafted, (stamp, stamp))                  # written last Saturday
-    assert run_engagement(engagement, today=FRIDAY).drafted is None      # this week not yet due
-    run = run_engagement(engagement, today=SUNDAY)     # Saturday was missed
+    drafted = pass_on(stamped_on, engagement, SATURDAY - dt.timedelta(days=7)).drafted
+    assert drafted is not None                          # on the record as last Saturday's
+    assert pass_on(stamped_on, engagement, FRIDAY).drafted is None      # this week not yet due
+    run = pass_on(stamped_on, engagement, SUNDAY)      # Saturday was missed
     assert run.drafted == engagement.path / DRAFT_FILENAME
 
 
@@ -257,37 +296,32 @@ def test_an_edited_second_draft_is_never_clobbered_by_the_next_repeat(tmp_path, 
     assert second.read_bytes() == edited_new
 
 
-def test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft(tmp_path, samples):
+def test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft(tmp_path, samples, stamped_on):
     # Last week's draft asked for a document that has since arrived. The
     # run's own unedited draft is rewritten as today's (nothing to chase),
     # so it is neither stale text nor an old date; a draft a person edited
     # is theirs and stays exactly as it is.
-    import os
-
-    from tracker.runner import last_drafted
-
     only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
     folder = make_engagement(tmp_path / "Settled TY2025", only_the_return, scaffold=False)
     scaffolded = scaffold_engagement(folder)
     engagement = Engagement(path=folder, info=EngagementInfo(client="John Smith"))
-    drafted = run_engagement(engagement, today=SATURDAY - dt.timedelta(days=7)).drafted
+    drafted = pass_on(stamped_on, engagement, SATURDAY - dt.timedelta(days=7)).drafted
     stale = drafted.read_bytes()
-    stamp = dt.datetime.combine(SATURDAY - dt.timedelta(days=7), dt.time(9)).timestamp()
-    os.utime(drafted, (stamp, stamp))
 
     name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
     (scaffolded.shared_dir / name).write_bytes((samples / name).read_bytes())
-    run = run_engagement(engagement, today=SATURDAY)
+    run = pass_on(stamped_on, engagement, SATURDAY)
     assert run.draft_note == NOTHING_OUTSTANDING and run.drafted is None
     assert drafted.exists() and drafted.read_bytes() != stale          # today's words
-    assert last_drafted(folder) == dt.date.today()
-    assert run_engagement(engagement, today=SATURDAY + dt.timedelta(days=3)).drafted is None
+    # The quiet week is on the record - asked nothing, this file - and that
+    # is where the day of the last draft is read from (decision 115).
+    assert drafted_events(folder)[-1][ledger.ASKED_KEY] == [] and last_drafted(folder) == SATURDAY
+    assert pass_on(stamped_on, engagement, SATURDAY + dt.timedelta(days=3)).drafted is None
 
     drafted.write_bytes(b"a person's own words")
-    os.utime(drafted, (stamp, stamp))
-    run_engagement(engagement, today=SATURDAY)
+    pass_on(stamped_on, engagement, SATURDAY)
     assert drafted.read_bytes() == b"a person's own words"
-    assert last_drafted(folder) == SATURDAY - dt.timedelta(days=7)
+    assert last_drafted(folder) == SATURDAY
 
 
 def test_an_untouched_draft_is_refreshed_in_place(tmp_path, samples):
@@ -326,6 +360,184 @@ def test_a_dry_run_writes_nothing_at_all(tmp_path, samples):
     assert (engagement.path / SHARED_DIR_NAME / f"W-2 John Smith {YEAR}.pdf").exists(), (
         "a dry run must not move the client's file"
     )
+
+
+# ---------------------------------------------- the gate, and the record ----
+# Decision 115: an ambiguous request holds the whole reminder, and the draft
+# is on the record. A copy the router filed cannot fail the content rules on
+# its own filing, so the way a filed copy comes to fail is the firm's own
+# doing - here, a rule edited after filing.
+
+
+def build_chased_engagement(tmp_path, samples, name="Smith TY2025"):
+    """A W-2 filed under A01 (Partial, 1 of 2) and a 1098 filed under C01
+    (Received), with A02, B01 and D01 still Missing."""
+    return build_engagement(tmp_path, samples, name=name,
+                            drops=(f"W-2 John Smith {YEAR}.pdf", "Form 1098 Mortgage Interest.pdf"))
+
+
+def make_ambiguous(engagement_dir, identifier="C01"):
+    """Edit the rule under a filed copy so the copy no longer satisfies it:
+    the fingerprint moves, the copy is re-read, and the row fails the
+    content check with a client-side reason nobody put there. The copy must
+    already be filed - a pass has run - or the edited rule simply parks it."""
+    return edit_rows(engagement_dir, **{identifier: {"required_keywords": ("form 8889",)}})
+
+
+def resolve_by_fixing_the_rule(engagement_dir, identifier, keywords):
+    return edit_rows(engagement_dir, **{identifier: {"required_keywords": keywords}})
+
+
+def test_a_held_engagement_writes_no_draft_retires_its_own_stale_draft_and_leaves_an_edited_one(
+        tmp_path, samples, stamped_on):
+    engagement = build_chased_engagement(tmp_path, samples)
+    first = pass_on(stamped_on, engagement, SATURDAY).drafted
+    assert first == engagement.path / DRAFT_FILENAME and is_unedited(first)
+    # Somebody's edited draft beside the run's own unedited one.
+    edited = engagement.path / NEW_DRAFT_FILENAME
+    edited.write_bytes(first.read_bytes() + b"\r\nPS: ask about the rental.\r\n")
+    kept = edited.read_bytes()
+
+    make_ambiguous(engagement.path)
+    run = pass_on(stamped_on, engagement, SATURDAY + dt.timedelta(days=7))
+
+    assert run.ok and run.drafted is None and run.held == 1
+    assert run.draft_note.startswith(HELD_REFUSAL.split("{")[0]) and "C01" in run.draft_note
+    assert not first.exists(), "the run's own unedited draft reads like a sendable email"
+    assert edited.read_bytes() == kept, "a person's work is theirs"
+    log_path = append_log(tmp_path / LOG_FILENAME, RunReport(today=SATURDAY, runs=[run]))
+    logged = log_path.read_text(encoding="utf-8")
+    assert "held 1" in logged and run.draft_note in logged
+    assert format_report(RunReport(today=SATURDAY, runs=[run])).count("1 held") == 1
+
+
+def test_reminders_always_is_held_too(tmp_path, samples, stamped_on):
+    """Decision 13, amended: the mode forces the attempt, and the attempt is held."""
+    engagement = build_chased_engagement(tmp_path, samples)
+    pass_on(stamped_on, engagement, FRIDAY, reminders=REMINDERS_NEVER)      # files the two drops
+    make_ambiguous(engagement.path)
+    run = pass_on(stamped_on, engagement, FRIDAY, reminders=REMINDERS_ALWAYS)
+    assert run.ok and run.drafted is None and run.held == 1
+    assert "C01" in run.draft_note
+    assert not (engagement.path / DRAFT_FILENAME).exists()
+    assert drafted_events(engagement.path) == [{ledger.HELD_KEY: ["C01"]}]
+
+
+def test_two_ambiguities_one_resolved_still_holds_and_both_resolved_drafts_on_the_next_pass(
+        tmp_path, samples, stamped_on):
+    from tracker.filer import unfile_document
+
+    engagement = build_chased_engagement(tmp_path, samples)
+    pass_on(stamped_on, engagement, SATURDAY)            # asked A02, B01, D01 and A01 (1 of 2)
+    make_ambiguous(engagement.path, "A01")
+    make_ambiguous(engagement.path, "C01")
+    week_two = SATURDAY + dt.timedelta(days=7)
+    held = pass_on(stamped_on, engagement, week_two)
+    assert held.held == 2 and "A01" in held.draft_note and "C01" in held.draft_note
+
+    # One resolved - the rule put back - and the other still open: held.
+    resolve_by_fixing_the_rule(engagement.path, "A01", DEMO_ITEMS[0].required_keywords)
+    still = pass_on(stamped_on, engagement, week_two + dt.timedelta(days=1))
+    assert still.held == 1 and still.drafted is None and "C01" in still.draft_note
+
+    # The other resolved by unfiling the copy: C01 goes Missing and is asked.
+    filed = next(e for e in read_index(engagement.path) if e.identifier == "C01")
+    unfile_document(engagement.path, filed.pbc_location, today=week_two)
+    monday = week_two + dt.timedelta(days=2)
+    run = pass_on(stamped_on, engagement, monday)
+    assert run.held == 0 and run.drafted == engagement.path / DRAFT_FILENAME
+    text = run.drafted.read_text(encoding="utf-8")
+    header, _, body = text.partition("=" * 60)
+    assert CHANGED_HEADING.format(date=SATURDAY.isoformat()) in header
+    assert CHANGED_ADDED.format(label="C01 - Mortgage Interest Statement - Form 1098 (TY2025)") in header
+    assert "(now asked)" not in body and is_unedited(run.drafted)
+    # The draft after the hold is on the record, asked and file; the two
+    # holds before it are one line each - the second Saturday's and the
+    # Sunday's, which said something new.
+    events = drafted_events(engagement.path)
+    assert [ledger.HELD_KEY in e for e in events] == [False, True, True, False]
+    assert events[1][ledger.HELD_KEY] == ["A01", "C01"] and events[2][ledger.HELD_KEY] == ["C01"]
+    assert events[-1][ledger.ASKED_KEY] == ["A02", "B01", "C01", "D01", "A01"]
+    assert events[-1][ledger.FILE_KEY] == DRAFT_FILENAME
+    # And Tuesday finds this week drafted: nothing more until the next draft day.
+    assert pass_on(stamped_on, engagement, monday + dt.timedelta(days=1)).drafted is None
+
+
+def test_the_drafted_event_is_written_under_the_pass_lock_and_only_when_something_changed(
+        tmp_path, samples, stamped_on):
+    engagement = build_chased_engagement(tmp_path, samples)
+    first = pass_on(stamped_on, engagement, SATURDAY)
+    assert first.drafted is not None
+    (events,) = drafted_events(engagement.path)
+    assert events[ledger.ASKED_KEY] == ["A02", "B01", "D01", "A01"]
+    assert events[ledger.FILE_KEY] == DRAFT_FILENAME
+    assert events[ledger.FINGERPRINT_KEY] and events[ledger.FINGERPRINT_KEY] in first.drafted.read_text(encoding="utf-8")
+    assert ledger.HELD_KEY not in events
+    # The draft day's repeat, and the repeat's repeat: nothing moved, nothing appended.
+    pass_on(stamped_on, engagement, SATURDAY)
+    pass_on(stamped_on, engagement, SATURDAY)
+    assert len(drafted_events(engagement.path)) == 1
+    # A week later the same reminder is this week's reminder: one more line,
+    # because the day of the last draft is read from it.
+    pass_on(stamped_on, engagement, SATURDAY + dt.timedelta(days=7))
+    assert len(drafted_events(engagement.path)) == 2
+    assert last_drafted(engagement.path) == SATURDAY + dt.timedelta(days=7)
+    # Written through the store under the pass's lock: the store and the journal agree.
+    conn = store.connect()
+    assert store.last_event(conn, engagement.path, ledger.DRAFTED)[ledger.ASKED_KEY] == events[ledger.ASKED_KEY]
+    # A dry run records nothing.
+    run_engagement(engagement, today=SATURDAY, dry_run=True)
+    assert len(drafted_events(engagement.path)) == 2
+
+
+def test_last_drafted_answers_from_the_record_and_falls_back_to_the_files(tmp_path, samples, stamped_on):
+    import os
+
+    engagement = build_chased_engagement(tmp_path, samples)
+    assert last_drafted(engagement.path) is None
+    # No event yet (a journal from before decision 115): the file's time answers.
+    stale = engagement.path / DRAFT_FILENAME
+    stale.write_text("an old draft", encoding="utf-8")
+    then = dt.datetime.combine(FRIDAY, dt.time(9)).timestamp()
+    os.utime(stale, (then, then))
+    assert last_drafted(engagement.path) == FRIDAY
+    stale.unlink()
+
+    drafted = pass_on(stamped_on, engagement, SATURDAY).drafted
+    assert last_drafted(engagement.path) == SATURDAY
+    # A sync client re-dating the file changes nothing once the record speaks.
+    future = dt.datetime.combine(SATURDAY + dt.timedelta(days=30), dt.time(9)).timestamp()
+    os.utime(drafted, (future, future))
+    assert last_drafted(engagement.path) == SATURDAY
+    # A hold is not a draft: the held week's line leaves the last draft where it was.
+    make_ambiguous(engagement.path)
+    pass_on(stamped_on, engagement, SATURDAY + dt.timedelta(days=7))
+    assert last_drafted(engagement.path) == SATURDAY
+
+
+def test_a_held_engagement_does_not_stop_the_next_engagements_draft(tmp_path, samples, stamped_on):
+    """Decision 16: the hold is one engagement's, inside its own pass."""
+    held = build_chased_engagement(tmp_path, samples, name="Held TY2025")
+    pass_on(stamped_on, held, FRIDAY, reminders=REMINDERS_NEVER)             # files the two drops
+    make_ambiguous(held.path)
+    clean = build_engagement(tmp_path, samples, name="Clean TY2025")
+    stamped_on(SATURDAY)
+    report = run_registry(Registry(source=tmp_path, engagements=[held, clean]), today=SATURDAY)
+    first, second = report.runs
+    assert first.ok and first.held == 1 and first.drafted is None
+    assert second.ok and second.drafted == clean.path / DRAFT_FILENAME
+    assert report.errors == [] and len(report.drafted) == 1 and len(report.held) == 1
+
+
+def test_the_practice_page_says_held_with_the_count(tmp_path, samples, stamped_on):
+    engagement = build_chased_engagement(tmp_path, samples)
+    pass_on(stamped_on, engagement, FRIDAY, reminders=REMINDERS_NEVER)      # files the two drops
+    make_ambiguous(engagement.path)
+    run = pass_on(stamped_on, engagement, SATURDAY)
+    page = write_status_page(tmp_path, RunReport(today=SATURDAY, runs=[run]))
+    text = html.unescape(page.read_text(encoding="utf-8"))
+    assert f"<td>{STATUS_HELD.format(n=1)}</td>" in text
+    assert f"<td>{YES}</td>" not in text, "a held engagement was not drafted"
 
 
 # --------------------------------------------------------- failure isolation ----

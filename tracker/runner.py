@@ -32,6 +32,18 @@ anybody, any time, is still just:
 its own unedited output by the fingerprint in the header; anything else it
 leaves alone and writes ``NEW_DRAFT_FILENAME`` beside it instead.
 
+**An ambiguous request holds the whole reminder** (decision 115). A row the
+drafter cannot put to one side - something arrived and the rules refused
+it, with no firm-side marker - holds that client's draft: no file is
+written, the run's own unedited draft from an earlier week is retired, an
+edited one is left, and the hold is said here, in the run log, on the
+practice page and in the app with the rows named. ``--reminders always``
+is held too; a person clears the question, never the guard. **The draft is
+on the record**: what the week's draft asked, or what held it, and which
+file it wrote is one ``ledger.DRAFTED`` event under the pass's lock, only
+when that moved; the day of the last draft is read from it, and the first
+pass after a hold clears drafts the client by the catch-up rule.
+
 **Every real pass leaves the practice on one page.** ``STATUS_PAGE_FILENAME``
 is written into the clients root at the end of the pass: every engagement
 with what it owes, every file parked for a person across the whole
@@ -68,7 +80,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import store
+from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, ensure, file_drops, read_index
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
@@ -94,8 +106,13 @@ from tracker.reminder import (
     NEW_DRAFT_FILENAME,
     DraftsEditedError,
     ReminderError,
+    draft_changed,
     draft_reminder,
+    drafted_event,
+    held_refusal,
     is_unedited,
+    last_draft_event,
+    record_draft,
     write_draft,
 )
 from tracker.scaffold import scaffold_engagement
@@ -164,6 +181,9 @@ class EngagementRun:
     statuses: dict[str, int] = field(default_factory=dict)
     outstanding: int = 0             # from tracker.manifest.summarize, the one count
     drafted: Path | None = None
+    #: How many ambiguous rows hold this engagement's reminder (decision 115);
+    #: ``draft_note`` names them.
+    held: int = 0
     draft_note: str = ""      # why there is no draft, when there is a reason
     skipped: str = ""         # why the whole engagement was passed over
     error: str = ""           # what went wrong, if anything did
@@ -192,6 +212,8 @@ class EngagementRun:
         parts.append(f"outstanding {self.outstanding}")
         if self.drafted:
             parts.append(f"drafted {self.drafted.name}")
+        if self.held:
+            parts.append(f"held {self.held}")
         return f"OK      {self.engagement.label}: {', '.join(parts)}"
 
 
@@ -217,6 +239,10 @@ class RunReport:
         return [r for r in self.runs if r.drafted]
 
     @property
+    def held(self) -> list[EngagementRun]:
+        return [r for r in self.runs if r.held]
+
+    @property
     def outstanding(self) -> int:
         return sum(r.outstanding for r in self.processed)
 
@@ -235,8 +261,18 @@ def last_draft_day(today: dt.date, weekday: int = DRAFT_WEEKDAY) -> dt.date:
 
 
 def last_drafted(engagement_dir: Path) -> dt.date | None:
-    """The day this engagement's reminder was last drafted, from the draft
-    files themselves; None if it never was."""
+    """The day this engagement's reminder was last drafted; None if it never was.
+
+    From the record first (decision 115): the day of the last ``DRAFTED``
+    event that wrote a file. A hold is not a draft, so a held client stays
+    "not drafted this week" and the catch-up rule drafts it on the first
+    pass after the hold clears. A journal from before the event existed
+    answers from the draft files' own times, as it always did - a time a
+    sync client may have set, which is why the record comes first.
+    """
+    event = last_draft_event(engagement_dir, carrying=ledger.FILE_KEY)
+    if event is not None:
+        return ledger.day_of(str(event.get(ledger.AT_KEY, "")))
     stamps = []
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
         try:
@@ -246,6 +282,14 @@ def last_drafted(engagement_dir: Path) -> dt.date | None:
     return max(stamps) if stamps else None
 
 
+def draft_is_held(engagement_dir: Path) -> bool:
+    """Whether the record's last word on this engagement's reminder is a
+    hold: the draft day came, an ambiguous row held the draft, and no draft
+    has been written since. The week's draft is still owed."""
+    event = last_draft_event(engagement_dir)
+    return event is not None and ledger.HELD_KEY in event
+
+
 def should_draft(
     engagement: Engagement,
     today: dt.date,
@@ -253,6 +297,7 @@ def should_draft(
     weekday: int = DRAFT_WEEKDAY,
     *,
     drafted: dt.date | None = None,
+    held: bool = False,
 ) -> bool:
     """Whether the automated run drafts a reminder for this engagement today.
 
@@ -265,13 +310,18 @@ def should_draft(
     on the draft day drafts on its next pass, when ``drafted`` (the day the
     last draft was written) is older than the draft day that went by. An
     engagement never drafted waits for its first draft day, so a client set
-    up mid-week is not chased the same afternoon.
+    up mid-week is not chased the same afternoon - unless the record says
+    its draft day came and the draft was ``held`` (decision 115): that
+    draft is owed, and the first pass after a person clears the question
+    writes it.
     """
     if not engagement.reminders or mode == REMINDERS_NEVER:
         return False
     if mode == REMINDERS_ALWAYS:
         return True
     if is_draft_day(today, weekday):
+        return True
+    if held:
         return True
     return drafted is not None and drafted < last_draft_day(today, weekday)
 
@@ -341,8 +391,9 @@ def run_engagement(
             run.warnings.extend(scanned.warnings)
 
             if should_draft(engagement, today, reminders, weekday,
-                            drafted=last_drafted(engagement.path)):
-                _draft_step(run, dry_run=dry_run)
+                            drafted=last_drafted(engagement.path),
+                            held=draft_is_held(engagement.path)):
+                _draft_step(run, dry_run=dry_run, today=today, weekday=weekday)
             else:
                 run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
 
@@ -438,8 +489,14 @@ def _worth_a_pass(run: EngagementRun) -> bool:
     return True
 
 
-def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
-    """Draft the reminder for a pass that has decided today is the day. Never sends."""
+def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
+                weekday: int = DRAFT_WEEKDAY) -> None:
+    """Draft the reminder for a pass that has decided today is the day. Never sends.
+
+    Runs inside the pass's lock (decision 102), which is what lets the
+    draft go on the record (decision 115): one ``DRAFTED`` event through
+    the store, appended only when it says something the last one did not.
+    """
     # A dry run recorded nothing, so there is nothing in the record for
     # the drafter to read. Report from the scan we just did in memory
     # rather than reading back statuses that were deliberately not saved.
@@ -451,14 +508,38 @@ def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
         return
 
     engagement = run.engagement
+    # What the record last said (a draft or a hold), and the last draft a
+    # person could have sent: the first is what only-what-changed compares
+    # with, the second is what the header's what-changed block compares
+    # with, so the draft after a hold says what the resolution changed.
+    previous = last_draft_event(engagement.path)
+    last_asked = last_draft_event(engagement.path, carrying=ledger.ASKED_KEY)
     draft = draft_reminder(engagement.path)   # reads the engagement's details itself
+    week = last_draft_day(today, weekday)
+
+    if draft.is_held:
+        # One ambiguous row holds the whole reminder: nothing that reads
+        # like a sendable email may exist for this client, so the run's
+        # own unedited drafts from an earlier week go; a person's edited
+        # one is theirs (decision 15). Said in the note, counted on the
+        # page, and on the record. The same path serves --reminders
+        # always: the mode forces the attempt, and the attempt is held.
+        run.held = len(draft.held)
+        run.draft_note = held_refusal(draft)
+        _retire_unedited_drafts(engagement.path)
+        _record(engagement.path, previous, drafted_event(draft, None))
+        return
+
     if not draft.has_outstanding:
         run.draft_note = NOTHING_OUTSTANDING
-        _refresh_stale_draft(draft, engagement.path)
+        refreshed = _refresh_stale_draft(draft, engagement.path, changed_from=last_asked)
+        _record(engagement.path, previous,
+                drafted_event(draft, refreshed[0] if refreshed else None), since=week)
         return
 
     try:
-        written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True)
+        written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True,
+                              changed_from=last_asked)
     except DraftsEditedError as exc:
         run.draft_note = str(exc)
         return
@@ -468,25 +549,57 @@ def _draft_step(run: EngagementRun, *, dry_run: bool) -> None:
             f"{DRAFT_FILENAME} has been edited, so this week's draft was "
             f"written to {NEW_DRAFT_FILENAME} instead"
         )
+    _record(engagement.path, previous, drafted_event(draft, written), since=week)
 
 
-def _refresh_stale_draft(draft, engagement_dir: Path) -> None:
-    """Nothing is outstanding, and a draft from a week that had something to
-    chase is still there. The run's own unedited draft is rewritten as what
-    the run would say today - the same text ``python -m tracker.reminder``
-    writes - so it is neither stale nor dated as if untouched; one a person
-    has edited is theirs and is left exactly as it is. With the file
-    current, ``last_drafted`` reads this draft day and no weekday pass
-    mistakes the quiet week for a missed one.
+def _record(engagement_dir: Path, previous: dict | None, event: dict, *,
+            since: dt.date | None = None) -> None:
+    """Put the draft on the record when it says something new (decision 115).
+
+    Only what changed, as the scanner's statuses are: the same hold, or the
+    same draft rewritten by the draft day's repeat, appends nothing. A file
+    written in a new draft week is something new - it is the week's draft,
+    and ``last_drafted()`` reads the week from it - so ``since`` is the
+    draft day that went by.
     """
+    if draft_changed(previous, event, since=since):
+        record_draft(engagement_dir, event)
+
+
+def _retire_unedited_drafts(engagement_dir: Path) -> None:
+    """A held client has no draft file (decision 115): the run's own
+    unedited drafts from an earlier week are removed, and one a person has
+    edited is left byte for byte - it is their work, not the run's."""
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
         path = engagement_dir / name
         if not path.is_file() or not is_unedited(path):
             continue
         try:
-            write_draft(draft, path=path)
+            path.unlink()
+        except OSError as exc:    # open in Word, or a sync client mid-upload: next time
+            log.warning("Could not retire %s (%s)", path.name, exc)
+
+
+def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | None = None) -> list[Path]:
+    """Nothing is outstanding, and a draft from a week that had something to
+    chase is still there. The run's own unedited draft is rewritten as what
+    the run would say today - the same text ``python -m tracker.reminder``
+    writes - so it is neither stale nor dated as if untouched; one a person
+    has edited is theirs and is left exactly as it is. Returns the files it
+    refreshed: the first is what the ``DRAFTED`` event names, so
+    ``last_drafted`` reads this draft day and no weekday pass mistakes the
+    quiet week for a missed one.
+    """
+    refreshed: list[Path] = []
+    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
+        path = engagement_dir / name
+        if not path.is_file() or not is_unedited(path):
+            continue
+        try:
+            refreshed.append(write_draft(draft, path=path, changed_from=changed_from))
         except OSError as exc:    # open in Word, or a sync client mid-upload: next time
             log.warning("Could not refresh %s (%s)", path.name, exc)
+    return refreshed
 
 
 def _why_no_draft(engagement: Engagement, today: dt.date,
@@ -551,7 +664,8 @@ def format_report(report: RunReport) -> str:
         "",
         f"  {len(report.processed)} processed, {len(report.errors)} failed, "
         f"{len(report.drafted)} draft(s) written, "
-        f"{report.outstanding} request(s) outstanding",
+        + (f"{len(report.held)} held, " if report.held else "")
+        + f"{report.outstanding} request(s) outstanding",
     ]
     if report.drafted:
         lines.append("  Drafts are drafts: nothing has been sent to anyone.")
@@ -565,7 +679,12 @@ def append_log(path: Path | str, report: RunReport) -> Path:
     stamp = dt.datetime.now().isoformat(timespec="seconds")
     lines = [f"[{stamp}] {report.today.isoformat()} "
              f"reminders={report.reminders} dry_run={report.dry_run}"]
-    lines += [f"    {run.summary()}" for run in report.runs]
+    for run in report.runs:
+        lines.append(f"    {run.summary()}")
+        if run.held and not run.error:
+            # A hold is said with its rows (decision 115): the log is where
+            # a person finds out which request wants their decision.
+            lines.append(f"            {run.draft_note}")
     # A summary names client files, and a name NTFS holds is not always
     # one UTF-8 can (a lone surrogate); the log takes what it can write
     # rather than lose every engagement's line to one name.
@@ -587,6 +706,8 @@ STATUS_NOTHING_PARKED = "Nothing is waiting for a person."
 STATUS_NO_PROBLEMS = "Nothing failed."
 #: What the last-pass cell says for an engagement the page read rather than ran.
 STATUS_NOT_PASSED = "not this pass"
+#: What the Drafted cell says for an engagement whose reminder is held (decision 115).
+STATUS_HELD = "held ({n})"
 STATUS_INDEX_UNREADABLE = "{label}: the index could not be read ({error})"
 
 #: The two tables, column by column, in the order they are drawn. There is
@@ -689,7 +810,7 @@ def _engagement_cells(run: EngagementRun, parked: list[ParkedFile]) -> tuple:
         run.error or run.skipped,
         len(run.warnings),
         run.last_pass.isoformat(sep=" ", timespec="seconds") if run.last_pass else STATUS_NOT_PASSED,
-        YES if run.drafted else "",
+        STATUS_HELD.format(n=run.held) if run.held else (YES if run.drafted else ""),
     )
 
 

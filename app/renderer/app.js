@@ -135,6 +135,14 @@ function render(state) {
   // in the record (decisions 103 and 104).
   $("summary").textContent = state.summary ? state.summary.line : "";
 
+  // One line when an ambiguous request holds this client's reminder
+  // (decision 115): the API sorted the rows and owns the sentence; the
+  // page shows the count and nothing more. The rows themselves are in the
+  // table above with their notes.
+  const held = state.reminder ? state.reminder.held || [] : [];
+  $("reminder-held").textContent = held.length ? fill(vocab.reminder.held_line, { n: held.length }) : "";
+  $("reminder-held").classList.toggle("hidden", held.length === 0);
+
   // The catalog the engagement was cut from, beside its name in the
   // toolbar. It is shown exactly as the record holds it — the catalog's
   // own key is how a person names the return — so the app carries no word

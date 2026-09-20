@@ -205,10 +205,27 @@ The pass writes each engagement's chase email into its folder as
 `tracker.reminder.DRAFT_FILENAME`. If you have already edited that file,
 the run never writes over your edits — it leaves them and puts the newer
 draft beside them under `tracker.reminder.NEW_DRAFT_FILENAME`, so an edited
-draft and a fresh one are never the same file.
+draft and a fresh one are never the same file. A regenerated draft opens
+with what changed since the last one — which requests are now asked for
+that were not, and which no longer are — above the line you paste from, so
+you reconcile in seconds rather than comparing two emails by eye.
 
 Open it, read it, edit it, paste it into Gmail and send it. Nothing in the
 tool sends anything, ever.
+
+**A reminder can be held.** A request whose file arrived and failed
+validation with no firm-side reason is nobody's yet: a copy the tool filed
+cannot fail its own rules, so this is a rule edited after filing, a copy
+dragged into the folder by hand, or a copy replaced — and whether the client
+resends or we fix it here is your call, not the tool's. One such request
+holds that client's whole reminder: no draft is written, the run's own
+unedited draft from an earlier week is removed (one you edited is left
+exactly as it is), and the hold is said in `runs.log`, in the Drafted column
+of the practice page and in the app, with the requests named. Clear the
+question — unfile the copy, fix the rule, or set the row's override — and
+the next pass writes the whole reminder, correct, once. The manual draft
+(`python -m tracker.reminder <engagement_dir> --write`) and `--reminders
+always` are held by the same question; nothing clears it but you.
 
 One warning before you send: if the app or the command line says files the
 client has already sent are still sitting in review, identify those first.

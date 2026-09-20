@@ -104,8 +104,7 @@ The draft asks for the outstanding rows (`Status.OUTSTANDING`) and nothing
 else — a received row is in, a pending-sync row is still copying down, and
 an overridden row was already decided by a person. Internal validation notes
 never reach the client: each one is translated into the plain instruction
-`tracker/reasons.py` pairs it with, with a safe generic ask when the cause
-isn't recognized.
+`tracker/reasons.py` pairs it with.
 
 Two things are deliberately held back from the client and reported to the
 accountant instead:
@@ -115,6 +114,18 @@ accountant instead:
   firm looks careless.
 - A row with no request folder. We can't tell a client we never received
   something we never made a place to put — that's a scaffold problem.
+
+And one thing **holds the whole reminder** for a person (decision 115): a
+row whose file arrived and failed the rules with no firm-side reason. A copy
+the router filed cannot fail its own rules, so that row is a rule edited
+after filing, a copy dragged in by hand or a copy replaced — the firm's
+doing, or the client's, and not the draft's to guess. Nothing is written for
+that client until somebody decides; the run's own earlier draft is removed,
+an edited one is left, and the run log, the practice page and the app name
+the rows. The manual draft is held by the same question. Every draft that
+is written is one `drafted` event on the engagement's record — what it
+asked for and which file — and a regenerated draft opens with what changed
+since the last one, above the line a person pastes.
 
 And if files are still sitting in `00 - Needs Review`, the CLI says so before
 you send: those are documents the client *has* already sent, so a reminder
@@ -198,7 +209,9 @@ scanning running through the day without touching that.
 
 **Reminders are weekly, on Saturday, and always just drafts.** The run writes
 `reminder-draft.txt` into the engagement folder; a person opens it, edits it
-and sends it. Nothing in the scheduled path sends email.
+and sends it. Nothing in the scheduled path sends email — and
+`tests/test_layers.py` pins that no module under `tracker/` imports a mail
+or network module.
 
 How a season is actually run on the firm's one machine — the morning pass,
 the draft day, what the index's reasons mean, and what to do if that machine

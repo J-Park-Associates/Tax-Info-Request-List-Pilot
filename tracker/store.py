@@ -778,6 +778,34 @@ def has_rules_event(conn: sqlite3.Connection, engagement_dir: Path | str) -> boo
     ).fetchone() is not None
 
 
+def last_event(conn: sqlite3.Connection, engagement_dir: Path | str, name: str,
+               *, carrying: str | None = None) -> dict | None:
+    """The newest event of ``name`` this engagement's journal carries, as
+    the line was written, or ``None`` when it never carried one (or the
+    store does not hold the engagement). With ``carrying``, the newest one
+    whose payload has that key: the last ``drafted`` that wrote a file,
+    rather than the last hold.
+
+    Asked of the ``events`` table for the reason :func:`has_rules_event`
+    is: folding a season of lines to find the last ``drafted`` is the cost
+    the store exists to remove, and the store is synced to the journal
+    before a writer asks. What it answers is what the reminder compares
+    this week's draft with (decision 115): whether anything moved since
+    the last one, and what.
+    """
+    row = _engagement_row(conn, engagement_dir)
+    if row is None:
+        return None
+    for found in conn.execute(
+        'SELECT payload FROM events WHERE engagement_id = ? AND "event" = ? ORDER BY seq DESC',
+        (row["id"], name),
+    ):
+        event = json.loads(found["payload"])
+        if carrying is None or carrying in event:
+            return event
+    return None
+
+
 def forget(conn: sqlite3.Connection, engagement_dir: Path | str) -> bool:
     """Delete one engagement's rows, and every row that hangs off them.
 

@@ -1283,6 +1283,43 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                  "task_name": TASK_NAME}
 
 
+def test_state_carries_the_held_rows_and_every_word_is_the_vocabularys(capsys, demo_root):
+    """Decision 115: the app shows one line for a held reminder. The rows
+    come from the reminder's own triage over the rows state already loaded,
+    the sentence from the module that holds the draft, and the renderer
+    types neither - it reads ``vocab.reminder`` and counts."""
+    from tests.conftest import seed_statuses
+    from tracker import reasons
+    from tracker.manifest import StatusUpdate
+    from tracker.reminder import AMBIGUOUS_HOLD, HELD_SUMMARY
+
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"},
+                                       {"identifier": "C01", "document": "Form 1098"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    folder = demo_root / "Smith"
+    seed_statuses(folder, {
+        "A01": StatusUpdate(status=Status.MISSING),
+        "C01": StatusUpdate(status=Status.FAILED, file_count=1,
+                            validation_notes="x.pdf: " + reasons.WRONG_DOCUMENT.format(listed="'1098'")),
+    })
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(folder))
+    assert code == 0
+    held = payload["reminder"]["held"]
+    assert [row["identifier"] for row in held] == ["C01"]
+    assert held[0]["label"].startswith("C01") and held[0]["reason"].startswith(AMBIGUOUS_HOLD)
+    assert payload["reminder"]["last_drafted"] is None      # never drafted
+    assert not (folder / "reminder-draft.txt").exists(), "state never drafts (decision 12)"
+
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["reminder"] == {"held_line": HELD_SUMMARY}
+    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8"
+    )
+    for word in (HELD_SUMMARY, HELD_SUMMARY.split("{")[0].strip(), AMBIGUOUS_HOLD):
+        assert word not in renderer, word
+    assert "vocab.reminder.held_line" in renderer
+
+
 def test_every_chip_class_the_vocabulary_implies_exists_in_the_stylesheet(capsys, demo_root):
     css = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "style.css").read_text(encoding="utf-8")
     vocab = run(capsys, "list")[1]["vocab"]

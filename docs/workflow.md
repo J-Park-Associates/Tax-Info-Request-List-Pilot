@@ -52,7 +52,9 @@ person types.
 3. **Partial** — some of the expected files arrived. Asked for, unless what
    is missing is a file we have not read yet, which goes to a person here.
 4. **Failed Validation** — something arrived that the rules could not use.
-   Translated into a plain instruction for the client, never quoted.
+   With a firm-side reason (a scan nobody has read) it is ours; with none it
+   is ambiguous and **holds the reminder for a person** (decision 115) —
+   never quoted to the client, never guessed at.
 5. **Received** — every check passed; the date is stamped once and kept
    through any later regression.
 6. **Accepted / Not Applicable** (Manual Override) — a person's decision. The

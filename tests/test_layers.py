@@ -24,6 +24,14 @@ takes it to L0. ``validators`` sits at L1 because ``scaffold`` reads one
 helper from it (the placeholder examples the README prints), and its pure
 half is not worth a module of its own until that call can move.
 
+**No mail, no network, in code** (decision 115). The fourth standing rule
+says nothing is ever sent, and until 115 the only pin was the words "never
+sends" in a test. ``FORBIDDEN_MODULES`` names the standard library's mail
+and network modules and the one third-party client anyone reaches for, and
+the AST walk below finds none of them imported anywhere under ``tracker/``
+- at load time or inside a function, plainly or as ``from x.y import``.
+``subprocess`` is not on the list: the build and the scheduler use it.
+
 **Rule 7, amended** (from the implementation plan's rules for every step):
 ``ledger`` and ``locking`` import nothing of the package but each other;
 ``manifest`` imports ``records`` and nothing else at load time, and
@@ -77,6 +85,13 @@ LAYER_OF: dict[str, int] = {module: layer for layer, modules in LAYERS.items() f
 #: Load-time edges that may point upward. None today; an entry here is a
 #: debt with a decision row behind it, removed by the step that pays it.
 ALLOWED_UPWARD: frozenset[tuple[str, str]] = frozenset()
+
+#: What "nothing is ever sent" forbids any module under tracker/ to import,
+#: at any depth: a name here, or any ``name.sub`` under it.
+FORBIDDEN_MODULES: tuple[str, ...] = (
+    "smtplib", "email", "imaplib", "poplib", "ftplib", "urllib", "http", "socket", "ssl",
+    "requests",
+)
 
 
 def _is_main_guard(node: ast.If) -> bool:
@@ -206,3 +221,30 @@ def test_the_filer_and_scanner_cycle_closes_only_at_call_time():
     load, call = import_edges()
     assert "scanner" not in load["filer"] and "filer" not in load["scanner"]
     assert "scanner" in call["filer"] and "filer" in call["scanner"], (call["filer"], call["scanner"])
+
+
+def _imported_names(tree: ast.AST) -> list[str]:
+    """Every dotted module name an import anywhere in ``tree`` reaches:
+    ``import x.y`` and ``from x.y import z`` both give ``x.y``; the walk
+    covers function bodies, class bodies and the ``__main__`` block alike."""
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.append(node.module)
+    return names
+
+
+def test_no_module_under_tracker_imports_a_mail_or_network_module():
+    """Decision 115 pins the fourth standing rule in code: no SMTP, no mail
+    client, no network call - no module that could make one is imported
+    anywhere under tracker/, at load time or at call time."""
+    found = []
+    for path in sorted(PACKAGE.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for name in _imported_names(tree):
+            top = name.split(".")[0]
+            if top in FORBIDDEN_MODULES:
+                found.append(f"{path.name} imports {name}")
+    assert not found, found
