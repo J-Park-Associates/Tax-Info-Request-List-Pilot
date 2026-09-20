@@ -26,6 +26,32 @@ def test_codes_are_unique():
     assert len(codes) == len(set(codes))
 
 
+def _sample(reason: Reason) -> str:
+    return reason.template.format(**{
+        name: "x" for name in ("error", "extension", "allowed", "listed", "pattern")
+    } | {"size_kb": 1.0, "minimum": 5})
+
+
+@pytest.mark.parametrize("reason", ALL, ids=lambda r: r.code)
+def test_no_marker_is_part_of_another_reasons_sentence(reason: Reason):
+    """Decision 121. A marker is how ``find()`` tells one reason from
+    another, so a marker that is also a phrase of some other reason's
+    sentence is a lie waiting for ``ALL``'s order to tell it: three
+    sentences ended "; review manually", and that was ``UNCHECKABLE_TYPE``'s
+    marker, so a scan with no text layer was found as an uncheckable file
+    type. Each marker in its own sentence and in no other."""
+    for other in ALL:
+        if other is not reason:
+            assert not reason.matches(_sample(other)), (reason.code, other.code)
+
+
+@pytest.mark.parametrize("reason", ALL, ids=lambda r: r.code)
+def test_find_gives_every_reason_back_from_its_own_sentence(reason: Reason):
+    """The scanner writes the sentence; the reminder and the review queue
+    must get the same reason back from it, whatever ``ALL``'s order."""
+    assert find("scan.pdf: " + _sample(reason)) is reason
+
+
 def test_find_returns_the_most_specific_reason_first():
     note = "scan.pdf: " + reasons.TOO_SMALL.format(size_kb=3.1, minimum=5)
     assert find(note) is reasons.TOO_SMALL
