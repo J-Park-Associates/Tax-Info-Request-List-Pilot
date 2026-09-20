@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 110,
-    "edges": 562,
-    "reused": 90
+    "edges": 571,
+    "reused": 71
   },
   "node_types": [
     "artifact",
@@ -108,8 +108,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "bba9518fe255de70",
-      "lines": 1156,
+      "sha256": "9a61623e78f59c71",
+      "lines": 1176,
       "cli": "python -m tracker.api",
       "exports": [
         "COMMANDS",
@@ -302,10 +302,11 @@
       "id": "tracker/ledger.py",
       "type": "module",
       "layer": "core",
-      "sha256": "391c632cb2751ecf",
-      "lines": 541,
+      "sha256": "51f36a23e7a36dab",
+      "lines": 577,
       "cli": "python -m tracker.ledger",
       "exports": [
+        "ASKED_KEY",
         "ASSIGNED_BY_PERSON",
         "AT_KEY",
         "BYTES_RECORDED",
@@ -316,7 +317,10 @@
         "EVENT_KEY",
         "FILED",
         "FILES_KEY",
+        "FILE_KEY",
+        "FINGERPRINT_KEY",
         "Folded",
+        "HELD_KEY",
         "IDENTIFIER_KEY",
         "IMPORTED",
         "INFO_KEY",
@@ -342,6 +346,7 @@
         "WAS_KEY",
         "append",
         "apply",
+        "day_of",
         "fold",
         "head",
         "new",
@@ -379,19 +384,23 @@
         "RULES_CHANGED": "'rules_changed'",
         "RULES_IMPORTED": "'rules_imported'",
         "DRAFTED": "'drafted'",
+        "ASKED_KEY": "'asked'",
+        "HELD_KEY": "'held'",
+        "FILE_KEY": "'file'",
+        "FINGERPRINT_KEY": "'fingerprint'",
         "IMPORTED": "'imported'",
         "MIGRATED": "'migrated'",
         "RETIRED_EVENT": "'{name!r} is retired; this version reads it and never writes it'"
       },
-      "role": "The engagement's own append-only record: one JSON object per line in LEDGER_FILENAME, appended under the engagement lock by every writer, and the ONLY copy of what the machine knows AND of what the person typed - the index, every request's status, the keywords people's filings taught, and (decision 104) the request list and the engagement's details as the app's editor saved them. Owns the event names (preserved, filed, parked, duplicate, assigned_by_person, dismissed_by_person, unfiled_by_person, bytes_recorded, keyword_learned, scanned, rules_changed, imported, migrated; drafted reserved; rules_imported retired - read, never written), their payload keys, append() / read_events() / fold() / statuses() / rules() / apply() / replay() / head(), and the file name.",
-      "notes": "Decision 87 wrote it beside the files that already existed and had nothing read it; decision 88 made the readers believe it; DECISION 102 MADE IT THE INDEX; DECISION 103 THE STATUSES AND THE PERSON'S RULES; DECISION 104 THE ONLY PLACE THE RULES ARE. The fold of these lines - through tracker/store.py, which keeps the fold so that no reader pays for it twice - IS what filer.read_index() returns and what manifest.load_manifest() and manifest.load_engagement_info() answer, and nothing else holds those rows. apply() folds a rules_changed event, and the retired rules_imported an older journal carries, the same way (_apply_rules_event): the rows the event carried replace those identifiers, the ones it names as removed go, the details it carried are set; the create carries the whole list and every save only what moved, so the fold of every event is the list - which is what makes store.rebuild_engagement() able to take everything from the journal alone. RETIRED_EVENTS names what this version reads and never writes: new(), append() and store.record() refuse rules_imported by sentence (RETIRED_EVENT), and a digest an old line carries is simply not read. fold() returns rows in the index's own order, and a row that changed identity keeps the place the one it left held. What keeps it honest is the autouse fixture in tests/conftest.py: after every test a store is built from nothing and held to replay() over these lines - the documents, the statuses and the rules alike. Sits at the bottom beside tracker/locking.py and imports only it: the events are plain dicts, so each writer serialises its own rows with the function in tracker/records.py that owns that shape, and no cycle is created. One os.write of the whole line under O_APPEND then fsync, so a kill mid-append leaves at most a torn tail: read_events() ignores it and the next append() truncates it, and nothing else ever rewrites the file. O_APPEND is atomic for concurrent writers on POSIX and is not on Windows, which is why append() refuses unless locking.lock_is_held() says this process holds the engagement lock. Not SQLite: a database file a cloud client syncs is a corrupted database file. migrated is the one event that carries no row - it named the files decision 102's migration moved aside; nothing writes one since 104, and it stays readable. Rows are keyed by the original's PBC location; a row that followed an original the client moved carries the identity it left (was), so the fold drops the vacated one. fold() passes over an event name it does not know and read_events() refuses a bad line anywhere but the tail. The reminder writes files and takes no lock, so drafted is reserved; runner and api reach the writers through the filer, the scanner and the manifest and make no call of their own."
+      "role": "The engagement's own append-only record: one JSON object per line in LEDGER_FILENAME, appended under the engagement lock by every writer, and the ONLY copy of what the machine knows AND of what the person typed - the index, every request's status, the keywords people's filings taught, and (decision 104) the request list and the engagement's details as the app's editor saved them. Owns the event names (preserved, filed, parked, duplicate, assigned_by_person, dismissed_by_person, unfiled_by_person, bytes_recorded, keyword_learned, scanned, rules_changed, drafted, imported, migrated; rules_imported retired - read, never written), their payload keys, append() / read_events() / fold() / statuses() / rules() / apply() / replay() / head(), and the file name.",
+      "notes": "Decision 87 wrote it beside the files that already existed and had nothing read it; decision 88 made the readers believe it; DECISION 102 MADE IT THE INDEX; DECISION 103 THE STATUSES AND THE PERSON'S RULES; DECISION 104 THE ONLY PLACE THE RULES ARE. The fold of these lines - through tracker/store.py, which keeps the fold so that no reader pays for it twice - IS what filer.read_index() returns and what manifest.load_manifest() and manifest.load_engagement_info() answer, and nothing else holds those rows. apply() folds a rules_changed event, and the retired rules_imported an older journal carries, the same way (_apply_rules_event): the rows the event carried replace those identifiers, the ones it names as removed go, the details it carried are set; the create carries the whole list and every save only what moved, so the fold of every event is the list - which is what makes store.rebuild_engagement() able to take everything from the journal alone. RETIRED_EVENTS names what this version reads and never writes: new(), append() and store.record() refuse rules_imported by sentence (RETIRED_EVENT), and a digest an old line carries is simply not read. fold() returns rows in the index's own order, and a row that changed identity keeps the place the one it left held. What keeps it honest is the autouse fixture in tests/conftest.py: after every test a store is built from nothing and held to replay() over these lines - the documents, the statuses and the rules alike. Sits at the bottom beside tracker/locking.py and imports only it: the events are plain dicts, so each writer serialises its own rows with the function in tracker/records.py that owns that shape, and no cycle is created. One os.write of the whole line under O_APPEND then fsync, so a kill mid-append leaves at most a torn tail: read_events() ignores it and the next append() truncates it, and nothing else ever rewrites the file. O_APPEND is atomic for concurrent writers on POSIX and is not on Windows, which is why append() refuses unless locking.lock_is_held() says this process holds the engagement lock. Not SQLite: a database file a cloud client syncs is a corrupted database file. migrated is the one event that carries no row - it named the files decision 102's migration moved aside; nothing writes one since 104, and it stays readable. Rows are keyed by the original's PBC location; a row that followed an original the client moved carries the identity it left (was), so the fold drops the vacated one. fold() passes over an event name it does not know and read_events() refuses a bad line anywhere but the tail. The reminder writes files and takes no lock, so drafted is reserved; runner and api reach the writers through the filer, the scanner and the manifest and make no call of their own. Decision 115 unreserved DRAFTED: written by the pass under the lock it holds and by the reminder's CLI under one it takes, carrying ASKED_KEY (identifiers asked, in order; [] on a quiet week) or HELD_KEY (identifiers that held the draft), and FILE_KEY / FINGERPRINT_KEY when a file was written - identifiers only, never a word of the email; appended only when something moved. day_of() is the one reading of a stamp, the local day it fell on, beside stamp() the one writing."
     },
     {
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7e7be93da83f9b23",
-      "lines": 345,
+      "sha256": "32f35969e0ae486e",
+      "lines": 348,
       "exports": [
         "EngagementLock",
         "EngagementLockedError",
@@ -415,7 +424,7 @@
         "RELEASED_LINE": "'released=1'"
       },
       "role": "One lock per engagement (LOCK_FILENAME, O_EXCL, stale after STALE_LOCK_SECONDS), held by runner.run_engagement() across a whole pass, by the filer or the scanner on its own when either is run alone, and by the manifest's two writes. EngagementLock (the open handle and its token), EngagementLockedError; engagement_lock() context manager, taken before the request list, the record or the drop folder is read.",
-      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's rows were written from a stale picture. The filer moves and records; the scanner records statuses; the manifest records a person's edit (decision 104) - all under this one lock, one protocol. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it. One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice. Decision 54: pid_alive() - a lock whose owner process is gone is stale at any age. Decision 56: the lock line carries host=; another host's pid is unknowable, never dead. Decision 59: a lock that cannot be deleted on release is marked RELEASED_LINE. Decision 102: the lock is not re-entrant - it is an O_EXCL file - so the steps a pass makes take a lock_held flag and skip taking it, and a writer that may be reached with the lock already held (manifest.save_rules(), the journal's append) asks lock_is_held() rather than taking it twice."
+      "notes": "Exists because two runs on one engagement (scheduler repeat overlapping a desktop click) raced on the same originals and the loser's rows were written from a stale picture. The filer moves and records; the scanner records statuses; the manifest records a person's edit (decision 104) - all under this one lock, one protocol. Dry runs never take it. The descriptor stays open while held (Windows then refuses to delete it, so a stale-looking lock its owner still holds is refused) and release_lock() removes the file only if it still carries this run's token. RUN_TIME_LIMIT_SECONDS is the one number for how long a scheduled pass may run: tracker.scheduling renders it as the task's ExecutionTimeLimit and STALE_LOCK_SECONDS is derived above it. One machine per clients root: a lock file synced between two machines is not a lock. lock_status()/clear_stale_lock() back the app's lock notice. Decision 54: pid_alive() - a lock whose owner process is gone is stale at any age. Decision 56: the lock line carries host=; another host's pid is unknowable, never dead. Decision 59: a lock that cannot be deleted on release is marked RELEASED_LINE. Decision 102: the lock is not re-entrant - it is an O_EXCL file - so the steps a pass makes take a lock_held flag and skip taking it, and a writer that may be reached with the lock already held (manifest.save_rules(), the journal's append) asks lock_is_held() rather than taking it twice. Decision 115: the machine's name in the lock line comes from platform.node(), not from the socket module - the same name, and the package imports no network module."
     },
     {
       "id": "tracker/manifest.py",
@@ -726,11 +735,15 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "55da136ab07dc104",
-      "lines": 625,
+      "sha256": "62a3f8ffae28074e",
+      "lines": 870,
       "cli": "python -m tracker.reminder",
       "exports": [
+        "AMBIGUOUS_HOLD",
         "BOTH_DRAFTS_EDITED",
+        "CHANGED_ADDED",
+        "CHANGED_HEADING",
+        "CHANGED_REMOVED",
         "DRAFT_BANNER",
         "DRAFT_FILENAME",
         "DROP_ANYWHERE",
@@ -740,6 +753,9 @@
         "FirmSideFlag",
         "HELD_BACK_HEADING",
         "HELD_BACK_LINE",
+        "HELD_LINE",
+        "HELD_REFUSAL",
+        "HELD_SUMMARY",
         "NEW_DRAFT_FILENAME",
         "OUTSTANDING",
         "PARTIAL_ASK",
@@ -748,6 +764,7 @@
         "REVIEW_WARNING",
         "ReminderDraft",
         "ReminderError",
+        "ReminderHeldError",
         "ReminderLine",
         "SECTION_FAILED",
         "SECTION_MISSING",
@@ -757,9 +774,15 @@
         "SUBJECT_NEEDED",
         "client_ask",
         "count_needs_review",
+        "draft_changed",
         "draft_fingerprint",
         "draft_reminder",
+        "drafted_event",
+        "held_refusal",
         "is_unedited",
+        "last_draft_event",
+        "record_draft",
+        "recorded_fingerprint",
         "triage",
         "write_draft"
       ],
@@ -772,6 +795,13 @@
         "DROP_ANYWHERE": "'Everything goes in the same place - just drop it into the shared'",
         "HELD_BACK_HEADING": "'NOT ASKED FOR'",
         "HELD_BACK_LINE": "'NOT ASKED'",
+        "HELD_LINE": "'HELD'",
+        "AMBIGUOUS_HOLD": "'held - a person decides whether the client resends this or we fix it here'",
+        "HELD_REFUSAL": "'the reminder is held: {n} request(s) need a person to decide whether the client resends or we fix it here - {listed}; nothing was written'",
+        "HELD_SUMMARY": "'Reminder held: {n} request(s) need a decision'",
+        "CHANGED_HEADING": "'Changed since the draft of {date}:'",
+        "CHANGED_ADDED": "'  + {label}   (now asked)'",
+        "CHANGED_REMOVED": "'  - {label}   (no longer asked)'",
         "REVIEW_ADVICE": "'Identify them before sending, or you may ask for something you have.'",
         "PARTIAL_ASK": "'{have} of {expected} received, {missing} still to come'",
         "EXTENSION_ASK": "'we cannot open that file type; please send it as {accepted}'",
@@ -780,8 +810,8 @@
         "SECTION_PARTIAL": "'STARTED, BUT NOT COMPLETE'",
         "SECTION_FAILED": "'RECEIVED, BUT WE COULD NOT USE IT'"
       },
-      "role": "Drafts the client chase email from a scanned engagement's record. Draft only - there is no SMTP anywhere in this module.",
-      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Reads the engagement's details from the record for client, link, due, sender and firm (manifest.load_engagement_info(); a folder with no record is a ReminderError naming the journal's file); keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing. Decision 62: EXTENSION_ASK names the row's own file types; --write preserves edits. Decision 76: count_needs_review() is still the folder's count less the working copies whose newest index row is filer.NOT_REQUESTED. An index it cannot read leaves every file counted. Decision 103: the draft is built from the record alone; a status only the record holds is what it counts."
+      "role": "Drafts the client chase email from a scanned engagement's record, or holds it for a person. Draft only - there is no SMTP anywhere in this module, and tests/test_layers.py pins that no module under the package imports a mail or network one.",
+      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Reads the engagement's details from the record for client, link, due, sender and firm (manifest.load_engagement_info(); a folder with no record is a ReminderError naming the journal's file); keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing. Decision 62: EXTENSION_ASK names the row's own file types; --write preserves edits. Decision 76: count_needs_review() is still the folder's count less the working copies whose newest index row is filer.NOT_REQUESTED. An index it cannot read leaves every file counted. Decision 103: the draft is built from the record alone; a status only the record holds is what it counts. Decision 115: triage() returns a fourth list, held - a Failed row with no firm-side marker, or a Partial whose shortfall is a refused file, is ambiguous (AMBIGUOUS_HOLD) and one such row holds the whole draft: write_draft() raises ReminderHeldError (HELD_REFUSAL, naming every held row) before touching a file, the CLI prints HELD lines and --write exits 2, and SECTION_FAILED left SECTION_ORDER (unreachable from a pass; client_ask()'s Failed branch kept for an action a person may one day record). A firm-side marker on any outstanding status, Missing included, is the firm's (109's rule stated once). The draft is on the record: drafted_event() builds the ledger.DRAFTED event (asked identifiers, file and fingerprint; or held identifiers), draft_changed() says whether it differs from the last one (or is a new draft week's, when the caller passes the week), record_draft() writes it through store.record() under the caller's lock, last_draft_event() reads the newest (or the newest carrying a key). write_draft(changed_from=...) opens the header with CHANGED_HEADING / CHANGED_ADDED / CHANGED_REMOVED against the last event that carried asked, above the separator. HELD_SUMMARY is the one line the app shows, through api._vocab()."
     },
     {
       "id": "tracker/review.py",
@@ -896,8 +926,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fb1d2c7b9a852803",
-      "lines": 886,
+      "sha256": "78b7ab57a3166eec",
+      "lines": 1007,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -920,6 +950,7 @@
         "STATUS_COLUMNS",
         "STATUS_ENGAGEMENTS_HEADING",
         "STATUS_GENERATED",
+        "STATUS_HELD",
         "STATUS_INDEX_UNREADABLE",
         "STATUS_NOTHING_PARKED",
         "STATUS_NOT_PASSED",
@@ -930,6 +961,7 @@
         "VIEW_NOT_REGENERATED",
         "WEEKDAY_NAMES",
         "append_log",
+        "draft_is_held",
         "format_report",
         "is_draft_day",
         "last_draft_day",
@@ -963,11 +995,12 @@
         "STATUS_NOTHING_PARKED": "'Nothing is waiting for a person.'",
         "STATUS_NO_PROBLEMS": "'Nothing failed.'",
         "STATUS_NOT_PASSED": "'not this pass'",
+        "STATUS_HELD": "'held ({n})'",
         "STATUS_INDEX_UNREADABLE": "'{label}: the index could not be read ({error})'",
         "REVIEW_COLUMNS": "('Received', 'Engagement', 'File the client sent', 'Reason', 'Candidates')"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose record could not be read fails alone with the reason (RECORD_UNREADABLE), and so does a legacy folder the registry listed. _worth_a_pass() is the pre-checks: skips are not failures, and the warnings the pass reports are manifest.check_rules() over the list the record holds - the same list the app's state carries. Scaffolds each engagement before filing (a row added in the app gets its folder), leaves Override.NOT_APPLICABLE rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too. main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed; an engagement never drafted waits for its first draft day. Decisions 57 and 60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) and one a person has edited is never touched. Decision 67: main() makes the console take what it cannot encode before it parses a flag; since decision 108 that guard is page.tolerant_console(), shared by every command line, and main() calls it. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run; status_report() folds the runs just made into every engagement the registry found and reads the rest (no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; skipped_because() is the one wording of why an engagement is passed over. Decision 87: the pass gained no call of its own on tracker/ledger.py. Decision 102: run_engagement() holds ONE engagement lock across scaffold, file, scan and view, and tells each step the lock is held; a dry run takes none; a lock it cannot get is a skip. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates the read-only view; a view whose replace did not land leaves run.view_stale set on a run that still succeeds. Decision 91: write_status_page() is drawn through tracker/page.py. Decision 103: the status page lost its Deferred writes column; nothing a pass decides waits for anything. Decision 104: the pass begins with filer.ensure(), the store's top-up, and nothing in it reads or writes a workbook; the 'Problem or skipped' cell shows the legacy sentence for a folder the tracker no longer reads."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose record could not be read fails alone with the reason (RECORD_UNREADABLE), and so does a legacy folder the registry listed. _worth_a_pass() is the pre-checks: skips are not failures, and the warnings the pass reports are manifest.check_rules() over the list the record holds - the same list the app's state carries. Scaffolds each engagement before filing (a row added in the app gets its folder), leaves Override.NOT_APPLICABLE rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too. main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed; an engagement never drafted waits for its first draft day. Decisions 57 and 60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) and one a person has edited is never touched. Decision 67: main() makes the console take what it cannot encode before it parses a flag; since decision 108 that guard is page.tolerant_console(), shared by every command line, and main() calls it. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run; status_report() folds the runs just made into every engagement the registry found and reads the rest (no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; skipped_because() is the one wording of why an engagement is passed over. Decision 87: the pass gained no call of its own on tracker/ledger.py. Decision 102: run_engagement() holds ONE engagement lock across scaffold, file, scan and view, and tells each step the lock is held; a dry run takes none; a lock it cannot get is a skip. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates the read-only view; a view whose replace did not land leaves run.view_stale set on a run that still succeeds. Decision 91: write_status_page() is drawn through tracker/page.py. Decision 103: the status page lost its Deferred writes column; nothing a pass decides waits for anything. Decision 104: the pass begins with filer.ensure(), the store's top-up, and nothing in it reads or writes a workbook; the 'Problem or skipped' cell shows the legacy sentence for a folder the tracker no longer reads. Decision 115: _draft_step() runs the gate - a held draft writes nothing, _retire_unedited_drafts() removes the run's own unedited drafts and leaves an edited one, run.held counts the rows and run.draft_note is the refusal (in the console, the log and the practice page's Drafted cell as STATUS_HELD); --reminders always is held too (decision 13 amended). Every draft step ends in _record(): one DRAFTED event through the reminder's record_draft() under the pass's lock, only when something changed or the week's draft is a new week's. last_drafted() answers from the last DRAFTED that wrote a file, and falls back to the files' times for a journal from before 115; draft_is_held() says whether the record's last word is a hold, and should_draft(held=True) drafts on the first pass after the hold clears, first draft or not."
     },
     {
       "id": "tracker/scaffold.py",
@@ -1153,8 +1186,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9b6c896cab6113fa",
-      "lines": 1594,
+      "sha256": "6ef8dcdc35bcc0ef",
+      "lines": 1622,
       "cli": "python -m tracker.store",
       "exports": [
         "BUSY_TIMEOUT_MS",
@@ -1186,6 +1219,7 @@
         "forget",
         "has_rules_event",
         "key_root",
+        "last_event",
         "learned_keywords",
         "open",
         "path_for",
@@ -1214,7 +1248,7 @@
         "ENGAGEMENTS_CSV": "'engagements.csv'"
       },
       "role": "The store: one SQLite file per clients root (STORE_FILENAME) on the designated machine's local disk, beside the settings file, holding engagements, requests, statuses, learned_keywords, documents and events for every engagement under that root, all folded from the journal and from nothing else - and, since decision 107, the two tables of the tier-3 verdict cache, VERDICTS_TABLE and FILE_MEMOS_TABLE, which are NOT the record's: derived from the bytes and the rules, never journalled, left empty by a rebuild and never compared by check(). Owns the file name, the schema and its user_version (bumped by decision 104 when the workbook digest column left, and by 107 when the cache's two tables arrived), path_for(), open(), connect() / close() (one connection per process, to the file TRACKER_STORE names or the one beside the settings file), documents(), rules(), statuses(), learned_keywords() and engagement_info() (what the readers answer from), record() (the journal first, then one immediate transaction), sync() and follow_the_journal() (replay the lines the store has not applied, building the engagement from the journal alone where it has none), rebuild_engagement() (delete and build again from the journal), cached_verdicts() and remember_verdicts() (the verdict cache's one read and one write - the write is its own immediate transaction under the engagement lock, never record()), forget() (drop a failed create's row), check() (every disagreement with the journal, as sentences), state() (current / behind / unknown, from the journal's head alone), export() (three CSVs on demand, every cell text, a cell that begins like a formula behind an apostrophe) and the CLI that rebuilds, checks, exports or states a whole clients root - its first argument read by store_named(): the app folder, the settings file in it, or the store file itself, and anything else refused so a typo never creates a store; a store open() refuses is said in its one sentence with exit 1, never a traceback (decision 107).",
-      "notes": "Decision 101 built it and had nothing read it; 102 moved the index into it; 103 the statuses and the person's rules; 104 took away the last thing that was passed in from anywhere else. WHERE IT LIVES IS THE POINT: never under the clients root and never in an engagement folder, because those sync and a synced database file is a corrupted one - decision 87's finding, kept, with the owner's 2026-09-19 decision adding the local database the other side of that line. The journal stays in the folder and travels with the engagement; the store is local and disposable, and the arrow only points one way - the store is rebuilt from the journal, never the reverse. THE GUARANTEE is journal-then-apply: record() refuses outside the engagement lock and refuses a retired event name by sentence, appends each event through append() and only then folds them in one BEGIN IMMEDIATE, so a machine that dies between the two leaves the journal ahead and sync() replays the difference. The fold has one owner, apply() in tracker/ledger.py, so a line-at-a-time replay and a whole-file fold cannot differ. ONE CONNECTION PER PROCESS: connect() opens it on first use and every writer deep in the package asks for it by name; close() lets it go, which Windows needs before a database file can be deleted. TRACKER_STORE overrides where it is - the suite points every test at its own file. It imports records, ledger and locking and nothing else of the package at load time - narrower than its layer allows, so the database the readers answer from never depends on the modules that walk folders and move files; connect() reads tracker/settings.py at call time and the CLI imports the registry at call time to find the folders. The gate is check(), run by the autouse fixture in tests/conftest.py over every engagement the suite leaves behind: the documents, the statuses and the rules are all compared with ledger.replay() over the journal, always - an engagement with no rules event has none on either side. Decision 104: the requests table is the fold of rules_changed (and of the rules_imported lines older journals carry, which _apply_rules_event folds the same way); rules() returns [] for an engagement the store holds and None only for one it does not; has_rules_event() is what a save is a difference from; rebuild_engagement() takes nothing but the journal (the workbook-fed fallback, the sequence number workbook rows were marked with, the digest column and its bookkeeping all went, and the schema guard that refused a request row whose fields had moved is a test in tests/test_store.py now); state() has one stamp, the journal's head, because a rules edit is an event; forget() is what a failed create leaves behind - nothing - and writes nothing to any journal. A version-1 file is refused by the sentence open() has always had, and is deleted and rebuilt: the store is disposable and no store at the office predates this chain. key_root() is the one rule for the key an engagement is stored under (root_for() is its name for a caller with no root in hand): the root the settings file names whenever the folder is under it - the record's own root, which wins over the root a caller typed, so a pass run on one client's folder and a check given the drive key the engagement as the app does - else the caller's root, else the folder's parent. _engagement_row() answers by that exact key, and under the recorded root by nothing else: a folder there with no row is one the store has not met, never another engagement whose key its path ends with (decision 106; the pre-integration audit found Clients/Archive/Smith 2025 answered as Clients/Smith 2025's row). The tail - the one stored path the folder ends with, longest wins - answers only where no recorded root covers the folder, which is decision 103's end-to-end finding on a machine with no settings file. Decision 107: the verdict cache's two tables are per engagement and cascade with it; cached_verdicts() returns the memos and the verdicts at the CACHE_VERSION the caller names as plain dicts and JSON text (this module never learns the verdict's record - test_layers pins that it imports nothing above it); remember_verdicts() deletes the rows at other versions, the paths and digests pruned, and upserts what was learned, refusing outside the lock and for an unknown engagement by the two sentences record() uses (_held_under_the_lock()). A version-2 file is refused by the same sentence a version-1 file was. RULE_COLUMNS is built from records.RULE_FIELDS; _rule_from_sql() hands the list fields back as lists and the flag as a boolean, the shape the API hands the editor."
+      "notes": "Decision 101 built it and had nothing read it; 102 moved the index into it; 103 the statuses and the person's rules; 104 took away the last thing that was passed in from anywhere else. WHERE IT LIVES IS THE POINT: never under the clients root and never in an engagement folder, because those sync and a synced database file is a corrupted one - decision 87's finding, kept, with the owner's 2026-09-19 decision adding the local database the other side of that line. The journal stays in the folder and travels with the engagement; the store is local and disposable, and the arrow only points one way - the store is rebuilt from the journal, never the reverse. THE GUARANTEE is journal-then-apply: record() refuses outside the engagement lock and refuses a retired event name by sentence, appends each event through append() and only then folds them in one BEGIN IMMEDIATE, so a machine that dies between the two leaves the journal ahead and sync() replays the difference. The fold has one owner, apply() in tracker/ledger.py, so a line-at-a-time replay and a whole-file fold cannot differ. ONE CONNECTION PER PROCESS: connect() opens it on first use and every writer deep in the package asks for it by name; close() lets it go, which Windows needs before a database file can be deleted. TRACKER_STORE overrides where it is - the suite points every test at its own file. It imports records, ledger and locking and nothing else of the package at load time - narrower than its layer allows, so the database the readers answer from never depends on the modules that walk folders and move files; connect() reads tracker/settings.py at call time and the CLI imports the registry at call time to find the folders. The gate is check(), run by the autouse fixture in tests/conftest.py over every engagement the suite leaves behind: the documents, the statuses and the rules are all compared with ledger.replay() over the journal, always - an engagement with no rules event has none on either side. Decision 104: the requests table is the fold of rules_changed (and of the rules_imported lines older journals carry, which _apply_rules_event folds the same way); rules() returns [] for an engagement the store holds and None only for one it does not; has_rules_event() is what a save is a difference from; rebuild_engagement() takes nothing but the journal (the workbook-fed fallback, the sequence number workbook rows were marked with, the digest column and its bookkeeping all went, and the schema guard that refused a request row whose fields had moved is a test in tests/test_store.py now); state() has one stamp, the journal's head, because a rules edit is an event; forget() is what a failed create leaves behind - nothing - and writes nothing to any journal. A version-1 file is refused by the sentence open() has always had, and is deleted and rebuilt: the store is disposable and no store at the office predates this chain. key_root() is the one rule for the key an engagement is stored under (root_for() is its name for a caller with no root in hand): the root the settings file names whenever the folder is under it - the record's own root, which wins over the root a caller typed, so a pass run on one client's folder and a check given the drive key the engagement as the app does - else the caller's root, else the folder's parent. _engagement_row() answers by that exact key, and under the recorded root by nothing else: a folder there with no row is one the store has not met, never another engagement whose key its path ends with (decision 106; the pre-integration audit found Clients/Archive/Smith 2025 answered as Clients/Smith 2025's row). The tail - the one stored path the folder ends with, longest wins - answers only where no recorded root covers the folder, which is decision 103's end-to-end finding on a machine with no settings file. Decision 107: the verdict cache's two tables are per engagement and cascade with it; cached_verdicts() returns the memos and the verdicts at the CACHE_VERSION the caller names as plain dicts and JSON text (this module never learns the verdict's record - test_layers pins that it imports nothing above it); remember_verdicts() deletes the rows at other versions, the paths and digests pruned, and upserts what was learned, refusing outside the lock and for an unknown engagement by the two sentences record() uses (_held_under_the_lock()). A version-2 file is refused by the same sentence a version-1 file was. RULE_COLUMNS is built from records.RULE_FIELDS; _rule_from_sql() hands the list fields back as lists and the flag as a boolean, the shape the API hands the editor. Decision 115: last_event() answers the newest event of a name for an engagement (or the newest carrying a key) from the events table - what the reminder compares this week's draft with, and what the runner reads the last draft day from."
     },
     {
       "id": "tracker/templates.py",
@@ -1389,8 +1423,8 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "99f159a1abc85ad2",
-      "lines": 1195,
+      "sha256": "38afdd8d70e87c41",
+      "lines": 1203,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results, and (decision 104) the request-list editor - the only place a rule is entered. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the wizard's custom-request section (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook."
     },
@@ -1398,8 +1432,8 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "6f1598f4ea2a9536",
-      "lines": 315,
+      "sha256": "a64ff0fa5ceffcd9",
+      "lines": 316,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files. Since decision 104 it holds the request-list editor's modal (#editor), every label of which the renderer fills, and the Edit Request List button (#btn-edit) that opens it; the min of a number input is never typed here."
     },
     {
@@ -1413,8 +1447,8 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "f3b0de933fed46f0",
-      "lines": 665,
+      "sha256": "e04c8b0a4499dd34",
+      "lines": 666,
       "role": "Desktop app styling."
     },
     {
@@ -1430,16 +1464,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "34a65024639b70fd",
-      "lines": 379,
+      "sha256": "d7abe03610f7a285",
+      "lines": 392,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c0c7652b970f83fd",
-      "lines": 348,
+      "sha256": "40d0f5a72f6dbfde",
+      "lines": 349,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1456,8 +1490,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "889b0e46d8015bcc",
-      "lines": 726,
+      "sha256": "9f12d94d1c5cd269",
+      "lines": 746,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1465,8 +1499,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2af90bd75633e743",
-      "lines": 469,
+      "sha256": "582e03ba82bdea05",
+      "lines": 486,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1500,8 +1534,8 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e8b33522910004ee",
-      "lines": 124,
+      "sha256": "9c3753b0657fa1e9",
+      "lines": 126,
       "role": "How the day-to-day workflow runs."
     },
     {
@@ -1712,8 +1746,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "831c8844780ca894",
-      "lines": 1339,
+      "sha256": "2d57f63bde572267",
+      "lines": 1376,
       "exports": [
         "demo_root",
         "payload_of_state",
@@ -1762,6 +1796,7 @@
         "test_rollover_retires_the_prior_in_the_priors_list",
         "test_rule_two_is_rendered_in_the_record_and_names_no_file",
         "test_set_root_records_the_folder_the_job_will_walk",
+        "test_state_carries_the_held_rows_and_every_word_is_the_vocabularys",
         "test_state_carries_the_path_of_the_practices_status_page",
         "test_state_carries_the_warnings_the_pass_reports",
         "test_state_ships_each_rows_year_for_the_label",
@@ -2088,8 +2123,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "60d6228be6e1add9",
-      "lines": 208,
+      "sha256": "e4707e09f44d5f29",
+      "lines": 250,
       "exports": [
         "PACKAGE",
         "REPO",
@@ -2097,6 +2132,7 @@
         "test_every_allowed_upward_edge_is_still_needed",
         "test_every_module_is_in_exactly_one_layer",
         "test_no_load_time_import_points_to_a_higher_layer",
+        "test_no_module_under_tracker_imports_a_mail_or_network_module",
         "test_the_bottom_two_import_nothing_of_the_package_but_each_other",
         "test_the_filer_and_scanner_cycle_closes_only_at_call_time",
         "test_the_manifest_imports_the_record_and_nothing_else",
@@ -2188,7 +2224,7 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3e0dd81489ed9379",
+      "sha256": "9ee204eea5ca4e40",
       "lines": 206,
       "exports": [
         "test_a_fresh_lock_blocks_a_second_run",
@@ -2381,16 +2417,22 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "70c3d0f64a4e5260",
-      "lines": 386,
+      "sha256": "0d6b4223659c04f8",
+      "lines": 585,
       "exports": [
         "SCANNED",
+        "SENDABLE",
         "engagement",
         "item",
+        "test_a_failed_row_with_a_client_side_reason_holds_the_whole_draft",
+        "test_a_failed_row_with_a_firm_side_reason_does_not_hold",
+        "test_a_failed_row_with_no_recognised_reason_is_held_not_asked_generically",
         "test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft",
         "test_a_folder_with_no_record_fails_loudly",
         "test_a_missing_request_folder_is_our_problem_not_the_clients",
+        "test_a_missing_row_with_a_firm_side_marker_is_held_back_not_asked",
         "test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients",
+        "test_a_partial_whose_shortfall_is_a_refused_file_holds_and_a_plain_partial_is_asked",
         "test_an_ocr_failure_is_the_firms_to_retry_not_the_clients_to_resend",
         "test_an_unscanned_manifest_will_not_be_drafted_from",
         "test_draft_greets_signs_and_counts",
@@ -2402,15 +2444,18 @@
         "test_needs_review_count_ignores_junk_and_sees_nested_files",
         "test_needs_review_count_is_zero_without_the_folder",
         "test_needs_review_files_are_counted_as_a_warning",
+        "test_no_what_changed_block_when_nothing_changed_or_no_earlier_draft",
         "test_only_outstanding_rows_become_asks",
         "test_overrides_are_never_asked_for",
         "test_partial_says_how_many_are_left",
         "test_received_and_pending_sync_are_never_asked_for",
         "test_rows_we_have_not_read_go_to_the_accountant_not_the_client",
-        "test_sections_are_ordered_missing_partial_failed",
+        "test_section_failed_is_unreachable_from_a_pass",
         "test_the_draft_is_built_from_the_record_and_nothing_else",
         "test_the_draft_reads_the_engagement_details_itself",
-        "test_unrecognized_failure_falls_back_to_the_generic_ask",
+        "test_the_held_refusal_names_every_held_row_and_writes_nothing",
+        "test_the_manual_draft_refuses_past_the_gate_with_exit_two",
+        "test_the_what_changed_block_names_what_was_added_and_removed_and_stays_out_of_the_body",
         "test_write_draft_marks_it_as_a_draft",
         "test_write_draft_needs_somewhere_to_write",
         "test_written_draft_appends_firm_side_notes_below_the_email"
@@ -2659,23 +2704,31 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e215d428fe20835d",
-      "lines": 789,
+      "sha256": "46f7b35d38440e92",
+      "lines": 1001,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
         "SATURDAY",
         "SUNDAY",
+        "build_chased_engagement",
         "build_engagement",
+        "drafted_events",
         "edit_details",
         "edit_rows",
+        "make_ambiguous",
+        "pass_on",
+        "resolve_by_fixing_the_rule",
         "samples",
+        "stamped_on",
         "test_a_clients_folder_drives_a_real_run_with_nothing_registered",
         "test_a_draft_day_the_machine_missed_is_caught_up_on_the_next_pass",
         "test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft",
         "test_a_dry_run_takes_no_lock_at_all",
         "test_a_dry_run_writes_nothing_at_all",
         "test_a_file_named_like_markup_is_shown_as_a_name_not_rendered",
+        "test_a_held_engagement_does_not_stop_the_next_engagements_draft",
+        "test_a_held_engagement_writes_no_draft_retires_its_own_stale_draft_and_leaves_an_edited_one",
         "test_a_manual_run_drafts_on_a_weekday",
         "test_a_missing_folder_is_recorded_not_raised",
         "test_a_pass_after_a_missed_saturday_writes_the_weeks_draft",
@@ -2696,27 +2749,32 @@
         "test_an_untouched_draft_is_refreshed_in_place",
         "test_auto_mode_drafts_only_on_saturday",
         "test_inactive_engagements_are_skipped_not_failed",
+        "test_last_drafted_answers_from_the_record_and_falls_back_to_the_files",
         "test_never_mode_suppresses_even_on_saturday",
         "test_not_applicable_and_accepted_rows_are_not_outstanding",
         "test_nothing_outstanding_means_no_draft_file",
         "test_one_broken_engagement_does_not_stop_the_others",
         "test_only_selects_a_subset",
+        "test_reminders_always_is_held_too",
         "test_reminders_off_beats_every_mode",
         "test_rows_the_rules_cannot_act_on_are_reported_not_buried",
         "test_saturday_is_the_draft_day",
         "test_strays_in_prepared_reach_the_run_report",
         "test_the_draft_day_can_be_moved",
+        "test_the_drafted_event_is_written_under_the_pass_lock_and_only_when_something_changed",
         "test_the_log_appends_rather_than_replaces",
         "test_the_log_takes_a_name_utf8_cannot_hold",
         "test_the_page_is_written_even_when_an_engagements_pass_failed",
         "test_the_page_lists_every_engagement_the_registry_finds_including_an_unreadable_one",
         "test_the_page_still_has_a_heading_where_nothing_can_say_what_the_product_is_called",
         "test_the_pass_holds_one_lock_from_the_sort_through_the_scan",
+        "test_the_practice_page_says_held_with_the_count",
         "test_the_report_says_what_day_it_is_and_never_claims_a_send",
         "test_the_review_queue_lists_parked_files_newest_first_with_their_reasons",
         "test_the_runner_has_a_main_the_frozen_entry_can_call",
         "test_the_runners_console_guard_is_the_pages",
-        "test_the_saturday_run_writes_a_draft"
+        "test_the_saturday_run_writes_a_draft",
+        "test_two_ambiguities_one_resolved_still_holds_and_both_resolved_drafts_on_the_next_pass"
       ]
     },
     {
@@ -2919,8 +2977,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6f2dbe419d8a0cf7",
-      "lines": 908,
+      "sha256": "7db18f6e332b29c2",
+      "lines": 932,
       "exports": [
         "DAY1",
         "DAY2",
@@ -2957,6 +3015,7 @@
         "test_a_version_two_store_is_refused_by_name",
         "test_an_engagement_the_store_has_never_seen_is_said_so_rather_than_passed",
         "test_every_request_the_manifest_holds_has_a_rule_in_the_store",
+        "test_last_event_returns_the_newest_of_that_name_or_none",
         "test_one_call_is_one_transaction_over_the_journal_and_the_tables",
         "test_one_process_has_one_connection_and_a_second_file_is_refused",
         "test_opening_a_file_that_is_not_there_creates_the_schema",
@@ -3648,6 +3707,12 @@
     },
     {
       "from": "tests/test_api.py",
+      "to": "tracker/reasons.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
       "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
@@ -3655,6 +3720,12 @@
     {
       "from": "tests/test_api.py",
       "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tracker/reminder.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -5604,6 +5675,12 @@
     },
     {
       "from": "tracker/api.py",
+      "to": "tracker/reminder.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
       "to": "tracker/review.py",
       "type": "imports",
       "source": "derived"
@@ -6036,6 +6113,12 @@
     },
     {
       "from": "tracker/reminder.py",
+      "to": "tracker/ledger.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/reminder.py",
       "to": "tracker/manifest.py",
       "type": "imports",
       "source": "derived"
@@ -6054,6 +6137,12 @@
     },
     {
       "from": "tracker/reminder.py",
+      "to": "tracker/store.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/reminder.py",
       "to": "tracker/validators.py",
       "type": "imports",
       "source": "derived"
@@ -6066,7 +6155,7 @@
     },
     {
       "from": "tracker/reminder.py",
-      "to": "tracker/ledger.py",
+      "to": "tracker/locking.py",
       "type": "imports_at_call",
       "source": "derived"
     },
@@ -6102,7 +6191,19 @@
     },
     {
       "from": "tracker/reminder.py",
+      "to": "artifact:_ledger.jsonl",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/reminder.py",
       "to": "artifact:reminder-draft.txt",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "artifact:tracker.db",
       "type": "writes",
       "source": "curated"
     },
@@ -6342,6 +6443,12 @@
     },
     {
       "from": "tracker/runner.py",
+      "to": "artifact:_ledger.jsonl",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/runner.py",
       "to": "artifact:runs.log",
       "type": "writes",
       "source": "curated"
@@ -6349,6 +6456,12 @@
     {
       "from": "tracker/runner.py",
       "to": "artifact:status.html",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "artifact:tracker.db",
       "type": "writes",
       "source": "curated"
     },

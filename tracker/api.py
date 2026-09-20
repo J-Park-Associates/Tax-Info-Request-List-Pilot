@@ -33,7 +33,7 @@ import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES, ledger, review, store
+from tracker import STANDING_RULES, ledger, reminder, review, store
 from tracker.filer import (
     DUPLICATE,
     FILED,
@@ -112,6 +112,7 @@ from tracker.runner import (
     EngagementRun,
     RunReport,
     append_log,
+    last_drafted,
     run_engagement,
     status_report,
     write_status_page,
@@ -397,6 +398,9 @@ def _vocab() -> dict:
             "task_name": TASK_NAME,
         },
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
+        # The one line the app shows for a reminder an ambiguous request
+        # holds (decision 115), from the module that holds it.
+        "reminder": {"held_line": reminder.HELD_SUMMARY},
         # The page a pass regenerates, the three words that say whether the
         # one on disk still describes the engagement, and what the button
         # that opens it says. The app compares nothing itself and types
@@ -620,6 +624,12 @@ def _state(engagement: Path) -> dict:
         # to triage() so each is read once for the whole screen.
         "review": [_triage_payload(t)
                    for t in review.triage(engagement, entries, items=items)],
+        # The reminder as the record and the rows now stand (decision 115):
+        # the requests that hold it - a person decides those before any
+        # draft is written - and the day of the last draft. Sorted by the
+        # reminder's own triage over the rows already loaded; nothing here
+        # reads a draft file, and nothing here drafts (decision 12).
+        "reminder": _reminder_payload(engagement, items),
         "paths": {
             "engagement": str(engagement),
             "shared": str(engagement / SHARED_DIR_NAME),
@@ -634,6 +644,16 @@ def _state(engagement: Path) -> dict:
             # engagement is one click from the whole practice.
             "status": str(root / STATUS_PAGE_FILENAME) if root else "",
         },
+    }
+
+
+def _reminder_payload(engagement: Path, items) -> dict:
+    _, _, _, held = reminder.triage(items)
+    drafted = last_drafted(engagement)
+    return {
+        "held": [{"identifier": flag.item.identifier, "label": flag.item.label,
+                  "reason": flag.reason} for flag in held],
+        "last_drafted": drafted.isoformat() if drafted else None,
     }
 
 

@@ -593,6 +593,30 @@ def test_the_request_tables_hold_every_field_the_request_item_has():
     assert tuple(store.RULE_COLUMNS) == RULE_FIELDS
 
 
+def test_last_event_returns_the_newest_of_that_name_or_none(conn, root, by_hand):
+    """Decision 115: what the reminder compares this week's draft with. The
+    newest line of the name, as written; with ``carrying``, the newest that
+    has the key; None for a name the journal never carried, and None for an
+    engagement the store does not hold."""
+    build(conn, root, by_hand)
+    assert store.last_event(conn, by_hand, ledger.DRAFTED) is None
+    assert store.last_event(conn, root / "Nobody TY2025", ledger.DRAFTED) is None
+
+    first = ledger.new(ledger.DRAFTED, **{ledger.ASKED_KEY: ["A01"], ledger.FILE_KEY: "reminder-draft.txt",
+                                          ledger.FINGERPRINT_KEY: "abc"})
+    hold = ledger.new(ledger.DRAFTED, **{ledger.HELD_KEY: ["C01"]})
+    taught = ledger.new(ledger.KEYWORD_LEARNED, **{ledger.IDENTIFIER_KEY: "A01",
+                                                   ledger.KEYWORD_KEY: "lender"})
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, first, hold, taught)
+
+    assert store.last_event(conn, by_hand, ledger.DRAFTED) == hold
+    assert store.last_event(conn, by_hand, ledger.DRAFTED, carrying=ledger.FILE_KEY) == first
+    assert store.last_event(conn, by_hand, ledger.DRAFTED, carrying="nothing-carries-this") is None
+    assert store.last_event(conn, by_hand, ledger.KEYWORD_LEARNED) == taught
+    assert store.last_event(conn, by_hand, ledger.SCANNED) is None
+
+
 def test_a_failed_create_is_forgotten_and_a_retired_event_is_refused(conn, root, engagement):
     assert store.forget(conn, root / "nobody") is False
     build(conn, root, engagement)
