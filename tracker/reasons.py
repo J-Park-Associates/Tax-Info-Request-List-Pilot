@@ -144,7 +144,7 @@ EXTRACTION_FAILED = Reason(
 )
 UNCHECKABLE_TYPE = Reason(
     "uncheckable-type", "content rules cannot be checked on .{extension} files; review manually",
-    "review manually", firm_side=True,
+    "content rules cannot be checked", firm_side=True,
 )
 NO_TEXT_LAYER = Reason(
     "no-text-layer",
