@@ -3,7 +3,7 @@
   "generated": "2026-09-19",
   "generator": "tools/repo_map.py",
   "generator_sha256": "e0b876ff3a9acde0",
-  "module_table_sha256": "d094659fbb1a273b",
+  "module_table_sha256": "a47d81b9e348af67",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,8 +15,8 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 110,
-    "edges": 533,
+    "nodes": 111,
+    "edges": 547,
     "reused": 85
   },
   "node_types": [
@@ -181,8 +181,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b93046f05499620b",
-      "lines": 1371,
+      "sha256": "cc05f6ffaa7fc25f",
+      "lines": 1374,
       "cli": "python -m tracker.content_check",
       "exports": [
         "CACHE_FILENAME",
@@ -227,8 +227,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "be009e43c4d54684",
-      "lines": 1840,
+      "sha256": "cdb774c2d1c117fb",
+      "lines": 1844,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -295,8 +295,8 @@
       "id": "tracker/ledger.py",
       "type": "module",
       "layer": "core",
-      "sha256": "28edf3a22c51c16c",
-      "lines": 537,
+      "sha256": "391c632cb2751ecf",
+      "lines": 541,
       "cli": "python -m tracker.ledger",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -535,8 +535,8 @@
       "id": "tracker/page.py",
       "type": "module",
       "layer": "core",
-      "sha256": "47c2ed05e5e43dc0",
-      "lines": 136,
+      "sha256": "9302267981618782",
+      "lines": 161,
       "exports": [
         "Cell",
         "Row",
@@ -546,13 +546,14 @@
         "page_text",
         "slug",
         "table",
+        "tolerant_console",
         "unesc"
       ],
       "constants": {
         "SORT_ATTRIBUTE": "'data-sort'"
       },
-      "role": "The markup both of the firm's pages are drawn with, owned once: esc() (every value on either page goes through it), the table builder (header row in a thead, data in a tbody, headers optionally marked for a page that sorts them), Cell and Row for the few cells and rows that want a class, slug() for a word as a class name, unesc() for reading a value back out of an attribute, and page_text() for the bytes a page is written as.",
-      "notes": "Decision 91. It knows nothing about engagements, manifests or the record - values in, markup out - which is why it imports nothing from the package and both tracker/runner.py (the practice page, decision 75) and tracker/view.py (the engagement's own page) can import it without a cycle. There is deliberately NO helper for a script tag, a style sheet link or an image: a page naming the firm's clients must not reach the network to render, so a page's own style is inline in the module that owns that page. page_text() encodes with backslashreplace for the same reason the run log does - a name NTFS holds is not always one UTF-8 can, and one client's file name must not cost the whole page. api._slug is this module's slug(), so a status chip in the app and a status badge on the view are classed by one function. No dedicated test file: it is covered through the two pages that use it (tests/test_view.py, tests/test_runner.py)."
+      "role": "The markup both of the firm's pages are drawn with, owned once: esc() (every value on either page goes through it), the table builder (header row in a thead, data in a tbody, headers optionally marked for a page that sorts them), Cell and Row for the few cells and rows that want a class, slug() for a word as a class name, unesc() for reading a value back out of an attribute, page_text() for the bytes a page is written as, and tolerant_console() for a console made to take what it cannot encode.",
+      "notes": "Decision 91. It knows nothing about engagements, manifests or the record - values in, markup out - which is why it imports nothing from the package and both tracker/runner.py (the practice page, decision 75) and tracker/view.py (the engagement's own page) can import it without a cycle. There is deliberately NO helper for a script tag, a style sheet link or an image: a page naming the firm's clients must not reach the network to render, so a page's own style is inline in the module that owns that page. page_text() encodes with backslashreplace for the same reason the run log does - a name NTFS holds is not always one UTF-8 can, and one client's file name must not cost the whole page. api._slug is this module's slug(), so a status chip in the app and a status badge on the view are classed by one function. Decision 108: tolerant_console() is the one home of the console guard - stdout and stderr reconfigured to replace what they cannot encode, where they can be reconfigured - and every command line that prints a client's file or folder name calls it before it parses a flag (rollover, filer, scanner, registry, review, scaffold, store, reminder, runner, router, content_check, view, ledger, validators; tests/test_single_source.py holds the list). It belongs here because this module already owns how text leaves the machine for a person and imports nothing from the package, so a command line at any layer can call it. It replaces characters and never swallows an error. The markup half is still exercised through the two pages that draw with it (tests/test_view.py, tests/test_runner.py); tests/test_page.py pins the console guard."
     },
     {
       "id": "tracker/reasons.py",
@@ -677,8 +678,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fe221b522035410b",
-      "lines": 358,
+      "sha256": "1e74eec3df7db279",
+      "lines": 362,
       "cli": "python -m tracker.registry",
       "exports": [
         "Engagement",
@@ -708,8 +709,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9f8a8b9e70c2fc25",
-      "lines": 621,
+      "sha256": "f9b2ac766ee7909d",
+      "lines": 625,
       "cli": "python -m tracker.reminder",
       "exports": [
         "BOTH_DRAFTS_EDITED",
@@ -769,8 +770,8 @@
       "id": "tracker/review.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fdfa86f0238fedf1",
-      "lines": 330,
+      "sha256": "5022f5c4eba295d0",
+      "lines": 334,
       "cli": "python -m tracker.review",
       "exports": [
         "FILENAME_WORDS",
@@ -809,8 +810,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fca6d2ec25224205",
-      "lines": 374,
+      "sha256": "6808e0d37db4141a",
+      "lines": 387,
       "cli": "python -m tracker.rollover",
       "exports": [
         "ORIGIN_NEW",
@@ -832,14 +833,14 @@
         "UNFILED_HEADING": "'Sent last year but never filed \u2014 check these are covered:'"
       },
       "role": "Builds a returning client's next-year request list from their prior engagement's record. Prior-year data always wins; the template may only fill blanks. The rows it builds are recorded into next year's engagement by manifest.create_engagement() - the API's rollover and this module's CLI both do that - and the offers and last year's unfiled files are reported once, in the reply and on the command line.",
-      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api do not import each other. Derived year checks are left blank on the rolled rows; the shifted Period derives them again when the list is validated. Decision 67: a template row is the prior's row whatever its case, as validated() compares identifiers. Decision 69: roll_forward() refuses a target year not after the prior's. Decision 72: and one outside YEAR_MIN..YEAR_MAX, through manifest.check_tax_year(), as the wizard's box does. Decision 86: carry_engagement_info() carries the form the prior was cut from into next year's details - a returning client files the same return - and carries a blank as a blank. Decision 103: last year is read from the record (load_manifest() lays the keywords a filing taught over the row's typed ones), so a taught keyword reaches _carry() as a keyword like any other and lands in next year's list as an ordinary Any Keyword - the one moment a taught word becomes something typed, and a learned row would be invisible in the editor. Decision 104: the Carried Forward sheet is not written - the workbook it was written into is gone, and the writer is set aside outside the tree; an offer a person wants is added later in the app's editor. The prior year is read and never written."
+      "notes": "Years shift as a set so relative periods stay right. Counts learn from what arrived and never shrink. Waived carries forward; Accepted does not. The CLI's form template comes from tracker.templates, so this module and tracker.api do not import each other. Derived year checks are left blank on the rolled rows; the shifted Period derives them again when the list is validated. Decision 67: a template row is the prior's row whatever its case, as validated() compares identifiers. Decision 69: roll_forward() refuses a target year not after the prior's. Decision 72: and one outside YEAR_MIN..YEAR_MAX, through manifest.check_tax_year(), as the wizard's box does. Decision 86: carry_engagement_info() carries the form the prior was cut from into next year's details - a returning client files the same return - and carries a blank as a blank. Decision 103: last year is read from the record (load_manifest() lays the keywords a filing taught over the row's typed ones), so a taught keyword reaches _carry() as a keyword like any other and lands in next year's list as an ordinary Any Keyword - the one moment a taught word becomes something typed, and a learned row would be invisible in the editor. Decision 104: the Carried Forward sheet is not written - the workbook it was written into is gone, and the writer is set aside outside the tree; an offer a person wants is added later in the app's editor. The prior year is read and never written. Decision 108: the command line takes page.tolerant_console() first (its report carries an arrow a cp1252 console cannot encode, and it used to die after the record was written and before the folders were made, with a second run refused), and does all of its work - create_engagement(), then scaffold_engagement() when asked - before it prints a line, so nothing about the report can leave a folder with a record and no scaffold."
     },
     {
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a7cf55b57a35568f",
-      "lines": 697,
+      "sha256": "c523e44f710f869f",
+      "lines": 700,
       "cli": "python -m tracker.router",
       "exports": [
         "AMBIGUOUS",
@@ -871,8 +872,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "75fa0e002440a957",
-      "lines": 888,
+      "sha256": "1728cd2c84052a59",
+      "lines": 886,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -942,14 +943,14 @@
         "REVIEW_COLUMNS": "('Received', 'Engagement', 'File the client sent', 'Reason', 'Candidates')"
       },
       "role": "The unattended pass: for every engagement in the registry, file -> scan -> (on DRAFT_WEEKDAY) draft. This is the whole scheduled task.",
-      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose record could not be read fails alone with the reason (RECORD_UNREADABLE), and so does a legacy folder the registry listed. _worth_a_pass() is the pre-checks: skips are not failures, and the warnings the pass reports are manifest.check_rules() over the list the record holds - the same list the app's state carries. Scaffolds each engagement before filing (a row added in the app gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too. main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed; an engagement never drafted waits for its first draft day. Decisions 57 and 60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) and one a person has edited is never touched. Decision 67: main() reconfigures stdout and stderr to replace what the console cannot encode. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run; status_report() folds the runs just made into every engagement the registry found and reads the rest (no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; skipped_because() is the one wording of why an engagement is passed over. Decision 87: the pass gained no call of its own on tracker/ledger.py. Decision 102: run_engagement() holds ONE engagement lock across scaffold, file, scan and view, and tells each step the lock is held; a dry run takes none; a lock it cannot get is a skip. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates the read-only view; a view whose replace did not land leaves run.view_stale set on a run that still succeeds. Decision 91: write_status_page() is drawn through tracker/page.py. Decision 103: the status page lost its Deferred writes column; nothing a pass decides waits for anything. Decision 104: the pass begins with filer.ensure(), the store's top-up, and nothing in it reads or writes a workbook; the 'Problem or skipped' cell shows the legacy sentence for a folder the tracker no longer reads."
+      "notes": "Owns the draft-day rule (DRAFT_WEEKDAY) in is_draft_day(); the scheduler does not know about it. One engagement's failure never stops the others, and the run exits non-zero so the scheduler shows red. A drop the filer could not sort marks the engagement failed after the scan and draft still ran. The CLI takes the clients root, not a file; an engagement whose record could not be read fails alone with the reason (RECORD_UNREADABLE), and so does a legacy folder the registry listed. _worth_a_pass() is the pre-checks: skips are not failures, and the warnings the pass reports are manifest.check_rules() over the list the record holds - the same list the app's state carries. Scaffolds each engagement before filing (a row added in the app gets its folder), leaves waived rows out of the outstanding count, and skips an engagement whose successor names it in Rolled From. run_engagement() is the one definition of a pass; the app's scan command calls it too. main(argv) is the command line as a function: python -m tracker.runner and the packaged executable in runner mode (api_entry.py, RUNNER_MODE_FLAG) both call it. Decision 55: should_draft() catches up a draft day the machine missed; an engagement never drafted waits for its first draft day. Decisions 57 and 60: a quiet draft day refreshes the run's own unedited draft (_refresh_stale_draft()) and one a person has edited is never touched. Decision 67: main() makes the console take what it cannot encode before it parses a flag; since decision 108 that guard is page.tolerant_console(), shared by every command line, and main() calls it. Decision 68: append_log() replaces what UTF-8 cannot encode; an engagement's registry warning rides the run's warnings. Decision 69: a FileReport's attention rides the run's warnings, never its error. Decision 75: every real pass ends by writing STATUS_PAGE_FILENAME into the clients root, never on a dry run; status_report() folds the runs just made into every engagement the registry found and reads the rest (no lock, nothing written), so --only and the app's one-engagement pass still draw the whole practice; skipped_because() is the one wording of why an engagement is passed over. Decision 87: the pass gained no call of its own on tracker/ledger.py. Decision 102: run_engagement() holds ONE engagement lock across scaffold, file, scan and view, and tells each step the lock is held; a dry run takes none; a lock it cannot get is a skip. Decision 89: the last thing each engagement's pass does is _view_step(), which regenerates the read-only view; a view whose replace did not land leaves run.view_stale set on a run that still succeeds. Decision 91: write_status_page() is drawn through tracker/page.py. Decision 103: the status page lost its Deferred writes column; nothing a pass decides waits for anything. Decision 104: the pass begins with filer.ensure(), the store's top-up, and nothing in it reads or writes a workbook; the 'Problem or skipped' cell shows the legacy sentence for a folder the tracker no longer reads."
     },
     {
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "84806aa149ce68c6",
-      "lines": 288,
+      "sha256": "1c33ac480e3252b4",
+      "lines": 292,
       "cli": "python -m tracker.scaffold",
       "exports": [
         "PBC_DIR_NAME",
@@ -980,8 +981,8 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e56b6d03afe294db",
-      "lines": 499,
+      "sha256": "0b3cb7fc52e13e3c",
+      "lines": 550,
       "cli": "python -m tracker.scanner",
       "exports": [
         "ACCEPTED_NOTE",
@@ -1011,7 +1012,7 @@
         "REGRESSION_FILES_CHANGED": "'files changed'"
       },
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and RECORDS the result - one scanned event through store.record(), under the pass's lock, only for what changed. It never writes the request list (decision 103).",
-      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the request list only once it has it, so a sort that finished in between is never invisible to the scan. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). Reads each document through content_check.extract(), the same reading the router made of it as a drop, and usually finds the router's verdict already in the content cache; one PdfVerdictCache per scan. _resolve_status() is the status rule and _received_date() the Received-Date rule, named so _scan_item() reads as the three tiers and then the two decisions. A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them. Decision 54's claim now rests on the record: the Received Date the last scan stamped is carried, not re-stamped, and a regression is measured from the status the record holds, because that is where a status is. Decision 103: _record_the_statuses() is the one write - one call, one transaction, and nothing at all when the pass found the engagement as it left it (ScanReport.recorded says how many). The scan calls filer.ensure() first, inside its own lock, so the store holds the engagement it is about to record to and the rules it works from are the ones the record holds (decision 104: the ones the app's editor last saved). Nothing but the record is written by a pass. Decision 58: a working copy the index says a person filed (ASSIGNED_BY_PERSON) is counted without the content rules (ACCEPTED_NOTE); the scan reads the index for that, and writes only the record and the content cache. Decision 60: a person's acceptance is the newest row for the location and its recorded bytes. Decision 62: a person's filing waives tier 2 too. Imports the filer's index reader at call time; the filer imports this module at call time inside _rescan() - the deliberate cycle, stated on the filer's node."
+      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the request list only once it has it, so a sort that finished in between is never invisible to the scan. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). Reads each document through content_check.extract(), the same reading the router made of it as a drop, and usually finds the router's verdict already in the content cache; one PdfVerdictCache per scan. _resolve_status() is the status rule and _received_date() the Received-Date rule, named so _scan_item() reads as the three tiers and then the two decisions. A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED - decided on the pass the row leaves Received, when the record's count is still the Received one, and carried from the last note by _regression_why() on every pass after, because the regressed count would call every lost file a raised count (decision 108); a note with no regression sentence reads as REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them. Decision 54's claim now rests on the record: the Received Date the last scan stamped is carried, not re-stamped, and a regression is measured from the status the record holds, because that is where a status is. Decision 103: _record_the_statuses() is the one write - one call, one transaction, and nothing at all when the pass found the engagement as it left it (ScanReport.recorded says how many). The scan calls filer.ensure() first, inside its own lock, so the store holds the engagement it is about to record to and the rules it works from are the ones the record holds (decision 104: the ones the app's editor last saved). Nothing but the record is written by a pass. Decision 58: a working copy the index says a person filed (ASSIGNED_BY_PERSON) is counted without the content rules (ACCEPTED_NOTE); the scan reads the index for that, and writes only the record and the content cache. Decision 60: a person's acceptance is the newest row for the location and its recorded bytes. Decision 62: a person's filing waives tier 2 too. Imports the filer's index reader at call time; the filer imports this module at call time inside _rescan() - the deliberate cycle, stated on the filer's node."
     },
     {
       "id": "tracker/scheduling.py",
@@ -1128,8 +1129,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9be3955e527b29f7",
-      "lines": 1372,
+      "sha256": "326c2e5ce40e037e",
+      "lines": 1375,
       "cli": "python -m tracker.store",
       "exports": [
         "BUSY_TIMEOUT_MS",
@@ -1234,8 +1235,8 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "285b9a9bdd085886",
-      "lines": 395,
+      "sha256": "be990450c07df487",
+      "lines": 398,
       "cli": "python -m tracker.validators",
       "exports": [
         "FileResult",
@@ -1266,8 +1267,8 @@
       "id": "tracker/view.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5d7ffbfd768d97e5",
-      "lines": 636,
+      "sha256": "32e0869893da3346",
+      "lines": 638,
       "cli": "python -m tracker.view",
       "exports": [
         "BADGE_CLASS",
@@ -1404,8 +1405,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a71fc878d62914ea",
-      "lines": 345,
+      "sha256": "cbd80faa33c267e6",
+      "lines": 346,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1422,7 +1423,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "1455de5c39bcbcb5",
+      "sha256": "31b4a8576506bf30",
       "lines": 736,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1431,8 +1432,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "547a4246824ac775",
-      "lines": 449,
+      "sha256": "bd5bce797e7f4da3",
+      "lines": 458,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1449,7 +1450,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "efe0e07325804e4a",
+      "sha256": "31f5ae18be7dacce",
       "lines": 7697,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -2228,6 +2229,21 @@
       }
     },
     {
+      "id": "tests/test_page.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "c1a9ec15ea1ae960",
+      "lines": 55,
+      "exports": [
+        "ARROW",
+        "test_a_stream_with_no_reconfigure_is_left_as_it_is",
+        "test_the_tolerant_console_replaces_what_the_console_cannot_encode_and_leaves_a_utf8_console_alone"
+      ],
+      "constants": {
+        "ARROW": "'\u2192'"
+      }
+    },
+    {
       "id": "tests/test_real_corpus.py",
       "type": "test",
       "layer": "tests",
@@ -2472,14 +2488,15 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f23862269551efb7",
-      "lines": 530,
+      "sha256": "643a0f20311ff88a",
+      "lines": 602,
       "exports": [
         "PRIOR",
         "TEMPLATE",
         "next_year",
         "prior",
         "rolled_by_id",
+        "run_the_command_line",
         "test_a_derived_year_check_is_not_carried_as_text",
         "test_a_keyword_the_prior_year_was_taught_is_carried_as_an_ordinary_one",
         "test_a_roll_into_the_same_or_an_earlier_year_is_refused",
@@ -2505,7 +2522,9 @@
         "test_the_rollover_carries_a_row_per_issuer",
         "test_the_rollover_carries_rules_engagement_details_and_learned_keywords_into_next_years_record",
         "test_the_rollover_carries_the_catalog_the_list_was_cut_from",
+        "test_the_rollover_command_line_finishes_its_work_on_a_console_that_cannot_print_an_arrow",
         "test_the_rollover_command_line_records_where_the_prior_year_really_is",
+        "test_the_rollover_command_line_scaffolds_before_it_reports",
         "test_the_rollover_command_line_writes_the_carried_form_into_next_year",
         "test_unfiled_documents_from_last_year_are_surfaced",
         "test_unknown_template_rows_are_offered_not_added",
@@ -2588,8 +2607,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "691fb5b1893a290d",
-      "lines": 771,
+      "sha256": "4c89040de8ff9312",
+      "lines": 788,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -2643,6 +2662,7 @@
         "test_the_report_says_what_day_it_is_and_never_claims_a_send",
         "test_the_review_queue_lists_parked_files_newest_first_with_their_reasons",
         "test_the_runner_has_a_main_the_frozen_entry_can_call",
+        "test_the_runners_console_guard_is_the_pages",
         "test_the_saturday_run_writes_a_draft",
         "test_waived_and_accepted_rows_are_not_outstanding"
       ]
@@ -2678,8 +2698,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "41594bbbde9c32f4",
-      "lines": 496,
+      "sha256": "8b0028c7c6c0a160",
+      "lines": 584,
       "exports": [
         "DAY1",
         "DAY2",
@@ -2688,11 +2708,15 @@
         "engagement",
         "folder",
         "statuses",
+        "test_a_count_raised_after_a_regression_does_not_rewrite_why_the_row_left_received",
         "test_a_document_a_person_filed_is_not_second_guessed_by_the_rules",
         "test_a_document_a_person_said_nothing_asks_for_is_not_a_warning_either",
         "test_a_file_that_vanishes_mid_scan_does_not_crash_the_scan",
         "test_a_persons_acceptance_covers_only_the_bytes_they_filed",
+        "test_a_raised_expected_count_says_so_on_the_pass_it_regresses_and_keeps_saying_so",
         "test_a_received_file_the_sync_client_dehydrated_is_not_a_regression",
+        "test_a_regressed_rows_reason_is_decided_once_and_carried",
+        "test_a_regression_note_written_before_this_decision_is_read_as_files_changed",
         "test_accepted_means_received_with_a_date",
         "test_an_empty_note_replaces_the_old_one",
         "test_auto_revert_preserves_date_and_notes",
@@ -2772,9 +2796,11 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f154f9e3f5ddb447",
-      "lines": 742,
+      "sha256": "650d37108e2b18f7",
+      "lines": 806,
       "exports": [
+        "CONSOLE_EXEMPT",
+        "CONSOLE_GUARDED",
         "DOCUMENTS",
         "REPO",
         "RETIRED_FILES",
@@ -2789,6 +2815,8 @@
         "test_documents_spell_manifest_headers_exactly",
         "test_documents_state_the_naming_pattern_with_the_one_separator",
         "test_every_cli_flag_a_document_names_exists_in_the_code",
+        "test_every_command_line_is_either_guarded_or_exempt_by_name",
+        "test_every_command_line_that_prints_a_clients_name_takes_the_tolerant_console_first",
         "test_every_dependency_is_pinned_exactly",
         "test_gitignore_ignores_the_junk_the_validators_ignore",
         "test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo",
@@ -2828,7 +2856,8 @@
         "test_tree_diagrams_show_catalog_folders_as_the_scaffold_names_them"
       ],
       "constants": {
-        "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'docs/storage.md', 'CLAUDE.md')"
+        "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'docs/storage.md', 'CLAUDE.md')",
+        "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators')"
       }
     },
     {
@@ -4158,6 +4187,12 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_page.py",
+      "to": "tracker/page.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_real_corpus.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -4944,6 +4979,12 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_single_source.py",
+      "to": "tests/test_layers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_store.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -5545,6 +5586,12 @@
     },
     {
       "from": "tracker/content_check.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/content_check.py",
       "to": "artifact:_content_cache.json",
       "type": "reads",
       "source": "curated"
@@ -5635,6 +5682,12 @@
     },
     {
       "from": "tracker/filer.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/filer.py",
       "to": "tracker/scanner.py",
       "type": "imports_at_call",
       "source": "derived"
@@ -5695,6 +5748,12 @@
     },
     {
       "from": "tracker/ledger.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ledger.py",
       "to": "artifact:_ledger.jsonl",
       "type": "reads",
       "source": "curated"
@@ -5791,6 +5850,12 @@
     },
     {
       "from": "tracker/registry.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/registry.py",
       "to": "artifact:_ledger.jsonl",
       "type": "reads",
       "source": "curated"
@@ -5846,6 +5911,12 @@
     {
       "from": "tracker/reminder.py",
       "to": "tracker/ledger.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "tracker/page.py",
       "type": "imports_at_call",
       "source": "derived"
     },
@@ -5917,6 +5988,12 @@
     },
     {
       "from": "tracker/review.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/review.py",
       "to": "artifact:tracker.db",
       "type": "reads",
       "source": "curated"
@@ -5936,6 +6013,12 @@
     {
       "from": "tracker/rollover.py",
       "to": "tracker/filer.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/rollover.py",
+      "to": "tracker/page.py",
       "type": "imports_at_call",
       "source": "derived"
     },
@@ -5997,6 +6080,12 @@
       "from": "tracker/router.py",
       "to": "tracker/validators.py",
       "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/router.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
       "source": "derived"
     },
     {
@@ -6127,6 +6216,12 @@
     },
     {
       "from": "tracker/scaffold.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scaffold.py",
       "to": "tracker/filer.py",
       "type": "precedes",
       "source": "curated"
@@ -6217,6 +6312,12 @@
     },
     {
       "from": "tracker/scanner.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scanner.py",
       "to": "tracker/reminder.py",
       "type": "precedes",
       "source": "curated"
@@ -6301,6 +6402,12 @@
     },
     {
       "from": "tracker/store.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/store.py",
       "to": "tracker/registry.py",
       "type": "imports_at_call",
       "source": "derived"
@@ -6369,6 +6476,12 @@
       "from": "tracker/validators.py",
       "to": "tracker/reasons.py",
       "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/validators.py",
+      "to": "tracker/page.py",
+      "type": "imports_at_call",
       "source": "derived"
     },
     {

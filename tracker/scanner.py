@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -90,6 +91,27 @@ SYNCING_NOTE = "{n} file(s) still syncing from the cloud"
 REGRESSION_NOTE = "was {status} {date}; {why}"
 REGRESSION_COUNT_RAISED = COL_EXPECTED_COUNT + " is now {expected}"
 REGRESSION_FILES_CHANGED = "files changed"
+
+
+def _as_pattern(template: str, **groups: str) -> str:
+    """A note's template as a regular expression: every word of it escaped,
+    every ``{name}`` the pattern given for it. The words have one home -
+    the constants above - and a reader of the note never retypes them."""
+    # re.split with one group alternates: words, name, words, name, words.
+    words_and_names = re.split(r"\{(\w+)\}", template)
+    return "".join(groups[part] if i % 2 else re.escape(part)
+                   for i, part in enumerate(words_and_names))
+
+
+#: The regression sentence read back off the front of a note (it is always
+#: the first fact): REGRESSION_NOTE around either of its two reasons.
+_REGRESSION_SENTENCE = re.compile(_as_pattern(
+    REGRESSION_NOTE,
+    status=re.escape(Status.RECEIVED),
+    date=r"\d{4}-\d{2}-\d{2}",
+    why="(?P<why>" + _as_pattern(REGRESSION_COUNT_RAISED, expected=r"\d+")
+        + "|" + re.escape(REGRESSION_FILES_CHANGED) + ")",
+) + "(?:; |$)")
 
 log = logging.getLogger("tracker.scanner")
 
@@ -283,10 +305,31 @@ def _resolve_status(
     return Status.FAILED if failed else Status.MISSING
 
 
+def _regression_why(previous_note: str) -> str | None:
+    """The reason the last note gave for the row leaving Received, read back
+    off its first fact - or None when that note holds no regression sentence
+    (a row written before decision 108, or one that regressed through a
+    Pending Sync note), in which case the caller says REGRESSION_FILES_CHANGED
+    and never the count sentence: a person is sent to look for a count edit
+    only when a scan saw one."""
+    found = _REGRESSION_SENTENCE.match(previous_note)
+    return found.group("why") if found else None
+
+
 def _received_date(
     item: RequestItem, status: str, count: int, failed: bool, facts: list[str], today: dt.date,
 ) -> dt.date | None:
-    """Received Date: stamped on the first Received pass, preserved through regressions."""
+    """Received Date: stamped on the first Received pass, preserved through
+    regressions - and the regression's reason decided once, then carried.
+
+    The sentence says why the row *left* Received. That can only be judged
+    on the pass it leaves, when ``item.file_count`` is still the Received
+    count: a count no lower than it with more expected and nothing failed
+    means somebody raised the Expected Count, anything else means the files
+    changed. On every later pass the record's count is the regressed one,
+    so the same comparison would call every lost file a raised count
+    (decision 108); the reason is read back from the last note instead.
+    """
     if status == Status.RECEIVED:
         return item.received_date or today
     if status == Status.PENDING_SYNC:
@@ -294,15 +337,19 @@ def _received_date(
         # bytes ("free up space"). Nothing changed; the row waits, dated.
         return item.received_date
     if item.received_date is not None:
-        # A row that was Received and is not any more either lost files
-        # or was asked for more. Say which; REGRESSION_FILES_CHANGED on a row
-        # whose Expected Count somebody raised sends a person hunting
-        # for a file that never went anywhere.
-        had = item.file_count if item.file_count is not None else 0
-        if count >= had and item.expected_count > count and not failed:
-            why = REGRESSION_COUNT_RAISED.format(expected=item.expected_count)
+        if item.status == Status.RECEIVED:
+            # The pass the row leaves Received: it either lost files or was
+            # asked for more. Say which; REGRESSION_FILES_CHANGED on a row
+            # whose Expected Count somebody raised sends a person hunting
+            # for a file that never went anywhere.
+            had = item.file_count if item.file_count is not None else 0
+            if count >= had and item.expected_count > count and not failed:
+                why = REGRESSION_COUNT_RAISED.format(expected=item.expected_count)
+            else:
+                why = REGRESSION_FILES_CHANGED
         else:
-            why = REGRESSION_FILES_CHANGED
+            # Already regressed: the reason it left is the reason it left.
+            why = _regression_why(item.validation_notes) or REGRESSION_FILES_CHANGED
         facts.insert(0, REGRESSION_NOTE.format(
             status=Status.RECEIVED, date=item.received_date.isoformat(), why=why))
     return item.received_date
@@ -469,6 +516,10 @@ def _print_report(report: ScanReport) -> None:
 
 if __name__ == "__main__":
     import argparse
+
+    from tracker.page import tolerant_console
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
 
     parser = argparse.ArgumentParser(
         description=f"Scan an engagement's {PREPARED_DIR_NAME}/ tree and record each request's status"

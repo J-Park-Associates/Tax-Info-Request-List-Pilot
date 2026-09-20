@@ -309,6 +309,10 @@ def triage(
 if __name__ == "__main__":
     import argparse
 
+    from tracker.page import tolerant_console
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
+
     parser = argparse.ArgumentParser(
         description="Which request might each parked file belong to, and why? "
                     "Read-only: it suggests, and files nothing."

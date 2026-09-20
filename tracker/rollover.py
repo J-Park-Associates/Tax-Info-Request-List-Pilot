@@ -303,7 +303,13 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
 if __name__ == "__main__":
     import argparse
 
+    from tracker.page import tolerant_console
     from tracker.templates import require_form, template_items
+
+    # The report names the client's folders and carries an arrow a cp1252
+    # console cannot encode; the record is written before a word is
+    # printed, and a re-run into that folder is refused (decision 108).
+    tolerant_console()
 
     parser = argparse.ArgumentParser(
         description="Build next year's request list from a returning client's prior engagement"
@@ -345,6 +351,16 @@ if __name__ == "__main__":
         rolled_from=str(result.prior_dir.resolve()),   # the runner's cwd is not this one
     ))
 
+    # All of the work before any of the report: the folders are made now,
+    # so nothing about printing can leave a folder with a record and no
+    # scaffold - create_engagement() refuses a folder that already holds a
+    # record, so that folder could not be tried again (decision 108).
+    scaffolded = None
+    if ns.scaffold:
+        from tracker.scaffold import scaffold_engagement
+
+        scaffolded = scaffold_engagement(target)
+
     span = f"{result.prior_year} → {result.target_year}" if result.prior_year else UNKNOWN_YEAR_LABEL
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")
     for rolled in result.carried:
@@ -366,9 +382,6 @@ if __name__ == "__main__":
             print(f"    ? {line}")
     print(f"\n  Engagement: {target}")
 
-    if ns.scaffold:
-        from tracker.scaffold import scaffold_engagement
-
-        scaffolded = scaffold_engagement(target)
+    if scaffolded is not None:
         for line in scaffolded.describe():
             print(f"  {line}")

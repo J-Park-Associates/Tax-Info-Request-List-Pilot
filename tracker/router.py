@@ -677,6 +677,9 @@ if __name__ == "__main__":
     import argparse
 
     from tracker.manifest import load_manifest
+    from tracker.page import tolerant_console
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
 
     parser = argparse.ArgumentParser(
         description="Where would these files go, and why? Read-only: routes, moves nothing."

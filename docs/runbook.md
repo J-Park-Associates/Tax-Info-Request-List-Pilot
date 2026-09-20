@@ -281,6 +281,15 @@ Two reasons in that file are not validation notes at all:
 and they appear in the index's Reason column (§4) rather than against a
 request. Both are ours: the client sent the right document either way.
 
+**A row that was Received and is not any more** keeps its Received Date
+and its note begins *was Received <date>;* followed by why it left: *files
+changed* (a file went missing or changed under its name), or that the
+Expected Count is now a number the files no longer reach (somebody asked
+for more). The reason is the one from the pass the row left Received, and
+stays: a later pass carries it rather than deciding again, so a row that
+lost a file never reads as if somebody had raised its count. How far the
+row has got now is said separately, as *1 of 3 expected files*.
+
 The note itself is never pasted into an email. It names keywords, size
 floors and our own folders, and a client should never see any of that.
 

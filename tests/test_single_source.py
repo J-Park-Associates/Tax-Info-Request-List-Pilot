@@ -701,6 +701,70 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
             assert name == SCHEDULE_XML_FILENAME, (rel, name)
 
 
+#: Every command line that prints a client's file or folder name. The
+#: guard against a console that cannot encode one is tracker.page's
+#: tolerant_console(), and each of these takes it before it parses a flag.
+CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
+                   "store", "reminder", "runner", "router", "content_check",
+                   "view", "ledger", "validators")
+#: The command lines that print no client's name, each with why it is not
+#: guarded - so a new command line has to be named in one list or the other.
+CONSOLE_EXEMPT = {
+    "api": "stdout is the shell's JSON channel, written with ensure_ascii; nothing a console encodes",
+    "settings": "prints the firm's own root and settings, never a client's name (decision 97's hold)",
+    "scheduling": "prints the task's root and paths, never a client's name",
+}
+
+
+def _command_line_source(module: str) -> str:
+    """The source of the module's ``__main__`` block - and, when that block
+    only calls ``main()``, of ``main`` itself (the runner's command line is
+    a function the frozen entry calls too)."""
+    import ast
+
+    text = read(f"tracker/{module}.py")
+    tree = ast.parse(text)
+    blocks = [node for node in tree.body
+              if isinstance(node, ast.If) and isinstance(node.test, ast.Compare)
+              and isinstance(node.test.left, ast.Name) and node.test.left.id == "__name__"]
+    assert len(blocks) == 1, module
+    source = ast.get_source_segment(text, blocks[0])
+    if "main(" in source:
+        source += "\n" + "\n".join(
+            ast.get_source_segment(text, node) for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "main")
+    return source
+
+
+def test_every_command_line_that_prints_a_clients_name_takes_the_tolerant_console_first():
+    for module in CONSOLE_GUARDED:
+        source = _command_line_source(module)
+        guarded_at = source.find("tolerant_console()")
+        parses_at = source.find("argparse.ArgumentParser(")
+        assert guarded_at != -1, module
+        assert parses_at != -1, module
+        assert guarded_at < parses_at, module
+
+
+def test_every_command_line_is_either_guarded_or_exempt_by_name():
+    """A command line added tomorrow is named here, guarded or exempt with a
+    reason, before the suite is green - so none can slip past the console."""
+    import ast
+
+    from tests.test_layers import _is_main_guard
+
+    with_a_command_line = set()
+    for path in (REPO / "tracker").glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if any(isinstance(node, ast.If) and _is_main_guard(node) for node in tree.body):
+            with_a_command_line.add(path.stem)
+    assert with_a_command_line == set(CONSOLE_GUARDED) | set(CONSOLE_EXEMPT)
+    assert not set(CONSOLE_GUARDED) & set(CONSOLE_EXEMPT)
+    for module, reason in CONSOLE_EXEMPT.items():
+        assert reason, module
+        assert "tolerant_console()" not in _command_line_source(module), module
+
+
 def test_the_package_prose_names_constants_rather_than_their_values():
     """A docstring or comment may name LEDGER_FILENAME; it may not spell the value."""
     import ast

@@ -16,6 +16,11 @@ get subtly wrong, so those parts live here and nowhere else:
   name NTFS holds is not always one UTF-8 can (a lone surrogate), and a
   page about the firm's clients must not be lost to one client's file name.
 - :func:`slug` - a word as a class name, the one way the tracker does it.
+- :func:`tolerant_console` - the console made to take what it cannot
+  encode. Every command line that prints a client's file or folder name
+  calls it first, so a name the console cannot show never turns finished
+  work into a traceback (decision 108; the rule was the runner's alone
+  before, decision 67).
 
 **Nothing here knows what a page is about.** No engagement, no manifest, no
 record: it takes values and gives back markup, which is why it imports
@@ -31,6 +36,7 @@ the page.
 from __future__ import annotations
 
 import html
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -134,3 +140,22 @@ def page_text(lines: Iterable[str]) -> str:
     """
     joined = "\n".join(lines)
     return joined.encode("utf-8", "backslashreplace").decode("utf-8") + "\n"
+
+
+def tolerant_console() -> None:
+    """The console made to take what it cannot encode, instead of dying on it.
+
+    A report names client files and folders, and the console it lands on
+    is not always UTF-8 (the scheduler's, a stock Windows prompt): a name
+    it cannot encode - an arrow, a dash, a lone surrogate NTFS holds - is
+    written as its escape rather than raised, so finished work (every
+    original moved, a record written) never ends in a traceback over how
+    it was announced. This is the one home of that guard; every command
+    line that prints a client's name calls it before it parses a flag. It
+    replaces characters and nothing else: an error is still an error, and
+    a UTF-8 console shows the same text it always did. A stream with no
+    ``reconfigure`` (a capture, a pipe a test handed in) is left as it is.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")

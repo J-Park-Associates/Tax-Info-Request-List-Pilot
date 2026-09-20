@@ -509,6 +509,10 @@ def head(engagement_dir: Path | str) -> str:
 if __name__ == "__main__":
     import argparse
 
+    from tracker.page import tolerant_console
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
+
     parser = argparse.ArgumentParser(description="Show one engagement's own record")
     parser.add_argument("engagement_dir", help="the engagement folder")
     ns = parser.parse_args()

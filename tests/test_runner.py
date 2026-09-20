@@ -80,6 +80,23 @@ def test_the_runner_has_a_main_the_frozen_entry_can_call(tmp_path, samples, caps
     assert "Smith TY2025" in capsys.readouterr().out
 
 
+def test_the_runners_console_guard_is_the_pages(tmp_path, samples, monkeypatch):
+    # The scheduler's console is cp1252 and the report names the client's
+    # folder. The guard that made this a run instead of a traceback (the
+    # tenth reading) is tracker.page's now, shared by every command line.
+    import io
+    import sys
+
+    build_engagement(tmp_path, samples, name="Smith TY2025 \u2192 Ω")
+    console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", console)
+    code = main([str(tmp_path), "--dry-run", "--reminders", REMINDERS_NEVER])
+    console.flush()
+    shown = console.buffer.getvalue().decode("cp1252")
+    assert code == 0
+    assert "Smith TY2025 \\u2192 \\u03a9" in shown
+
+
 def build_engagement(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",),
                      name="Smith TY2025", **kwargs):
     """A scaffolded engagement with files waiting in the client's drop folder."""

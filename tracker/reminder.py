@@ -567,6 +567,10 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
 if __name__ == "__main__":
     import argparse
 
+    from tracker.page import tolerant_console
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
+
     parser = argparse.ArgumentParser(
         description="Draft (never send) a client reminder from a scanned engagement"
     )
