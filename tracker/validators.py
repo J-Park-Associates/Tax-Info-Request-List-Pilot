@@ -336,12 +336,15 @@ if __name__ == "__main__":
     import argparse
 
     from tracker.manifest import Override, load_manifest
+    from tracker.page import tolerant_console
     from tracker.scaffold import (
         PREPARED_DIR_NAME,
         README_NAME,
         REVIEW_DIR_NAME,
         assign_folders,
     )
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
 
     parser = argparse.ArgumentParser(
         description="Dry-run validation preview (read-only; writes nothing)"

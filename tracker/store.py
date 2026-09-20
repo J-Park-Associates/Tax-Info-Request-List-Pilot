@@ -1320,6 +1320,9 @@ if __name__ == "__main__":
     # nobody imports is the one place that may look upwards, and finding
     # the engagement folders under a root is what it looks up for.
     from tracker import registry
+    from tracker.page import tolerant_console
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.store",

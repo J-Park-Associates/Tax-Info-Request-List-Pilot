@@ -268,6 +268,10 @@ def _write_readme(
 if __name__ == "__main__":
     import argparse
 
+    from tracker.page import tolerant_console
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
+
     parser = argparse.ArgumentParser(
         description=f"Lay out {SHARED_DIR_NAME}/ (client drop folder) and {PREPARED_DIR_NAME}/ from the request list"
     )

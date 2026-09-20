@@ -381,6 +381,94 @@ def test_raising_expected_count_after_received_names_the_real_change(engagement)
     assert REGRESSION_FILES_CHANGED not in update.validation_notes
 
 
+def _regressed_from(day):
+    """The regression sentence's head, as the note starts: the reason follows."""
+    return REGRESSION_NOTE.format(status=Status.RECEIVED, date=day.isoformat(), why="")
+
+
+def test_a_regressed_rows_reason_is_decided_once_and_carried(engagement):
+    # Decision 108. A02 asked for 2 and got 2; one is taken away. The
+    # pass it leaves Received says "files changed". Every pass after has
+    # only the regressed count to compare with, and used to conclude that
+    # the Expected Count had been raised - on every regressed row, from the
+    # second pass on. The reason is decided once and carried.
+    edit_row(engagement, "A02", expected_count=2)
+    a02 = folder(engagement, "A02")
+    (a02 / "jan.csv").write_text("jan data", encoding="utf-8")
+    (a02 / "feb.csv").write_text("feb data", encoding="utf-8")
+    scan_engagement(engagement, today=DAY1)
+    assert statuses(engagement)["A02"].status == Status.RECEIVED
+
+    (a02 / "feb.csv").unlink()
+    left = scan_engagement(engagement, today=DAY2)
+    note = left.updates["A02"].validation_notes
+    assert note.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
+    assert REGRESSION_COUNT_RAISED.format(expected=2) not in note
+
+    for day in (DAY2 + dt.timedelta(days=1), DAY2 + dt.timedelta(days=7)):
+        again = scan_engagement(engagement, today=day)
+        assert again.updates["A02"].validation_notes == note
+        assert again.recorded == 0                   # nothing moved, nothing written
+    assert statuses(engagement)["A02"].validation_notes == note
+
+
+def test_a_raised_expected_count_says_so_on_the_pass_it_regresses_and_keeps_saying_so(engagement):
+    edit_row(engagement, "A02", expected_count=2)
+    a02 = folder(engagement, "A02")
+    (a02 / "jan.csv").write_text("jan data", encoding="utf-8")
+    (a02 / "feb.csv").write_text("feb data", encoding="utf-8")
+    scan_engagement(engagement, today=DAY1)
+
+    edit_row(engagement, "A02", expected_count=3)    # a person asks for one more
+    raised = scan_engagement(engagement, today=DAY2)
+    note = raised.updates["A02"].validation_notes
+    assert note.startswith(_regressed_from(DAY1) + REGRESSION_COUNT_RAISED.format(expected=3))
+    assert REGRESSION_FILES_CHANGED not in note
+
+    again = scan_engagement(engagement, today=DAY2 + dt.timedelta(days=1))
+    assert again.updates["A02"].validation_notes == note
+    assert again.recorded == 0
+
+
+def test_a_count_raised_after_a_regression_does_not_rewrite_why_the_row_left_received(engagement):
+    # The sentence says why the row LEFT Received, and it left because a
+    # file went. The raise is visible where the current count is said.
+    edit_row(engagement, "A02", expected_count=2)
+    a02 = folder(engagement, "A02")
+    (a02 / "jan.csv").write_text("jan data", encoding="utf-8")
+    (a02 / "feb.csv").write_text("feb data", encoding="utf-8")
+    scan_engagement(engagement, today=DAY1)
+    (a02 / "feb.csv").unlink()
+    scan_engagement(engagement, today=DAY2)
+
+    edit_row(engagement, "A02", expected_count=3)
+    later = scan_engagement(engagement, today=DAY2 + dt.timedelta(days=1))
+    note = later.updates["A02"].validation_notes
+    assert note.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
+    assert REGRESSION_COUNT_RAISED.format(expected=3) not in note
+    assert PARTIAL_NOTE.format(count=1, expected=3) in note
+
+
+def test_a_regression_note_written_before_this_decision_is_read_as_files_changed(engagement):
+    # A regressed row whose last note carries no regression sentence: the
+    # count comparison would say "raised" (2 files now, 1 recorded, 3
+    # expected, nothing failed), and nobody raised anything.
+    from tests.conftest import seed_statuses
+    from tracker.manifest import StatusUpdate
+
+    seed_statuses(engagement, {"A02": StatusUpdate(
+        status=Status.PARTIAL, file_count=1, received_date=DAY1,
+        validation_notes=PARTIAL_NOTE.format(count=1, expected=3),
+    )})
+    a02 = folder(engagement, "A02")
+    (a02 / "jan.csv").write_text("jan data", encoding="utf-8")
+    (a02 / "feb.csv").write_text("feb data", encoding="utf-8")
+
+    note = scan_engagement(engagement, today=DAY2).updates["A02"].validation_notes
+    assert note.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
+    assert REGRESSION_COUNT_RAISED.format(expected=3) not in note
+
+
 def test_accepted_means_received_with_a_date(engagement):
     # Decision 2: Accepted = treat as Received despite the rules. The status
     # column, the date and every count that reads the column agree.

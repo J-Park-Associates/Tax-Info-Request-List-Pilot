@@ -446,6 +446,78 @@ def test_the_rollover_command_line_writes_the_carried_form_into_next_year(tmp_pa
     assert list((prior.parent / "Smith TY2026").glob("*.xlsx")) == []
 
 
+def run_the_command_line(monkeypatch, argv, stdout):
+    """``python -m tracker.rollover`` in this process, its console ``stdout``:
+    the exit code, with a stream a test can choose the encoding of."""
+    import runpy
+    import sys
+    import warnings
+
+    monkeypatch.setattr(sys, "argv", ["tracker.rollover", *argv])
+    monkeypatch.setattr(sys, "stdout", stdout)
+    try:
+        with warnings.catch_warnings():
+            # This file imports the module; running its source again as
+            # __main__ is the point, and runpy's note about it is not.
+            warnings.filterwarnings("ignore", message="'tracker.rollover' found in sys.modules",
+                                    category=RuntimeWarning)
+            runpy.run_module("tracker.rollover", run_name="__main__")
+    except SystemExit as exc:
+        return exc.code if isinstance(exc.code, int) else 1
+    return 0
+
+
+def test_the_rollover_command_line_finishes_its_work_on_a_console_that_cannot_print_an_arrow(
+    prior, monkeypatch,
+):
+    """Decision 108: the report carries an arrow; a cp1252 console (a stock
+    Windows prompt, the scheduler's) cannot encode one. It used to die
+    after the record was written and before the folders were made, and a
+    second run into that folder was refused."""
+    import io
+
+    from tracker.manifest import load_engagement_info
+    from tracker.scaffold import PBC_DIR_NAME, README_NAME, SHARED_DIR_NAME
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    target = prior.parent / "Smith TY2026"
+    code = run_the_command_line(
+        monkeypatch, [str(prior), str(target), "--form", "1040", "--scaffold"], console,
+    )
+    console.flush()
+    shown = console.buffer.getvalue().decode("cp1252")
+
+    assert code == 0, shown
+    assert load_engagement_info(target).rolled_from == str(prior.resolve())
+    assert (target / SHARED_DIR_NAME).is_dir()
+    assert (target / SHARED_DIR_NAME / PBC_DIR_NAME).is_dir()
+    assert (target / PREPARED_DIR_NAME).is_dir()
+    assert (target / SHARED_DIR_NAME / README_NAME).is_file()
+    assert "2025 \\u2192 2026" in shown            # the arrow, as its escape
+
+
+def test_the_rollover_command_line_scaffolds_before_it_reports(prior, monkeypatch):
+    """Whatever goes wrong with the report goes wrong after the record AND
+    the folders are there - and the error still surfaces."""
+    import builtins
+    import io
+
+    from tracker.manifest import load_engagement_info
+    from tracker.scaffold import README_NAME, SHARED_DIR_NAME
+
+    def refuse_to_print(*args, **kwargs):
+        raise RuntimeError("the console is broken")
+
+    monkeypatch.setattr(builtins, "print", refuse_to_print)
+    target = prior.parent / "Smith TY2026"
+    with pytest.raises(RuntimeError, match="the console is broken"):
+        run_the_command_line(monkeypatch, [str(prior), str(target), "--scaffold"], io.StringIO())
+
+    assert load_engagement_info(target).rolled_from == str(prior.resolve())
+    assert (target / SHARED_DIR_NAME / README_NAME).is_file()
+    assert (target / PREPARED_DIR_NAME).is_dir()
+
+
 # ------------------------------------------- a row per issuer (decision 93) ----
 
 

@@ -1811,6 +1811,10 @@ def _find_filed(entries: list[IndexEntry], original: str) -> int:
 if __name__ == "__main__":
     import argparse
 
+    from tracker.page import tolerant_console
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
+
     parser = argparse.ArgumentParser(
         description=f"Sort the client's drop folder into {PBC_DIR_NAME}/ and {PREPARED_DIR_NAME}/"
     )

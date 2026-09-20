@@ -107,7 +107,7 @@ from tracker.manifest import (
     load_manifest,
     write_text_atomically,
 )
-from tracker.page import Cell, Row, esc, page_text, slug, table, unesc
+from tracker.page import Cell, Row, esc, page_text, slug, table, tolerant_console, unesc
 from tracker.records import (
     BEHIND,
     CURRENT,
@@ -614,6 +614,8 @@ def view_state(engagement_dir: Path | str) -> str:
 
 if __name__ == "__main__":
     import argparse
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.view",

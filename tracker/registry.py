@@ -328,6 +328,10 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
 if __name__ == "__main__":
     import argparse
 
+    from tracker.page import tolerant_console
+
+    tolerant_console()   # a client's name the console cannot encode is no traceback
+
     parser = argparse.ArgumentParser(
         description="List every engagement the scheduled run would find under a clients folder"
     )
