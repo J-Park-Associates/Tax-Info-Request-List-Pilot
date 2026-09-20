@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+from tracker.content_check import RETIRED_CACHE_FILENAME
+
 REPO = Path(__file__).resolve().parent.parent
 
 
@@ -403,13 +405,14 @@ def test_prose_names_no_weekday_but_the_draft_day():
 
 
 #: The runtime files the decision log names and the code no longer owns.
-#: The log never deletes: rows 1 to 103 name these files, and decisions 102
-#: to 104 retired them. A document may name one only in the log or in a
-#: sentence about the past (the runbook's legacy paragraph names the old
-#: request list, which is allowed by this set).
+#: The log never deletes: rows 1 to 106 name these files, and decisions 102
+#: to 104 and 107 retired them. A document may name one only in the log or
+#: in a sentence about the past (the runbook's legacy paragraph names the
+#: old request list, which is allowed by this set). The verdict cache's
+#: file is named by the constant the filer's tidy-up still removes it by.
 RETIRED_FILES = {"_manifest.xlsx", "_index.xlsx", "_manifest.pending.json", "_index.pending.json",
                  "_index.migrated.xlsx", "_index.pending.migrated.json",
-                 "_manifest.pending.migrated.json"}
+                 "_manifest.pending.migrated.json", RETIRED_CACHE_FILENAME}
 
 
 def test_documents_name_only_runtime_files_the_code_owns():
@@ -423,14 +426,13 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import README_NAME
-    from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
     assert LEGACY_MANIFEST_FILENAME in RETIRED_FILES
-    owned = {CACHE_FILENAME, LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+    owned = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
@@ -681,12 +683,11 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import README_NAME
-    from tracker.scanner import CACHE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import SETTINGS_FILENAME
     from tracker.view import VIEW_FILENAME
 
-    owned = {CACHE_FILENAME, LEDGER_FILENAME, LOCK_FILENAME,
+    owned = {LEDGER_FILENAME, LOCK_FILENAME,
              DRAFT_FILENAME, NEW_DRAFT_FILENAME,
              LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, VIEW_FILENAME}
@@ -782,13 +783,13 @@ def test_the_package_prose_names_constants_rather_than_their_values():
         REVIEW_DIR_NAME,
         SHARED_DIR_NAME,
     )
-    from tracker.scanner import CACHE_FILENAME
     from tracker.settings import SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
     values = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-              LOG_FILENAME, LEGACY_MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME, CACHE_FILENAME,
+              LOG_FILENAME, LEGACY_MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME,
+              RETIRED_CACHE_FILENAME,
               SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
               f"{SHARED_DIR_NAME}/", f"{PBC_DIR_NAME}/", f"{PREPARED_DIR_NAME}/"}
     quoted = {f"``{v}``" for v in set(Status.ALL) | set(Override.ALL)}

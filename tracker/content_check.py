@@ -51,6 +51,23 @@ persisted anywhere. Editing a row's rules changes the fingerprint and
 triggers one re-extraction; unchanged files on unchanged rules are never
 re-read, which keeps the scheduled cadence cheap.
 
+**Where the cache lives** (decision 107): in the store on the designated
+machine - two tables of :mod:`tracker.store`, the memos and the verdicts,
+per engagement - and nowhere in the engagement folder. Until then it was a
+JSON file beside the client's documents that every pass rewrote, in a
+folder a cloud client syncs; the owner's rule is that nothing the machine
+can derive lives in the synced folder, because a file rewritten every two
+hours there is the synced-database failure one file over. It is **not
+journalled**: a verdict is a derivation of the bytes in the folder and the
+rules in the record, not a fact about the engagement, so a rebuild of the
+store from the journals leaves the cache empty and the next pass reads
+each document once - slower, never wrong. A save is one transaction of
+the store's own, under the engagement lock every writer already holds,
+and never ``store.record()``: there is no event. A cache built with no
+engagement - the command line's, a test's - lives in memory and never
+touches the store. The old file is never read; the next real pass
+removes it (:data:`RETIRED_CACHE_FILENAME`).
+
 :class:`Evidence` itself, the rule and place vocabularies and the cell format
 it is written into live in :mod:`tracker.records` since decision 100 - they
 are the shape of a verdict, not the reading of a document - and are
@@ -66,13 +83,8 @@ import re
 from dataclasses import MISSING, asdict, dataclass, fields
 from pathlib import Path
 
-from tracker import reasons
-from tracker.manifest import (
-    RequestItem,
-    has_routing_rules,
-    keyword_alternatives,
-    write_json_atomically,
-)
+from tracker import reasons, store
+from tracker.manifest import RequestItem, has_routing_rules, keyword_alternatives
 
 # The Evidence record and the cell format it is written in live in
 # tracker/records.py (decision 100): they are the shape of a verdict, not the
@@ -104,9 +116,13 @@ log = logging.getLogger("tracker.content_check")
 # already surfaced through ContentResult.reason.
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
-#: The verdict cache beside the manifest, shared by the filer and the scanner.
-CACHE_FILENAME = "_content_cache.json"
-#: Its layout; an older layout is simply reset (the cache is disposable).
+#: The file the verdict cache was, in the engagement folder, until decision
+#: 107 moved it into the store. Never read again: the one use left is the
+#: filer's tidy-up, which removes it from a folder a pass finds it in.
+RETIRED_CACHE_FILENAME = "_content_cache.json"
+#: The cache's layout, carried on every verdict row in the store; a row at
+#: any other version is ignored on load and deleted on save (the cache is
+#: disposable), so a matcher change invalidates without a store version.
 #: 3: verdicts that were the machine's (no OCR, OCR failed) are no longer
 #: stored; a cache written before that carried them for ever.
 #: 4: says() changed what a keyword verdict means (a form number is title evidence).
@@ -153,9 +169,13 @@ def _evidence_from_json(raw: object) -> tuple[Evidence, ...]:
 
     Total, like everything that reads the cache: the cache is disposable,
     so anything unrecognised costs a re-extraction, never an exception in
-    a scheduled run.
+    a scheduled run. A tuple as well as a list: ``asdict`` leaves the
+    evidence a tuple of dicts until the store's JSON round trip makes it a
+    list, and a verdict read back in the same pass it was kept must be the
+    verdict that was kept (decision 107's claim that the kept verdict and
+    the miss verdict are one).
     """
-    if not isinstance(raw, list):
+    if not isinstance(raw, (list, tuple)):
         return ()
     return tuple(
         Evidence(str(item.get("rule", "")), str(item.get("term", "")),
@@ -728,6 +748,38 @@ def form_family(key: str) -> str:
     return _FAMILY.match(key).group(0)
 
 
+#: How many distinct form families naming themselves make one page two
+#: documents. A broker's consolidated statement prints "1099-INT" and
+#: "1099-DIV" and is one family's document (``_title_forms`` says so of a
+#: title); two families is two forms on one sheet (decision 94). Here, and
+#: not in the router, since decision 107: the scanner reads through the
+#: same rule on a cache miss.
+MULTI_FORM_FAMILIES = 2
+
+
+def own_forms(text: str) -> set[str] | None:
+    """The forms ``text`` counts as its own when it names two or more
+    families as itself, else ``None`` - the ordinary reading.
+
+    **The one reading of which forms a page is** (decision 107). Decision
+    94 files a page that prints two forms' own names under both requests,
+    and the verdict the second copy needs is the page read with both forms
+    counted as its own; decision 105 kept that verdict in the cache, and
+    the cache alone. The step-0 re-run of 107 found what that meant: a
+    rebuilt store - the runbook's own upgrade path, a new machine,
+    ``rebuild`` - read the second copy the ordinary way, called it the
+    other form's page, and the Saturday draft asked the client for a form
+    already sent. The cache was carrying a decision, not a derivation. So
+    the router's split (:mod:`tracker.router`) and the scanner's miss
+    path (:func:`check_content`) both read through this, and the cache
+    holds nothing a reader cannot recompute from the bytes.
+    """
+    named = self_named_forms(text)
+    if len({form_family(key) for key in named}) >= MULTI_FORM_FAMILIES:
+        return set(named)
+    return None
+
+
 def self_named_forms(text: str) -> tuple[str, ...]:
     """Every form ``text`` prints its *own* name on, first mention first.
 
@@ -1004,13 +1056,15 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
     matched is the lead a person works a parked file from.
 
     ``dominant`` is which form numbers count as the document's own, and is
-    :func:`dominant_forms`'s answer unless a caller says otherwise - which
-    exactly one does. A page that names two forms as itself is two
-    documents (:func:`self_named_forms`, decision 94), and the ordinary
-    reading calls at most one of them the page's own; the router reads
-    such a page a second time with both, and files only under the strict
-    rule decision 94 sets. Every other caller, and therefore every verdict
-    the cache keeps, is the reading it always was.
+    :func:`dominant_forms`'s answer unless a caller says otherwise. A page
+    that names two forms as itself is two documents
+    (:func:`self_named_forms`, decision 94), and the ordinary reading calls
+    at most one of them the page's own; the router reads such a page a
+    second time with both, and files only under the strict rule decision
+    94 sets. Since decision 107 the scanner's miss path reads it the same
+    way, through :func:`own_forms`, so every verdict the cache keeps is
+    one the miss path reproduces; for a page naming at most one family
+    :func:`own_forms` is ``None`` and this is the reading it always was.
     """
     if dominant is None:
         dominant = dominant_forms(text)
@@ -1227,12 +1281,20 @@ def check_content(
 
 
 def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
+    """The scan's reading on a cache miss: the reading the router made.
+
+    A page that names two forms as itself is read with both counted as its
+    own (:func:`own_forms`), which is the verdict the router filed the
+    second copy on; every other page reads exactly as it always did. So a
+    verdict from an empty cache and a verdict the router kept are one
+    verdict, and a rebuilt store cannot turn a filed copy into a failure.
+    """
     reading = extract(path)
     if reading.text is None:
         return ContentResult(
             ok=False, reason=reading.reason, extractable=False, transient=reading.transient,
         )
-    return evaluate_rules(reading.text, item)
+    return evaluate_rules(reading.text, item, own_forms(reading.text))
 
 
 # ------------------------------------------------------------------- cache ----
@@ -1245,29 +1307,34 @@ class ContentCache:
     text. A per-path memo of (size, mtime, digest) spares the hashing of a
     file that has not changed; the verdicts themselves are keyed by what
     the file *is*, so a working copy of a routed drop is a hit under its
-    new name. Disposable by design: a corrupt, missing or older-layout
-    cache file simply means re-extraction, so it is reset silently.
+    new name.
+
+    **Backed by the store** (decision 107): built for an engagement, it
+    loads that engagement's memos and verdicts at :data:`CACHE_VERSION`
+    from the store's two tables once, works in memory exactly as it always
+    did, and :meth:`save` writes back what changed - the memos and verdicts
+    learned, the paths and digests pruned - in one transaction of the
+    store's own, under the engagement lock. The engagement must already be
+    in the store (both writers ``ensure()`` first); one it does not hold is
+    refused by name here, at construction, rather than at the save. Built
+    with no engagement it is memory only: the command line's cache, a dry
+    run's, a test's - :meth:`save` then touches nothing. Disposable by
+    design: a row written under another version simply means re-extraction.
     """
 
-    def __init__(self, path: Path | str):
-        self.path = Path(path)
-        self._dirty = False
+    def __init__(self, engagement_dir: Path | None = None):
+        self._engagement = Path(engagement_dir) if engagement_dir is not None else None
         self._files: dict[str, dict] = {}                # path key -> size, mtime_ns, digest
         self._verdicts: dict[str, dict[str, dict]] = {}  # digest -> fingerprint -> verdict
-        if self.path.exists():
-            try:
-                data = json.loads(self.path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError) as exc:
-                log.warning("Content cache reset (unreadable): %s", exc)
-                return
-            if (
-                isinstance(data, dict) and data.get("version") == CACHE_VERSION
-                and isinstance(data.get("files"), dict) and isinstance(data.get("verdicts"), dict)
-            ):
-                self._files = data["files"]
-                self._verdicts = data["verdicts"]
-            else:
-                log.info("Content cache reset (older layout); verdicts are recomputed")
+        # What this cache has learned and forgotten since it was loaded, so
+        # a save writes exactly those rows and no others.
+        self._learned_files: set[str] = set()
+        self._learned_verdicts: set[tuple[str, str]] = set()
+        self._forgotten_files: set[str] = set()
+        self._forgotten_digests: set[str] = set()
+        if self._engagement is not None:
+            self._files, self._verdicts = store.cached_verdicts(
+                store.connect(), self._engagement, version=CACHE_VERSION)
 
     @staticmethod
     def _key(file: Path) -> str:
@@ -1288,7 +1355,8 @@ class ContentCache:
         except OSError:
             return None
         self._files[key] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "digest": digest}
-        self._dirty = True
+        self._learned_files.add(key)
+        self._forgotten_files.discard(key)
         return digest
 
     def get(self, file: Path, fingerprint: str) -> ContentResult | None:
@@ -1315,30 +1383,47 @@ class ContentCache:
 
     def put_by_digest(self, digest: str, fingerprint: str, result: ContentResult) -> None:
         self._verdicts.setdefault(digest, {})[fingerprint] = asdict(result)
-        self._dirty = True
+        self._learned_verdicts.add((digest, fingerprint))
+        self._forgotten_digests.discard(digest)
 
     def prune(self, existing: set[Path]) -> None:
         """Forget files that are no longer there, and verdicts nothing there refers to."""
         keep = {self._key(p) for p in existing}
         for key in [k for k in self._files if k not in keep]:
             del self._files[key]
-            self._dirty = True
+            self._learned_files.discard(key)
+            self._forgotten_files.add(key)
         referenced = {str(memo.get("digest")) for memo in self._files.values()}
         for digest in [d for d in self._verdicts if d not in referenced]:
             del self._verdicts[digest]
-            self._dirty = True
+            self._learned_verdicts = {(d, f) for d, f in self._learned_verdicts if d != digest}
+            self._forgotten_digests.add(digest)
 
     def save(self) -> None:
-        if not self._dirty:
+        """Write what changed to the store, whole or nothing; a no-op for a
+        cache nothing changed in, and for one built with no engagement."""
+        if self._engagement is None:
             return
-        # Whole or nothing: a scan killed mid-save must not leave a cache
-        # the next scan reads as empty and then re-extracts everything.
-        write_json_atomically(
-            self.path,
-            {"version": CACHE_VERSION, "files": self._files, "verdicts": self._verdicts},
-            indent=1,
+        if not (self._learned_files or self._learned_verdicts
+                or self._forgotten_files or self._forgotten_digests):
+            return
+        learned: dict[str, dict[str, dict]] = {}
+        for digest, fingerprint in self._learned_verdicts:
+            learned.setdefault(digest, {})[fingerprint] = self._verdicts[digest][fingerprint]
+        # One immediate transaction of the store's own - never store.record(),
+        # which is for events - so a pass killed mid-save leaves the previous
+        # rows rather than half of the new ones.
+        store.remember_verdicts(
+            store.connect(), self._engagement, version=CACHE_VERSION,
+            memos={key: self._files[key] for key in self._learned_files},
+            verdicts=learned,
+            forget_paths=set(self._forgotten_files),
+            forget_digests=set(self._forgotten_digests),
         )
-        self._dirty = False
+        self._learned_files.clear()
+        self._learned_verdicts.clear()
+        self._forgotten_files.clear()
+        self._forgotten_digests.clear()
 
 
 # ------------------------------------------------------------------- CLI ----

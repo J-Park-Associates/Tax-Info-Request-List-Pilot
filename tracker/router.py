@@ -111,9 +111,10 @@ module is the deciding. It is re-exported here for one release.
 
 Routing is read-only. Moving, renaming and indexing happen in
 :mod:`tracker.filer`, which uses the decisions made here. The verdicts the
-router reaches on the way are left in the engagement's content cache,
-keyed by the file's content, so the scan that follows finds them under the
-working copy's new name instead of reading the document a second time.
+router reaches on the way are left in the engagement's verdict cache - in
+the store since decision 107 - keyed by the file's content, so the scan
+that follows finds them under the working copy's new name instead of
+reading the document a second time.
 """
 
 from __future__ import annotations
@@ -123,7 +124,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from tracker import reasons
+
+# MULTI_FORM_FAMILIES moved to tracker/content_check.py with decision 107
+# (the scanner's miss path reads through the same rule); re-exported here
+# for one release so `from tracker.router import MULTI_FORM_FAMILIES` still
+# resolves to the same object.
 from tracker.content_check import (
+    MULTI_FORM_FAMILIES,  # noqa: F401
     ContentCache,
     ContentResult,
     Extraction,
@@ -131,8 +138,8 @@ from tracker.content_check import (
     contains_keyword,
     evaluate_rules,
     extract,
-    form_family,
     form_key,
+    own_forms,
     rules_fingerprint,
     says,
     self_named_forms,
@@ -183,11 +190,6 @@ ISSUER_NOT_NAMED = reasons.ISSUER_NOT_NAMED
 #: a request. Both worded once, in :mod:`tracker.reasons`.
 SEVERAL_FORMS = reasons.NAMES_SEVERAL_FORMS
 SEVERAL_FORMS_UNSORTED = reasons.SEVERAL_FORMS_UNSORTED
-#: How many distinct form families naming themselves make one page two
-#: documents. A broker's consolidated statement prints "1099-INT" and
-#: "1099-DIV" and is one family's document (``content_check._title_forms``
-#: says so of a title); two families is two forms on one sheet.
-MULTI_FORM_FAMILIES = 2
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 #: What a file name uses between words, read as spaces; a hyphen stays,
@@ -453,8 +455,16 @@ def route_file(
         if remember and digest:
             cache.put_by_digest(digest, rules_fingerprint(item), verdict)
 
+    # Which forms the page counts as its own is content_check's one reading,
+    # own_forms() (decision 107): the ordinary reading here, the split below
+    # and the scanner's miss path all read through it, so a page that prints
+    # two forms' own names is those two documents and never files on a third
+    # form it merely mentions - decision 94's rule, by construction - and
+    # every verdict kept here is one a rebuilt store reaches again.
+    own = own_forms(words) if words else None
+
     def verdict_for(item: RequestItem):
-        verdict = evaluate_rules(words, item)
+        verdict = evaluate_rules(words, item, own)
         keep(item, verdict)
         return verdict
 
@@ -533,11 +543,12 @@ def route_file(
     # page whose forms will not sort one to a request parks whether or not
     # one of them would have filed on its own - filing the half we can
     # place would put the other half where nobody will look for it.
-    if words:
+    # The forms are taken in first-mention order (self_named_forms), because
+    # which request the page files under first is part of the decision.
+    if own is not None:
         named = self_named_forms(words)
-        if len({form_family(key) for key in named}) >= MULTI_FORM_FAMILIES:
-            if split := _multi_form(path, words, allowed, named, keep):
-                return split
+        if split := _multi_form(path, words, allowed, named, keep):
+            return split
 
     # The list asks for this document one row per issuer (decision 93): the
     # broad row accepted it on its looser words, every issuer row wanted a

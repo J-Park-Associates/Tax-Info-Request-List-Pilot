@@ -34,11 +34,12 @@ Status policy (docs/ROADMAP.md decision log):
   common single-file case never pays for hashing.
 
 Strictly read-only where the client's files are concerned: the scanner
-reads the prepared copies and writes only the record, the content cache and
-the run-lock. It never touches ``SHARED_DIR_NAME/`` at all — the client's
-originals are the filer's business, and even there they are only ever
-moved, never altered. The engagement lock (:mod:`tracker.locking`, shared
-with the filer) prevents overlapping runs; stale locks are replaced.
+reads the prepared copies and writes only the record, the verdict cache in
+the store (decision 107) and the run-lock. It never touches
+``SHARED_DIR_NAME/`` at all — the client's originals are the filer's
+business, and even there they are only ever moved, never altered. The
+engagement lock (:mod:`tracker.locking`, shared with the filer) prevents
+overlapping runs; stale locks are replaced.
 """
 
 from __future__ import annotations
@@ -51,7 +52,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, reasons, store
-from tracker.content_check import CACHE_FILENAME, ContentCache, check_content
+from tracker.content_check import ContentCache, check_content
 from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
     COL_EXPECTED_COUNT,
@@ -115,8 +116,6 @@ _REGRESSION_SENTENCE = re.compile(_as_pattern(
 
 log = logging.getLogger("tracker.scanner")
 
-#: CACHE_FILENAME is tracker.content_check's (the filer writes the cache too);
-#: it stays importable from here for anyone's scripts.
 _MAX_NOTE_LEN = 500
 _MAX_LISTED_FAILURES = 3
 
@@ -458,7 +457,7 @@ def scan_engagement(
         # measured from both come from there.
         items = load_manifest(engagement_dir)
         prepared_dir = engagement_dir / PREPARED_DIR_NAME
-        cache = ContentCache(engagement_dir / CACHE_FILENAME)
+        cache = ContentCache(engagement_dir)      # the engagement's verdicts, from the store
         pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
 

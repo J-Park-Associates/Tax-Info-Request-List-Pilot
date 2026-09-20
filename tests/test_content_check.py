@@ -6,8 +6,10 @@ import pytest
 from openpyxl import Workbook
 from pypdf import PdfWriter
 
-from tracker import reasons
+from tests.conftest import make_engagement
+from tracker import reasons, store
 from tracker.content_check import (
+    CACHE_VERSION,
     ContentCache,
     check_content,
     evaluate_rules,
@@ -15,6 +17,7 @@ from tracker.content_check import (
     has_content_rules,
     rules_fingerprint,
 )
+from tracker.locking import engagement_lock
 from tracker.manifest import RequestItem
 
 
@@ -170,20 +173,36 @@ def counting_extractor(monkeypatch):
     return calls
 
 
-def test_cache_hit_and_invalidation(tmp_path, monkeypatch):
+def an_engagement(tmp_path, *rules):
+    """An engagement the store holds, whose request list is ``rules``."""
+    return make_engagement(tmp_path / "Clients" / "Smith 2025", list(rules), scaffold=False)
+
+
+def cache_rows(engagement):
+    """The engagement's cache as the store holds it at CACHE_VERSION: (memos, verdicts)."""
+    return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
+
+
+def saved(cache, engagement):
+    with engagement_lock(engagement):
+        cache.save()
+
+
+def test_a_verdict_is_served_from_the_store_and_the_document_read_once(tmp_path, monkeypatch):
     calls = counting_extractor(monkeypatch)
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
     rule = item(required_keywords=("Chase",))
-    cache = ContentCache(tmp_path / "cache.json")
+    engagement = an_engagement(tmp_path, rule)
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    cache = ContentCache(engagement)
 
     assert check_content(pdf, rule, cache).ok
     assert check_content(pdf, rule, cache).ok
-    assert calls["n"] == 1                       # second call served from cache
+    assert calls["n"] == 1                       # second call served from the cache
 
-    cache.save()
-    reopened = ContentCache(tmp_path / "cache.json")
+    saved(cache, engagement)
+    reopened = ContentCache(engagement)          # loaded from the store, not from memory
     assert check_content(pdf, rule, reopened).ok
-    assert calls["n"] == 1                       # survives a save/reload
+    assert calls["n"] == 1                       # survives a save and a fresh load
 
     text_pdf(pdf, "Chase Bank Statement December 2025 v2")      # file changed -> re-extract
     assert check_content(pdf, rule, reopened).ok
@@ -201,7 +220,7 @@ def test_the_cache_is_keyed_on_content_not_path(tmp_path, monkeypatch):
     calls = counting_extractor(monkeypatch)
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
     rule = item(required_keywords=("Chase",))
-    cache = ContentCache(tmp_path / "cache.json")
+    cache = ContentCache()
     assert check_content(pdf, rule, cache).ok
     copy = tmp_path / "A01 - Bank Statement.pdf"
     copy.write_bytes(pdf.read_bytes())
@@ -210,59 +229,183 @@ def test_the_cache_is_keyed_on_content_not_path(tmp_path, monkeypatch):
     assert cache.digest_of(copy) == cache.digest_of(pdf)
 
 
-def test_a_cache_in_an_older_layout_is_reset(tmp_path):
-    import json
-
-    from tracker.content_check import CACHE_VERSION
-
-    cache_file = tmp_path / "cache.json"
-    cache_file.write_text(json.dumps({"version": 1, "files": {"old": {"ok": True}}}), encoding="utf-8")
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page")
-    cache = ContentCache(cache_file)
-    assert cache.get(pdf, rules_fingerprint(item(required_keywords=("Chase",)))) is None
-    check_content(pdf, item(required_keywords=("Chase",)), cache)
-    cache.save()
-    assert json.loads(cache_file.read_text(encoding="utf-8"))["version"] == CACHE_VERSION
-
-
-def test_cache_corrupt_resets_silently(tmp_path):
-    cache_file = tmp_path / "cache.json"
-    cache_file.write_text("{broken", encoding="utf-8")
-    cache = ContentCache(cache_file)              # no exception
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page")
-    assert check_content(pdf, item(required_keywords=("Chase",)), cache).ok
-    cache.save()
-    assert ContentCache(cache_file).get(pdf, rules_fingerprint(item(required_keywords=("Chase",))))
-
-
-def test_a_cache_save_leaves_no_temp_file_and_survives_a_crash(tmp_path, monkeypatch):
-    from tracker.manifest import TEMP_SUFFIX
-
-    cache_file = tmp_path / "cache.json"
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page")
+def test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save(tmp_path):
+    # Version 6 stored verdicts with no evidence at all; reading one back
+    # would say a verdict had no reason behind it, which is worse than
+    # re-extracting once. Version 7 was read before decision 85 taught
+    # says() that a form heading its line with its printed title and its
+    # year names itself, so a version-7 verdict would say a one-copy W-2
+    # is nobody's form. Version 8 was read before decision 90 let a
+    # keyword name alternatives, so a version-8 verdict read the "|" and
+    # the "+" in one as words to look for and found neither. The version
+    # is carried per row now (decision 107), and it still means all that.
+    assert CACHE_VERSION == 9
     rule = item(required_keywords=("Chase",))
-    cache = ContentCache(cache_file)
-    check_content(pdf, rule, cache)
-    cache.save()
-    before = cache_file.read_text(encoding="utf-8")
+    engagement = an_engagement(tmp_path, rule)
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    fingerprint = rules_fingerprint(rule)
+    conn = store.connect()
+    engagement_id = store._engagement_row(conn, engagement)["id"]
+    conn.execute(
+        f"INSERT INTO {store.VERDICTS_TABLE} (engagement_id, digest, fingerprint, version, verdict) "
+        "VALUES (?, ?, ?, ?, ?)", (engagement_id, "deadbeef", fingerprint, 6, '{"ok": true}'))
 
-    def refuse_replace(src, dst):
-        raise OSError("disk full")
+    cache = ContentCache(engagement)
+    assert cache.get_by_digest("deadbeef", fingerprint) is None      # not this version's
+    assert check_content(pdf, rule, cache).evidence                  # read, with its evidence
+    saved(cache, engagement)
 
-    monkeypatch.setattr("tracker.manifest.os.replace", refuse_replace)
-    text_pdf(pdf, "Chase Bank Statement page v2")
+    versions = [row[0] for row in conn.execute(
+        f"SELECT version FROM {store.VERDICTS_TABLE} WHERE engagement_id = ?", (engagement_id,))]
+    assert versions == [CACHE_VERSION]                               # the old row is gone
+    _memos, verdicts = cache_rows(engagement)
+    assert "deadbeef" not in verdicts and len(verdicts) == 1
+
+
+def test_a_save_that_fails_leaves_the_previous_verdicts(tmp_path, monkeypatch):
+    import sqlite3
+
+    rule = item(required_keywords=("Chase",))
+    engagement = an_engagement(tmp_path, rule)
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    cache = ContentCache(engagement)
     check_content(pdf, rule, cache)
-    with pytest.raises(OSError, match="disk full"):
+    saved(cache, engagement)
+    before = cache_rows(engagement)
+    assert before[0] and before[1]
+
+    real = store.connect()
+
+    class FailsOnTheVerdict:
+        """The process's connection, whose verdict write raises mid-transaction."""
+
+        def execute(self, sql, *args):
+            if f"INTO {store.VERDICTS_TABLE}" in sql:
+                raise sqlite3.OperationalError("disk I/O error")
+            return real.execute(sql, *args)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(store, "connect", lambda path=None: FailsOnTheVerdict())
+    text_pdf(pdf, "Chase Bank Statement December 2025 v2")        # a memo and a verdict to write
+    check_content(pdf, rule, cache)
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+        saved(cache, engagement)
+    monkeypatch.undo()
+
+    assert cache_rows(engagement) == before                          # the memo write rolled back too
+    assert real.in_transaction is False
+
+
+def test_a_cache_with_no_engagement_never_touches_the_store(tmp_path, monkeypatch):
+    def never(path=None):
+        raise AssertionError("the store was asked for")
+
+    monkeypatch.setattr(store, "connect", never)
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    rule = item(required_keywords=("Chase",))
+    cache = ContentCache()
+    assert check_content(pdf, rule, cache).ok
+    assert cache.get(pdf, rules_fingerprint(rule)) is not None
+    cache.save()                                                     # nothing to touch, no lock needed
+
+
+def test_a_cache_for_an_engagement_the_store_does_not_hold_is_refused_by_name(tmp_path):
+    folder = tmp_path / "Clients" / "Nobody 2025"
+    folder.mkdir(parents=True)
+    with pytest.raises(store.StoreError, match="does not hold this engagement") as raised:
+        ContentCache(folder)
+    assert folder.name in str(raised.value)
+
+
+def test_a_transient_verdict_is_still_never_cached(tmp_path, monkeypatch):
+    from tracker.content_check import Extraction
+
+    monkeypatch.setattr("tracker.content_check.extract", lambda path, ocr=True: Extraction(
+        None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False, transient=True))
+    rule = item(required_keywords=("Chase",))
+    engagement = an_engagement(tmp_path, rule)
+    pdf = text_pdf(tmp_path / "s.pdf", "a scan")
+    cache = ContentCache(engagement)
+
+    verdict = check_content(pdf, rule, cache)
+    assert verdict.transient and not verdict.ok
+    assert cache.get(pdf, rules_fingerprint(rule)) is None
+    saved(cache, engagement)
+    memos, verdicts = cache_rows(engagement)
+    assert memos and verdicts == {}                                  # the digest, never the verdict
+
+
+def test_the_cache_save_refuses_outside_the_engagement_lock(tmp_path):
+    rule = item(required_keywords=("Chase",))
+    engagement = an_engagement(tmp_path, rule)
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    cache = ContentCache(engagement)
+    check_content(pdf, rule, cache)
+
+    with pytest.raises(store.StoreError, match="engagement lock"):
         cache.save()
+    assert cache_rows(engagement) == ({}, {})
+    saved(cache, engagement)                                         # the same save, under the lock
+    assert cache_rows(engagement) != ({}, {})
 
-    assert cache_file.read_text(encoding="utf-8") == before   # the old cache survived
-    assert list(tmp_path.glob(f"*{TEMP_SUFFIX}")) == []
+
+def test_own_forms_is_none_for_one_family_and_the_named_set_for_two():
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.content_check import MULTI_FORM_FAMILIES, own_forms, self_named_forms
+
+    one = "\n".join(scanned_w2_lines(2025))
+    two = "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025))
+    assert MULTI_FORM_FAMILIES == 2
+    assert own_forms(one) is None                                  # the ordinary reading
+    assert own_forms("a letter about nothing in particular") is None
+    assert own_forms(two) == set(self_named_forms(two)) == {"w2", "1098"}
+
+
+def test_on_every_corpus_form_the_scans_miss_verdict_equals_the_routers_kept_verdict():
+    """For every placement in tests/irs/: route with a memory cache, then
+    read the same file through check_content() with an empty cache on the
+    row(s) it filed under. The kept verdict and the miss verdict are one
+    verdict - ok, reason and evidence - so a rebuilt store reaches what
+    the router filed on."""
+    from tests.test_irs_forms import EXPECT, IRS
+    from tracker.manifest import validated
+    from tracker.router import route_file
+    from tracker.templates import template_items
+
+    catalogs: dict = {}
+
+    def rows(form, year):
+        if (form, year) not in catalogs:
+            from dataclasses import replace
+            catalogs[(form, year)] = [replace(i, min_size_kb=0, date_pattern="")
+                                      for i in validated(template_items(form, year=year))]
+        return catalogs[(form, year)]
+
+    compared = 0
+    for pdf, form, year, expected in EXPECT:
+        if expected is None:
+            continue
+        items = rows(form, year)
+        kept = ContentCache()
+        routing = route_file(IRS / pdf, items, cache=kept)
+        assert routing.identifier == expected, (pdf, form, routing.reason)
+        for identifier in (routing.identifier, *routing.also):
+            row = next(i for i in items if i.identifier == identifier)
+            remembered = kept.get(IRS / pdf, rules_fingerprint(row))
+            assert remembered is not None, (pdf, form, identifier)
+            miss = check_content(IRS / pdf, row, ContentCache())
+            assert (miss.ok, miss.reason, miss.evidence) == (
+                remembered.ok, remembered.reason, remembered.evidence), (pdf, form, identifier)
+            compared += 1
+    assert compared >= len([e for e in EXPECT if e[3] is not None])
 
 
 def test_cache_prune(tmp_path):
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page")
     rule = item(required_keywords=("Chase",))
-    cache = ContentCache(tmp_path / "cache.json")
+    cache = ContentCache()
     check_content(pdf, rule, cache)
     assert cache.get(pdf, rules_fingerprint(rule)) is not None
 
@@ -672,45 +815,19 @@ def test_the_compact_evidence_parses_back_to_what_was_formatted():
     assert parse_evidence("") == {}
 
 
-def test_a_verdict_read_back_from_the_cache_brings_its_evidence(tmp_path):
+def test_a_verdict_read_back_from_the_store_brings_its_evidence(tmp_path):
     from tracker.content_check import RULE_REQUIRED, WHERE_TITLE
 
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
     rule = item(required_keywords=("Chase",))
-    cache = ContentCache(tmp_path / "cache.json")
+    engagement = an_engagement(tmp_path, rule)
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    cache = ContentCache(engagement)
     assert check_content(pdf, rule, cache).ok
-    cache.save()
+    saved(cache, engagement)
 
-    reopened = ContentCache(tmp_path / "cache.json")
+    reopened = ContentCache(engagement)
     hit = reopened.get(pdf, rules_fingerprint(rule))
     assert hit is not None and hit.ok
     assert [(e.rule, e.term, e.where) for e in hit.evidence] == [
         (RULE_REQUIRED, "Chase", WHERE_TITLE),
     ]
-
-
-def test_a_cache_written_before_the_evidence_was_kept_is_reset(tmp_path):
-    import json
-
-    from tracker.content_check import CACHE_VERSION
-
-    # Version 6 stored verdicts with no evidence at all; reading one back
-    # would say a verdict had no reason behind it, which is worse than
-    # re-extracting once. Version 7 was read before decision 85 taught
-    # says() that a form heading its line with its printed title and its
-    # year names itself, so a version-7 verdict would say a one-copy W-2
-    # is nobody's form. Version 8 was read before decision 90 let a
-    # keyword name alternatives, so a version-8 verdict read the "|" and
-    # the "+" in one as words to look for and found neither.
-    assert CACHE_VERSION == 9
-    cache_file = tmp_path / "cache.json"
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
-    rule = item(required_keywords=("Chase",))
-    cache_file.write_text(json.dumps({
-        "version": 6, "files": {}, "verdicts": {"deadbeef": {rules_fingerprint(rule): {"ok": True}}},
-    }), encoding="utf-8")
-    cache = ContentCache(cache_file)
-    assert cache.get(pdf, rules_fingerprint(rule)) is None
-    assert check_content(pdf, rule, cache).evidence
-    cache.save()
-    assert json.loads(cache_file.read_text(encoding="utf-8"))["version"] == CACHE_VERSION

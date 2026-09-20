@@ -42,7 +42,6 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 ```
 {EngagementName}/
 ├── _ledger.jsonl         ← the engagement's record: the request list, every original, every status, every rules edit
-├── _content_cache.json   ← verdict cache (no client text is ever stored)
 ├── Status Report.html    ← this engagement on one page, redrawn by every pass
 ├── Prepared/             ← the firm's working set (the client never sees it)
 │   ├── A01 - W-2 Wage Statements - All Employers/
