@@ -110,6 +110,7 @@ import logging
 import os
 import shutil
 import stat
+from collections.abc import Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -200,6 +201,30 @@ _CANDIDATE_SEP = CANDIDATE_SEP
 
 class FilingError(Exception):
     """A person's filing decision could not be carried out as asked."""
+
+
+class StaleRowError(FilingError):
+    """The row was rewritten after the person last saw it (decision 112).
+
+    A :class:`FilingError` so the API's one ``except`` turns it into the
+    sentence the app toasts: the refusal is not a different kind of
+    failure, it is the ordinary one with a different cause.
+    """
+
+
+#: What a person is told when the row they acted on is not the row the
+#: record now holds: what it is now, and what it says about itself, so the
+#: sentence answers "what happened to it" and not only "no". A check, never
+#: a lock - nothing is frozen, nothing is held, and looking again is the
+#: whole of the remedy.
+STALE_ROW = ("{name} is not as you saw it: the record now says {decision} - {reason}; "
+             "look again before acting")
+
+#: What a filing records when the person picked a request the evidence did
+#: not point at and the evidence pointed somewhere. Decision 84 lets a
+#: person file to any row on the engagement; this is the record saying they
+#: did so against what was suggested, with the shortlist it overruled.
+OVERRODE_SHORTLIST = "overrode the shortlist ({listed})"
 
 
 
@@ -1356,6 +1381,35 @@ def _sort_one(
     return entry
 
 
+# ------------------------------------------------------------- freshness ----
+
+
+def _refuse_if_stale(engagement_dir: Path, entry: IndexEntry, seq: int | None) -> None:
+    """Refuse when the row is not the one the person acted on (decision 112).
+
+    ``seq`` is the row's own sequence number as the person saw it - the
+    journal line that last wrote it, which travelled out with the state
+    the card was drawn from and came back with the click. The store's is
+    read under the lock the caller already holds, after the row has been
+    found and **before any byte is read or any file touched**, so a
+    refusal leaves the folder exactly as it was.
+
+    ``None`` is a caller with no view to be stale against - a script, a
+    test seeding a folder by hand - and skips the check; the app is
+    refused without one by the API, which is the only place that draws the
+    card. The by-name refusal every action already makes ("it is Filed
+    as ...") is a different question and still asked first: this one
+    catches the row that changed and is *still* parked - dismissed while
+    the card was open, unfiled and back, a note rewritten.
+    """
+    if seq is None:
+        return
+    held = store.document_seqs(store.connect(), engagement_dir).get(ledger_key(entry))
+    if held != seq:
+        raise StaleRowError(STALE_ROW.format(
+            name=entry.original_name, decision=entry.decision, reason=entry.reason))
+
+
 # ----------------------------------------------------------------- assign ----
 
 
@@ -1368,6 +1422,7 @@ class AssignResult:
     keyword: str = ""            # keyword added to the row's Any Keywords, if any
     keyword_note: str = ""       # why it was not added, when it was not
     left_in_review: str = ""     # a parked copy that no longer held the row's bytes, and stayed
+    overrode_shortlist: str = ""  # the sentence written when the pick was off the shortlist
 
 
 def assign_review_file(
@@ -1377,6 +1432,8 @@ def assign_review_file(
     *,
     keyword: str = "",
     today: dt.date | None = None,
+    seq: int | None = None,
+    shortlist: Sequence[str] | None = None,
 ) -> AssignResult:
     """File a parked document under a request, the way the filer would have.
 
@@ -1392,6 +1449,17 @@ def assign_review_file(
     Any Keywords by every reader (``manifest.load_manifest``). It is
     recorded, never typed into the row (decision 103): the one note left
     is that the request already had the word.
+
+    ``seq`` is the row's sequence number as the person saw it and ``shortlist``
+    the identifiers the evidence pointed at when they were shown the card,
+    both from the caller that drew it (decision 112). A ``seq`` that is not
+    the record's refuses before a byte is read (:func:`_refuse_if_stale`); a
+    pick that is not on a **non-empty** shortlist is recorded on the row as
+    the person's override, with the identifiers it overruled. Neither is
+    computed here: the shortlist is :mod:`tracker.review`'s answer and this
+    module does not import it, so the caller that shows the suggestions is
+    the caller that says what was overruled. A caller with no view - a
+    script, a test - passes neither and is checked against nothing.
 
     The rules the filer lives by still hold: nothing is guessed (the person
     chose), the engagement lock is held, and the row, the move and the
@@ -1416,8 +1484,9 @@ def assign_review_file(
 
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
-        position = _find_parked(entries, original)
+        position = find_parked(entries, original)
         entry = entries[position]
+        _refuse_if_stale(engagement_dir, entry, seq)
         source = engagement_dir / entry.pbc_location
         if not source.is_file():
             raise FilingError(
@@ -1503,6 +1572,18 @@ def assign_review_file(
                 )
             _copy_whole(source, target)
 
+        # A pick the evidence did not point at, when the evidence pointed
+        # somewhere, is the person overruling the shortlist, and the row
+        # says so in words (decision 112). An empty shortlist is never an
+        # override: with nothing suggested there is nothing to overrule
+        # (decision 83's "no need prior"). ASSIGNED_BY_PERSON stays the
+        # prefix either way - the scanner honours a person's filing by
+        # what the reason starts with.
+        overrode = (OVERRODE_SHORTLIST.format(listed=", ".join(shortlist))
+                    if shortlist and identifier not in shortlist else "")
+        attributed = f"{ASSIGNED_BY_PERSON} on {today.isoformat()}"
+        if overrode:
+            attributed = f"{attributed}; {overrode}"
         new_entry = replace(
             entry,
             digest=digest,
@@ -1510,7 +1591,7 @@ def assign_review_file(
             identifier=item.identifier,
             prepared_location=prepared_location(dest_folder, filed_as),
             decision=FILED,
-            reason=f"{ASSIGNED_BY_PERSON} on {today.isoformat()}; was: {entry.reason}",
+            reason=f"{attributed}; was: {entry.reason}",
             candidates="",
         )
         entries[position] = new_entry
@@ -1552,17 +1633,21 @@ def assign_review_file(
             raise
     return AssignResult(
         entry=new_entry, moved_review_copy=moved, keyword=keyword if not note else "",
-        keyword_note=note, left_in_review=left_in_review,
+        keyword_note=note, left_in_review=left_in_review, overrode_shortlist=overrode,
     )
 
 
-def _find_parked(entries: list[IndexEntry], original: str) -> int:
+def find_parked(entries: list[IndexEntry], original: str) -> int:
     """Index of the row ``original`` names; the newest parked row wins a name.
 
     A row a person has already said is ``NOT_REQUESTED`` is parked too: its
     working copy is still in ``REVIEW_DIR_NAME``, nothing was moved, and
     filing it is how that decision is undone. Only the two parked decisions
     are a person's to act on; anything else names itself in the refusal.
+
+    Public since decision 112, because the caller that draws the card has
+    to find the same row this module will act on to say what the evidence
+    pointed at; the underscored name is kept for one release.
     """
     wanted = original.replace("\\", "/").strip()
     for position in range(len(entries) - 1, -1, -1):
@@ -1578,6 +1663,11 @@ def _find_parked(entries: list[IndexEntry], original: str) -> int:
                 + ")"
             )
     raise FilingError(f"nothing in the index is called {original!r}")
+
+
+#: The name this lookup had while it was the filer's alone; kept for one
+#: release, as the module does elsewhere.
+_find_parked = find_parked
 
 
 # ---------------------------------------------------------- not requested ----
@@ -1602,6 +1692,7 @@ def dismiss_review_file(
     note: str = "",
     *,
     today: dt.date | None = None,
+    seq: int | None = None,
 ) -> DismissResult:
     """Record that no request asks for one parked document.
 
@@ -1622,6 +1713,10 @@ def dismiss_review_file(
     Because nothing moves, nothing is checked against the bytes: this is a
     statement about the request list, not about the file. The engagement lock
     is held and the row is recorded in one transaction, as everywhere else.
+
+    ``seq`` is the row's sequence number as the person saw it (decision
+    112): a row rewritten since is refused by name before anything is
+    written, and a caller with no view passes none.
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
@@ -1630,8 +1725,9 @@ def dismiss_review_file(
         ensure(engagement_dir)
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
-        position = _find_parked(entries, original)
+        position = find_parked(entries, original)
         entry = entries[position]
+        _refuse_if_stale(engagement_dir, entry, seq)
         new_entry = replace(
             entry,
             decision=NOT_REQUESTED,
@@ -1683,6 +1779,7 @@ def unfile_document(
     note: str = "",
     *,
     today: dt.date | None = None,
+    seq: int | None = None,
 ) -> UnfileResult:
     """Take one filed document back to ``REVIEW_DIR_NAME``, on the record.
 
@@ -1710,6 +1807,12 @@ def unfile_document(
     still wants it, and guessing which keyword to take back would be
     guessing. Refiling is unfiling and then filing.
 
+    ``seq`` is the row's sequence number as the person saw it (decision
+    112). A row somebody re-filed between the card being drawn and the
+    click is a newer filing, and unfiling it would undo a decision this
+    person never saw; the refusal names what the record now says and
+    nothing is moved. A caller with no view passes none.
+
     The engagement lock is held for the move and the row, as everywhere else;
     the re-scan takes it again on its own, exactly as the app's filing does.
     """
@@ -1721,8 +1824,9 @@ def unfile_document(
         ensure(engagement_dir)
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
-        position = _find_filed(entries, original)
+        position = find_filed(entries, original)
         entry = entries[position]
+        _refuse_if_stale(engagement_dir, entry, seq)
         source = engagement_dir / entry.pbc_location
         # Every working copy this row has: one, or one per request where
         # decision 94 filed the page under several. A copy is only this
@@ -1831,13 +1935,16 @@ def _rescan(engagement_dir: Path, today: dt.date) -> str:
     return ""
 
 
-def _find_filed(entries: list[IndexEntry], original: str) -> int:
+def find_filed(entries: list[IndexEntry], original: str) -> int:
     """Index of the row ``original`` names; the newest ``FILED`` row wins a name.
 
-    ``_find_parked``'s shape over the other decision: what a person may
+    :func:`find_parked`'s shape over the other decision: what a person may
     unfile is what the index says is filed, whoever filed it. A row that is
     anything else names what it is in the refusal, because the answer to
     "this is in the wrong place" is different for each of them.
+
+    Public since decision 112, beside :func:`find_parked`; the underscored
+    name is kept for one release.
     """
     wanted = original.replace("\\", "/").strip()
     for position in range(len(entries) - 1, -1, -1):
@@ -1849,6 +1956,11 @@ def _find_filed(entries: list[IndexEntry], original: str) -> int:
                 continue          # a re-send under the same name; the filed row is older
             raise FilingError(f"{entry.original_name} is not filed (it is {entry.decision})")
     raise FilingError(f"nothing in the index is called {original!r}")
+
+
+#: The name this lookup had while it was the filer's alone; kept for one
+#: release, as the module does elsewhere.
+_find_filed = find_filed
 
 
 # -------------------------------------------------------------------- CLI ----

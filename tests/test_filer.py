@@ -1950,3 +1950,229 @@ def test_a_failed_record_puts_the_unfiled_copy_back_where_the_record_says(engage
     assert not list(review_dir(engagement).iterdir())
     [row] = read_index(engagement)
     assert row.decision == FILED and row.prepared_location == filed.prepared_location
+
+
+# ------------- a person's action is judged against the record (d112) ----
+
+
+def seq_of(engagement, entry):
+    """One index row's sequence number - the journal line that last wrote it.
+
+    What the API ships beside the row and what a person's action carries
+    back, read here the way the API reads it.
+    """
+    from tracker.records import ledger_key
+
+    return store.document_seqs(store.connect(), engagement)[ledger_key(entry)]
+
+
+def every_byte(folder):
+    """Every file under the engagement, by path, with its bytes."""
+    return {path.relative_to(folder).as_posix(): path.read_bytes()
+            for path in sorted(folder.rglob("*")) if path.is_file()}
+
+
+def test_an_assign_with_a_stale_seq_refuses_naming_what_the_record_now_says_and_touches_nothing(
+        engagement):
+    """The harm decision 112 is about: a person opened the card, was called
+    away, and came back to File it on a row somebody had meanwhile set
+    aside. The row is still parked, so the by-name refusal says nothing
+    about it; its sequence number has moved, and that is what catches it."""
+    from tracker.filer import (
+        NOT_REQUESTED,
+        StaleRowError,
+        assign_review_file,
+        dismiss_review_file,
+    )
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    as_the_person_saw_it = seq_of(engagement, parked)
+
+    dismiss_review_file(engagement, parked.pbc_location, "an IRS notice", today=DAY2)
+    lines = len(ledger.read_events(engagement))
+    files = every_byte(engagement)
+
+    with pytest.raises(StaleRowError) as raised:
+        assign_review_file(engagement, parked.pbc_location, "C01",
+                           today=DAY2, seq=as_the_person_saw_it)
+
+    # The sentence says what the record now holds, not only that it said no.
+    said = str(raised.value)
+    assert parked.original_name in said and NOT_REQUESTED in said and "an IRS notice" in said
+    # And nothing happened: no file moved, no copy made, no line appended.
+    assert every_byte(engagement) == files
+    assert len(ledger.read_events(engagement)) == lines
+    [row] = read_index(engagement)
+    assert row.decision == NOT_REQUESTED
+
+
+def test_an_assign_with_the_current_seq_proceeds(engagement):
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    result = assign_review_file(engagement, parked.pbc_location, "C01",
+                                today=DAY2, seq=seq_of(engagement, parked))
+
+    assert result.entry.decision == FILED and result.entry.identifier == "C01"
+    assert (engagement / result.entry.prepared_location).is_file()
+
+
+@pytest.mark.parametrize("action", ("dismiss", "unfile"))
+def test_a_dismiss_and_an_unfile_with_a_stale_seq_refuse_likewise(engagement, action):
+    """The same check on the other two decisions: a row dismissed twice from
+    one stale card, and a row somebody re-filed between the list being drawn
+    and Unfile being pressed."""
+    from tracker.filer import (
+        StaleRowError,
+        assign_review_file,
+        dismiss_review_file,
+        unfile_document,
+    )
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    if action == "dismiss":
+        as_the_person_saw_it = seq_of(engagement, parked)
+        dismiss_review_file(engagement, parked.pbc_location, "somebody else", today=DAY2)
+    else:
+        filed = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2).entry
+        as_the_person_saw_it = seq_of(engagement, filed)
+        unfile_document(engagement, parked.pbc_location, today=DAY2)
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+
+    lines = len(ledger.read_events(engagement))
+    with pytest.raises(StaleRowError) as raised:
+        if action == "dismiss":
+            dismiss_review_file(engagement, parked.pbc_location,
+                                today=DAY2, seq=as_the_person_saw_it)
+        else:
+            unfile_document(engagement, parked.pbc_location,
+                            today=DAY2, seq=as_the_person_saw_it)
+
+    assert parked.original_name in str(raised.value)
+    assert len(ledger.read_events(engagement)) == lines
+
+
+def test_an_action_with_no_seq_skips_the_check(engagement):
+    """A caller with no view - a script, every other call in this file - has
+    nothing to be stale against and is not checked."""
+    from tracker.filer import assign_review_file, dismiss_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismiss_review_file(engagement, parked.pbc_location, today=DAY2)   # the row moves on
+
+    result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+
+    assert result.entry.decision == FILED
+
+
+def honoured_by_the_scan(engagement, identifier):
+    """One scan, and what it said about the request a person filed into.
+
+    Asked through the pass itself rather than the helper behind it: what the
+    scan writes about the row is where a person's filing is honoured or not,
+    and the copy here answers none of the row's content rules, so Received
+    with the accepted note is the person's decision and nothing else.
+    """
+    from tracker.manifest import Status
+    from tracker.scanner import ACCEPTED_NOTE, scan_engagement
+
+    said = scan_engagement(engagement, today=DAY2).updates[identifier]
+    assert said.status == Status.RECEIVED, said
+    assert ACCEPTED_NOTE.format(n=1) in said.validation_notes, said
+
+
+def test_a_pick_off_a_non_empty_shortlist_is_recorded_as_an_override_and_a_pick_on_it_is_not(
+        engagement):
+    """Decision 84 lets a person file to any row; the record now says when
+    they did so against the evidence, and the scanner still honours it."""
+    from tracker.filer import (
+        ASSIGNED_BY_PERSON,
+        OVERRODE_SHORTLIST,
+        assign_review_file,
+        unfile_document,
+    )
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    off = assign_review_file(engagement, parked.pbc_location, "C01",
+                             today=DAY2, shortlist=["A01"])
+
+    assert off.overrode_shortlist == OVERRODE_SHORTLIST.format(listed="A01")
+    assert off.overrode_shortlist in off.entry.reason
+    # The acceptance keys on the reason's prefix and the override clause
+    # sits after it, so the pass still takes the copy as a person's filing.
+    assert off.entry.reason.startswith(ASSIGNED_BY_PERSON)
+    honoured_by_the_scan(engagement, "C01")
+
+    unfile_document(engagement, parked.pbc_location, today=DAY2)
+    on = assign_review_file(engagement, parked.pbc_location, "C01",
+                            today=DAY2, shortlist=["C01", "A01"])
+
+    # Only this decision's own clause: what the row said before is kept
+    # after "was: ", and the override it carried is part of that history.
+    assert on.overrode_shortlist == ""
+    assert OVERRODE_SHORTLIST.split("(")[0] not in on.entry.reason.split("; was: ")[0]
+    honoured_by_the_scan(engagement, "C01")
+
+
+def test_an_empty_shortlist_is_never_an_override(engagement):
+    """Decision 83's "no need prior": with nothing suggested there is nothing
+    to overrule, so a filing off nothing says nothing."""
+    from tracker.filer import OVERRODE_SHORTLIST, assign_review_file, unfile_document
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    the_clause = OVERRODE_SHORTLIST.split("(")[0]
+
+    for shortlist in ([], None):
+        result = assign_review_file(engagement, parked.pbc_location, "C01",
+                                    today=DAY2, shortlist=shortlist)
+        assert result.overrode_shortlist == ""
+        assert the_clause not in result.entry.reason.split("; was: ")[0]
+        unfile_document(engagement, parked.pbc_location, today=DAY2)
+
+
+def test_a_refused_action_leaves_the_file_count_and_every_byte_unchanged(engagement):
+    """The first standing rule of a refusal, over all three: nothing moved,
+    nothing overwritten, nothing recorded."""
+    from tracker.filer import (
+        StaleRowError,
+        assign_review_file,
+        dismiss_review_file,
+        unfile_document,
+    )
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    drop(engagement, "notice.pdf", "nothing the rules recognise either")
+    review = {e.original_name: e for e in file_drops(engagement, today=DAY1).review}
+    parked, other = review["scan0012.pdf"], review["notice.pdf"]
+
+    stale_parked = seq_of(engagement, parked)
+    dismiss_review_file(engagement, parked.pbc_location, today=DAY2)   # parked still, seq moved
+    filed = assign_review_file(engagement, other.pbc_location, "C01", today=DAY2).entry
+    stale_filed = seq_of(engagement, filed)
+    unfile_document(engagement, other.pbc_location, today=DAY2)
+    assign_review_file(engagement, other.pbc_location, "C01", today=DAY2)
+
+    files = every_byte(engagement)
+    lines = len(ledger.read_events(engagement))
+
+    for refuse in ("assign", "dismiss", "unfile"):
+        with pytest.raises(StaleRowError):
+            if refuse == "assign":
+                assign_review_file(engagement, parked.pbc_location, "A01",
+                                   today=DAY2, seq=stale_parked)
+            elif refuse == "dismiss":
+                dismiss_review_file(engagement, parked.pbc_location,
+                                    today=DAY2, seq=stale_parked)
+            else:
+                unfile_document(engagement, other.pbc_location, today=DAY2, seq=stale_filed)
+        assert every_byte(engagement) == files, refuse
+        assert len(ledger.read_events(engagement)) == lines, refuse

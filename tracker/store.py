@@ -675,6 +675,28 @@ def _stored_seqs(conn: sqlite3.Connection, engagement_id: int) -> dict[str, int]
         "SELECT key, seq FROM documents WHERE engagement_id = ?", (engagement_id,))}
 
 
+def document_seqs(conn: sqlite3.Connection, engagement_dir: Path | str) -> dict[str, int]:
+    """Each index row's identity -> the journal line that last wrote it: the
+    freshness handle a person's action carries back (decision 112).
+
+    The number was already here - :func:`_apply` sets it as each row event
+    is folded - and nothing outside this module could read it. It is the
+    record's own bookkeeping and not a fact about the document, so it
+    never joins the row: it rides beside it in the state the app reads,
+    comes back with the person's click, and the filer refuses an action
+    made against a row the record has rewritten since. Per row, because a
+    scan moves the engagement's head and no row's number, and refusing on
+    the head would refuse every click made during a pass.
+
+    Keyed through the recorded root as :func:`documents` is, so one folder
+    is one key here too, and ``{}`` for an engagement the store does not
+    hold - a folder nothing has been recorded for yet, which is what a
+    brand new engagement is. A read: no lock.
+    """
+    row = _engagement_row(conn, engagement_dir)
+    return {} if row is None else _stored_seqs(conn, row["id"])
+
+
 def rules(conn: sqlite3.Connection, engagement_dir: Path | str) -> list[dict] | None:
     """One engagement's request rules, in the list's own order, or ``None``.
 

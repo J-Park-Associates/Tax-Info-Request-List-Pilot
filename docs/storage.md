@@ -115,7 +115,7 @@ refused by name rather than opened hopefully.
 | `engagements` | one row per engagement folder, keyed by its path relative to the clients root with forward slashes — the root the settings file names whenever the folder is under it, whatever root a caller typed, so one folder is one key for the app, the scheduled pass and the command line alike (decision 106); a caller's own root, or the folder's parent, only on a machine with no settings file. The engagement's own details, the journal's head as it was when the rows were built, how many lines have been applied, and when |
 | `requests` | the person's rules, one row per identifier — everything the request list's own record holds that is not a status, in the order the person gave the rows. Tuples (keywords, extensions) are JSON text |
 | `statuses` | what the last scan said about one identifier: status, received date, file count, validation notes, and the sequence number that set them |
-| `documents` | the index: one row per preserved original, every column the index row has, plus the identity it is keyed under, the place it holds in the index's own order, and the sequence number that last wrote it |
+| `documents` | the index: one row per preserved original, every column the index row has, plus the identity it is keyed under, the place it holds in the index's own order, and the sequence number that last wrote it - read back by `document_seqs()`, and the app carries it |
 | `learned_keywords` | a keyword a person's filing taught one request |
 | `events` | every journal line, in order, with the whole line kept as JSON text |
 | `verdicts` | the tier-3 verdict cache (decision 107): one row per content digest and rules fingerprint, the verdict as JSON text - pass/fail, reason, the firm's own evidence terms, never client text - and the `CACHE_VERSION` it was written under. **Not the record's**: see below |
@@ -201,6 +201,19 @@ Three functions, and the one a caller wants depends on what it can afford:
   and what a person runs to prove a store they doubt (`python -m
   tracker.store <store> rebuild <root>`). It writes nothing to the journal:
   a rebuild is a reading of the record, not an event in it.
+
+A fourth thing is kept in step, and it is a person rather than a reader:
+**the row's own sequence number is the freshness handle** (decision 112).
+`document_seqs()` answers, per engagement, which journal line last wrote each
+index row. The app's state carries it beside every row, a person's File it,
+Not requested or Unfile carries it back, and the filer refuses - before a byte
+is read or a file is touched - when the record's is not the one the card was
+drawn on, naming what the record now says. Per row and not the engagement's
+head: a scan between the card being drawn and the button being pressed appends
+a line and rewrites no row, and must not refuse the click. It is a check and
+never a lock, so nothing is left frozen; a caller with no view, a script or a
+test, sends none and is not checked. A rebuild numbers the same lines the same
+way, so the handle survives the recovery.
 
 ## The edit: the rules travel as events
 
