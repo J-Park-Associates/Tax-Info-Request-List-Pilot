@@ -64,11 +64,11 @@ rule: a row inserted in the middle moves every row below it, and those
 rows are recorded as changed, because a person reordered them and the
 record says so.
 
-It also owns *how* the machine's own small files are written. The content
-cache and the app's settings file go through :func:`atomic_replacement` -
-a uniquely named temp file ending in ``TEMP_SUFFIX``, swapped in whole with
-``os.replace`` - so a killed run never leaves a half-written file where a
-reader will trust it. These move with ``fsio`` in decision 105.
+It used to own *how* the machine's own small files are written, because
+the manifest was once the workbook they were written for. The temp suffix,
+the temp path, the replacement context and the two writers over it are
+:mod:`tracker.fsio` since decision 120, and this module neither holds nor
+re-exports them.
 
 The *records* this module reads and writes - :class:`EngagementInfo`,
 :class:`StatusUpdate`, the details' field table, the serialisation of a
@@ -80,13 +80,8 @@ edits, not a record of what the machine decided.
 from __future__ import annotations
 
 import datetime as dt
-import json
-import logging
-import os
 import re
-import secrets
-from collections.abc import Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -104,8 +99,6 @@ from tracker.records import (
     rule_from_json,
     rule_to_json,
 )
-
-log = logging.getLogger("tracker.manifest")
 
 # ---------------------------------------------------------------- schema ----
 
@@ -251,10 +244,6 @@ UNSCANNED_LABEL = "Requested"
 #: How ``Summary.line`` joins its counts, and what it says with no rows.
 SUMMARY_SEPARATOR = " · "
 SUMMARY_EMPTY = "no requests"
-
-#: The temp file an atomic save lands in first. Nothing is deferred and
-#: nothing is quarantined: a write lands whole or not at all.
-TEMP_SUFFIX = ".tmp"
 
 
 class Override:
@@ -1235,63 +1224,6 @@ def _as_the_list_spells_it(stored: list[dict] | None, identifier: str) -> str:
         if identifier_key(held) == key:
             return held
     return identifier
-
-
-# -------------------------------------------------- how a file is written ----
-
-
-def temp_path_for(path: Path) -> Path:
-    """A temp name beside ``path`` that no other writer can be using.
-
-    It carries this process id and a random tag, so two runs writing the
-    same file at once (the app saving settings while the scheduling CLI
-    does, say) cannot swap each other's half-written temp into place - and
-    a temp a crashed run left behind is never mistaken for a live one. It
-    still ends in ``TEMP_SUFFIX``: the validators and the drop walk ignore
-    that suffix, so a stranded temp is never read as a document.
-    """
-    return path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}{TEMP_SUFFIX}")
-
-
-@contextmanager
-def atomic_replacement(path: Path) -> Iterator[Path]:
-    """Yield a temp path beside ``path``; swap it in whole when the block ends cleanly.
-
-    Writing beside the file and swapping it in with ``os.replace`` makes an
-    update all-or-nothing; the swap is atomic on NTFS and on every POSIX
-    filesystem. A crash, a full disk or a killed scheduled task mid-write
-    leaves the previous file, never half of the new one. The temp is
-    removed whatever happens. A file another program holds open raises
-    ``PermissionError`` from the replace, and the caller says so.
-    """
-    temp = temp_path_for(path)
-    try:
-        yield temp
-        os.replace(temp, path)
-    finally:
-        # The temp's removal must never replace the error that stopped the
-        # write: a writer may leave the half-written file open when it
-        # raises, Windows then refuses the delete, and a full disk would
-        # read as "held by another program".
-        try:
-            temp.unlink(missing_ok=True)
-        except OSError as exc:
-            log.warning("Temporary file %s could not be removed (%s)", temp.name, exc)
-
-
-def write_text_atomically(
-    path: Path, text: str, *, encoding: str = "utf-8", newline: str | None = None
-) -> None:
-    """Write ``text`` to ``path`` all-or-nothing (see :func:`atomic_replacement`)."""
-    with atomic_replacement(path) as temp:
-        with temp.open("w", encoding=encoding, newline=newline) as handle:
-            handle.write(text)
-
-
-def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
-    """Write ``payload`` as JSON to ``path`` all-or-nothing; the cache and the settings use this."""
-    write_text_atomically(path, json.dumps(payload, indent=indent))
-
 
 
 def has_routing_rules(item: RequestItem) -> bool:

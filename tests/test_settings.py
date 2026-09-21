@@ -63,7 +63,7 @@ def test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder(besi
 
 
 def test_the_settings_file_is_swapped_in_whole(beside_the_app):
-    from tracker.manifest import TEMP_SUFFIX
+    from tracker.fsio import TEMP_SUFFIX
 
     clients = beside_the_app / "Clients"
     clients.mkdir()

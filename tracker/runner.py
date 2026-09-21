@@ -82,6 +82,7 @@ from pathlib import Path
 
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, ensure, file_drops, read_index
+from tracker.fsio import write_text_atomically
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -90,7 +91,6 @@ from tracker.manifest import (
     check_rules,
     load_manifest,
     summarize,
-    write_text_atomically,
 )
 from tracker.page import esc, page_text, table, tolerant_console
 from tracker.records import ENGAGEMENT_LABELS, NO, YES

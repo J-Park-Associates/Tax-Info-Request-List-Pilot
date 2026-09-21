@@ -3,7 +3,7 @@
   "generated": "2026-09-21",
   "generator": "tools/repo_map.py",
   "generator_sha256": "e0b876ff3a9acde0",
-  "module_table_sha256": "a47d81b9e348af67",
+  "module_table_sha256": "8951de7025cc3452",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 111,
-    "edges": 586,
-    "reused": 71
+    "nodes": 113,
+    "edges": 595,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -108,8 +108,8 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6cb691dd38e24443",
-      "lines": 60,
+      "sha256": "cfd5422ba94f6acc",
+      "lines": 61,
       "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
       "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). Its module list names the manifest as the request list - its schema, validation, and its reading from and writing to the record - and the scanner as an orchestrator that records rather than writes back (decision 104). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one. Standing rule 1 still says 'deterministic rules in the manifest': the manifest is the request list, and its home changed with decision 104, not the word."
     },
@@ -117,7 +117,7 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "511cd96986250643",
+      "sha256": "87b3677dd970dfb4",
       "lines": 1527,
       "cli": "python -m tracker.api",
       "exports": [
@@ -275,8 +275,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "246c298bb6be58f0",
-      "lines": 3339,
+      "sha256": "ac02a3da2a6dc87e",
+      "lines": 3340,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -402,6 +402,25 @@
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and records every move in the engagement's own record - the journal and the store together, in one transaction per decision. Owns read_index(), which answers from the store, and ensure(), which brings the store up to the journal and says whether it is current.",
       "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (the request list, the index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's verdicts in the store (content_check.ContentCache over store.remember_verdicts(), keyed by content; decision 107), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. The tidy-up at the end of a real pass also removes the retired JSON cache file and any temp file beside it (_remove_the_retired_cache(), by RETIRED_CACHE_FILENAME) - nothing reads it, and the removal is said once on FileReport.attention (RETIRED_CACHE_REMOVED) - on the console, in the app's warnings and counted on the practice page - for that pass only. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is recorded as Needs Review with the error, and the record is written in a finally block so nothing moved into PBC/ is ever unrecorded. Runs under the engagement lock - its own when it is called alone, the pass's when runner.run_engagement() is holding one - taken before the request list, the record or the drop folder is read. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in the editor keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, records the keyword a person typed in the same call, all under the engagement lock. The IndexEntry record and INDEX_LAYOUT live in tracker/records.py (decision 100). HISTORY, kept as history: until decision 102 the index was a workbook rewritten whole on every pass, and decisions 54, 56, 58, 59, 61, 65, 66, 67, 68, 69 and 72 are thirteen readings of what that cost - a snapshot sidecar that outlived its workbook, a deferred write, a stale workbook, a header row a sort had moved, a renamed tab, a column inserted at A; what survives of them here is the reading of bytes (replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; every move is a rename in _move_whole(), because shutil.move copied a held-open drop truncated into PBC; what lies behind a junction is not a drop; a name Windows cannot open is reported every pass; a row recorded without its bytes is tied to them only while its working copy and its original agree, UNTIED_IN_PBC; a recorded original that has left PBC/ is said every pass, MISSING_IN_PBC, and where a stray carries its bytes the row follows the file, MOVED_IN_PBC; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's; assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so). Decision 76: dismiss_review_file() rewrites a parked row NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing; _find_parked() takes a dismissed row too, so filing it is the undo. Decision 111: a re-send is judged by the earlier row's decision - the content hash says which row holds those bytes and that row's decision says what this drop is. A filed row with its copy in place, a row parked for a person, and a row whose copy is not where the record put it all make it a Duplicate, and the sentence names which (DUPLICATE_OF_FILED, DUPLICATE_OF_PARKED, DUPLICATE_OF_MOVED, and DUPLICATE_OF_UNCOPIED of a row with no working copy to name: saying 'already filed as' of a parked copy told the Index a document still waiting was done); a filed row whose copy is gone is decision 24's re-file; a row a person set aside is routed like any other drop - Not requested is a decision about one document on one day, not a standing rule - and files where exactly one request now accepts it, else parks with a FRESH copy of its own (never _existing_copy, or filing one row would carry the other row's file away), the reason quoting the earlier decision whole (RESENT_AFTER_SET_ASIDE) so the row is triaged, counted by reminder.count_needs_review() and read by a person. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself); a working copy that is no longer the row's bytes is left and said out loud (LEFT_FILED). Decision 82: IndexEntry.evidence is the last column, written through records.format_evidence() and read back through records.parse_evidence(); a person's decision leaves it alone. Decision 87: every decision is appended to the record through tracker/ledger.py by one rule, _rows_changed(), read off the rows themselves. DECISION 102 - THE INDEX MOVED INTO THE RECORD: read_index() takes the engagement folder and reads the store's documents table, in the index's own order, after store.follow_the_journal(); _record() is the one write, every event a decision produces in a single store.record() call, and the rollback that puts a moved file back asks _the_record_holds(). The migration that read a legacy folder's index workbook into the journal once, and the request-list import of decision 103 that read the sheet once a pass and journalled its differences, both LEFT WITH DECISION 104 and are set aside outside the tree in Retired - Excel manifest: ensure() is now the store's top-up and the three words that say whether it describes the engagement, it writes nothing in the folder, and every caller drops the flag that used to keep a dry run from migrating. clients_root_of() is store.root_for() under its old name. _storable() keeps only the refusal of a name UTF-8 cannot hold (the journal is UTF-8 JSON); a control character in a POSIX name files again, because the refusal of one existed only because a workbook is XML. A person's filing records its keyword in the SAME store.record() call as the row (_record()'s also), because the filing and what it taught are one decision. THE DELIBERATE CYCLE: _rescan() imports tracker/scanner.py at call time so a person's filing is scanned the moment it lands, and the scanner imports this module's index reader at call time; neither runs at load. DECISION 112 - A PERSON'S ACTION IS JUDGED AGAINST THE RECORD IT WAS MADE ON: assign_review_file(), dismiss_review_file() and unfile_document() each take seq=, the row's sequence number as the person saw it, and _refuse_if_stale() compares it with store.document_seqs() immediately after the row is found - inside the lock, before a byte is read or a file is touched - raising StaleRowError (a FilingError, so the API's one except turns it into the app's sentence) with STALE_ROW, which names what the record now says. seq=None is a caller with no view (a script, a test) and skips the check; the by-name refusal is asked first and is a different question. assign_review_file() also takes shortlist=, the identifiers the evidence pointed at, computed by the caller that drew the card: a pick off a non-empty shortlist writes OVERRODE_SHORTLIST into the row's reason after the ASSIGNED_BY_PERSON prefix (the scanner's acceptance still keys on startswith) and comes back on AssignResult.overrode_shortlist; an empty shortlist is never an override. This module does not import tracker/review.py - that would be a second call-time cycle beside the deliberate one - which is why the shortlist is handed in. find_parked() and find_filed() are public for the same reason (the underscored names kept for one release), so the API finds exactly the row this module will act on. DECISION 109 - EVERY WORKING COPY IS PROVED AGAINST THE RECORD EACH PASS: _prove_working_copies() is one walk of Prepared/ per pass, under the pass's lock, between the PBC sweep and the known-bytes map, and it has four outcomes and only these. A copy where the record put it holding the row's digest is proved and nothing is written. A copy that is absent or holds other bytes, whose bytes turn up at a path no row names, makes its row FILE_MOVED - a decision on the document, never a Status (the owner's rule, 2026-09-19) - with home kept in prepared_location and where the bytes are now in a sentence (MOVED_SENTENCE, MOVED_GONE_SENTENCE), read back by moved_to() through records.as_pattern(); the scanner reads that row and writes the request's note. Where more than one file no row names holds those bytes, the row keeps the wanderer it already names (_spend_a_stray()'s preferred): the copy that sorts first is not the copy a person moved, and decision 110's put-it-back follows the sentence. A FILE_MOVED row whose every claimed location holds its bytes again is FILED once more (NEEDS_REVIEW where the row names no request - which of the two parked decisions it was is not guessable), MOVED_BACK_SENTENCE. A file under a request folder or the review folder that no row names and no row's bytes match is UNRECORDED_COPY on FileReport.attention, every pass, counted where it sits. THE RECORD DECIDES AND NOTHING MOVES: the fingerprint identifies, a person acts (decision 110's buttons), and a quiet pass appends nothing - one ledger.COPY_MOVED event per move, in either direction, named through _LEDGER_EVENT_FOR and _record()'s decided. A row without its bytes is never swept (decision 65) but still names its copy, so that copy is not called unrecorded; a placeholder is never read; a Duplicate row is not followed. _copy_whole() now proves its target against the digest it was made from and raises CopyMismatchError - decision 17's could-not-be-filed row - rather than leaving a copy nobody checked; every caller passes what it knows, and the pass's callers pass the ContentCache too, so the memo the proof leaves is the scan's hit. DECISION 110 - RECOVERY IS THE PERSON'S: restore_working_copy() is the answer to a FILE_MOVED row that needs no other place for the file to go - the bytes return to where the record put them, by moving the wanderer moved_to() names when it still holds them and by copying from the client's original when nothing under the firm's folder does - and the row goes back to what it was before it wandered, FILED where it names a request and NEEDS_REVIEW where it does not. It never overwrites (a file already at home that is not this document stays exactly where it is; this document's copy goes to review under the client's own name and the row parks naming both, PUT_BACK_REFUSED), never deletes (a home that already holds these bytes leaves the wanderer where it is for a person to remove, PUT_BACK_ALREADY) and never guesses (the row's sequence number first, every byte it is about to move second, the move third, and a refused record puts back exactly what moved). Every location the row claims is put back, not the Prepared Location column alone: the sweep names the first location that failed, and a page decision 94 filed under several requests has a copy in each, each remade from the one just put back. One event whatever the click found, ledger.RESTORED_BY_PERSON, because the row it carries says which. The other two answers are the actions that already existed: keep-it-here is assign_review_file() on a moved row, where the copy that moves is the wanderer and the request may be the folder's own or another the person picks; send-it-to-review is unfile_document(), where the wanderer is the copy that goes back and a row whose bytes are nowhere is copied from the original. Both refuse a row with copies under several requests by name (SEVERAL_COPIES_REFUSAL) and point at put-it-back. find_parked() and find_filed() take accepting=, the decisions the action will have beyond the ones they were written for, so those two reach a FILE_MOVED row and dismiss_review_file() still refuses one by name (decision 76); find_moved() is their shape over FILE_MOVED itself. DECISION 119 - AN INTERRUPTED MOVE IS FINISHED FROM THE RECORD, NEVER GUESSED: before the first file operation of any decision - a pass's copy, a person's filing, unfiling or put-back - _intend() appends ledger.MOVING under the lock, keyed by the row's own ledger key, carrying the operations in order with the digest each end should hold, the row the decision will record, the event that will complete it, who decided and (for a drop's own move, which has no row yet) the day the run began; _do_op() is the one place a plan is carried out, by the decision and by the recovery alike, so a move a recovery makes is the move the decision would have made. _finish_interrupted_moves() runs at the start of every pass, under the lock, after the index is read and before the digests of rows recorded without them are filled in, before the client's folder is read for strays and before the sweep - so a person's half-made filing is finished and recorded as theirs rather than swept up as a copy somebody dragged. Each operation is checked by bytes and finished where reality matches; the intent's row is then recorded as the intent said, with the events that travelled with it, dated the day the person decided. Where a destination holds other bytes nothing there is touched and the row parks with reasons.INTERRUPTED_MOVE naming it (interrupted_at() and interrupted_note() read the sentence back for the scanner, as moved_to() does 109's); where neither end holds the bytes the row parks with INTERRUPTED_MOVE_LOST; either way the copy a person acts on is the one waiting in review if there is one, else a fresh one from the client's original. _refuse_if_a_move_is_open() refuses all four person actions while an intent is open here, before 112's freshness check, because the next pass - or Run now - finishes it. A refused record rolls back as it always did and appends ledger.MOVE_ABANDONED so the next pass does not finish forward a move the record would not take. RECORD_PRESERVE_INTENTS is the one switch: the pass's own move into the client's folder is already finished by decision 23, and its intent buys only the received date. _plan_working_copy() took over from the filer's old one-step copy helper: deciding where a working copy goes and making it are two steps now, because what will happen has to be written down before it does."
+    },
+    {
+      "id": "tracker/fsio.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "ba5a4a86ca3bb70f",
+      "lines": 104,
+      "exports": [
+        "TEMP_SUFFIX",
+        "atomic_replacement",
+        "temp_path_for",
+        "write_json_atomically",
+        "write_text_atomically"
+      ],
+      "constants": {
+        "TEMP_SUFFIX": "'.tmp'"
+      },
+      "role": "The one atomic replacement, and nothing else: TEMP_SUFFIX (what a temp file ends in, and what every walk ignores), temp_path_for() (a temp name beside the target carrying this process id and a random tag), atomic_replacement() (the context manager that writes to the temp and os.replace()s it over the target when the block ends cleanly), and write_text_atomically() / write_json_atomically() over it.",
+      "notes": "Decision 120, and no behaviour change: the five names moved here verbatim from tracker/manifest.py, where they had lived because the manifest was once the workbook they were written for. Layer 0, importing nothing of the package, because every layer writes a file of its own and the one that is lowest must be able to reach the write - which is how there comes to be only one. It holds NO POLICY: nothing here knows what a file is for, which folder it belongs in, whether it may be written or who may write it; the module that owns the file owns every other question about it. The manifest does not re-export them - asking it for one raises at the import (tests/test_manifest.py) - and tracker/settings.py, which borrowed the write and nothing else, came down to layer 0 with them. What did NOT move: tracker/reminder.py's draft is still a plain write, by design - a draft is a person's file and the fingerprint header is its integrity check, not a temp file."
     },
     {
       "id": "tracker/ledger.py",
@@ -573,8 +592,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2a53209d891b650d",
-      "lines": 1423,
+      "sha256": "62946eecc76e95dc",
+      "lines": 1355,
       "exports": [
         "ANY_EXTENSION",
         "BARE_FORM_NUMBER_WARNING",
@@ -618,7 +637,6 @@
         "SUMMARY_SEPARATOR",
         "Status",
         "Summary",
-        "TEMP_SUFFIX",
         "UNLEARN_REFUSED",
         "UNSCANNED_LABEL",
         "WINDOWS_ILLEGAL_CHARS",
@@ -627,7 +645,6 @@
         "YEAR_MIN",
         "YEAR_OUT_OF_RANGE",
         "YEAR_PATTERN",
-        "atomic_replacement",
         "check_narrowing_names",
         "check_rules",
         "check_tax_year",
@@ -652,12 +669,9 @@
         "shift_item",
         "shift_years",
         "summarize",
-        "temp_path_for",
         "unlearn_keyword",
         "validated",
-        "with_statuses",
-        "write_json_atomically",
-        "write_text_atomically"
+        "with_statuses"
       ],
       "constants": {
         "COL_DOCUMENT": "'Document'",
@@ -688,7 +702,6 @@
         "UNSCANNED_LABEL": "'Requested'",
         "SUMMARY_SEPARATOR": "' \u00b7 '",
         "SUMMARY_EMPTY": "'no requests'",
-        "TEMP_SUFFIX": "'.tmp'",
         "OVERRIDE_REASON_OTHER": "'Other'",
         "NOT_APPLICABLE_LABEL": "'Not Applicable in TY{year}'",
         "NOT_AN_ENGAGEMENT": "'{name}: no record here ({ledger}); it is not an engagement'",
@@ -700,8 +713,8 @@
         "EMPTY_KEYWORD_WARNING": "\"Row {row} ({identifier}): the keyword '{keyword}' has no letters or digits and matches nothing; leave the cell blank instead\"",
         "BARE_FORM_NUMBER_WARNING": "\"Row {row} ({identifier}): the keyword '{keyword}' matches only that form, not its variants such as {example}; list the forms this request means\""
       },
-      "role": "The request list: its schema, its validation, and its reading from and writing to the record. Since decision 104 the manifest IS the record's request list - the eleven accountant columns (COLUMNS, whose headers are HEADERS, each with the sentence COLUMN_HELP gives the editor) and the engagement's details - and there is no workbook. Owns RequestItem, Status, Override, item_from_fields() and validated() (the validation the sheet's loader used to make, as a function on records), load_manifest() and load_engagement_info() (the answers, from the record), create_engagement() and save_rules() (the two writes, each one rules_changed event), check_rules() (the warnings), summarize() and the atomic-write helpers.",
-      "notes": "Every other module goes through this to touch the request list. THE OWNER RETIRED THE EXCEL MANIFEST ON 2026-09-19 (decision 104): until then the list was the workbook registry.LEGACY_MANIFEST_FILENAME names, read once a pass and journalled as it changed; now the app's editor is the only way a rule is entered, and every save is one rules_changed event through store.record() under the engagement lock - create_engagement() carries the whole list and every detail (validated before a line is written, so a refusal leaves no folder content and no store row), save_rules() carries exactly the rows that changed, whole and row included (a row's position is part of the rule, so a row moved is a row changed), the identifiers removed and the details that moved, and nothing at all when nothing did. The diff is by the identifier's exact spelling and the folds (ledger.apply and the store's) apply removals before rows and delete by that exact spelling (never SQLite's ASCII-only lower()); _refuse_a_malformed_line() refuses a rules_changed or scanned line of the wrong shape by name before a value of it reaches a table, so an identifier respelled by case is one event - the old spelling removed, the new carried - and never two rows. create_engagement() forgets the store row a folder deleted by hand left before following the new journal. The writes came back here, having left in 103, because the module that owns the schema and the validation must own the writes, or the rows in the journal would be shaped by somebody else; they reach store, ledger and locking at call time, so the module still imports tracker/records.py and nothing else at load time (tests/test_layers.py). item_from_fields() is the one parser of a row from plain values (the editor's JSON, a catalog spec, a test's dict), its refusals prefixed by where - a row number from the API, the identifier from the catalog - and it defaults NO keyword, as the sheet allowed; validated() makes the list-level checks (identifier required and folder-safe, duplicates without case because Windows folders are, the two numbers within MIN_EXPECTED_COUNT and MIN_SIZE_KB_FLOOR, NO_DATE_CHECK made blank, a typed pattern compiled, a blank one derived from the Period with date_pattern_derived set, and last check_narrowing_names()) and numbers the rows 1..n. Every path that stores rules or routes against a catalog goes through it - the two writes, tests/test_irs_forms.py, tests/test_catalog.py, tools/vocab_report.py - so the derived year check the harnesses used to get from a workbook round trip is the same check, made once. A row that comes back from the store says its pattern was derived, and both parsers read that as no pattern typed, so a list read out of the record and saved again records nothing. load_manifest(engagement_dir) answers from the record - the rules from the store's requests table, the four status fields from statuses, the keywords a filing taught from learned_keywords laid over the row's own Any Keywords by _with_the_record() - after store.follow_the_journal(); a folder with no journal is refused by NOT_AN_ENGAGEMENT. check_rules() is the warnings half of what the old manifest check said (a row with no rule, ANY_EXTENSION, a keyword with no letter or digit, a bare family number - decisions 55 and 58) and rides every state the app reads and every pass; there is no problems half, because a list the record holds was validated on the way in. atomic_replacement() / write_text_atomically() / write_json_atomically() are the all-or-nothing write for settings.json and the schedule XML (the verdict cache left them for the store's own transaction in decision 107) (temp_path_for is unique per process and write, still ending in TEMP_SUFFIX so the validators ignore it; decision 59: the temp's removal never masks the write's own error); they move with fsio in decision 105. identifier_problem() refuses identifiers that could not survive as a folder-name prefix. with_statuses() is what the scanner uses to count the rows as it is about to leave them. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 68: a status is matched to its row without case (records.identifier_key()). Decision 72: csv_tuple() takes a list as the list it already is; check_tax_year() is the one bound on a tax year. Decision 86: the details carry the form the list was cut from; create_engagement() takes it as a keyword because it is one fact about the engagement, and a blank never clears one the info carries. Decision 90: keyword_alternatives() lives here beside csv_tuple() because this module owns how a keyword is read - '|' names alternatives, '+' joins phrases wanted together. Decision 93: entity_keyword() is the one normalisation of an entity's name; narrowing_rows() says which rows narrow which and is empty for every shipped catalog; check_narrowing_names() refuses a list where one issuer name sits inside another's. The records it reads and writes - EngagementInfo, StatusUpdate, the rule row's serialisation - live in tracker/records.py (decision 100); RequestItem stays here because it is the schema of the list a person edits. What left with decision 104 - the workbook reader, the template writer, the slimming, the Engagement sheet's reader and writer, the manifest check - is set aside outside the tree in Retired - Excel manifest. Decision 116: the override is recorded with its reason and the second value is Override.NOT_APPLICABLE. override_reason is a rule field (records.RULE_FIELDS, last, so older rows read as blank), COLUMNS gains COL_OVERRIDE_REASON, and validated() refuses Accepted with no reason, the word OVERRIDE_REASON_OTHER itself, and a reason with no override; OVERRIDE_REASONS are the four one-click reasons. Override.RETIRED folds the retired spelling to its successor inside _override() on every read; item_from_record() is the ONE reader of a stored rule row (load_manifest, the save_rules diff's stored side, the API's editor rows), so a journal written before this decision is read as Not Applicable, its bytes are never rewritten, and saving an unchanged list records nothing. override_label() is the word people see - NOT_APPLICABLE_LABEL with the year detect_year() gives the row, or the bare value; the year is never stored. Summary.not_applicable replaces the old count. Decision 113 added the third write, and the only one that does not touch the rules a person typed: unlearn_keyword() takes back a keyword a filing taught one request, under the engagement lock, as one keyword_unlearned event through store.record() - journalled, not simply deleted, because deleting the store's row would be a fact only the database held and the next rebuild would put it back. The pair is refused by name (UNLEARN_REFUSED) when the record never carried it, so a word the row types itself is not unlearnable - that is an edit of the rule, made in the editor like any other - and the line spells the request the way the list does, whatever case the caller typed, because the journal's fold has no case rule of its own."
+      "role": "The request list: its schema, its validation, and its reading from and writing to the record. Since decision 104 the manifest IS the record's request list - the eleven accountant columns (COLUMNS, whose headers are HEADERS, each with the sentence COLUMN_HELP gives the editor) and the engagement's details - and there is no workbook. Owns RequestItem, Status, Override, item_from_fields() and validated() (the validation the sheet's loader used to make, as a function on records), load_manifest() and load_engagement_info() (the answers, from the record), create_engagement() and save_rules() (the two writes, each one rules_changed event), check_rules() (the warnings) and summarize().",
+      "notes": "Every other module goes through this to touch the request list. THE OWNER RETIRED THE EXCEL MANIFEST ON 2026-09-19 (decision 104): until then the list was the workbook registry.LEGACY_MANIFEST_FILENAME names, read once a pass and journalled as it changed; now the app's editor is the only way a rule is entered, and every save is one rules_changed event through store.record() under the engagement lock - create_engagement() carries the whole list and every detail (validated before a line is written, so a refusal leaves no folder content and no store row), save_rules() carries exactly the rows that changed, whole and row included (a row's position is part of the rule, so a row moved is a row changed), the identifiers removed and the details that moved, and nothing at all when nothing did. The diff is by the identifier's exact spelling and the folds (ledger.apply and the store's) apply removals before rows and delete by that exact spelling (never SQLite's ASCII-only lower()); _refuse_a_malformed_line() refuses a rules_changed or scanned line of the wrong shape by name before a value of it reaches a table, so an identifier respelled by case is one event - the old spelling removed, the new carried - and never two rows. create_engagement() forgets the store row a folder deleted by hand left before following the new journal. The writes came back here, having left in 103, because the module that owns the schema and the validation must own the writes, or the rows in the journal would be shaped by somebody else; they reach store, ledger and locking at call time, so the module still imports tracker/records.py and nothing else at load time (tests/test_layers.py). item_from_fields() is the one parser of a row from plain values (the editor's JSON, a catalog spec, a test's dict), its refusals prefixed by where - a row number from the API, the identifier from the catalog - and it defaults NO keyword, as the sheet allowed; validated() makes the list-level checks (identifier required and folder-safe, duplicates without case because Windows folders are, the two numbers within MIN_EXPECTED_COUNT and MIN_SIZE_KB_FLOOR, NO_DATE_CHECK made blank, a typed pattern compiled, a blank one derived from the Period with date_pattern_derived set, and last check_narrowing_names()) and numbers the rows 1..n. Every path that stores rules or routes against a catalog goes through it - the two writes, tests/test_irs_forms.py, tests/test_catalog.py, tools/vocab_report.py - so the derived year check the harnesses used to get from a workbook round trip is the same check, made once. A row that comes back from the store says its pattern was derived, and both parsers read that as no pattern typed, so a list read out of the record and saved again records nothing. load_manifest(engagement_dir) answers from the record - the rules from the store's requests table, the four status fields from statuses, the keywords a filing taught from learned_keywords laid over the row's own Any Keywords by _with_the_record() - after store.follow_the_journal(); a folder with no journal is refused by NOT_AN_ENGAGEMENT. check_rules() is the warnings half of what the old manifest check said (a row with no rule, ANY_EXTENSION, a keyword with no letter or digit, a bare family number - decisions 55 and 58) and rides every state the app reads and every pass; there is no problems half, because a list the record holds was validated on the way in. Decision 120 took the atomic write out: the temp suffix, the temp path, the replacement context and the two writers over it are tracker/fsio.py at layer 0 now, and nothing is re-exported from here - this module owns the request list, not how a file is replaced. identifier_problem() refuses identifiers that could not survive as a folder-name prefix. with_statuses() is what the scanner uses to count the rows as it is about to leave them. Decision 62: derived_date_pattern() asks for the month a Period names. Decision 68: a status is matched to its row without case (records.identifier_key()). Decision 72: csv_tuple() takes a list as the list it already is; check_tax_year() is the one bound on a tax year. Decision 86: the details carry the form the list was cut from; create_engagement() takes it as a keyword because it is one fact about the engagement, and a blank never clears one the info carries. Decision 90: keyword_alternatives() lives here beside csv_tuple() because this module owns how a keyword is read - '|' names alternatives, '+' joins phrases wanted together. Decision 93: entity_keyword() is the one normalisation of an entity's name; narrowing_rows() says which rows narrow which and is empty for every shipped catalog; check_narrowing_names() refuses a list where one issuer name sits inside another's. The records it reads and writes - EngagementInfo, StatusUpdate, the rule row's serialisation - live in tracker/records.py (decision 100); RequestItem stays here because it is the schema of the list a person edits. What left with decision 104 - the workbook reader, the template writer, the slimming, the Engagement sheet's reader and writer, the manifest check - is set aside outside the tree in Retired - Excel manifest. Decision 116: the override is recorded with its reason and the second value is Override.NOT_APPLICABLE. override_reason is a rule field (records.RULE_FIELDS, last, so older rows read as blank), COLUMNS gains COL_OVERRIDE_REASON, and validated() refuses Accepted with no reason, the word OVERRIDE_REASON_OTHER itself, and a reason with no override; OVERRIDE_REASONS are the four one-click reasons. Override.RETIRED folds the retired spelling to its successor inside _override() on every read; item_from_record() is the ONE reader of a stored rule row (load_manifest, the save_rules diff's stored side, the API's editor rows), so a journal written before this decision is read as Not Applicable, its bytes are never rewritten, and saving an unchanged list records nothing. override_label() is the word people see - NOT_APPLICABLE_LABEL with the year detect_year() gives the row, or the bare value; the year is never stored. Summary.not_applicable replaces the old count. Decision 113 added the third write, and the only one that does not touch the rules a person typed: unlearn_keyword() takes back a keyword a filing taught one request, under the engagement lock, as one keyword_unlearned event through store.record() - journalled, not simply deleted, because deleting the store's row would be a fact only the database held and the next rebuild would put it back. The pair is refused by name (UNLEARN_REFUSED) when the record never carried it, so a word the row types itself is not unlearnable - that is an edit of the rule, made in the editor like any other - and the line spells the request the way the list does, whatever case the caller typed, because the journal's fold has no case rule of its own."
     },
     {
       "id": "tracker/page.py",
@@ -1112,7 +1125,7 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "68551339f4ede753",
+      "sha256": "9bdff971e1b2f78d",
       "lines": 1033,
       "cli": "python -m tracker.runner",
       "exports": [
@@ -1194,7 +1207,7 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "46666150e1a1bead",
+      "sha256": "0e392814605e2192",
       "lines": 292,
       "cli": "python -m tracker.scaffold",
       "exports": [
@@ -1263,7 +1276,7 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b12a41ce2a7ff9af",
+      "sha256": "ece71bc3ff8fc51c",
       "lines": 395,
       "cli": "python -m tracker.scheduling",
       "exports": [
@@ -1321,7 +1334,7 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9e8f6fa825d739d5",
+      "sha256": "aa5f12d6131dc9e9",
       "lines": 233,
       "cli": "python -m tracker.settings",
       "exports": [
@@ -1372,7 +1385,7 @@
         "EXPECTED_SEP": "'+'"
       },
       "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root, the firm and the firm's telephone number are kept. clients_root()/set_clients_root(), firm()/set_firm(), firm_phone()/set_firm_phone(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is. ENV_REAL_CORPUS and real_corpus_dir() name the other folder outside the repository: the firm's own redacted documents, with the expectations file's name and columns beside them.",
-      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through manifest.write_json_atomically(): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence."
+      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence."
     },
     {
       "id": "tracker/store.py",
@@ -1498,8 +1511,8 @@
       "id": "tracker/validators.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d1065872eb8c9715",
-      "lines": 398,
+      "sha256": "f39b4d2ccb1342ca",
+      "lines": 399,
       "cli": "python -m tracker.validators",
       "exports": [
         "FileResult",
@@ -1530,7 +1543,7 @@
       "id": "tracker/view.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2df8fae3760c4469",
+      "sha256": "fd8856c332de241c",
       "lines": 695,
       "cli": "python -m tracker.view",
       "exports": [
@@ -1670,8 +1683,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7f4ea4ebd66c2177",
-      "lines": 359,
+      "sha256": "cb47e4cb12803507",
+      "lines": 360,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1688,8 +1701,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "ebffc7de3ff55b25",
-      "lines": 755,
+      "sha256": "4ea1d954af62da26",
+      "lines": 759,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1715,7 +1728,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "0f42085e6d9738ee",
+      "sha256": "f432874a3af5c225",
       "lines": 7697,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -2220,7 +2233,7 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8e98041b81526207",
+      "sha256": "69fd0df0cf8b1eae",
       "lines": 4078,
       "exports": [
         "CRASH_POINTS",
@@ -2419,6 +2432,19 @@
       }
     },
     {
+      "id": "tests/test_fsio.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "c81edc5f367bfa3c",
+      "lines": 68,
+      "exports": [
+        "REPO",
+        "test_a_failed_save_reports_its_own_error_not_a_locked_temp_file",
+        "test_fsio_imports_nothing_of_the_package",
+        "test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it"
+      ]
+    },
+    {
       "id": "tests/test_irs_forms.py",
       "type": "test",
       "layer": "tests",
@@ -2435,8 +2461,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e4707e09f44d5f29",
-      "lines": 250,
+      "sha256": "98d31b98c9d95b8f",
+      "lines": 272,
       "exports": [
         "PACKAGE",
         "REPO",
@@ -2445,11 +2471,13 @@
         "test_every_module_is_in_exactly_one_layer",
         "test_no_load_time_import_points_to_a_higher_layer",
         "test_no_module_under_tracker_imports_a_mail_or_network_module",
+        "test_the_atomic_write_imports_nothing_of_the_package",
         "test_the_bottom_two_import_nothing_of_the_package_but_each_other",
         "test_the_filer_and_scanner_cycle_closes_only_at_call_time",
         "test_the_manifest_imports_the_record_and_nothing_else",
         "test_the_package_init_imports_nothing_at_load_time",
         "test_the_runner_never_imports_the_scheduler_or_the_api",
+        "test_the_settings_import_only_the_atomic_write",
         "test_the_store_imports_only_the_record_the_journal_and_the_lock"
       ]
     },
@@ -2567,8 +2595,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cfb9e9dfd32c1d02",
-      "lines": 902,
+      "sha256": "c3efebfaf49c5be5",
+      "lines": 880,
       "exports": [
         "K1_WORDS",
         "SAMPLE_ITEMS",
@@ -2580,7 +2608,6 @@
         "test_a_blank_allowed_extensions_means_the_safe_default_not_anything",
         "test_a_derived_year_is_a_check_not_a_reason_to_route",
         "test_a_details_only_edit_is_recorded_as_one",
-        "test_a_failed_save_reports_its_own_error_not_a_locked_temp_file",
         "test_a_folder_with_no_record_is_not_an_engagement",
         "test_a_keyword_the_row_types_itself_is_not_unlearnable_because_it_was_never_taught",
         "test_a_period_with_a_year_implies_the_year_check",
@@ -2625,12 +2652,12 @@
         "test_the_form_a_caller_gives_never_clears_the_one_the_details_carry",
         "test_the_label_carries_the_rows_period_year_or_the_bare_value",
         "test_the_list_is_the_eleven_columns_a_person_edits",
+        "test_the_manifest_does_not_re_export_the_atomic_write",
         "test_the_retired_spelling_is_folded_on_every_read_and_never_written",
         "test_two_issuer_names_that_merely_share_a_word_are_allowed",
         "test_two_issuer_rows_whose_names_nest_are_refused_when_the_list_is_validated",
         "test_two_typings_of_one_entity_make_one_row",
         "test_two_unrelated_rows_may_share_a_name",
-        "test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it",
         "test_unknown_override_rejected",
         "test_unlearning_a_keyword_takes_it_out_of_the_overlay_and_refuses_a_pair_nobody_taught",
         "test_validated_numbers_the_rows_by_their_position_and_strips_what_was_typed"
@@ -3263,7 +3290,7 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "72af3ee787e06a89",
+      "sha256": "18f88379d70a6523",
       "lines": 132,
       "exports": [
         "beside_the_app",
@@ -4459,6 +4486,12 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/fsio.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
@@ -4550,6 +4583,24 @@
     {
       "from": "tests/test_filer.py",
       "to": "tracker/filer.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_fsio.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_fsio.py",
+      "to": "tracker/validators.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_fsio.py",
+      "to": "tracker/fsio.py",
       "type": "tests",
       "source": "derived"
     },
@@ -4784,12 +4835,6 @@
     {
       "from": "tests/test_manifest.py",
       "to": "tracker/templates.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_manifest.py",
-      "to": "tracker/validators.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -5521,7 +5566,7 @@
     },
     {
       "from": "tests/test_settings.py",
-      "to": "tracker/manifest.py",
+      "to": "tracker/fsio.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -6097,6 +6142,12 @@
     },
     {
       "from": "tracker/api.py",
+      "to": "tracker/fsio.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
       "to": "tracker/ledger.py",
       "type": "imports",
       "source": "derived"
@@ -6326,6 +6377,12 @@
     {
       "from": "tracker/filer.py",
       "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "tracker/fsio.py",
       "type": "imports",
       "source": "derived"
     },
@@ -6841,6 +6898,12 @@
     },
     {
       "from": "tracker/runner.py",
+      "to": "tracker/fsio.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
       "to": "tracker/ledger.py",
       "type": "imports",
       "source": "derived"
@@ -6940,6 +7003,12 @@
       "to": "artifact:tracker.db",
       "type": "writes",
       "source": "curated"
+    },
+    {
+      "from": "tracker/scaffold.py",
+      "to": "tracker/fsio.py",
+      "type": "imports",
+      "source": "derived"
     },
     {
       "from": "tracker/scaffold.py",
@@ -7087,13 +7156,13 @@
     },
     {
       "from": "tracker/scheduling.py",
-      "to": "tracker/locking.py",
+      "to": "tracker/fsio.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tracker/scheduling.py",
-      "to": "tracker/manifest.py",
+      "to": "tracker/locking.py",
       "type": "imports",
       "source": "derived"
     },
@@ -7117,7 +7186,7 @@
     },
     {
       "from": "tracker/settings.py",
-      "to": "tracker/manifest.py",
+      "to": "tracker/fsio.py",
       "type": "imports",
       "source": "derived"
     },
@@ -7213,6 +7282,12 @@
     },
     {
       "from": "tracker/validators.py",
+      "to": "tracker/fsio.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/validators.py",
       "to": "tracker/manifest.py",
       "type": "imports",
       "source": "derived"
@@ -7244,6 +7319,12 @@
     {
       "from": "tracker/view.py",
       "to": "tracker/filer.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "tracker/fsio.py",
       "type": "imports",
       "source": "derived"
     },

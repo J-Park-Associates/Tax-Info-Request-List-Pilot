@@ -158,8 +158,9 @@ from pathlib import Path
 
 from tracker import ledger, reasons, store
 from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
+from tracker.fsio import TEMP_SUFFIX
 from tracker.locking import engagement_lock
-from tracker.manifest import TEMP_SUFFIX, Override, RequestItem, label_for, load_manifest, override_label
+from tracker.manifest import Override, RequestItem, label_for, load_manifest, override_label
 
 # The records themselves live in tracker/records.py (decision 100). The two
 # names this module no longer uses are re-exported from here so that every
@@ -2002,7 +2003,7 @@ def _remove_the_retired_cache(engagement_dir: Path) -> list[str]:
     synced folder, and reading it once would keep its loader alive for a
     release to save one cold pass. So the first real pass after the
     upgrade removes it, and any temp file the atomic write it used to go
-    through left beside it (``manifest.temp_path_for`` put the process id
+    through left beside it (``fsio.temp_path_for`` put the process id
     and a token between the name and ``TEMP_SUFFIX``), and the report says
     so on ``FileReport.attention`` for that one pass, as ``MOVED_IN_PBC``
     is said - on the console, in the app's warnings, and counted on the

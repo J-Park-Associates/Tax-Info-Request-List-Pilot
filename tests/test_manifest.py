@@ -29,7 +29,6 @@ from tracker.manifest import (
     OVERRIDE_REASONS,
     SUMMARY_EMPTY,
     SUMMARY_SEPARATOR,
-    TEMP_SUFFIX,
     UNLEARN_REFUSED,
     UNSCANNED_LABEL,
     EngagementInfo,
@@ -47,7 +46,6 @@ from tracker.manifest import (
     narrowing_rows,
     override_label,
     save_rules,
-    temp_path_for,
     unlearn_keyword,
     validated,
 )
@@ -698,39 +696,19 @@ def test_check_rules_warns_about_a_keyword_with_nothing_in_it():
 # ---------------------------------------------------------- atomic writes ----
 
 
-def test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it(tmp_path):
-    from tracker.validators import is_ignored
-
-    target = tmp_path / "settings.json"
-    first, second = temp_path_for(target), temp_path_for(target)
-    assert first != second
-    assert first.parent == target.parent
-    for temp in (first, second):
-        assert temp.name.endswith(TEMP_SUFFIX)
-        assert is_ignored(temp)                   # a stranded temp is never a document
-
-
-def test_a_failed_save_reports_its_own_error_not_a_locked_temp_file(tmp_path, monkeypatch):
-    # A writer may leave the half-written file open when it raises; on
-    # Windows the temp then cannot be deleted. That must not turn a full
-    # disk into "held by another program".
+@pytest.mark.parametrize("name", ["TEMP_SUFFIX", "temp_path_for", "atomic_replacement",
+                                  "write_text_atomically", "write_json_atomically"])
+def test_the_manifest_does_not_re_export_the_atomic_write(name):
+    """Decision 120 moved the five names to tracker/fsio.py. They are not
+    left here as aliases: a name that resolves in two modules is a name
+    that drifts, and a caller that still asks the manifest for the write
+    should be told at the import rather than kept working until somebody
+    reads the layer table and wonders."""
     import tracker.manifest as manifest_module
-    from tracker.manifest import atomic_replacement
 
-    target = tmp_path / "x.json"
-    target.write_bytes(b"before")
-    real_unlink = manifest_module.Path.unlink
-
-    def held(self, *args, **kwargs):
-        if self.name.endswith(manifest_module.TEMP_SUFFIX):
-            raise PermissionError("[WinError 32] still open")
-        return real_unlink(self, *args, **kwargs)
-    monkeypatch.setattr(manifest_module.Path, "unlink", held)
-    with pytest.raises(OSError, match="No space left"):
-        with atomic_replacement(target) as temp:
-            temp.write_bytes(b"half")
-            raise OSError(28, "No space left on device")
-    assert target.read_bytes() == b"before"
+    with pytest.raises(ImportError):
+        exec(f"from tracker.manifest import {name}")
+    assert not hasattr(manifest_module, name)
 
 
 # --------------------------------------------------------------- summary ----

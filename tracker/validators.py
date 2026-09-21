@@ -32,7 +32,8 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from tracker import reasons
-from tracker.manifest import TEMP_SUFFIX, RequestItem
+from tracker.fsio import TEMP_SUFFIX
+from tracker.manifest import RequestItem
 
 # pypdf logs its own warnings while parsing corrupt files; we already surface
 # every failure as a FileResult.reason, so keep the console clean.

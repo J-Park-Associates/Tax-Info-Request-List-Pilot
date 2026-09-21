@@ -38,6 +38,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tracker.fsio import write_text_atomically
 from tracker.manifest import (
     WINDOWS_ILLEGAL_CHARS,
     Override,
@@ -45,7 +46,6 @@ from tracker.manifest import (
     label_for,
     load_engagement_info,
     load_manifest,
-    write_text_atomically,
 )
 from tracker.reasons import GOOGLE_EXPORT_HINT
 from tracker.validators import google_stub_examples

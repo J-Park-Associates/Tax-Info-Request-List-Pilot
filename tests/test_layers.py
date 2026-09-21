@@ -18,9 +18,10 @@ one deliberate cycle in the package, ``filer`` <-> ``scanner`` inside
 are both L1, so ``manifest`` reaching ``ledger`` is legal - and wanted,
 because decision 104 put the request list's two writes beside its
 schema). What is never allowed is an edge from a lower layer to a higher one.
-``settings`` sits at L1 only because it borrows the atomic write from
-``manifest``; the ``fsio`` move (the plan's step after the storage cutover)
-takes it to L0. ``validators`` sits at L1 because ``scaffold`` reads one
+``settings`` sat at L1 only because it borrowed the atomic write from
+``manifest``; decision 120 moved that write to ``fsio`` at L0, which takes
+``settings`` down with it - it imports ``fsio`` and nothing else of the
+package. ``validators`` sits at L1 because ``scaffold`` reads one
 helper from it (the placeholder examples the README prints), and its pure
 half is not worth a module of its own until that call can move.
 
@@ -72,9 +73,9 @@ PACKAGE = REPO / "tracker"
 
 #: Layer -> the modules in it. Every file in tracker/ is in exactly one.
 LAYERS: dict[int, frozenset[str]] = {
-    0: frozenset({"__init__", "reasons", "locking", "page"}),
+    0: frozenset({"__init__", "reasons", "locking", "page", "fsio", "settings"}),
     1: frozenset({"ledger", "manifest", "records", "scaffold", "store", "templates",
-                  "validators", "settings"}),
+                  "validators"}),
     2: frozenset({"content_check", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     4: frozenset({"runner", "scheduling"}),
@@ -205,6 +206,27 @@ def test_the_manifest_imports_the_record_and_nothing_else():
     load, call = import_edges()
     assert load["manifest"] == {"records"}, load["manifest"]
     assert {"store", "ledger", "locking"} <= call["manifest"], call["manifest"]
+
+
+def test_the_settings_import_only_the_atomic_write():
+    """Decision 120: the one import that held it a layer up is gone.
+
+    ``settings`` borrowed ``write_json_atomically`` from ``manifest``, and
+    that single name was the whole of its dependence on L1. The write is
+    ``fsio`` now, so the settings file - which the app, the scheduler and
+    every command line read before anything else - is written by a module
+    that knows nothing of request lists.
+    """
+    load, _ = import_edges()
+    assert load["settings"] == {"fsio"}, load["settings"]
+
+
+def test_the_atomic_write_imports_nothing_of_the_package():
+    """It is the bottom of the package: anything may reach it, it reaches
+    nothing, and it holds no policy to reach for."""
+    load, call = import_edges()
+    assert load["fsio"] == set(), load["fsio"]
+    assert call["fsio"] == set(), call["fsio"]
 
 
 def test_the_package_init_imports_nothing_at_load_time():

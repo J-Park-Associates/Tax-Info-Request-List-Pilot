@@ -52,6 +52,7 @@ from tracker.filer import (
     restore_working_copy,
     unfile_document,
 )
+from tracker.fsio import write_text_atomically
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker.manifest import (
     ANY_EXTENSION,
@@ -82,7 +83,6 @@ from tracker.manifest import (
     save_rules,
     summarize,
     unlearn_keyword,
-    write_text_atomically,
 )
 from tracker.page import slug
 from tracker.records import (

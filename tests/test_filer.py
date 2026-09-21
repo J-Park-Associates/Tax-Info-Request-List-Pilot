@@ -34,8 +34,8 @@ from tracker.filer import (
     prepared_name_for,
     read_index,
 )
+from tracker.fsio import TEMP_SUFFIX
 from tracker.manifest import (
-    TEMP_SUFFIX,
     RequestItem,
     load_engagement_info,
     load_manifest,
