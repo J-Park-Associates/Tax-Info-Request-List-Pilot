@@ -92,6 +92,20 @@ def prepared(engagement, folder_prefix):
     return next(p for p in root.iterdir() if p.name.startswith(folder_prefix))
 
 
+def kept_files(engagement):
+    """Every preserved original and every working copy, by relative path.
+
+    The conservation check: what is under the engagement is the arrivals
+    plus the copies a rule made, and nothing else. ``files_under()`` below
+    is the whole folder with each file's bytes and time, for the claims
+    about a pass that must change nothing; this one names the two folders a
+    rule writes in, which is what a claim about copies wants to say.
+    """
+    roots = (pbc(engagement), engagement / PREPARED_DIR_NAME)
+    return sorted(path.relative_to(engagement).as_posix()
+                  for root in roots for path in root.rglob("*") if path.is_file())
+
+
 # ------------------------------------------------------------- the happy path ----
 
 
@@ -1584,24 +1598,255 @@ def test_dismissing_a_parked_file_rewrites_its_row_and_moves_nothing(engagement)
     assert row.prepared_location == parked.prepared_location
 
 
-def test_the_same_document_sent_again_after_a_dismissal_is_a_duplicate(engagement):
-    """Parking it a second time would put back the warning a person just cleared."""
-    from tracker.filer import NOT_REQUESTED, dismiss_review_file
+def test_the_same_document_sent_again_after_a_dismissal_parks_again_and_names_the_earlier_decision(
+    engagement,
+):
+    """Not requested is a decision about one document on one day (decision 111).
+
+    The client was never told the document was unnecessary, so they send it
+    again; a silent Duplicate would tell nobody. It is routed like any drop,
+    and where no request takes it the row says what was decided before -
+    the date and the person's note, as they wrote them - so the person who
+    set it aside decides again with both facts in front of them.
+    """
+    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE, dismiss_review_file
+
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismissed = dismiss_review_file(
+        engagement, parked.pbc_location, "an IRS notice", today=DAY2
+    ).entry
+    set_aside_copy = engagement / dismissed.prepared_location
+    before = set_aside_copy.read_bytes()
+
+    drop(engagement, "notice.pdf", "nothing the rules recognise")   # same bytes, same name
+    report = file_drops(engagement, today=DAY2)
+
+    (again,) = report.review
+    assert report.duplicates == []
+    assert again.decision == NEEDS_REVIEW
+    assert again.reason.startswith(RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason))
+    assert DAY2.isoformat() in again.reason and "an IRS notice" in again.reason
+    assert UNMATCHED in again.reason                    # and why it parked, as always
+
+    # The set-aside row and its copy are exactly as they were.
+    assert set_aside_copy.read_bytes() == before
+    rows = read_index(engagement)
+    assert [r.decision for r in rows] == [NOT_REQUESTED, NEEDS_REVIEW]
+    assert rows[0].reason == dismissed.reason
+    assert rows[0].prepared_location == dismissed.prepared_location
+
+    # Two arrivals, two preserved originals, two parked copies - and
+    # _unique_path never overwrote the copy that was already there.
+    assert kept_files(engagement) == [
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice (2).pdf",
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice.pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice (2).pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice.pdf",
+    ]
+
+
+def test_a_resend_after_a_dismissal_owns_its_own_working_copy(engagement):
+    """One row, one working copy.
+
+    If the re-parked row named the set-aside row's file, filing either one
+    would carry the other's copy out from under it.
+    """
+    from tracker.filer import assign_review_file, dismiss_review_file
+
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismissed = dismiss_review_file(engagement, parked.pbc_location, today=DAY2).entry
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    again = file_drops(engagement, today=DAY2).review[0]
+    assert again.prepared_location != dismissed.prepared_location
+    resent_copy = engagement / again.prepared_location
+    before = resent_copy.read_bytes()
+
+    # A person files the *dismissed* row: only its own copy moves.
+    result = assign_review_file(engagement, dismissed.pbc_location, "C01", today=DAY2)
+
+    assert result.moved_review_copy is True
+    assert not (engagement / dismissed.prepared_location).exists()
+    assert resent_copy.is_file() and resent_copy.read_bytes() == before
+    still = {r.pbc_location: r for r in read_index(engagement)}[again.pbc_location]
+    assert still.decision == NEEDS_REVIEW and still.reason == again.reason
+    assert still.prepared_location == again.prepared_location
+    assert kept_files(engagement) == [
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice (2).pdf",
+        f"{PREPARED_DIR_NAME}/{prepared(engagement, 'C01').name}/{result.entry.filed_as}",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice (2).pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice.pdf",
+    ]
+
+
+def test_a_resend_after_a_dismissal_files_when_the_list_now_asks_for_it(engagement):
+    """The person may have taught the list since they set it aside.
+
+    Parking what exactly one request now accepts would be guessing that the
+    earlier decision still stands over the later rule, so the re-send is
+    routed first - and the row still says it was set aside before.
+    """
+    from tracker.filer import RESENT_AFTER_SET_ASIDE, dismiss_review_file
+
+    drop(engagement, "notice.pdf", "an agency notice about your account, 2025")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismissed = dismiss_review_file(engagement, parked.pbc_location, today=DAY2).entry
+
+    # A person edits the request list in the app: C01 now asks for it.
+    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement)]
+    save_rules(engagement, [
+        RequestItem(**{**rule_from_json(rule_to_json(row)),
+                       "required_keywords": ("agency notice",)})
+        if row.identifier == "C01" else row
+        for row in rows
+    ], load_engagement_info(engagement))
+
+    drop(engagement, "notice.pdf", "an agency notice about your account, 2025")
+    report = file_drops(engagement, today=DAY2)
+
+    (filed,) = report.filed
+    assert report.review == [] and report.duplicates == []
+    assert filed.identifier == "C01"
+    assert filed.reason.endswith(
+        f"; {RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason)}"
+    )
+    copy = engagement / filed.prepared_location
+    assert copy.is_file() and copy.read_bytes() == (pbc(engagement) / "notice (2).pdf").read_bytes()
+    # The set-aside row keeps its own parked copy; only the re-send was filed.
+    assert (engagement / dismissed.prepared_location).is_file()
+    assert kept_files(engagement) == [
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice.pdf",
+        f"{PREPARED_DIR_NAME}/{prepared(engagement, 'C01').name}/{filed.filed_as}",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice (2).pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice.pdf",
+    ]
+
+
+def test_a_third_send_of_set_aside_bytes_is_a_duplicate_of_the_parked_row(engagement):
+    """The queue holds a document once: the second arrival is where the work is."""
+    from tracker.filer import DUPLICATE_OF_PARKED, dismiss_review_file
 
     drop(engagement, "notice.pdf", "nothing the rules recognise")
     parked = file_drops(engagement, today=DAY1).review[0]
     dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    again = file_drops(engagement, today=DAY2).review[0]
 
-    drop(engagement, "notice again.pdf", "nothing the rules recognise")   # same bytes
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
     report = file_drops(engagement, today=DAY2)
 
-    assert [e.original_name for e in report.duplicates] == ["notice again.pdf"]
+    (dup,) = report.duplicates
     assert report.review == []
-    review_dir = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
-    assert [p.name for p in review_dir.iterdir()] == ["notice.pdf"]
-    assert (pbc(engagement) / "notice again.pdf").exists()        # preserved, as always
-    decisions = [r.decision for r in read_index(engagement)]
-    assert decisions == [NOT_REQUESTED, DUPLICATE]
+    assert dup.decision == DUPLICATE and dup.prepared_location == ""
+    assert dup.reason == DUPLICATE_OF_PARKED.format(
+        name=again.original_name, copy=again.filed_as
+    )
+    assert sorted(p.name for p in review_dir(engagement).iterdir()) == ["notice (2).pdf", "notice.pdf"]
+
+
+def test_a_duplicates_reason_says_filed_only_of_a_filed_row(engagement):
+    """Step 0's fourth defect: a parked copy has a name, and saying "already
+    filed as" of it told the Index a document waiting for a person was done."""
+    from tracker.filer import DUPLICATE_OF_FILED, DUPLICATE_OF_PARKED
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    first = file_drops(engagement, today=DAY1)
+    filed = first.filed[0]
+    parked = first.review[0]
+
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "notice again.pdf", "nothing the rules recognise")
+    report = file_drops(engagement, today=DAY2)
+
+    said = {e.original_name: e.reason for e in report.duplicates}
+    assert said["w2 again.pdf"] == DUPLICATE_OF_FILED.format(
+        name=filed.original_name, copy=filed.filed_as
+    )
+    assert said["notice again.pdf"] == DUPLICATE_OF_PARKED.format(
+        name=parked.original_name, copy=parked.filed_as
+    )
+    assert "already filed" not in said["notice again.pdf"]
+
+
+def test_a_resend_of_a_moved_rows_bytes_is_a_duplicate_naming_the_moved_copy(engagement):
+    """A row whose copy is not where the record put it is a person's to
+    resolve; a second copy of the same document would not help them do it."""
+    from tracker.filer import DUPLICATE_OF_MOVED, FILE_MOVED
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    drag(engagement / filed.prepared_location, prepared(engagement, "C01"))
+    file_drops(engagement, today=DAY2)
+    [moved] = read_index(engagement)
+    assert moved.decision == FILE_MOVED
+    untouched = files_under(engagement)
+
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
+    report = file_drops(engagement, today=DAY2)
+
+    (dup,) = report.duplicates
+    assert report.filed == [] and report.review == []
+    assert dup.decision == DUPLICATE and dup.prepared_location == ""
+    assert dup.reason == DUPLICATE_OF_MOVED.format(
+        name=moved.original_name, copy=moved.filed_as
+    )
+    assert read_index(engagement)[0] == moved          # the moved row is untouched
+    # The one new file under the engagement is the preserved original, and
+    # nothing that was already there changed.
+    after = files_under(engagement)
+    assert set(after) - set(untouched) == {f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2 again.pdf"}
+    assert {name: held for name, held in after.items() if name in untouched} == untouched
+
+
+def test_a_duplicates_reason_of_a_row_with_no_working_copy_says_so(engagement, monkeypatch):
+    """Decision 17's row has no copy to name.
+
+    The three sentences above all end in the name of a file; this row has
+    none, and "parked as" with nothing after it would be the Index's word
+    for a file nobody can find.
+    """
+    import tracker.filer as filer_module
+    from tracker.filer import DUPLICATE_OF_UNCOPIED
+
+    def truncated(src, dst):
+        filer_module.Path(dst).write_bytes(filer_module.Path(src).read_bytes()[:40])
+
+    monkeypatch.setattr(filer_module.shutil, "copy2", truncated)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    (failed,) = file_drops(engagement, today=DAY1).review
+    monkeypatch.undo()
+    assert failed.filed_as == "" and "could not be filed" in failed.reason
+
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
+    (dup,) = file_drops(engagement, today=DAY2).duplicates
+
+    assert dup.reason == DUPLICATE_OF_UNCOPIED.format(name=failed.original_name)
+    assert not dup.reason.endswith(" ")
+    assert kept_files(engagement) == [
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2 again.pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2.pdf",
+    ]
+
+
+def test_a_resend_of_a_parked_rows_bytes_is_a_duplicate_and_makes_no_copy(engagement):
+    """One copy in the review folder: a second would be a second thing to work."""
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    drop(engagement, "notice again.pdf", "nothing the rules recognise")
+    report = file_drops(engagement, today=DAY2)
+
+    (dup,) = report.duplicates
+    assert report.review == [] and dup.prepared_location == ""
+    assert dup.identifier == parked.identifier
+    assert [p.name for p in review_dir(engagement).iterdir()] == ["notice.pdf"]
+    assert kept_files(engagement) == [
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice.pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice again.pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice.pdf",
+    ]
 
 
 def test_filing_a_dismissed_document_is_how_the_decision_is_undone(engagement):

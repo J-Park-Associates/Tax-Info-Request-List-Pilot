@@ -67,9 +67,15 @@ Guarantees:
   and the README says "drop it anywhere", so a file that lands straight in
   ``PBC_DIR_NAME/`` is treated as a drop that has already been preserved: it is
   filed and indexed in place, never ignored.
-- **A working copy that went missing is replaced.** A re-sent document
-  whose earlier copy is no longer in ``PREPARED_DIR_NAME/`` is filed again rather
-  than dismissed as a duplicate; the original was always safe in ``PBC_DIR_NAME/``.
+- **A re-send is judged by the earlier row's decision** (decision 111). The
+  content hash says *which* row already holds those bytes; what the re-send
+  becomes is that row's decision to say. A filed row whose working copy is no
+  longer in ``PREPARED_DIR_NAME/`` is filed again rather than dismissed as a
+  duplicate - the original was always safe in ``PBC_DIR_NAME/``. A filed row
+  whose copy is there, a row still parked for a person, and a row whose copy
+  is not where the record put it all make it a duplicate, and the sentence
+  says which of the three it is; so does a row that has no working copy at
+  all. Bytes a person set aside are the case below.
 - **A filed document can go back for review, on the record.**
   ``unfile_document()`` moves the working copy back to ``REVIEW_DIR_NAME``
   under the client's own name and rewrites the row, so the correction people
@@ -80,7 +86,12 @@ Guarantees:
   ``dismiss_review_file()`` rewrites the row as ``NOT_REQUESTED`` and moves
   nothing: an agency notice or an extra statement stays where the client's
   copy of it is. The weekly draft stops counting it, and filing it later
-  (``assign_review_file()``) is how the decision is undone.
+  (``assign_review_file()``) is how the decision is undone. It is a decision
+  about one document on one day, never a standing rule that silences that
+  document: the same bytes sent again are looked at afresh - routed as any
+  drop is, filed where exactly one request now accepts them and parked with a
+  working copy of their own where none does - and the row says it was set
+  aside before (decision 111).
 - **A working copy that is not where the record put it is said, not moved.**
   Every pass proves each working copy the record names against the row's
   own fingerprint and identifies by fingerprint every file under
@@ -186,9 +197,11 @@ DUPLICATE = "Duplicate"
 #: A parked document no request asks for - an agency notice, an extra
 #: statement. The working copy stays in ``REVIEW_DIR_NAME`` (nothing a
 #: client sent is ever deleted) and the original in ``PBC_DIR_NAME/`` is
-#: untouched; what changes is that the draft stops counting it and a
-#: re-send of the same bytes is a duplicate rather than a second review
-#: item. Filing it is how the decision is undone.
+#: untouched; what changes is that the draft stops counting it. It says
+#: nobody asked for this document *that day*, not that these bytes are
+#: settled for ever: the same bytes sent again are routed afresh and the
+#: new row names this decision (decision 111). Filing it is how the
+#: decision is undone.
 NOT_REQUESTED = "Not Requested"
 #: A document whose working copy is not where the record put it, and whose
 #: bytes a pass found at a path no row names (decision 109). A decision on
@@ -200,6 +213,23 @@ NOT_REQUESTED = "Not Requested"
 #: nothing is moved, and a person decides. A copy dragged back is filed
 #: again on the next pass.
 FILE_MOVED = "File Moved"
+
+#: What a Duplicate row says, by what the earlier row holding the bytes is.
+#: A parked document has a working copy with a name, so saying "already
+#: filed" of one told a person on the Index that a document waiting for
+#: them had been dealt with.
+DUPLICATE_OF_FILED = "identical to {name}; already filed as {copy}"
+DUPLICATE_OF_PARKED = "identical to {name}; parked as {copy}"
+DUPLICATE_OF_MOVED = "identical to {name}; its working copy {copy} is not where the record put it"
+#: And of a row that never got one: the failure row decision 17 writes when
+#: a drop could not be filed after it was preserved has no copy to name, and
+#: a sentence ending "as" with nothing after it would be the Index's word
+#: for a file nobody can find. Chosen by the absence of the name, whatever
+#: the row's decision.
+DUPLICATE_OF_UNCOPIED = "identical to {name}; that row has no working copy"
+#: A re-send of bytes a person set aside: the earlier decision, quoted whole
+#: (it carries the date and the note), and the fact. Decision 76 amended.
+RESENT_AFTER_SET_ASIDE = "set aside as not requested ({earlier}); the client sent it again"
 
 #: Reason prefix on index rows a person filed from REVIEW_DIR_NAME.
 ASSIGNED_BY_PERSON = "assigned by a person"
@@ -1434,10 +1464,13 @@ def file_drops(
         # The row that holds each document's bytes. A Duplicate row only
         # points at another row; letting it shadow the Filed row would hide
         # a working copy that has since been deleted, and a re-send that
-        # answers "Missing" would be called a duplicate for ever. Every other
-        # decision holds its bytes, a person's ``NOT_REQUESTED`` included:
-        # the same document sent again is that same document, and parking it
-        # a second time would put back the warning they just cleared.
+        # answers "Missing" would be called a duplicate for ever (decision
+        # 58). Every other decision holds its bytes, a person's
+        # ``NOT_REQUESTED`` included - so that a re-send of what somebody
+        # set aside is *recognised* as those bytes. What is then done with
+        # it is the earlier row's decision to say, in ``_sort_one``, and for
+        # a set-aside row that is a fresh look, not a duplicate: decision 76
+        # said it once and decision 111 amended it.
         known = {e.digest: e for e in entries if e.digest and e.decision != DUPLICATE}
         # Names claimed during this run, so a dry run previews the same numbering
         # a real run would produce (nothing is on disk to collide with yet).
@@ -1662,8 +1695,11 @@ def _sort_one(
 ) -> IndexEntry:
     """Decide one preserved original's fate and, unless dry-running, copy it."""
     known, report, dry_run = run.known, run.report, run.dry_run
-    refiled = ""
+    refiled = resent = ""
     if digest and digest in known:
+        # These bytes are already in the record, and the row that holds them
+        # says what this drop is: the content hash identifies, the earlier
+        # decision decides (decision 111).
         earlier = known[digest]
         engagement_dir = run.prepared_dir.parent
         if (
@@ -1679,16 +1715,36 @@ def _sort_one(
                 f"re-filed: the earlier copy {earlier.prepared_location} "
                 f"was no longer in {PREPARED_DIR_NAME}"
             )
+        elif earlier.decision == NOT_REQUESTED:
+            # Somebody said no request asked for this - that day. The client
+            # sending it again is a new fact about it, and the request list
+            # may have gained the row or the keyword that takes it since, so
+            # it is routed below like any other drop and parked only where
+            # the router would park it. Either way the row quotes the earlier
+            # decision whole - it carries the date and the person's note as
+            # ``dismiss_review_file`` wrote them - so the card, the Index and
+            # the files-waiting warning all say the client sent it again.
+            resent = RESENT_AFTER_SET_ASIDE.format(earlier=earlier.reason)
         else:
+            # A filed row with its copy in place, a row still parked for a
+            # person, or a row whose copy is not where the record put it
+            # (decision 109's, which a second copy would not help anybody
+            # resolve): the queue holds a document once, and the sentence
+            # names which of the three the earlier row is. A row that has no
+            # working copy to name at all - decision 17's failure row - says
+            # that instead, whatever its decision, rather than ending on the
+            # word "as" with nothing after it.
+            words = (
+                DUPLICATE_OF_UNCOPIED if not earlier.filed_as else
+                {FILED: DUPLICATE_OF_FILED, NEEDS_REVIEW: DUPLICATE_OF_PARKED,
+                 FILE_MOVED: DUPLICATE_OF_MOVED}[earlier.decision]
+            )
             entry = IndexEntry(
                 received=stamp, original_name=drop.name, size_kb=size_kb,
                 digest=digest, identifier=earlier.identifier,
                 prepared_location="",
                 pbc_location=pbc_rel, decision=DUPLICATE,
-                reason=(
-                    f"identical to {earlier.original_name}"
-                    + (f"; already filed as {earlier.filed_as}" if earlier.filed_as else "")
-                ),
+                reason=words.format(name=earlier.original_name, copy=earlier.filed_as),
             )
             report.duplicates.append(entry)
             return entry
@@ -1712,7 +1768,7 @@ def _sort_one(
             digest=digest, identifier=item.identifier,
             prepared_location=locations[0],
             pbc_location=pbc_rel, decision=FILED,
-            reason=f"{routing.reason}; {refiled}" if refiled else routing.reason,
+            reason="; ".join(part for part in (routing.reason, refiled, resent) if part),
             candidates=_CANDIDATE_SEP.join(routing.candidates),
             evidence=format_evidence(routing.evidence_record),
             also_filed=_CANDIDATE_SEP.join(locations[1:]),
@@ -1723,7 +1779,13 @@ def _sort_one(
     review_name = drop.name
     if not dry_run:
         run.review_dir.mkdir(parents=True, exist_ok=True)
-        review_target = _existing_copy(run.review_dir, pbc_target, digest)
+        # One row, one working copy. The copy already there holding these
+        # bytes is the *set-aside* row's, and two rows naming one file would
+        # let filing either of them carry the other's copy away, so a re-send
+        # of set-aside bytes takes a fresh copy of its own. The person may
+        # end with two identical files in review, which is the truthful
+        # state: two arrivals, two decisions to make.
+        review_target = None if resent else _existing_copy(run.review_dir, pbc_target, digest)
         if review_target is None:
             review_target = _unique_path(run.review_dir, drop.name)
             _copy_whole(pbc_target, review_target, expect=digest, cache=run.cache)
@@ -1732,7 +1794,10 @@ def _sort_one(
         received=stamp, original_name=drop.name, size_kb=size_kb,
         digest=digest, identifier="",
         prepared_location=prepared_location(run.review_dir, review_name),
-        pbc_location=pbc_rel, decision=NEEDS_REVIEW, reason=routing.reason,
+        pbc_location=pbc_rel, decision=NEEDS_REVIEW,
+        # The flag first: what a person opening the card should read before
+        # the router's own reason for parking it.
+        reason=f"{resent}; {routing.reason}" if resent else routing.reason,
         candidates=_CANDIDATE_SEP.join(routing.candidates),
         evidence=format_evidence(routing.evidence_record),
     )
@@ -2066,8 +2131,10 @@ def dismiss_review_file(
     or an extra statement is still theirs, and a person who was wrong files it
     afterwards with :func:`assign_review_file`. What changes is what the
     system says about it - the weekly draft stops warning about a file
-    somebody has already looked at, and the same bytes sent again are a
-    duplicate rather than a second thing to look at.
+    somebody has already looked at, and the same bytes sent again come back
+    for a fresh look, naming this decision (decision 111): it is a decision
+    about one document on one day, not a standing rule that silences that
+    document for the rest of the engagement.
 
     Because nothing moves, nothing is checked against the bytes: this is a
     statement about the request list, not about the file. The engagement lock

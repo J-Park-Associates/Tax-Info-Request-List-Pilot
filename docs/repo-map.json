@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 110,
-    "edges": 573,
-    "reused": 71
+    "edges": 574,
+    "reused": 82
   },
   "node_types": [
     "artifact",
@@ -234,8 +234,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "82f1d11247900aa2",
-      "lines": 2364,
+      "sha256": "d925e7933b01f8de",
+      "lines": 2431,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
@@ -244,6 +244,10 @@
         "CopyMismatchError",
         "DISMISSED_BY_PERSON",
         "DUPLICATE",
+        "DUPLICATE_OF_FILED",
+        "DUPLICATE_OF_MOVED",
+        "DUPLICATE_OF_PARKED",
+        "DUPLICATE_OF_UNCOPIED",
         "DismissResult",
         "FILED",
         "FILE_MOVED",
@@ -263,6 +267,7 @@
         "OVERRODE_SHORTLIST",
         "REPLACED_IN_PBC",
         "RESCAN_REFUSED",
+        "RESENT_AFTER_SET_ASIDE",
         "RETIRED_CACHE_REMOVED",
         "STALE_ROW",
         "StaleRowError",
@@ -299,6 +304,11 @@
         "DUPLICATE": "'Duplicate'",
         "NOT_REQUESTED": "'Not Requested'",
         "FILE_MOVED": "'File Moved'",
+        "DUPLICATE_OF_FILED": "'identical to {name}; already filed as {copy}'",
+        "DUPLICATE_OF_PARKED": "'identical to {name}; parked as {copy}'",
+        "DUPLICATE_OF_MOVED": "'identical to {name}; its working copy {copy} is not where the record put it'",
+        "DUPLICATE_OF_UNCOPIED": "'identical to {name}; that row has no working copy'",
+        "RESENT_AFTER_SET_ASIDE": "'set aside as not requested ({earlier}); the client sent it again'",
         "ASSIGNED_BY_PERSON": "'assigned by a person'",
         "DISMISSED_BY_PERSON": "'not requested, by a person'",
         "UNFILED_BY_PERSON": "'unfiled by a person'",
@@ -319,7 +329,7 @@
         "RESCAN_REFUSED": "'the status was not put back now ({why}); the next pass does it'"
       },
       "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and records every move in the engagement's own record - the journal and the store together, in one transaction per decision. Owns read_index(), which answers from the store, and ensure(), which brings the store up to the journal and says whether it is current.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (the request list, the index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's verdicts in the store (content_check.ContentCache over store.remember_verdicts(), keyed by content; decision 107), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. The tidy-up at the end of a real pass also removes the retired JSON cache file and any temp file beside it (_remove_the_retired_cache(), by RETIRED_CACHE_FILENAME) - nothing reads it, and the removal is said once on FileReport.attention (RETIRED_CACHE_REMOVED) - on the console, in the app's warnings and counted on the practice page - for that pass only. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is recorded as Needs Review with the error, and the record is written in a finally block so nothing moved into PBC/ is ever unrecorded. Runs under the engagement lock - its own when it is called alone, the pass's when runner.run_engagement() is holding one - taken before the request list, the record or the drop folder is read. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in the editor keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, records the keyword a person typed in the same call, all under the engagement lock. The IndexEntry record and INDEX_LAYOUT live in tracker/records.py (decision 100). HISTORY, kept as history: until decision 102 the index was a workbook rewritten whole on every pass, and decisions 54, 56, 58, 59, 61, 65, 66, 67, 68, 69 and 72 are thirteen readings of what that cost - a snapshot sidecar that outlived its workbook, a deferred write, a stale workbook, a header row a sort had moved, a renamed tab, a column inserted at A; what survives of them here is the reading of bytes (replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; every move is a rename in _move_whole(), because shutil.move copied a held-open drop truncated into PBC; what lies behind a junction is not a drop; a name Windows cannot open is reported every pass; a row recorded without its bytes is tied to them only while its working copy and its original agree, UNTIED_IN_PBC; a recorded original that has left PBC/ is said every pass, MISSING_IN_PBC, and where a stray carries its bytes the row follows the file, MOVED_IN_PBC; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's; assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so). Decision 76: dismiss_review_file() rewrites a parked row NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing; _find_parked() takes a dismissed row too, so filing it is the undo. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself); a working copy that is no longer the row's bytes is left and said out loud (LEFT_FILED). Decision 82: IndexEntry.evidence is the last column, written through records.format_evidence() and read back through records.parse_evidence(); a person's decision leaves it alone. Decision 87: every decision is appended to the record through tracker/ledger.py by one rule, _rows_changed(), read off the rows themselves. DECISION 102 - THE INDEX MOVED INTO THE RECORD: read_index() takes the engagement folder and reads the store's documents table, in the index's own order, after store.follow_the_journal(); _record() is the one write, every event a decision produces in a single store.record() call, and the rollback that puts a moved file back asks _the_record_holds(). The migration that read a legacy folder's index workbook into the journal once, and the request-list import of decision 103 that read the sheet once a pass and journalled its differences, both LEFT WITH DECISION 104 and are set aside outside the tree in Retired - Excel manifest: ensure() is now the store's top-up and the three words that say whether it describes the engagement, it writes nothing in the folder, and every caller drops the flag that used to keep a dry run from migrating. clients_root_of() is store.root_for() under its old name. _storable() keeps only the refusal of a name UTF-8 cannot hold (the journal is UTF-8 JSON); a control character in a POSIX name files again, because the refusal of one existed only because a workbook is XML. A person's filing records its keyword in the SAME store.record() call as the row (_record()'s also), because the filing and what it taught are one decision. THE DELIBERATE CYCLE: _rescan() imports tracker/scanner.py at call time so a person's filing is scanned the moment it lands, and the scanner imports this module's index reader at call time; neither runs at load. DECISION 112 - A PERSON'S ACTION IS JUDGED AGAINST THE RECORD IT WAS MADE ON: assign_review_file(), dismiss_review_file() and unfile_document() each take seq=, the row's sequence number as the person saw it, and _refuse_if_stale() compares it with store.document_seqs() immediately after the row is found - inside the lock, before a byte is read or a file is touched - raising StaleRowError (a FilingError, so the API's one except turns it into the app's sentence) with STALE_ROW, which names what the record now says. seq=None is a caller with no view (a script, a test) and skips the check; the by-name refusal is asked first and is a different question. assign_review_file() also takes shortlist=, the identifiers the evidence pointed at, computed by the caller that drew the card: a pick off a non-empty shortlist writes OVERRODE_SHORTLIST into the row's reason after the ASSIGNED_BY_PERSON prefix (the scanner's acceptance still keys on startswith) and comes back on AssignResult.overrode_shortlist; an empty shortlist is never an override. This module does not import tracker/review.py - that would be a second call-time cycle beside the deliberate one - which is why the shortlist is handed in. find_parked() and find_filed() are public for the same reason (the underscored names kept for one release), so the API finds exactly the row this module will act on. DECISION 109 - EVERY WORKING COPY IS PROVED AGAINST THE RECORD EACH PASS: _prove_working_copies() is one walk of Prepared/ per pass, under the pass's lock, between the PBC sweep and the known-bytes map, and it has four outcomes and only these. A copy where the record put it holding the row's digest is proved and nothing is written. A copy that is absent or holds other bytes, whose bytes turn up at a path no row names, makes its row FILE_MOVED - a decision on the document, never a Status (the owner's rule, 2026-09-19) - with home kept in prepared_location and where the bytes are now in a sentence (MOVED_SENTENCE, MOVED_GONE_SENTENCE), read back by moved_to() through records.as_pattern(); the scanner reads that row and writes the request's note. Where more than one file no row names holds those bytes, the row keeps the wanderer it already names (_spend_a_stray()'s preferred): the copy that sorts first is not the copy a person moved, and decision 110's put-it-back follows the sentence. A FILE_MOVED row whose every claimed location holds its bytes again is FILED once more (NEEDS_REVIEW where the row names no request - which of the two parked decisions it was is not guessable), MOVED_BACK_SENTENCE. A file under a request folder or the review folder that no row names and no row's bytes match is UNRECORDED_COPY on FileReport.attention, every pass, counted where it sits. THE RECORD DECIDES AND NOTHING MOVES: the fingerprint identifies, a person acts (decision 110's buttons), and a quiet pass appends nothing - one ledger.COPY_MOVED event per move, in either direction, named through _LEDGER_EVENT_FOR and _record()'s decided. A row without its bytes is never swept (decision 65) but still names its copy, so that copy is not called unrecorded; a placeholder is never read; a Duplicate row is not followed. _copy_whole() now proves its target against the digest it was made from and raises CopyMismatchError - decision 17's could-not-be-filed row - rather than leaving a copy nobody checked; every caller passes what it knows, and the pass's callers pass the ContentCache too, so the memo the proof leaves is the scan's hit."
+      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (the request list, the index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's verdicts in the store (content_check.ContentCache over store.remember_verdicts(), keyed by content; decision 107), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. The tidy-up at the end of a real pass also removes the retired JSON cache file and any temp file beside it (_remove_the_retired_cache(), by RETIRED_CACHE_FILENAME) - nothing reads it, and the removal is said once on FileReport.attention (RETIRED_CACHE_REMOVED) - on the console, in the app's warnings and counted on the practice page - for that pass only. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is recorded as Needs Review with the error, and the record is written in a finally block so nothing moved into PBC/ is ever unrecorded. Runs under the engagement lock - its own when it is called alone, the pass's when runner.run_engagement() is holding one - taken before the request list, the record or the drop folder is read. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in the editor keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, records the keyword a person typed in the same call, all under the engagement lock. The IndexEntry record and INDEX_LAYOUT live in tracker/records.py (decision 100). HISTORY, kept as history: until decision 102 the index was a workbook rewritten whole on every pass, and decisions 54, 56, 58, 59, 61, 65, 66, 67, 68, 69 and 72 are thirteen readings of what that cost - a snapshot sidecar that outlived its workbook, a deferred write, a stale workbook, a header row a sort had moved, a renamed tab, a column inserted at A; what survives of them here is the reading of bytes (replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; every move is a rename in _move_whole(), because shutil.move copied a held-open drop truncated into PBC; what lies behind a junction is not a drop; a name Windows cannot open is reported every pass; a row recorded without its bytes is tied to them only while its working copy and its original agree, UNTIED_IN_PBC; a recorded original that has left PBC/ is said every pass, MISSING_IN_PBC, and where a stray carries its bytes the row follows the file, MOVED_IN_PBC; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's; assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so). Decision 76: dismiss_review_file() rewrites a parked row NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing; _find_parked() takes a dismissed row too, so filing it is the undo. Decision 111: a re-send is judged by the earlier row's decision - the content hash says which row holds those bytes and that row's decision says what this drop is. A filed row with its copy in place, a row parked for a person, and a row whose copy is not where the record put it all make it a Duplicate, and the sentence names which (DUPLICATE_OF_FILED, DUPLICATE_OF_PARKED, DUPLICATE_OF_MOVED, and DUPLICATE_OF_UNCOPIED of a row with no working copy to name: saying 'already filed as' of a parked copy told the Index a document still waiting was done); a filed row whose copy is gone is decision 24's re-file; a row a person set aside is routed like any other drop - Not requested is a decision about one document on one day, not a standing rule - and files where exactly one request now accepts it, else parks with a FRESH copy of its own (never _existing_copy, or filing one row would carry the other row's file away), the reason quoting the earlier decision whole (RESENT_AFTER_SET_ASIDE) so the row is triaged, counted by reminder.count_needs_review() and read by a person. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself); a working copy that is no longer the row's bytes is left and said out loud (LEFT_FILED). Decision 82: IndexEntry.evidence is the last column, written through records.format_evidence() and read back through records.parse_evidence(); a person's decision leaves it alone. Decision 87: every decision is appended to the record through tracker/ledger.py by one rule, _rows_changed(), read off the rows themselves. DECISION 102 - THE INDEX MOVED INTO THE RECORD: read_index() takes the engagement folder and reads the store's documents table, in the index's own order, after store.follow_the_journal(); _record() is the one write, every event a decision produces in a single store.record() call, and the rollback that puts a moved file back asks _the_record_holds(). The migration that read a legacy folder's index workbook into the journal once, and the request-list import of decision 103 that read the sheet once a pass and journalled its differences, both LEFT WITH DECISION 104 and are set aside outside the tree in Retired - Excel manifest: ensure() is now the store's top-up and the three words that say whether it describes the engagement, it writes nothing in the folder, and every caller drops the flag that used to keep a dry run from migrating. clients_root_of() is store.root_for() under its old name. _storable() keeps only the refusal of a name UTF-8 cannot hold (the journal is UTF-8 JSON); a control character in a POSIX name files again, because the refusal of one existed only because a workbook is XML. A person's filing records its keyword in the SAME store.record() call as the row (_record()'s also), because the filing and what it taught are one decision. THE DELIBERATE CYCLE: _rescan() imports tracker/scanner.py at call time so a person's filing is scanned the moment it lands, and the scanner imports this module's index reader at call time; neither runs at load. DECISION 112 - A PERSON'S ACTION IS JUDGED AGAINST THE RECORD IT WAS MADE ON: assign_review_file(), dismiss_review_file() and unfile_document() each take seq=, the row's sequence number as the person saw it, and _refuse_if_stale() compares it with store.document_seqs() immediately after the row is found - inside the lock, before a byte is read or a file is touched - raising StaleRowError (a FilingError, so the API's one except turns it into the app's sentence) with STALE_ROW, which names what the record now says. seq=None is a caller with no view (a script, a test) and skips the check; the by-name refusal is asked first and is a different question. assign_review_file() also takes shortlist=, the identifiers the evidence pointed at, computed by the caller that drew the card: a pick off a non-empty shortlist writes OVERRODE_SHORTLIST into the row's reason after the ASSIGNED_BY_PERSON prefix (the scanner's acceptance still keys on startswith) and comes back on AssignResult.overrode_shortlist; an empty shortlist is never an override. This module does not import tracker/review.py - that would be a second call-time cycle beside the deliberate one - which is why the shortlist is handed in. find_parked() and find_filed() are public for the same reason (the underscored names kept for one release), so the API finds exactly the row this module will act on. DECISION 109 - EVERY WORKING COPY IS PROVED AGAINST THE RECORD EACH PASS: _prove_working_copies() is one walk of Prepared/ per pass, under the pass's lock, between the PBC sweep and the known-bytes map, and it has four outcomes and only these. A copy where the record put it holding the row's digest is proved and nothing is written. A copy that is absent or holds other bytes, whose bytes turn up at a path no row names, makes its row FILE_MOVED - a decision on the document, never a Status (the owner's rule, 2026-09-19) - with home kept in prepared_location and where the bytes are now in a sentence (MOVED_SENTENCE, MOVED_GONE_SENTENCE), read back by moved_to() through records.as_pattern(); the scanner reads that row and writes the request's note. Where more than one file no row names holds those bytes, the row keeps the wanderer it already names (_spend_a_stray()'s preferred): the copy that sorts first is not the copy a person moved, and decision 110's put-it-back follows the sentence. A FILE_MOVED row whose every claimed location holds its bytes again is FILED once more (NEEDS_REVIEW where the row names no request - which of the two parked decisions it was is not guessable), MOVED_BACK_SENTENCE. A file under a request folder or the review folder that no row names and no row's bytes match is UNRECORDED_COPY on FileReport.attention, every pass, counted where it sits. THE RECORD DECIDES AND NOTHING MOVES: the fingerprint identifies, a person acts (decision 110's buttons), and a quiet pass appends nothing - one ledger.COPY_MOVED event per move, in either direction, named through _LEDGER_EVENT_FOR and _record()'s decided. A row without its bytes is never swept (decision 65) but still names its copy, so that copy is not called unrecorded; a placeholder is never read; a Duplicate row is not followed. _copy_whole() now proves its target against the digest it was made from and raises CopyMismatchError - decision 17's could-not-be-filed row - rather than leaving a copy nobody checked; every caller passes what it knows, and the pass's callers pass the ContentCache too, so the memo the proof leaves is the scan's hit."
     },
     {
       "id": "tracker/ledger.py",
@@ -763,8 +773,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "62a3f8ffae28074e",
-      "lines": 870,
+      "sha256": "51c45810fe5296d9",
+      "lines": 876,
       "cli": "python -m tracker.reminder",
       "exports": [
         "AMBIGUOUS_HOLD",
@@ -1501,8 +1511,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8c3ade2e00a522fa",
-      "lines": 352,
+      "sha256": "a1f61f5b1b03389c",
+      "lines": 353,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1519,7 +1529,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "b3b1ee4d21b477a0",
+      "sha256": "e5f21b7aa7abba3c",
       "lines": 746,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -1528,8 +1538,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "37b1995bbb9f7310",
-      "lines": 520,
+      "sha256": "c9036b8fbc11bb5f",
+      "lines": 521,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1563,8 +1573,8 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "44b45e02638acc55",
-      "lines": 143,
+      "sha256": "2ce25a3386468a15",
+      "lines": 145,
       "role": "How the day-to-day workflow runs."
     },
     {
@@ -1775,8 +1785,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8840101858c0f44b",
-      "lines": 1513,
+      "sha256": "5d8cb2cde5df611f",
+      "lines": 1560,
       "exports": [
         "demo_root",
         "payload_of_state",
@@ -1792,6 +1802,7 @@
         "test_a_new_client_engagement_is_named_from_client_year_and_form",
         "test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing",
         "test_a_request_list_problem_is_a_json_error_not_a_traceback",
+        "test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside_sentence",
         "test_a_review_command_with_no_seq_is_refused_and_a_stale_one_names_the_newer_decision",
         "test_a_rollover_takes_its_prior_only_from_under_the_root",
         "test_an_engagement_created_without_a_form_says_nothing_rather_than_guessing",
@@ -2032,8 +2043,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4e630eb21452d786",
-      "lines": 2686,
+      "sha256": "ca198fff3611e229",
+      "lines": 2931,
       "exports": [
         "DAY1",
         "DAY2",
@@ -2050,6 +2061,7 @@
         "every_byte",
         "files_under",
         "honoured_by_the_scan",
+        "kept_files",
         "location_of",
         "pbc",
         "prepared",
@@ -2065,6 +2077,8 @@
         "test_a_drop_for_a_not_applicable_row_parks_and_nothing_under_the_engagement_is_deleted_or_moved_by_the_override",
         "test_a_drop_still_held_open_is_left_for_the_next_run",
         "test_a_duplicate_rows_own_original_is_watched_like_every_other",
+        "test_a_duplicates_reason_of_a_row_with_no_working_copy_says_so",
+        "test_a_duplicates_reason_says_filed_only_of_a_filed_row",
         "test_a_failed_record_puts_back_a_parked_copy_a_reused_one_stood_in_for",
         "test_a_failed_record_puts_the_filed_copy_back_where_the_record_says",
         "test_a_failed_record_puts_the_unfiled_copy_back_where_the_record_says",
@@ -2096,7 +2110,11 @@
         "test_a_persons_keyword_is_recorded_in_the_same_call_as_the_filing",
         "test_a_pick_off_a_non_empty_shortlist_is_recorded_as_an_override_and_a_pick_on_it_is_not",
         "test_a_refused_action_leaves_the_file_count_and_every_byte_unchanged",
+        "test_a_resend_after_a_dismissal_files_when_the_list_now_asks_for_it",
+        "test_a_resend_after_a_dismissal_owns_its_own_working_copy",
         "test_a_resend_is_refiled_when_the_working_copy_was_deleted",
+        "test_a_resend_of_a_moved_rows_bytes_is_a_duplicate_naming_the_moved_copy",
+        "test_a_resend_of_a_parked_rows_bytes_is_a_duplicate_and_makes_no_copy",
         "test_a_retired_cache_file_is_removed_by_the_next_real_pass_and_never_read",
         "test_a_row_a_person_deleted_is_recorded_as_removed_and_leaves_the_store",
         "test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file",
@@ -2108,6 +2126,7 @@
         "test_a_second_and_a_third_pass_over_an_unchanged_tree_hash_only_the_pbc_originals",
         "test_a_second_copy_of_a_moved_rows_bytes_does_not_re_point_the_row",
         "test_a_split_rows_second_copy_dragged_away_is_said_on_the_request_that_lost_it",
+        "test_a_third_send_of_set_aside_bytes_is_a_duplicate_of_the_parked_row",
         "test_a_working_copy_somebody_re_saved_is_left_where_it_is_and_said_so",
         "test_after_unfiling_the_request_is_not_received_and_the_note_says_why",
         "test_an_action_with_no_seq_skips_the_check",
@@ -2161,7 +2180,7 @@
         "test_the_moved_sentence_is_read_back_from_any_path",
         "test_the_next_pass_leaves_an_unfiled_original_where_the_row_says",
         "test_the_routers_candidates_travel_as_data_in_the_index",
-        "test_the_same_document_sent_again_after_a_dismissal_is_a_duplicate",
+        "test_the_same_document_sent_again_after_a_dismissal_parks_again_and_names_the_earlier_decision",
         "test_the_scan_after_a_two_form_split_accepts_the_copy_under_each_request",
         "test_the_sweep_on_a_read_only_prepared_folder_detects_and_touches_nothing",
         "test_the_unlistable_walk_covers_the_same_ground_as_the_others",
@@ -2487,8 +2506,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2196167be5bb9c2c",
-      "lines": 612,
+      "sha256": "eaa4a2008975c8f4",
+      "lines": 650,
       "exports": [
         "SCANNED",
         "SENDABLE",
@@ -2504,6 +2523,7 @@
         "test_a_missing_row_with_a_firm_side_marker_is_held_back_not_asked",
         "test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients",
         "test_a_partial_whose_shortfall_is_a_refused_file_holds_and_a_plain_partial_is_asked",
+        "test_a_resend_after_a_dismissal_counts_in_the_files_waiting_warning",
         "test_an_ocr_failure_is_the_firms_to_retry_not_the_clients_to_resend",
         "test_an_unscanned_manifest_will_not_be_drafted_from",
         "test_draft_greets_signs_and_counts",
@@ -4689,6 +4709,12 @@
     {
       "from": "tests/test_reminder.py",
       "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
+      "to": "tests/test_scanner.py",
       "type": "imports",
       "source": "derived"
     },

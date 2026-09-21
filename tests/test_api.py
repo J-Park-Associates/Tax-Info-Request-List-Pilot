@@ -591,6 +591,53 @@ def test_dismissing_a_file_takes_it_out_of_the_review_queue(capsys, demo_root, t
     assert payload["state"]["review"] == [], "a row nobody asks for is not triaged"
 
 
+def test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside_sentence(
+    capsys, demo_root, tmp_path,
+):
+    """Decision 111: the client sent it again, so it is somebody's work again.
+
+    The sentence is the filer's and it rides the row, so the card reads it
+    out of ``state["index"]`` the way it reads every other reason: nothing
+    in tracker/review.py or in the vocabulary knows this decision happened.
+    """
+    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = payload["state"]["index"]
+    # The row's own sequence number, read back out of the state the card was
+    # drawn from, the way the app sends it: a review command that does not
+    # carry it is refused (decision 112), and on a base without it this is
+    # None and ignored.
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "note": "a holiday snap",
+                               "seq": parked.get("seq")})
+    assert code == 0, payload
+    [set_aside] = payload["state"]["index"]
+
+    # The client sends the same photo again.
+    original = engagement / set_aside["pbc_location"]
+    (engagement / SHARED_DIR_NAME / original.name).write_bytes(original.read_bytes())
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+
+    rows = payload["state"]["index"]
+    assert [e["decision"] for e in rows] == [NOT_REQUESTED, NEEDS_REVIEW]
+    again = rows[1]
+    assert again["reason"].startswith(
+        RESENT_AFTER_SET_ASIDE.format(earlier=set_aside["reason"])
+    )
+    # It is work again: the queue has it, joined to that row, with its own
+    # copy under its own name.
+    [triaged] = payload["state"]["review"]
+    assert triaged["pbc_location"] == again["pbc_location"]
+    assert triaged["original_name"] == again["original_name"]
+    assert again["prepared_location"] != set_aside["prepared_location"]
+    assert (engagement / again["prepared_location"]).is_file()
+    assert (engagement / set_aside["prepared_location"]).is_file()
+
+
 def test_assigning_a_shortlisted_request_files_it_and_the_queue_drops_it(capsys, demo_root):
     engagement = triage_engagement(capsys, demo_root)
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))

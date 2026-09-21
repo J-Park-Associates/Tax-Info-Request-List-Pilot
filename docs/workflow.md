@@ -107,12 +107,14 @@ person types.
   `tracker.filer.NOT_REQUESTED`, with an optional note saying why and what
   the row said before kept after it. Nothing moves — the copy stays parked
   and the client's original is untouched — so the file is out of the way,
-  not gone: the weekly draft stops warning about it, the same document sent
-  again is a duplicate rather than a second thing to look at, and a person
-  who was wrong files it from the folded-away list, which is the only undo
-  there is. As with **File it**, a row that changed after the card was drawn
-  is refused rather than overwritten, and the card is redrawn from the
-  record.
+  not gone: the weekly draft stops warning about it, and a person who was
+  wrong files it from the folded-away list, which is the only undo there
+  is. It says nobody asked for this document *that day*, so if the client
+  sends it again it is looked at afresh — filed if the list now asks for
+  it, otherwise parked again with a copy of its own and a row that quotes
+  this decision back, date and note and all. As with **File it**, a row
+  that changed after the card was drawn is refused rather than overwritten,
+  and the card is redrawn from the record.
 - **Unfile**, on anything in the folded-away *Filed documents* list: the
   working copy goes back to `00 - Needs Review` under the client's own name,
   the index row is rewritten `tracker.filer.NEEDS_REVIEW` as unfiled by a

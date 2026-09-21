@@ -249,7 +249,8 @@ became, and — when it was not filed — why not.
 | The index says | In plain words | What you do |
 |---|---|---|
 | `filer.FILED` | Exactly one request accepted it. | Nothing. |
-| `filer.DUPLICATE` | The same bytes were already filed. | Nothing. The original is kept. |
+| `filer.DUPLICATE` | The same bytes are already in the record, and the reason says what the row holding them is: `filer.DUPLICATE_OF_FILED` says "already filed as" of a filed document, `filer.DUPLICATE_OF_PARKED` says "parked as" of one still waiting for you, `filer.DUPLICATE_OF_MOVED` names the copy of a row whose file is not where the record put it, and `filer.DUPLICATE_OF_UNCOPIED` says plainly that the row holding those bytes never got a working copy. No second copy is made. | Nothing. The original is kept, and the row holding the bytes is where the work is. |
+| `filer.RESENT_AFTER_SET_ASIDE` | The client sent again a document somebody had closed with **Not requested**. It was routed afresh: filed if exactly one request accepts it now, otherwise parked again with a copy of its own. The reason quotes the earlier decision whole — the date and the note whoever closed it typed. | Read what was decided last time, then decide again: file it, or close it again. The copy set aside earlier stays where it is. |
 | `filer.NEEDS_REVIEW` | Parked for a person; the reason says which of the rows below. | Work it in the app. |
 | `filer.ASSIGNED_BY_PERSON` | Someone filed it with **File it**, on the date shown, and what the rules had said is kept after it. | Nothing. This is the audit trail. |
 | `router.UNMATCHED` | No request on this manifest accepted it. | File it to the right request, or add the request. |
