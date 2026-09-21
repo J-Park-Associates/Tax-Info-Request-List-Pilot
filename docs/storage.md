@@ -119,7 +119,7 @@ hopefully.
 | `requests` | the person's rules, one row per identifier — everything the request list's own record holds that is not a status, in the order the person gave the rows. Tuples (keywords, extensions) are JSON text |
 | `statuses` | what the last scan said about one identifier: status, received date, file count, validation notes, and the sequence number that set them |
 | `documents` | the index: one row per preserved original, every column the index row has, plus the identity it is keyed under, the place it holds in the index's own order, and the sequence number that last wrote it - read back by `document_seqs()`, and the app carries it |
-| `learned_keywords` | a keyword a person's filing taught one request |
+| `learned_keywords` | a keyword a person's filing taught one request, and has not taken back: a `keyword_learned` event inserts the row with the journal line's sequence number and a `keyword_unlearned` deletes it (decision 113), so the words come back in the order they were taught and one taught again comes back last |
 | `events` | every journal line, in order, with the whole line kept as JSON text |
 | `intents` | the moves begun and not finished (decision 119): one row per index row's identity, holding the whole `moving` line — the operations, the row the decision will record and the event that completes it. Empty after any pass that was not interrupted |
 | `verdicts` | the tier-3 verdict cache (decision 107): one row per content digest and rules fingerprint, the verdict as JSON text - pass/fail, reason, the firm's own evidence terms, never client text - and the `CACHE_VERSION` it was written under. **Not the record's**: see below |
@@ -334,11 +334,23 @@ field and both values. An empty list is the claim that the store says what
 the other copy says.
 
 There is **one** other copy, and that is the point: the journal. The
-documents, the statuses and the rules the edits fold to are all compared
-with `ledger.replay()` over it. Asking the readers instead would be the
+documents, the statuses, the rules the edits fold to and — since decision
+113 — the keywords filings taught are all compared with `ledger.replay()`
+over it. Asking the readers instead would be the
 store compared with itself — they answer from these very tables. An
 engagement whose journal carries no rules event has no rules on either
 side.
+
+The learned keywords were the last thing here the record could not vouch
+for. The table only ever grew, the journal's fold did not know the event
+at all, and the check never looked: a row planted or dropped behind the
+journal's back said nothing. `ledger.Folded.learned` gives the journal the
+fold — learn appends, unlearn removes, a word taught again lands last —
+and `_check_learned()` compares it with the table, one sentence per
+request whose words differ, in the order each side holds them. The
+identifier is folded without case on both sides before they are compared,
+because the table keys it that way and the journal keeps the spelling each
+line carried.
 
 The autouse fixture in `tests/conftest.py` does exactly this after **every
 test in the suite**: for every engagement folder the test left behind, build
@@ -399,6 +411,18 @@ column, no schema change, `user_version` still 4. And every hash of a file
 under the firm's folder now goes through `file_memos`, so a second pass
 over an unchanged tree reads one file per preserved original and no
 working copy at all.
+
+**Afterwards (decision 113) — learning can be un-learned.** A keyword a
+person's filing taught one request is taken back by a person, in the app's
+editor, as one `keyword_unlearned` event carrying the request and the word.
+No schema change: the table is the same table and the event is the fold's
+business. What did change is that the fold is now in both places — the
+journal's `Folded.learned` and the store's insert and delete — and that
+`check()` compares them, so the one part of the store the record could not
+vouch for is inside the gate, and the suite's rebuild-and-check fixture
+proves it after every test. A pair nobody taught is refused by name, and
+the request is re-scanned at once, because its rules just moved. Firm-wide
+is untouched: `tracker/templates.py` and a commit, as before.
 
 **Afterwards (decision 116) — the override is recorded with its reason.**
 `override_reason` is a rule field: it travels in the `rules_changed` event

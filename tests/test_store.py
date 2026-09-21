@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import json
 import os
 import sqlite3
 import subprocess
@@ -113,6 +114,18 @@ def said(conn, root, engagement):
 
 def rows(conn, table):
     return [tuple(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
+
+
+def learned(identifier: str, keyword: str) -> dict:
+    """A person's filing teaching one request one word."""
+    return ledger.new(ledger.KEYWORD_LEARNED, **{ledger.IDENTIFIER_KEY: identifier,
+                                                 ledger.KEYWORD_KEY: keyword})
+
+
+def unlearned(identifier: str, keyword: str) -> dict:
+    """A person taking one of those words back, in the editor (decision 113)."""
+    return ledger.new(ledger.KEYWORD_UNLEARNED, **{ledger.IDENTIFIER_KEY: identifier,
+                                                   ledger.KEYWORD_KEY: keyword})
 
 
 def a_row(**fields) -> dict:
@@ -792,6 +805,89 @@ def test_an_engagement_the_store_has_never_seen_is_said_so_rather_than_passed(
     store.forget(conn, engagement)                # the create's row, gone
     sentence = said(conn, root, engagement)
     assert len(sentence) == 1 and "does not hold this engagement" in sentence[0]
+
+
+def test_an_unlearn_deletes_the_row_and_a_rebuild_from_the_journal_agrees(conn, root, by_hand):
+    """Decision 113: a word taught by an event is taken back by an event.
+
+    Deleting the row alone would be a fact only the database held, and the
+    next rebuild would put it back. The journal carries the unlearn, so a
+    store built from nothing agrees - and a word taught again after it
+    comes back last, on both sides.
+    """
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand,
+                     learned("A01", "lender"), learned("A01", "escrow"),
+                     unlearned("A01", "lender"))
+
+    assert store.learned_keywords(conn, by_hand) == {"a01": ("escrow",)}
+    assert said(conn, root, by_hand) == []
+
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, learned("A01", "lender"))
+    assert store.learned_keywords(conn, by_hand) == {"a01": ("escrow", "lender")}
+
+    build(conn, root, by_hand)                    # from the journal and nothing else
+    assert store.learned_keywords(conn, by_hand) == {"a01": ("escrow", "lender")}
+    assert said(conn, root, by_hand) == []
+
+
+def test_check_reports_a_learned_keyword_in_the_store_and_not_in_the_record_and_the_other_way_round(
+        conn, root, by_hand):
+    """The gate reaches the learned table at last (decision 113).
+
+    Until now it compared the documents, the statuses and the rules, and
+    this table was the one thing in the store the record could not vouch
+    for: a row planted or dropped behind the journal's back said nothing.
+    """
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, learned("A01", "lender"))
+    assert said(conn, root, by_hand) == []
+
+    held = conn.execute("SELECT engagement_id, seq FROM learned_keywords").fetchone()
+    conn.execute('INSERT INTO learned_keywords (engagement_id, "identifier", keyword, seq) '
+                 "VALUES (?, ?, ?, ?)", (held["engagement_id"], "a01", "escrow", held["seq"] + 1))
+    (sentence,) = said(conn, root, by_hand)
+    assert by_hand.name in sentence and "a01" in sentence
+    assert "'lender', 'escrow'" in sentence and "['lender']" in sentence
+
+    conn.execute("DELETE FROM learned_keywords")
+    (sentence,) = said(conn, root, by_hand)
+    assert "a01" in sentence and "[]" in sentence and "['lender']" in sentence
+
+    store.rebuild_engagement(conn, root, by_hand)
+    assert said(conn, root, by_hand) == []
+
+
+def test_a_malformed_unlearn_line_is_refused_by_name(conn, root, by_hand):
+    """A keyword line of the wrong shape is one folder's problem, said in a
+    sentence that names it - the rule every other event's shape follows.
+
+    It is checked here for the first time with decision 113: a keyword that
+    is not text was written into the table as ``str()`` made it while the
+    journal's fold kept what the line carried, which is a disagreement the
+    check would now report and nobody could act on.
+    """
+    build(conn, root, by_hand)
+    path = ledger.path_for(by_hand)
+    path.write_bytes(path.read_bytes() + json.dumps({
+        ledger.EVENT_KEY: ledger.KEYWORD_UNLEARNED, ledger.AT_KEY: ledger.stamp(),
+        ledger.IDENTIFIER_KEY: "A01", ledger.KEYWORD_KEY: 7,
+    }).encode("utf-8") + b"\n")
+
+    with pytest.raises(store.StoreError) as refused:
+        store.sync(conn, root, by_hand)
+    said_so = str(refused.value)
+    assert ledger.KEYWORD_UNLEARNED in said_so and "line 2" in said_so
+    assert repr(ledger.KEYWORD_KEY) in said_so and "not applied past it" in said_so
+    # And the same shape for the event it takes back, which nothing checked
+    # before: a request nobody named is refused rather than stored blank.
+    with pytest.raises(store.StoreError, match="blank"):
+        store._refuse_a_malformed_line(
+            {ledger.EVENT_KEY: ledger.KEYWORD_LEARNED, ledger.IDENTIFIER_KEY: "",
+             ledger.KEYWORD_KEY: "lender"}, 3, by_hand.name)
 
 
 def test_the_rebuilt_rows_are_the_readers_rows_after_a_person_files_a_parked_one(

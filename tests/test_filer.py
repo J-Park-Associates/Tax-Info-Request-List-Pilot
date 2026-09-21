@@ -34,8 +34,8 @@ from tracker.filer import (
     prepared_name_for,
     read_index,
 )
+from tracker.fsio import TEMP_SUFFIX
 from tracker.manifest import (
-    TEMP_SUFFIX,
     RequestItem,
     load_engagement_info,
     load_manifest,
@@ -2176,6 +2176,78 @@ def test_after_unfiling_the_request_is_not_received_and_the_note_says_why(engage
     assert REGRESSION_NOTE.format(
         status=Status.RECEIVED, date=DAY1.isoformat(), why=REGRESSION_FILES_CHANGED,
     ) in a01.validation_notes
+
+
+def taught_keywords(engagement) -> dict[str, tuple[str, ...]]:
+    return {i.identifier: i.any_keywords for i in load_manifest(engagement)}
+
+
+def teach(engagement, identifier: str, keyword: str) -> None:
+    """A keyword recorded against a request, as a person's filing records it."""
+    from tracker.locking import engagement_lock
+
+    with engagement_lock(engagement):
+        ensure(engagement)
+        store.record(store.connect(), engagement, ledger.new(ledger.KEYWORD_LEARNED, **{
+            ledger.IDENTIFIER_KEY: identifier, ledger.KEYWORD_KEY: keyword,
+        }))
+
+
+def test_unfiling_still_unlearns_nothing(engagement):
+    """Decision 77's second half, prose until decision 113 gave it a way back.
+
+    A keyword is a rule about documents: the request wanted the word when
+    the document was filed and wants it still, and guessing which word to
+    take back would be guessing. A person who wants one back says which,
+    in the editor.
+    """
+    from tracker.filer import assign_review_file, unfile_document
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    assign_review_file(engagement, parked.pbc_location, "C01", keyword="lender", today=DAY2)
+    assert taught_keywords(engagement)["C01"] == ("lender",)
+
+    unfile_document(engagement, parked.pbc_location, today=DAY2)
+
+    assert taught_keywords(engagement)["C01"] == ("lender",)
+    assert store.learned_keywords(store.connect(), engagement) == {"c01": ("lender",)}
+    names = [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)]
+    assert ledger.KEYWORD_UNLEARNED not in names
+
+
+def test_a_copy_that_passed_only_on_a_taught_keyword_regresses_after_it_is_unlearned(tmp_path):
+    """Decision 113: the rules just moved, so the next reading of the copy
+    is a different reading.
+
+    A taught keyword is part of the row's rules fingerprint, so a copy that
+    passed only on that word is read again on the next scan and fails - and
+    the person who took the word back sees that in the same breath, because
+    the app re-scans at once.
+    """
+    from tracker.manifest import Status, unlearn_keyword
+    from tracker.reasons import NO_EXPECTED_KEYWORD
+    from tracker.scanner import scan_engagement
+
+    items = [RequestItem(
+        identifier="B01", document="Escrow Analysis", period="TY2025",
+        allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("escrow analysis",),
+        date_pattern="*",
+    )]
+    engagement = make_engagement(tmp_path / "Smith Family 2025", items)
+    teach(engagement, "B01", "lender statement")
+    drop(engagement, "from the bank.pdf", "Lender Statement 2025\nAmount paid this year 1,234.00")
+
+    assert [e.identifier for e in file_drops(engagement, today=DAY1).filed] == ["B01"]
+    scan_engagement(engagement, today=DAY1)
+    assert {i.identifier: i.status for i in load_manifest(engagement)} == {"B01": Status.RECEIVED}
+
+    unlearn_keyword(engagement, "B01", "lender statement")
+    scan_engagement(engagement, today=DAY2)
+
+    b01 = next(i for i in load_manifest(engagement) if i.identifier == "B01")
+    assert b01.status == Status.FAILED
+    assert NO_EXPECTED_KEYWORD.format(listed="escrow analysis") in b01.validation_notes
 
 
 def test_the_next_pass_leaves_an_unfiled_original_where_the_row_says(engagement):

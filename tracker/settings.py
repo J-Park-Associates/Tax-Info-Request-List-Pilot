@@ -34,7 +34,7 @@ import os
 import sys
 from pathlib import Path
 
-from tracker.manifest import write_json_atomically
+from tracker.fsio import write_json_atomically
 
 SETTINGS_FILENAME = "settings.json"
 #: The keys inside it.

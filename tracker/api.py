@@ -19,6 +19,7 @@ Commands:
   dismiss   record that no request asks for one Needs Review document
   unfile    send one filed document back to Needs Review (a person's call)
   restore   put one moved working copy back where the record put it
+  unlearn   take back a keyword a filing taught one request, and re-scan
   settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
   unlock    clear a stale engagement lock (a fresh one is refused)
@@ -51,6 +52,7 @@ from tracker.filer import (
     restore_working_copy,
     unfile_document,
 )
+from tracker.fsio import write_text_atomically
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
 from tracker.manifest import (
     ANY_EXTENSION,
@@ -80,7 +82,7 @@ from tracker.manifest import (
     rule_as_read,
     save_rules,
     summarize,
-    write_text_atomically,
+    unlearn_keyword,
 )
 from tracker.page import slug
 from tracker.records import (
@@ -280,6 +282,12 @@ EDITOR_WARNINGS_HEADING = "Worth a look"
 RULES_SAVED = "Request list saved: {changed} row(s) changed, {removed} removed"
 NOTHING_CHANGED = "Nothing changed; nothing was recorded."
 LEARNED_NOTE = "taught by a filing: {keywords}"
+#: The button beside each keyword a filing taught, and what the editor says
+#: once one is taken back (decision 113). Unlearning is its own event and
+#: lands at once - it is not part of Save - so the sentence is in the past
+#: tense and says the request was re-scanned, because its rules just moved.
+UNLEARN_LABEL = "Unlearn"
+UNLEARNED_NOTE = "{keyword} unlearned from {identifier}; the request was re-scanned"
 #: What the returning-client page says of last year's set-aside rows, in
 #: one line beside the carried and offered counts.
 NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them in the editor"
@@ -502,6 +510,10 @@ def _vocab() -> dict:
             "remove_row": EDITOR_REMOVE_LABEL, "paste": EDITOR_PASTE_LABEL,
             "paste_hint": EDITOR_PASTE_HINT, "warnings_heading": EDITOR_WARNINGS_HEADING,
             "saved": RULES_SAVED, "nothing_changed": NOTHING_CHANGED, "learned_note": LEARNED_NOTE,
+            # Taking a taught keyword back is its own event, so it has its
+            # own button beside the word and its own sentence afterwards;
+            # the renderer types neither (decision 113).
+            "unlearn_label": UNLEARN_LABEL, "unlearned_note": UNLEARNED_NOTE,
             "engagement_fields": [
                 {"key": f, "label": ENGAGEMENT_LABELS[f], "help": ENGAGEMENT_HELP.get(f, ""),
                  "editable": f in ENGAGEMENT_EDITABLE}
@@ -954,6 +966,45 @@ def _cmd_edit(argv: list[str]) -> dict:
                   "engagement": list(saved.info_fields), "recorded": saved.recorded},
         "warnings": state["warnings"],
         "state": state,
+    }
+
+
+def _cmd_unlearn(argv: list[str]) -> dict:
+    """Take back a keyword a person's filing taught one request (decision 113).
+
+    JSON spec on stdin: {"identifier": "A01", "keyword": "lender"} - the
+    word as the editor shows it, which is the word the record holds. One
+    ``keyword_unlearned`` event through ``manifest.unlearn_keyword``; a
+    pair nobody taught is refused by name and nothing is recorded.
+
+    Then the re-scan, as ``assign`` does it and for the same reason: the
+    request's rules just moved, and a copy that passed only on that word
+    should go back to Failed Validation now rather than on Saturday. The
+    unlearn and the re-scan each take the engagement lock on their own.
+
+    Unlearning is not part of a save. It lands on its own, so the editor
+    hands back the fresh state and keeps whatever the person has typed
+    into the rows and not saved yet.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    identifier = str(spec.get("identifier", "")).strip()
+    keyword = str(spec.get("keyword", "")).strip()
+    if not identifier or not keyword:
+        raise ManifestError("Pick the request and the keyword to take back")
+    taken = unlearn_keyword(engagement, identifier, keyword)
+    scan_note = ""
+    try:
+        scan_engagement(engagement)
+    except ScanLockedError as exc:
+        scan_note = f"not re-scanned: {exc}"
+    return {
+        "unlearned": {
+            "identifier": taken.identifier,
+            "keyword": taken.keyword,
+            "scan_note": scan_note,
+        },
+        "state": _state(engagement),
     }
 
 
@@ -1443,6 +1494,7 @@ COMMANDS = {
     "unfile": _cmd_unfile,
     "restore": _cmd_restore,
     "edit": _cmd_edit,
+    "unlearn": _cmd_unlearn,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,

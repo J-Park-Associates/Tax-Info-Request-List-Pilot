@@ -36,8 +36,8 @@ import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from xml.sax.saxutils import escape
 
+from tracker.fsio import write_text_atomically
 from tracker.locking import RUN_TIME_LIMIT_SECONDS
-from tracker.manifest import write_text_atomically
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG
 from tracker.settings import SETTINGS_FILENAME, product_name
 

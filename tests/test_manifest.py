@@ -29,7 +29,7 @@ from tracker.manifest import (
     OVERRIDE_REASONS,
     SUMMARY_EMPTY,
     SUMMARY_SEPARATOR,
-    TEMP_SUFFIX,
+    UNLEARN_REFUSED,
     UNSCANNED_LABEL,
     EngagementInfo,
     ManifestError,
@@ -46,7 +46,7 @@ from tracker.manifest import (
     narrowing_rows,
     override_label,
     save_rules,
-    temp_path_for,
+    unlearn_keyword,
     validated,
 )
 from tracker.records import RULE_FIELDS, info_to_json, rule_to_json
@@ -513,6 +513,92 @@ def test_an_engagement_that_never_recorded_a_form_reads_as_unknown(tmp_path):
     assert check_rules(load_manifest(folder)) == []
 
 
+# -------------------------------------------------- the unlearn (decision 113) ----
+
+
+def taught(folder, identifier: str, keyword: str) -> None:
+    """A person's filing teaching one request one word, which is the only
+    way one is learned (decision 103)."""
+    from tracker.filer import ensure
+    from tracker.locking import engagement_lock
+
+    with engagement_lock(folder):
+        ensure(folder)
+        store.record(store.connect(), folder, ledger.new(ledger.KEYWORD_LEARNED, **{
+            ledger.IDENTIFIER_KEY: identifier, ledger.KEYWORD_KEY: keyword,
+        }))
+
+
+def any_keywords(folder) -> dict[str, tuple[str, ...]]:
+    return {i.identifier: i.any_keywords for i in load_manifest(folder)}
+
+
+def test_unlearning_a_keyword_takes_it_out_of_the_overlay_and_refuses_a_pair_nobody_taught(
+        engagement):
+    """Decision 113: a word a filing taught may be taken back, by a person.
+
+    One event, so the store's row goes and a rebuild agrees; the rules the
+    person typed are not touched, because a taught word was never one of
+    them; and a pair the record never carried is refused by name rather
+    than passing quietly.
+    """
+    taught(engagement, "A01", "lender")
+    assert any_keywords(engagement)["A01"] == ("lender",)
+    before = store.rules(store.connect(), engagement)     # the rules the person typed
+
+    taken = unlearn_keyword(engagement, "A01", "lender")
+
+    assert (taken.identifier, taken.keyword) == ("A01", "lender")
+    assert any_keywords(engagement)["A01"] == ()
+    assert store.learned_keywords(store.connect(), engagement) == {}
+    assert store.rules(store.connect(), engagement) == before
+    names = [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)]
+    assert names.count(ledger.KEYWORD_UNLEARNED) == 1 and ledger.RULES_CHANGED in names
+
+    head = ledger.head(engagement)
+    with pytest.raises(ManifestError) as refused:
+        unlearn_keyword(engagement, "A01", "lender")
+    assert str(refused.value) == UNLEARN_REFUSED.format(identifier="A01", keyword="lender")
+    assert ledger.head(engagement) == head              # a refusal records nothing
+
+
+def test_a_keyword_the_row_types_itself_is_not_unlearnable_because_it_was_never_taught(
+        engagement):
+    """The editor is where a rule is changed (decision 104). A word in the
+    row's own Any Keywords is a rule, not a thing a filing taught, so it is
+    not in the learned table and there is nothing here to take back."""
+    assert "statement" in any_keywords(engagement)["A02"]
+
+    with pytest.raises(ManifestError, match="never taught"):
+        unlearn_keyword(engagement, "A02", "statement")
+
+    assert "statement" in any_keywords(engagement)["A02"]
+
+
+def test_an_unlearn_matches_the_request_without_case_and_records_the_lists_spelling(engagement):
+    """The identifier folds the way every reading that joins a row to the
+    record folds it, and the word is matched as the record holds it,
+    because the editor sends back what it showed.
+
+    The line itself spells the request the way the list does, whatever
+    case the caller typed: the journal's fold has no case rule, so a line
+    saying ``a01`` would leave that fold holding a word the store had
+    deleted - which the suite's own store check would report after every
+    test from here on.
+    """
+    taught(engagement, "A01", "Lender")
+
+    with pytest.raises(ManifestError, match="never taught"):
+        unlearn_keyword(engagement, "A01", "lender")
+
+    taken = unlearn_keyword(engagement, "a01", "Lender")
+
+    assert taken.identifier == "A01"
+    assert ledger.read_events(engagement)[-1][ledger.IDENTIFIER_KEY] == "A01"
+    assert ledger.replay(ledger.read_events(engagement)).learned == {}
+    assert any_keywords(engagement)["A01"] == ()
+
+
 # ------------------------------------------------------ allowed extensions ----
 
 
@@ -610,39 +696,19 @@ def test_check_rules_warns_about_a_keyword_with_nothing_in_it():
 # ---------------------------------------------------------- atomic writes ----
 
 
-def test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it(tmp_path):
-    from tracker.validators import is_ignored
-
-    target = tmp_path / "settings.json"
-    first, second = temp_path_for(target), temp_path_for(target)
-    assert first != second
-    assert first.parent == target.parent
-    for temp in (first, second):
-        assert temp.name.endswith(TEMP_SUFFIX)
-        assert is_ignored(temp)                   # a stranded temp is never a document
-
-
-def test_a_failed_save_reports_its_own_error_not_a_locked_temp_file(tmp_path, monkeypatch):
-    # A writer may leave the half-written file open when it raises; on
-    # Windows the temp then cannot be deleted. That must not turn a full
-    # disk into "held by another program".
+@pytest.mark.parametrize("name", ["TEMP_SUFFIX", "temp_path_for", "atomic_replacement",
+                                  "write_text_atomically", "write_json_atomically"])
+def test_the_manifest_does_not_re_export_the_atomic_write(name):
+    """Decision 120 moved the five names to tracker/fsio.py. They are not
+    left here as aliases: a name that resolves in two modules is a name
+    that drifts, and a caller that still asks the manifest for the write
+    should be told at the import rather than kept working until somebody
+    reads the layer table and wonders."""
     import tracker.manifest as manifest_module
-    from tracker.manifest import atomic_replacement
 
-    target = tmp_path / "x.json"
-    target.write_bytes(b"before")
-    real_unlink = manifest_module.Path.unlink
-
-    def held(self, *args, **kwargs):
-        if self.name.endswith(manifest_module.TEMP_SUFFIX):
-            raise PermissionError("[WinError 32] still open")
-        return real_unlink(self, *args, **kwargs)
-    monkeypatch.setattr(manifest_module.Path, "unlink", held)
-    with pytest.raises(OSError, match="No space left"):
-        with atomic_replacement(target) as temp:
-            temp.write_bytes(b"half")
-            raise OSError(28, "No space left on device")
-    assert target.read_bytes() == b"before"
+    with pytest.raises(ImportError):
+        exec(f"from tracker.manifest import {name}")
+    assert not hasattr(manifest_module, name)
 
 
 # --------------------------------------------------------------- summary ----

@@ -151,6 +151,12 @@ person types.
   wants it. A document somebody re-filed since the list was drawn is a newer
   filing, and unfiling it is refused with what the record now says rather
   than undoing a decision you never saw.
+  A word that turned out not to be distinctive is taken back on
+  purpose instead, in **Edit Request List**, where every keyword a filing
+  taught has its own button beside the row: one click records it, the
+  request is re-scanned at once, and nothing you have typed into the rows
+  and not saved is touched. It is that engagement's list only — the firm's
+  own vocabulary is `tracker/templates.py` and still changes by a commit.
 - **Moved by hand**, the card above the review queue: every working copy
   the last pass found somewhere other than where the record put it, with
   its home, where its bytes are now, and three answers — the system never

@@ -89,6 +89,7 @@ from tracker.filer import (
     FilingError,
     read_index,
 )
+from tracker.fsio import write_text_atomically
 from tracker.manifest import (
     ANY_EXTENSION,
     COL_ALLOWED_EXTENSIONS,
@@ -113,7 +114,6 @@ from tracker.manifest import (
     Status,
     load_manifest,
     override_label,
-    write_text_atomically,
 )
 from tracker.page import Cell, Row, details, esc, page_text, slug, table, tolerant_console, unesc
 from tracker.records import (

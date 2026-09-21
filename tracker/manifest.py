@@ -37,11 +37,14 @@ So this module does four things with that list:
   :func:`tracker.store.follow_the_journal` has brought the store up to
   the journal. A folder with no journal is nobody's engagement and is
   refused by sentence (:data:`NOT_AN_ENGAGEMENT`);
-- **it writes it, at two moments and no others**: :func:`create_engagement`
+- **it writes it, at three moments and no others**: :func:`create_engagement`
   writes an engagement's first list and details as one ``rules_changed``
-  event, and :func:`save_rules` writes a person's edit as one - exactly
+  event, :func:`save_rules` writes a person's edit as one - exactly
   the rows that changed, the identifiers removed, the details that moved,
-  and nothing at all when nothing did. Both go through
+  and nothing at all when nothing did - and :func:`unlearn_keyword` takes
+  back a keyword a filing taught the row, as one ``keyword_unlearned``
+  (decision 113), which is the only one of the three that does not touch
+  the rules the person typed. All three go through
   :func:`tracker.store.record` under the engagement lock, so the journal
   is written first and the fold is one transaction. The app's editor is
   the only way a rule is entered; there is no import and no export.
@@ -61,11 +64,11 @@ rule: a row inserted in the middle moves every row below it, and those
 rows are recorded as changed, because a person reordered them and the
 record says so.
 
-It also owns *how* the machine's own small files are written. The content
-cache and the app's settings file go through :func:`atomic_replacement` -
-a uniquely named temp file ending in ``TEMP_SUFFIX``, swapped in whole with
-``os.replace`` - so a killed run never leaves a half-written file where a
-reader will trust it. These move with ``fsio`` in decision 105.
+It used to own *how* the machine's own small files are written, because
+the manifest was once the workbook they were written for. The temp suffix,
+the temp path, the replacement context and the two writers over it are
+:mod:`tracker.fsio` since decision 120, and this module neither holds nor
+re-exports them.
 
 The *records* this module reads and writes - :class:`EngagementInfo`,
 :class:`StatusUpdate`, the details' field table, the serialisation of a
@@ -77,13 +80,8 @@ edits, not a record of what the machine decided.
 from __future__ import annotations
 
 import datetime as dt
-import json
-import logging
-import os
 import re
-import secrets
-from collections.abc import Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -101,8 +99,6 @@ from tracker.records import (
     rule_from_json,
     rule_to_json,
 )
-
-log = logging.getLogger("tracker.manifest")
 
 # ---------------------------------------------------------------- schema ----
 
@@ -249,10 +245,6 @@ UNSCANNED_LABEL = "Requested"
 SUMMARY_SEPARATOR = " · "
 SUMMARY_EMPTY = "no requests"
 
-#: The temp file an atomic save lands in first. Nothing is deferred and
-#: nothing is quarantined: a write lands whole or not at all.
-TEMP_SUFFIX = ".tmp"
-
 
 class Override:
     """Accountant judgment values that beat the automated rules.
@@ -306,6 +298,13 @@ class ManifestError(Exception):
 #: at call time by the reader, because this module does not import the
 #: ledger at load time.
 NOT_AN_ENGAGEMENT = "{name}: no record here ({ledger}); it is not an engagement"
+
+#: What :func:`unlearn_keyword` says of a pair the record never carried.
+#: A person may take back a keyword a filing taught; they may not take
+#: back a word the row types itself (that is an edit of the rule) and they
+#: may not take back a word nobody taught - both are the same refusal,
+#: because the record is what says a word was learned (decision 113).
+UNLEARN_REFUSED = "{identifier} was never taught {keyword!r}; nothing to unlearn"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1142,61 +1141,89 @@ def save_rules(
     )
 
 
-# -------------------------------------------------- how a file is written ----
+@dataclass(frozen=True, slots=True)
+class KeywordUnlearned:
+    """What one unlearn took back: the request, and the word."""
+
+    identifier: str
+    keyword: str
 
 
-def temp_path_for(path: Path) -> Path:
-    """A temp name beside ``path`` that no other writer can be using.
+def unlearn_keyword(
+    engagement_dir: Path | str,
+    identifier: str,
+    keyword: str,
+    *,
+    lock_held: bool = False,
+) -> KeywordUnlearned:
+    """Take back a keyword a person's filing taught one request (decision 113).
 
-    It carries this process id and a random tag, so two runs writing the
-    same file at once (the app saving settings while the scheduling CLI
-    does, say) cannot swap each other's half-written temp into place - and
-    a temp a crashed run left behind is never mistaken for a live one. It
-    still ends in ``TEMP_SUFFIX``: the validators and the drop walk ignore
-    that suffix, so a stranded temp is never read as a document.
+    A word that seemed distinctive and was not - a common word that turns
+    out to be on many unrelated documents - was permanent: the filing
+    recorded it, every reader laid it over the row's own Any Keywords, and
+    nothing took it back. This is the way back, per engagement. The
+    firm-wide vocabulary is :mod:`tracker.templates` and still changes
+    only by a commit, which is the graduation gate and always was.
+
+    **Journalled, not simply deleted.** Deleting the store's row would
+    take the word out of every reader's answer until the next rebuild put
+    it back, because the journal is the record and the store is its
+    derivation. So a word taught by an event is taken back by an event:
+    one ``keyword_unlearned``, under the engagement lock (taken here
+    unless the caller already holds it), through
+    :func:`tracker.store.record` - journal first - and the history says
+    who took it back and when.
+
+    The request is matched without case, as every reading that joins a
+    row to the record is (``records.identifier_key``), and the keyword
+    exactly as the record holds it: the caller sends back the word it was
+    shown. A pair the record never carried is refused by name
+    (:data:`UNLEARN_REFUSED`) rather than passing quietly - a person
+    cannot unlearn what nobody taught, and a word the row types itself is
+    an edit of the rule, made in the editor like any other.
+
+    **The line spells the request the way the list does.** The journal's
+    own fold keys a taught word by the spelling its line carries - it sits
+    below ``records`` and has no case rule of its own
+    (:class:`tracker.ledger.Folded`) - and the filing that taught the word
+    spelt the request as the list spells it. So the identifier recorded
+    here is the one the rules hold, whatever case the caller used, or the
+    caller's where no rule holds that request any more; otherwise a person
+    who typed ``a01`` would leave the journal's fold and the store's
+    disagreeing for good, and ``store.check()`` would say so every pass.
+
+    Unfiling still unlearns nothing (decision 77): the request wanted the
+    word when the document was filed and wants it still, and guessing
+    which word to take back would be guessing.
     """
-    return path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}{TEMP_SUFFIX}")
+    from contextlib import nullcontext
+
+    from tracker import ledger, store
+    from tracker.locking import engagement_lock
+
+    folder = Path(engagement_dir)
+    with nullcontext() if lock_held else engagement_lock(folder):
+        conn = _the_record(folder)
+        taught = store.learned_keywords(conn, folder)
+        if keyword not in taught.get(identifier_key(identifier), ()):
+            raise ManifestError(UNLEARN_REFUSED.format(identifier=identifier, keyword=keyword))
+        identifier = _as_the_list_spells_it(store.rules(conn, folder), identifier)
+        store.record(conn, folder, ledger.new(ledger.KEYWORD_UNLEARNED, **{
+            ledger.IDENTIFIER_KEY: identifier,
+            ledger.KEYWORD_KEY: keyword,
+        }))
+    return KeywordUnlearned(identifier=identifier, keyword=keyword)
 
 
-@contextmanager
-def atomic_replacement(path: Path) -> Iterator[Path]:
-    """Yield a temp path beside ``path``; swap it in whole when the block ends cleanly.
-
-    Writing beside the file and swapping it in with ``os.replace`` makes an
-    update all-or-nothing; the swap is atomic on NTFS and on every POSIX
-    filesystem. A crash, a full disk or a killed scheduled task mid-write
-    leaves the previous file, never half of the new one. The temp is
-    removed whatever happens. A file another program holds open raises
-    ``PermissionError`` from the replace, and the caller says so.
-    """
-    temp = temp_path_for(path)
-    try:
-        yield temp
-        os.replace(temp, path)
-    finally:
-        # The temp's removal must never replace the error that stopped the
-        # write: a writer may leave the half-written file open when it
-        # raises, Windows then refuses the delete, and a full disk would
-        # read as "held by another program".
-        try:
-            temp.unlink(missing_ok=True)
-        except OSError as exc:
-            log.warning("Temporary file %s could not be removed (%s)", temp.name, exc)
-
-
-def write_text_atomically(
-    path: Path, text: str, *, encoding: str = "utf-8", newline: str | None = None
-) -> None:
-    """Write ``text`` to ``path`` all-or-nothing (see :func:`atomic_replacement`)."""
-    with atomic_replacement(path) as temp:
-        with temp.open("w", encoding=encoding, newline=newline) as handle:
-            handle.write(text)
-
-
-def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
-    """Write ``payload`` as JSON to ``path`` all-or-nothing; the cache and the settings use this."""
-    write_text_atomically(path, json.dumps(payload, indent=indent))
-
+def _as_the_list_spells_it(stored: list[dict] | None, identifier: str) -> str:
+    """``identifier`` in the spelling the request list holds, or as given
+    where the list holds no such request."""
+    key = identifier_key(identifier)
+    for row in stored or []:
+        held = str(row.get("identifier", ""))
+        if identifier_key(held) == key:
+            return held
+    return identifier
 
 
 def has_routing_rules(item: RequestItem) -> bool:

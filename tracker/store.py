@@ -57,7 +57,10 @@ answers from the ``documents`` table, and every writer calls
 
 **And so are the statuses and the person's rules** (decisions 103 and
 104). ``statuses`` is what the scans recorded, ``learned_keywords`` what
-people's filings taught, and ``requests`` is the fold of every
+people's filings taught and nobody has taken back (decision 113: a
+``keyword_unlearned`` deletes the row, and :func:`check` compares the
+table with the journal's own fold of the two events), and ``requests`` is
+the fold of every
 ``rules_changed`` event (and of the ``rules_imported`` lines older
 journals carry, which fold the same way and are never written again):
 the app's editor is where a rule is typed, and
@@ -782,7 +785,11 @@ def learned_keywords(
     ``load_manifest`` adds them to the row's Any Keywords, so a keyword
     somebody typed in the app works on the next pass without anybody
     editing the list; the editor shows them beside the row as taught, and
-    never as typed.
+    never as typed. A word a person took back in the editor is gone from
+    here - ``manifest.unlearn_keyword`` records one ``keyword_unlearned``
+    and this fold deletes the row (decision 113) - and a word taught again
+    afterwards comes back last, because the insert carries the new line's
+    sequence number.
     """
     row = _engagement_row(conn, engagement_dir)
     if row is None:
@@ -1002,6 +1009,16 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
     ends the whole practice's pass before one document is filed. Refused
     here it is one folder's problem, said in a sentence that names the
     line, and the pass goes on to the next engagement.
+
+    A keyword taught or taken back is checked here for the first time with
+    decision 113: until then the two tables this file writes from a line
+    were the rules and the statuses, and a ``keyword_learned`` of any shape
+    at all was written with ``str()`` around whatever it carried - a number
+    for a keyword became the text of that number in the table while the
+    journal's own fold kept the number, which is a disagreement
+    :func:`check` would now report and nobody could act on. Both keyword
+    events name a request and a word, both as text and neither blank, or
+    the line is refused like any other.
     """
     name = event.get(ledger.EVENT_KEY)
 
@@ -1060,6 +1077,13 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
             refuse(f"carries {ledger.ALSO_KEY!r} that is not a list")
         if not isinstance(event.get(ledger.DAY_KEY, ""), str):
             refuse(f"carries {ledger.DAY_KEY!r} that is not a day")
+    elif name in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
+        for key in (ledger.IDENTIFIER_KEY, ledger.KEYWORD_KEY):
+            value = event.get(key)
+            if not isinstance(value, str):
+                refuse(f"carries {key!r} that is not text: {value!r:.60}")
+            if not value:
+                refuse(f"carries a blank {key!r}")
 
 
 def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, start: int) -> int:
@@ -1074,8 +1098,13 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
     changed, and that is upserted onto what the table already said, because
     the status fold is that update and nothing else.
 
-    A keyword a person's filing taught is the one thing here the journal has
-    no fold for - it only ever accumulates - so it is inserted as it is met.
+    A keyword a person's filing taught is inserted as it is met and deleted
+    again when a person takes it back (decision 113): the insert carries the
+    line's own sequence number, so a word taught again comes back last -
+    whether or not it was taken back first - which is the order
+    ``tracker.ledger.apply`` folds it in and what :func:`check` holds the
+    two to.
+
     An edit of the person's rules is written as it is met too: the rows it
     carries replace those identifiers, the ones it names as removed go,
     and the engagement's own columns follow, so a save costs one upsert per
@@ -1116,6 +1145,13 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
                 "VALUES (?, ?, ?, ?)",
                 (engagement_id, identifier_key(str(event.get(ledger.IDENTIFIER_KEY, ""))),
                  str(event.get(ledger.KEYWORD_KEY, "")), seq),
+            )
+        elif name == ledger.KEYWORD_UNLEARNED:
+            conn.execute(
+                'DELETE FROM learned_keywords WHERE engagement_id = ? AND "identifier" = ? '
+                "AND keyword = ?",
+                (engagement_id, identifier_key(str(event.get(ledger.IDENTIFIER_KEY, ""))),
+                 str(event.get(ledger.KEYWORD_KEY, ""))),
             )
         elif name in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
             _apply_rules_event(conn, engagement_id, event)
@@ -1462,9 +1498,10 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     The gate. An empty list is the claim that these tables say exactly
     what the engagement's own record says - the same index rows in the
     same order, field for field; the same status for every identifier; the
-    same rule, where the record carries one. Anything else is named in a
-    sentence a person can act on: which engagement, which row or
-    identifier, which field, what each side says.
+    same rule, where the record carries one; and, since decision 113, the
+    same keywords taught to each request, in the same order. Anything else
+    is named in a sentence a person can act on: which engagement, which row
+    or identifier, which field, what each side says.
 
     **The other copy is the journal, and it is the only one.** The
     readers answer from these very tables, so asking them would be the
@@ -1484,6 +1521,7 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     problems += _check_statuses(conn, engagement["id"], name, folded.statuses)
     problems += _check_rules(conn, engagement["id"], name, folded)
     problems += _check_intents(conn, engagement["id"], name, folded.intents)
+    problems += _check_learned(conn, engagement["id"], name, folded.learned)
     return problems
 
 
@@ -1603,6 +1641,44 @@ def _check_rules(
                 f"{name}: engagement {field}: the store says {row[field]!r}, "
                 f"the record says {_to_sql(value)!r}")
     return problems
+
+
+def _check_learned(
+    conn: sqlite3.Connection, engagement_id: int, name: str, recorded: dict[str, tuple[str, ...]]
+) -> list[str]:
+    """The keywords filings taught, table against journal (decision 113).
+
+    The one thing in this database the record could not vouch for until
+    now: the table only ever grew, the journal's fold did not know the
+    event, and this function did not exist - so a row planted or dropped
+    behind the journal's back was invisible to the gate. One sentence per
+    request whose words differ, naming both sides in the order each holds
+    them, because the order is part of the answer: a word taught, taken
+    back and taught again belongs last on both sides.
+
+    The table keys a request without case and the journal's fold keys it
+    exactly as each line spells it (:class:`tracker.ledger.Folded`), so the
+    record's side is folded here, by the one rule that owns it. Two
+    spellings of one request - which takes a case-respelling of an
+    identifier between two filings - are joined in the order the fold met
+    them.
+    """
+    stored: dict[str, tuple[str, ...]] = {}
+    for row in conn.execute(
+        'SELECT "identifier", keyword FROM learned_keywords WHERE engagement_id = ? '
+        "ORDER BY seq, keyword", (engagement_id,),
+    ):
+        stored[row["identifier"]] = stored.get(row["identifier"], ()) + (row["keyword"],)
+    folded: dict[str, tuple[str, ...]] = {}
+    for identifier, taught in recorded.items():
+        key = identifier_key(identifier)
+        folded[key] = folded.get(key, ()) + tuple(taught)
+    return [
+        f"{name}: request {key}, the keywords filings taught: the store says "
+        f"{list(stored.get(key, ()))!r}, the record says {list(folded.get(key, ()))!r}"
+        for key in sorted(set(stored) | set(folded))
+        if stored.get(key, ()) != folded.get(key, ())
+    ]
 
 
 def state(
