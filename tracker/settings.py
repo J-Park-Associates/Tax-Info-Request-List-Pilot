@@ -13,8 +13,10 @@ both read it. The app asks for it on first launch and never again; the
 schedule is generated from the same value (``python -m tracker.scheduling``
 without ``ROOT_FLAG`` reads it too).
 
-Deliberately tiny: one JSON object (the clients root and the firm's name),
-read and written whole, atomic on write. There is no second setting to drift.
+Deliberately tiny: one JSON object (the clients root, the firm's name and,
+since decision 117, the firm's telephone number), read and written whole,
+atomic on write. What is here is what belongs to the firm rather than to
+an engagement; there is no second copy of any of it to drift.
 
 ``ENV_REAL_CORPUS`` sits here for the same reason the clients root does:
 it is the other folder outside the repository the code is told about - the
@@ -38,6 +40,13 @@ SETTINGS_FILENAME = "settings.json"
 #: The keys inside it.
 KEY_CLIENTS_ROOT = "clients_root"
 KEY_FIRM = "firm"
+#: The firm's own telephone number (decision 117). It belongs beside the
+#: firm's name for the same reason the name is there: it is the firm's,
+#: not one engagement's, and typing it into every client's details would
+#: be the same number recorded a hundred times. Only the final-notice
+#: reminder says it, and a blank one drops that sentence rather than
+#: printing an empty invitation to call.
+KEY_FIRM_PHONE = "firm_phone"
 #: How a person is told to set the root without the app.
 SET_ROOT_HINT = "python -m tracker.settings <folder>"
 #: The clients-root example every prompt and document shows.
@@ -115,6 +124,11 @@ def firm() -> str:
     return str(_read().get(KEY_FIRM, "") or "").strip()
 
 
+def firm_phone() -> str:
+    """The firm's telephone number, or "" when nobody has set one."""
+    return str(_read().get(KEY_FIRM_PHONE, "") or "").strip()
+
+
 def product_name() -> str:
     """What the app is called, from app/package.json (or the shell's copy of it)."""
     override = os.environ.get(ENV_PRODUCT_NAME)
@@ -158,6 +172,20 @@ def set_firm(name: str) -> str:
     data[KEY_FIRM] = str(name).strip()
     _write(data)
     return data[KEY_FIRM]
+
+
+def set_firm_phone(number: str) -> str:
+    """Record the firm's telephone number beside its name.
+
+    Stripped and otherwise taken as typed: a firm writes its own number
+    its own way - with an extension, a country code, two numbers - and a
+    format this code invented would be a number read out to a client in
+    the firm's name that the firm never wrote.
+    """
+    data = _read()
+    data[KEY_FIRM_PHONE] = str(number).strip()
+    _write(data)
+    return data[KEY_FIRM_PHONE]
 
 
 def set_clients_root(root: Path | str) -> Path:

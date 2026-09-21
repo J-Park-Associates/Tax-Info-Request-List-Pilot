@@ -130,6 +130,26 @@ def test_every_rule_and_place_is_in_the_list_that_names_them():
 # ------------------------------------------------------------ the engagement ----
 
 
+def test_the_date_fields_are_the_two_dates_and_both_round_trip_through_json():
+    """Decision 117: which details are dates is said once here, and the
+    record's own serialisers read that list rather than naming a field -
+    so a date added to the details is stored and read back without a
+    second edit, and one nobody set comes back as nothing."""
+    import datetime as dt
+
+    from tracker.records import DATE_FIELDS, EngagementInfo, info_from_json, info_to_json
+
+    typed = {f.name for f in fields(EngagementInfo) if f.type == "dt.date | None"}
+    assert set(DATE_FIELDS) == typed == {"due", "filing_deadline"}
+
+    info = EngagementInfo(client="Dana", due=dt.date(2026, 4, 10),
+                          filing_deadline=dt.date(2026, 4, 15))
+    stored = info_to_json(info)
+    assert stored["due"] == "2026-04-10" and stored["filing_deadline"] == "2026-04-15"
+    assert info_from_json(stored) == info
+    assert info_from_json({"client": "Dana"}) == EngagementInfo(client="Dana")
+
+
 def test_the_engagement_labels_name_exactly_the_engagement_records_fields():
     """The details are shown and edited by label, so a field with no label
     is a value nobody sees and a label with no field is a box nobody reads."""

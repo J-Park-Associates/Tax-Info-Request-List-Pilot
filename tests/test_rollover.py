@@ -438,6 +438,24 @@ def test_the_rollover_carries_the_catalog_the_list_was_cut_from(tmp_path):
                                  rolled_from=str(tmp_path)).form == ""
 
 
+def test_the_carry_clears_both_of_last_years_dates(tmp_path):
+    """Decision 117: a statutory date belongs to its year, and so does the
+    target the firm sets against it. Neither carries - the new year's come
+    from the form's own table when the engagement is created."""
+    import datetime as dt
+
+    from tracker.manifest import EngagementInfo
+    from tracker.rollover import carry_engagement_info
+
+    carried = carry_engagement_info(
+        EngagementInfo(client="John Smith", due=dt.date(2026, 4, 10),
+                       filing_deadline=dt.date(2026, 4, 15), form="1040"),
+        rolled_from=str(tmp_path),
+    )
+    assert carried.due is None and carried.filing_deadline is None
+    assert carried.client == "John Smith" and carried.form == "1040"
+
+
 def test_the_rollover_command_line_writes_the_carried_form_into_next_year(tmp_path):
     """End to end: the prior's details say which catalog, and so do next
     year's - the details the app shows."""
@@ -636,6 +654,12 @@ def test_the_rollover_carries_rules_engagement_details_and_learned_keywords_into
     assert store.learned_keywords(store.connect(), new) == {}       # carried as typed, not taught
     info = load_engagement_info(new)
     assert info.form == "1040" and info.client == "John Smith"
-    assert info.link == "" and info.due is None
+    assert info.link == ""
+    # Neither of last year's dates carries: the new year's are the form's
+    # own, so the reminder's ladder works from the first draft (decision 117).
+    from tracker.templates import ask_by_for, filing_deadline_for
+
+    assert info.filing_deadline == filing_deadline_for("1040", 2026)
+    assert info.due == ask_by_for(info.filing_deadline)
     assert info.rolled_from == str(prior)
     assert list(demo_root.rglob("*.xlsx")) == []

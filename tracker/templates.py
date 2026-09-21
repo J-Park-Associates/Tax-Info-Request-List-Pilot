@@ -530,6 +530,63 @@ def default_tax_year(today: dt.date | None = None) -> int:
     return today.year - 1
 
 
+# --------------------------------------------------------------- the dates ----
+
+#: The statutory filing date of each return the catalog knows, as (month,
+#: day) in the year after the tax year - the owner's table, 2026-09-20
+#: (decision 117). A form that is not in here has no default at all: a
+#: deadline guessed for a return nobody wrote a date for would be read to a
+#: client as the firm's own word for when their return is due.
+FILING_DEADLINES: dict[str, tuple[int, int]] = {
+    "1040": (4, 15),
+    "1120": (4, 15),
+    "1041": (4, 15),
+    "1120S": (3, 15),
+    "1065": (3, 15),
+    "990": (5, 15),
+}
+#: How far ahead of the filing deadline the firm asks to have everything in
+#: hand: the Due Date a new engagement starts with. The reminder never says
+#: this number - it names the two dates and never the arithmetic between
+#: them, because either is a person's to move (decision 117).
+TARGET_DAYS_BEFORE_DEADLINE = 5
+#: The days a date is never moved on to, or back on to: the weekend.
+_WEEKEND = (5, 6)
+
+
+def filing_deadline_for(form: str, year: int) -> dt.date | None:
+    """When ``form``'s return for tax year ``year`` has to be filed, or None.
+
+    The table's day in the year after the tax year, moved **forward** off
+    the weekend the way the IRS moves it. A holiday is a person's edit: the
+    federal and state calendars differ, they move, and a date the code got
+    wrong would be a date a client was told in the firm's name. Unknown
+    form, unknown deadline - never a guess.
+    """
+    when = FILING_DEADLINES.get(form)
+    if when is None:
+        return None
+    month, day = when
+    deadline = dt.date(year + 1, month, day)
+    while deadline.weekday() in _WEEKEND:
+        deadline += dt.timedelta(days=1)
+    return deadline
+
+
+def ask_by_for(deadline: dt.date) -> dt.date:
+    """The Due Date that goes with ``deadline``: the firm's own ask-by target.
+
+    :data:`TARGET_DAYS_BEFORE_DEADLINE` days before it, moved **back** off
+    the weekend - a target the office cannot work on is not a target. It is
+    a default and nothing more: a person moves either date in the editor,
+    and the reminder reads whatever they left.
+    """
+    target = deadline - dt.timedelta(days=TARGET_DAYS_BEFORE_DEADLINE)
+    while target.weekday() in _WEEKEND:
+        target -= dt.timedelta(days=1)
+    return target
+
+
 #: What the wizard says about the year field and the two blank-able rules.
 YEAR_NOTE = "Defaults to the most recently ended year; the checklist's periods follow it"
 EXTENSION_DEFAULT_NOTE = "blank means " + ", ".join(DEFAULT_EXTENSIONS)

@@ -137,14 +137,18 @@ def carry_engagement_info(prior: EngagementInfo, *, rolled_from: str) -> Engagem
     The client, the sender, the firm and the reminders decision are about
     the client and carry forward. So does the catalog the list was cut from:
     a returning client files the same return next year, and the rolled list
-    is last year's list. The share link and the due date are this year's to
-    set. The name is never written (the folder is the name), and Rolled From
-    is what retires the prior (tracker.registry.mark_superseded).
+    is last year's list. The share link, the due date and the filing
+    deadline are this year's to set - a statutory date is the year's, and
+    one carried forward would put a date twelve months gone into a client's
+    reminder (decision 117). The name is never written (the folder is the
+    name), and Rolled From is what retires the prior
+    (tracker.registry.mark_superseded).
 
     A prior that never recorded a form carries a blank one - nothing here
     guesses which catalog an older engagement was built from.
     """
-    return replace(prior, name="", link="", due=None, active=True, rolled_from=rolled_from)
+    return replace(prior, name="", link="", due=None, filing_deadline=None,
+                   active=True, rolled_from=rolled_from)
 
 
 

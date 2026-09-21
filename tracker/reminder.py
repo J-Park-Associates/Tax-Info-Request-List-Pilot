@@ -5,6 +5,22 @@ accountant can read, edit and paste into Outlook. **It never sends anything**
 — there is no SMTP, no mail client, no network call anywhere in this module.
 A reminder goes out because a person decided to send it.
 
+**Four stages, measured against the Due Date** (decision 117). The same
+flat reminder every week is the one that gets tuned out by the third one,
+so the draft escalates: more than three weeks from the Due Date a heads-up
+with no deadline sentence at all; inside three weeks a check-in that names
+the target; in the last ten days a firm request that names the target and
+the Filing Deadline beside it; on the day and after it a final notice with
+the consequences sentence and the firm's telephone number. The stage
+changes the *words* and nothing else: who is asked is :func:`triage`'s
+answer and is identical at every stage, and the gate below holds at every
+stage. ``STAGES`` is the wording, once; the two thresholds are constants.
+
+The sentences name the two dates and never the arithmetic between them.
+The Due Date defaults to five days before the Filing Deadline, but either
+is a person's to move, and a draft that said "five days before" would be
+made to tell a client something false the moment somebody did.
+
 What the client is asked for:
 
 - ``Status.MISSING`` — never arrived.
@@ -24,6 +40,18 @@ What holds the whole reminder back for a person (decision 115):
   retired, an edited one is left, and the hold is said everywhere a person
   looks - the run log, the practice page, the app - with the rows named.
   The client is asked once, correctly, or not yet.
+- **A parked file the client could fix** (decision 117, amending the
+  above). A locked PDF, an empty upload, a file type nothing accepts: the
+  drop never reaches a request's status at all - it parks for a person and
+  the request stays Missing - so the draft used to ask for a document the
+  client is certain they sent. When such a parked row's reason is the
+  client's to fix and the review queue's shortlist for it - what the card
+  shows a person, the file's own name included - names a request still
+  outstanding, that request holds the draft exactly as a Failed row does:
+  a person decides whether the client resends it or we file what came. A
+  parked row that points at no request holds nothing - there is nothing to
+  name - and a row whose reason is ours (a scan with no text layer) holds
+  nothing either.
 
 What the client is deliberately *not* asked for:
 
@@ -94,12 +122,18 @@ from tracker.scaffold import (
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
 )
+from tracker.settings import firm_phone  # the firm's number, not an engagement's
 from tracker.validators import iter_candidate_files
 
 log = logging.getLogger("tracker.reminder")
 
 DRAFT_FILENAME = "reminder-draft.txt"
 DUE_FLAG = "--due"
+#: The command line's one-off dates and the two flags that read a stage
+#: other than today's: what next week's letter will say, today.
+DEADLINE_FLAG = "--deadline"
+TODAY_FLAG = "--today"
+STAGE_FLAG = "--stage"
 
 #: Where a fresh draft goes when the standing one has been edited by hand.
 NEW_DRAFT_FILENAME = Path(DRAFT_FILENAME).stem + ".NEW" + Path(DRAFT_FILENAME).suffix
@@ -111,12 +145,22 @@ _SEPARATOR = "=" * _RULE_WIDTH
 #: Statuses that mean the client still owes us something (re-exported).
 OUTSTANDING = Status.OUTSTANDING
 
-#: The subject lines and the banner every draft opens with.
+#: The subject lines and the banner every draft opens with. The last two
+#: are the stages that ask in their own voice (decision 117): a subject
+#: that did not change with the letter would be the line a client's inbox
+#: has already learned to skip.
 SUBJECT_NEEDED = "{engagement}: {n} document(s) still needed"
 SUBJECT_COMPLETE = "{engagement}: we have everything - thank you"
+SUBJECT_RESPONSE = "{engagement}: {n} document(s) still needed - response requested"
+SUBJECT_URGENT = "URGENT - {engagement}: final notice, {n} document(s) still needed"
 DRAFT_BANNER = "DRAFT - NOTHING HAS BEEN SENT."
 #: The sentence every draft opens its instructions with.
 DROP_ANYWHERE = "Everything goes in the same place - just drop it into the shared"
+#: What is said before the stage's own opening, at every stage, whenever
+#: anything at all has arrived. It is true at every stage, and a client who
+#: has sent half of it should never read a final notice that talks as
+#: though they sent nothing.
+THANK_YOU = "Thank you for what you have sent so far - {received} of {total} items are in."
 #: The footer headings for what the draft deliberately did not ask for.
 HELD_BACK_HEADING = "NOT ASKED FOR"
 HELD_BACK_LINE = "NOT ASKED"
@@ -127,6 +171,13 @@ HELD_LINE = "HELD"
 #: in brackets when the note carried one, so the person sees what the scan
 #: said without opening anything.
 AMBIGUOUS_HOLD = "held - a person decides whether the client resends this or we fix it here"
+#: Why a request a parked file points at holds the draft (decision 117, the
+#: end-to-end review's third discrepancy). The file never reached a status,
+#: so the row is still Missing and the draft would ask for a document the
+#: client knows they sent. The reason's own client ask rides in brackets,
+#: so the person sees what was wrong with the file without opening it.
+PARKED_HOLD = ("held - a file the client sent for this could not be used ({ask}); "
+               "a person decides whether the client resends it or we file what came")
 #: What write_draft() refuses a held draft with, and what the run log, the
 #: practice page's note and the CLI say: the count, then every held row.
 HELD_REFUSAL = (
@@ -159,6 +210,109 @@ SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
 SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
 
 SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL)
+
+
+# ----------------------------------------------------------------- stages ----
+
+
+@dataclass(frozen=True, slots=True)
+class Stage:
+    """One rung of the reminder: its name, its subject and its three sentences.
+
+    Every word a stage says is here and nowhere else, so the letters a
+    client reads are one table a person can be shown - the owner signs the
+    wording off, and nothing downstream retypes a phrase of it.
+    """
+
+    number: int
+    name: str
+    subject: str        # the SUBJECT template: {engagement}, {n}
+    intro: str          # straight after the greeting: {engagement}
+    #: The paragraph after the drop-anywhere lines; "" for none.
+    #: {target}, {deadline_clause}, {phone_clause}
+    deadline: str
+    close: str          # the last sentence before the sign-off: {phone_clause}
+
+
+#: How far from the Due Date each stage begins, in days. Constants and not
+#: settings (the owner, 2026-09-20): the ladder is the firm's one way of
+#: chasing, and a per-engagement threshold would be a second answer to
+#: "how hard are we asking this client?" that nobody could see from the
+#: draft.
+STAGE_2_DAYS = 21
+STAGE_3_DAYS = 10
+#: The consequences sentence of the final notice; it speaks for the firm and
+#: its wording is the owner's.
+STAGE_4_CONSEQUENCES = ("Without them, we cannot guarantee your return will be completed by the deadline, "
+                        "which may result in late-filing penalties or the need to file an extension.")
+#: The filing deadline said beside the target, when the engagement records
+#: one; blank when it does not, because a deadline nobody recorded is not a
+#: date this system may tell a client.
+DEADLINE_CLAUSE = " - ahead of the filing deadline of {deadline}"
+#: The final notice's offer of a telephone call, dropped when the firm has
+#: recorded no number.
+PHONE_CLAUSE = ", or call us right away at {phone} so we can discuss your options"
+
+#: The four stages, in order. The list of requests and the drop-anywhere
+#: lines are the same in all of them; only these sentences change.
+STAGES: tuple[Stage, ...] = (
+    Stage(
+        number=1,
+        name="Just a Heads Up",
+        subject=SUBJECT_NEEDED,
+        intro="Just a quick heads up that we're still waiting on a few items to get started "
+              "on your return. Whenever you get a chance, here's what we have outstanding "
+              "for {engagement}:",
+        deadline="",
+        close="Just wanted to keep it on your radar. Let us know if you have any questions "
+              "or if something's already on its way.",
+    ),
+    Stage(
+        number=2,
+        name="Checking In",
+        subject=SUBJECT_NEEDED,
+        intro="Checking in on your return. We're still missing a few items for {engagement} "
+              "and wanted to make sure they didn't slip through the cracks:",
+        deadline="As a reminder, our firm asks to have everything in hand ahead of the filing "
+                 "deadline, which gives us time to prepare and file your return properly. "
+                 "For you that means we'd need these by {target}.",
+        close="Let us know if you have any questions or if anything's already on its way.",
+    ),
+    Stage(
+        number=3,
+        name="Response Requested; Deadline Approaching",
+        subject=SUBJECT_RESPONSE,
+        intro="We still need the following items to complete your return, and the deadline "
+              "is approaching:",
+        deadline="To file on time, our firm needs these by {target}{deadline_clause}, and we "
+                 "hold to that so there is enough time to prepare your return properly. At "
+                 "this point we do need these items promptly to stay on track.",
+        close="Please send them as soon as you can, or reply to let us know when we can "
+              "expect them.",
+    ),
+    Stage(
+        number=4,
+        name="URGENT! Final Notice",
+        subject=SUBJECT_URGENT,
+        intro="This is an urgent final notice regarding your return. We have now reached or "
+              "passed our firm's cutoff to receive your documents, and we still need the "
+              "following:",
+        deadline="Our firm's deadline to receive everything is {target}{deadline_clause}. We "
+                 "need these items immediately to file your return on time. " + STAGE_4_CONSEQUENCES,
+        close="Please send everything today{phone_clause}.",
+    ),
+)
+
+#: What the draft's header says the stage is, above the fingerprint line and
+#: so outside the text a person pastes: the stage is a fact about the draft,
+#: not a sentence in the email.
+STAGE_LINE = "Stage: {number} - {name}"
+#: And what it says when there is no stage at all - a quiet week, where the
+#: draft says we have everything and no ladder applies.
+STAGE_NONE = "Stage: -"
+#: The key the ``DRAFTED`` event carries the stage under. A number, never a
+#: word of the letter: nothing a client would read goes on the record.
+STAGE_KEY = "stage"
 
 
 class ReminderError(Exception):
@@ -214,6 +368,9 @@ class ReminderDraft:
     engagement: str
     subject: str
     body: str
+    #: Which of the four stages this draft is written at (decision 117),
+    #: and 0 on a quiet week - there is no ladder when we have everything.
+    stage: int = 0
     lines: list[ReminderLine] = field(default_factory=list)
     needs_attention: list[FirmSideFlag] = field(default_factory=list)
     scaffold_gaps: list[FirmSideFlag] = field(default_factory=list)
@@ -247,6 +404,41 @@ class ReminderDraft:
 
     def section(self, name: str) -> list[ReminderLine]:
         return [line for line in self.lines if line.section == name]
+
+
+def stage_for(due: dt.date | None, today: dt.date) -> int:
+    """Which stage a reminder written ``today`` is at, given the Due Date.
+
+    The one rule, and the only thing that decides a stage: how far today is
+    from the date the firm asked the client to send things by. An
+    engagement with no Due Date is at stage 1 for ever - a heads-up with no
+    deadline sentence, which is the only honest letter when nobody has said
+    when things are due.
+
+    The day itself is stage 4, not stage 3: "we need these by the 10th" on
+    the 10th is a sentence that has already stopped being true.
+    """
+    if due is None:
+        return 1
+    days = (due - today).days
+    if days > STAGE_2_DAYS:
+        return 1
+    if days > STAGE_3_DAYS:
+        return 2
+    if days > 0:
+        return 3
+    return 4
+
+
+def stage_named(number: int) -> Stage:
+    """The stage numbered ``number``; anything else is a loud refusal."""
+    for stage in STAGES:
+        if stage.number == number:
+            return stage
+    raise ReminderError(
+        f"there is no stage {number}; the stages are "
+        f"{', '.join(str(stage.number) for stage in STAGES)}"
+    )
 
 
 # ------------------------------------------------------------ translation ----
@@ -334,12 +526,62 @@ def _ambiguous_reason(item: RequestItem) -> str:
     return ""
 
 
-def triage(items: Sequence[RequestItem]) -> tuple[
+def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, str]:
+    """Which requests a parked file the client could fix holds, and why.
+
+    Decision 117, the end-to-end review's third discrepancy. A drop the
+    rules refused at tier 2 - a locked PDF, an empty upload, a file type
+    nothing accepts - never reaches a request's status: it parks for a
+    person, the request stays Missing, and the draft asked for it as if
+    nothing had come. The client, who sent it, reads that as a firm that
+    loses things.
+
+    A parked row holds a request when both halves are true: its reason is
+    one the *client* could fix (a firm-side one - a scan with no text
+    layer, a file nobody here has read - is ours, and decision 115's rule
+    that we never chase a client for our own work stands), and the review
+    queue's own shortlist for that row names the request.
+
+    **The shortlist, not the row's Candidates cell.** Candidates are the
+    router's column - the requests that *accepted* the file - and a file
+    the rules refused before reading it has none, which is exactly the
+    headline case: the password-protected PDF the client is certain they
+    sent. :func:`tracker.review.shortlist_for` is what the card shows the
+    person looking at that file, evidence and all, including what its own
+    name said (decision 92, and the router records it beside a refusal it
+    could not read through). So the draft and the card now agree about
+    what a parked file points at, and a parked row that points at nothing
+    holds nothing - there is no request to name in the sentence, and no
+    client to ask about it.
+
+    Only rows the filer parked are read: a row a person dismissed is their
+    answer, and a row they filed or unfiled is a decision, not a question.
+    """
+    from tracker.filer import NEEDS_REVIEW
+    from tracker.review import shortlist_for
+
+    rows = {item.identifier: item for item in items}
+    listed = list(items)
+    holds: dict[str, str] = {}
+    for row in parked:
+        if row.decision != NEEDS_REVIEW:
+            continue
+        reason = reasons.find(row.reason or "")
+        if reason is None or reason.firm_side:
+            continue
+        for suggestion in shortlist_for(row, listed):
+            item = rows.get(suggestion.identifier)
+            if item is not None:
+                holds[suggestion.identifier] = PARKED_HOLD.format(ask=_ask_for(reason, item))
+    return holds
+
+
+def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     list[ReminderLine], list[FirmSideFlag], list[FirmSideFlag], list[FirmSideFlag]
 ]:
     """Sort every outstanding row once, by one rule: client asks (``lines``),
     firm-side work (``attention``), scaffold gaps (``gaps``) and the
-    ambiguous rows that hold the whole draft (``held``, decision 115).
+    ambiguous rows that hold the whole draft (``held``, decisions 115 and 117).
 
     Overridden rows and anything already in are dropped here and never reach
     the draft. For the rest, in this order: a row with no request folder is
@@ -348,6 +590,13 @@ def triage(items: Sequence[RequestItem]) -> tuple[
     Missing row); a Failed row, or a Partial whose shortfall is a refused
     file, is ambiguous and held; a Missing row, and a Partial with no
     reason, is asked.
+
+    ``parked`` is the engagement's index rows, when the caller has them
+    (:func:`_parked_holds`): a request that would have been asked for, and
+    that a file the client could fix points at, is held instead. It is
+    applied last and only to what was going to be asked, so a row already
+    the firm's, already held, already overridden or already in stays
+    exactly where the rules above put it.
     """
     lines: list[ReminderLine] = []
     attention: list[FirmSideFlag] = []
@@ -381,6 +630,17 @@ def triage(items: Sequence[RequestItem]) -> tuple[
         section = _section_for(item)
         ask = client_ask(item) if section != SECTION_MISSING else _missing_detail(item)
         lines.append(ReminderLine(item=item, section=section, ask=ask))
+
+    holds = _parked_holds(items, parked)
+    if holds:
+        asked: list[ReminderLine] = []
+        for line in lines:
+            reason = holds.get(line.item.identifier)
+            if reason:
+                held.append(FirmSideFlag(item=line.item, reason=reason))
+            else:
+                asked.append(line)
+        lines = asked
 
     order = {name: i for i, name in enumerate(SECTION_ORDER)}
     lines.sort(key=lambda line: (order[line.section], line.item.identifier))
@@ -432,6 +692,11 @@ def count_needs_review(engagement_dir: Path) -> int:
 # ----------------------------------------------------------------- drafts ----
 
 
+def _said_date(when: dt.date) -> str:
+    """A date as a client reads it. One format, both dates."""
+    return when.strftime("%B %d, %Y")
+
+
 def _compose_body(
     lines: Sequence[ReminderLine],
     *,
@@ -443,10 +708,21 @@ def _compose_body(
     firm: str,
     received: int,
     total: int,
+    stage: Stage | None,
+    filing_deadline: dt.date | None = None,
+    phone: str = "",
 ) -> str:
+    """The text a person pastes: the greeting, the stage's own three
+    sentences around the list, and the sign-off.
+
+    ``stage`` is None only on a quiet week, where there is nothing to chase
+    and no ladder to be on. The deadline paragraph is written only when the
+    engagement has a Due Date to name: a stage the caller forced with no
+    date to put in it drops the paragraph rather than printing half of it.
+    """
     out: list[str] = [f"Hi {client_name}," if client_name else "Hello,", ""]
 
-    if not lines:
+    if not lines or stage is None:
         out += [
             f"Good news - we have everything we asked for on {engagement}.",
             "Nothing further is needed from you right now, and we will be in",
@@ -454,14 +730,16 @@ def _compose_body(
             "",
         ]
     else:
+        words = {
+            "engagement": engagement,
+            "target": _said_date(due_date) if due_date else "",
+            "deadline_clause": (DEADLINE_CLAUSE.format(deadline=_said_date(filing_deadline))
+                                if filing_deadline else ""),
+            "phone_clause": PHONE_CLAUSE.format(phone=phone) if phone else "",
+        }
         if received:
-            out.append(
-                f"Thank you for what you have sent so far - {received} of {total} "
-                f"items are in. Here is what we are still waiting on for {engagement}:"
-            )
-        else:
-            out.append(f"Here is what we still need for {engagement}:")
-        out.append("")
+            out += [THANK_YOU.format(received=received, total=total), ""]
+        out += [stage.intro.format(**words), ""]
 
         for name in SECTION_ORDER:
             section = [line for line in lines if line.section == name]
@@ -485,9 +763,9 @@ def _compose_body(
                 "",
             ]
 
-        if due_date:
-            out += [f"If you can send these by {due_date.strftime('%B %d, %Y')}, "
-                    "that keeps us on schedule.", ""]
+        if stage.deadline and due_date:
+            out += [stage.deadline.format(**words), ""]
+        out += [stage.close.format(**words), ""]
 
     out.append("Thank you,")
     if sender:
@@ -497,6 +775,23 @@ def _compose_body(
     return "\n".join(out).rstrip() + "\n"
 
 
+def _parked_index_rows(engagement_dir: Path) -> list:
+    """The engagement's index rows, for the parked-file hold (decision 117).
+
+    An index that cannot be read holds nothing: the hold names a request a
+    parked file points at, and a shortlist nobody could read names none.
+    The draft is still written, and the index is the filer's to complain
+    about - the same division :func:`count_needs_review` makes.
+    """
+    from tracker.filer import read_index
+
+    try:
+        return read_index(engagement_dir)
+    except Exception as exc:
+        log.warning("Could not read the index for the files a person is holding: %s", exc)
+        return []
+
+
 def draft_reminder(
     engagement_dir: Path | str,
     *,
@@ -504,15 +799,26 @@ def draft_reminder(
     engagement_name: str = "",
     share_link: str = "",
     due_date: dt.date | None = None,
+    filing_deadline: dt.date | None = None,
     sender: str = "",
     firm: str = "",
+    phone: str = "",
+    today: dt.date | None = None,
+    stage: int | None = None,
 ) -> ReminderDraft:
     """Draft the reminder for one engagement. Reads only; sends nothing.
 
-    Who the client is, the share link, the due date and the sign-off come
+    Who the client is, the share link, the two dates and the sign-off come
     from the engagement's details in the record - the one place they are
-    kept. The keyword arguments override it for a one-off (the CLI's
-    flags); nothing else needs to pass them in.
+    kept - and the firm's telephone number from the settings beside the
+    app, because it is the firm's and not this engagement's. The keyword
+    arguments override all of it for a one-off (the CLI's flags); nothing
+    else needs to pass them in.
+
+    ``today`` is the day the letter is written on, and with the Due Date it
+    decides the stage (:func:`stage_for`); ``stage`` forces one instead, so
+    a person can read what next week's letter will say without waiting for
+    next week. Neither changes who is asked.
 
     Raises :class:`ReminderError` when the folder holds no record or has
     never been scanned — a reminder built from unscanned rows would ask for
@@ -529,8 +835,11 @@ def draft_reminder(
     engagement_name = engagement_name or info.name
     share_link = share_link or info.link
     due_date = due_date or info.due
+    filing_deadline = filing_deadline or info.filing_deadline
     sender = sender or info.sender
     firm = firm or info.firm
+    phone = phone or firm_phone()
+    today = today or dt.date.today()
 
     # Straight from the record, which is where every status is since
     # decision 103: what the last scan found is what this asks the client
@@ -544,10 +853,15 @@ def draft_reminder(
             f"`python -m tracker.scanner {engagement_dir}` first"
         )
 
-    lines, attention, gaps, held = triage(items)
+    lines, attention, gaps, held = triage(items, _parked_index_rows(engagement_dir))
     summary = summarize(items)
     received, total = summary.received, summary.total
     engagement = engagement_name or engagement_dir.name
+
+    # The stage is the letter's, so a week with nothing to chase has none:
+    # "we have everything" is not a rung of a ladder.
+    number = (stage if stage is not None else stage_for(due_date, today)) if lines else 0
+    rung = stage_named(number) if number else None
 
     body = _compose_body(
         lines,
@@ -559,10 +873,13 @@ def draft_reminder(
         firm=firm,
         received=received,
         total=total,
+        stage=rung,
+        filing_deadline=filing_deadline,
+        phone=phone,
     )
 
-    if lines:
-        subject = SUBJECT_NEEDED.format(engagement=engagement, n=len(lines))
+    if rung is not None:
+        subject = rung.subject.format(engagement=engagement, n=len(lines))
     else:
         subject = SUBJECT_COMPLETE.format(engagement=engagement)
 
@@ -570,6 +887,7 @@ def draft_reminder(
         engagement=engagement,
         subject=subject,
         body=body,
+        stage=number,
         lines=lines,
         needs_attention=attention,
         scaffold_gaps=gaps,
@@ -622,6 +940,19 @@ def is_unedited(path: Path | str) -> bool:
     if not separator:
         return False
     return draft_fingerprint(body) == recorded
+
+
+def stage_line(draft: ReminderDraft) -> str:
+    """The header's stage line: which rung this draft is on, or none at all.
+
+    In the header and never in the body, above the fingerprint line: the
+    stage is a fact about the draft for the person sending it, not a
+    sentence in the email, and a line inside the fingerprinted text would
+    make every crossed threshold look like somebody's edit.
+    """
+    if not draft.stage:
+        return STAGE_NONE
+    return STAGE_LINE.format(number=draft.stage, name=stage_named(draft.stage).name)
 
 
 def held_refusal(draft: ReminderDraft) -> str:
@@ -720,6 +1051,7 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
     header = [
         DRAFT_BANNER,
         "Read it, edit it, then send it yourself.",
+        stage_line(draft),
         f"{_FINGERPRINT_PREFIX}{draft_fingerprint(body)}",
         "(That line is how the weekly job tells whether you have edited this",
         " draft. Edit it freely - an edited draft is never overwritten.)",
@@ -744,13 +1076,18 @@ def last_draft_event(engagement_dir: Path | str, *, carrying: str | None = None)
 def drafted_event(draft: ReminderDraft, written: Path | None) -> dict:
     """The ``DRAFTED`` event for what this draft decided: the identifiers
     held when it is held, otherwise the identifiers asked (``[]`` on a
-    quiet week) with the file written and the fingerprint in its header.
-    Identifiers only - no word of the email is ever in the record."""
+    quiet week) with the stage it was written at, the file written and the
+    fingerprint in its header. Identifiers and a number - no word of the
+    email is ever in the record.
+
+    A hold carries no stage: nothing was written, so there is no letter to
+    have been at a stage.
+    """
     if draft.is_held:
         return ledger.new(ledger.DRAFTED, **{
             ledger.HELD_KEY: [flag.item.identifier for flag in draft.held],
         })
-    payload: dict[str, object] = {ledger.ASKED_KEY: draft.asked}
+    payload: dict[str, object] = {ledger.ASKED_KEY: draft.asked, STAGE_KEY: draft.stage}
     if written is not None:
         payload[ledger.FILE_KEY] = Path(written).name
         payload[ledger.FINGERPRINT_KEY] = recorded_fingerprint(written)
@@ -763,7 +1100,11 @@ def draft_changed(previous: dict | None, event: dict, *, since: dt.date | None =
     Only what changed goes on the record (the ``scanned`` rule): a repeat
     on the draft day that finds the engagement as the last draft left it
     appends nothing. What counts as changed is the asked set, the held set,
-    the file written and its fingerprint. A draft file written in a new
+    the stage, the file written and its fingerprint. The stage is one of
+    them because a client who crossed a threshold gets a different letter
+    this week even when the list of documents did not move, and a record
+    that said nothing happened would be wrong about the one thing that
+    did. A draft file written in a new
     draft week counts too, when the caller says which week (``since`` -
     the draft day that went by): the week's draft is a fact of that week,
     and it is what the runner reads the last draft day from, so a reminder
@@ -771,7 +1112,8 @@ def draft_changed(previous: dict | None, event: dict, *, since: dt.date | None =
     """
     if previous is None:
         return True
-    for key in (ledger.ASKED_KEY, ledger.HELD_KEY, ledger.FILE_KEY, ledger.FINGERPRINT_KEY):
+    for key in (ledger.ASKED_KEY, ledger.HELD_KEY, STAGE_KEY,
+                ledger.FILE_KEY, ledger.FINGERPRINT_KEY):
         if previous.get(key) != event.get(key):
             return True
     if since is not None and ledger.FILE_KEY in event:
@@ -803,18 +1145,31 @@ if __name__ == "__main__":
     parser.add_argument("--engagement-name", default="", help="override the folder name")
     parser.add_argument("--link", default="", help="share link to the client drop folder")
     parser.add_argument(DUE_FLAG, default="", help=f"due date, {ISO_DATE_HINT}")
+    parser.add_argument(DEADLINE_FLAG, default="", help=f"filing deadline, {ISO_DATE_HINT}")
     parser.add_argument("--from-name", default="", help="who the email is from")
     parser.add_argument("--firm", default="", help="firm name for the sign-off")
+    parser.add_argument("--phone", default="", help="firm phone for the final notice")
+    parser.add_argument(TODAY_FLAG, default="",
+                        help=f"the day the letter is written on, {ISO_DATE_HINT} "
+                             "(the stage is measured from it)")
+    parser.add_argument(STAGE_FLAG, type=int, default=None,
+                        choices=[stage.number for stage in STAGES],
+                        help="write the same lines at this stage instead of the day's")
     parser.add_argument("--write", action="store_true",
                         help=f"also write {DRAFT_FILENAME} into the engagement folder")
     ns = parser.parse_args()
 
-    due = None
-    if ns.due:
+    def _day(flag: str, typed: str) -> dt.date | None:
+        if not typed:
+            return None
         try:
-            due = dt.date.fromisoformat(ns.due)
+            return dt.date.fromisoformat(typed)
         except ValueError:
-            parser.error(f"{DUE_FLAG} must be {ISO_DATE_HINT}, got {ns.due!r}")
+            parser.error(f"{flag} must be {ISO_DATE_HINT}, got {typed!r}")
+
+    due = _day(DUE_FLAG, ns.due)
+    deadline = _day(DEADLINE_FLAG, ns.deadline)
+    today = _day(TODAY_FLAG, ns.today)
 
     try:
         result = draft_reminder(
@@ -823,8 +1178,12 @@ if __name__ == "__main__":
             engagement_name=ns.engagement_name,
             share_link=ns.link,
             due_date=due,
+            filing_deadline=deadline,
             sender=ns.from_name,
             firm=ns.firm,
+            phone=ns.phone,
+            today=today,
+            stage=ns.stage,
         )
     except ReminderError as exc:
         raise SystemExit(f"Cannot draft a reminder: {exc}") from None

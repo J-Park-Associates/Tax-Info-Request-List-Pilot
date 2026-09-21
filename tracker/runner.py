@@ -154,6 +154,12 @@ DATE_FLAG = "--date"
 RUNNER_MODE_FLAG = "--run"
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
+#: Which rung of the reminder a draft was written at (decision 117), said
+#: once: the run's own line names it after the file, and the practice
+#: page's Drafted cell says it instead of a bare yes, so the one screen a
+#: person looks at on the draft day says how hard each client is being
+#: asked.
+STAGE_NOTE = "stage {n}"
 #: Why an engagement is passed over, and why one cannot be run at all -
 #: worded once, because the pass and the status page must agree about the
 #: same engagement.
@@ -181,6 +187,9 @@ class EngagementRun:
     statuses: dict[str, int] = field(default_factory=dict)
     outstanding: int = 0             # from tracker.manifest.summarize, the one count
     drafted: Path | None = None
+    #: Which of the reminder's four stages the draft was written at
+    #: (decision 117), and 0 when no draft was written at all.
+    stage: int = 0
     #: How many ambiguous rows hold this engagement's reminder (decision 115);
     #: ``draft_note`` names them.
     held: int = 0
@@ -212,6 +221,8 @@ class EngagementRun:
         parts.append(f"outstanding {self.outstanding}")
         if self.drafted:
             parts.append(f"drafted {self.drafted.name}")
+            if self.stage:
+                parts.append(STAGE_NOTE.format(n=self.stage))
         if self.held:
             parts.append(f"held {self.held}")
         return f"OK      {self.engagement.label}: {', '.join(parts)}"
@@ -514,7 +525,10 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
     # with, so the draft after a hold says what the resolution changed.
     previous = last_draft_event(engagement.path)
     last_asked = last_draft_event(engagement.path, carrying=ledger.ASKED_KEY)
-    draft = draft_reminder(engagement.path)   # reads the engagement's details itself
+    # The pass's own day, not the clock's: the stage is measured from it,
+    # so a catch-up pass writes the letter the missed draft day was owed
+    # and a dated run says what it would have said on that date.
+    draft = draft_reminder(engagement.path, today=today)   # reads the details itself
     week = last_draft_day(today, weekday)
 
     if draft.is_held:
@@ -544,6 +558,7 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
         run.draft_note = str(exc)
         return
     run.drafted = written
+    run.stage = draft.stage
     if written.name == NEW_DRAFT_FILENAME:
         run.draft_note = (
             f"{DRAFT_FILENAME} has been edited, so this week's draft was "
@@ -799,6 +814,17 @@ def _page_title(root: Path) -> str:
     return root.name
 
 
+def _drafted_cell(run: EngagementRun) -> str:
+    """What the practice page's Drafted column says about one engagement:
+    the hold and its count, else the stage the draft was written at, else
+    yes for a draft from before the stages, else nothing at all."""
+    if run.held:
+        return STATUS_HELD.format(n=run.held)
+    if run.stage:
+        return STAGE_NOTE.format(n=run.stage)
+    return YES if run.drafted else ""
+
+
 def _engagement_cells(run: EngagementRun, parked: list[ParkedFile]) -> tuple:
     """One engagement's row, in ``STATUS_COLUMNS`` order."""
     return (
@@ -810,7 +836,7 @@ def _engagement_cells(run: EngagementRun, parked: list[ParkedFile]) -> tuple:
         run.error or run.skipped,
         len(run.warnings),
         run.last_pass.isoformat(sep=" ", timespec="seconds") if run.last_pass else STATUS_NOT_PASSED,
-        STATUS_HELD.format(n=run.held) if run.held else (YES if run.drafted else ""),
+        _drafted_cell(run),
     )
 
 

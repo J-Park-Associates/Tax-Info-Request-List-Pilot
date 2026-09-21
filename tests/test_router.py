@@ -624,6 +624,31 @@ def test_a_file_nothing_could_be_read_out_of_records_its_name_for_the_person(tmp
     assert set(routing.evidence_record) == {"C01"}
 
 
+def test_a_tier_two_refusal_nothing_could_be_read_out_of_carries_the_names_evidence_and_no_candidate(tmp_path):
+    """Decision 117, from the end-to-end review's third discrepancy: a
+    locked PDF is refused before a word of it can be read, so the rules
+    have nothing to say about which request it is - and the client, who
+    named the file, does. The name is recorded for the person who has to
+    open it, exactly as it is for a scan with no text layer (decision 92).
+
+    Nothing about the decision moves: no candidate, the reason is still
+    the refusal's, and nothing is filed on a name - here or anywhere.
+    """
+    from tests.test_validators import write_pdf
+    from tracker.content_check import RULE_FILENAME, RULE_REFUSED, WHERE_TITLE
+
+    locked = write_pdf(tmp_path / "W-2 Jane Smith 2025.pdf", password="secret123")
+    routing = route_file(locked, ITEMS)
+    assert routing.identifier is None and routing.candidates == ()
+    assert reasons.PASSWORD_PROTECTED.matches(routing.reason) and UNMATCHED in routing.reason
+    # Only the row its name pointed at, with the refusal beside it.
+    assert set(routing.evidence_record) == {"A01"}
+    assert [(e.rule, e.term, e.where) for e in routing.evidence_record["A01"]] == [
+        (RULE_REFUSED, reasons.PASSWORD_PROTECTED.code, ""),
+        (RULE_FILENAME, "W-2", WHERE_TITLE),
+    ]
+
+
 def test_a_tier_two_refusal_travels_as_the_reasons_own_code(tmp_path):
     from tracker.content_check import RULE_REFUSED
 

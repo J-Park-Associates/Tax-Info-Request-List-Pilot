@@ -475,7 +475,11 @@ def route_file(
     leads: list[tuple[str, str]] = []  # its keywords matched and only the year did not
     #: Nothing could be read, and the file's *name* carries this row's
     #: keywords. Never filed on (decision 92) and never a candidate: it is
-    #: the shortlist a person gets beside a document they must open.
+    #: the shortlist a person gets beside a document they must open - and,
+    #: since decision 117, the shortlist that decides whether a parked file
+    #: holds a request's reminder. A file the rules refused at tier 2 and
+    #: could not read a word of (a locked PDF, an empty upload) is asked
+    #: the same question as an unreadable scan, and lands here too.
     named: list[str] = []
     blocked: list[tuple[str, str]] = []  # content fits, but tier 2 refused the file
     refusals: list[str] = []    # every tier-2 reason, for an honest "why not"
@@ -503,6 +507,18 @@ def route_file(
             if words and (verdict := verdict_for(item)).ok:
                 blocked.append((item.identifier, tier2.reason))
                 record[item.identifier] = verdict.evidence + refused
+            elif not words and (said_by_the_name := _filename_evidence(path, item)):
+                # Refused, and not a word of it could be read - a locked
+                # PDF, an empty upload. The only thing left is the name
+                # the client gave it, exactly as for a scan with no text
+                # layer (decision 92): never a candidate and never a
+                # filing, but the line that tells the person opening this
+                # document which request it was probably meant for - and,
+                # since decision 117, the thing that holds that request's
+                # reminder instead of asking the client for a document
+                # they know they sent.
+                record[item.identifier] = refused + said_by_the_name
+                named.append(item.identifier)
             continue
         allowed.append(item)
         if words:
@@ -624,7 +640,12 @@ def route_file(
     # file type nobody accepts), not the keyword rules.
     if refusals and len(refusals) == sum(1 for i in items if _considers(i)):
         if len(set(refusals)) == 1:
-            return Routing(path=path, identifier=None, reason=f"{UNMATCHED}; {refusals[0]}")
+            # What its name said rides with it, for the person and for the
+            # reminder's hold (decision 117). Still no candidate: nothing
+            # is filed on a name, and the reason is the refusal's, not a
+            # guess at which request this was.
+            return Routing(path=path, identifier=None, reason=f"{UNMATCHED}; {refusals[0]}",
+                           evidence_record=_recorded_for(record, named))
         if all(reasons.EXTENSION_NOT_ALLOWED.matches(r) for r in refusals):
             ext = extension_of(path) or "(none)"
             return Routing(

@@ -424,6 +424,11 @@ function applyVocabulary() {
   $("view-label").textContent = vocab.view.open;
   $("edit-label").textContent = vocab.editor.open;
   $("root-input").placeholder = `e.g. ${vocab.example_root}`;
+  // The firm's own telephone number, beside its name: the label, the
+  // sentence under it and the number itself are all Python's.
+  $("phone-input").placeholder = `${vocab.settings.phone_label} — ${vocab.settings.phone_help}`;
+  $("phone-input").title = vocab.settings.phone_help;
+  $("phone-input").setAttribute("aria-label", vocab.settings.phone_label);
   $("ro-include-note").textContent =
     "Also add checklist rows this client has never had (otherwise they are offered, once, when the rollover is done, and added later in the editor)";
   for (const id of ["ro-year", "ne-year"]) {
@@ -463,6 +468,7 @@ async function loadEngagements(preferPath) {
   if (listed.needs_root) {
     $("root-input").value = clientsRoot;
     $("firm-input").value = vocab.firm || "";
+    $("phone-input").value = vocab.settings.phone || "";
     $("setup-note").textContent = clientsRoot
       ? `${clientsRoot} is not a folder any more. Point the app at the right one.`
       : "The scheduled job walks this same folder, so this is the only place it is set.";
@@ -498,6 +504,7 @@ async function saveRoot() {
     const result = await call(["set-root"], {
       root: $("root-input").value.trim(),
       firm: $("firm-input").value.trim(),
+      phone: $("phone-input").value.trim(),
     });
     banner(`Clients folder set to ${result.root} (written to ${result.settings_path}).`, "ok");
     await refresh();
@@ -1008,7 +1015,9 @@ function addEditorRow() {
 // The engagement's details, laid out from the vocabulary: a text box, a
 // date or a yes/no box for each field a person may change, and the value
 // as plain text for the ones they may not (the folder is the name; the
-// rollover writes Rolled From; the form was recorded once).
+// rollover writes Rolled From; the form was recorded once). Which fields
+// take a date box is Python's answer too (vocab.editor.date_fields), so
+// the page names no detail of its own.
 function renderEngagementFields(info) {
   show("ed-fields", vocab.editor.engagement_fields
     .filter((f) => f.key !== "name")
@@ -1024,7 +1033,7 @@ function renderEngagementFields(info) {
           el("span", {}, `${f.label} — ${f.help}`));
       }
       return el("label", { className: "field" }, el("span", { title: f.help }, f.label),
-        el("input", { type: f.key === "due" ? "date" : "text", value: value || "", dataset: { field: f.key }, title: f.help }));
+        el("input", { type: vocab.editor.date_fields.includes(f.key) ? "date" : "text", value: value || "", dataset: { field: f.key }, title: f.help }));
     }));
 }
 

@@ -31,6 +31,7 @@ from tracker.manifest import (
     load_engagement_info,
     load_manifest,
 )
+from tracker.records import ENGAGEMENT_LABELS
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME, SHARED_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
@@ -849,7 +850,10 @@ def test_rollover_carries_the_client_but_not_last_years_link_or_due(capsys, demo
     assert code == 0, payload
     info = payload["state"]["engagement"]
     assert info["client"] == "John Smith" and info["sender"] == "Jason"
-    assert info["link"] == "" and info["due"] == ""
+    assert info["link"] == ""
+    # Last year's due date does not carry either: what is there is this
+    # year's own default (decision 117), never the date twelve months gone.
+    assert info["due"] != "2026-04-15"
     assert info["name"] == ""                      # the folder is the name
     assert payload["created"] == api.ROLLOVER_NAME_PATTERN.format(prior="Smith 2025", year=2026)
 
@@ -858,8 +862,87 @@ def test_a_bad_due_date_is_a_sentence(capsys, demo_root):
     spec = {"name": "X", "due": "next friday", "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
-    assert payload["error"] == "Due date must be YYYY-MM-DD, got 'next friday'"
+    # The sentence names the field by the label the editor shows, so the
+    # two dates are refused in the same words (decision 117).
+    assert payload["error"] == f"{ENGAGEMENT_LABELS['due']} must be YYYY-MM-DD, got 'next friday'"
     assert not (demo_root / "X").exists()
+    bad = {"name": "X", "form": "1040", "filing_deadline": "april",
+           "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=bad)
+    assert code == 1
+    assert payload["error"] == f"{ENGAGEMENT_LABELS['filing_deadline']} must be YYYY-MM-DD, got 'april'"
+
+
+def test_create_defaults_both_dates_from_the_form_and_the_year_and_leaves_them_editable(capsys, demo_root):
+    """Decision 117: the reminder's ladder is measured against the Due
+    Date, so a new engagement has one without anybody typing it - the
+    form's own filing deadline, and the firm's ask-by target before it.
+    Both are ordinary details afterwards, and a date the wizard was given
+    is never written over."""
+    from tracker.templates import ask_by_for, filing_deadline_for
+
+    spec = {"name": "Willow 2025", "form": "1040", "year": 2025, "client": "Willow",
+            "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    deadline = filing_deadline_for("1040", 2025)
+    info = payload["state"]["engagement"]
+    assert info["filing_deadline"] == deadline.isoformat()
+    assert info["due"] == ask_by_for(deadline).isoformat()
+    assert load_engagement_info(demo_root / "Willow 2025").filing_deadline == deadline
+
+    # What a person typed wins over the default, and both stay editable.
+    typed = {**spec, "name": "Typed 2025", "due": "2026-03-01", "filing_deadline": "2026-04-18"}
+    code, payload = run(capsys, "create", stdin=typed)
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["due"] == "2026-03-01"
+    assert payload["state"]["engagement"]["filing_deadline"] == "2026-04-18"
+
+    # A form the catalog has no deadline for fills nothing, rather than guessing.
+    none = {"name": "No Form 2025", "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=none)
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["filing_deadline"] == ""
+    assert payload["state"]["engagement"]["due"] == ""
+
+
+def test_the_editor_saves_and_clears_the_filing_deadline(capsys, demo_root):
+    spec = {"name": "Smith", "form": "1040", "year": 2025,
+            "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = demo_root / "Smith"
+    rows = payload_of_state(capsys, engagement)["rules"]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"filing_deadline": "2026-04-20"}})
+    assert code == 0, payload
+    assert payload["saved"]["engagement"] == ["filing_deadline"]
+    assert payload["state"]["engagement"]["filing_deadline"] == "2026-04-20"
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"filing_deadline": ""}})
+    assert code == 0, payload
+    assert payload["state"]["engagement"]["filing_deadline"] == ""
+    assert load_engagement_info(engagement).filing_deadline is None
+
+
+def test_rollover_clears_the_filing_deadline_and_redefaults_it_for_the_new_year(capsys, demo_root):
+    """A statutory date belongs to its year. Last year's does not carry,
+    and the new year's comes from the same table the wizard used."""
+    from tracker.templates import ask_by_for, filing_deadline_for
+
+    spec = {"name": "Smith 2025", "form": "1040", "year": 2025, "client": "John Smith",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    prior = load_engagement_info(demo_root / "Smith 2025")
+    assert prior.filing_deadline == filing_deadline_for("1040", 2025)
+
+    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    assert code == 0, payload
+    deadline = filing_deadline_for("1040", 2026)
+    info = payload["state"]["engagement"]
+    assert info["filing_deadline"] == deadline.isoformat() != prior.filing_deadline.isoformat()
+    assert info["due"] == ask_by_for(deadline).isoformat()
 
 
 # ---------------------------------------------------- edit, lock and names ----
@@ -1294,7 +1377,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     from tracker import STANDING_RULES
     from tracker.filer import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.manifest import COLUMN_HELP, COLUMNS, DEFAULT_EXTENSIONS, Override, Status
-    from tracker.records import ENGAGEMENT_EDITABLE, ENGAGEMENT_FIELDS
+    from tracker.records import DATE_FIELDS, ENGAGEMENT_EDITABLE, ENGAGEMENT_FIELDS
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
     from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START
 
@@ -1330,6 +1413,8 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert editor["learned_note"] == api.LEARNED_NOTE
     assert [f["key"] for f in editor["engagement_fields"]] == [f for _, f in ENGAGEMENT_FIELDS]
     assert {f["key"] for f in editor["engagement_fields"] if f["editable"]} == set(ENGAGEMENT_EDITABLE)
+    # Which details take a date box is the record's answer, not the page's.
+    assert editor["date_fields"] == list(DATE_FIELDS)
     assert editor["minimums"] == {"expected_count": 1, "min_size_kb": 0}
     assert editor["any_extension"] == "*" and editor["no_date_check"] == "*"
     assert editor["set_aside_heading"] == view.NOT_APPLICABLE_SECTION
@@ -1339,6 +1424,66 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert vocab["schedule"] == {"start": DEFAULT_START, "every": DEFAULT_REPEAT_MINUTES,
                                  "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
                                  "task_name": TASK_NAME}
+    # The settings page's phone box: its label, its sentence and the
+    # number as recorded (decision 117).
+    assert vocab["settings"] == {"phone_label": api.FIRM_PHONE_LABEL,
+                                 "phone_help": api.FIRM_PHONE_HELP, "phone": ""}
+
+
+def test_the_settings_carry_the_firm_phone_and_the_vocabulary_names_its_box(capsys, demo_root):
+    """Decision 117: the firm's telephone number is a firm-wide setting
+    beside its name, said only by the final-notice reminder. The app shows
+    a box for it and types neither its label nor its sentence."""
+    from tracker.settings import firm_phone
+
+    code, payload = run(capsys, "settings")
+    assert code == 0 and payload["phone"] == ""
+
+    code, payload = run(capsys, "set-root", stdin={"root": str(demo_root), "phone": "(555) 010-2020"})
+    assert code == 0, payload
+    assert payload["phone"] == "(555) 010-2020" and firm_phone() == "(555) 010-2020"
+    assert payload["firm"] == "J Park & Associates, CPA", "a key not sent leaves what is recorded"
+    assert run(capsys, "settings")[1]["phone"] == "(555) 010-2020"
+
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["settings"]["phone"] == "(555) 010-2020"
+    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8"
+    )
+    html = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    for word in (api.FIRM_PHONE_LABEL, api.FIRM_PHONE_HELP):
+        assert word not in renderer and word not in html, word
+    assert "vocab.settings.phone_label" in renderer and "vocab.settings.phone_help" in renderer
+
+
+def test_the_reminder_payload_holds_on_a_parked_client_side_file(capsys, demo_root, tmp_path):
+    """Decision 117: a parked file the client could fix holds the request
+    the review card offers it for, and the card and the draft day agree -
+    both read the shortlist, from the index rows ``state`` already has."""
+    from tests.test_validators import write_pdf
+    from tracker import reasons
+    from tracker.reminder import PARKED_HOLD
+
+    spec = {"name": "Smith", "form": "1040", "client": "John Smith",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    folder = demo_root / "Smith"
+    # The client sent their W-2 with a password on it: nothing in it can
+    # be read, so no request accepts it and A01 stays Missing.
+    write_pdf(folder / SHARED_DIR_NAME / f"W-2 Jane Smith {PRIOR_YEAR + 1}.pdf",
+              pages=60, password="secret123")     # over the row's size floor
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(folder))[0] == 0
+
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(folder))
+    assert code == 0, payload
+    [parked] = [row for row in payload["index"] if row["decision"] == NEEDS_REVIEW]
+    assert parked["candidates"] == [], "a name is no candidate"
+    assert [s["identifier"] for s in payload["review"][0]["shortlist"]] == ["A01"]
+    held = payload["reminder"]["held"]
+    assert [row["identifier"] for row in held] == ["A01"]
+    assert held[0]["reason"] == PARKED_HOLD.format(ask=reasons.PASSWORD_PROTECTED.client_ask)
 
 
 def test_state_carries_the_held_rows_and_every_word_is_the_vocabularys(capsys, demo_root):

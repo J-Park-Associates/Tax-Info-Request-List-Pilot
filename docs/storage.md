@@ -12,7 +12,7 @@ row 104 retired the last workbook: **everything is in the record.**
 | | |
 |---|---|
 | **the record** holds the person's rules | the eleven accountant columns, and nothing else: a request's identifier, its document, its period, how many files are expected, which types and how small, its keywords, its date rule, a Manual Override and its Override Reason. Edited in the app's **Edit Request List** editor and nowhere else; every save is one `rules_changed` event. |
-| **the record** holds the engagement's details | the client, the share link, the due date, the sender, the firm, whether they are chased, whether the run skips them, what the engagement was rolled from and which catalog it was cut from. Written by the wizard, edited in the same editor, carried in the same event. |
+| **the record** holds the engagement's details | the client, the share link, the due date, the filing deadline, the sender, the firm, whether they are chased, whether the run skips them, what the engagement was rolled from and which catalog it was cut from. Written by the wizard, edited in the same editor, carried in the same event. |
 | **the record** holds what the machine decided | every document and where it went, every request's Status, Received Date, File Count and Validation Notes, every keyword a person's filing taught a request. |
 
 A person reads the last of those on the **Status Report**, which every pass
@@ -103,12 +103,14 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 4` (decision 104 dropped the workbook's
+One file, `PRAGMA user_version = 5` (decision 104 dropped the workbook's
 digest column; decision 107 added the verdict cache's two tables; decision
-116 added the `override_reason` column to `requests`; a file at an earlier
-version is refused by name, and is deleted and rebuilt — nothing is lost,
-the journals are what it is made of). A file at any other version is
-refused by name rather than opened hopefully.
+116 added the `override_reason` column to `requests`; decision 117 added
+the Filing Deadline to the engagement's details, and a detail is a column
+of `engagements`; a file at an earlier version is refused by name, and is
+deleted and rebuilt — nothing is lost, the journals are what it is made
+of). A file at any other version is refused by name rather than opened
+hopefully.
 
 | table | what it holds |
 |---|---|
@@ -360,3 +362,14 @@ before that decision hold for it is folded to it on every read by the one
 reader of a stored rule row and is never written again — the retired-value
 rule of decision 104 applied to a value. The journal and the store keep
 their bytes; a list read out and saved back unchanged is not an event.
+
+**Afterwards (decision 117) — the engagement records its filing deadline.**
+The reminder escalates in four stages against the Due Date and names the
+statutory date beside it from the third stage on, so the date is a detail
+of the engagement: it travels in the `rules_changed` event with the rest of
+them and is a column of `engagements` (`user_version` 5). The columns of
+that table are the fields of the details record itself, so the column cost
+nothing; the version is what a file written before it cannot have. The
+firm's phone number, which only the final notice says, is **not** here at
+all: it belongs to the firm rather than to an engagement, and it is kept
+beside the firm's name in the settings file.
