@@ -63,6 +63,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     shift_years,
 )
 from tracker.records import EngagementInfo
+from tracker.templates import ask_by_for, filing_deadline_for
 
 #: Why a row is on the new list. Reported in the CLI and the API's reply.
 ORIGIN_PRIOR = "carried from last year"
@@ -146,10 +147,40 @@ def carry_engagement_info(prior: EngagementInfo, *, rolled_from: str) -> Engagem
 
     A prior that never recorded a form carries a blank one - nothing here
     guesses which catalog an older engagement was built from.
+
+    The two dates are cleared here and refilled for the target year by
+    :func:`with_default_dates`, whichever way the rollover is run.
     """
     return replace(prior, name="", link="", due=None, filing_deadline=None,
                    active=True, rolled_from=rolled_from)
 
+
+def with_default_dates(info: EngagementInfo, form: str, year: int | None) -> EngagementInfo:
+    """The details with the two dates the form implies, where they are blank.
+
+    Decision 117. The reminder's ladder is measured against the Due Date,
+    so an engagement nobody typed a date into would sit on its first rung
+    for ever and the escalation would be a feature nobody switched on. The
+    Filing Deadline comes from the form's own table for the year after the
+    tax year, and the Due Date from it - the firm's ask-by target. Both are
+    ordinary details afterwards: editable, clearable, and never written
+    over once they hold anything.
+
+    A form the catalog has no deadline for fills nothing: a guessed
+    statutory date is worse than a blank one, because the blank is silent
+    and the guess is read out to a client.
+
+    It lives here, beside the carry rule that clears the two dates, and it
+    serves both ways an engagement is made from a form and a year: the
+    app's create and rollover commands and this module's command line
+    (decision 123).
+    """
+    if not form or year is None:
+        return info
+    deadline = info.filing_deadline or filing_deadline_for(form, year)
+    if deadline is None:
+        return info
+    return replace(info, filing_deadline=deadline, due=info.due or ask_by_for(deadline))
 
 
 def _carry(
@@ -369,10 +400,17 @@ if __name__ == "__main__":
 
     # Next year's list, in the record, where the editor shows it: the rows
     # this rollover built and last year's details carried by the one rule.
-    create_engagement(target, result.items, carry_engagement_info(
+    carried = carry_engagement_info(
         load_engagement_info(result.prior_dir),
         rolled_from=str(result.prior_dir.resolve()),   # the runner's cwd is not this one
-    ))
+    )
+    # Last year's dates did not carry, and the new year's are the form's:
+    # the catalog the prior recorded, or the one asked for here. The
+    # command line defaults them exactly as the app's rollover does, so an
+    # engagement is on the reminder's ladder however it was made
+    # (decision 123).
+    create_engagement(target, result.items,
+                      with_default_dates(carried, carried.form or ns.form, result.target_year))
 
     # All of the work before any of the report: the folders are made now,
     # so nothing about printing can leave a folder with a record and no

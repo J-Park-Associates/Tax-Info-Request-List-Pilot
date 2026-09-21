@@ -254,7 +254,11 @@ Two details drive it, and both are edited in the app. The **Due Date** is
 the firm's ask-by target. The **Filing Deadline** is the statutory date the
 return has to be filed by: a new engagement gets it from its form (weekends
 shifted forward the way the IRS shifts them) and the Due Date five days
-before that, and a holiday is yours to correct. Leave the Filing Deadline
+before that, and a holiday is yours to correct. A year rolled forward gets
+both the same way, whether it was rolled with **Roll Forward** in the app
+or with `python -m tracker.rollover` on the command line: the new year's
+Due Date and Filing Deadline come from the form's table, and you clear or
+change them in the editor like any other detail. Leave the Filing Deadline
 blank and the letter never mentions it. Leave the Due Date blank and every
 letter is stage 1, because there is no date to measure from and nothing to
 tell the client. The firm's phone number lives in the app's settings beside

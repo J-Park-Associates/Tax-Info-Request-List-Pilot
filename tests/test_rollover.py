@@ -479,6 +479,47 @@ def test_the_rollover_command_line_writes_the_carried_form_into_next_year(tmp_pa
     assert list((prior.parent / "Smith TY2026").glob("*.xlsx")) == []
 
 
+def test_the_rollover_command_line_fills_the_new_years_dates_from_the_form(tmp_path):
+    """Decision 123: the command line defaults the two dates the way the
+    app's Roll Forward does.
+
+    The carry clears last year's on purpose, and nothing on this path
+    refilled them - so a rolled engagement had no Due Date and every draft
+    was stage 1, months after the tax year. A prior with no form and no
+    ``--form`` still fills nothing: the no-guess rule is unchanged.
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from tracker.manifest import load_engagement_info
+    from tracker.templates import ask_by_for, filing_deadline_for
+
+    repo = Path(__file__).resolve().parent.parent
+    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+
+    prior = make_engagement(tmp_path / "Smith Family 2025", PRIOR,
+                            EngagementInfo(client="John Smith", form="1040"), scaffold=False)
+    subprocess.run(
+        [sys.executable, "-m", "tracker.rollover", prior.name, "Smith TY2026", "--year", "2026"],
+        cwd=prior.parent, check=True, capture_output=True, env=env,
+    )
+    info = load_engagement_info(prior.parent / "Smith TY2026")
+    assert info.filing_deadline == filing_deadline_for("1040", 2026)
+    assert info.due == ask_by_for(info.filing_deadline)
+
+    # No form recorded and none asked for: a statutory date is never guessed.
+    unknown = make_engagement(tmp_path / "Jones Family 2025", PRIOR,
+                              EngagementInfo(client="Jane Jones"), scaffold=False)
+    subprocess.run(
+        [sys.executable, "-m", "tracker.rollover", unknown.name, "Jones TY2026", "--year", "2026"],
+        cwd=unknown.parent, check=True, capture_output=True, env=env,
+    )
+    rolled = load_engagement_info(unknown.parent / "Jones TY2026")
+    assert rolled.filing_deadline is None and rolled.due is None
+
+
 def run_the_command_line(monkeypatch, argv, stdout):
     """``python -m tracker.rollover`` in this process, its console ``stdout``:
     the exit code, with a stream a test can choose the encoding of."""
