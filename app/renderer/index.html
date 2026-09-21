@@ -137,8 +137,17 @@
         <div class="card-head">
           <h3>Needs review</h3>
           <span class="summary">the client sent these; pick the request each belongs to — nothing is guessed</span>
+          <!-- Two renderings of the one queue (decision 114): the whole list,
+               or one card at a time. Both words are the API's, filled in at
+               runtime; the choice is the person's and is remembered on this
+               machine, never recorded. -->
+          <div id="review-mode" class="mode-toggle">
+            <button type="button" class="btn btn-small" id="review-mode-cards"></button>
+            <button type="button" class="btn btn-small" id="review-mode-list"></button>
+          </div>
         </div>
         <ul id="review-list" class="review"></ul>
+        <div id="review-deck" class="deck hidden"></div>
         <details id="dismissed-card" class="dismissed hidden">
           <summary id="dismissed-heading"></summary>
           <ul id="dismissed-list" class="review"></ul>

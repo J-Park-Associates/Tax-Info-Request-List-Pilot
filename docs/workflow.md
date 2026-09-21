@@ -102,6 +102,20 @@ person types.
   the row as it now is; nothing is moved and you look again. If a run has
   died, its lock is shown with its start time and can be cleared once it
   is older than `tracker.locking.STALE_LOCK_SECONDS`.
+
+  The queue can be read two ways, and the toggle in the card's head picks
+  one: **All at once** is the list above, every row with its whole picker;
+  **One at a time** shows one card, in the same order, with the document,
+  why it parked and the top suggestion with the sentence behind it.
+  **Accept the suggestion** files it to that suggestion — the same filing
+  **File it** makes, so the two cannot differ — **Pick another request**
+  opens that row in the list, where every request is offered, and
+  **Skip for now** sends the card to the back of the deck without sending
+  anything anywhere: the count does not change and nothing is remembered
+  about it. The deck is redrawn from the record after every action, so a
+  row filed or set aside elsewhere simply leaves it. Which rendering you
+  are on is remembered on this machine and nowhere else; setting a
+  document aside is the list's, because it deserves the note box.
 - **Not requested**, on anything in Needs Review no row asks for: an agency
   notice, an extra statement. The index row is rewritten
   `tracker.filer.NOT_REQUESTED`, with an optional note saying why and what

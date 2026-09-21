@@ -640,6 +640,63 @@ body {
     "reasons reasons reasons reasons reasons reasons";
 }
 .review select:focus-visible, .review input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+/* The row the card handed over to, in the app's own focus colour: a person
+   who asked for the full picker should not have to find the row again. */
+.review li.focused { outline: 2px solid var(--blue); outline-offset: -2px; border-radius: 8px; }
+
+/* ── The same queue, one card at a time (decision 114) ────────────────── */
+
+/* Layout only: the app's card and button classes, no colour of its own. The
+   two renderings sit in the one section and the toggle in its head says
+   which is showing. */
+.mode-toggle { display: flex; gap: 6px; }
+.mode-toggle .btn.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.deck { padding: 0 18px 14px; }
+.deck-card {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  grid-template-areas:
+    "name      name   name name"
+    "why       why    why  why"
+    "suggested suggested suggested suggested"
+    "reasons   reasons reasons reasons"
+    "keyword   keyword keyword keyword"
+    "position  accept open skip";
+  column-gap: 8px;
+  row-gap: 6px;
+  align-items: center;
+  padding: 14px 16px;
+  font-size: 13.5px;
+}
+.deck-card .r-name { grid-area: name; font-weight: 600; color: #b45309; }
+.deck-card .r-why { grid-area: why; color: var(--subtle); font-size: 12.5px; }
+.deck-suggested { grid-area: suggested; font-size: 12px; font-weight: 600; color: var(--navy); }
+.deck-card .r-reasons {
+  grid-area: reasons;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--subtle);
+  font-size: 12.5px;
+}
+.deck-card .r-reasons li { padding: 1px 0 1px 14px; text-indent: -14px; }
+.deck-card .r-reasons .r-nothing { font-style: italic; }
+.deck-card .r-keyword {
+  grid-area: keyword;
+  width: 240px;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: var(--text);
+}
+.deck-card .r-keyword:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.deck-position { grid-area: position; color: var(--subtle); font-size: 12.5px; }
+.deck-card .c-accept { grid-area: accept; }
+.deck-card .c-open { grid-area: open; }
+.deck-card .c-skip { grid-area: skip; }
 
 /* Set aside, not gone: folded away under its own count, and re-openable. */
 .dismissed { padding: 0 18px 12px; }

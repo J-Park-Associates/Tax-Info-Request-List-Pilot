@@ -85,6 +85,36 @@ def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
     assert "vocab.engagement_flag" in js
 
 
+def test_accept_and_file_it_are_one_call_site():
+    """Decision 114: Accept on a card is File it on the list, by construction.
+
+    The card takes the top suggestion in one click and the list takes any
+    request after reading the whole picker, but the filing underneath is one
+    decision, and two places building the ``assign`` call could disagree
+    about the keyword, the record version (decision 112) or what is said
+    afterwards. One function makes the call and every button reaches it, so
+    there is nothing for them to differ about; the same function is what
+    Keep it here on a moved copy (decision 110) goes through.
+    """
+    js = read("app/renderer/app.js")
+    assert js.count('withEng("assign")') == 1
+    assert len(re.findall(r"\bfileRow\(", js)) == 4      # the one definition and its three callers
+
+
+def test_the_review_mode_key_is_a_key_and_not_a_word():
+    """Decision 114: which rendering a person is on is remembered on the
+    machine, under a ``localStorage`` key - nothing about the queue is
+    recorded (decision 83). A key is not a word anybody reads, which is why
+    the renderer may type it at all, so it must be no word the API says and
+    must carry no space."""
+    import tracker.api as api
+
+    js = read("app/renderer/app.js")
+    key = re.search(r'const REVIEW_MODE_STORAGE_KEY = "([^"]+)";', js).group(1)
+    assert key and not re.search(r"\s", key)
+    assert key not in {str(word) for word in api._vocab()["review_labels"].values()}
+
+
 def test_the_shell_runs_only_commands_the_api_has():
     # main.js learns the allowlist from the API's vocabulary; before that it
     # runs exactly one command, the one the renderer calls first, and that
@@ -544,6 +574,8 @@ def test_the_roadmap_names_every_status_in_bold():
 def test_documents_name_buttons_by_their_labels():
     """A doc may say 'the X button' only for a button the page actually has."""
     from tracker.api import (
+        ACCEPT_LABEL,
+        CARD_MODE_LABEL,
         EDITOR_ADD_LABEL,
         EDITOR_CANCEL_LABEL,
         EDITOR_OPEN_LABEL,
@@ -551,8 +583,11 @@ def test_documents_name_buttons_by_their_labels():
         EDITOR_REMOVE_LABEL,
         EDITOR_SAVE_LABEL,
         KEEP_LABEL,
+        LIST_MODE_LABEL,
+        OPEN_IN_LIST_LABEL,
         RESTORE_LABEL,
         SEND_TO_REVIEW_LABEL,
+        SKIP_LABEL,
     )
     from tracker.view import VIEW_OPEN_LABEL
 
@@ -571,6 +606,9 @@ def test_documents_name_buttons_by_their_labels():
     # And the three answers to a working copy that is not where the record
     # put it (decision 110), which the workflow names by their labels.
     labels |= {RESTORE_LABEL, KEEP_LABEL, SEND_TO_REVIEW_LABEL}
+    # And the card's three answers with the two words the toggle between the
+    # review queue's renderings carries (decision 114).
+    labels |= {ACCEPT_LABEL, SKIP_LABEL, OPEN_IN_LIST_LABEL, CARD_MODE_LABEL, LIST_MODE_LABEL}
     labels = {label for label in labels if label and "${" not in label}
     for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
         text = read(rel)
@@ -876,11 +914,21 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     import tracker.api as api
 
     js = read("app/renderer/app.js")
-    for command in ("assign", "dismiss", "unfile"):
+    # Two of the three read the row's version where they send it...
+    for command in ("dismiss", "unfile"):
         sent = re.search(rf'call\(withEng\("{command}"\), \{{(.*?)\}}\)', js, re.S)
         assert sent, command
         assert "seq:" in sent.group(1), command
         assert "li.dataset.seq" in sent.group(1), command
+    # ...and since decision 114 the filing has one call site for the three
+    # buttons that make it, so each of them reads the version off the element
+    # it was drawn on and hands it to that one function.
+    sent = re.search(r'call\(withEng\("assign"\), \{(.*?)\}\)', js, re.S)
+    assert sent and "seq" in sent.group(1)
+    for handler in ("assignParked", "keepMoved", "acceptCard"):
+        body = re.search(rf"async function {handler}\(.*?\n\}}", js, re.S)
+        assert body, handler
+        assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0), handler
     # Both row builders put it on the element the handlers read it back from.
     assert js.count("seq: e.seq") == 2
     # And the sentence a refusal shows is the API's, never the renderer's.

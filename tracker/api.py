@@ -234,6 +234,24 @@ MOVED_HEADING = "Moved by hand ({n})"
 MOVED_SUMMARY = ("these working copies are not where the record put them; "
                  "choose for each - nothing is guessed")
 MOVED_NOWHERE = "nowhere under the firm's folder"
+#: The review queue's second rendering (decision 114): the same queue, one
+#: card at a time, in the order this module already ships it. Three answers
+#: sit on a card - take the top suggestion, open the row in the list where
+#: every request is offered (decision 84), or send the card to the back of
+#: the deck - and two words label the toggle between the renderings. The
+#: heading over the card's suggestion is ``SUGGESTED_HEADING``, the list's
+#: own: one queue, one word for a suggestion, and no second word to keep in
+#: step with it. ``CARD_POSITION`` is the card's only number, filled by the
+#: renderer with the card's place in the deck and the queue's length.
+#: Nothing here is a command - both renderings file through ``assign`` - and
+#: nothing about the deck is recorded (decision 83). The renderer shows
+#: these and types none of them.
+ACCEPT_LABEL = "Accept the suggestion"
+SKIP_LABEL = "Skip for now"
+OPEN_IN_LIST_LABEL = "Pick another request"
+CARD_MODE_LABEL = "One at a time"
+LIST_MODE_LABEL = "All at once"
+CARD_POSITION = "{n} of {total}"
 #: What a review command says when it was sent without the row's sequence
 #: number (decision 112). The app is drawn from ``state``, which carries one
 #: for every row, so a spec without it is a caller acting on no view at all -
@@ -404,7 +422,16 @@ def _vocab() -> dict:
                           "restore": RESTORE_LABEL, "keep": KEEP_LABEL,
                           "send_to_review": SEND_TO_REVIEW_LABEL,
                           "moved_heading": MOVED_HEADING, "moved_summary": MOVED_SUMMARY,
-                          "moved_nowhere": MOVED_NOWHERE},
+                          "moved_nowhere": MOVED_NOWHERE,
+                          # Decision 114's second rendering of the same
+                          # queue: the card's three answers, the toggle's
+                          # two words and the position line. The card's
+                          # heading over its suggestion is "suggested"
+                          # above - one queue, one word for a suggestion.
+                          "accept": ACCEPT_LABEL, "skip": SKIP_LABEL,
+                          "open_in_list": OPEN_IN_LIST_LABEL,
+                          "card_mode": CARD_MODE_LABEL, "list_mode": LIST_MODE_LABEL,
+                          "card_position": CARD_POSITION},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason

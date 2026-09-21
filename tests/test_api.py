@@ -673,6 +673,13 @@ def test_the_vocabulary_carries_every_word_the_review_card_shows(capsys, demo_ro
     assert labels["file_anyway"] == api.FILE_ANYWAY_LABEL
     assert labels["suggested"] == api.SUGGESTED_HEADING
     assert labels["other_requests"] == api.OTHER_REQUESTS_HEADING
+    # ...its second rendering's three answers and the toggle's two words
+    # (decision 114), which head their suggestion with the word above.
+    assert labels["accept"] == api.ACCEPT_LABEL and labels["skip"] == api.SKIP_LABEL
+    assert labels["open_in_list"] == api.OPEN_IN_LIST_LABEL
+    assert labels["card_mode"] == api.CARD_MODE_LABEL
+    assert labels["list_mode"] == api.LIST_MODE_LABEL
+    assert labels["card_position"] == api.CARD_POSITION
     # ...and every word tracker.review owns, from tracker.review.
     assert vocab["triage"] == {
         "nothing_suggested": NOTHING_SUGGESTED,
@@ -1401,6 +1408,10 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "send_to_review": api.SEND_TO_REVIEW_LABEL,
         "moved_heading": api.MOVED_HEADING, "moved_summary": api.MOVED_SUMMARY,
         "moved_nowhere": api.MOVED_NOWHERE,
+        "accept": api.ACCEPT_LABEL, "skip": api.SKIP_LABEL,
+        "open_in_list": api.OPEN_IN_LIST_LABEL,
+        "card_mode": api.CARD_MODE_LABEL, "list_mode": api.LIST_MODE_LABEL,
+        "card_position": api.CARD_POSITION,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
