@@ -67,6 +67,14 @@ passed in from anywhere else - no workbook reading, no first reading, no
 digest of a file. An engagement whose journal carries no rules event has
 no rules, on either side of the check.
 
+**And the moves begun and not finished** (decision 119). ``intents`` is
+the fold of the journal's ``moving`` lines: what a pass or a person was
+about to do to the disk, written before the first file operation and
+deleted by the row event that completes it. It is a derivation of the
+journal like the rest - :func:`rebuild_engagement` gives the same open
+set and :func:`check` compares the two folds - and it is what the next
+pass finishes a half-made move from.
+
 **And the verdict cache, which is not the record's** (decision 107). The
 tier-3 verdict cache - the per-path memo of size, mtime and digest that
 spares an unchanged file its hash, and the verdicts keyed by content
@@ -178,7 +186,12 @@ ENV_STORE = "TRACKER_STORE"
 #: like every version before it - the date itself travels in the
 #: ``rules_changed`` event, so nothing is lost and only the first pass is
 #: slower.
-SCHEMA_VERSION = 5
+#: Version 6 (decision 119) added the ``intents`` table, the moves begun
+#: and not yet finished: ``CREATE TABLE IF NOT EXISTS`` on open would make
+#: the table and leave a version-5 file's earlier lines unfolded into it,
+#: so the file is refused, deleted and rebuilt from the journals like the
+#: others - the intents are ``moving`` lines in them.
+SCHEMA_VERSION = 6
 
 #: The verdict cache's two tables (decision 107). Named once, here, because
 #: the cache in :mod:`tracker.content_check` and the tests both speak of
@@ -303,6 +316,18 @@ SCHEMA: tuple[str, ...] = (
         {_quoted(DOCUMENT_COLUMNS)},
         "position" INTEGER NOT NULL,
         seq INTEGER NOT NULL,
+        PRIMARY KEY (engagement_id, "key")
+    )""",
+    # The moves begun and not finished (decision 119). One row per index
+    # row's identity, holding the ``moving`` line whole: the operations, the
+    # row the decision will record and the event that completes it. The row
+    # event that names the key deletes it, so this table is empty after
+    # every pass that was not interrupted.
+    """CREATE TABLE IF NOT EXISTS intents (
+        engagement_id INTEGER NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+        "key" TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        payload TEXT NOT NULL,
         PRIMARY KEY (engagement_id, "key")
     )""",
     """CREATE TABLE IF NOT EXISTS events (
@@ -896,6 +921,56 @@ def _write_rule(conn: sqlite3.Connection, engagement_id: int, row: dict) -> None
     )
 
 
+def _write_intent(conn: sqlite3.Connection, engagement_id: int, event: dict, seq: int) -> None:
+    """One move begun, or one abandoned (decision 119).
+
+    The whole line is kept, because what a recovery needs is the whole of
+    it: the operations, the row the decision will record, the event that
+    completes it and the day it was written. Replaced rather than added to
+    - a key is one row and a row is one decision at a time - and deleted on
+    the abandonment, as it is on the row event that completes it. The same
+    fold as :func:`tracker.ledger._apply_intent_event`, which is what
+    :func:`check` holds this table to.
+    """
+    key = event.get(ledger.KEY_KEY)
+    if event.get(ledger.EVENT_KEY) != ledger.MOVING:
+        _close_intent(conn, engagement_id, key)
+        return
+    conn.execute(
+        'INSERT OR REPLACE INTO intents (engagement_id, "key", seq, payload) VALUES (?, ?, ?, ?)',
+        (engagement_id, key, seq, json.dumps(event, ensure_ascii=False, sort_keys=True)),
+    )
+
+
+def _close_intent(conn: sqlite3.Connection, engagement_id: int, key: str | None) -> None:
+    """The intent this key had open, if it had one, is finished with."""
+    if key:
+        conn.execute('DELETE FROM intents WHERE engagement_id = ? AND "key" = ?',
+                     (engagement_id, key))
+
+
+def open_intents(conn: sqlite3.Connection, engagement_dir: Path | str) -> list[dict]:
+    """The moves this engagement began and has not finished, oldest first.
+
+    What the filer's recovery works from at the
+    start of every pass, and what the person's actions refuse on: a folder
+    with an intent open is a folder the record is in the middle of a
+    decision about, and the honest answer to a click on it is "the next
+    pass finishes that first". Oldest first, because the operations of one
+    decision may sit on the ones of another (a copy from a path an earlier
+    intent put a file at).
+
+    A read: no lock. ``[]`` for an engagement the store does not hold, and
+    for the ordinary case of a record where every decision that began has
+    ended.
+    """
+    row = _engagement_row(conn, engagement_dir)
+    if row is None:
+        return []
+    return [json.loads(one["payload"]) for one in conn.execute(
+        "SELECT payload FROM intents WHERE engagement_id = ? ORDER BY seq", (row["id"],))]
+
+
 def _write_engagement_info(conn: sqlite3.Connection, engagement_id: int, info: dict) -> None:
     """The engagement's details, as ``records.info_to_json`` shapes them.
 
@@ -956,6 +1031,35 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         for identifier, stored in (statuses or {}).items():
             if not isinstance(stored, dict):
                 refuse(f"carries a status for {identifier!r:.40} that is not a mapping")
+    elif name == ledger.MOVING:
+        # The intent is what a later pass will finish a half-made move
+        # from, so its shape is checked here rather than trusted in the
+        # middle of a recovery with a file already moved: the operations
+        # are a list, each one names what it does, where from and - unless
+        # it is a stand-down - where to, and the row it carries is a row.
+        ops = event.get(ledger.OPS_KEY)
+        if not isinstance(ops, list):
+            refuse(f"carries {ledger.OPS_KEY!r} that is not a list")
+        for op in ops:
+            if not isinstance(op, dict):
+                refuse(f"carries an operation that is not one: {op!r:.60}")
+            kind = op.get(ledger.OP_KEY)
+            if kind not in (ledger.OP_MOVE, ledger.OP_COPY, ledger.OP_REMOVE):
+                refuse(f"carries an operation this version does not know: {kind!r:.40}")
+            if not isinstance(op.get(ledger.FROM_KEY), str):
+                refuse(f"carries a {kind} with no {ledger.FROM_KEY!r}")
+            if kind != ledger.OP_REMOVE and not isinstance(op.get(ledger.TO_KEY), str):
+                refuse(f"carries a {kind} with no {ledger.TO_KEY!r}")
+            if not isinstance(op.get(ledger.DIGEST_KEY, ""), str):
+                refuse(f"carries a {kind} whose {ledger.DIGEST_KEY!r} is not text")
+        row = event.get(ledger.ROW_KEY)
+        if row is not None and not isinstance(row, dict):
+            refuse(f"carries {ledger.ROW_KEY!r} that is not a row")
+        also = event.get(ledger.ALSO_KEY)
+        if also is not None and not isinstance(also, list):
+            refuse(f"carries {ledger.ALSO_KEY!r} that is not a list")
+        if not isinstance(event.get(ledger.DAY_KEY, ""), str):
+            refuse(f"carries {ledger.DAY_KEY!r} that is not a day")
 
 
 def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, start: int) -> int:
@@ -997,6 +1101,12 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
             if was:
                 seqs.pop(was, None)
             seqs[event.get(ledger.KEY_KEY)] = seq
+            # The decision this key was moving under is recorded now, so
+            # there is nothing left to finish (decision 119).
+            _close_intent(conn, engagement_id, event.get(ledger.KEY_KEY))
+            _close_intent(conn, engagement_id, was)
+        elif name in (ledger.MOVING, ledger.MOVE_ABANDONED):
+            _write_intent(conn, engagement_id, event, seq)
         elif name == ledger.SCANNED:
             for identifier in (event.get(ledger.STATUSES_KEY) or {}):
                 status_seqs[identifier_key(identifier)] = seq
@@ -1373,6 +1483,7 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     problems = _check_documents(conn, engagement["id"], name, folded.rows)
     problems += _check_statuses(conn, engagement["id"], name, folded.statuses)
     problems += _check_rules(conn, engagement["id"], name, folded)
+    problems += _check_intents(conn, engagement["id"], name, folded.intents)
     return problems
 
 
@@ -1402,6 +1513,34 @@ def _check_documents(
     for held in stored[len(rows):]:
         problems.append(
             f"{name}: index row {held['key']!r} is in the store and not in the record")
+    return problems
+
+
+def _check_intents(
+    conn: sqlite3.Connection, engagement_id: int, name: str, recorded: dict[str, dict]
+) -> list[str]:
+    """The moves this engagement has open, both ways round (decision 119).
+
+    The two folds have to agree about exactly this: a recovery finishes
+    what the table says is open, and a table that had kept an intent the
+    journal closed would move a file the record has already recorded - the
+    one thing this whole decision exists to stop. So the line is compared
+    whole, as the documents' fields are.
+    """
+    stored = {row["key"]: row["payload"] for row in conn.execute(
+        'SELECT "key", payload FROM intents WHERE engagement_id = ?', (engagement_id,))}
+    problems = []
+    for key, event in recorded.items():
+        held = stored.get(key)
+        theirs = json.dumps(event, ensure_ascii=False, sort_keys=True)
+        if held is None:
+            problems.append(f"{name}: the move open on {key!r} is in the record and not in the store")
+        elif held != theirs:
+            problems.append(
+                f"{name}: the move open on {key!r}: the store holds {held!r:.120}, "
+                f"the record carries {theirs!r:.120}")
+    for key in sorted(set(stored) - set(recorded)):
+        problems.append(f"{name}: the move open on {key!r} is in the store and not in the record")
     return problems
 
 

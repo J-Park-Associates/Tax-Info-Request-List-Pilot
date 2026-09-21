@@ -103,12 +103,13 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 5` (decision 104 dropped the workbook's
+One file, `PRAGMA user_version = 6` (decision 104 dropped the workbook's
 digest column; decision 107 added the verdict cache's two tables; decision
 116 added the `override_reason` column to `requests`; decision 117 added
 the Filing Deadline to the engagement's details, and a detail is a column
-of `engagements`; a file at an earlier version is refused by name, and is
-deleted and rebuilt — nothing is lost, the journals are what it is made
+of `engagements`; decision 119 added the `intents` table; a file at an
+earlier version is refused by name, and is deleted and rebuilt — nothing
+is lost, the journals are what it is made
 of). A file at any other version is refused by name rather than opened
 hopefully.
 
@@ -120,6 +121,7 @@ hopefully.
 | `documents` | the index: one row per preserved original, every column the index row has, plus the identity it is keyed under, the place it holds in the index's own order, and the sequence number that last wrote it - read back by `document_seqs()`, and the app carries it |
 | `learned_keywords` | a keyword a person's filing taught one request |
 | `events` | every journal line, in order, with the whole line kept as JSON text |
+| `intents` | the moves begun and not finished (decision 119): one row per index row's identity, holding the whole `moving` line — the operations, the row the decision will record and the event that completes it. Empty after any pass that was not interrupted |
 | `verdicts` | the tier-3 verdict cache (decision 107): one row per content digest and rules fingerprint, the verdict as JSON text - pass/fail, reason, the firm's own evidence terms, never client text - and the `CACHE_VERSION` it was written under. **Not the record's**: see below |
 | `file_memos` | the cache's memo: one row per working copy or drop the pass has hashed, its size, mtime and digest, so an unchanged file is not read again. **Not the record's** either |
 
@@ -142,7 +144,46 @@ home from the client's original, already home, or refused a home holding
 a different file and sent to review instead. One name again, because the
 row the line carries says which. The rest of the names are not row events and fold their own
 way: `scanned` (the statuses), `keyword_learned`, `rules_changed`,
-`drafted`, and the retired `rules_imported` and `migrated`.
+`drafted`, `moving` and `move_abandoned`, and the retired
+`rules_imported` and `migrated`.
+
+## The intent is the decision
+
+The record has been all-or-nothing since decision 102 and each step on the
+disk is atomic on its own; what sat between them was a run killed after a
+file had moved and before the row that explains it was written. A pass
+that had copied a document and not yet recorded the batch, a person's
+filing killed between the move and the record, a copy the power cut in
+half — each left the folder ahead of the record, and only a person could
+tell.
+
+So **what a decision is about to do goes on the record before it does it**
+(decision 119). One `moving` line, under the lock the writer already
+holds, keyed by the row's own identity: the file operations in order with
+the digest each end is expected to hold, the row the decision will record,
+the event that will complete it, and whether a pass or a person decided.
+The row event that follows *is* the completion — it names the same key, and
+both folds drop the intent when they see it — so nothing has to be closed
+by hand and a decision that lands leaves nothing behind. A refusal is not a
+crash: the rollback that puts the files back appends `move_abandoned`, so
+the next pass does not finish forward a move the record would not take.
+
+**Recovery is at the start of every pass**, before anything else looks.
+Each operation is checked by its fingerprint and finished where reality
+matches — a move not yet made is made, a copy already in place is simply
+recorded, a stand-down already done is done — and then the intent's own
+row is recorded as the intent said: a person's filing as theirs, dated
+the day they made it, with the keyword it taught in the same transaction.
+Where a destination holds a different file nothing there is touched and the
+row parks, naming it; where the bytes are at neither end the row parks and
+says so. A person's action on an engagement with a move open is refused
+until a pass — which the app's **Run now** is — has finished it.
+
+**The fingerprint identifies; the record decides.** Recovery completes a
+decision the record already holds, and the fingerprint says only which half
+of it happened. It is the line decisions 109, 110 and 111 draw: no file is
+ever moved on the strength of what it looks like, only on the strength of
+what was decided.
 
 Every column holds what the frozen record holds, serialised the record's own
 way — dates as ISO text, the yes/no cells as 0 and 1, tuples as JSON. The

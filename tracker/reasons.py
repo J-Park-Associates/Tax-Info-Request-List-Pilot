@@ -24,7 +24,11 @@ word of it. :data:`FILE_MOVED` and :data:`COPY_CHANGED` are a third kind
 again (decision 109): the scanner writes them into a request's notes, but
 it does not decide them - it reads them off the rows the filer's sweep of
 the working copies recorded, so what the fingerprint identified and what a
-person is told are one sentence apart.
+person is told are one sentence apart. :data:`INTERRUPTED_MOVE` and
+:data:`INTERRUPTED_MOVE_LOST` (decision 119) are of that kind too: the
+filer's recovery writes them onto the row it could not finish as decided,
+and the scanner says them of the request whose folder the file was going
+into.
 
 And not every sentence here is a cause at all. :data:`NAMES_SEVERAL_FORMS`
 is what the index says when a document *was* filed - under several
@@ -229,6 +233,32 @@ COPY_CHANGED = Reason(
               "here looks - never the client",
 )
 
+#: A run died between one of its file operations and the record of them,
+#: and what it was about to do could not be finished as it was decided
+#: (decision 119): the place the file was going holds a different file
+#: now. Nothing there is touched - it is somebody's, and the machine never
+#: deletes what it finds - so the row parks with a working copy of its own
+#: and this says why. Firm-side, always: the client sent the document, and
+#: a power cut here is not theirs to answer for.
+INTERRUPTED_MOVE = Reason(
+    "interrupted-move",
+    "an interrupted step meant to put {listed}; a person should look",
+    "an interrupted step meant to put", firm_side=True,
+    firm_note="a step interrupted here was putting a working copy somewhere that now holds "
+              "a different file; a person here looks - never the client",
+)
+#: The same interrupted step, where neither the place it was taking the
+#: file from nor the place it was taking it to holds those bytes now
+#: (decision 119). Nothing is guessed from that: the row parks and the
+#: sentence says whether the client's own original is still there.
+INTERRUPTED_MOVE_LOST = Reason(
+    "interrupted-move-lost",
+    "an interrupted step was moving {listed}; a person should look",
+    "an interrupted step was moving", firm_side=True,
+    firm_note="a step interrupted here was moving a working copy and neither end of it holds "
+              "those bytes now; a person here looks - never the client",
+)
+
 #: One page, several forms (decision 94, the owner's). Neither of these is
 #: a refusal, so neither is a :class:`Reason` and neither is in ``ALL``:
 #: they are what the index's Reason column says about a document that
@@ -269,7 +299,7 @@ ALL: tuple[Reason, ...] = (
     NO_PAGES, UNREADABLE_PDF, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
     ISSUER_NOT_NAMED,
-    FILE_MOVED, COPY_CHANGED,
+    FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST,
     PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )

@@ -231,6 +231,28 @@ def _wandered(engagement_dir: Path, rows: list[IndexEntry]) -> frozenset[Path]:
     )
 
 
+def _interrupted(engagement_dir: Path, rows: list[IndexEntry]) -> dict[Path, str]:
+    """Where an interrupted step was putting a working copy, and what the
+    row it parked says about it (decision 119).
+
+    The file at that path is nobody's: a step that died half way left it -
+    a copy truncated by the power going out is the shape of it - and the
+    row it was for parked with a working copy of its own. Counting it
+    would read a request as Failed Validation for a document the client
+    sent correctly, which is the thing decision 119 fixes, so it is not
+    counted and the request is told in the row's own sentence instead.
+    Firm-side, always: no draft asks a client about a power cut here.
+    """
+    from tracker.filer import interrupted_at, interrupted_note
+
+    found: dict[Path, str] = {}
+    for row in rows:
+        where = interrupted_at(row)
+        if where:
+            found[engagement_dir / where] = interrupted_note(row)
+    return found
+
+
 def _changed_copy_warnings(
     claimed: dict[Path, IndexEntry], folders: set[Path], cache: ContentCache
 ) -> list[str]:
@@ -284,6 +306,7 @@ def _scan_item(
     accepted: frozenset[Path] = frozenset(),
     claimed: dict[Path, IndexEntry] | None = None,
     excluded: frozenset[Path] = frozenset(),
+    interrupted: dict[Path, str] | None = None,
 ) -> StatusUpdate:
     """Run tiers 1-3 for one manifest row and resolve its status.
 
@@ -301,15 +324,25 @@ def _scan_item(
     (``COPY_CHANGED``), and a row whose copy has left one of these folders
     is said too (``FILE_MOVED``) - both firm-side, so no draft asks the
     client for a file the firm moved.
+
+    ``interrupted`` is where a step that died half way was putting a copy,
+    and the sentence the row it parked carries (decision 119). It is not
+    counted either - what sits there is the wreck of a step, not a
+    document anybody filed - and the sentence goes on the request, so a
+    request whose folder holds a copy the power cut in half reads Missing
+    with the firm's own note rather than Failed Validation for a file the
+    client sent correctly.
     """
     from tracker.filer import FILE_MOVED, moved_to, prepared_location
 
     claimed = claimed or {}
+    interrupted = interrupted or {}
     results = [
         fr for folder in folders for fr in check_folder(folder, item, pdf_cache=pdf_cache).files
     ]
-    if excluded:
-        results = [f for f in results if f.path not in excluded]
+    if excluded or interrupted:
+        results = [f for f in results
+                   if f.path not in excluded and f.path not in interrupted]
     pending = [f for f in results if f.pending_sync]
     # A person's decision waives tier 2 as well as tier 3: they looked at
     # the file, whatever its size or type says.
@@ -375,6 +408,9 @@ def _scan_item(
                 prepared_location(path.parent, path.name),
                 now or f"nowhere under {PREPARED_DIR_NAME}",
             )))
+    for path, sentence in interrupted.items():
+        if path.parent in here and path.exists():
+            facts.append(sentence)
     for f in results:
         row = claimed.get(f.path)
         if row is not None and _a_stranger_at(f.path, row, cache):
@@ -591,20 +627,22 @@ def scan_engagement(
         pdf_cache = PdfVerdictCache()     # this scan's; a PDF is parsed once, not once per row
         assigned = assign_folders(prepared_dir, [i.identifier for i in items])
 
-        # The record, read once, for the three things this scan asks of it:
-        # which copies a person filed, which paths the record claims, and
-        # which file is another row's mislaid copy and so nobody's to count
-        # (decision 109). The filer's sweep decided all three under the same
-        # lock earlier in this pass; the scan reads and acts, and writes no
-        # row of its own.
+        # The record, read once, for the four things this scan asks of it:
+        # which copies a person filed, which paths the record claims, which
+        # file is another row's mislaid copy and so nobody's to count
+        # (decision 109), and where a step that died half way left one
+        # (decision 119). The filer's sweep and its recovery decided all of
+        # them under the same lock earlier in this pass; the scan reads and
+        # acts, and writes no row of its own.
         rows = _the_index(engagement_dir)
         accepted = _filed_by_a_person(engagement_dir, rows, cache)
         claimed = _claimed_paths(engagement_dir, rows)
         excluded = _wandered(engagement_dir, rows)
+        interrupted = _interrupted(engagement_dir, rows)
         updates = {
             item.identifier: _scan_item(
                 item, assigned[item.identifier], cache, today, pdf_cache, accepted=accepted,
-                claimed=claimed, excluded=excluded,
+                claimed=claimed, excluded=excluded, interrupted=interrupted,
             )
             for item in items
         }

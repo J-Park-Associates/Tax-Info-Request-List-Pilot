@@ -485,3 +485,48 @@ def test_a_copy_moved_event_folds_as_a_row_event_in_both_folds_and_check_agrees(
         assert [e["decision"] for e in store.documents(fresh, engagement)] == [FILE_MOVED]
     finally:
         fresh.close()
+
+
+def test_a_moving_event_folds_to_an_open_intent_and_the_row_event_that_names_its_key_closes_it(
+        engagement, tmp_path, monkeypatch):
+    """Decision 119's one non-row event that leaves something behind.
+
+    Both folds keep the same open set - this module's replay from the first
+    line and the store's line-at-a-time apply - so a store rebuilt from the
+    journal alone finds exactly the moves a recovery has to finish, ``check``
+    compares the two, and the row event that names the key closes it.
+    """
+    from tests.test_filer import killed_at_the_record
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    killed_at_the_record(monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        file_drops(engagement, today=DAY1)
+
+    events = ledger.read_events(engagement)
+    open_now = ledger.replay(events).intents
+    assert ledger.MOVING not in ledger.ROW_EVENTS
+    assert [e[ledger.EVENT_KEY] for e in events][-1] == ledger.MOVING
+    assert list(open_now) == [f"{SHARED_DIR_NAME}/PBC/w2.pdf"]
+    assert open_now == {events[-1][ledger.KEY_KEY]: events[-1]}
+    assert ledger.fold(events) == {}                 # and no row yet: it was not recorded
+
+    conn = store.connect()
+    assert store.open_intents(conn, engagement) == list(open_now.values())
+    assert store.check(conn, tmp_path, engagement) == []
+
+    fresh = store.open(tmp_path / "rebuilt.db")
+    try:
+        store.rebuild_engagement(fresh, tmp_path, engagement)
+        assert store.open_intents(fresh, engagement) == list(open_now.values())
+        assert store.check(fresh, tmp_path, engagement) == []
+    finally:
+        fresh.close()
+
+    file_drops(engagement, today=DAY2)               # the pass finishes it and records the row
+
+    closed = ledger.read_events(engagement)
+    assert ledger.replay(closed).intents == {}
+    assert store.open_intents(store.connect(), engagement) == []
+    assert list(ledger.fold(closed)) == [f"{SHARED_DIR_NAME}/PBC/w2.pdf"]
+    assert store.check(store.connect(), tmp_path, engagement) == []
