@@ -25,6 +25,7 @@ from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
 
 REPO = Path(__file__).resolve().parent.parent
 BUILD_WORKFLOW = "build.yml"
+GATE_WORKFLOW = "gate.yml"
 BUILD_SCRIPT = "Build App.bat"
 
 
@@ -131,6 +132,32 @@ def test_both_workflows_name_the_one_interpreter_the_office_runs():
     ci = read(".github/workflows/ci.yml")
     assert f'python-version: "{office}"' in ci
     assert f'python-version: "{floor}"' in ci                 # and the floor is still run
+
+
+def test_windows_runs_on_main_and_by_label_and_every_job_has_a_timeout():
+    """Decision 122: a pull request pays for Linux; Windows is main's, or the label's.
+
+    The Windows pair was four fifths of a run's price and repeated a gate that
+    had just run on Windows locally. Windows is its own job now, because a
+    job's own `if:` is evaluated before a matrix is expanded and cannot see
+    it — so the steps live once, in gate.yml, which both jobs call. main must
+    keep the Windows check, and the label must be able to ask for it on a pull
+    request, which it can only do if labelling one starts a run.
+    """
+    ci = read(".github/workflows/ci.yml")
+    gate = read(f".github/workflows/{GATE_WORKFLOW}")
+    condition = re.search(r"^\s*if: (.+)$", ci.split("\n  windows:\n", 1)[1], re.M).group(1)
+    assert "github.event_name == 'push'" in condition               # main keeps the Windows check
+    assert "labels.*.name, 'windows'" in condition                  # and a pull request may ask
+    types = re.search(r"^\s*types: \[([^\]]+)\]$", ci, re.M).group(1)
+    assert "labeled" in types                                       # the label starts its own run
+    # The gate is written once and called twice: a job's own `if:` cannot see
+    # the matrix, so Linux and Windows are two jobs, not two rows of one.
+    assert not re.search(r"^\s*steps:", ci, re.M)
+    assert "workflow_call:" in gate
+    # Without one, a hung job costs until GitHub's six-hour ceiling.
+    assert "timeout-minutes:" in gate
+    assert "timeout-minutes:" in workflow()
 
 
 def test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk(tmp_path, capsys):

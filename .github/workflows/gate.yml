@@ -1,0 +1,79 @@
+# The gate, written once: the suite, the linter, the two freshness checks and
+# the Electron parse, on whichever runner and interpreter the caller names.
+#
+# It lives here rather than in .github/workflows/ci.yml because a job's own
+# `if:` is evaluated before a matrix is expanded and cannot see the `matrix`
+# context, so "Linux always, Windows only when it is asked for" cannot be one
+# matrix with a condition on it. ci.yml is two jobs instead — and two jobs that
+# each wrote these steps out would be two copies of the gate, the second one to
+# drift. Both call this file, so there is one.
+name: Gate
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: The runner to run the gate on.
+        required: true
+        type: string
+      python-version:
+        description: The interpreter to run it under.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Tests and repository map (${{ inputs.os }}, Python ${{ inputs.python-version }})
+    runs-on: ${{ inputs.os }}
+    # A ceiling that stops a hung job, not a target: the longest job yet
+    # measured is 12.5 minutes.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run the test suite
+        run: python -m pytest -q
+
+      # Dead code and unused imports are the linter's job, not a reviewer's
+      # (pyproject.toml says what it checks).
+      - name: Lint
+        if: always()
+        run: python -m ruff check .
+
+      # always(): a stale map and a failing test are separate problems, and
+      # seeing both in one run beats finding the second after fixing the first.
+      - name: Check the repository map is current
+        if: always()
+        run: python tools/repo_map.py check
+
+      # The coverage report is what the next review round is briefed from;
+      # a stale one sends it after the wrong keywords.
+      - name: Check the vocabulary coverage report is current
+        if: always()
+        run: python tools/vocab_report.py check
+
+      # The Electron shell has no test suite of its own; at least it must parse.
+      - name: Check the Electron shell parses
+        if: always()
+        run: |
+          node --check app/main.js
+          node --check app/preload.js
+          node --check app/renderer/app.js
