@@ -202,7 +202,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     values, the year bounds and the editor's floors - none is typed in the
     renderer, so the app cannot disagree with the tracker about a word."""
     from tracker.api import _slug
-    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW, NOT_REQUESTED
+    from tracker.filer import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.manifest import (
         ANY_EXTENSION,
         DEFAULT_EXTENSIONS,
@@ -222,7 +222,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
     for literal in (*Status.ALL, *Override.ALL, FILED, NEEDS_REVIEW, DUPLICATE, NOT_REQUESTED,
-                    DEFAULT_START,
+                    FILE_MOVED, DEFAULT_START,
                     ", ".join(DEFAULT_EXTENSIONS), "looks like", UNSCANNED_LABEL,
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal

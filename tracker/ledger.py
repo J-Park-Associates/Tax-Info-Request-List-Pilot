@@ -151,6 +151,14 @@ DISMISSED_BY_PERSON = "dismissed_by_person"
 UNFILED_BY_PERSON = "unfiled_by_person"
 #: A row preserved without its bytes was tied to them by a later pass.
 BYTES_RECORDED = "bytes_recorded"
+#: The pass found this row's working copy somewhere other than where the
+#: record last said - away from where it was filed, away again, or back
+#: where it belongs (decision 109). One name in either direction: the row
+#: the event carries says which way it went, the fold is the same fold
+#: whichever it is, and a reader of the journal wants the whereabouts of a
+#: copy said once rather than a vocabulary of drags. Nothing was moved to
+#: learn it and nothing is moved because of it.
+COPY_MOVED = "copy_moved"
 #: The statuses one scan applied. Appended only when something changed, so a
 #: quiet pass appends nothing at all.
 SCANNED = "scanned"
@@ -202,7 +210,7 @@ MIGRATED = "migrated"
 #: The events that carry a whole index row. Their fold is the index.
 ROW_EVENTS = frozenset({
     PRESERVED, FILED, PARKED, DUPLICATE, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
-    UNFILED_BY_PERSON, BYTES_RECORDED, IMPORTED,
+    UNFILED_BY_PERSON, BYTES_RECORDED, COPY_MOVED, IMPORTED,
 })
 #: Every event name this version reads.
 EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED, MIGRATED, RULES_CHANGED,

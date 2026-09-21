@@ -583,3 +583,30 @@ def test_section_failed_is_unreachable_from_a_pass(tmp_path):
     text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(encoding="utf-8")
     assert SECTION_FAILED not in text
 
+
+def test_a_missing_row_with_a_file_moved_note_is_the_firms_and_the_draft_never_asks(tmp_path):
+    """Decision 109 through decision 115's rule. A request whose working copy
+    somebody here dragged out of its folder reads Missing - its folder is
+    empty, which is the truth - and the firm-side marker on it keeps it out
+    of the client's email: they sent the document, and asking them for it
+    again is asking for a file the firm mislaid."""
+    moved = item("A08", "W-2 Wage Statements", Status.MISSING, period="TY2025",
+                 validation_notes="; ".join([
+                     "was Received 2026-02-01; files changed",
+                     reasons.FILE_MOVED.format(listed="Prepared/A08 - W-2/A08 - W-2 - TY2025.pdf "
+                                                      "-> Prepared/C01 - Mortgage/A08 - W-2 - TY2025.pdf"),
+                 ]))
+
+    lines, attention, gaps, held = triage(SENDABLE + [moved])
+
+    assert "A08" not in {line.item.identifier for line in lines}
+    assert "A08" not in {flag.item.identifier for flag in gaps + held}
+    assert [flag.reason for flag in attention if flag.item.identifier == "A08"] == [
+        reasons.FILE_MOVED.firm_side_note
+    ]
+
+    folder = engagement(tmp_path, SENDABLE + [moved])
+    text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(encoding="utf-8")
+    waiting = text.split(f"{HELD_BACK_HEADING} - waiting on us, not the client:")[1]
+    assert moved.label in waiting                  # named where a person will act on it
+    assert text.count(moved.label) == 1            # and nowhere the client would read

@@ -62,6 +62,16 @@ beside each request's Status, Received Date, File Count and Validation
 Notes and every original's index row. Nothing in the folder is a
 spreadsheet, and the machine reads and writes no workbook.
 
+**Every index row says what became of one original**, and there are five
+answers: `Filed`, `Needs Review`, `Duplicate`, `Not Requested` — a
+document a person said no request asks for — and `File Moved`, which is
+what a pass says when a working copy is not in the folder the record filed
+it into and its bytes turn up somewhere else under `Prepared/`. Each pass
+proves every working copy against the fingerprint its own row carries, so
+a copy somebody dragged is identified and said rather than counted under
+whatever request it now sits in; nothing is moved over it and a person
+decides. `docs/runbook.md` §4 is what each answer means in plain words.
+
 1. Roll a returning client's list forward from last year (the default), or
    pick the tax form type for a new client — the catalog lives in
    `tracker/templates.py` and nowhere else

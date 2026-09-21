@@ -20,7 +20,11 @@ Not every cause is a validation note. :data:`NO_READABLE_TEXT` and
 column rather than into a request's notes, and they are worded here for the
 same reason the rest are: one sentence, one owner, and a marker the index,
 the review queue and the status report all recognise without retyping a
-word of it.
+word of it. :data:`FILE_MOVED` and :data:`COPY_CHANGED` are a third kind
+again (decision 109): the scanner writes them into a request's notes, but
+it does not decide them - it reads them off the rows the filer's sweep of
+the working copies recorded, so what the fingerprint identified and what a
+person is told are one sentence apart.
 
 And not every sentence here is a cause at all. :data:`NAMES_SEVERAL_FORMS`
 is what the index says when a document *was* filed - under several
@@ -197,6 +201,34 @@ ISSUER_NOT_NAMED = Reason(
               "the issuers on it; a person here files it or adds the row",
 )
 
+#: The record says this row's working copy is at one path and the pass
+#: found its bytes at another (decision 109). Nothing was moved to find
+#: that out and nothing is moved because of it: the fingerprint identifies,
+#: and a person decides with the three answers the app offers. Firm-side,
+#: always: the client sent the document and somebody here dragged the copy,
+#: so a draft that asked them for it would be asking for a file the firm
+#: mislaid.
+FILE_MOVED = Reason(
+    "file-moved",
+    "the working copy {listed} is not where the record put it; a person decides - "
+    "put it back, keep it where it is, or send it to review",
+    "not where the record put it", firm_side=True,
+    firm_note="a working copy here was moved by hand; a person here puts it back, keeps it, "
+              "or sends it to review - never the client",
+)
+#: A path the record claims holds bytes that are not the ones recorded on
+#: the row (decision 109, extending decision 3). The request keeps the
+#: status its files earn - the newcomer may pass every rule - and this says
+#: the file is not the one the record filed there, which no count can say.
+COPY_CHANGED = Reason(
+    "copy-changed",
+    "the file at {listed} is not the one the record filed there; a person should look "
+    "before trusting it",
+    "not the one the record filed there", firm_side=True,
+    firm_note="a working copy here no longer holds the bytes the record filed; a person "
+              "here looks - never the client",
+)
+
 #: One page, several forms (decision 94, the owner's). Neither of these is
 #: a refusal, so neither is a :class:`Reason` and neither is in ``ALL``:
 #: they are what the index's Reason column says about a document that
@@ -237,6 +269,7 @@ ALL: tuple[Reason, ...] = (
     NO_PAGES, UNREADABLE_PDF, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
     ISSUER_NOT_NAMED,
+    FILE_MOVED, COPY_CHANGED,
     PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )

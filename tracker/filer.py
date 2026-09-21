@@ -81,6 +81,14 @@ Guarantees:
   nothing: an agency notice or an extra statement stays where the client's
   copy of it is. The weekly draft stops counting it, and filing it later
   (``assign_review_file()``) is how the decision is undone.
+- **A working copy that is not where the record put it is said, not moved.**
+  Every pass proves each working copy the record names against the row's
+  own fingerprint and identifies by fingerprint every file under
+  ``PREPARED_DIR_NAME/`` the record does not name
+  (:func:`_prove_working_copies`). A copy whose bytes turn up at a path no
+  row names makes its row ``FILE_MOVED`` - a decision on the document, not
+  a status of a request - and a copy dragged back is filed again. Nothing
+  moves either way: the fingerprint identifies and a person decides.
 - **An original that leaves the client's own folder is said out loud.**
   ``PBC_DIR_NAME/`` is the provided-by-client record and the client can see
   it, so Explorer will delete, rename and drag what is already there. A row
@@ -108,6 +116,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import re
 import shutil
 import stat
 from collections.abc import Sequence
@@ -128,6 +137,7 @@ from tracker.records import (
     CANDIDATE_SEP,
     Evidence,  # noqa: F401
     IndexEntry,
+    as_pattern,
     entry_from_json,
     entry_to_json,
     format_evidence,
@@ -180,6 +190,16 @@ DUPLICATE = "Duplicate"
 #: re-send of the same bytes is a duplicate rather than a second review
 #: item. Filing it is how the decision is undone.
 NOT_REQUESTED = "Not Requested"
+#: A document whose working copy is not where the record put it, and whose
+#: bytes a pass found at a path no row names (decision 109). A decision on
+#: the document and never a status of a request (the owner's rule,
+#: 2026-09-19): what the scanner says about a request is what its folder
+#: holds, and "the copy is not where I put it" is a fact about the
+#: document. The row keeps its home in ``prepared_location`` and says where
+#: the bytes are now in its Reason (:func:`moved_to` reads it back);
+#: nothing is moved, and a person decides. A copy dragged back is filed
+#: again on the next pass.
+FILE_MOVED = "File Moved"
 
 #: Reason prefix on index rows a person filed from REVIEW_DIR_NAME.
 ASSIGNED_BY_PERSON = "assigned by a person"
@@ -190,7 +210,11 @@ UNFILED_BY_PERSON = "unfiled by a person"
 
 #: The decisions that leave a document waiting in ``REVIEW_DIR_NAME`` for a
 #: person, and which a person may therefore act on: one nobody has looked at
-#: yet, and one somebody has said no request asks for.
+#: yet, and one somebody has said no request asks for. A ``FILE_MOVED`` row
+#: is deliberately not among them: its copy is somewhere nobody meant it to
+#: be, and the answer to that is its own (decision 110's three buttons), so
+#: until then the refusal names what the row is and a person puts the file
+#: back first.
 _PARKED = (NEEDS_REVIEW, NOT_REQUESTED)
 
 #: How candidate identifiers are joined in the Candidates cell. The record
@@ -325,22 +349,75 @@ def _existing_copy(folder: Path, original: Path, digest: str) -> Path | None:
     return None
 
 
-def _copy_whole(source: Path, target: Path) -> None:
-    """``copy2``, with nothing left behind when it fails half-way.
+#: What a copy that did not come out as the original says. The digests are
+#: cut to their first characters: it is a person reading this, and the
+#: first few are enough to tell two documents apart.
+COPY_MISMATCH = (
+    "{source} was copied to {target} and the copy does not hold the original's bytes "
+    "({expected} in, {found} out); the copy was removed"
+)
+_DIGEST_SHOWN = 12
+
+
+class CopyMismatchError(FilingError):
+    """A copy was made and the target did not hold the original's bytes."""
+
+
+def _remove_a_failed_copy(target: Path) -> None:
+    """Take away a copy that is not the document, whatever went wrong."""
+    try:
+        target.unlink(missing_ok=True)
+    except OSError as exc:          # held by a scanner: say so, keep the real error
+        log.warning("Half-written %s could not be removed (%s)", target.name, exc)
+
+
+def _copy_whole(
+    source: Path, target: Path, *, expect: str = "", cache: ContentCache | None = None
+) -> None:
+    """``copy2``, with nothing left behind when it fails half-way, and the
+    copy proved against the bytes it was made from.
 
     A copy that stops part-way (disk full, a virus scanner holding the new
     file) would leave a truncated working copy that the next scan reads as
     a corrupt document and the reminder then asks the client for. The
     original in ``PBC_DIR_NAME/`` is the record; a copy is disposable.
+
+    ``expect`` is the digest the target must hold - the caller always knows
+    it, because a copy is only ever made of bytes this system has already
+    recorded. A copy that came out as something else is not the document:
+    it is removed and :class:`CopyMismatchError` says so, naming both
+    files, so the drop is recorded as decision 17's "could not be filed"
+    row rather than trusted and counted. A row recorded without its bytes
+    (decision 65) has no digest to expect, and passes ``""``: there is
+    nothing to prove it against, and that row is said out loud elsewhere.
+
+    ``cache`` is the pass's, where the caller has one: ``copy2`` keeps the
+    modification time, so the memo this leaves for the target is the hit
+    the next reader gets and the proof costs one read, once.
     """
     try:
         shutil.copy2(source, target)
     except BaseException:
-        try:
-            target.unlink(missing_ok=True)
-        except OSError as exc:      # held by a scanner: say so, keep the real error
-            log.warning("Half-written %s could not be removed (%s)", target.name, exc)
+        _remove_a_failed_copy(target)
         raise
+    if not expect:
+        return
+    digest = cache.digest_of(target) if cache is not None else _digest_or_none(target)
+    if digest == expect:
+        return
+    _remove_a_failed_copy(target)
+    raise CopyMismatchError(COPY_MISMATCH.format(
+        source=source.name, target=target.name,
+        expected=expect[:_DIGEST_SHOWN], found=(digest or "")[:_DIGEST_SHOWN] or "nothing",
+    ))
+
+
+def _digest_or_none(path: Path) -> str | None:
+    """The file's bytes, or None where they could not be read."""
+    try:
+        return sha256_of(path)
+    except OSError:
+        return None
 
 
 def _move_whole(source: Path, target: Path) -> None:
@@ -448,6 +525,7 @@ _LEDGER_EVENT_FOR = {
     NEEDS_REVIEW: ledger.PARKED,
     DUPLICATE: ledger.DUPLICATE,
     NOT_REQUESTED: ledger.PARKED,
+    FILE_MOVED: ledger.COPY_MOVED,
 }
 
 
@@ -940,6 +1018,268 @@ def _record_missing_digests(
     return filled, untied
 
 
+# ----------------------------------------------------- the working copies ----
+
+
+#: The moved sentence on a ``FILE_MOVED`` row: the row keeps its home in
+#: the Prepared Location column and says here where its bytes are now.
+#: Read back by :func:`moved_to`, from this very template.
+MOVED_SENTENCE = "{home} no longer holds this row's bytes; they are at {now} (found {date})"
+#: The same row when the bytes are nowhere in the firm's folder any more.
+#: The original is untouched wherever the client put it, which is the
+#: sentence's whole comfort: a working copy is disposable.
+MOVED_GONE_SENTENCE = ("{home} no longer holds this row's bytes and nothing under {prepared} does; "
+                       "the original is safe in {pbc} (found {date})")
+#: The row when its copy is back where the record put it. Appended like the
+#: others and never taken off again: a copy that moves twice carries where
+#: it has been, which is what the person reading the row wants.
+MOVED_BACK_SENTENCE = "the working copy is back at {home} ({date})"
+#: Attention, every pass, for a file under a request folder or the review
+#: folder that no row names and whose bytes match no row. It is counted
+#: where it sits, because what a request holds is what the scanner says it
+#: has; what nothing knows is who put it there.
+UNRECORDED_COPY = ("{location} is not on the record: nothing filed it there and no row's bytes "
+                   "match it; it is counted as it sits - file it in the app, or drop it in the "
+                   "client's folder, so the record knows it")
+
+_MOVED_DATE = r"\d{4}-\d{2}-\d{2}"
+
+
+def _moved_tail(template: str) -> re.Pattern[str]:
+    """One of the moved sentences, where a row's Reason ends with it.
+
+    The pattern is derived from the template that wrote the sentence, so
+    rewording the sentence moves its reader with it (decision 108's
+    precedent, :func:`tracker.records.as_pattern`). ``base`` is greedy, so
+    what matches is the *last* such sentence on the row: a copy that has
+    moved before carries its history and only the sentence this pass
+    replaces comes off.
+    """
+    return re.compile(
+        "^(?P<base>.*); " + as_pattern(
+            template, home=r".+?", now=r"(?P<now>.+?)", prepared=r".+?", pbc=r".+?",
+            date=_MOVED_DATE,
+        ) + "$",
+        re.DOTALL,
+    )
+
+
+_MOVED_TAIL = _moved_tail(MOVED_SENTENCE)
+_MOVED_GONE_TAIL = _moved_tail(MOVED_GONE_SENTENCE)
+
+
+def moved_to(entry: IndexEntry) -> str | None:
+    """Where this row's working copy is now, or None.
+
+    The row's home stays in ``prepared_location`` - every reader treats
+    that column as "where this row's copy belongs", from the re-file rule
+    to the app's filed list, and rewriting it to the path somebody dragged
+    the copy to would make each of them read a drag as a filing. So where
+    the bytes *are* is a sentence on the row, and this is its reader: the
+    scanner keeps the wanderer out of the count of whatever request it
+    happens to sit in, and the app's answer to it reads the same sentence.
+    None for a row that is not ``FILE_MOVED``, and for one whose bytes are
+    nowhere in the firm's folder at all.
+    """
+    if entry.decision != FILE_MOVED:
+        return None
+    found = _MOVED_TAIL.match(entry.reason)
+    return found.group("now") if found else None
+
+
+def _without_moved_sentence(reason: str) -> str:
+    """The Reason without the moved sentence this pass is replacing.
+
+    What a row said before it moved - the routing reason, a person's own
+    sentence, whatever it was - is what the next moved sentence is appended
+    to, so a row that has been dragged about does not accumulate one
+    "no longer holds" after another for the same copy.
+    """
+    for pattern in (_MOVED_TAIL, _MOVED_GONE_TAIL):
+        found = pattern.match(reason)
+        if found:
+            return found.group("base")
+    return reason
+
+
+def _says_it_is_nowhere(entry: IndexEntry) -> bool:
+    """Whether this row already says its bytes are nowhere in the folder."""
+    return entry.decision == FILE_MOVED and _MOVED_GONE_TAIL.match(entry.reason) is not None
+
+
+def _spend_a_stray(strays: dict[str, str], digest: str, preferred: str | None = None) -> str | None:
+    """A file no row names holding ``digest``, spent once.
+
+    Once is the whole of it: two rows whose copies were both dragged into
+    one folder are two wanderers, and a file that answered for one row is
+    not the other's as well.
+
+    ``preferred`` is the wanderer the row already names, and it wins while
+    it is still there holding the bytes. A document can be in the firm's
+    folder twice over - a copy somebody took before dragging the first, a
+    ``(2)`` name, a subfolder - and the one that sorts first is not the one
+    a person moved: pointing the row at it would append an event nothing
+    happened for, rewrite the sentence to name a file nobody touched, and
+    send decision 110's put-it-back after the wrong file. Anything else is
+    the first match in the order the walk found them, which is the folder's
+    own.
+    """
+    if not digest:
+        return None                  # decision 65: a row without its bytes is nobody's
+    if preferred and strays.get(preferred) == digest:
+        del strays[preferred]
+        return preferred
+    for location, found in strays.items():
+        if found == digest:
+            del strays[location]
+            return location
+    return None
+
+
+def _prove_working_copies(
+    engagement_dir: Path,
+    prepared_dir: Path,
+    entries: list[IndexEntry],
+    cache: ContentCache,
+    stamp: str,
+    request_folders: set[Path],
+) -> tuple[list[FileError], dict[str, str]]:
+    """One walk of the firm's folder: prove every copy the record names,
+    identify every file it does not. Mutates ``entries``; returns the
+    attention lines and ``{ledger_key: ledger.COPY_MOVED}`` for every row
+    it rewrote.
+
+    The client's own folder has been swept since decision 68 and this one
+    was swept by nothing at all: a Filed copy dragged out of its request
+    folder read Missing and the weekly draft asked the client for a file
+    the firm had mislaid, and a copy dragged *into* another request's
+    folder was counted there, a filing nobody made. Four answers, and only
+    these: a copy where the record put it holding the record's bytes is
+    proved and nothing is written; a copy that is not there whose bytes
+    turn up at a path no row names makes its row ``FILE_MOVED``; a
+    ``FILE_MOVED`` row whose copy is back is what it was before; and a file
+    no row names is said, every pass, and counted where it sits.
+
+    **Nothing moves.** The fingerprint identifies and never decides: every
+    outcome that is not "proved" ends in a person being told. And nothing
+    is written when nothing moved - a quiet pass appends no event, and
+    costs stats rather than reads, because every hash here goes through the
+    cache's memo.
+
+    A placeholder is never read: hashing one would make the sync client
+    download it, so a dehydrated home is "not looked at this pass" rather
+    than absent, and a dehydrated file no row names is passed over.
+    """
+    attention: list[FileError] = []
+    swept: dict[str, str] = {}
+
+    # Every location the record claims, and which row claims it. Where two
+    # rows name one location the newest wins - the rule the index is read
+    # by everywhere else - and the older row's copy there is gone by the
+    # index's own word (_copy_taken_by_a_later_row's reading). A row
+    # recorded without its bytes claims nothing (decision 65): there is no
+    # fingerprint to hold a file to. It still *names* its copy, though, so
+    # that copy is not a file nothing on the record knows about - it is a
+    # row said out loud by UNTIED_IN_PBC, and one warning per thing.
+    named: set[str] = set()
+    claims: dict[str, int] = {}
+    for position, entry in enumerate(entries):
+        named.update(entry.filed_locations)
+        if entry.digest:
+            for location in entry.filed_locations:
+                claims[location] = position
+    mine = {
+        position: [location for location in entries[position].filed_locations
+                   if claims.get(location) == position]
+        for position in set(claims.values())
+    }
+
+    # Prove each claim, and hash every file no row names once, so the pass
+    # after this one stats them and reads nothing.
+    failed: dict[int, list[str]] = {}
+    proved: dict[int, list[str]] = {}
+    for position, locations in mine.items():
+        digest = entries[position].digest
+        for location in locations:
+            path = engagement_dir / location
+            if not path.is_file():
+                failed.setdefault(position, []).append(location)
+            elif is_cloud_placeholder(path):
+                continue
+            elif cache.digest_of(path) == digest:
+                proved.setdefault(position, []).append(location)
+            else:
+                failed.setdefault(position, []).append(location)
+    strays: dict[str, str] = {}
+    for path in iter_candidate_files(prepared_dir):
+        location = path.relative_to(engagement_dir).as_posix()
+        if location in named or is_cloud_placeholder(path):
+            continue
+        found = cache.digest_of(path)
+        if found is not None:        # unreadable now; the next pass looks again
+            strays[location] = found
+
+    # Where a row's copy is not, its bytes may be - and where the row
+    # already names one, that is the file a person moved and the file
+    # decision 110 will put back, whatever else holds the same bytes.
+    for position in sorted(failed):
+        entry = entries[position]
+        if entry.decision == DUPLICATE:
+            continue                 # a Duplicate row only points at another row
+        home = failed[position][0]
+        now = _spend_a_stray(strays, entry.digest, moved_to(entry))
+        if now is None and entry.decision != FILE_MOVED:
+            continue                 # decision 3's regression says this, as it always has
+        if now is not None and moved_to(entry) == now:
+            continue                 # the same wanderer as last pass: nothing new to say
+        if now is None and _says_it_is_nowhere(entry):
+            continue                 # said nowhere already, and it is nowhere still
+        sentence = (
+            MOVED_SENTENCE.format(home=home, now=now, date=stamp) if now is not None
+            else MOVED_GONE_SENTENCE.format(
+                home=home, prepared=PREPARED_DIR_NAME,
+                pbc=entry.pbc_location or "(none)", date=stamp)
+        )
+        entries[position] = replace(
+            entry, decision=FILE_MOVED,
+            reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+        )
+        swept[ledger_key(entries[position])] = ledger.COPY_MOVED
+        attention.append(FileError(Path(now or home).name, sentence, True))
+        log.warning("The working copy recorded at %s is not there; it is at %s", home, now or "nothing")
+
+    # And a copy somebody dragged back is what it was before it went. Which
+    # of the two parked decisions a copy with no request was is not
+    # guessable, so a parked one comes back waiting for review and a person
+    # says it is not requested again in one click.
+    for position in sorted(mine):
+        entry = entries[position]
+        if entry.decision != FILE_MOVED or position in failed or not proved.get(position):
+            continue
+        home = proved[position][0]
+        sentence = MOVED_BACK_SENTENCE.format(home=home, date=stamp)
+        entries[position] = replace(
+            entry,
+            decision=FILED if entry.identifier else NEEDS_REVIEW,
+            reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+        )
+        swept[ledger_key(entries[position])] = ledger.COPY_MOVED
+        attention.append(FileError(Path(home).name, sentence, True))
+        log.info("The working copy recorded at %s is back", home)
+
+    # What is left is a file nothing filed and no row's bytes answer for.
+    # Said every pass until a person routes it through the client's folder
+    # or files it in the app. A loose file at the root of the firm's folder
+    # and a folder matching no request are the scanner's warnings already,
+    # and one warning per thing is the rule.
+    watched = set(request_folders) | {prepared_dir / REVIEW_DIR_NAME}
+    for location in strays:
+        path = engagement_dir / location
+        if any(folder == path.parent or folder in path.parents for folder in watched):
+            attention.append(FileError(path.name, UNRECORDED_COPY.format(location=location), True))
+    return attention, swept
+
+
 def _prune_empty_dirs(shared_dir: Path, keep: Path) -> None:
     """Remove folders the client dragged in that are empty now their files
     have moved to PBC_DIR_NAME/. Deepest first; anything that is not empty, is the
@@ -981,6 +1321,12 @@ def file_drops(
     lock and this call must not take it again: that is
     :func:`tracker.runner.run_engagement`, which since decision 102 holds
     one lock across the whole pass rather than one per step.
+
+    Every pass also proves the working copies the record names against
+    their rows and identifies the files it does not name
+    (:func:`_prove_working_copies`, decision 109), whether or not there is
+    anything to sort - a copy somebody dragged is the one disagreement
+    between the record and the folder nothing used to notice.
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
@@ -1007,6 +1353,15 @@ def file_drops(
         # What the record already says, taken before anything in this pass
         # touches a row, so what this pass wrote is what gets recorded.
         before = {ledger_key(entry): entry_to_json(entry) for entry in entries}
+        # What the router learns about each document is what the scan will
+        # want to know about its working copy (same bytes): the verdicts go
+        # into the engagement's verdict cache in the store, keyed by content
+        # (decision 107). It is made whether or not there is anything to
+        # sort, because the tidy-up at the end of a pass is owed to a pass
+        # that sorted nothing too - and because every hash of a file in the
+        # firm's folder goes through its memo (decision 109), so an
+        # unchanged tree costs stats and not reads.
+        cache = ContentCache(engagement_dir)
         # An original preserved by a pass that could not read it back has no
         # digest (decision 65). While it has none, a replacement is never
         # noticed and a person's filing of it is never honoured; a later
@@ -1061,6 +1416,21 @@ def file_drops(
                 location=earlier.pbc_location, received=earlier.received,
                 prepared=earlier.prepared_location or "(none)",
             ), True))
+        # Existing request folders, so a Document renamed in the editor
+        # keeps filing into the folder that already holds its earlier
+        # files - and so the sweep below knows which folders a request
+        # claims, the same reading the scanner's warnings are drawn from.
+        assigned = assign_folders(prepared_dir, [i.identifier for i in items])
+        # Every working copy the record names, proved against the row's own
+        # fingerprint, and every file the record does not name, identified
+        # by it (decision 109). It runs before the rows below are read, so
+        # what follows sees the rows as this sweep leaves them; a dry run
+        # reads all of it and records none of it, like everything else.
+        sweep, swept = _prove_working_copies(
+            engagement_dir, prepared_dir, entries, cache, stamp,
+            {folder for folders in assigned.values() for folder in folders},
+        )
+        report.attention.extend(sweep)
         # The row that holds each document's bytes. A Duplicate row only
         # points at another row; letting it shadow the Filed row would hide
         # a working copy that has since been deleted, and a re-send that
@@ -1069,13 +1439,6 @@ def file_drops(
         # the same document sent again is that same document, and parking it
         # a second time would put back the warning they just cleared.
         known = {e.digest: e for e in entries if e.digest and e.decision != DUPLICATE}
-        # What the router learns about each document is what the scan will
-        # want to know about its working copy (same bytes): the verdicts go
-        # into the engagement's verdict cache in the store, keyed by content
-        # (decision 107). It is made whether or not there is anything to
-        # sort, because the tidy-up at the end of a pass is owed to a pass
-        # that sorted nothing too.
-        cache = ContentCache(engagement_dir)
         # Names claimed during this run, so a dry run previews the same numbering
         # a real run would produce (nothing is on disk to collide with yet).
         reserved: dict[Path, set[str]] = {}
@@ -1084,10 +1447,6 @@ def file_drops(
                 if not dry_run:
                     pbc_dir.mkdir(parents=True, exist_ok=True)
                     prepared_dir.mkdir(parents=True, exist_ok=True)
-                # Existing request folders, so a Document renamed in the
-                # editor keeps filing into the folder that already holds
-                # its earlier files.
-                assigned = assign_folders(prepared_dir, [i.identifier for i in items])
                 _sort_all(drops, strays, pbc_dir, entries, stamp, _SortContext(
                     items=items, by_id=by_id, known=known, prepared_dir=prepared_dir,
                     review_dir=review_dir, reserved=reserved, assigned=assigned,
@@ -1101,7 +1460,7 @@ def file_drops(
             # nothing - the diff against what the record already said is
             # what decides, not a count of rows.
             if not dry_run:
-                _record(engagement_dir, before, entries, moved=moved_keys)
+                _record(engagement_dir, before, entries, moved=moved_keys, decided=swept)
         # The tidy-up is owed to every pass, not only one that sorted
         # something: an empty folder the client dragged in outlives the
         # files that were in it, and a pass that found nothing to do used
@@ -1288,7 +1647,7 @@ def _working_copy(
         if existing is not None:
             filed_as = existing.name
         else:
-            _copy_whole(pbc_target, dest_folder / filed_as)
+            _copy_whole(pbc_target, dest_folder / filed_as, expect=digest, cache=run.cache)
     return prepared_location(dest_folder, filed_as)
 
 
@@ -1367,7 +1726,7 @@ def _sort_one(
         review_target = _existing_copy(run.review_dir, pbc_target, digest)
         if review_target is None:
             review_target = _unique_path(run.review_dir, drop.name)
-            _copy_whole(pbc_target, review_target)
+            _copy_whole(pbc_target, review_target, expect=digest, cache=run.cache)
         review_name = review_target.name
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
@@ -1570,7 +1929,7 @@ def assign_review_file(
                     f"the parked copy {entry.prepared_location} no longer holds the bytes this row "
                     f"recorded (annotated, or re-saved) and was left there; {filed_as} was copied from the original"
                 )
-            _copy_whole(source, target)
+            _copy_whole(source, target, expect=digest)
 
         # A pick the evidence did not point at, when the evidence pointed
         # somewhere, is the person overruling the shortlist, and the row
@@ -1625,10 +1984,10 @@ def assign_review_file(
                     if moved:
                         _move_whole(target, parked)
                     elif parked_stood_in:
-                        _copy_whole(target, parked)
+                        _copy_whole(target, parked, expect=digest)
                     elif not reused:          # a copy that was already there stays
                         target.unlink(missing_ok=True)
-                except OSError as undo:       # the copy stays where it is; the real error is the one to hear
+                except (OSError, FilingError) as undo:  # the copy stays where it is; the real error is the one to hear
                     log.error("Could not put %s back after the record refused it: %s", target.name, undo)
             raise
     return AssignResult(
@@ -1815,6 +2174,10 @@ def unfile_document(
 
     The engagement lock is held for the move and the row, as everywhere else;
     the re-scan takes it again on its own, exactly as the app's filing does.
+    Every copy this makes is proved against the bytes the row recorded
+    before it is trusted (decision 109) - except on a row recorded without
+    them (decision 65), which has no bytes to be proved against and is said
+    out loud by the pass instead.
     """
     engagement_dir = Path(engagement_dir)
     today = today or dt.date.today()
@@ -1881,7 +2244,7 @@ def unfile_document(
                 copy.unlink()
                 stood_down.append(copy)
         else:
-            _copy_whole(source, parked)
+            _copy_whole(source, parked, expect=entry.digest)
 
         new_entry = replace(
             entry,
@@ -1907,8 +2270,8 @@ def unfile_document(
                     # The copies that stood down with it come back from the
                     # one that went back, which is them byte for byte.
                     for copy in stood_down:
-                        _copy_whole(working or source, copy)
-                except OSError as undo:
+                        _copy_whole(working or source, copy, expect=entry.digest)
+                except (OSError, FilingError) as undo:
                     log.error("Could not put %s back after the record refused it: %s", parked.name, undo)
             raise
 

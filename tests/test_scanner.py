@@ -7,7 +7,7 @@ from dataclasses import replace
 import pytest
 
 from tests.conftest import make_engagement
-from tracker import reasons, store
+from tracker import ledger, reasons, store
 from tracker.content_check import CACHE_VERSION, RETIRED_CACHE_FILENAME
 from tracker.locking import LOCK_FILENAME, STALE_LOCK_SECONDS
 from tracker.manifest import (
@@ -368,8 +368,10 @@ def test_a_second_scan_over_an_unchanged_tree_hashes_nothing(engagement, monkeyp
         calls["n"] += 1
         return real(path)
 
+    # One patch is all there is to make: since decision 109 the scanner
+    # hashes nothing of its own - a person's filing and the de-duplication
+    # both go through the memo, which is this module's sha256_of.
     monkeypatch.setattr(content_check_module, "sha256_of", counted)
-    monkeypatch.setattr("tracker.scanner.sha256_of", counted)    # the scanner's own hashing too
     scan_engagement(engagement, today=DAY1)
     assert calls["n"] >= 1                                   # the first pass hashes
 
@@ -616,3 +618,179 @@ def test_a_persons_acceptance_covers_only_the_bytes_they_filed(engagement):
     scan_engagement(engagement, today=DAY2)
     row = statuses(engagement)["A01"]
     assert row.status != Status.RECEIVED and "filed here by a person" not in row.validation_notes
+
+
+# ------------------ what the record says about a working copy (d109) ----
+
+
+def copy_moved_events(engagement):
+    return [e for e in ledger.read_events(engagement)
+            if e[ledger.EVENT_KEY] == ledger.COPY_MOVED]
+
+
+def a_filed_pdf(engagement, text="Chase Bank Statement Dec 2025"):
+    """One document sorted and scanned the ordinary way: A01, Received."""
+    from tracker.filer import file_drops
+    from tracker.scaffold import SHARED_DIR_NAME
+
+    text_pdf(engagement / SHARED_DIR_NAME / "chase.pdf", text)
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    scan_engagement(engagement, today=DAY1)
+    assert statuses(engagement)["A01"].status == Status.RECEIVED
+    return filed
+
+
+def test_a_moved_copys_request_reads_missing_with_the_firm_side_note_and_the_wanderer_is_not_counted_elsewhere(
+        engagement):
+    """The whole of decision 109 from the scan's side: the request whose copy
+    was dragged away is Missing, truthfully, and says whose fault that is;
+    the request the copy was dragged into counts nothing it did not earn."""
+    from tracker.filer import FILE_MOVED, file_drops, moved_to, read_index
+
+    filed = a_filed_pdf(engagement)
+    home = engagement / filed.prepared_location
+    home.rename(folder(engagement, "A02") / home.name)      # dragged by hand
+
+    file_drops(engagement, today=DAY2)
+    report = scan_engagement(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED
+    moved = report.updates["A01"]
+    assert moved.status == Status.MISSING and moved.file_count == 0
+    assert moved.received_date == DAY1
+    assert moved.validation_notes.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
+    assert reasons.FILE_MOVED.matches(moved.validation_notes)
+    assert f"{filed.prepared_location} -> {moved_to(row)}" in moved.validation_notes
+
+    elsewhere = report.updates["A02"]
+    assert elsewhere.file_count == 0 and elsewhere.status == Status.MISSING
+    assert reasons.find(elsewhere.validation_notes) is None   # not counted, and not refused either
+
+
+def test_a_filed_copy_replaced_by_a_different_passing_file_stays_received_with_copy_changed_and_a_warning(
+        engagement):
+    """Decision 3 extended: the status is what the files earn, and the row
+    says the file is not the one the record filed there - which no count
+    can say, because the newcomer passes every rule."""
+    from tracker.filer import file_drops
+
+    filed = a_filed_pdf(engagement)
+    home = engagement / filed.prepared_location
+    home.unlink()
+    text_pdf(home, "Chase Bank Statement Nov 2025, the other account")
+
+    file_drops(engagement, today=DAY2)
+    report = scan_engagement(engagement, today=DAY2)
+
+    row = report.updates["A01"]
+    assert row.status == Status.RECEIVED and row.file_count == 1
+    assert row.received_date == DAY1
+    assert reasons.COPY_CHANGED.matches(row.validation_notes)
+    assert home.name in row.validation_notes
+    assert report.warnings == [
+        f"{home.name}: {reasons.COPY_CHANGED.format(listed=home.name)}"
+    ]
+    assert copy_moved_events(engagement) == []      # nothing moved: the bytes are simply not the row's
+
+
+def test_a_filed_copy_replaced_by_a_failing_file_is_decision_threes_regression_and_says_copy_changed(
+        engagement):
+    from tracker.filer import file_drops
+
+    filed = a_filed_pdf(engagement)
+    home = engagement / filed.prepared_location
+    home.unlink()
+    text_pdf(home, "Wells Fargo Statement Dec 2025")         # A01 asks for Chase
+
+    file_drops(engagement, today=DAY2)
+    report = scan_engagement(engagement, today=DAY2)
+
+    row = report.updates["A01"]
+    assert row.status == Status.FAILED and row.file_count == 0
+    assert row.validation_notes.startswith(_regressed_from(DAY1) + REGRESSION_FILES_CHANGED)
+    assert reasons.COPY_CHANGED.matches(row.validation_notes)
+    assert reasons.WRONG_DOCUMENT.matches(row.validation_notes)   # both facts, on one row
+
+
+def test_an_unrecorded_file_in_a_request_folder_is_counted_and_said(engagement):
+    """The scanner's contract since its first row: a request's status is what
+    its folder holds. A file a person can see going uncounted would be a lie
+    in the other direction, so it counts - and the pass says every pass that
+    nothing on the record put it there."""
+    from tracker.filer import UNRECORDED_COPY, file_drops
+
+    stray = text_pdf(folder(engagement, "A01") / "someone dragged this.pdf",
+                     "Chase Bank Statement Dec 2025")
+    location = stray.relative_to(engagement).as_posix()
+
+    report = file_drops(engagement, today=DAY1)
+    scanned = scan_engagement(engagement, today=DAY1)
+
+    assert [e.error for e in report.attention] == [UNRECORDED_COPY.format(location=location)]
+    assert scanned.updates["A01"].status == Status.RECEIVED
+    assert scanned.updates["A01"].file_count == 1
+    assert scanned.warnings == []                 # it is in a request folder, not loose
+    assert stray.is_file()
+
+
+def test_the_scans_memo_survives_for_parked_copies_and_strays(engagement, monkeypatch):
+    """The prune used to keep only what a request's folder held, so a parked
+    copy and a file nothing claims were forgotten every scan and read again
+    every pass. Every file in the firm's folder keeps its memo."""
+    import tracker.content_check as content_check_module
+    from tracker.filer import file_drops
+    from tracker.scaffold import SHARED_DIR_NAME
+
+    text_pdf(engagement / SHARED_DIR_NAME / "irs-notice.pdf", "nothing the rules recognise")
+    stray = text_pdf(folder(engagement, "A01") / "someone dragged this.pdf",
+                     "Chase Bank Statement Dec 2025")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    scan_engagement(engagement, today=DAY1)
+    scan_engagement(engagement, today=DAY2)
+
+    memos, _verdicts = cache_rows(engagement)
+    parked_name = parked.prepared_location.rsplit("/", 1)[-1].lower()
+    assert any(parked_name in key for key in memos), sorted(memos)
+    assert any(stray.name.lower() in key for key in memos), sorted(memos)
+
+    calls = {"n": 0}
+    real = content_check_module.sha256_of
+
+    def counted(path):
+        calls["n"] += 1
+        return real(path)
+
+    monkeypatch.setattr(content_check_module, "sha256_of", counted)
+    scan_engagement(engagement, today=DAY2)
+    assert calls["n"] == 0
+
+
+def test_a_person_filed_copy_is_proved_through_the_memo(engagement, monkeypatch):
+    """Decision 58's reading of a person's filing - the acceptance holds only
+    while the bytes do - now goes through the memo like every other hash
+    under the firm's folder, so a second scan over an unchanged tree reads
+    nothing at all."""
+    import tracker.content_check as content_check_module
+    from tracker.filer import assign_review_file, file_drops
+    from tracker.scaffold import SHARED_DIR_NAME
+    from tracker.scanner import ACCEPTED_NOTE
+
+    text_pdf(engagement / SHARED_DIR_NAME / "statement.pdf",
+             "Annual account statement 2025 interest paid")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1)
+    first = scan_engagement(engagement, today=DAY1)
+    assert ACCEPTED_NOTE.format(n=1) in first.updates["A01"].validation_notes
+
+    calls = {"n": 0}
+    real = content_check_module.sha256_of
+
+    def counted(path):
+        calls["n"] += 1
+        return real(path)
+
+    monkeypatch.setattr(content_check_module, "sha256_of", counted)
+    again = scan_engagement(engagement, today=DAY2)
+    assert calls["n"] == 0
+    assert ACCEPTED_NOTE.format(n=1) in again.updates["A01"].validation_notes
