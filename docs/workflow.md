@@ -81,7 +81,7 @@ person types.
   at a time are listed together by `python tools/learned_keywords.py`, once a
   season — that list is what the next catalog commit is made of.
 
-## Four things a person still does in the app
+## Five things a person still does in the app
 
 - **Edit Request List** opens the list in the app: add, change, remove or
   paste rows and the engagement's details; a bad value is refused when you
@@ -137,6 +137,23 @@ person types.
   wants it. A document somebody re-filed since the list was drawn is a newer
   filing, and unfiling it is refused with what the record now says rather
   than undoing a decision you never saw.
+- **Moved by hand**, the card above the review queue: every working copy
+  the last pass found somewhere other than where the record put it, with
+  its home, where its bytes are now, and three answers — the system never
+  guesses which one you meant (decision 110). **Put it back** returns the
+  bytes to where the record put them: the copy itself is moved home when it
+  still holds them, and a fresh one is made from the client's original when
+  nothing under `Prepared/` does. **Keep it here** files the copy where it
+  now sits — offered only when it sits in a request's folder, and starting
+  on that request, so keeping the file and correcting the request is one
+  click. **Send to review** sends it back to `00 - Needs Review` under the
+  client's own name. Two things no answer will do: a file already at home
+  that is *not* this document is never overwritten — it stays, this
+  document's copy goes to review instead, and the row parks naming both —
+  and nothing is ever deleted, so a copy left over after the bytes were
+  already home is named every pass until you remove it yourself. A page
+  filed under several requests is put back and never kept or sent from
+  here, because which copy you meant is not the tracker's to guess.
 
 ## Collaboration
 

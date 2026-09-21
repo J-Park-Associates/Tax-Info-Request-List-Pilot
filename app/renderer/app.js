@@ -162,9 +162,119 @@ function render(state) {
   chipEl.className = `eng-form view-${viewState}`;
   chipEl.classList.toggle("hidden", !viewState);
 
+  renderMoved(state);
   renderReview(state);
   renderUnfileList(state);
   renderLock(state);
+}
+
+// ── A copy that wandered: the three answers, all of them a person's ─────
+
+// A working copy that is not where the record put it (decision 109) gets
+// its own card above the review queue, because it is the first question of
+// the morning: nothing is guessed, and the person chooses one of three.
+// The middle answer is offered only when the copy sits in some request's
+// folder — the API says which — because keeping a file where it is means
+// nothing in the review folder or loose under Prepared.
+function renderMoved(state) {
+  const moved = state.moved || [];
+  $("moved-card").classList.toggle("hidden", moved.length === 0);
+  $("moved-heading").textContent = fill(vocab.review_labels.moved_heading, { n: moved.length });
+  $("moved-summary").textContent = vocab.review_labels.moved_summary;
+  const choices = state.items.filter((i) => !isSetAside(i.manual_override));
+  show("moved-list", moved.map((m) => movedRow(m, choices)));
+}
+
+function movedRow(m, choices) {
+  const where = m.now || vocab.review_labels.moved_nowhere;
+  return el("li", { dataset: { original: m.pbc_location, seq: m.seq } },
+    el("span", { className: "r-name" }, m.original_name),
+    el("span", { className: "r-why" }, `${m.home} → ${where}`),
+    // The picker is the same picker: a person may keep the copy where it
+    // is and correct the request in one click, so it starts on the request
+    // whose folder holds it.
+    m.in_request && el("select", { "aria-label": `Request for ${m.original_name}` },
+      choices.map((i) => requestOption(i, m.in_request))),
+    m.in_request && el("input", {
+      type: "text", className: "r-keyword", placeholder: "keyword to learn (optional)",
+      "aria-label": "Keyword to add to the request",
+      title: "A word this document contains that others like it will too. Taught to the request so the next one files itself; the editor shows it beside the row.",
+    }),
+    el("button", { className: "btn btn-primary r-restore" }, vocab.review_labels.restore),
+    m.in_request && el("button", { className: "btn r-keep" }, vocab.review_labels.keep),
+    el("button", { className: "btn r-review" }, vocab.review_labels.send_to_review),
+  );
+}
+
+async function restoreMoved(li) {
+  const btn = li.querySelector(".r-restore");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("restore"), {
+      original: li.dataset.original,
+      seq: Number(li.dataset.seq),
+    });
+    render(result.state);
+    const r = result.restored;
+    const notes = [`${r.original_name}: ${r.decision}`, r.reason];
+    if (r.scan_note) notes.push(r.scan_note);
+    banner(notes.join(". ") + ".", r.parked_as || r.scan_note ? "warn" : "ok");
+  } catch (err) {
+    await refused(err, btn);
+  }
+}
+
+// Keeping the copy where it is, is a filing, so it is the filing command,
+// with the request the person left the picker on and the keyword they typed.
+async function keepMoved(li) {
+  const identifier = li.querySelector("select").value;
+  if (!identifier) {
+    toast("Pick the request this document belongs to first.");
+    return;
+  }
+  const btn = li.querySelector(".r-keep");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("assign"), {
+      original: li.dataset.original,
+      identifier,
+      keyword: typed(li, ".r-keyword"),
+      seq: Number(li.dataset.seq),
+    });
+    render(result.state);
+    const a = result.assigned;
+    const notes = [`${a.original_name} filed as ${a.filed_as}`];
+    if (a.keyword) notes.push(`"${a.keyword}" added to ${a.identifier} so the next one files itself`);
+    if (a.keyword_note) notes.push(a.keyword_note);
+    if (a.left_in_review) notes.push(a.left_in_review);
+    if (a.overrode_shortlist) notes.push(a.overrode_shortlist);
+    if (a.scan_note) notes.push(a.scan_note);
+    banner(notes.join(". ") + ".",
+      a.keyword_note || a.left_in_review || a.overrode_shortlist || a.scan_note ? "warn" : "ok");
+  } catch (err) {
+    await refused(err, btn);
+  }
+}
+
+// And send to review is an unfiling: the copy goes back under the client's
+// own name and the row parks.
+async function reviewMoved(li) {
+  const btn = li.querySelector(".r-review");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("unfile"), {
+      original: li.dataset.original,
+      seq: Number(li.dataset.seq),
+    });
+    render(result.state);
+    const u = result.unfiled;
+    const notes = [`${u.original_name}: ${u.decision}`];
+    if (u.left_filed) notes.push(u.left_filed);
+    if (u.scan_note) notes.push(u.scan_note);
+    banner(notes.join(". ") + ".", u.left_filed || u.scan_note ? "warn" : "ok");
+  } catch (err) {
+    await refused(err, btn);
+  }
 }
 
 // ── Needs review: a person's decision, carried out by the filer ──────────
@@ -1202,6 +1312,14 @@ $("ne-create").addEventListener("click", createEngagement);
 $("ne-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
 $("modal").addEventListener("click", (e) => {
   if (e.target === $("modal")) $("modal").classList.add("hidden");
+});
+$("moved-list").addEventListener("click", (e) => {
+  const restore = e.target.closest(".r-restore");
+  if (restore) restoreMoved(restore.closest("li"));
+  const keep = e.target.closest(".r-keep");
+  if (keep) keepMoved(keep.closest("li"));
+  const send = e.target.closest(".r-review");
+  if (send) reviewMoved(send.closest("li"));
 });
 $("review-list").addEventListener("click", (e) => {
   const file = e.target.closest(".r-file");

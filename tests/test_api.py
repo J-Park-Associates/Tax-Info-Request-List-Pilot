@@ -1397,6 +1397,10 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "unfile": api.UNFILE_LABEL, "unfile_note": api.UNFILE_NOTE_HINT,
         "filed_heading": api.FILED_HEADING,
         "suggested": api.SUGGESTED_HEADING, "other_requests": api.OTHER_REQUESTS_HEADING,
+        "restore": api.RESTORE_LABEL, "keep": api.KEEP_LABEL,
+        "send_to_review": api.SEND_TO_REVIEW_LABEL,
+        "moved_heading": api.MOVED_HEADING, "moved_summary": api.MOVED_SUMMARY,
+        "moved_nowhere": api.MOVED_NOWHERE,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
@@ -1703,3 +1707,144 @@ def test_the_state_carries_a_file_moved_row_in_the_index_and_in_no_list(capsys, 
     assert api._vocab()["decisions"]["file_moved"] == FILE_MOVED
     # And the request it left is the firm's to sort out, not an ask.
     assert payload["run"]["warnings"]
+
+
+# --------------- recovery is the person's: the moved card (d110) ----
+
+
+def a_moved_row(capsys, demo_root, tmp_path, drag_to):
+    """One filed document dragged by hand, and the state the pass leaves.
+
+    ``drag_to`` is given the engagement and the copy's home and answers with
+    where the hand put it. Comes back with the engagement, the row as it was
+    filed (its own sequence number included) and the state that now holds it
+    in ``moved``.
+    """
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    home = engagement / filed["prepared_location"]
+    target = drag_to(engagement, home)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    home.rename(target)
+
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    return engagement, filed, target, payload["state"]
+
+
+WANDERED = {
+    # Inside the request's own folder, under a name a person gave it...
+    "renamed in its own folder": (lambda eng, home: home.with_name("the 1098 (final).pdf"), True),
+    # ...and in a folder somebody made inside it.
+    "a subfolder of its own folder": (lambda eng, home: home.parent / "old" / home.name, True),
+    # Nobody's folder: the review folder belongs to no request...
+    "the review folder": (
+        lambda eng, home: eng / PREPARED_DIR_NAME / REVIEW_DIR_NAME / home.name, False),
+    # ...and a file loose at the root of Prepared/ is in no folder at all.
+    "loose under Prepared": (lambda eng, home: eng / PREPARED_DIR_NAME / home.name, False),
+}
+
+
+@pytest.mark.parametrize("where", list(WANDERED))
+def test_the_state_lists_moved_rows_with_home_now_seq_and_the_request_whose_folder_holds_them(
+    capsys, demo_root, tmp_path, where,
+):
+    """Decision 110's card is its own list, not a fourth column: the row's
+    record version, the home the record put the copy at, where its bytes are
+    now, and - only where the copy sits inside some request's folder - which
+    request that is, because "keep it where it is" means nothing anywhere
+    else."""
+    from tracker.filer import FILE_MOVED
+
+    drag_to, in_a_request = WANDERED[where]
+    engagement, filed, target, state = a_moved_row(capsys, demo_root, tmp_path, drag_to)
+
+    [moved] = state["moved"]
+    [row] = [e for e in state["index"] if e["decision"] == FILE_MOVED]
+    assert moved["pbc_location"] == filed["pbc_location"]
+    assert moved["original_name"] == filed["original_name"]
+    assert moved["home"] == filed["prepared_location"]
+    assert moved["now"] == target.relative_to(engagement).as_posix()
+    assert moved["seq"] == row["seq"] and moved["seq"] != filed["seq"]
+    assert moved["in_request"] == (filed["identifier"] if in_a_request else "")
+    # And it is in none of the other lists: it is not waiting for review and
+    # it is not filed where the record says.
+    assert state["review"] == []
+    assert not [e for e in state["index"] if e["decision"] == FILED]
+
+
+def test_restore_is_a_command_that_re_scans_and_the_moved_list_empties(
+    capsys, demo_root, tmp_path,
+):
+    """The put-back is one command, and the request has its file back before
+    the answer is printed: the filer re-scans inside it, so the status the
+    app shows next is the one the copy earns."""
+    from tracker.manifest import Status
+
+    engagement, filed, target, state = a_moved_row(
+        capsys, demo_root, tmp_path, WANDERED["the review folder"][0])
+    [moved] = state["moved"]
+    was_missing = {i["identifier"]: i["status"] for i in state["items"]}
+    assert was_missing[filed["identifier"]] == Status.MISSING
+
+    code, payload = run(capsys, "restore", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": moved["pbc_location"], "seq": moved["seq"]})
+
+    assert code == 0, payload
+    restored = payload["restored"]
+    assert restored["moved_home"] and not restored["copied_from_original"]
+    assert not restored["already_home"] and restored["parked_as"] == ""
+    assert restored["decision"] == FILED and restored["scan_note"] == ""
+    assert restored["prepared_location"] == filed["prepared_location"]
+    assert not target.exists() and (engagement / filed["prepared_location"]).is_file()
+    assert payload["state"]["moved"] == []
+    now = {i["identifier"]: i["status"] for i in payload["state"]["items"]}
+    assert now[filed["identifier"]] == Status.RECEIVED
+    assert "restore" in api._vocab()["commands"]
+
+
+def test_restore_refuses_without_a_seq_and_with_a_stale_one(capsys, demo_root, tmp_path):
+    """Decision 112's rule over decision 110's command: the app is drawn from
+    state and every row there carries its version, so a spec without one is a
+    caller acting on no view, and an older one is a caller acting on a view
+    the record has moved past."""
+    from tracker.filer import FILE_MOVED, STALE_ROW
+
+    engagement, filed, target, state = a_moved_row(
+        capsys, demo_root, tmp_path, WANDERED["the review folder"][0])
+    [moved] = state["moved"]
+
+    code, payload = run(capsys, "restore", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": moved["pbc_location"]})
+    assert code == 1 and payload["error"] == api.NO_SEQ
+
+    code, payload = run(capsys, "restore", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": moved["pbc_location"], "seq": filed["seq"]})
+    assert code == 1
+    assert payload["error"] == STALE_ROW.format(
+        name=moved["original_name"], decision=FILE_MOVED,
+        reason=[e for e in state["index"] if e["decision"] == FILE_MOVED][0]["reason"])
+    assert target.is_file()                       # and nothing was touched
+
+
+def test_the_renderer_types_none_of_the_moved_cards_words(capsys, demo_root):
+    """Every word of decision 110's card is the API's - the three answers,
+    the heading, the line under it and the word for a copy that is nowhere -
+    and the page shows them without holding one of its own."""
+    vocab = run(capsys, "list")[1]["vocab"]
+    labels = vocab["review_labels"]
+    assert labels["restore"] == api.RESTORE_LABEL
+    assert labels["keep"] == api.KEEP_LABEL
+    assert labels["send_to_review"] == api.SEND_TO_REVIEW_LABEL
+    assert labels["moved_heading"] == api.MOVED_HEADING
+    assert labels["moved_summary"] == api.MOVED_SUMMARY
+    assert labels["moved_nowhere"] == api.MOVED_NOWHERE
+
+    renderer = Path(__file__).resolve().parent.parent / "app" / "renderer"
+    for rel in ("app.js", "index.html"):
+        text = (renderer / rel).read_text(encoding="utf-8")
+        for word in (api.RESTORE_LABEL, api.KEEP_LABEL, api.SEND_TO_REVIEW_LABEL,
+                     api.MOVED_HEADING, api.MOVED_SUMMARY, api.MOVED_NOWHERE):
+            assert word not in text, (rel, word)

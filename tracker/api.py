@@ -18,6 +18,7 @@ Commands:
   assign    file one Needs Review document under a request (a person's call)
   dismiss   record that no request asks for one Needs Review document
   unfile    send one filed document back to Needs Review (a person's call)
+  restore   put one moved working copy back where the record put it
   settings / set-root      where the clients live (the settings file beside the app)
   install-schedule         register the daily job for that same folder
   unlock    clear a stale engagement lock (a fresh one is refused)
@@ -45,7 +46,9 @@ from tracker.filer import (
     dismiss_review_file,
     ensure,
     find_parked,
+    moved_to,
     read_index,
+    restore_working_copy,
     unfile_document,
 )
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
@@ -126,6 +129,7 @@ from tracker.scaffold import (
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
     SHARED_DIR_NAME,
+    assign_folders,
     sanitize_component,
     scaffold_engagement,
 )
@@ -217,6 +221,19 @@ FILED_HEADING = "Filed documents ({n})"
 #: headings, not decisions - a person may still pick anything on the list.
 SUGGESTED_HEADING = "Suggested"
 OTHER_REQUESTS_HEADING = "Other requests"
+#: The three answers to a working copy that is not where the record put it
+#: (decision 110), the card they sit on, and the word for a row whose bytes
+#: are nowhere under the firm's folder. Nothing is guessed and nothing is
+#: preferred: three buttons, one of which is offered only when the copy sits
+#: in a request's folder, because "keep it where it is" means nothing
+#: anywhere else. The renderer shows these and types none of them.
+RESTORE_LABEL = "Put it back"
+KEEP_LABEL = "Keep it here"
+SEND_TO_REVIEW_LABEL = "Send to review"
+MOVED_HEADING = "Moved by hand ({n})"
+MOVED_SUMMARY = ("these working copies are not where the record put them; "
+                 "choose for each - nothing is guessed")
+MOVED_NOWHERE = "nowhere under the firm's folder"
 #: What a review command says when it was sent without the row's sequence
 #: number (decision 112). The app is drawn from ``state``, which carries one
 #: for every row, so a spec without it is a caller acting on no view at all -
@@ -369,8 +386,9 @@ def _vocab() -> dict:
         # form - it is UNSCANNED_LABEL, a status, and the guard that keeps
         # the app from typing a status of its own reads the whole file.
         # FILE_MOVED is here for the same reason the others are - the app
-        # types no decision of its own - and is in no list the page draws
-        # until decision 110 gives a moved copy its own card.
+        # types no decision of its own - and since decision 110 the moved
+        # rows have a card of their own, above the review queue, which the
+        # state's own ``moved`` list draws.
         "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE,
                       "dismissed": NOT_REQUESTED, "file_moved": FILE_MOVED},
         "review_labels": {"dismiss": DISMISS_LABEL, "dismiss_note": DISMISS_NOTE_HINT,
@@ -379,7 +397,14 @@ def _vocab() -> dict:
                           "unfile": UNFILE_LABEL, "unfile_note": UNFILE_NOTE_HINT,
                           "filed_heading": FILED_HEADING,
                           "suggested": SUGGESTED_HEADING,
-                          "other_requests": OTHER_REQUESTS_HEADING},
+                          "other_requests": OTHER_REQUESTS_HEADING,
+                          # Decision 110's card: the three answers, its
+                          # heading and summary, and the word for a copy
+                          # that is nowhere under the firm's folder.
+                          "restore": RESTORE_LABEL, "keep": KEEP_LABEL,
+                          "send_to_review": SEND_TO_REVIEW_LABEL,
+                          "moved_heading": MOVED_HEADING, "moved_summary": MOVED_SUMMARY,
+                          "moved_nowhere": MOVED_NOWHERE},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason
@@ -633,6 +658,47 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int]) -> dict:
     }
 
 
+def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
+                   seqs: dict[str, int]) -> list[dict]:
+    """Every working copy the record has lost track of, and where it is now.
+
+    Decision 110's card is its own list rather than a fourth column on the
+    index: a mislaid copy is the morning's first question and a person
+    answers it with three buttons, not by reading a row. Each entry carries
+    the row's sequence number (decision 112), the home the record put the
+    copy at, where its bytes are now (``None`` for a row whose bytes are
+    nowhere under the firm's folder) and - only when the copy sits inside
+    some request's folder - which request that is, because "keep it where
+    it is" means nothing anywhere else. The folder is matched by
+    :func:`tracker.scaffold.assign_folders`, the same answer the filer
+    files by, so a wanderer in a subfolder of a request's folder counts as
+    that request's and one in the review folder or under no request's
+    counts as nobody's.
+    """
+    folders = assign_folders(engagement / PREPARED_DIR_NAME, [i.identifier for i in items])
+    rows = []
+    for entry in entries:
+        if entry.decision != FILE_MOVED:
+            continue
+        now = moved_to(entry)
+        in_request = ""
+        if now:
+            where = (engagement / now).parent
+            for identifier, claimed in folders.items():
+                if any(folder == where or folder in where.parents for folder in claimed):
+                    in_request = identifier
+                    break
+        rows.append({
+            "original_name": entry.original_name,
+            "pbc_location": entry.pbc_location,
+            "seq": seqs.get(ledger_key(entry)),
+            "home": entry.prepared_location,
+            "now": now,
+            "in_request": in_request,
+        })
+    return rows
+
+
 def _state(engagement: Path) -> dict:
     root = clients_root()
     # The store is brought up to the record before anything is read, and
@@ -703,6 +769,10 @@ def _state(engagement: Path) -> dict:
         # to triage() so each is read once for the whole screen.
         "review": [_triage_payload(t, seqs)
                    for t in review.triage(engagement, entries, items=items)],
+        # The working copies that are not where the record put them
+        # (decision 109 found them; decision 110 is what a person does
+        # about them). Their own list, above the review queue in the app.
+        "moved": _moved_payload(engagement, entries, items, seqs),
         # The reminder as the record and the rows now stand (decision 115):
         # the requests that hold it - a person decides those before any
         # draft is written - and the day of the last draft. Sorted by the
@@ -1081,7 +1151,7 @@ def _shortlist_now(engagement: Path, original: str) -> list[str]:
     milliseconds inside one command.
     """
     entries = read_index(engagement)
-    entry = entries[find_parked(entries, original)]
+    entry = entries[find_parked(entries, original, accepting=(FILE_MOVED,))]
     return [s.identifier for s in review.shortlist_for(entry, load_manifest(engagement))]
 
 
@@ -1218,6 +1288,46 @@ def _cmd_unfile(argv: list[str]) -> dict:
     }
 
 
+def _cmd_restore(argv: list[str]) -> dict:
+    """Put one moved working copy back where the record put it (a person's call).
+
+    JSON spec on stdin: {"original": "<PBC location or original name>",
+                         "seq": <the row's record version, as shown>}
+    The bytes return to the path the row's Prepared Location names - the
+    wanderer moved home when it still holds them, a copy from the client's
+    original when nothing under the firm's folder does - and the row is
+    what it was before it wandered. A home already holding the same bytes
+    is left as it is and so is the wanderer; a home holding a *different*
+    file is never overwritten - that file stays, this document's copy goes
+    to review, and the row parks naming both. The row it comes back with
+    says which of the four happened.
+
+    ``seq`` is the row as the person saw it and is required (decision 112),
+    as it is for the other three: a row the pass rewrote while the card was
+    open is refused before a byte is read.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    original = str(spec.get("original", "")).strip()
+    if not original:
+        raise ManifestError("Pick the working copy to put back")
+    result = restore_working_copy(engagement, original, seq=_seq_of(spec))
+    return {
+        "restored": {
+            "original_name": result.entry.original_name,
+            "decision": result.entry.decision,
+            "reason": result.entry.reason,
+            "prepared_location": result.entry.prepared_location,
+            "moved_home": result.moved_home,
+            "copied_from_original": result.copied_from_original,
+            "already_home": result.already_home,
+            "parked_as": result.parked_as,
+            "scan_note": result.scan_note,
+        },
+        "state": _state(engagement),
+    }
+
+
 def _cmd_settings(argv: list[str]) -> dict:
     """Where the clients live, who the firm is, and where that is written down."""
     root = clients_root()
@@ -1304,6 +1414,7 @@ COMMANDS = {
     "assign": _cmd_assign,
     "dismiss": _cmd_dismiss,
     "unfile": _cmd_unfile,
+    "restore": _cmd_restore,
     "edit": _cmd_edit,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,

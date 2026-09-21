@@ -183,15 +183,23 @@ same day, and the tool's card there prints that sentence.
    W-2* — but it is a place to start reading, never the answer. Install
    Tesseract (§6, step 5) and those scans are read and filed like any
    other document.
-3. **A working copy that has moved is yours, before the draft day.** Every
-   pass proves each working copy against the fingerprint its own index row
-   carries (decision 109). A copy somebody dragged out of its request
-   folder makes that row `tracker.filer.FILE_MOVED`, and it is said on the
-   run and on the practice page the same morning: the request reads Missing
-   until it is back, and the client is never asked for it. Put it back, or
-   file it where it now belongs, before Saturday — the draft holds nothing
-   up for it, and a request that reads Missing all week is one nobody is
-   chasing. §4 has the row and what each answer means.
+3. **A working copy that has moved is yours, and it is the first card on
+   the screen.** Every pass proves each working copy against the
+   fingerprint its own index row carries (decision 109). A copy somebody
+   dragged out of its request folder makes that row
+   `tracker.filer.FILE_MOVED`, and it is said on the run and on the
+   practice page the same morning: the request reads Missing until it is
+   back, and the client is never asked for it. The app lists every such
+   copy above the review queue with its home, where its bytes are now, and
+   three answers — **Put it back**, **Keep it here** (only when the copy
+   sits in a request's folder) and **Send to review** — because which one
+   you meant is never guessed (decision 110). Answer them before Saturday:
+   the draft holds nothing up for a mislaid copy, and a request that reads
+   Missing all week is one nobody is chasing. Nothing you press there
+   overwrites a file or deletes one — a different document already at home
+   is left where it is and this one's copy goes to review instead, and a
+   left-over copy is named every pass until you remove it yourself. §4 has
+   the row and what each answer means.
 4. **A locked engagement.** The app shows a notice when a run holds one. If
    it says a run is still going, leave it — **Sort & Scan** waits for it.
    If it says a run left its lock behind, a **Clear lock** button appears;

@@ -78,6 +78,9 @@ def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
     js = read("app/renderer/app.js")
     called = set(re.findall(r'call\(\["([a-z-]+)"', js)) | set(re.findall(r'withEng\("([a-z-]+)"\)', js))
     assert called <= set(api.COMMANDS), called - set(api.COMMANDS)
+    # The four a person presses on a card, each one an API command and none
+    # of them a path the page walks itself (decisions 77, 110).
+    assert {"assign", "dismiss", "unfile", "restore"} <= called
     assert api.ENGAGEMENT_FLAG not in js
     assert "vocab.engagement_flag" in js
 
@@ -547,6 +550,9 @@ def test_documents_name_buttons_by_their_labels():
         EDITOR_PASTE_LABEL,
         EDITOR_REMOVE_LABEL,
         EDITOR_SAVE_LABEL,
+        KEEP_LABEL,
+        RESTORE_LABEL,
+        SEND_TO_REVIEW_LABEL,
     )
     from tracker.view import VIEW_OPEN_LABEL
 
@@ -562,6 +568,9 @@ def test_documents_name_buttons_by_their_labels():
     labels.add(VIEW_OPEN_LABEL)
     labels |= {EDITOR_OPEN_LABEL, EDITOR_SAVE_LABEL, EDITOR_CANCEL_LABEL, EDITOR_ADD_LABEL,
                EDITOR_REMOVE_LABEL, EDITOR_PASTE_LABEL}
+    # And the three answers to a working copy that is not where the record
+    # put it (decision 110), which the workflow names by their labels.
+    labels |= {RESTORE_LABEL, KEEP_LABEL, SEND_TO_REVIEW_LABEL}
     labels = {label for label in labels if label and "${" not in label}
     for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
         text = read(rel)

@@ -100,6 +100,14 @@ Guarantees:
   row names makes its row ``FILE_MOVED`` - a decision on the document, not
   a status of a request - and a copy dragged back is filed again. Nothing
   moves either way: the fingerprint identifies and a person decides.
+- **A person puts a moved copy back, keeps it, or sends it to review - on
+  the record.** ``restore_working_copy()`` returns the bytes to where the
+  record put them; ``assign_review_file()`` files the wanderer where it now
+  sits (or under another request the person picks); ``unfile_document()``
+  sends it back to ``REVIEW_DIR_NAME``. Each is one event of the person's
+  own, each checks the row's sequence number first and every byte it is
+  about to move second, and a home holding a different file is never
+  overwritten - that file stays and this document's copy goes to review.
 - **An original that leaves the client's own folder is said out loud.**
   ``PBC_DIR_NAME/`` is the provided-by-client record and the client can see
   it, so Explorer will delete, rename and drag what is already there. A row
@@ -242,9 +250,11 @@ UNFILED_BY_PERSON = "unfiled by a person"
 #: person, and which a person may therefore act on: one nobody has looked at
 #: yet, and one somebody has said no request asks for. A ``FILE_MOVED`` row
 #: is deliberately not among them: its copy is somewhere nobody meant it to
-#: be, and the answer to that is its own (decision 110's three buttons), so
-#: until then the refusal names what the row is and a person puts the file
-#: back first.
+#: be, and the answer to that is its own (decision 110's three buttons),
+#: which the two lookups take as ``accepting`` from the action that offers
+#: them - keep it here and send it to review - and which ``dismiss`` does
+#: not, because setting a request aside says nothing about a file nobody
+#: can find (decision 76).
 _PARKED = (NEEDS_REVIEW, NOT_REQUESTED)
 
 #: How candidate identifiers are joined in the Candidates cell. The record
@@ -351,7 +361,9 @@ def request_folder(item: RequestItem, assigned: dict[str, list[Path]], prepared_
     return existing[0] if existing else prepared_dir / folder_name_for(item)
 
 
-def _existing_copy(folder: Path, original: Path, digest: str) -> Path | None:
+def _existing_copy(
+    folder: Path, original: Path, digest: str, *, ignore: Path | None = None
+) -> Path | None:
     """A file already in ``folder`` holding ``original``'s bytes, or None.
 
     A run that was killed after copying a working copy but before the
@@ -360,6 +372,13 @@ def _existing_copy(folder: Path, original: Path, digest: str) -> Path | None:
     the original as unrecorded and would copy it again as ``(2)``; the
     copy that is already there is reused instead. Sizes are compared
     first, so only a same-sized neighbour is hashed.
+
+    ``ignore`` is the copy the caller is about to move, where the caller
+    knows of one. It matters for exactly one case, and that case is
+    decision 110's keep-it-here: the wanderer sits *in* the folder it is
+    being filed into, and without this it would answer as its own earlier
+    attempt - reused under the name a person dragged it in with and then
+    removed as the copy it stood in for.
     """
     if not folder.is_dir():
         return None
@@ -368,7 +387,7 @@ def _existing_copy(folder: Path, original: Path, digest: str) -> Path | None:
     except OSError:
         return None
     for candidate in sorted(folder.iterdir()):
-        if is_cloud_placeholder(candidate):
+        if is_cloud_placeholder(candidate) or (ignore is not None and candidate == ignore):
             continue
         try:
             if candidate.is_file() and candidate.stat().st_size == size and sha256_of(candidate) == digest:
@@ -1874,6 +1893,16 @@ def assign_review_file(
     recorded, never typed into the row (decision 103): the one note left
     is that the request already had the word.
 
+    A ``FILE_MOVED`` row is filed from here too - decision 110's "keep it
+    here", the answer to a copy somebody dragged into a request's folder
+    on purpose. The copy that moves is then the wanderer the row's reason
+    names (:func:`moved_to`), which takes the canonical name in the folder
+    it already sits in, or in another request's folder when the person
+    picks one instead: the picker is the same picker, so keeping the file
+    and correcting the request is one click. A page decision 94 filed
+    under several requests is refused here (``SEVERAL_COPIES_REFUSAL``) and
+    put back with :func:`restore_working_copy` first.
+
     ``seq`` is the row's sequence number as the person saw it and ``shortlist``
     the identifiers the evidence pointed at when they were shown the card,
     both from the caller that drew it (decision 112). A ``seq`` that is not
@@ -1908,9 +1937,15 @@ def assign_review_file(
 
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
-        position = find_parked(entries, original)
+        position = find_parked(entries, original, accepting=(FILE_MOVED,))
         entry = entries[position]
         _refuse_if_stale(engagement_dir, entry, seq)
+        if entry.decision == FILE_MOVED and entry.also_filed:
+            # Decision 110: a page decision 94 filed under several requests
+            # has a copy in each, and which of them the person means by
+            # "keep it here" is not the machine's to guess. Put it back
+            # answers for every copy, and unfiling starts from there.
+            raise FilingError(SEVERAL_COPIES_REFUSAL.format(name=entry.original_name))
         source = engagement_dir / entry.pbc_location
         if not source.is_file():
             raise FilingError(
@@ -1919,14 +1954,26 @@ def assign_review_file(
         if is_cloud_placeholder(source):
             raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
         digest, size_kb = entry.digest, entry.size_kb
-        parked = engagement_dir / entry.prepared_location if entry.prepared_location else None
+        # The copy to move is the one the record says this row's bytes are
+        # at. For nearly every row that is the Prepared Location column;
+        # for a ``FILE_MOVED`` row it is the wanderer the reason names
+        # (decision 110's keep-it-here), and a row whose bytes are nowhere
+        # under the firm's folder has none, so the copy comes from the
+        # client's original exactly as it does for a parked copy that went.
+        here = moved_to(entry) if entry.decision == FILE_MOVED else entry.prepared_location
+        parked = engagement_dir / here if here else None
         # The parked copy is only ever read when it is here, hydrated
         # (hashing a dehydrated one would make the sync client download
         # it), and still this row's - a later row at the same path means
         # this row's copy is gone and what sits there is the later row's.
+        # A later row can only take a path the index *names*, which is the
+        # Prepared Location column; a wanderer is by definition a path no
+        # row names, so that question is not asked of one - and its bytes
+        # are checked below either way, which is the stronger test.
         parked_here = (
             parked is not None and parked.is_file() and not is_cloud_placeholder(parked)
-            and not _copy_taken_by_a_later_row(entries, position)
+            and (entry.decision == FILE_MOVED
+                 or not _copy_taken_by_a_later_row(entries, position))
         )
         if not digest:
             # The pass that preserved this original could not read it back
@@ -1978,7 +2025,8 @@ def assign_review_file(
         # request folder under A's canonical name (the eleventh reading); a
         # copy a reviewer's app re-saved is not the row's bytes either and
         # is left where it is, said so, for the person to keep or discard.
-        existing = _existing_copy(dest_folder, source, digest)
+        existing = _existing_copy(dest_folder, source, digest,
+                                  ignore=parked if parked_here else None)
         if existing is not None:
             filed_as, target = existing.name, existing
             reused = True
@@ -1991,7 +2039,7 @@ def assign_review_file(
         else:
             if parked_here:
                 left_in_review = (
-                    f"the parked copy {entry.prepared_location} no longer holds the bytes this row "
+                    f"the parked copy {here} no longer holds the bytes this row "
                     f"recorded (annotated, or re-saved) and was left there; {filed_as} was copied from the original"
                 )
             _copy_whole(source, target, expect=digest)
@@ -2061,13 +2109,21 @@ def assign_review_file(
     )
 
 
-def find_parked(entries: list[IndexEntry], original: str) -> int:
+def find_parked(
+    entries: list[IndexEntry], original: str, *, accepting: Sequence[str] = ()
+) -> int:
     """Index of the row ``original`` names; the newest parked row wins a name.
 
     A row a person has already said is ``NOT_REQUESTED`` is parked too: its
     working copy is still in ``REVIEW_DIR_NAME``, nothing was moved, and
     filing it is how that decision is undone. Only the two parked decisions
     are a person's to act on; anything else names itself in the refusal.
+
+    ``accepting`` is the decisions the *action* will take beyond those two,
+    named by the action rather than assumed here (decision 110): filing a
+    moved copy where it now sits is a decision a person may make and
+    setting a request aside for it is not, so keep-it-here passes
+    ``FILE_MOVED`` and ``dismiss`` passes nothing and refuses it by name.
 
     Public since decision 112, because the caller that draws the card has
     to find the same row this module will act on to say what the evidence
@@ -2077,7 +2133,7 @@ def find_parked(entries: list[IndexEntry], original: str) -> int:
     for position in range(len(entries) - 1, -1, -1):
         entry = entries[position]
         if entry.pbc_location == wanted or entry.original_name == wanted:
-            if entry.decision in _PARKED:
+            if entry.decision in _PARKED or entry.decision in accepting:
                 return position
             if entry.decision == DUPLICATE and entry.original_name == wanted:
                 continue          # a re-send under the same name; the parked row is older
@@ -2233,6 +2289,16 @@ def unfile_document(
     still wants it, and guessing which keyword to take back would be
     guessing. Refiling is unfiling and then filing.
 
+    A ``FILE_MOVED`` row comes back from here too - decision 110's "send
+    it to review", for a copy that was moved by mistake and belongs under
+    nothing in particular: the copy that goes back is then the wanderer the
+    row's reason names, and a row whose bytes are nowhere under
+    ``PREPARED_DIR_NAME`` is copied from the original, exactly as this
+    already does for a row whose working copy is no longer its own. A page
+    decision 94 filed under several requests is refused
+    (``SEVERAL_COPIES_REFUSAL``) and put back with
+    :func:`restore_working_copy` first.
+
     ``seq`` is the row's sequence number as the person saw it (decision
     112). A row somebody re-filed between the card being drawn and the
     click is a newer filing, and unfiling it would undo a decision this
@@ -2254,9 +2320,13 @@ def unfile_document(
         ensure(engagement_dir)
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
-        position = find_filed(entries, original)
+        position = find_filed(entries, original, accepting=(FILE_MOVED,))
         entry = entries[position]
         _refuse_if_stale(engagement_dir, entry, seq)
+        if entry.decision == FILE_MOVED and entry.also_filed:
+            # As for keep-it-here: which of a decision-94 page's copies is
+            # meant is not guessable, and put-it-back answers for all of them.
+            raise FilingError(SEVERAL_COPIES_REFUSAL.format(name=entry.original_name))
         source = engagement_dir / entry.pbc_location
         # Every working copy this row has: one, or one per request where
         # decision 94 filed the page under several. A copy is only this
@@ -2267,13 +2337,26 @@ def unfile_document(
         # (the index's own column is what a later row can take); for the
         # rest the bytes are the whole test, and they are the stronger one.
         taken = _copy_taken_by_a_later_row(entries, position)
+        # Where to look, and which of those paths the index itself can say
+        # is somebody else's. On a ``FILE_MOVED`` row (decision 110's "send
+        # it to review") the copy that goes back is the wanderer, and it is
+        # looked at first; a row whose bytes are nowhere has none, and the
+        # copy comes from the original exactly as it does for any row whose
+        # working copy is no longer its own.
+        candidates: list[tuple[str, bool]] = [
+            (location, index == 0) for index, location in enumerate(entry.filed_locations)
+        ]
+        if entry.decision == FILE_MOVED:
+            now = moved_to(entry)
+            if now:
+                candidates.insert(0, (now, False))
         mine: list[Path] = []
         strangers: list[str] = []
-        for position_in_row, location in enumerate(entry.filed_locations):
+        for location, is_the_named_copy in candidates:
             copy = engagement_dir / location
             if not copy.is_file() or is_cloud_placeholder(copy):
                 continue
-            if position_in_row == 0 and taken:
+            if is_the_named_copy and taken:
                 continue
             if entry.digest and sha256_of(copy) == entry.digest:
                 mine.append(copy)
@@ -2365,13 +2448,18 @@ def _rescan(engagement_dir: Path, today: dt.date) -> str:
     return ""
 
 
-def find_filed(entries: list[IndexEntry], original: str) -> int:
+def find_filed(
+    entries: list[IndexEntry], original: str, *, accepting: Sequence[str] = ()
+) -> int:
     """Index of the row ``original`` names; the newest ``FILED`` row wins a name.
 
     :func:`find_parked`'s shape over the other decision: what a person may
     unfile is what the index says is filed, whoever filed it. A row that is
     anything else names what it is in the refusal, because the answer to
     "this is in the wrong place" is different for each of them.
+    ``accepting`` widens it exactly as it widens the other (decision 110):
+    send-to-review passes ``FILE_MOVED``, because a copy nobody meant to
+    move is a copy that may go back to review.
 
     Public since decision 112, beside :func:`find_parked`; the underscored
     name is kept for one release.
@@ -2380,7 +2468,7 @@ def find_filed(entries: list[IndexEntry], original: str) -> int:
     for position in range(len(entries) - 1, -1, -1):
         entry = entries[position]
         if entry.pbc_location == wanted or entry.original_name == wanted:
-            if entry.decision == FILED:
+            if entry.decision == FILED or entry.decision in accepting:
                 return position
             if entry.decision == DUPLICATE and entry.original_name == wanted:
                 continue          # a re-send under the same name; the filed row is older
@@ -2391,6 +2479,276 @@ def find_filed(entries: list[IndexEntry], original: str) -> int:
 #: The name this lookup had while it was the filer's alone; kept for one
 #: release, as the module does elsewhere.
 _find_filed = find_filed
+
+
+# --------------------------------------------------------------- recovery ----
+
+
+#: What a put-back says when the wanderer itself went home. The row keeps
+#: the history it had (109's sentence is taken off and this one appended in
+#: its place), so what a person reads is where the copy is now and what it
+#: was before it wandered.
+PUT_BACK = "put back at {home} on {date} from {now}"
+#: The same, for a row whose copy is nowhere in the firm's folder any more:
+#: a working copy is a copy of the original, and the original is the record.
+PUT_BACK_FROM_ORIGINAL = ("put back at {home} on {date} from the original {pbc}; "
+                          "nothing under {prepared} held it")
+#: The row when the bytes were already home. Nothing is moved and nothing
+#: is deleted - the machine never deletes - so the wanderer stays where it
+#: is and the sweep goes on naming it until a person removes it by hand.
+PUT_BACK_ALREADY = ("already back at {home} on {date}; {now} holds the same bytes and was "
+                    "left for a person to remove")
+#: The owner's rule, 2026-09-19: nothing is overwritten. A file at home
+#: that is not this document is somebody's - the sweep says every pass that
+#: nothing on the record put it there - so it stays, this document's copy
+#: goes to review under the client's own name, and the row parks naming
+#: both, so a person answers it with File it or Not requested.
+PUT_BACK_REFUSED = ("put back refused on {date}: {home} holds a different file, which was left; "
+                    "this document's copy went to review as {parked}")
+#: Why keep-it-here and send-to-review refuse a page decision 94 filed under
+#: several requests: which of its copies the person means is not the
+#: machine's to guess, and put-it-back answers for every one of them.
+SEVERAL_COPIES_REFUSAL = "{name} has copies under several requests; put it back, then unfile it"
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreResult:
+    """What putting one moved working copy back did."""
+
+    entry: IndexEntry            # the rewritten index row
+    moved_home: bool             # the wanderer itself was moved to the home path
+    copied_from_original: bool   # nothing under Prepared/ held the bytes; PBC/ did
+    already_home: bool           # home held the bytes; the wanderer was left alone
+    parked_as: str = ""          # the refusal: where this document's copy went instead
+    scan_note: str = ""          # why the re-scan did not land, when it did not
+
+
+def find_moved(entries: list[IndexEntry], original: str) -> int:
+    """Index of the row ``original`` names; the newest ``FILE_MOVED`` row wins.
+
+    :func:`find_parked`'s shape over the decision the sweep writes. A row
+    that is anything else names what it is in the refusal: put-it-back is an
+    answer to "the copy is not where the record put it", and a row nobody
+    said that about has nothing to put back.
+    """
+    wanted = original.replace("\\", "/").strip()
+    for position in range(len(entries) - 1, -1, -1):
+        entry = entries[position]
+        if entry.pbc_location == wanted or entry.original_name == wanted:
+            if entry.decision == FILE_MOVED:
+                return position
+            if entry.decision == DUPLICATE and entry.original_name == wanted:
+                continue          # a re-send under the same name; the moved row is older
+            raise FilingError(f"{entry.original_name} is not a moved copy (it is {entry.decision})")
+    raise FilingError(f"nothing in the index is called {original!r}")
+
+
+def _holds_the_row(path: Path, digest: str) -> bool:
+    """Whether this file is here, readable now, and the row's own bytes.
+
+    A person's click, not the unchanged-tree path: the file is read rather
+    than remembered, because what is about to be moved is proved in the
+    moment it is moved. A placeholder is never read (hashing one would make
+    the sync client download it) and is not here as far as this is
+    concerned - the caller refuses first, so it never reaches this.
+    """
+    return path.is_file() and not is_cloud_placeholder(path) and sha256_of(path) == digest
+
+
+def restore_working_copy(
+    engagement_dir: Path | str,
+    original: str,
+    *,
+    seq: int | None = None,
+    today: dt.date | None = None,
+) -> RestoreResult:
+    """Put one moved working copy back where the record put it.
+
+    The first of decision 110's three answers to a ``FILE_MOVED`` row, and
+    the only one that needs no other place for the file to go: the bytes
+    return to the path the row's Prepared Location names - the wanderer
+    moved home when it still holds them, a fresh copy made from the
+    client's original when nothing under ``PREPARED_DIR_NAME`` does - and
+    the row goes back to what it was before it wandered, ``FILED`` when it
+    names a request and ``NEEDS_REVIEW`` when it does not (109's rule for a
+    copy dragged back by hand).
+
+    Three things it will not do, each one the owner's, 2026-09-19:
+
+    - **It never overwrites.** A file already at home that is *not* this
+      document is somebody's, and it stays exactly where it is; this
+      document's copy goes to ``REVIEW_DIR_NAME`` under the client's own
+      name instead and the row parks naming both, so both files are on
+      disk and a person decides with the card.
+    - **It never deletes.** Where home already holds these bytes there is
+      nothing to move: the row is restored and the wanderer is left, and
+      the sweep goes on saying it is unrecorded until a person removes it.
+    - **It never guesses.** ``seq`` is checked first (decision 112), every
+      byte it is about to move is read second, and only then does anything
+      move; a record that refuses the decision puts the file back.
+
+    A page decision 94 filed under several requests has a copy in each, and
+    every one of them is put back - which is why keep-it-here and
+    send-to-review refuse such a row and point here.
+    """
+    engagement_dir = Path(engagement_dir)
+    today = today or dt.date.today()
+    stamp = today.isoformat()
+    review_dir = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+
+    with engagement_lock(engagement_dir):
+        ensure(engagement_dir)
+        entries = read_index(engagement_dir)
+        before = {ledger_key(e): entry_to_json(e) for e in entries}
+        position = find_moved(entries, original)
+        entry = entries[position]
+        _refuse_if_stale(engagement_dir, entry, seq)
+        if not entry.digest:
+            # Decision 65: a row preserved without its bytes is tied to
+            # nothing, so there is nothing to prove a copy against and
+            # nothing this may safely move. It is said out loud every pass.
+            raise FilingError(
+                f"{entry.original_name} was recorded without its bytes, so nothing can be proved "
+                "to be its working copy; the pass says so every run"
+            )
+        source = engagement_dir / entry.pbc_location
+        now = moved_to(entry)
+        wanderer = engagement_dir / now if now else None
+
+        # Every location this row claims - one for nearly every row, one per
+        # request for a page decision 94 filed under several - sorted into
+        # what is already right, what is not there, and what is somebody
+        # else's file. A placeholder is not read and not overwritten either:
+        # the sync client has not finished, and the answer is to wait.
+        absent: list[str] = []
+        different: list[str] = []
+        for location in entry.filed_locations:
+            path = engagement_dir / location
+            if not path.is_file():
+                absent.append(location)
+            elif is_cloud_placeholder(path):
+                raise FilingError(f"{location} is still syncing; try again when it is here")
+            elif sha256_of(path) != entry.digest:
+                different.append(location)
+
+        def the_original() -> Path:
+            """The client's original, proved, or the refusal that names why."""
+            looked = f"the copy at {now}" if now else f"nothing under {PREPARED_DIR_NAME}"
+            if not source.is_file():
+                raise FilingError(
+                    f"{looked} holds this row's bytes and the original {entry.pbc_location} is no "
+                    f"longer in {PBC_DIR_NAME}; there is nothing to put back"
+                )
+            if is_cloud_placeholder(source):
+                raise FilingError(
+                    f"the original {entry.pbc_location} is still syncing; try again when it is here"
+                )
+            if sha256_of(source) != entry.digest:
+                raise FilingError(
+                    f"neither {looked} nor the original {entry.pbc_location} holds the bytes this "
+                    "row recorded; look at the files first"
+                )
+            return source
+
+        moved_home = copied_from_original = wanderer_moved = False
+        parked: Path | None = None
+        filled: list[Path] = []
+        if different:
+            # Refused, and nothing is touched at home. This document's copy
+            # goes to review under the client's own name - the wanderer
+            # itself when it still holds the bytes, a fresh one from the
+            # original when nothing does - so the person has a working copy
+            # to act on and both files are still on disk.
+            review_dir.mkdir(parents=True, exist_ok=True)
+            parked = _unique_path(review_dir, entry.original_name)
+            if wanderer is not None and _holds_the_row(wanderer, entry.digest):
+                _move_whole(wanderer, parked)
+                wanderer_moved = True
+            else:
+                _copy_whole(the_original(), parked, expect=entry.digest)
+                copied_from_original = True
+            sentence = PUT_BACK_REFUSED.format(
+                date=stamp, home=different[0],
+                parked=prepared_location(review_dir, parked.name))
+            new_entry = replace(
+                entry, decision=NEEDS_REVIEW, identifier="", also_filed="",
+                prepared_location=prepared_location(review_dir, parked.name),
+                reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+            )
+        elif not absent:
+            # Already home: no file operation at all, and the wanderer -
+            # a copy of the same document, by its bytes - is left for a
+            # person to remove. A row that says its bytes are nowhere and
+            # has them home again is the sweep's own sentence, worded once.
+            sentence = (PUT_BACK_ALREADY.format(home=entry.prepared_location, date=stamp, now=now)
+                        if now else MOVED_BACK_SENTENCE.format(
+                            home=entry.prepared_location, date=stamp))
+            new_entry = replace(
+                entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
+                reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+            )
+        else:
+            home = engagement_dir / absent[0]
+            home.parent.mkdir(parents=True, exist_ok=True)
+            if wanderer is not None and _holds_the_row(wanderer, entry.digest):
+                _move_whole(wanderer, home)
+                moved_home = wanderer_moved = True
+                sentence = PUT_BACK.format(home=absent[0], date=stamp, now=now)
+            else:
+                _copy_whole(the_original(), home, expect=entry.digest)
+                copied_from_original = True
+                sentence = PUT_BACK_FROM_ORIGINAL.format(
+                    home=absent[0], date=stamp, pbc=entry.pbc_location,
+                    prepared=PREPARED_DIR_NAME)
+            filled.append(home)
+            # Decision 94's other copies, if this row has any: each is these
+            # same bytes over again, and the one just put back is them.
+            for location in absent[1:]:
+                other = engagement_dir / location
+                other.parent.mkdir(parents=True, exist_ok=True)
+                _copy_whole(home, other, expect=entry.digest)
+                filled.append(other)
+            new_entry = replace(
+                entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
+                reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+            )
+
+        entries[position] = new_entry
+        try:
+            _record(engagement_dir, before, entries,
+                    decided={ledger_key(new_entry): ledger.RESTORED_BY_PERSON})
+        except BaseException:
+            # The same rule as every other person's decision: the record
+            # took it or it did not, so exactly what moved goes back and a
+            # retry does this once rather than twice.
+            if not _the_record_holds(engagement_dir, new_entry):
+                try:
+                    if parked is not None:
+                        if wanderer_moved:
+                            _move_whole(parked, wanderer)
+                        else:
+                            parked.unlink(missing_ok=True)
+                    else:
+                        for copy in filled[1:]:
+                            copy.unlink(missing_ok=True)
+                        if wanderer_moved and filled:
+                            _move_whole(filled[0], wanderer)
+                        elif filled:
+                            filled[0].unlink(missing_ok=True)
+                except (OSError, FilingError) as undo:
+                    log.error("Could not put %s back after the record refused it: %s",
+                              entry.original_name, undo)
+            raise
+
+    # Outside the lock, as the unfiling's is: the request this row answers
+    # has its file again (or has lost it to review), and the status says so
+    # now rather than at the next scheduled pass.
+    return RestoreResult(
+        entry=new_entry, moved_home=moved_home, copied_from_original=copied_from_original,
+        already_home=not different and not absent,
+        parked_as=prepared_location(review_dir, parked.name) if parked is not None else "",
+        scan_note=_rescan(engagement_dir, today),
+    )
 
 
 # -------------------------------------------------------------------- CLI ----

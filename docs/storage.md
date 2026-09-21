@@ -129,13 +129,18 @@ statuses by status.
 The events that carry a whole index row are `tracker.ledger.ROW_EVENTS`,
 and their fold **is** the index: `preserved`, `filed`, `parked`,
 `duplicate`, `assigned_by_person`, `dismissed_by_person`,
-`unfiled_by_person`, `bytes_recorded`, `copy_moved` and the `imported`
-line a seeded row carries. `copy_moved` is decision 109's and the newest
-of them: the pass found a row's working copy somewhere other than where
+`unfiled_by_person`, `restored_by_person`, `bytes_recorded`, `copy_moved`
+and the `imported` line a seeded row carries. `copy_moved` is decision
+109's: the pass found a row's working copy somewhere other than where
 the record last said — away from its request folder, away again, or back
 where it belongs — and the row the line carries says which. One name in
 either direction, because the fold is the same fold whichever way the
-copy went. The rest of the names are not row events and fold their own
+copy went. `restored_by_person` is decision 110's and the newest of them,
+and it is the answer to that one: a person put the copy back where the
+record put it, whatever the click found — the bytes moved home, copied
+home from the client's original, already home, or refused a home holding
+a different file and sent to review instead. One name again, because the
+row the line carries says which. The rest of the names are not row events and fold their own
 way: `scanned` (the statuses), `keyword_learned`, `rules_changed`,
 `drafted`, and the retired `rules_imported` and `migrated`.
 
