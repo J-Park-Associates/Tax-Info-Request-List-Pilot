@@ -35,6 +35,7 @@ jobs:
     # The package is a Windows package and the firm's machine is Windows;
     # there is no other host this could be built on.
     runs-on: windows-latest
+    timeout-minutes: 90
     steps:
       # git comes with the checkout, and the build reads it: BUILD-INFO.txt
       # records the commit the package was made from.

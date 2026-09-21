@@ -1,21 +1,45 @@
-# Runs the test suite and verifies the repository map still matches the tree,
-# on Linux and on Windows, on the floor interpreter and on the office's.
+# Runs the test suite and verifies the repository map still matches the tree.
 #
 # The map check is here because docs/repo-map.md is what agents read instead of
 # re-scanning the repo (see CLAUDE.md). Its freshness is guarded by a test, but
 # a guard nothing runs is a convention rather than a rule — this is what makes
 # it enforced on every push and pull request.
 #
-# Windows is in the matrix because the firm's machine is Windows: the held
-# engagement lock, the atomic os.replace over a file Excel may hold, and the
-# path handling all behave differently there, and the suite has tests that
-# only run on Windows.
+# What runs where, and why. A minute on a Windows runner is billed at twice a
+# minute on Linux, and the two Windows rows were four fifths of the price of a
+# run. A pull request in this series is three to five pushes, and every one of
+# them re-ran Windows — while the gate that precedes every push already runs on
+# Windows, on the machine the work is done on. So the Windows jobs on a pull
+# request were repeating a check that had just been made. From here:
+#
+#   * a pull request runs Linux only, on the floor interpreter and on the
+#     office's — the check the local gate does not make;
+#   * every push to main runs Windows as well, where it is the safety net
+#     nobody can skip and the last check before a tag freezes a package;
+#   * a pull request asks for Windows with the `windows` label, put on anything
+#     touching the held engagement lock, the atomic replace, path handling or a
+#     Windows-only test. `labeled` is one of the triggers below so that
+#     labelling an open pull request runs the job without needing a new push.
+#
+# The steps themselves are not in this file. A job's own `if:` is evaluated
+# before a matrix is expanded and cannot see the `matrix` context, so this
+# cannot be one matrix with a condition on its Windows rows; it is two jobs,
+# and both call .github/workflows/gate.yml so that the gate is written once.
+# On a pull request that did not ask for Windows the second job is skipped as
+# a whole — never started, never billed, and reported as skipped rather than
+# as a check that passed. The timeout lives with the steps, in gate.yml.
+#
+# The trade-off taken: a Windows-only regression in an unlabelled pull request
+# reaches main and is found by main's run, and its fix is one more pull
+# request. Accepted because the Windows gate ran before the push, and because
+# the alternative was paying for the Windows pair on every push to repeat it.
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
 
 # A newer push makes an in-flight run irrelevant; don't pay for both.
 concurrency:
@@ -26,74 +50,38 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Tests and repository map (${{ matrix.os }}, Python ${{ matrix.python-version }})
+  # Two interpreters, written out one row at a time rather than crossed: the
+  # floor line has to stay readable as one literal, because
+  # tests/test_single_source.py pins it to pyproject's requires-python by
+  # substring and a flow sequence would hide it.
+  #
+  # The floor is what the code may use. The other is what the firm's machine
+  # runs and what the portable package is frozen on (pyproject.toml's
+  # [tool.office], built by .github/workflows/build.yml); a package that ships
+  # on an interpreter the suite has never run under is tested for the first
+  # time at the office (decision 78). Both are checked here, on Linux: the
+  # floor is a language-version check, and Linux is where it is made.
+  linux:
+    name: Linux
     strategy:
       fail-fast: false
-      # Two interpreters on both operating systems, written out one row at a
-      # time rather than crossed: the floor line has to stay readable as one
-      # literal, because tests/test_single_source.py pins it to pyproject's
-      # requires-python by substring and a flow sequence would hide it.
-      #
-      # The floor is what the code may use. The other is what the firm's
-      # machine runs and what the portable package is frozen on
-      # (pyproject.toml's [tool.office], built by .github/workflows/build.yml);
-      # a package that ships on an interpreter the suite has never run under
-      # is tested for the first time at the office (decision 78).
       matrix:
         include:
-          - os: ubuntu-latest
-            python-version: "3.11"
-          - os: ubuntu-latest
-            python-version: "3.14"
-          - os: windows-latest
-            python-version: "3.11"
-          - os: windows-latest
-            python-version: "3.14"
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
+          - python-version: "3.11"
+          - python-version: "3.14"
+    uses: ./.github/workflows/gate.yml
+    with:
+      os: ubuntu-latest
+      python-version: ${{ matrix.python-version }}
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run the test suite
-        run: python -m pytest -q
-
-      # Dead code and unused imports are the linter's job, not a reviewer's
-      # (pyproject.toml says what it checks).
-      - name: Lint
-        if: always()
-        run: python -m ruff check .
-
-      # always(): a stale map and a failing test are separate problems, and
-      # seeing both in one run beats finding the second after fixing the first.
-      - name: Check the repository map is current
-        if: always()
-        run: python tools/repo_map.py check
-
-      # The coverage report is what the next review round is briefed from;
-      # a stale one sends it after the wrong keywords.
-      - name: Check the vocabulary coverage report is current
-        if: always()
-        run: python tools/vocab_report.py check
-
-      # The Electron shell has no test suite of its own; at least it must parse.
-      - name: Check the Electron shell parses
-        if: always()
-        run: |
-          node --check app/main.js
-          node --check app/preload.js
-          node --check app/renderer/app.js
+  # Windows on main and on a pull request that asked.
+  windows:
+    name: Windows
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'windows')
+    uses: ./.github/workflows/gate.yml
+    with:
+      os: windows-latest
+      # On the office's interpreter only: what Windows has to prove is how the
+      # interpreter the office runs behaves there, not that the floor is still
+      # the floor.
+      python-version: "3.14"
