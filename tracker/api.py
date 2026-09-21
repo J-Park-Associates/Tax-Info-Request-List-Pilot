@@ -111,6 +111,7 @@ from tracker.rollover import (
     detect_year,
     next_tax_year,
     roll_forward,
+    with_default_dates,
 )
 from tracker.runner import (
     DRAFT_WEEKDAY,
@@ -168,10 +169,8 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     KEYWORD_DEFAULT_NOTE,
     PERIOD_PATTERN,
     YEAR_NOTE,
-    ask_by_for,
     base_year,
     default_tax_year,
-    filing_deadline_for,
     item_from_spec,
     require_form,
     shift_item,
@@ -614,29 +613,6 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
     )
 
 
-def _with_default_dates(info: EngagementInfo, form: str, year: int | None) -> EngagementInfo:
-    """The details with the two dates the form implies, where they are blank.
-
-    Decision 117. The reminder's ladder is measured against the Due Date,
-    so an engagement nobody typed a date into would sit on its first rung
-    for ever and the escalation would be a feature nobody switched on. The
-    Filing Deadline comes from the form's own table for the year after the
-    tax year, and the Due Date from it - the firm's ask-by target. Both are
-    ordinary details afterwards: editable, clearable, and never written
-    over once they hold anything.
-
-    A form the catalog has no deadline for fills nothing: a guessed
-    statutory date is worse than a blank one, because the blank is silent
-    and the guess is read out to a client.
-    """
-    if not form or year is None:
-        return info
-    deadline = info.filing_deadline or filing_deadline_for(form, year)
-    if deadline is None:
-        return info
-    return replace(info, filing_deadline=deadline, due=info.due or ask_by_for(deadline))
-
-
 def _tax_year(given, default: int | None = None) -> int | None:
     """The tax year a spec asks for: a whole number within the bounds the
     wizard shows (``YEAR_MIN``..``YEAR_MAX``), or ``default`` when none
@@ -1055,7 +1031,7 @@ def _cmd_create(argv: list[str]) -> dict:
 
     # The wizard's dates, or the form's own (decision 117) - a new
     # engagement is on the reminder's ladder from its first draft.
-    info = _with_default_dates(_info_from_spec(spec), form, year)
+    info = with_default_dates(_info_from_spec(spec), form, year)
     engagement.mkdir(parents=True)
     try:
         # The catalog the wizard chose is recorded in the details: an
@@ -1164,8 +1140,8 @@ def _cmd_rollover(argv: list[str]) -> dict:
     carried = carry_engagement_info(load_engagement_info(prior), rolled_from=str(prior))
     # Last year's deadline did not carry, and this year's is the form's:
     # the rolled engagement starts on the ladder as a new one does.
-    info = _with_default_dates(_info_from_spec(spec, carry=carried),
-                               carried.form or form, report.target_year)
+    info = with_default_dates(_info_from_spec(spec, carry=carried),
+                              carried.form or form, report.target_year)
     engagement.mkdir(parents=True)
     try:
         create_engagement(engagement, report.items, info)
