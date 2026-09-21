@@ -350,6 +350,36 @@ def test_nothing_outstanding_means_no_draft_file(tmp_path, samples):
     assert not (folder / DRAFT_FILENAME).exists()
 
 
+def test_the_draft_step_hands_the_pass_day_to_the_drafter_and_records_the_stage(tmp_path, samples, stamped_on):
+    """Decision 117: the stage is measured from the day the pass is making,
+    not from the clock - so a dated run writes the letter that day was
+    owed - and the run says which rung it wrote, in its own line, on the
+    practice page and on the record."""
+    from tracker.reminder import STAGE_KEY, STAGE_LINE, stage_named
+    from tracker.runner import STAGE_NOTE
+
+    engagement = build_engagement(tmp_path, samples)
+    # The draft day is thirteen days before the date this client was asked
+    # to send by: the second rung.
+    edit_details(engagement.path, due=SATURDAY + dt.timedelta(days=13))
+    run = pass_on(stamped_on, engagement, SATURDAY)
+    assert run.stage == 2
+    assert STAGE_NOTE.format(n=2) in run.summary()
+    assert STAGE_LINE.format(number=2, name=stage_named(2).name) in run.drafted.read_text(encoding="utf-8")
+    assert drafted_events(engagement.path)[-1][STAGE_KEY] == 2
+    page = html.unescape(write_status_page(tmp_path, RunReport(today=SATURDAY, runs=[run])).read_text(encoding="utf-8"))
+    assert f"<td>{STAGE_NOTE.format(n=2)}</td>" in page
+
+    # A week later, inside the last ten days: the same rows, a harder
+    # letter, and the record says so rather than saying nothing happened.
+    later = SATURDAY + dt.timedelta(days=7)
+    after = pass_on(stamped_on, engagement, later)
+    assert after.stage == 3 and after.drafted is not None
+    events = drafted_events(engagement.path)
+    assert [event[STAGE_KEY] for event in events] == [2, 3]
+    assert events[0][ledger.ASKED_KEY] == events[1][ledger.ASKED_KEY]
+
+
 def test_a_dry_run_writes_nothing_at_all(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
     run = run_engagement(engagement, today=SATURDAY, dry_run=True)
@@ -658,7 +688,11 @@ def test_the_log_appends_rather_than_replaces(tmp_path, samples):
 
 def test_a_clients_folder_drives_a_real_run_with_nothing_registered(tmp_path, samples):
     engagement = build_engagement(tmp_path / "Clients" / "Smith", samples)
-    edit_details(engagement.path, client="John Smith", due=dt.date(2026, 4, 15),
+    # Thirteen days from the draft day, so the pass writes the stage that
+    # names the target (decision 117) and the date in the record is one a
+    # person can read in the letter.
+    due = SATURDAY + dt.timedelta(days=13)
+    edit_details(engagement.path, client="John Smith", due=due,
                  firm="J Park & Associates, CPA")
 
     report = run_registry(discover_engagements(tmp_path / "Clients"), today=SATURDAY)
@@ -666,7 +700,7 @@ def test_a_clients_folder_drives_a_real_run_with_nothing_registered(tmp_path, sa
     assert len(report.processed) == 1
     draft = (engagement.path / DRAFT_FILENAME).read_text(encoding="utf-8")
     assert "Hi John Smith," in draft
-    assert "April 15, 2026" in draft
+    assert due.strftime("%B %d, %Y") in draft
     assert "J Park & Associates, CPA" in draft
 
 

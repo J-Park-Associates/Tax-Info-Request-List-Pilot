@@ -320,6 +320,27 @@ def test_a_refusal_beside_content_evidence_is_said_in_that_suggestions_sentence(
     assert reasons.PASSWORD_PROTECTED.marker in suggestion.reason
 
 
+def test_a_locked_file_the_rules_never_read_is_offered_by_its_name_with_the_refusal(engagement):
+    """Decision 117: the router now records what a locked file's *name*
+    said beside the refusal that stopped it being read, so the card offers
+    the request it was probably meant for and says both things about it -
+    at the weakest tier, beside a document the person has to open anyway.
+    """
+    from tests.test_validators import write_pdf
+
+    write_pdf(engagement / SHARED_DIR_NAME / "W-2 Jane Smith 2025.pdf", password="secret123")
+    report = file_drops(engagement, today=DAY1)
+    assert len(report.review) == 1
+
+    [triaged] = triage_of(engagement)
+    (suggestion,) = triaged.shortlist
+
+    assert suggestion.identifier == "A01"
+    assert "the file name says W-2" in suggestion.reason
+    assert reasons.PASSWORD_PROTECTED.marker in suggestion.reason
+    assert triaged.entry.candidates == "", "a name is still no candidate"
+
+
 def test_every_rule_and_place_the_evidence_defines_has_a_strength_and_a_word():
     """A new evidence word must not quietly rank last and read as nothing."""
     assert set(RULE_STRENGTH) == set(EVIDENCE_RULES) - {RULE_REFUSED}

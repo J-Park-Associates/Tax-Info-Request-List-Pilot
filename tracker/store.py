@@ -172,7 +172,13 @@ ENV_STORE = "TRACKER_STORE"
 #: ``requests``: a version-3 file has no column for the reason a person
 #: gives, so it is refused, deleted and rebuilt from the journals like the
 #: others - the reason itself travels in the ``rules_changed`` event.
-SCHEMA_VERSION = 4
+#: Version 5 (decision 117) added the Filing Deadline to the engagement's
+#: details, which is a column of ``engagements``: a version-4 file has no
+#: column for it, so it is refused, deleted and rebuilt from the journals
+#: like every version before it - the date itself travels in the
+#: ``rules_changed`` event, so nothing is lost and only the first pass is
+#: slower.
+SCHEMA_VERSION = 5
 
 #: The verdict cache's two tables (decision 107). Named once, here, because
 #: the cache in :mod:`tracker.content_check` and the tests both speak of

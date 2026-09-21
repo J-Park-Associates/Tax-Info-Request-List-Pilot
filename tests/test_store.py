@@ -132,7 +132,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 4
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 5
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -156,16 +156,23 @@ def test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name(tmp_pat
 def test_a_version_two_store_is_refused_by_name(tmp_path):
     """Decision 107 added the verdict cache's two tables; a file from before
     it has no ``verdicts`` table, and is refused by the same sentence a
-    version-1 file was - delete it and rebuild, nothing is lost."""
-    path = tmp_path / "app" / store.STORE_FILENAME
-    store.open(path).close()
-    written_earlier = sqlite3.connect(path)
-    written_earlier.execute("PRAGMA user_version = 2")
-    written_earlier.close()
+    version-1 file was - delete it and rebuild, nothing is lost.
 
-    with pytest.raises(store.StoreError, match="user_version 2") as raised:
-        store.open(path)
-    assert str(path) in str(raised.value) and "delete it and rebuild" in str(raised.value)
+    And so is a file at the version before this one, whatever that is
+    today: decision 117 put the Filing Deadline in ``engagements`` and a
+    file without that column is a file this code would write wrongly.
+    """
+    path = tmp_path / "app" / store.STORE_FILENAME
+    for version in (2, store.SCHEMA_VERSION - 1):
+        store.open(path).close()
+        written_earlier = sqlite3.connect(path)
+        written_earlier.execute(f"PRAGMA user_version = {version}")
+        written_earlier.close()
+
+        with pytest.raises(store.StoreError, match=f"user_version {version}") as raised:
+            store.open(path)
+        assert str(path) in str(raised.value) and "delete it and rebuild" in str(raised.value)
+        path.unlink()
 
 
 def test_a_record_whose_type_the_store_cannot_store_is_refused_before_it_is_written():

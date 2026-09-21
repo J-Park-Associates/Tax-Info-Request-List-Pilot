@@ -167,3 +167,48 @@ def test_no_shipped_catalog_row_requires_a_subset_of_anothers_words(form):
             mine = {k.lower() for k in one.required_keywords}
             theirs = {k.lower() for k in other.required_keywords}
             assert not (mine and theirs and mine <= theirs), (one.identifier, other.identifier)
+
+
+# ------------------------------------------------- the two dates (d117) ----
+
+
+def test_the_filing_deadline_table_covers_every_form_and_shifts_a_weekend_forward():
+    """Decision 117: every return the catalog knows has a statutory date,
+    moved forward off the weekend the way the IRS moves it - and a form
+    the table does not name has none at all, because a guessed deadline is
+    a date read out to a client in the firm's name."""
+    import datetime as dt
+
+    from tracker.templates import FILING_DEADLINES, filing_deadline_for
+
+    assert set(FILING_DEADLINES) == {f["id"] for f in FORM_TYPES}
+    for form in FILING_DEADLINES:
+        when = filing_deadline_for(form, BASE_YEAR)
+        assert when is not None and when.year == BASE_YEAR + 1
+        assert when.weekday() < 5, form
+
+    # April 15 2028 is a Saturday: the deadline is the Monday after it.
+    assert filing_deadline_for("1040", 2027) == dt.date(2028, 4, 17)
+    # And a day that is already a weekday does not move.
+    assert filing_deadline_for("1040", 2025) == dt.date(2026, 4, 15)
+    assert filing_deadline_for("1120S", 2025) == dt.date(2026, 3, 16)   # March 15 is a Sunday
+    assert filing_deadline_for("990", 2025) == dt.date(2026, 5, 15)
+    assert filing_deadline_for("not a form", 2025) is None
+
+
+def test_the_ask_by_default_is_five_days_before_the_deadline_moved_back_to_a_weekday():
+    """The firm's own target, and it is a default rather than a rule: the
+    reminder names the two dates and never the arithmetic between them."""
+    import datetime as dt
+
+    from tracker.templates import TARGET_DAYS_BEFORE_DEADLINE, ask_by_for
+
+    assert TARGET_DAYS_BEFORE_DEADLINE == 5
+    # April 15 2026 is a Wednesday; five days before it is a Friday.
+    assert ask_by_for(dt.date(2026, 4, 15)) == dt.date(2026, 4, 10)
+    # April 15 2027 is a Thursday; five days before is a Saturday, so the
+    # target is the working day before it - a date the office can act on.
+    assert ask_by_for(dt.date(2027, 4, 15)) == dt.date(2027, 4, 9)
+    for days in range(0, 400):
+        target = ask_by_for(dt.date(2026, 1, 1) + dt.timedelta(days=days))
+        assert target.weekday() < 5

@@ -116,6 +116,20 @@ an overridden row was already decided by a person. Internal validation notes
 never reach the client: each one is translated into the plain instruction
 `tracker/reasons.py` pairs it with.
 
+**The letter escalates in four stages** (decision 117), measured against the
+Due Date — the date the firm asks the client to send things by. More than
+three weeks out it is a heads-up with no deadline sentence at all; inside
+three weeks a check-in that names the target; in the last ten days a firm
+request that names the target and the Filing Deadline beside it; on the day
+and after it a final notice with the consequences sentence and the firm's
+phone number. The stage changes the words and nothing else: who is asked is
+the same at every stage, and every hold below holds at every stage. The
+stage is named in the draft's header, above the fingerprint line and so
+outside the text you paste, and recorded in the `drafted` event; `--stage`
+writes the same rows at another stage and `--today` at another day. Both
+dates are the engagement's details, editable and clearable, and the
+sentences name the dates and never the arithmetic between them.
+
 Two things are deliberately held back from the client and reported to the
 accountant instead:
 
@@ -132,10 +146,16 @@ after filing, a copy dragged in by hand or a copy replaced — the firm's
 doing, or the client's, and not the draft's to guess. Nothing is written for
 that client until somebody decides; the run's own earlier draft is removed,
 an edited one is left, and the run log, the practice page and the app name
-the rows. The manual draft is held by the same question. Every draft that
-is written is one `drafted` event on the engagement's record — what it
-asked for and which file — and a regenerated draft opens with what changed
-since the last one, above the line a person pastes.
+the rows. The manual draft is held by the same question. So does a file the
+client sent that the rules could not use at all — a locked PDF, an empty
+upload, a file type nothing accepts — when what it looks like is a request
+still outstanding (decision 117): the drop parks for a person and never
+reaches a status, so the draft would otherwise ask for a document the client
+knows they sent. A parked file that looks like nothing holds nothing, and
+one nobody here could read is ours. Every draft that is written is one
+`drafted` event on the engagement's record — what it asked for, which stage
+and which file — and a regenerated draft opens with what changed since the
+last one, above the line a person pastes.
 
 And if files are still sitting in `00 - Needs Review`, the CLI says so before
 you send: those are documents the client *has* already sent, so a reminder
@@ -152,7 +172,7 @@ There is nothing to register. Point the scheduled job at the folder you keep
 your clients in; every folder under it holding `_ledger.jsonl` is an
 engagement, and the engagement's details (written by the wizard when you
 create or roll forward an engagement, edited in the app) say who the client
-is, the share link, the due date, whether they are chased by email and
+is, the share link, the two dates, whether they are chased by email and
 whether the engagement is still active:
 
 | Engagement details | |
@@ -161,6 +181,7 @@ whether the engagement is still active:
 | Engagement Name | label; the folder name if blank |
 | Share Link | pasted into the reminder |
 | Due Date | the date the reminder asks the client to send things by |
+| Filing Deadline | the statutory filing date; named in the reminder from the third stage on; blank = not mentioned (defaults from the form, weekends shifted; holidays are yours to edit) |
 | Sender | who the reminder is from |
 | Firm | the sign-off line and the client README's contact (typed once at setup) |
 | Reminders | `no` = this client is not chased by email |
@@ -170,7 +191,11 @@ whether the engagement is still active:
 
 The app asks for that folder on first launch and writes it to
 `settings.json` beside itself (`python -m tracker.settings <folder>` does the
-same from a terminal). Everything else reads that one value:
+same from a terminal). Two things about the firm rather than about a client
+are kept there beside it: the firm's name, which signs the reminders, and
+the firm's phone number, which only the final-notice stage says and which
+is left out of the letter entirely when it is blank. Everything else reads
+that one value:
 
 ```
 python -m tracker.runner "D:\OneDrive\Clients" --log     # or the app's Install Schedule button

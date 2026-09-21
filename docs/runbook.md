@@ -222,6 +222,37 @@ you reconcile in seconds rather than comparing two emails by eye.
 Open it, read it, edit it, paste it into Gmail and send it. Nothing in the
 tool sends anything, ever.
 
+**The letter gets firmer as the date gets closer.** There are four stages,
+and which one you get is decided by how far the draft day is from the
+engagement's **Due Date** — the date you are asking the client to send
+things by, which is one of the engagement's details and yours to change.
+The draft's header says which stage it is on, above the fingerprint line,
+so you can see it without reading the letter; the practice page's Drafted
+column says it too.
+
+| Stage | When | What the letter does |
+|---|---|---|
+| 1 | more than three weeks before the Due Date | a heads-up, with no deadline sentence at all |
+| 2 | three weeks to ten days before | a check-in that names the Due Date as the firm's target |
+| 3 | the last ten days | a firm request, naming the Due Date and the **Filing Deadline** beside it, with its own subject line |
+| 4 | the Due Date and after it | a final notice: the consequences sentence, the firm's phone number, and its own subject line |
+
+Two details drive it, and both are edited in the app. The **Due Date** is
+the firm's ask-by target. The **Filing Deadline** is the statutory date the
+return has to be filed by: a new engagement gets it from its form (weekends
+shifted forward the way the IRS shifts them) and the Due Date five days
+before that, and a holiday is yours to correct. Leave the Filing Deadline
+blank and the letter never mentions it. Leave the Due Date blank and every
+letter is stage 1, because there is no date to measure from and nothing to
+tell the client. The firm's phone number lives in the app's settings beside
+the firm's name, and stage 4 leaves the sentence out when it is blank.
+
+To see what a client will get next week, ask for it today:
+`python -m tracker.reminder <engagement_dir> --stage 3` writes the same
+requests at that stage, and `--today 2026-03-01` writes the letter that day
+would have produced. Neither changes who is asked: the stage changes the
+words, and the rows are whatever the last scan found.
+
 **A reminder can be held.** A request whose file arrived and failed
 validation with no firm-side reason is nobody's yet: a copy the tool filed
 cannot fail its own rules, so this is a rule edited after filing, a copy
@@ -235,6 +266,17 @@ question — unfile the copy, fix the rule, or set the row's override — and
 the next pass writes the whole reminder, correct, once. The manual draft
 (`python -m tracker.reminder <engagement_dir> --write`) and `--reminders
 always` are held by the same question; nothing clears it but you.
+
+**And so does a file the client sent that we could not use at all.** A
+locked PDF, an empty upload, a file type nothing accepts: that drop never
+reaches a request — it parks in `00 - Needs Review` and the request stays
+**Missing** — so the reminder would ask the client for a document they
+know they sent. When the parked file looks like a request that is still
+outstanding, that request holds the reminder the same way, with the parked
+file's own problem named. Work it in the app: file it, mark it not
+requested, or ask the client for a copy we can open. A parked file that
+looks like nothing holds nothing, and one nobody here could read is ours to
+fix, not the client's to resend.
 
 One warning before you send: if the app or the command line says files the
 client has already sent are still sitting in review, identify those first.

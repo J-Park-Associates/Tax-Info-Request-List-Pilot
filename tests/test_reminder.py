@@ -11,11 +11,13 @@ import datetime as dt
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from tracker import ledger, reasons
+from tracker import reminder as reminder_module
 from tracker.manifest import (
     EXPECTED_PATTERN,
     Override,
@@ -28,6 +30,7 @@ from tracker.reminder import (
     CHANGED_ADDED,
     CHANGED_HEADING,
     CHANGED_REMOVED,
+    DEADLINE_CLAUSE,
     DRAFT_BANNER,
     DRAFT_FILENAME,
     EXTENSION_ASK,
@@ -35,19 +38,30 @@ from tracker.reminder import (
     HELD_LINE,
     HELD_REFUSAL,
     NEW_DRAFT_FILENAME,
+    PARKED_HOLD,
     PARTIAL_ASK,
+    PHONE_CLAUSE,
     SECTION_FAILED,
     SECTION_MISSING,
     SECTION_ORDER,
     SECTION_PARTIAL,
+    STAGE_KEY,
+    STAGE_LINE,
+    STAGE_NONE,
+    STAGES,
     SUBJECT_COMPLETE,
     SUBJECT_NEEDED,
     ReminderError,
     ReminderHeldError,
     client_ask,
     count_needs_review,
+    draft_changed,
     draft_reminder,
+    drafted_event,
     is_unedited,
+    recorded_fingerprint,
+    stage_for,
+    stage_named,
     triage,
     write_draft,
 )
@@ -81,6 +95,31 @@ SCANNED = [
 #: ambiguous and holds the draft (decision 115), so a test about what a
 #: written draft looks like drafts from the rows that can be written.
 SENDABLE = [i for i in SCANNED if i.identifier != "A03"]
+
+#: The two dates the stages are written against, and a number for the firm.
+DUE = dt.date(2026, 3, 15)
+DEADLINE = dt.date(2026, 4, 15)
+PHONE = "(555) 010-2020"
+
+
+def said(when):
+    """A date as the draft says it. Read from the draft's own format, so a
+    test never asserts a spelling the composer does not use."""
+    return when.strftime("%B %d, %Y")
+
+
+def day(offset):
+    """The day ``offset`` days before the Due Date."""
+    return DUE - dt.timedelta(days=offset)
+
+
+@pytest.fixture(autouse=True)
+def the_firm_has_no_phone_unless_a_test_says_so(monkeypatch):
+    """The firm's telephone number is a setting beside the app (decision
+    117), and the settings file on a developer's machine is the firm's
+    own. No test may read it: the final notice's phone sentence is blank
+    here unless the test patches a number in."""
+    monkeypatch.setattr(reminder_module, "firm_phone", lambda: "")
 
 
 def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
@@ -278,11 +317,15 @@ def test_a_resend_after_a_dismissal_counts_in_the_files_waiting_warning(tmp_path
 
 
 def test_draft_greets_signs_and_counts(tmp_path):
+    # Written fifteen days before the Due Date, so the stage is the second
+    # one and the letter names the target date (decision 117): the day the
+    # draft is written is what decides which sentences it carries.
     draft = draft_reminder(
         engagement(tmp_path),
         client_name="Dana Smith",
         share_link="https://drive.example/abc",
         due_date=dt.date(2026, 3, 15),
+        today=dt.date(2026, 3, 15) - dt.timedelta(days=15),
         sender="Jason Park",
         firm="J Park & Associates, CPA",
     )
@@ -292,6 +335,7 @@ def test_draft_greets_signs_and_counts(tmp_path):
     assert "https://drive.example/abc" in draft.body
     assert "March 15, 2026" in draft.body
     assert draft.body.rstrip().endswith("J Park & Associates, CPA")
+    assert draft.stage == 2
     # A03 holds the draft rather than being asked for; the subject counts the asks.
     assert draft.subject == SUBJECT_NEEDED.format(engagement="Smith TY2025", n=2)
     assert draft.total_requests == 6 and draft.received_requests == 2
@@ -419,7 +463,9 @@ def test_the_draft_reads_the_engagement_details_itself(tmp_path):
         client="Dana Lee", link="https://drive.example/abc", due=dt.date(2026, 4, 15),
         sender="Jason Park", firm="J Park & Associates, CPA",
     ))
-    draft = draft_reminder(folder)          # nothing passed in
+    # Fifteen days out: the stage that names the target date, so the date
+    # the record holds is one a person can read in the letter.
+    draft = draft_reminder(folder, today=dt.date(2026, 4, 15) - dt.timedelta(days=15))
     assert "Hi Dana Lee," in draft.body
     assert "https://drive.example/abc" in draft.body
     assert "April 15, 2026" in draft.body
@@ -648,3 +694,307 @@ def test_a_missing_row_with_a_file_moved_note_is_the_firms_and_the_draft_never_a
     waiting = text.split(f"{HELD_BACK_HEADING} - waiting on us, not the client:")[1]
     assert moved.label in waiting                  # named where a person will act on it
     assert text.count(moved.label) == 1            # and nowhere the client would read
+# ------------------------------------------------- the four stages (d117) ----
+# The same flat reminder every week is the one that gets tuned out. The
+# stage is measured from the Due Date and changes the words only: who is
+# asked is triage()'s answer at every stage, and the gate holds at all four.
+
+
+@pytest.mark.parametrize("offset, expected", [(22, 1), (21, 2), (10, 3), (0, 4), (-1, 4)])
+def test_the_stage_follows_the_due_date_at_the_thresholds(offset, expected):
+    assert stage_for(DUE, day(offset)) == expected
+    # No Due Date, no ladder: a heads-up with no deadline sentence is the
+    # only honest letter when nobody has said when things are due.
+    assert stage_for(None, day(offset)) == 1
+
+
+def test_each_stage_writes_its_own_intro_deadline_and_close(tmp_path):
+    folder = engagement(tmp_path, SENDABLE, name="Smith TY2025")
+    words = {
+        "engagement": "Smith TY2025",
+        "target": said(DUE),
+        "deadline_clause": DEADLINE_CLAUSE.format(deadline=said(DEADLINE)),
+        "phone_clause": PHONE_CLAUSE.format(phone=PHONE),
+    }
+    for stage in STAGES:
+        draft = draft_reminder(folder, due_date=DUE, filing_deadline=DEADLINE, phone=PHONE,
+                               today=day(30), stage=stage.number)
+        assert draft.stage == stage.number
+        assert draft.subject == stage.subject.format(engagement="Smith TY2025", n=2)
+        assert stage.intro.format(**words) in draft.body
+        assert stage.close.format(**words) in draft.body
+        if stage.deadline:
+            assert stage.deadline.format(**words) in draft.body
+        # The list itself never changes with the stage.
+        assert SECTION_MISSING in draft.body and SECTION_PARTIAL in draft.body
+
+
+def test_stage_one_carries_no_deadline_sentence(tmp_path):
+    folder = engagement(tmp_path, SENDABLE)
+    draft = draft_reminder(folder, due_date=DUE, filing_deadline=DEADLINE, today=day(22))
+    assert draft.stage == 1 and STAGES[0].deadline == ""
+    assert said(DUE) not in draft.body and said(DEADLINE) not in draft.body
+    assert STAGES[0].close in draft.body
+
+
+def test_stages_three_and_four_name_both_dates_when_the_filing_deadline_is_set_and_only_the_target_when_blank(tmp_path):
+    folder = engagement(tmp_path, SENDABLE)
+    for number in (3, 4):
+        stage = stage_named(number)
+        both = draft_reminder(folder, due_date=DUE, filing_deadline=DEADLINE,
+                              today=DUE, stage=number)
+        assert said(DUE) in both.body
+        assert DEADLINE_CLAUSE.format(deadline=said(DEADLINE)) in both.body
+
+        target_only = draft_reminder(folder, due_date=DUE, today=DUE, stage=number)
+        assert said(DUE) in target_only.body and said(DEADLINE) not in target_only.body
+        assert DEADLINE_CLAUSE.split("{")[0] not in target_only.body
+
+        # No Due Date at all: the day's stage would be 1, so this only
+        # arises when a person forces one - and half a sentence with a
+        # blank where a date should be is not written at all.
+        forced = draft_reminder(folder, today=DUE, stage=number)
+        assert stage.deadline.split("{")[0] not in forced.body
+        assert stage.intro in forced.body
+
+
+def test_stage_four_drops_the_phone_sentence_when_the_firm_has_no_phone(tmp_path, monkeypatch):
+    folder = engagement(tmp_path, SENDABLE)
+    # The number is the firm's setting, and the draft reads it itself.
+    monkeypatch.setattr(reminder_module, "firm_phone", lambda: PHONE)
+    with_phone = draft_reminder(folder, due_date=DUE, today=DUE)
+    assert with_phone.stage == 4
+    assert PHONE_CLAUSE.format(phone=PHONE) in with_phone.body
+
+    monkeypatch.setattr(reminder_module, "firm_phone", lambda: "")
+    without = draft_reminder(folder, due_date=DUE, today=DUE)
+    assert PHONE not in without.body
+    assert PHONE_CLAUSE.split("{")[0] not in without.body
+    assert STAGES[3].close.format(phone_clause="") in without.body
+
+
+def test_the_recipient_set_is_identical_at_every_stage_and_a_firm_side_row_is_in_none(tmp_path):
+    rows = SENDABLE + [item("B01", "Receipts", Status.FAILED,
+                            validation_notes="scan.pdf: " + reasons.NO_TEXT_LAYER.format())]
+    folder = engagement(tmp_path, rows, name="Every Stage TY2025")
+    drafts = [draft_reminder(folder, due_date=DUE, today=DUE, stage=n) for n in (1, 2, 3, 4)]
+    assert {tuple(draft.asked) for draft in drafts} == {("A01", "A02")}
+    for draft in drafts:
+        assert [flag.item.identifier for flag in draft.needs_attention] == ["B01"]
+        assert "B01" not in draft.body, "a row we have not read is never the client's, at any stage"
+
+
+def test_the_stage_is_in_the_header_above_the_fingerprint_and_not_in_the_fingerprinted_body(tmp_path):
+    folder = engagement(tmp_path, SENDABLE)
+    path = write_draft(draft_reminder(folder, due_date=DUE, today=DUE), engagement_dir=folder)
+    text = path.read_text(encoding="utf-8")
+    header, _, body = text.partition("=" * 60)
+    line = STAGE_LINE.format(number=4, name=stage_named(4).name)
+    lines = header.splitlines()
+    assert line in lines and line not in body
+    assert lines.index(line) < next(i for i, one in enumerate(lines)
+                                    if recorded_fingerprint(path) in one)
+    assert is_unedited(path), "the stage is a fact about the draft, not part of what is pasted"
+
+    # A quiet week is on no rung at all.
+    quiet = engagement(tmp_path, [item("A01", "W-2", Status.RECEIVED, file_count=1)],
+                       name="Quiet TY2025")
+    written = write_draft(draft_reminder(quiet, due_date=DUE, today=DUE), engagement_dir=quiet)
+    assert STAGE_NONE in written.read_text(encoding="utf-8")
+
+
+def test_the_drafted_event_carries_the_stage_and_a_crossed_threshold_is_a_change(tmp_path):
+    folder = engagement(tmp_path, SENDABLE)
+    before = drafted_event(draft_reminder(folder, due_date=DUE, today=day(11)), None)
+    after = drafted_event(draft_reminder(folder, due_date=DUE, today=day(10)), None)
+    assert before[STAGE_KEY] == 2 and after[STAGE_KEY] == 3
+    assert before[ledger.ASKED_KEY] == after[ledger.ASKED_KEY], "the same rows, a harder letter"
+    assert draft_changed(before, after) is True
+    assert draft_changed(before, before) is False
+    # A hold is not a letter, so it is at no stage.
+    held = draft_reminder(_held_engagement(tmp_path / "held"), due_date=DUE, today=DUE)
+    assert STAGE_KEY not in drafted_event(held, None)
+
+
+def test_stage_three_regenerates_the_same_lines_at_stage_three(tmp_path):
+    folder = engagement(tmp_path, SENDABLE)
+    asked = draft_reminder(folder, due_date=DUE, today=DUE, stage=3)
+    assert asked.stage == 3 and asked.subject == stage_named(3).subject.format(
+        engagement="Smith TY2025", n=2)
+
+    repo = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    shown = subprocess.run(
+        [sys.executable, "-m", "tracker.reminder", str(folder),
+         "--due", DUE.isoformat(), "--today", DUE.isoformat(), "--stage", "3"],
+        cwd=repo, capture_output=True, text=True, env=env,
+    )
+    assert shown.returncode == 0, shown.stdout + shown.stderr
+    assert asked.text in shown.stdout.replace("\r\n", "\n")
+
+
+def test_the_gate_holds_at_every_stage(tmp_path):
+    folder = _held_engagement(tmp_path)
+    for number in (1, 2, 3, 4):
+        draft = draft_reminder(folder, due_date=DUE, today=DUE, stage=number)
+        assert draft.is_held and [flag.item.identifier for flag in draft.held] == ["C01"]
+        with pytest.raises(ReminderHeldError, match="C01"):
+            write_draft(draft, engagement_dir=folder)
+    assert list(folder.glob("reminder-draft*")) == []
+
+
+# ------------------------------ a parked file the client could fix (d117) ----
+# The end-to-end review's third discrepancy: a drop the rules refused at
+# tier 2 never reaches a request's status, so the row stayed Missing and
+# the draft asked the client for a document they had sent. The hold reads
+# the review queue's own shortlist - what the card shows a person - so a
+# locked PDF named for a request holds that request, as it should.
+
+#: The rows the drops below are routed against: the same two requests, with
+#: the keywords that let a file name point at one of them.
+DROPPED = [
+    item("A01", "W-2 Wage Statements", Status.MISSING, period="TY2025", expected_count=2,
+         required_keywords=("W-2",), min_size_kb=0),
+    item("A02", "Bank Statements", Status.PARTIAL, period="TY2025", expected_count=3,
+         file_count=2, any_keywords=("bank statement",), min_size_kb=0),
+]
+
+
+def sorted_drop(folder, write):
+    """A file the client sent, sorted by the filer as a pass sorts it.
+
+    ``write`` is handed the drop folder and puts one file in it, so every
+    claim below is made about the row the *router* wrote, not one a test
+    typed: what a parked file points at is exactly what a person sees on
+    the review card.
+    """
+    from tracker.filer import file_drops
+    from tracker.scaffold import SHARED_DIR_NAME, scaffold_engagement
+
+    scaffold_engagement(folder)
+    write(folder / SHARED_DIR_NAME)
+    return file_drops(folder, today=dt.date(2026, 2, 1))
+
+
+def locked(name, *, password="secret123"):
+    """A password-protected PDF, the file the client is certain they sent."""
+    from tests.test_validators import write_pdf
+
+    return lambda shared: write_pdf(shared / name, password=password)
+
+
+def parked_rows(folder):
+    from tracker.filer import NEEDS_REVIEW, read_index
+
+    return [entry for entry in read_index(folder) if entry.decision == NEEDS_REVIEW]
+
+
+def test_a_locked_pdf_named_for_a_request_parks_with_that_request_on_its_shortlist_and_holds_the_draft(tmp_path):
+    """The headline case, end to end: the client sent their W-2 with a
+    password on it. Nothing could be read, so no request accepted it and
+    the row stayed Missing - and the draft would have asked for a document
+    they know they sent. The file's own name is what is left (decision 92),
+    it is what the review card offers, and it is what holds the draft."""
+    from tracker.review import shortlist_for
+
+    folder = engagement(tmp_path, DROPPED, name="Locked TY2025")
+    report = sorted_drop(folder, locked("W-2 Jane Smith 2025.pdf"))
+    assert len(report.review) == 1
+
+    [row] = parked_rows(folder)
+    assert row.candidates == "", "a name is no candidate; nothing is filed on one"
+    assert reasons.PASSWORD_PROTECTED.matches(row.reason)
+    assert [s.identifier for s in shortlist_for(row, DROPPED)] == ["A01"]
+
+    draft = draft_reminder(folder)
+    assert [line.item.identifier for line in draft.lines] == ["A02"]
+    assert [flag.item.identifier for flag in draft.held] == ["A01"]
+    assert draft.held[0].reason == PARKED_HOLD.format(ask=reasons.PASSWORD_PROTECTED.client_ask)
+    assert draft.is_held
+    with pytest.raises(ReminderHeldError, match="A01"):
+        write_draft(draft, engagement_dir=folder)
+    assert list(folder.glob("reminder-draft*")) == []
+    assert drafted_event(draft, None)[ledger.HELD_KEY] == ["A01"]
+
+
+def test_a_locked_pdf_whose_name_says_nothing_holds_nothing(tmp_path):
+    """Nothing could be read and the name says nothing either: there is no
+    request to name in the sentence, so there is nothing to ask about and
+    the rest of the reminder goes out."""
+    folder = engagement(tmp_path, DROPPED, name="Mystery TY2025")
+    report = sorted_drop(folder, locked("scan0012.pdf"))
+    assert len(report.review) == 1
+    assert parked_rows(folder)[0].evidence == "", "nothing pointed anywhere"
+
+    draft = draft_reminder(folder)
+    assert draft.held == []
+    assert [line.item.identifier for line in draft.lines] == ["A01", "A02"]
+
+
+def test_a_blocked_reading_still_holds(tmp_path):
+    """The other half of the same discrepancy, and the half that already
+    worked: a file the rules *could* read and then refused - an upload
+    that arrived almost empty. Its own words point at the request, the
+    client can fix it, and it holds in the row's own terms."""
+    from tests.test_scanner import text_pdf
+
+    rows = [replace(DROPPED[0], min_size_kb=50), DROPPED[1]]
+    folder = engagement(tmp_path, rows, name="Blocked TY2025")
+    report = sorted_drop(folder, lambda shared: text_pdf(
+        shared / "w2.pdf", "Form W-2 Wage and Tax Statement 2025"))
+    assert len(report.review) == 1
+    assert parked_rows(folder)[0].candidate_list == ["A01"]
+
+    draft = draft_reminder(folder)
+    assert [flag.item.identifier for flag in draft.held] == ["A01"]
+    assert PARKED_HOLD.format(ask=reasons.TOO_SMALL.client_ask) == draft.held[0].reason
+    assert [line.item.identifier for line in draft.lines] == ["A02"]
+
+
+def test_a_parked_file_with_a_firm_side_reason_holds_nothing(tmp_path, monkeypatch):
+    """A scan nobody here could read is ours to fix, not the client's to
+    resend: decision 115's rule, unchanged. Its name points at A01 exactly
+    as the locked file's did, and it still holds nothing."""
+    from tests.test_scanner import text_pdf
+    from tracker.review import shortlist_for
+
+    monkeypatch.setattr("tracker.content_check._ocr_pdf", lambda p: None)   # no OCR here
+    folder = engagement(tmp_path, DROPPED, name="Unreadable TY2025")
+    report = sorted_drop(folder, lambda shared: text_pdf(shared / "W-2 Jane Smith 2025.pdf", ""))
+    assert len(report.review) == 1
+
+    [row] = parked_rows(folder)
+    assert reasons.NO_READABLE_TEXT.matches(row.reason)
+    assert [s.identifier for s in shortlist_for(row, DROPPED)] == ["A01"]
+
+    draft = draft_reminder(folder)
+    assert draft.held == []
+    assert [line.item.identifier for line in draft.lines] == ["A01", "A02"]
+
+
+def test_a_set_aside_row_never_holds(tmp_path):
+    """A row a person has already answered - "no request asks for this" -
+    is their decision, not an open question about the client."""
+    from tracker.filer import NOT_REQUESTED, dismiss_review_file, read_index
+
+    folder = engagement(tmp_path, DROPPED, name="Dismissed TY2025")
+    sorted_drop(folder, locked("W-2 Jane Smith 2025.pdf"))
+    [row] = parked_rows(folder)
+    dismiss_review_file(folder, row.pbc_location, "the client sent it twice")
+    assert [entry.decision for entry in read_index(folder)] == [NOT_REQUESTED]
+
+    draft = draft_reminder(folder)
+    assert draft.held == []
+    assert [line.item.identifier for line in draft.lines] == ["A01", "A02"]
+
+
+def test_a_parked_locked_file_whose_shortlist_is_partial_holds_it_too(tmp_path):
+    """A locked second statement is "1 of 2" that the client believes is
+    2 of 2, and a count that argues with them is worse than a question."""
+    folder = engagement(tmp_path, DROPPED, name="Partial TY2025")   # A02 is 2 of 3
+    sorted_drop(folder, locked("November Bank Statement.pdf"))
+
+    draft = draft_reminder(folder)
+    assert [flag.item.identifier for flag in draft.held] == ["A02"]
+    assert [line.item.identifier for line in draft.lines] == ["A01"]
+

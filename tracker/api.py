@@ -82,6 +82,7 @@ from tracker.manifest import (
 from tracker.page import slug
 from tracker.records import (
     CANDIDATE_SEP,
+    DATE_FIELDS,
     ENGAGEMENT_EDITABLE,
     ENGAGEMENT_FIELDS,
     ENGAGEMENT_HELP,
@@ -145,9 +146,11 @@ from tracker.settings import (
     SettingsError,
     clients_root,
     firm,
+    firm_phone,
     product_name,
     set_clients_root,
     set_firm,
+    set_firm_phone,
     settings_dir,
     settings_path,
 )
@@ -159,8 +162,10 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
     KEYWORD_DEFAULT_NOTE,
     PERIOD_PATTERN,
     YEAR_NOTE,
+    ask_by_for,
     base_year,
     default_tax_year,
+    filing_deadline_for,
     item_from_spec,
     require_form,
     shift_item,
@@ -243,6 +248,11 @@ LEARNED_NOTE = "taught by a filing: {keywords}"
 #: What the returning-client page says of last year's set-aside rows, in
 #: one line beside the carried and offered counts.
 NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them in the editor"
+#: The settings page's box for the firm's telephone number (decision 117).
+#: It sits beside the firm's name because it is the firm's, not one
+#: engagement's, and only the final-notice reminder ever says it.
+FIRM_PHONE_LABEL = "Firm phone"
+FIRM_PHONE_HELP = "named in the final-notice reminder; blank drops that sentence"
 
 
 def _new_engagement_dir(name: str) -> Path:
@@ -413,6 +423,12 @@ def _vocab() -> dict:
         # The one line the app shows for a reminder an ambiguous request
         # holds (decision 115), from the module that holds it.
         "reminder": {"held_line": reminder.HELD_SUMMARY},
+        # The settings page's own box for the firm's telephone number
+        # (decision 117): its label, the sentence under it, and the number
+        # as recorded - so a person who re-points the app at their clients
+        # folder does not save a blank over a number they typed once.
+        "settings": {"phone_label": FIRM_PHONE_LABEL, "phone_help": FIRM_PHONE_HELP,
+                     "phone": firm_phone()},
         # The page a pass regenerates, the three words that say whether the
         # one on disk still describes the engagement, and what the button
         # that opens it says. The app compares nothing itself and types
@@ -439,6 +455,10 @@ def _vocab() -> dict:
                  "editable": f in ENGAGEMENT_EDITABLE}
                 for _, f in ENGAGEMENT_FIELDS
             ],
+            # Which of those fields take a date box. The record answers it
+            # (decision 117), so a second date is a date box in the editor
+            # without the page learning another field's name.
+            "date_fields": list(DATE_FIELDS),
             "yes": YES, "no": NO, "any_extension": ANY_EXTENSION, "no_date_check": NO_DATE_CHECK,
             "minimums": {"expected_count": MIN_EXPECTED_COUNT, "min_size_kb": MIN_SIZE_KB_FLOOR},
             # The folded group the editor keeps the set-aside rows in,
@@ -461,9 +481,17 @@ def _lock_payload(engagement: Path) -> dict | None:
 
 
 def _info_payload(info: EngagementInfo) -> dict:
-    """The engagement's details as JSON: every field, with dates as ISO text."""
+    """The engagement's details as JSON: every field, with dates as ISO text.
+
+    Which fields are dates is the record's answer (``records.DATE_FIELDS``),
+    so a date added to the details reaches the app's boxes without a second
+    edit here. A blank date travels as "" rather than null, because the
+    renderer puts it straight into a date box.
+    """
     payload = asdict(info)
-    payload["due"] = info.due.isoformat() if info.due else ""
+    for name in DATE_FIELDS:
+        value = getattr(info, name)
+        payload[name] = value.isoformat() if value else ""
     return payload
 
 
@@ -495,26 +523,54 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
         value = spec.get(key)
         return clean(value) if value not in (None, "") else fallback
 
-    due_raw = str(spec.get("due", "") or "").strip()
-    if due_raw:
-        try:
-            due = dt.date.fromisoformat(due_raw)
-        except ValueError:
-            raise ManifestError(f"Due date must be {ISO_DATE_HINT}, got {due_raw!r}") from None
-    elif blank_clears and "due" in spec:
-        due = None
-    else:
-        due = base.due
+    def date(key: str) -> dt.date | None:
+        # Which details are dates is the record's answer, so the two are
+        # read by one rule and a third would be read by it too.
+        typed = str(spec.get(key, "") or "").strip()
+        if typed:
+            try:
+                return dt.date.fromisoformat(typed)
+            except ValueError:
+                raise ManifestError(
+                    f"{ENGAGEMENT_LABELS[key]} must be {ISO_DATE_HINT}, got {typed!r}"
+                ) from None
+        if blank_clears and key in spec:
+            return None
+        return getattr(base, key)
+
     return replace(
         base,
         client=text("client", base.client),
         link=text("link", base.link),
-        due=due,
         sender=text("sender", base.sender),
         firm=text("firm", base.firm or firm()),
         reminders=bool(spec.get("reminders", base.reminders)),
         active=bool(spec.get("active", base.active)),
+        **{key: date(key) for key in DATE_FIELDS},
     )
+
+
+def _with_default_dates(info: EngagementInfo, form: str, year: int | None) -> EngagementInfo:
+    """The details with the two dates the form implies, where they are blank.
+
+    Decision 117. The reminder's ladder is measured against the Due Date,
+    so an engagement nobody typed a date into would sit on its first rung
+    for ever and the escalation would be a feature nobody switched on. The
+    Filing Deadline comes from the form's own table for the year after the
+    tax year, and the Due Date from it - the firm's ask-by target. Both are
+    ordinary details afterwards: editable, clearable, and never written
+    over once they hold anything.
+
+    A form the catalog has no deadline for fills nothing: a guessed
+    statutory date is worse than a blank one, because the blank is silent
+    and the guess is read out to a client.
+    """
+    if not form or year is None:
+        return info
+    deadline = info.filing_deadline or filing_deadline_for(form, year)
+    if deadline is None:
+        return info
+    return replace(info, filing_deadline=deadline, due=info.due or ask_by_for(deadline))
 
 
 def _tax_year(given, default: int | None = None) -> int | None:
@@ -652,7 +708,7 @@ def _state(engagement: Path) -> dict:
         # draft is written - and the day of the last draft. Sorted by the
         # reminder's own triage over the rows already loaded; nothing here
         # reads a draft file, and nothing here drafts (decision 12).
-        "reminder": _reminder_payload(engagement, items),
+        "reminder": _reminder_payload(engagement, items, entries),
         "paths": {
             "engagement": str(engagement),
             "shared": str(engagement / SHARED_DIR_NAME),
@@ -670,8 +726,15 @@ def _state(engagement: Path) -> dict:
     }
 
 
-def _reminder_payload(engagement: Path, items) -> dict:
-    _, _, _, held = reminder.triage(items)
+def _reminder_payload(engagement: Path, items, entries) -> dict:
+    """What holds this engagement's reminder, and when it was last drafted.
+
+    The index rows go in because a parked file the client could fix holds
+    the request it points at (decision 117), and the card must show the
+    same hold the draft day will: the rows are the ones ``state`` has
+    already read, so nothing is read twice to answer this.
+    """
+    _, _, _, held = reminder.triage(items, entries)
     drafted = last_drafted(engagement)
     return {
         "held": [{"identifier": flag.item.identifier, "label": flag.item.label,
@@ -842,7 +905,9 @@ def _cmd_create(argv: list[str]) -> dict:
     if base:
         items = [shift_item(item, year - base) for item in items]
 
-    info = _info_from_spec(spec)
+    # The wizard's dates, or the form's own (decision 117) - a new
+    # engagement is on the reminder's ladder from its first draft.
+    info = _with_default_dates(_info_from_spec(spec), form, year)
     engagement.mkdir(parents=True)
     try:
         # The catalog the wizard chose is recorded in the details: an
@@ -949,7 +1014,10 @@ def _cmd_rollover(argv: list[str]) -> dict:
     # Last year's details, carried by the one rule (tracker.rollover); the
     # wizard's fields go over it. Rolled From is what retires the prior.
     carried = carry_engagement_info(load_engagement_info(prior), rolled_from=str(prior))
-    info = _info_from_spec(spec, carry=carried)
+    # Last year's deadline did not carry, and this year's is the form's:
+    # the rolled engagement starts on the ladder as a new one does.
+    info = _with_default_dates(_info_from_spec(spec, carry=carried),
+                               carried.form or form, report.target_year)
     engagement.mkdir(parents=True)
     try:
         create_engagement(engagement, report.items, info)
@@ -1151,19 +1219,26 @@ def _cmd_unfile(argv: list[str]) -> dict:
 
 
 def _cmd_settings(argv: list[str]) -> dict:
-    """Where the clients live, and where that is written down."""
+    """Where the clients live, who the firm is, and where that is written down."""
     root = clients_root()
     return {
         "root": str(root or ""),
         "exists": bool(root and root.is_dir()),
         "firm": firm(),
+        "phone": firm_phone(),
         "product": product_name(),
         "settings_path": str(settings_path()),
     }
 
 
 def _cmd_set_root(argv: list[str]) -> dict:
-    """Record the clients root and the firm: JSON {"root": "<folder>", "firm": "..."} on stdin. Once."""
+    """Record the clients root and the firm: JSON {"root": "<folder>", "firm": "...",
+    "phone": "..."} on stdin. Once.
+
+    The phone is the firm's own number, said only by the final-notice
+    reminder (decision 117). Like the firm's name, a key that is not sent
+    leaves what is recorded alone.
+    """
     spec = json.loads(sys.stdin.read() or "{}")
     try:
         root = set_clients_root(str(spec.get("root", "")))
@@ -1171,7 +1246,10 @@ def _cmd_set_root(argv: list[str]) -> dict:
         raise ManifestError(str(exc)) from None
     if spec.get("firm") is not None:
         set_firm(str(spec["firm"]))
-    return {"root": str(root), "firm": firm(), "settings_path": str(settings_path()),
+    if spec.get("phone") is not None:
+        set_firm_phone(str(spec["phone"]))
+    return {"root": str(root), "firm": firm(), "phone": firm_phone(),
+            "settings_path": str(settings_path()),
             "engagements": _cmd_list([])["engagements"]}
 
 

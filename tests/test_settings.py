@@ -107,3 +107,26 @@ def test_the_root_is_stored_absolute_and_a_bare_drive_is_its_root(beside_the_app
     if os.name == "nt":
         drive = Path.cwd().drive
         assert set_clients_root(drive) == Path(drive + os.sep)
+
+
+def test_the_firm_phone_is_written_beside_the_firm_name_and_blank_when_unset(beside_the_app):
+    """Decision 117: the firm's telephone number belongs to the firm, not
+    to an engagement, so it is kept where the firm's name is - and taken
+    as typed, because a firm writes its number its own way."""
+    from tracker.settings import KEY_FIRM, KEY_FIRM_PHONE, firm_phone, set_firm, set_firm_phone
+
+    assert firm_phone() == ""
+    clients = beside_the_app / "Clients"
+    clients.mkdir()
+    set_clients_root(clients)
+    set_firm("J Park & Associates, CPA")
+    assert set_firm_phone("  (555) 010-2020 ext. 4  ") == "(555) 010-2020 ext. 4"
+    assert firm_phone() == "(555) 010-2020 ext. 4"
+
+    written = json.loads(settings_path().read_text(encoding="utf-8"))
+    assert written[KEY_FIRM_PHONE] == "(555) 010-2020 ext. 4"
+    assert written[KEY_FIRM] == "J Park & Associates, CPA"
+    assert written[KEY_CLIENTS_ROOT] == str(clients)
+
+    assert set_firm_phone("") == "" and firm_phone() == ""
+    assert clients_root() == clients, "clearing the number touches nothing else"

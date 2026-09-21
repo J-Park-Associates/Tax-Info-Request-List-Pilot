@@ -463,6 +463,11 @@ class EngagementInfo:
     name: str = ""
     link: str = ""
     due: dt.date | None = None
+    #: The statutory date the return has to be filed by (decision 117).
+    #: Blank is silence: the reminder never mentions a deadline nobody
+    #: recorded. Added after ``due``; a stored record from before it reads
+    #: as blank, as ``form`` does.
+    filing_deadline: dt.date | None = None
     sender: str = ""
     firm: str = ""
     reminders: bool = True
@@ -480,6 +485,7 @@ ENGAGEMENT_FIELDS = (
     ("Engagement Name", "name"),
     ("Share Link", "link"),
     ("Due Date", "due"),
+    ("Filing Deadline", "filing_deadline"),
     ("Sender", "sender"),
     ("Firm", "firm"),
     ("Reminders", "reminders"),
@@ -503,6 +509,9 @@ ENGAGEMENT_HELP = {
     "name": "label; the folder name if blank",
     "link": "pasted into the reminder",
     "due": "the date the reminder asks the client to send things by",
+    "filing_deadline": ("the statutory filing date; named in the reminder from the third stage on; "
+                        "blank = not mentioned (defaults from the form, weekends shifted; "
+                        "holidays are yours to edit)"),
     "sender": "who the reminder is from",
     "firm": "the sign-off line and the client README's contact (typed once at setup)",
     "form": "which catalog the request list was cut from; blank if it was never recorded",
@@ -513,12 +522,21 @@ ENGAGEMENT_HELP = {
 #: ``rolled_from`` because the rollover writes it and it is what retires
 #: the prior; ``form`` because it records which catalog the list was cut
 #: from, once. The API's ``edit`` refuses any other key by name.
-ENGAGEMENT_EDITABLE: tuple[str, ...] = ("client", "link", "due", "sender", "firm", "reminders", "active")
+ENGAGEMENT_EDITABLE: tuple[str, ...] = ("client", "link", "due", "filing_deadline", "sender",
+                                        "firm", "reminders", "active")
 assert set(ENGAGEMENT_EDITABLE) <= {field_name for _, field_name in ENGAGEMENT_FIELDS}
+
+#: Which details are dates, said once (decision 117). The record's
+#: serialisation, the API's reading of a spec and the editor's choice of
+#: box all ask this question, and each answered it by naming ``due``; a
+#: second date added to the record then meant finding all three. One home:
+#: a date field added above is a date field everywhere.
+DATE_FIELDS: tuple[str, ...] = ("due", "filing_deadline")
+assert set(DATE_FIELDS) <= {field_name for _, field_name in ENGAGEMENT_FIELDS}
 
 
 def info_to_json(info: EngagementInfo) -> dict:
-    """The engagement's details as they are stored: the fields, the date as text.
+    """The engagement's details as they are stored: the fields, the dates as text.
 
     The shape a ``rules_changed`` event carries the engagement's own
     details in (and a ``rules_imported`` line from before decision 104),
@@ -526,7 +544,9 @@ def info_to_json(info: EngagementInfo) -> dict:
     :func:`status_to_json` is one owner for a status.
     """
     payload = asdict(info)
-    payload["due"] = info.due.isoformat() if info.due else None
+    for name in DATE_FIELDS:
+        value = getattr(info, name)
+        payload[name] = value.isoformat() if value else None
     return payload
 
 
@@ -536,7 +556,8 @@ def info_from_json(raw: dict) -> EngagementInfo:
     thrown away over one field."""
     known = {f.name for f in fields(EngagementInfo)}
     values = {key: value for key, value in raw.items() if key in known}
-    values["due"] = dt.date.fromisoformat(raw["due"]) if raw.get("due") else None
+    for name in DATE_FIELDS:
+        values[name] = dt.date.fromisoformat(raw[name]) if raw.get(name) else None
     # The two yes/no fields come back as 0 and 1 from a column and as
     # booleans from a journal line; a reader gets a boolean either way, so
     # a record read from the store is the record that was written.
