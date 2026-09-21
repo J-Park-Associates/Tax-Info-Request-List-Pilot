@@ -1070,14 +1070,36 @@ function cellInput(row, column, onChange) {
   return input;
 }
 
+// What the learned cell holds for one row: the API's note that these words
+// were taught by a filing rather than typed, and then each word with its
+// own button that takes it back (decision 113). One event per word, so one
+// button per word; the words and both labels are the API's.
+function learnedCell(identifier, learned) {
+  const taught = learned[identifier] || [];
+  if (!taught.length) return [];
+  return [
+    el("span", { className: "ed-learned-note" }, fill(vocab.editor.learned_note, { keywords: "" })),
+    ...taught.map((word) => el("span", { className: "ed-learned-word" }, word,
+      el("button", {
+        className: "btn btn-small ed-unlearn",
+        dataset: { identifier, keyword: word },
+        "aria-label": `${vocab.editor.unlearn_label} ${word}`,
+        title: `${vocab.editor.unlearn_label} ${word}`,
+      }, vocab.editor.unlearn_label))),
+  ];
+}
+
 // The rows of a request list as a table of inputs: one column per entry of
-// `columns`, a note for the keywords a filing taught the row (the editor
-// shows them as taught, never as typed), and a Remove button. Renders from
+// `columns`, a cell for the keywords a filing taught the row (the editor
+// shows them as taught, never as typed, each with the button that takes
+// it back),
+// and a Remove button. Renders from
 // plain objects keyed by column key; `onChange(rows)` is told about every
-// edit, and `onRemove(index)` about a removed row. `keyed` shows each row's
+// edit, `onRemove(index)` about a removed row, and `onTakeBack(identifier,
+// keyword)` about a word taken back. `keyed` shows each row's
 // identifier as fixed text (the wizard assigns them); the editor passes
 // the identifier as one of its columns instead, typed like the rest.
-function requestRows(container, rows, { columns, onChange, onRemove, learned = {}, keyed = true }) {
+function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, learned = {}, keyed = true }) {
   const head = el("tr", {},
     keyed ? el("th", { className: "ed-id" }, columnsByKey(["identifier"])[0].label) : null,
     columns.map((c) => el("th", { title: c.help }, c.label)),
@@ -1087,10 +1109,8 @@ function requestRows(container, rows, { columns, onChange, onRemove, learned = {
     keyed ? el("td", { className: "ed-id" }, el("span", { className: "req-id" }, row.identifier)) : null,
     columns.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, () => onChange(rows)))),
     Object.keys(learned).length
-      ? el("td", { className: "ed-learned" },
-          learned[row.identifier] && learned[row.identifier].length
-            ? fill(vocab.editor.learned_note, { keywords: learned[row.identifier].join(", ") })
-            : "")
+      ? el("td", { className: "ed-learned", dataset: { identifier: row.identifier || "" } },
+          learnedCell(row.identifier, learned))
       : null,
     el("td", { className: "ed-remove" },
       el("button", { className: "btn btn-small", dataset: { index: String(index) }, "aria-label": `${vocab.editor.remove_row} ${row.identifier || ""}` },
@@ -1098,6 +1118,13 @@ function requestRows(container, rows, { columns, onChange, onRemove, learned = {
   ));
   const table = el("table", { className: "editor-table" }, el("thead", {}, head), el("tbody", {}, body));
   table.addEventListener("click", (e) => {
+    // Taking a keyword back is its own event and lands at once; removing a
+    // row is part of the save, like every other edit.
+    const word = e.target.closest("button.ed-unlearn");
+    if (word) {
+      if (onTakeBack) onTakeBack(word.dataset.identifier, word.dataset.keyword);
+      return;
+    }
     const btn = e.target.closest("button[data-index]");
     if (btn) onRemove(Number(btn.dataset.index));
   });
@@ -1244,6 +1271,7 @@ function renderEditorRows() {
       editorRows.splice(editorRows.indexOf(rows[index]), 1);
       renderEditorRows();
     },
+    onTakeBack: unlearnKeyword,
   });
   const active = editorRows.filter((row) => !editorGroupKey(row));
   const groups = new Map();
@@ -1260,6 +1288,32 @@ function renderEditorRows() {
       el("summary", {}, fill(vocab.editor.set_aside_heading, { label, n: rows.length })), box);
   });
   $("ed-rows").replaceChildren(activeBox, ...folded);
+}
+
+// Only the learned column, drawn again from the state the API just sent.
+// Nothing else is touched: an unlearn lands on its own, and whatever the
+// person has typed into the rows and not saved is theirs to keep.
+function renderLearnedCells(learned) {
+  for (const cell of $("ed-rows").querySelectorAll("td.ed-learned")) {
+    cell.replaceChildren(...learnedCell(cell.dataset.identifier, learned));
+  }
+}
+
+// One keyword taken back: one event, recorded at once, and the request
+// re-scanned by the API in the same breath because its rules just moved.
+async function unlearnKeyword(identifier, keyword) {
+  let result;
+  try {
+    result = await call(withEng("unlearn"), { identifier, keyword });
+  } catch (err) {
+    editorNote(err.message, "err");
+    return;
+  }
+  editorState.learned = result.state.learned || {};
+  renderLearnedCells(editorState.learned);
+  const said = fill(vocab.editor.unlearned_note, result.unlearned);
+  editorNote(result.unlearned.scan_note ? `${said}\n${result.unlearned.scan_note}` : said,
+             result.unlearned.scan_note ? "warn" : "ok");
 }
 
 function addEditorRow() {

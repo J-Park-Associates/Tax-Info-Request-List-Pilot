@@ -37,11 +37,14 @@ So this module does four things with that list:
   :func:`tracker.store.follow_the_journal` has brought the store up to
   the journal. A folder with no journal is nobody's engagement and is
   refused by sentence (:data:`NOT_AN_ENGAGEMENT`);
-- **it writes it, at two moments and no others**: :func:`create_engagement`
+- **it writes it, at three moments and no others**: :func:`create_engagement`
   writes an engagement's first list and details as one ``rules_changed``
-  event, and :func:`save_rules` writes a person's edit as one - exactly
+  event, :func:`save_rules` writes a person's edit as one - exactly
   the rows that changed, the identifiers removed, the details that moved,
-  and nothing at all when nothing did. Both go through
+  and nothing at all when nothing did - and :func:`unlearn_keyword` takes
+  back a keyword a filing taught the row, as one ``keyword_unlearned``
+  (decision 113), which is the only one of the three that does not touch
+  the rules the person typed. All three go through
   :func:`tracker.store.record` under the engagement lock, so the journal
   is written first and the fold is one transaction. The app's editor is
   the only way a rule is entered; there is no import and no export.
@@ -306,6 +309,13 @@ class ManifestError(Exception):
 #: at call time by the reader, because this module does not import the
 #: ledger at load time.
 NOT_AN_ENGAGEMENT = "{name}: no record here ({ledger}); it is not an engagement"
+
+#: What :func:`unlearn_keyword` says of a pair the record never carried.
+#: A person may take back a keyword a filing taught; they may not take
+#: back a word the row types itself (that is an edit of the rule) and they
+#: may not take back a word nobody taught - both are the same refusal,
+#: because the record is what says a word was learned (decision 113).
+UNLEARN_REFUSED = "{identifier} was never taught {keyword!r}; nothing to unlearn"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1140,6 +1150,91 @@ def save_rules(
         info_fields=tuple(moved),
         recorded=True,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class KeywordUnlearned:
+    """What one unlearn took back: the request, and the word."""
+
+    identifier: str
+    keyword: str
+
+
+def unlearn_keyword(
+    engagement_dir: Path | str,
+    identifier: str,
+    keyword: str,
+    *,
+    lock_held: bool = False,
+) -> KeywordUnlearned:
+    """Take back a keyword a person's filing taught one request (decision 113).
+
+    A word that seemed distinctive and was not - a common word that turns
+    out to be on many unrelated documents - was permanent: the filing
+    recorded it, every reader laid it over the row's own Any Keywords, and
+    nothing took it back. This is the way back, per engagement. The
+    firm-wide vocabulary is :mod:`tracker.templates` and still changes
+    only by a commit, which is the graduation gate and always was.
+
+    **Journalled, not simply deleted.** Deleting the store's row would
+    take the word out of every reader's answer until the next rebuild put
+    it back, because the journal is the record and the store is its
+    derivation. So a word taught by an event is taken back by an event:
+    one ``keyword_unlearned``, under the engagement lock (taken here
+    unless the caller already holds it), through
+    :func:`tracker.store.record` - journal first - and the history says
+    who took it back and when.
+
+    The request is matched without case, as every reading that joins a
+    row to the record is (``records.identifier_key``), and the keyword
+    exactly as the record holds it: the caller sends back the word it was
+    shown. A pair the record never carried is refused by name
+    (:data:`UNLEARN_REFUSED`) rather than passing quietly - a person
+    cannot unlearn what nobody taught, and a word the row types itself is
+    an edit of the rule, made in the editor like any other.
+
+    **The line spells the request the way the list does.** The journal's
+    own fold keys a taught word by the spelling its line carries - it sits
+    below ``records`` and has no case rule of its own
+    (:class:`tracker.ledger.Folded`) - and the filing that taught the word
+    spelt the request as the list spells it. So the identifier recorded
+    here is the one the rules hold, whatever case the caller used, or the
+    caller's where no rule holds that request any more; otherwise a person
+    who typed ``a01`` would leave the journal's fold and the store's
+    disagreeing for good, and ``store.check()`` would say so every pass.
+
+    Unfiling still unlearns nothing (decision 77): the request wanted the
+    word when the document was filed and wants it still, and guessing
+    which word to take back would be guessing.
+    """
+    from contextlib import nullcontext
+
+    from tracker import ledger, store
+    from tracker.locking import engagement_lock
+
+    folder = Path(engagement_dir)
+    with nullcontext() if lock_held else engagement_lock(folder):
+        conn = _the_record(folder)
+        taught = store.learned_keywords(conn, folder)
+        if keyword not in taught.get(identifier_key(identifier), ()):
+            raise ManifestError(UNLEARN_REFUSED.format(identifier=identifier, keyword=keyword))
+        identifier = _as_the_list_spells_it(store.rules(conn, folder), identifier)
+        store.record(conn, folder, ledger.new(ledger.KEYWORD_UNLEARNED, **{
+            ledger.IDENTIFIER_KEY: identifier,
+            ledger.KEYWORD_KEY: keyword,
+        }))
+    return KeywordUnlearned(identifier=identifier, keyword=keyword)
+
+
+def _as_the_list_spells_it(stored: list[dict] | None, identifier: str) -> str:
+    """``identifier`` in the spelling the request list holds, or as given
+    where the list holds no such request."""
+    key = identifier_key(identifier)
+    for row in stored or []:
+        held = str(row.get("identifier", ""))
+        if identifier_key(held) == key:
+            return held
+    return identifier
 
 
 # -------------------------------------------------- how a file is written ----

@@ -249,6 +249,71 @@ def test_the_statuses_are_built_up_across_the_passes_that_changed_something():
     assert ledger.statuses([one, two]) == {"A01": {"status": "Received"}}
 
 
+def taught(identifier: str, keyword: str) -> dict:
+    return ledger.new(ledger.KEYWORD_LEARNED, **{ledger.IDENTIFIER_KEY: identifier,
+                                                 ledger.KEYWORD_KEY: keyword})
+
+
+def taken_back(identifier: str, keyword: str) -> dict:
+    return ledger.new(ledger.KEYWORD_UNLEARNED, **{ledger.IDENTIFIER_KEY: identifier,
+                                                   ledger.KEYWORD_KEY: keyword})
+
+
+def test_a_learned_keyword_folds_and_an_unlearned_one_is_removed_and_learned_again_lands_last():
+    """Decision 113. The fold the journal had no fold for at all until now.
+
+    Learn appends, unlearn removes, and a word taught again lands at the
+    end - which is what the store's own ``ORDER BY seq`` says, because the
+    insert carries the new line's number. The two folds have to give the
+    same tuple or ``store.check()`` would report a disagreement that is
+    nobody's fault but the fold's.
+    """
+    folded = ledger.replay([
+        taught("A01", "lender"), taught("A01", "escrow"), taught("C01", "tuition"),
+        taken_back("A01", "lender"), taught("A01", "lender"),
+    ])
+
+    assert folded.learned == {"A01": ("escrow", "lender"), "C01": ("tuition",)}
+    # A word nobody taught takes nothing back, and the last word taken back
+    # leaves the request with no entry at all, as the store's rows do.
+    assert ledger.replay([taught("A01", "lender"), taken_back("A01", "escrow")]).learned == {
+        "A01": ("lender",)}
+    assert ledger.replay([taught("A01", "lender"), taken_back("A01", "lender")]).learned == {}
+
+
+def test_a_quiet_replay_has_no_learned_keywords():
+    """An engagement nobody has taught anything: no entry, not an empty one."""
+    assert ledger.replay([]).learned == {}
+    assert ledger.replay([ledger.new(ledger.SCANNED, statuses={"A01": {"status": "Missing"}}),
+                          ledger.new(ledger.PARKED, key="p/one", row=row())]).learned == {}
+
+
+def test_a_word_taught_twice_folds_last_on_both_sides(tmp_path, engagement):
+    """The two folds agree by construction, not because no writer teaches a
+    word twice.
+
+    The store's insert is an ``INSERT OR REPLACE`` carrying the new line's
+    sequence number, so a word taught again moves to the end of
+    ``ORDER BY seq``; this fold moves it to the end of the tuple for the
+    same reason. Nothing in the package writes such a pair - a filing is
+    refused the keyword its row already types - but a journal is read from
+    a synced folder, and a fold that only held for the lines this version
+    happens to write would be a disagreement the gate could not explain.
+    """
+    from tracker.filer import ensure
+
+    with engagement_lock(engagement):
+        ensure(engagement)
+        store.record(store.connect(), engagement,
+                     taught("A01", "lender"), taught("A01", "escrow"), taught("A01", "lender"))
+
+    conn = store.connect()
+    store.rebuild_engagement(conn, tmp_path, engagement)
+    assert store.learned_keywords(conn, engagement) == {"a01": ("escrow", "lender")}
+    assert ledger.replay(ledger.read_events(engagement)).learned == {"A01": ("escrow", "lender")}
+    assert store.check(conn, tmp_path, engagement) == []
+
+
 # ------------------------------------------------------------------- head ----
 
 

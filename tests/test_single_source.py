@@ -588,6 +588,7 @@ def test_documents_name_buttons_by_their_labels():
         RESTORE_LABEL,
         SEND_TO_REVIEW_LABEL,
         SKIP_LABEL,
+        UNLEARN_LABEL,
     )
     from tracker.view import VIEW_OPEN_LABEL
 
@@ -602,7 +603,7 @@ def test_documents_name_buttons_by_their_labels():
     # request-list editor's (decision 104).
     labels.add(VIEW_OPEN_LABEL)
     labels |= {EDITOR_OPEN_LABEL, EDITOR_SAVE_LABEL, EDITOR_CANCEL_LABEL, EDITOR_ADD_LABEL,
-               EDITOR_REMOVE_LABEL, EDITOR_PASTE_LABEL}
+               EDITOR_REMOVE_LABEL, EDITOR_PASTE_LABEL, UNLEARN_LABEL}
     # And the three answers to a working copy that is not where the record
     # put it (decision 110), which the workflow names by their labels.
     labels |= {RESTORE_LABEL, KEEP_LABEL, SEND_TO_REVIEW_LABEL}

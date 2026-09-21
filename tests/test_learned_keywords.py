@@ -129,6 +129,28 @@ def test_a_row_is_compared_against_every_catalog_that_holds_it(tmp_path):
     assert len(row.catalogs) > 1 and "1120" in row.catalogs
 
 
+def test_the_report_drops_a_keyword_that_was_unlearned(tmp_path):
+    """Decision 113, and the reason it costs this tool no change at all: the
+    report reads the request list through ``load_manifest()``, which lays
+    the record's taught keywords over the row - so a word a person took
+    back in the editor is simply not there the next time the season's list
+    is built, and the firm is never asked to promote a word the one
+    engagement that taught it has since decided against."""
+    from tracker.manifest import unlearn_keyword
+
+    root = tmp_path / "Clients"
+    folder = engagement(root, "Smith 2025")
+    taught(folder, "A01", SAID_BY_NOTHING)
+    taught(folder, "A01", SAID_BY_A_FORM)
+    assert list(collect(root).rows[0].keywords) == [SAID_BY_NOTHING, SAID_BY_A_FORM]
+
+    unlearn_keyword(folder, "A01", SAID_BY_NOTHING)
+
+    (row,) = collect(root).rows
+    assert list(row.keywords) == [SAID_BY_A_FORM]
+    assert SAID_BY_NOTHING not in render(collect(root))
+
+
 # ------------------------------------------------------- engagements, named ----
 
 

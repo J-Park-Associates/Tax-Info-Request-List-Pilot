@@ -18,7 +18,10 @@ workbook; nothing writes one now.)
 :data:`SCANNED` event with what it changed, a person's filing appends
 :data:`KEYWORD_LEARNED` beside the row it taught, and
 :func:`tracker.manifest.load_manifest` answers from the store these lines
-are folded into.
+are folded into. A word that seemed distinctive and was not is taken back
+in the app's editor as one :data:`KEYWORD_UNLEARNED` (decision 113), and
+both folds - this module's and the store's - read the pair the same way,
+so the check can hold one to the other.
 
 **And it is the week's reminder** (decision 115). The pass appends one
 :data:`DRAFTED` event saying which requests the draft asked for, or which
@@ -118,9 +121,11 @@ ROW_KEY = "row"
 WAS_KEY = "was"
 #: What a ``SCANNED`` event carries: identifier -> the scanner columns applied.
 STATUSES_KEY = "statuses"
-#: What a ``KEYWORD_LEARNED`` event carries: the request a person's filing
-#: taught, and the word it was taught. Named here beside the other event
-#: keys so the writer and every reader of the record spell them once.
+#: What a ``KEYWORD_LEARNED`` event carries, and a ``KEYWORD_UNLEARNED``
+#: with it: the request a person's filing taught, and the word it was
+#: taught - the same two keys, because taking a word back names exactly
+#: what teaching it named. Named here beside the other event keys so the
+#: writer and every reader of the record spell them once.
 IDENTIFIER_KEY = "identifier"
 KEYWORD_KEY = "keyword"
 #: What a ``MIGRATED`` event carried: the files the migration moved aside,
@@ -216,6 +221,14 @@ COPY_MOVED = "copy_moved"
 SCANNED = "scanned"
 #: A person's filing taught a request a keyword.
 KEYWORD_LEARNED = "keyword_learned"
+#: A person took one of those keywords back, in the app's editor (decision
+#: 113). A word that seemed distinctive and was not - a common word on many
+#: unrelated documents - is untaught the way it was taught, by an event, so
+#: a store rebuilt from these lines agrees and the record says who took it
+#: back and when. Per engagement: the firm-wide vocabulary is
+#: ``tracker.templates`` and changes only by a commit. Unfiling still
+#: unlearns nothing (decision 77) - the request still wants the word.
+KEYWORD_UNLEARNED = "keyword_unlearned"
 #: The person's request list or Engagement details were edited in the app
 #: (decision 104): the changed and added rows whole (``RULES_KEY``), the
 #: removed identifiers (``REMOVED_KEY``), the Engagement fields that moved
@@ -288,8 +301,9 @@ ROW_EVENTS = frozenset({
     UNFILED_BY_PERSON, RESTORED_BY_PERSON, BYTES_RECORDED, COPY_MOVED, IMPORTED,
 })
 #: Every event name this version reads.
-EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED, MIGRATED, RULES_CHANGED,
-                                 RULES_IMPORTED, MOVING, MOVE_ABANDONED})
+EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, KEYWORD_UNLEARNED, DRAFTED,
+                                 MIGRATED, RULES_CHANGED, RULES_IMPORTED, MOVING,
+                                 MOVE_ABANDONED})
 #: The names this version reads and never writes: an older journal may
 #: carry them, a new line may not.
 RETIRED_EVENTS = frozenset({RULES_IMPORTED})
@@ -503,9 +517,10 @@ def rules(events: list[dict]) -> dict[str, dict]:
 
 @dataclass
 class Folded:
-    """What the record adds up to: the index, the statuses and the rules.
+    """What the record adds up to: the index, the statuses, the rules and
+    the keywords filings taught.
 
-    One state rather than four answers, because :func:`apply` folds one
+    One state rather than five answers, because :func:`apply` folds one
     event into all of them and a reader replaying the record line by line
     (:mod:`tracker.store`) needs to carry the lot between lines.
     """
@@ -528,6 +543,14 @@ class Folded:
     #: and empty on a record where every decision that began has ended,
     #: which is every record after an uninterrupted pass.
     intents: dict[str, dict] = field(default_factory=dict)
+    #: identifier -> the keywords filings taught that request and nobody
+    #: has taken back, in the order they were taught (decision 113).
+    #: Keyed by the identifier exactly as the event spells it: this module
+    #: sits below :mod:`tracker.records` and may not borrow its
+    #: case-folding, so the comparison that joins the two spellings of one
+    #: request is made by the reader that already owns that rule
+    #: (``tracker.store._check_learned``).
+    learned: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 def apply(state: Folded, event: dict) -> Folded:
@@ -545,10 +568,11 @@ def apply(state: Folded, event: dict) -> Folded:
     re-key in place and the row keeps the place the one it left held, so
     the mapping is rebuilt around it and assigned back.
 
-    An event whose name this version does not know as index-shaped and is
-    not a scan is passed over rather than refused: a later version may
-    write one, and a reader that refuses what it does not know cannot read
-    a record written by the run after it.
+    An event whose name this version does not know as index-shaped, and is
+    not a scan, a rules edit or a keyword taught or taken back, is passed
+    over rather than refused: a later version may write one, and a reader
+    that refuses what it does not know cannot read a record written by the
+    run after it.
     """
     name = event.get(EVENT_KEY)
     if name == SCANNED:
@@ -558,6 +582,8 @@ def apply(state: Folded, event: dict) -> Folded:
         return _apply_rules_event(state, event)
     if name in (MOVING, MOVE_ABANDONED):
         return _apply_intent_event(state, event)
+    if name in (KEYWORD_LEARNED, KEYWORD_UNLEARNED):
+        return _apply_keyword_event(state, event)
     if name not in ROW_EVENTS:
         return state
     key = event.get(KEY_KEY)
@@ -633,8 +659,43 @@ def _apply_rules_event(state: Folded, event: dict) -> Folded:
     return state
 
 
+def _apply_keyword_event(state: Folded, event: dict) -> Folded:
+    """One keyword taught or taken back, folded into ``state.learned``.
+
+    **In the order they were taught.** A word is appended, or moved last
+    when it is already there, as the store's re-insert orders it, and an
+    unlearn removes it - so teaching, taking back and teaching again
+    leaves it last, and so does teaching it twice. That is what the
+    store's own fold says, where a re-learned row is inserted again and
+    carries the new sequence number (``ORDER BY seq``). The two folds
+    agree by construction rather than because no writer here teaches a
+    word twice, so ``tracker.store.check()`` can compare them tuple for
+    tuple whatever a journal carries.
+
+    The keyword is matched exactly, as the store keys it; the identifier is
+    the event's own spelling, for the reason :class:`Folded` gives. An
+    unlearn of a word nothing taught folds to nothing: the writer
+    (``tracker.manifest.unlearn_keyword``) refuses the pair by name before
+    a line is written, and a reader that met one anyway is reading a
+    record, not deciding anything.
+    """
+    identifier = str(event.get(IDENTIFIER_KEY, ""))
+    keyword = str(event.get(KEYWORD_KEY, ""))
+    taught = state.learned.get(identifier, ())
+    left = tuple(word for word in taught if word != keyword)
+    if event.get(EVENT_KEY) == KEYWORD_LEARNED:
+        state.learned[identifier] = left + (keyword,)
+        return state
+    if left:
+        state.learned[identifier] = left
+    else:
+        state.learned.pop(identifier, None)
+    return state
+
+
 def replay(events: list[dict]) -> Folded:
-    """Every event folded, oldest first: the index, the statuses and the rules.
+    """Every event folded, oldest first: the index, the statuses, the rules
+    and the keywords filings taught.
 
     One walk for a caller that wants all of them, and the definition
     :func:`fold`, :func:`statuses` and :func:`rules` are each one part of.
@@ -693,4 +754,5 @@ if __name__ == "__main__":
     print(f"  rows:     {len(folded.rows)}")
     print(f"  statuses: {len(folded.statuses)}")
     print(f"  rules:    {len(folded.rules)}")
+    print(f"  learned:  {sum(len(words) for words in folded.learned.values())}")
     print(f"  head:     {head(folder) or '(none)'}\n")

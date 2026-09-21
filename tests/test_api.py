@@ -390,6 +390,87 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
     assert ACCEPTED_NOTE.format(n=1) in d01["validation_notes"]
 
 
+def teach(folder, identifier: str, keyword: str) -> None:
+    """A keyword recorded against a request, as a person's filing records it."""
+    from tracker.filer import ensure
+    from tracker.locking import engagement_lock
+
+    with engagement_lock(folder):
+        ensure(folder)
+        store.record(store.connect(), folder, ledger.new(ledger.KEYWORD_LEARNED, **{
+            ledger.IDENTIFIER_KEY: identifier, ledger.KEYWORD_KEY: keyword,
+        }))
+
+
+def test_unlearn_records_one_event_re_scans_and_the_state_no_longer_lists_the_keyword(
+        capsys, demo_root):
+    """Decision 113: one event, and the request read again in the same breath.
+
+    The re-scan is what makes the difference visible now rather than on
+    Saturday: the engagement has never been scanned when the unlearn
+    arrives, and the state that comes back carries a status for every row,
+    which only a pass writes.
+    """
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"},
+                                       {"identifier": "C01", "document": "Form 1098"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    folder = demo_root / "Smith"
+    teach(folder, "A01", "lender")
+    state = api._state(folder)
+    assert state["learned"] == {"A01": ["lender"]}
+    assert not any(item["status"] for item in state["items"])      # nothing has scanned it
+
+    code, payload = run(capsys, "unlearn", api.ENGAGEMENT_FLAG, str(folder),
+                        stdin={"identifier": "A01", "keyword": "lender"})
+
+    assert code == 0, payload
+    assert payload["unlearned"] == {"identifier": "A01", "keyword": "lender", "scan_note": ""}
+    assert payload["state"]["learned"] == {}
+    a01 = next(i for i in payload["state"]["items"] if i["identifier"] == "A01")
+    assert "lender" not in a01["any_keywords"]
+    assert a01["status"] == Status.MISSING                         # the re-scan, in the same call
+    names = [e[ledger.EVENT_KEY] for e in ledger.read_events(folder)]
+    assert names.count(ledger.KEYWORD_UNLEARNED) == 1
+
+
+def test_unlearn_refuses_a_blank_or_unknown_pair_by_name(capsys, demo_root):
+    """A refusal is the usual error sentence, and nothing is recorded."""
+    from tracker.manifest import UNLEARN_REFUSED
+
+    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    folder = demo_root / "Smith"
+    teach(folder, "A01", "lender")
+    head = ledger.head(folder)
+
+    for sent in ({"identifier": "", "keyword": "lender"},
+                 {"identifier": "A01", "keyword": "  "},
+                 {}):
+        code, payload = run(capsys, "unlearn", api.ENGAGEMENT_FLAG, str(folder), stdin=sent)
+        assert code == 1 and "Pick the request and the keyword" in payload["error"]
+
+    code, payload = run(capsys, "unlearn", api.ENGAGEMENT_FLAG, str(folder),
+                        stdin={"identifier": "A01", "keyword": "escrow"})
+    assert code == 1
+    assert payload["error"] == UNLEARN_REFUSED.format(identifier="A01", keyword="escrow")
+    assert ledger.head(folder) == head
+    assert api._state(folder)["learned"] == {"A01": ["lender"]}
+
+
+def test_the_renderer_types_no_unlearn_word(capsys, demo_root):
+    """The button beside a taught keyword and the sentence after it are the
+    API's words, like every other word the editor shows."""
+    js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8")
+
+    between = api.UNLEARNED_NOTE.split("}")[1].split("{")[0].strip()      # "unlearned from"
+    tail = api.UNLEARNED_NOTE.split("{identifier}")[1].strip()            # the rest of it
+
+    assert api.UNLEARN_LABEL not in js
+    assert between not in js and tail not in js
+    assert "vocab.editor.unlearn_label" in js and "vocab.editor.unlearned_note" in js
+
+
 def test_rule_two_is_rendered_in_the_record_and_names_no_file(capsys, demo_root, tmp_path):
     """Decision 102, the owner's wording of 2026-09-19: the rule used to
     name the index workbook, and there is no such file any more."""
@@ -1426,6 +1507,8 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert editor["warnings_heading"] == api.EDITOR_WARNINGS_HEADING
     assert editor["saved"] == api.RULES_SAVED and editor["nothing_changed"] == api.NOTHING_CHANGED
     assert editor["learned_note"] == api.LEARNED_NOTE
+    assert editor["unlearn_label"] == api.UNLEARN_LABEL
+    assert editor["unlearned_note"] == api.UNLEARNED_NOTE
     assert [f["key"] for f in editor["engagement_fields"]] == [f for _, f in ENGAGEMENT_FIELDS]
     assert {f["key"] for f in editor["engagement_fields"] if f["editable"]} == set(ENGAGEMENT_EDITABLE)
     # Which details take a date box is the record's answer, not the page's.

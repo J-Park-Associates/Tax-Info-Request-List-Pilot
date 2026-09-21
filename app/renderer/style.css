@@ -371,6 +371,11 @@ body {
 .editor-table .ed-min_size_kb input { min-width: 56px; width: 64px; }
 .editor-table .ed-document input { min-width: 180px; }
 .editor-table .ed-learned { font-size: 12px; color: var(--subtle); white-space: nowrap; }
+/* One taught keyword and the button that takes it back (decision 113). */
+.editor-table .ed-learned-note { margin-right: 2px; }
+.editor-table .ed-learned-word { display: inline-flex; align-items: center; gap: 4px;
+                                 margin: 0 4px 2px 0; }
+.editor-table .ed-unlearn { padding: 2px 6px; font-size: 11px; }
 .editor-table .ed-reason { display: flex; gap: 4px; }
 .editor-table .ed-reason select { min-width: 160px; }
 .editor-table .ed-reason input { min-width: 160px; }

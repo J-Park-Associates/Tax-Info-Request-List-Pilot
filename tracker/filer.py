@@ -2819,7 +2819,10 @@ def unfile_document(
     file that had moved. The keyword a person taught the request when they
     filed it is *not* unlearned: it is a rule about documents, the request
     still wants it, and guessing which keyword to take back would be
-    guessing. Refiling is unfiling and then filing.
+    guessing. A person who wants one back says which, in the app's editor,
+    where each taught word has its own button (decision 113,
+    ``manifest.unlearn_keyword``); unfiling takes nothing back.
+    Refiling is unfiling and then filing.
 
     A ``FILE_MOVED`` row comes back from here too - decision 110's "send
     it to review", for a copy that was moved by mistake and belongs under

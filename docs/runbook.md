@@ -157,7 +157,12 @@ same day, and the tool's card there prints that sentence.
    request that does not want it; the draft stops warning about it, and
    **File it anyway** is the undo. A document filed in the wrong place is
    sent back to the review folder with **Unfile**, on the record, and filed
-   again from there.
+   again from there. The keyword you typed when you filed stays with the
+   request — unfiling never takes one back — so if a word turns out to be
+   on documents that request does not want, open **Edit Request List** and
+   press the button beside that word: it is taken back for this engagement
+   on the record, and the request is re-scanned there and then, which may
+   put a copy that passed only on that word back into Failed Validation.
 
    The card does not leave you to find the request yourself. Each parked
    file carries a shortlist: up to three requests, best first, at the head
