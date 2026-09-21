@@ -2929,3 +2929,446 @@ def test_a_split_rows_second_copy_dragged_away_is_said_on_the_request_that_lost_
     assert report.updates["A01"].file_count == 1
     assert not reasons.FILE_MOVED.matches(report.updates["A01"].validation_notes)
     assert files_under(engagement) == untouched
+
+
+# ------------------------------ recovery is the person's (decision 110) ----
+
+
+def a_moved_filed_row(engagement, folder="C01"):
+    """A Filed document whose working copy somebody dragged, as the sweep
+    leaves it: the row it made, and the file where the hand put it."""
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    wanderer = drag(engagement / filed.prepared_location, prepared(engagement, folder))
+    file_drops(engagement, today=DAY2)
+    return filed, wanderer
+
+
+def test_put_it_back_moves_the_wanderer_home_and_the_row_is_filed_again(engagement):
+    """The first answer, and the one that needs nowhere else for the file to
+    go: the bytes return to where the record put them, the row is Filed
+    again, and the next pass has nothing left to say about it."""
+    from tracker.filer import FILED, PUT_BACK, restore_working_copy
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    home = engagement / filed.prepared_location
+    bytes_before = wanderer.read_bytes()
+    lines = len(ledger.read_events(engagement))
+
+    result = restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+    assert result.moved_home and not result.copied_from_original
+    assert not result.already_home and result.parked_as == ""
+    assert home.read_bytes() == bytes_before and not wanderer.exists()
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.prepared_location == filed.prepared_location
+    assert row.reason.endswith(PUT_BACK.format(
+        home=filed.prepared_location, date=DAY2.isoformat(),
+        now=location_of(engagement, wanderer)))
+    assert row.reason.startswith(filed.reason)          # and its history is kept
+    assert len(events_named(engagement, ledger.RESTORED_BY_PERSON)) == 1
+    # One decision of the person's, and the re-scan that puts the request's
+    # status back in the same breath. Nothing else was written.
+    assert [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)[lines:]] == [
+        ledger.RESTORED_BY_PERSON, ledger.SCANNED
+    ]
+    assert result.entry == row
+    # The request has its file again, and the pass that follows says nothing
+    # about it: the copy is where the record put it, so it simply proves.
+    lines = len(ledger.read_events(engagement))
+    quiet = file_drops(engagement, today=DAY2 + dt.timedelta(days=1))
+    assert quiet.attention == []
+    assert len(ledger.read_events(engagement)) == lines
+
+
+def test_put_it_back_on_a_parked_copy_dragged_into_a_request_folder_returns_it_to_review_as_needs_review(
+        engagement):
+    """A parked copy that wandered comes back parked. Which of the two parked
+    decisions it was is not guessable (109's rule), so it waits for review
+    and a person re-decides in one click."""
+    from tracker.filer import restore_working_copy
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    wanderer = drag(engagement / parked.prepared_location, prepared(engagement, "C01"))
+    file_drops(engagement, today=DAY2)
+
+    result = restore_working_copy(engagement, parked.pbc_location, today=DAY2)
+
+    assert result.moved_home
+    assert (engagement / parked.prepared_location).is_file() and not wanderer.exists()
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.identifier == ""
+    assert row.prepared_location == parked.prepared_location
+
+
+def test_put_it_back_copies_from_the_original_when_nothing_under_prepared_holds_the_bytes(
+        engagement):
+    """A working copy is a copy of the original and the original is safe in
+    the client's own folder (rule 2), so a row whose bytes are nowhere under
+    the firm's folder is still restorable."""
+    from tracker.filer import FILED, PUT_BACK_FROM_ORIGINAL, restore_working_copy
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    wanderer.unlink()                                   # and now it is nowhere
+    file_drops(engagement, today=DAY2)
+    original = (pbc(engagement) / "w2.pdf").read_bytes()
+
+    result = restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+    assert result.copied_from_original and not result.moved_home
+    home = engagement / filed.prepared_location
+    assert home.read_bytes() == original
+    assert (pbc(engagement) / "w2.pdf").read_bytes() == original    # untouched, as ever
+    [row] = read_index(engagement)
+    assert row.decision == FILED
+    assert row.reason.endswith(PUT_BACK_FROM_ORIGINAL.format(
+        home=filed.prepared_location, date=DAY2.isoformat(),
+        pbc=filed.pbc_location, prepared=PREPARED_DIR_NAME))
+
+
+def test_put_it_back_with_the_same_bytes_already_home_restores_the_row_and_leaves_the_wanderer_for_a_person(
+        engagement):
+    """The machine deletes nothing. Home holds these bytes, so there is
+    nothing to move; the copy somebody left behind stays where it is and the
+    sweep goes on naming it until a person removes it."""
+    from tracker.filer import FILED, PUT_BACK_ALREADY, UNRECORDED_COPY, restore_working_copy
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    home = engagement / filed.prepared_location
+    home.write_bytes(wanderer.read_bytes())             # put back by hand, the copy left over
+    untouched = files_under(engagement)
+
+    result = restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+    assert result.already_home and not result.moved_home and not result.copied_from_original
+    assert files_under(engagement) == untouched         # nothing moved, nothing deleted
+    [row] = read_index(engagement)
+    assert row.decision == FILED
+    assert row.reason.endswith(PUT_BACK_ALREADY.format(
+        home=filed.prepared_location, date=DAY2.isoformat(),
+        now=location_of(engagement, wanderer)))
+    assert len(events_named(engagement, ledger.RESTORED_BY_PERSON)) == 1
+
+    report = file_drops(engagement, today=DAY2 + dt.timedelta(days=1))
+    assert [e.error for e in report.attention] == [
+        UNRECORDED_COPY.format(location=location_of(engagement, wanderer))
+    ]
+
+
+@pytest.mark.parametrize("held_by", ("the wanderer", "nowhere"))
+def test_put_it_back_never_overwrites_a_different_file_at_home_and_parks_this_documents_copy(
+        engagement, held_by):
+    """The owner's rule, 2026-09-19: nothing is overwritten. The file at home
+    is somebody's, whatever the record says about it, so it stays exactly
+    as it is; this document's copy goes to review under the client's own
+    name and the row parks naming both, and both files are on disk.
+
+    Runs on Windows and on Linux alike, because the refusal is the byte
+    check this makes before ``os.rename`` and never the rename's own: on
+    Linux a rename overwrites silently and there would be nothing to see.
+    """
+    from tracker.filer import PUT_BACK_REFUSED, restore_working_copy
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    if held_by == "nowhere":
+        wanderer.unlink()
+        file_drops(engagement, today=DAY2)
+    home = engagement / filed.prepared_location
+    somebody_elses = b"%PDF-1.4 a different document entirely\n"
+    home.write_bytes(somebody_elses)
+    before = home.stat().st_mtime_ns
+
+    result = restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+    # The file at home is byte for byte, mtime and all, what it was.
+    assert home.read_bytes() == somebody_elses and home.stat().st_mtime_ns == before
+    parked = engagement / result.parked_as
+    assert parked.parent == review_dir(engagement)
+    assert parked.read_bytes() == (pbc(engagement) / "w2.pdf").read_bytes()
+    assert parked.name == "w2.pdf"                      # the client's own name
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.identifier == "" and row.also_filed == ""
+    assert row.prepared_location == result.parked_as
+    assert row.reason.endswith(PUT_BACK_REFUSED.format(
+        date=DAY2.isoformat(), home=filed.prepared_location, parked=result.parked_as))
+    assert len(events_named(engagement, ledger.RESTORED_BY_PERSON)) == 1
+
+
+def test_put_it_back_refuses_a_row_that_is_not_moved_by_name(engagement):
+    from tracker.filer import FilingError, restore_working_copy
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    files = every_byte(engagement)
+
+    with pytest.raises(FilingError) as raised:
+        restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+    assert "is not a moved copy" in str(raised.value) and FILED in str(raised.value)
+    assert every_byte(engagement) == files
+
+
+def moved_again(engagement, wanderer, day):
+    """The copy dragged a second time, and the pass that rewrites the row:
+    still File Moved, still this person's row to act on - and no longer the
+    row they were looking at."""
+    moved = drag(wanderer, review_dir(engagement))
+    file_drops(engagement, today=day)
+    return moved
+
+
+def test_put_it_back_refuses_a_stale_seq_and_touches_nothing(engagement):
+    """Still moved, so the by-name refusal says nothing about it; the row's
+    own sequence number has moved, and that is what catches it."""
+    from tracker.filer import FILE_MOVED, StaleRowError, restore_working_copy
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    [row] = read_index(engagement)
+    as_the_person_saw_it = seq_of(engagement, row)
+    moved_again(engagement, wanderer, DAY2 + dt.timedelta(days=1))
+    [now_row] = read_index(engagement)
+    assert now_row.decision == FILE_MOVED
+    assert seq_of(engagement, now_row) != as_the_person_saw_it
+    files = every_byte(engagement)
+    lines = len(ledger.read_events(engagement))
+
+    with pytest.raises(StaleRowError) as raised:
+        restore_working_copy(engagement, filed.pbc_location, today=DAY2,
+                             seq=as_the_person_saw_it)
+
+    assert filed.original_name in str(raised.value)
+    assert every_byte(engagement) == files
+    assert len(ledger.read_events(engagement)) == lines
+
+
+def test_put_it_back_refuses_a_row_without_a_digest(engagement, monkeypatch):
+    """Decision 65: a row recorded without its bytes is tied to nothing, so
+    nothing can be proved to be its working copy and nothing here may move."""
+    import tracker.filer as filer_module
+    from tracker.filer import FILE_MOVED, FilingError, restore_working_copy
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED
+    monkeypatch.setattr(filer_module, "read_index",
+                        lambda *a, **k: [replace(row, digest="")])
+    files = every_byte(engagement)
+
+    with pytest.raises(FilingError) as raised:
+        restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+    assert "without its bytes" in str(raised.value)
+    assert every_byte(engagement) == files
+
+
+def test_put_it_back_refuses_when_neither_the_wanderer_nor_the_original_holds_the_bytes_and_names_which(
+        engagement):
+    from tracker.filer import FilingError, restore_working_copy
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    wanderer.write_bytes(b"%PDF-1.4 somebody re-saved it\n")
+    (pbc(engagement) / "w2.pdf").write_bytes(b"%PDF-1.4 and the client replaced this\n")
+    files = every_byte(engagement)
+
+    with pytest.raises(FilingError) as raised:
+        restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+    said = str(raised.value)
+    assert location_of(engagement, wanderer) in said and filed.pbc_location in said
+    assert every_byte(engagement) == files
+
+
+def test_a_refused_record_rolls_the_put_back_move_back(engagement, monkeypatch):
+    """The record took the decision or it did not - one transaction, no third
+    state - so the file goes back where the record says it is."""
+    import tracker.store as store_module
+    from tracker.filer import FILE_MOVED, restore_working_copy
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    files = every_byte(engagement)
+    lines = len(ledger.read_events(engagement))
+
+    def refuse(*a, **k):
+        raise RuntimeError("the record said no")
+
+    monkeypatch.setattr(store_module, "record", refuse)
+    with pytest.raises(RuntimeError):
+        restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+    monkeypatch.undo()
+
+    assert every_byte(engagement) == files              # the wanderer is where it was
+    assert len(ledger.read_events(engagement)) == lines
+    assert events_named(engagement, ledger.RESTORED_BY_PERSON) == []
+    assert read_index(engagement)[0].decision == FILE_MOVED
+
+
+def test_keep_it_here_files_the_wanderer_under_the_request_whose_folder_holds_it_as_the_persons(
+        engagement):
+    """The second answer: the copy is where somebody meant it to be, so it
+    takes the canonical name there and the row is Filed by a person."""
+    from tracker.filer import ASSIGNED_BY_PERSON, FILED, assign_review_file
+    from tracker.manifest import load_manifest
+
+    filed, wanderer = a_moved_filed_row(engagement)
+
+    result = assign_review_file(engagement, filed.pbc_location, "C01",
+                                keyword="escrow", today=DAY2)
+
+    assert result.moved_review_copy and not wanderer.exists()
+    kept = engagement / result.entry.prepared_location
+    assert kept.parent == prepared(engagement, "C01")
+    assert kept.name.startswith("C01 - ")
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.identifier == "C01"
+    assert row.reason.startswith(ASSIGNED_BY_PERSON)
+    assert len(events_named(engagement, ledger.ASSIGNED_BY_PERSON)) == 1
+    c01 = {i.identifier: i for i in load_manifest(engagement)}["C01"]
+    assert "escrow" in c01.any_keywords
+
+
+def test_keep_it_here_may_pick_another_request_and_the_wanderer_moves_there(engagement):
+    """The picker is the same picker: keeping the file and correcting the
+    request it answers is one click."""
+    from tracker.filer import FILED, assign_review_file
+
+    filed, wanderer = a_moved_filed_row(engagement)
+
+    result = assign_review_file(engagement, filed.pbc_location, "A01", today=DAY2)
+
+    assert not wanderer.exists()
+    kept = engagement / result.entry.prepared_location
+    assert kept.parent == prepared(engagement, "A01")
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.identifier == "A01"
+
+
+@pytest.mark.parametrize("where", ("the wanderer", "nowhere"))
+def test_send_to_review_parks_the_wanderer_under_the_clients_name_as_the_persons(
+        engagement, where):
+    """The third answer: the copy goes back to the review folder under the
+    client's own name, and a row whose bytes are nowhere is copied from the
+    original, exactly as an unfiling already does."""
+    from tracker.filer import UNFILED_BY_PERSON, unfile_document
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    if where == "nowhere":
+        wanderer.unlink()
+        file_drops(engagement, today=DAY2)
+
+    result = unfile_document(engagement, filed.pbc_location, today=DAY2)
+
+    assert result.moved_working_copy is (where == "the wanderer")
+    parked = engagement / result.entry.prepared_location
+    assert parked.parent == review_dir(engagement) and parked.name == "w2.pdf"
+    assert parked.read_bytes() == (pbc(engagement) / "w2.pdf").read_bytes()
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.identifier == ""
+    assert row.reason.startswith(UNFILED_BY_PERSON)
+    assert len(events_named(engagement, ledger.UNFILED_BY_PERSON)) == 1
+
+
+def a_moved_split_row(engagement):
+    """A page decision 94 filed under two requests, one copy dragged away and
+    the other deleted: the row the sweep leaves, and the wanderer."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+
+    drop(engagement, "scan0003.pdf",
+         "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    [split] = file_drops(engagement, today=DAY1).filed
+    assert len(split.filed_locations) == 2
+    wanderer = drag(engagement / split.filed_locations[0], review_dir(engagement))
+    (engagement / split.filed_locations[1]).unlink()
+    file_drops(engagement, today=DAY2)
+    return split, wanderer
+
+
+@pytest.mark.parametrize("action", ("keep", "send to review"))
+def test_keep_and_send_to_review_refuse_a_row_with_copies_under_several_requests_by_name(
+        engagement, action):
+    """Which of a page's copies the person means is not the machine's to
+    guess, and put-it-back answers for every one of them."""
+    from tracker.filer import (
+        SEVERAL_COPIES_REFUSAL,
+        FilingError,
+        assign_review_file,
+        unfile_document,
+    )
+
+    split, wanderer = a_moved_split_row(engagement)
+    files = every_byte(engagement)
+
+    with pytest.raises(FilingError) as raised:
+        if action == "keep":
+            assign_review_file(engagement, split.pbc_location, "A01", today=DAY2)
+        else:
+            unfile_document(engagement, split.pbc_location, today=DAY2)
+
+    assert str(raised.value) == SEVERAL_COPIES_REFUSAL.format(name=split.original_name)
+    assert every_byte(engagement) == files
+
+
+def test_put_it_back_restores_every_copy_of_such_a_row(engagement):
+    """One row, one original, one list of copies: put-it-back fills every one
+    of them - the wanderer moved into the first, the rest remade from it -
+    and the next pass has nothing left to say."""
+    from tracker.filer import FILED, restore_working_copy
+
+    split, wanderer = a_moved_split_row(engagement)
+    bytes_wanted = wanderer.read_bytes()
+
+    result = restore_working_copy(engagement, split.pbc_location, today=DAY2)
+
+    assert result.moved_home and not wanderer.exists()
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.filed_locations == split.filed_locations
+    for location in row.filed_locations:
+        assert (engagement / location).read_bytes() == bytes_wanted
+    report = file_drops(engagement, today=DAY2 + dt.timedelta(days=1))
+    assert report.attention == []                       # every copy proves
+
+
+@pytest.mark.parametrize("refusal", ("not moved", "stale", "no bytes anywhere", "several copies"))
+def test_every_recovery_refusal_leaves_the_file_count_unchanged(engagement, refusal):
+    """Standing rule: a refused action moves nothing and overwrites nothing."""
+    from tracker.filer import FilingError, restore_working_copy, unfile_document
+
+    entry, wanderer = (a_moved_split_row(engagement) if refusal == "several copies"
+                       else a_moved_filed_row(engagement))
+    stale = seq_of(engagement, read_index(engagement)[0])
+    if refusal == "not moved":
+        restore_working_copy(engagement, entry.pbc_location, today=DAY2)   # no longer moved
+    elif refusal == "stale":
+        moved_again(engagement, wanderer, DAY2 + dt.timedelta(days=1))
+    elif refusal == "no bytes anywhere":
+        wanderer.write_bytes(b"%PDF-1.4 re-saved\n")
+        (pbc(engagement) / "w2.pdf").write_bytes(b"%PDF-1.4 replaced\n")
+
+    files = files_under(engagement)
+    lines = len(ledger.read_events(engagement))
+    with pytest.raises(FilingError):
+        if refusal == "several copies":
+            unfile_document(engagement, entry.pbc_location, today=DAY2)
+        elif refusal == "stale":
+            restore_working_copy(engagement, entry.pbc_location, today=DAY2, seq=stale)
+        else:
+            restore_working_copy(engagement, entry.pbc_location, today=DAY2)
+
+    assert files_under(engagement) == files
+    assert len(ledger.read_events(engagement)) == lines
+
+
+def test_dismiss_still_refuses_a_moved_row_by_name(engagement):
+    """Decision 76 unchanged: setting a request aside says nothing about a
+    file nobody can find, so a moved row is not dismissable."""
+    from tracker.filer import FILE_MOVED, FilingError, dismiss_review_file
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    files = every_byte(engagement)
+
+    with pytest.raises(FilingError) as raised:
+        dismiss_review_file(engagement, filed.pbc_location, today=DAY2)
+
+    assert "is not waiting for review" in str(raised.value)
+    assert FILE_MOVED in str(raised.value)
+    assert every_byte(engagement) == files

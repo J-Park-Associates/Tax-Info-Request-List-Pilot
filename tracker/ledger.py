@@ -149,6 +149,16 @@ ASSIGNED_BY_PERSON = "assigned_by_person"
 DISMISSED_BY_PERSON = "dismissed_by_person"
 #: A person sent a filed document back for review.
 UNFILED_BY_PERSON = "unfiled_by_person"
+#: A person put a working copy the record had lost track of back where the
+#: record put it (decision 110). One name for the whole of that answer,
+#: whatever the click found: the bytes moved home, or were copied home from
+#: the client's original, or were already home, or a different file at home
+#: was refused an overwrite and this document's copy went to review. The row
+#: the line carries says which, and three names for one button would be a
+#: vocabulary of outcomes the row already states. The pass's own
+#: :data:`COPY_MOVED` stays what it is - the machine noticing - and this is
+#: the person answering.
+RESTORED_BY_PERSON = "restored_by_person"
 #: A row preserved without its bytes was tied to them by a later pass.
 BYTES_RECORDED = "bytes_recorded"
 #: The pass found this row's working copy somewhere other than where the
@@ -210,7 +220,7 @@ MIGRATED = "migrated"
 #: The events that carry a whole index row. Their fold is the index.
 ROW_EVENTS = frozenset({
     PRESERVED, FILED, PARKED, DUPLICATE, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
-    UNFILED_BY_PERSON, BYTES_RECORDED, COPY_MOVED, IMPORTED,
+    UNFILED_BY_PERSON, RESTORED_BY_PERSON, BYTES_RECORDED, COPY_MOVED, IMPORTED,
 })
 #: Every event name this version reads.
 EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED, MIGRATED, RULES_CHANGED,
