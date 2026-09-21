@@ -124,6 +124,19 @@ refused by name rather than opened hopefully.
 Indexes: documents by decision within an engagement, documents by digest,
 statuses by status.
 
+The events that carry a whole index row are `tracker.ledger.ROW_EVENTS`,
+and their fold **is** the index: `preserved`, `filed`, `parked`,
+`duplicate`, `assigned_by_person`, `dismissed_by_person`,
+`unfiled_by_person`, `bytes_recorded`, `copy_moved` and the `imported`
+line a seeded row carries. `copy_moved` is decision 109's and the newest
+of them: the pass found a row's working copy somewhere other than where
+the record last said — away from its request folder, away again, or back
+where it belongs — and the row the line carries says which. One name in
+either direction, because the fold is the same fold whichever way the
+copy went. The rest of the names are not row events and fold their own
+way: `scanned` (the statuses), `keyword_learned`, `rules_changed`,
+`drafted`, and the retired `rules_imported` and `migrated`.
+
 Every column holds what the frozen record holds, serialised the record's own
 way — dates as ISO text, the yes/no cells as 0 and 1, tuples as JSON. The
 column lists are **derived** from the records in `tracker/records.py`, so a
@@ -326,6 +339,18 @@ file the plan had left in the engagement folder: the tier-3 verdict cache
 moved into two tables of the store, `user_version` 3, not journalled, and
 a pass now writes nothing under the clients root but the journal, the
 Status Report and the client's own files.
+
+**Afterwards (decision 109) — every working copy is proved against the
+record each pass.** Not a stage of the plan either, but what the record
+being the whole of the truth is *for*: the fingerprint each row has
+carried since decision 50 is now read against the file each pass, so a
+working copy that is not where the record put it is identified and said
+rather than silently counted or silently lost. One new event name,
+`copy_moved`, in `ROW_EVENTS`, folding like every other row event; no
+column, no schema change, `user_version` still 4. And every hash of a file
+under the firm's folder now goes through `file_memos`, so a second pass
+over an unchanged tree reads one file per preserved original and no
+working copy at all.
 
 **Afterwards (decision 116) — the override is recorded with its reason.**
 `override_reason` is a rule field: it travels in the `rules_changed` event

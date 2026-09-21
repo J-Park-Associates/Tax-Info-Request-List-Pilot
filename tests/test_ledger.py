@@ -446,3 +446,42 @@ def test_the_cli_prints_what_the_folder_holds(engagement):
     assert "rows:     1" in out
     assert f"rules:    {len(ledger.rules(ledger.read_events(engagement)))}" in out
     assert ledger.head(engagement) in out
+
+
+def test_a_copy_moved_event_folds_as_a_row_event_in_both_folds_and_check_agrees(engagement, tmp_path):
+    """Decision 109's one event, in either direction. It carries a whole row,
+    so it needs no fold of its own: the generic one puts the row where the
+    row it replaces was, a store built from the journal alone says the same,
+    and the row's own sequence number is this line's."""
+    from tracker.filer import FILE_MOVED, PREPARED_DIR_NAME, moved_to
+    from tracker.scaffold import REVIEW_DIR_NAME
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    home = engagement / filed.prepared_location
+    elsewhere = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    elsewhere.mkdir(parents=True, exist_ok=True)
+    home.rename(elsewhere / home.name)
+
+    file_drops(engagement, today=DAY2)
+
+    events = ledger.read_events(engagement)
+    assert [e[ledger.EVENT_KEY] for e in events][-1] == ledger.COPY_MOVED
+    assert ledger.COPY_MOVED in ledger.ROW_EVENTS
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED and moved_to(row)
+    # The fold from the first line, and the store's line-at-a-time replay.
+    assert ledger.fold(events) == {ledger_key(e): asdict(e) for e in read_index(engagement)}
+    conn = store.connect()
+    assert store.check(conn, tmp_path, engagement) == []
+    assert conn.execute(
+        "SELECT seq FROM documents WHERE key = ?", (ledger_key(row),)
+    ).fetchone()[0] == len(events)                  # the row's seq is this very line's
+
+    fresh = store.open(tmp_path / "rebuilt.db")
+    try:
+        store.rebuild_engagement(fresh, tmp_path, engagement)
+        assert store.check(fresh, tmp_path, engagement) == []
+        assert [e["decision"] for e in store.documents(fresh, engagement)] == [FILE_MOVED]
+    finally:
+        fresh.close()

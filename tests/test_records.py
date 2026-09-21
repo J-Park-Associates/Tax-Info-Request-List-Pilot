@@ -12,6 +12,7 @@ copy - and this module reaches for nothing in the package to do any of it.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import fields
 from pathlib import Path
 
@@ -189,11 +190,35 @@ def test_the_records_import_nothing_of_the_package():
 
 def test_nothing_here_reaches_a_file_or_a_workbook():
     """A record knows nothing about where it is stored. The imports say so:
-    no openpyxl, no os, and `pathlib` only because a Routing names a path."""
+    no openpyxl, no os, `pathlib` only because a Routing names a path, and
+    `re` only because as_pattern() turns a sentence's template into the
+    pattern that reads it back (decision 109)."""
     source = (Path(records.__file__)).read_text(encoding="utf-8")
     imported = {line.split()[1] for line in source.splitlines()
                 if line.startswith("import ") or line.startswith("from ")}
 
-    assert imported == {"__future__", "datetime", "dataclasses", "pathlib"}, imported
+    assert imported == {"__future__", "datetime", "dataclasses", "pathlib", "re"}, imported
     assert isinstance(records.EngagementInfo().due, type(None))
     assert EngagementInfo(due=dt.date(2026, 4, 15)).due.year == 2026
+
+
+def test_as_pattern_reads_a_templates_own_sentence_back():
+    """Decision 109 moved this down here from the scanner, where it had read
+    the regression sentence back since 108. The claim is the one both
+    readers rest on: a pattern built from a template matches exactly what
+    that template writes, whatever the detail is - a path with brackets, a
+    date, a count - and the words are never retyped on either side."""
+    from tracker.records import as_pattern
+
+    template = "{home} no longer holds this row's bytes; they are at {now} (found {date})"
+    pattern = re.compile(as_pattern(
+        template, home=r".+?", now="(?P<now>.+?)", date=r"\d{4}-\d{2}-\d{2}") + "$")
+    now = "Prepared/C01 - Mortgage Interest Statement/w2 (2).pdf"
+    said = template.format(home="Prepared/A01 - W-2/A01 - W-2 - TY2025.pdf", now=now,
+                           date="2026-07-09")
+
+    assert pattern.search(said).group("now") == now
+    assert pattern.search(said.replace("(found", "(seen")) is None   # not this template
+    # Every word between the placeholders is escaped, so a template that
+    # holds a regular expression's own characters is still itself.
+    assert re.fullmatch(as_pattern("a (b) c {n}", n=r"\d+"), "a (b) c 12")

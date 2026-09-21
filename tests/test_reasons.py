@@ -63,3 +63,16 @@ def test_firm_side_reasons_never_become_a_client_ask():
     for reason in FIRM_SIDE:
         assert reason.ask == ""
     assert reasons.NO_TEXT_LAYER in FIRM_SIDE and reasons.WRONG_PERIOD not in FIRM_SIDE
+
+
+def test_the_two_sweep_reasons_are_firm_side():
+    """Decision 109. A working copy somebody here dragged, and a file that is
+    not the one the record filed, are the firm's doing either way: the
+    client sent the document. A draft that asked them for it would be
+    asking for a file the firm mislaid, so both carry a firm note of their
+    own and neither can ever become an ask."""
+    for reason in (reasons.FILE_MOVED, reasons.COPY_CHANGED):
+        assert reason in FIRM_SIDE and reason in ALL
+        assert reason.ask == "" and reason.firm_note
+        assert reason.firm_side_note == reason.firm_note
+        assert "client" in reason.firm_note        # never the client, said in the sentence

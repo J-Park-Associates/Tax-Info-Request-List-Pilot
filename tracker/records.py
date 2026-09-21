@@ -18,7 +18,11 @@ workbook, takes a lock or knows where the engagement folder is.** It holds
 the shapes, the names of their values, and each record's own
 serialisation - the cell format for the Evidence column, the JSON an index
 row is stored as, the identity a row is recorded under - because those are
-facts about the record and not about the file it lands in. The writers
+facts about the record and not about the file it lands in. So is the other
+direction: :func:`as_pattern` turns a sentence's own template into the
+pattern that reads it back, because how a sentence the machine wrote is
+read is a fact about the shape it was stored in, and two modules read one
+back (decisions 108 and 109) without retyping a word of either. The writers
 stay where they are: the journal is written by :mod:`tracker.filer`, the
 scanner and :mod:`tracker.manifest`, which is where the lock and the
 atomic replace belong.
@@ -62,6 +66,7 @@ the module that moves the client's files.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -89,6 +94,31 @@ STATES = (CURRENT, BEHIND, UNKNOWN)
 #: rule, the runbook, the README and ``docs/storage.md`` all use these
 #: words and ``tests/test_single_source.py`` holds them to it.
 THE_RECORD = "the record"
+
+# ------------------------------------------------------ a sentence read back ----
+
+
+def as_pattern(template: str, **groups: str) -> str:
+    """A note's template as a regular expression: every word of it escaped,
+    every ``{name}`` the pattern given for it.
+
+    The words have one home - the constant the template is - and a reader of
+    a sentence the machine wrote never retypes them. Two readers use it, and
+    both derive their pattern from the very template that wrote the sentence,
+    so rewording one moves its reader with it:
+    :mod:`tracker.scanner` reads the regression sentence off the front of a
+    row's validation notes (decision 108), and :mod:`tracker.filer` reads the
+    path a moved working copy is at now off the end of its Reason
+    (:func:`tracker.filer.moved_to`, decision 109).
+
+    It belongs here because how a sentence the machine wrote is read back is
+    a fact about the shape a record is stored in, not about either reader.
+    """
+    # re.split with one group alternates: words, name, words, name, words.
+    words_and_names = re.split(r"\{(\w+)\}", template)
+    return "".join(groups[part] if i % 2 else re.escape(part)
+                   for i, part in enumerate(words_and_names))
+
 
 # ---------------------------------------------------------------- evidence ----
 

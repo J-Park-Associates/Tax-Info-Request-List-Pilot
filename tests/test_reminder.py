@@ -236,6 +236,44 @@ def test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft(
     assert draft_reminder(folder).needs_review_files == 2
 
 
+def test_a_resend_after_a_dismissal_counts_in_the_files_waiting_warning(tmp_path):
+    """Decision 111: the client sent it again, so somebody has to look again.
+
+    The copy a person set aside is still not counted - they have seen it -
+    and the fresh copy beside it is, so the warning says there is one file
+    waiting rather than none.
+    """
+    from tests.conftest import make_engagement, seed_statuses
+    from tests.test_scanner import text_pdf
+    from tracker.filer import dismiss_review_file, file_drops
+    from tracker.reminder import REVIEW_WARNING
+    from tracker.scaffold import SHARED_DIR_NAME
+
+    rows = [item("A01", "W-2 Wage Statements", Status.MISSING, period="TY2025",
+                 expected_count=1, allowed_extensions=("pdf",),
+                 required_keywords=("W-2",))]
+    folder = make_engagement(tmp_path / "Smith TY2025", rows)
+    seed_statuses(folder, {"A01": StatusUpdate(status=Status.MISSING, file_count=0)})
+
+    text_pdf(folder / SHARED_DIR_NAME / "notice.pdf", "nothing the rules recognise")
+    parked = file_drops(folder, today=dt.date(2026, 2, 1)).review[0]
+    dismiss_review_file(folder, parked.pbc_location, "an IRS notice",
+                        today=dt.date(2026, 2, 2))
+    assert count_needs_review(folder) == 0, "they have looked at it"
+
+    text_pdf(folder / SHARED_DIR_NAME / "notice.pdf", "nothing the rules recognise")
+    again = file_drops(folder, today=dt.date(2026, 2, 8)).review[0]
+    assert (folder / again.prepared_location).is_file()
+
+    review = folder / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    assert len(list(review.iterdir())) == 2, "two arrivals, two copies"
+    assert count_needs_review(folder) == 1
+    draft = draft_reminder(folder)
+    assert draft.needs_review_files == 1
+    text = write_draft(draft, engagement_dir=folder).read_text(encoding="utf-8")
+    assert REVIEW_WARNING.format(n=1) in text
+
+
 # ----------------------------------------------------------------- drafting ----
 
 
@@ -583,3 +621,30 @@ def test_section_failed_is_unreachable_from_a_pass(tmp_path):
     text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(encoding="utf-8")
     assert SECTION_FAILED not in text
 
+
+def test_a_missing_row_with_a_file_moved_note_is_the_firms_and_the_draft_never_asks(tmp_path):
+    """Decision 109 through decision 115's rule. A request whose working copy
+    somebody here dragged out of its folder reads Missing - its folder is
+    empty, which is the truth - and the firm-side marker on it keeps it out
+    of the client's email: they sent the document, and asking them for it
+    again is asking for a file the firm mislaid."""
+    moved = item("A08", "W-2 Wage Statements", Status.MISSING, period="TY2025",
+                 validation_notes="; ".join([
+                     "was Received 2026-02-01; files changed",
+                     reasons.FILE_MOVED.format(listed="Prepared/A08 - W-2/A08 - W-2 - TY2025.pdf "
+                                                      "-> Prepared/C01 - Mortgage/A08 - W-2 - TY2025.pdf"),
+                 ]))
+
+    lines, attention, gaps, held = triage(SENDABLE + [moved])
+
+    assert "A08" not in {line.item.identifier for line in lines}
+    assert "A08" not in {flag.item.identifier for flag in gaps + held}
+    assert [flag.reason for flag in attention if flag.item.identifier == "A08"] == [
+        reasons.FILE_MOVED.firm_side_note
+    ]
+
+    folder = engagement(tmp_path, SENDABLE + [moved])
+    text = write_draft(draft_reminder(folder), engagement_dir=folder).read_text(encoding="utf-8")
+    waiting = text.split(f"{HELD_BACK_HEADING} - waiting on us, not the client:")[1]
+    assert moved.label in waiting                  # named where a person will act on it
+    assert text.count(moved.label) == 1            # and nowhere the client would read

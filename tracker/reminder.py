@@ -398,6 +398,12 @@ def count_needs_review(engagement_dir: Path) -> int:
     may be about to ask for something already in hand. A row they have seen
     is not that.
 
+    A document a person set aside and the client then sent again is parked
+    afresh, with a working copy of its own and a row of its own (decision
+    111), so it counts here as any parked file does - the set-aside copy
+    beside it still does not, and the warning says the client sent something
+    nobody has looked at yet, which is what it has always said.
+
     An index that cannot be read leaves every file counted. The warning is
     the loud side of the choice, and the index is the filer's to complain
     about, not the draft's.

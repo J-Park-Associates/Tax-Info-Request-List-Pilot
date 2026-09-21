@@ -107,20 +107,29 @@ person types.
   `tracker.filer.NOT_REQUESTED`, with an optional note saying why and what
   the row said before kept after it. Nothing moves — the copy stays parked
   and the client's original is untouched — so the file is out of the way,
-  not gone: the weekly draft stops warning about it, the same document sent
-  again is a duplicate rather than a second thing to look at, and a person
-  who was wrong files it from the folded-away list, which is the only undo
-  there is. As with **File it**, a row that changed after the card was drawn
-  is refused rather than overwritten, and the card is redrawn from the
-  record.
+  not gone: the weekly draft stops warning about it, and a person who was
+  wrong files it from the folded-away list, which is the only undo there
+  is. It says nobody asked for this document *that day*, so if the client
+  sends it again it is looked at afresh — filed if the list now asks for
+  it, otherwise parked again with a copy of its own and a row that quotes
+  this decision back, date and note and all. As with **File it**, a row
+  that changed after the card was drawn is refused rather than overwritten,
+  and the card is redrawn from the record.
 - **Unfile**, on anything in the folded-away *Filed documents* list: the
   working copy goes back to `00 - Needs Review` under the client's own name,
   the index row is rewritten `tracker.filer.NEEDS_REVIEW` as unfiled by a
   person with what it said before, and the engagement is re-scanned, so the
   request the document was answering goes back to what it is without it,
   with the regression note that pass would have written. Do this rather than
-  dragging the file in Explorer: the index is what says where a working copy
-  went, and it never learns about a drag. Refiling is unfiling and then
+  dragging the file in Explorer — and since decision 109 that has teeth: a
+  drag is **said**, not learned. Every pass proves each working copy against
+  the fingerprint its own index row carries, so a copy that is not where the
+  record put it, and whose bytes turn up somewhere else under `Prepared/`,
+  makes its row `tracker.filer.FILE_MOVED`: the request it left reads
+  Missing, truthfully, with a firm-side note so the client is never asked for
+  it, the copy is not counted under whatever request it now sits in, and
+  nothing is moved — a person decides. Drag it back and the next pass files
+  it again. Refiling is unfiling and then
   **File it**; a working copy somebody annotated is left where it is and
   said so, because the notes are work and which file the firm wants is not
   the tracker's to decide. The keyword the request learned when it was filed

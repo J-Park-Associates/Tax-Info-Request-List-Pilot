@@ -32,7 +32,7 @@ from tracker.manifest import (
     load_manifest,
 )
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
-from tracker.scaffold import PREPARED_DIR_NAME, SHARED_DIR_NAME
+from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME, SHARED_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
 
@@ -589,6 +589,53 @@ def test_dismissing_a_file_takes_it_out_of_the_review_queue(capsys, demo_root, t
     [row] = [e for e in payload["state"]["index"] if e["decision"] == NOT_REQUESTED]
     assert row["pbc_location"] == parked["pbc_location"]
     assert payload["state"]["review"] == [], "a row nobody asks for is not triaged"
+
+
+def test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside_sentence(
+    capsys, demo_root, tmp_path,
+):
+    """Decision 111: the client sent it again, so it is somebody's work again.
+
+    The sentence is the filer's and it rides the row, so the card reads it
+    out of ``state["index"]`` the way it reads every other reason: nothing
+    in tracker/review.py or in the vocabulary knows this decision happened.
+    """
+    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = payload["state"]["index"]
+    # The row's own sequence number, read back out of the state the card was
+    # drawn from, the way the app sends it: a review command that does not
+    # carry it is refused (decision 112), and on a base without it this is
+    # None and ignored.
+    code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "note": "a holiday snap",
+                               "seq": parked.get("seq")})
+    assert code == 0, payload
+    [set_aside] = payload["state"]["index"]
+
+    # The client sends the same photo again.
+    original = engagement / set_aside["pbc_location"]
+    (engagement / SHARED_DIR_NAME / original.name).write_bytes(original.read_bytes())
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+
+    rows = payload["state"]["index"]
+    assert [e["decision"] for e in rows] == [NOT_REQUESTED, NEEDS_REVIEW]
+    again = rows[1]
+    assert again["reason"].startswith(
+        RESENT_AFTER_SET_ASIDE.format(earlier=set_aside["reason"])
+    )
+    # It is work again: the queue has it, joined to that row, with its own
+    # copy under its own name.
+    [triaged] = payload["state"]["review"]
+    assert triaged["pbc_location"] == again["pbc_location"]
+    assert triaged["original_name"] == again["original_name"]
+    assert again["prepared_location"] != set_aside["prepared_location"]
+    assert (engagement / again["prepared_location"]).is_file()
+    assert (engagement / set_aside["prepared_location"]).is_file()
 
 
 def test_assigning_a_shortlisted_request_files_it_and_the_queue_drops_it(capsys, demo_root):
@@ -1245,7 +1292,7 @@ def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys,
 
 def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     from tracker import STANDING_RULES
-    from tracker.filer import DUPLICATE, FILED, NEEDS_REVIEW, NOT_REQUESTED
+    from tracker.filer import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.manifest import COLUMN_HELP, COLUMNS, DEFAULT_EXTENSIONS, Override, Status
     from tracker.records import ENGAGEMENT_EDITABLE, ENGAGEMENT_FIELDS
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
@@ -1258,7 +1305,8 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert vocab["overrides"] == {"accepted": Override.ACCEPTED,
                                   "not_applicable": Override.NOT_APPLICABLE}
     assert vocab["decisions"] == {"filed": FILED, "needs_review": NEEDS_REVIEW,
-                                  "duplicate": DUPLICATE, "dismissed": NOT_REQUESTED}
+                                  "duplicate": DUPLICATE, "dismissed": NOT_REQUESTED,
+                                  "file_moved": FILE_MOVED}
     assert vocab["review_labels"] == {
         "dismiss": api.DISMISS_LABEL, "dismiss_note": api.DISMISS_NOTE_HINT,
         "dismissed_heading": api.DISMISSED_HEADING, "file": api.FILE_LABEL,
@@ -1481,3 +1529,32 @@ def test_assign_records_the_override_against_the_shortlist_the_api_computed(caps
                                "seq": again["seq"]})
     assert code == 0, payload
     assert payload["assigned"]["overrode_shortlist"] == ""
+
+def test_the_state_carries_a_file_moved_row_in_the_index_and_in_no_list(capsys, demo_root, tmp_path):
+    """Decision 109. A row whose working copy somebody dragged is in the
+    index, where every column of it is readable, and in none of the lists
+    the app draws: it is not waiting for review and it is not filed where
+    the record says, and what to do about it is decision 110's card."""
+    from tracker.filer import FILE_MOVED
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    home = engagement / filed["prepared_location"]
+    review_dir = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    review_dir.mkdir(parents=True, exist_ok=True)
+    home.rename(review_dir / home.name)                 # dragged by hand
+
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    state = payload["state"]
+    [moved] = [e for e in state["index"] if e["decision"] == FILE_MOVED]
+    assert moved["pbc_location"] == filed["pbc_location"]
+    assert moved["prepared_location"] == filed["prepared_location"]   # home stays the column
+    assert moved["pbc_location"] not in [t["pbc_location"] for t in state["review"]]
+    assert not [e for e in state["index"]
+                if e["decision"] == FILED and e["pbc_location"] == moved["pbc_location"]]
+    assert api._vocab()["decisions"]["file_moved"] == FILE_MOVED
+    # And the request it left is the firm's to sort out, not an ask.
+    assert payload["run"]["warnings"]

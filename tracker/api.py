@@ -36,6 +36,7 @@ from pathlib import Path
 from tracker import STANDING_RULES, ledger, reminder, review, store
 from tracker.filer import (
     DUPLICATE,
+    FILE_MOVED,
     FILED,
     NEEDS_REVIEW,
     NOT_REQUESTED,
@@ -357,8 +358,11 @@ def _vocab() -> dict:
         # because the renderer may not carry the word "Requested" in any
         # form - it is UNSCANNED_LABEL, a status, and the guard that keeps
         # the app from typing a status of its own reads the whole file.
+        # FILE_MOVED is here for the same reason the others are - the app
+        # types no decision of its own - and is in no list the page draws
+        # until decision 110 gives a moved copy its own card.
         "decisions": {"filed": FILED, "needs_review": NEEDS_REVIEW, "duplicate": DUPLICATE,
-                      "dismissed": NOT_REQUESTED},
+                      "dismissed": NOT_REQUESTED, "file_moved": FILE_MOVED},
         "review_labels": {"dismiss": DISMISS_LABEL, "dismiss_note": DISMISS_NOTE_HINT,
                           "dismissed_heading": DISMISSED_HEADING, "file": FILE_LABEL,
                           "file_anyway": FILE_ANYWAY_LABEL,

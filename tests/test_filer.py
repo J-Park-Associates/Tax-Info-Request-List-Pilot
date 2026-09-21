@@ -16,6 +16,8 @@ next pass files on.
 import datetime as dt
 import os
 import sys
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -88,6 +90,20 @@ def cache_rows(engagement):
 def prepared(engagement, folder_prefix):
     root = engagement / PREPARED_DIR_NAME
     return next(p for p in root.iterdir() if p.name.startswith(folder_prefix))
+
+
+def kept_files(engagement):
+    """Every preserved original and every working copy, by relative path.
+
+    The conservation check: what is under the engagement is the arrivals
+    plus the copies a rule made, and nothing else. ``files_under()`` below
+    is the whole folder with each file's bytes and time, for the claims
+    about a pass that must change nothing; this one names the two folders a
+    rule writes in, which is what a claim about copies wants to say.
+    """
+    roots = (pbc(engagement), engagement / PREPARED_DIR_NAME)
+    return sorted(path.relative_to(engagement).as_posix()
+                  for root in roots for path in root.rglob("*") if path.is_file())
 
 
 # ------------------------------------------------------------- the happy path ----
@@ -320,7 +336,11 @@ def test_a_retired_cache_file_is_removed_by_the_next_real_pass_and_never_read(en
     report = file_drops(engagement, today=DAY1)
     assert report.handled == 0                              # nothing to sort; the tidy-up still runs
     assert not old_file.exists() and not old_temp.exists()
-    assert cache_rows(engagement) == ({}, {})               # and nothing of it reached the store
+    # Nothing of it reached the store: no verdict of its, and the one memo
+    # there is the sweep's own reading of a file no row names (decision
+    # 109), not the old file's - the scan below reads the document all the
+    # same, which is the claim.
+    assert cache_rows(engagement)[1] == {}
     said = [a for a in report.attention if a.error == RETIRED_CACHE_REMOVED]
     assert sorted(a.name for a in said) == sorted([old_file.name, old_temp.name])  # said once each
     assert not any(a.error == RETIRED_CACHE_REMOVED
@@ -1578,24 +1598,255 @@ def test_dismissing_a_parked_file_rewrites_its_row_and_moves_nothing(engagement)
     assert row.prepared_location == parked.prepared_location
 
 
-def test_the_same_document_sent_again_after_a_dismissal_is_a_duplicate(engagement):
-    """Parking it a second time would put back the warning a person just cleared."""
-    from tracker.filer import NOT_REQUESTED, dismiss_review_file
+def test_the_same_document_sent_again_after_a_dismissal_parks_again_and_names_the_earlier_decision(
+    engagement,
+):
+    """Not requested is a decision about one document on one day (decision 111).
+
+    The client was never told the document was unnecessary, so they send it
+    again; a silent Duplicate would tell nobody. It is routed like any drop,
+    and where no request takes it the row says what was decided before -
+    the date and the person's note, as they wrote them - so the person who
+    set it aside decides again with both facts in front of them.
+    """
+    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE, dismiss_review_file
+
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismissed = dismiss_review_file(
+        engagement, parked.pbc_location, "an IRS notice", today=DAY2
+    ).entry
+    set_aside_copy = engagement / dismissed.prepared_location
+    before = set_aside_copy.read_bytes()
+
+    drop(engagement, "notice.pdf", "nothing the rules recognise")   # same bytes, same name
+    report = file_drops(engagement, today=DAY2)
+
+    (again,) = report.review
+    assert report.duplicates == []
+    assert again.decision == NEEDS_REVIEW
+    assert again.reason.startswith(RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason))
+    assert DAY2.isoformat() in again.reason and "an IRS notice" in again.reason
+    assert UNMATCHED in again.reason                    # and why it parked, as always
+
+    # The set-aside row and its copy are exactly as they were.
+    assert set_aside_copy.read_bytes() == before
+    rows = read_index(engagement)
+    assert [r.decision for r in rows] == [NOT_REQUESTED, NEEDS_REVIEW]
+    assert rows[0].reason == dismissed.reason
+    assert rows[0].prepared_location == dismissed.prepared_location
+
+    # Two arrivals, two preserved originals, two parked copies - and
+    # _unique_path never overwrote the copy that was already there.
+    assert kept_files(engagement) == [
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice (2).pdf",
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice.pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice (2).pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice.pdf",
+    ]
+
+
+def test_a_resend_after_a_dismissal_owns_its_own_working_copy(engagement):
+    """One row, one working copy.
+
+    If the re-parked row named the set-aside row's file, filing either one
+    would carry the other's copy out from under it.
+    """
+    from tracker.filer import assign_review_file, dismiss_review_file
+
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismissed = dismiss_review_file(engagement, parked.pbc_location, today=DAY2).entry
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    again = file_drops(engagement, today=DAY2).review[0]
+    assert again.prepared_location != dismissed.prepared_location
+    resent_copy = engagement / again.prepared_location
+    before = resent_copy.read_bytes()
+
+    # A person files the *dismissed* row: only its own copy moves.
+    result = assign_review_file(engagement, dismissed.pbc_location, "C01", today=DAY2)
+
+    assert result.moved_review_copy is True
+    assert not (engagement / dismissed.prepared_location).exists()
+    assert resent_copy.is_file() and resent_copy.read_bytes() == before
+    still = {r.pbc_location: r for r in read_index(engagement)}[again.pbc_location]
+    assert still.decision == NEEDS_REVIEW and still.reason == again.reason
+    assert still.prepared_location == again.prepared_location
+    assert kept_files(engagement) == [
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice (2).pdf",
+        f"{PREPARED_DIR_NAME}/{prepared(engagement, 'C01').name}/{result.entry.filed_as}",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice (2).pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice.pdf",
+    ]
+
+
+def test_a_resend_after_a_dismissal_files_when_the_list_now_asks_for_it(engagement):
+    """The person may have taught the list since they set it aside.
+
+    Parking what exactly one request now accepts would be guessing that the
+    earlier decision still stands over the later rule, so the re-send is
+    routed first - and the row still says it was set aside before.
+    """
+    from tracker.filer import RESENT_AFTER_SET_ASIDE, dismiss_review_file
+
+    drop(engagement, "notice.pdf", "an agency notice about your account, 2025")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    dismissed = dismiss_review_file(engagement, parked.pbc_location, today=DAY2).entry
+
+    # A person edits the request list in the app: C01 now asks for it.
+    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement)]
+    save_rules(engagement, [
+        RequestItem(**{**rule_from_json(rule_to_json(row)),
+                       "required_keywords": ("agency notice",)})
+        if row.identifier == "C01" else row
+        for row in rows
+    ], load_engagement_info(engagement))
+
+    drop(engagement, "notice.pdf", "an agency notice about your account, 2025")
+    report = file_drops(engagement, today=DAY2)
+
+    (filed,) = report.filed
+    assert report.review == [] and report.duplicates == []
+    assert filed.identifier == "C01"
+    assert filed.reason.endswith(
+        f"; {RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason)}"
+    )
+    copy = engagement / filed.prepared_location
+    assert copy.is_file() and copy.read_bytes() == (pbc(engagement) / "notice (2).pdf").read_bytes()
+    # The set-aside row keeps its own parked copy; only the re-send was filed.
+    assert (engagement / dismissed.prepared_location).is_file()
+    assert kept_files(engagement) == [
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice.pdf",
+        f"{PREPARED_DIR_NAME}/{prepared(engagement, 'C01').name}/{filed.filed_as}",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice (2).pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice.pdf",
+    ]
+
+
+def test_a_third_send_of_set_aside_bytes_is_a_duplicate_of_the_parked_row(engagement):
+    """The queue holds a document once: the second arrival is where the work is."""
+    from tracker.filer import DUPLICATE_OF_PARKED, dismiss_review_file
 
     drop(engagement, "notice.pdf", "nothing the rules recognise")
     parked = file_drops(engagement, today=DAY1).review[0]
     dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    again = file_drops(engagement, today=DAY2).review[0]
 
-    drop(engagement, "notice again.pdf", "nothing the rules recognise")   # same bytes
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
     report = file_drops(engagement, today=DAY2)
 
-    assert [e.original_name for e in report.duplicates] == ["notice again.pdf"]
+    (dup,) = report.duplicates
     assert report.review == []
-    review_dir = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
-    assert [p.name for p in review_dir.iterdir()] == ["notice.pdf"]
-    assert (pbc(engagement) / "notice again.pdf").exists()        # preserved, as always
-    decisions = [r.decision for r in read_index(engagement)]
-    assert decisions == [NOT_REQUESTED, DUPLICATE]
+    assert dup.decision == DUPLICATE and dup.prepared_location == ""
+    assert dup.reason == DUPLICATE_OF_PARKED.format(
+        name=again.original_name, copy=again.filed_as
+    )
+    assert sorted(p.name for p in review_dir(engagement).iterdir()) == ["notice (2).pdf", "notice.pdf"]
+
+
+def test_a_duplicates_reason_says_filed_only_of_a_filed_row(engagement):
+    """Step 0's fourth defect: a parked copy has a name, and saying "already
+    filed as" of it told the Index a document waiting for a person was done."""
+    from tracker.filer import DUPLICATE_OF_FILED, DUPLICATE_OF_PARKED
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    first = file_drops(engagement, today=DAY1)
+    filed = first.filed[0]
+    parked = first.review[0]
+
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "notice again.pdf", "nothing the rules recognise")
+    report = file_drops(engagement, today=DAY2)
+
+    said = {e.original_name: e.reason for e in report.duplicates}
+    assert said["w2 again.pdf"] == DUPLICATE_OF_FILED.format(
+        name=filed.original_name, copy=filed.filed_as
+    )
+    assert said["notice again.pdf"] == DUPLICATE_OF_PARKED.format(
+        name=parked.original_name, copy=parked.filed_as
+    )
+    assert "already filed" not in said["notice again.pdf"]
+
+
+def test_a_resend_of_a_moved_rows_bytes_is_a_duplicate_naming_the_moved_copy(engagement):
+    """A row whose copy is not where the record put it is a person's to
+    resolve; a second copy of the same document would not help them do it."""
+    from tracker.filer import DUPLICATE_OF_MOVED, FILE_MOVED
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    drag(engagement / filed.prepared_location, prepared(engagement, "C01"))
+    file_drops(engagement, today=DAY2)
+    [moved] = read_index(engagement)
+    assert moved.decision == FILE_MOVED
+    untouched = files_under(engagement)
+
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
+    report = file_drops(engagement, today=DAY2)
+
+    (dup,) = report.duplicates
+    assert report.filed == [] and report.review == []
+    assert dup.decision == DUPLICATE and dup.prepared_location == ""
+    assert dup.reason == DUPLICATE_OF_MOVED.format(
+        name=moved.original_name, copy=moved.filed_as
+    )
+    assert read_index(engagement)[0] == moved          # the moved row is untouched
+    # The one new file under the engagement is the preserved original, and
+    # nothing that was already there changed.
+    after = files_under(engagement)
+    assert set(after) - set(untouched) == {f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2 again.pdf"}
+    assert {name: held for name, held in after.items() if name in untouched} == untouched
+
+
+def test_a_duplicates_reason_of_a_row_with_no_working_copy_says_so(engagement, monkeypatch):
+    """Decision 17's row has no copy to name.
+
+    The three sentences above all end in the name of a file; this row has
+    none, and "parked as" with nothing after it would be the Index's word
+    for a file nobody can find.
+    """
+    import tracker.filer as filer_module
+    from tracker.filer import DUPLICATE_OF_UNCOPIED
+
+    def truncated(src, dst):
+        filer_module.Path(dst).write_bytes(filer_module.Path(src).read_bytes()[:40])
+
+    monkeypatch.setattr(filer_module.shutil, "copy2", truncated)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    (failed,) = file_drops(engagement, today=DAY1).review
+    monkeypatch.undo()
+    assert failed.filed_as == "" and "could not be filed" in failed.reason
+
+    drop(engagement, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025")
+    (dup,) = file_drops(engagement, today=DAY2).duplicates
+
+    assert dup.reason == DUPLICATE_OF_UNCOPIED.format(name=failed.original_name)
+    assert not dup.reason.endswith(" ")
+    assert kept_files(engagement) == [
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2 again.pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2.pdf",
+    ]
+
+
+def test_a_resend_of_a_parked_rows_bytes_is_a_duplicate_and_makes_no_copy(engagement):
+    """One copy in the review folder: a second would be a second thing to work."""
+    drop(engagement, "notice.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+
+    drop(engagement, "notice again.pdf", "nothing the rules recognise")
+    report = file_drops(engagement, today=DAY2)
+
+    (dup,) = report.duplicates
+    assert report.review == [] and dup.prepared_location == ""
+    assert dup.identifier == parked.identifier
+    assert [p.name for p in review_dir(engagement).iterdir()] == ["notice.pdf"]
+    assert kept_files(engagement) == [
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/notice.pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice again.pdf",
+        f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/notice.pdf",
+    ]
 
 
 def test_filing_a_dismissed_document_is_how_the_decision_is_undone(engagement):
@@ -2176,3 +2427,505 @@ def test_a_refused_action_leaves_the_file_count_and_every_byte_unchanged(engagem
                 unfile_document(engagement, other.pbc_location, today=DAY2, seq=stale_filed)
         assert every_byte(engagement) == files, refuse
         assert len(ledger.read_events(engagement)) == lines, refuse
+
+# --------------------------- every working copy is proved (decision 109) ----
+
+
+def files_under(engagement):
+    """Every file the engagement folder holds, with its bytes and its mtime.
+
+    The record aside, which a pass is meant to write. Every claim below that
+    moves a file by hand takes this before the pass and after it: the sweep
+    identifies by fingerprint and a person decides, so nothing under the
+    client's root may move, change or appear because of what it found.
+    """
+    return {
+        path.relative_to(engagement).as_posix(): (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in sorted(engagement.rglob("*"))
+        if path.is_file() and path.name != ledger.LEDGER_FILENAME
+    }
+
+
+def events_named(engagement, name):
+    """Every journal line of one event name."""
+    return [e for e in ledger.read_events(engagement) if e[ledger.EVENT_KEY] == name]
+
+
+def drag(path, folder):
+    """A person dragging one file in Explorer, and where it lands."""
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / path.name
+    path.rename(target)
+    return target
+
+
+def location_of(engagement, path):
+    """A path as the record spells it: relative to the engagement, POSIX."""
+    return path.relative_to(engagement).as_posix()
+
+
+def counting_hashes(monkeypatch) -> list[str]:
+    """Every path anything in the package hashes, as it is hashed.
+
+    Three modules hold the name now, and each holds its own: the memo's is
+    the content check's, and a pass that reached around it would show up
+    here and nowhere else. The scanner held a fourth until decision 109
+    and holds none.
+    """
+    import tracker.content_check as content_check_module
+    import tracker.filer as filer_module
+    import tracker.validators as validators_module
+
+    read: list[str] = []
+    for module in (filer_module, content_check_module, validators_module):
+        real = module.sha256_of
+
+        def counted(path, _real=real):
+            read.append(str(path))
+            return _real(path)
+
+        monkeypatch.setattr(module, "sha256_of", counted)
+    return read
+
+
+def test_a_filed_copy_dragged_into_another_requests_folder_is_file_moved_and_nothing_moves(engagement):
+    from tracker.filer import FILE_MOVED, MOVED_SENTENCE, moved_to
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    wanderer = drag(engagement / filed.prepared_location, prepared(engagement, "C01"))
+    now = location_of(engagement, wanderer)
+    untouched = files_under(engagement)
+
+    report = file_drops(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED
+    assert moved_to(row) == now
+    assert row.prepared_location == filed.prepared_location   # home stays the column
+    assert row.reason.startswith(filed.reason)                # and what it said before is kept
+    sentence = MOVED_SENTENCE.format(
+        home=filed.prepared_location, now=now, date=DAY2.isoformat())
+    assert row.reason.endswith(sentence)
+    assert [(e.name, e.error, e.left_in_place) for e in report.attention] == [
+        (wanderer.name, sentence, True)
+    ]
+    assert len(events_named(engagement, ledger.COPY_MOVED)) == 1
+    assert files_under(engagement) == untouched
+
+
+def test_a_filed_copy_renamed_inside_its_folder_is_file_moved(engagement):
+    from tracker.filer import FILE_MOVED, moved_to
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    copy = engagement / filed.prepared_location
+    renamed = copy.rename(copy.with_name("john's w2 (final).pdf"))
+    untouched = files_under(engagement)
+
+    file_drops(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED
+    assert moved_to(row) == location_of(engagement, renamed)
+    assert files_under(engagement) == untouched
+
+
+def test_a_filed_copy_dragged_loose_into_prepared_is_file_moved(engagement):
+    """The wanderer at the root of the firm's folder: the sweep finds it by
+    its bytes, and the scan goes on warning about a loose file, because one
+    warning per thing is the rule and those are two different things."""
+    from tracker.filer import FILE_MOVED, moved_to
+    from tracker.scanner import scan_engagement
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    loose = drag(engagement / filed.prepared_location, engagement / PREPARED_DIR_NAME)
+    untouched = files_under(engagement)
+
+    report = file_drops(engagement, today=DAY2)
+    scanned = scan_engagement(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED and moved_to(row) == location_of(engagement, loose)
+    assert len(report.attention) == 1                      # said once by the sweep...
+    assert scanned.warnings == [
+        f"{loose.name} is loose in {PREPARED_DIR_NAME}/; it belongs in a request folder"
+    ]                                                      # ...and once as the loose file it is
+    assert files_under(engagement) == untouched
+
+
+def test_a_second_copy_of_a_moved_rows_bytes_does_not_re_point_the_row(engagement):
+    """A document can be in the firm's folder twice over - somebody copied it
+    before dragging the first one, or a (2) name, or a subfolder. The row
+    keeps the wanderer it already names: the one that sorts first is not
+    the one a person moved, and re-pointing the row at it would append an
+    event nothing happened for and send the put-it-back after the wrong
+    file. The second copy is what it is - a file nothing on the record put
+    there - and is said as one."""
+    from tracker.filer import FILE_MOVED, UNRECORDED_COPY, moved_to
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    home = engagement / filed.prepared_location
+    wanderer = drag(home, prepared(engagement, "C01"))
+    file_drops(engagement, today=DAY2)
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED and moved_to(row) == location_of(engagement, wanderer)
+
+    # The same bytes again, at a path the walk reaches first.
+    planted = home.parent / "a copy of the same thing.pdf"
+    planted.write_bytes(wanderer.read_bytes())
+    assert location_of(engagement, planted) < location_of(engagement, wanderer)
+    lines = len(ledger.read_events(engagement))
+    untouched = files_under(engagement)
+
+    report = file_drops(engagement, today=DAY2 + dt.timedelta(days=1))
+
+    assert len(ledger.read_events(engagement)) == lines      # nothing happened, nothing said
+    [row] = read_index(engagement)
+    assert moved_to(row) == location_of(engagement, wanderer)
+    assert [e.error for e in report.attention] == [
+        UNRECORDED_COPY.format(location=location_of(engagement, planted))
+    ]
+    assert files_under(engagement) == untouched
+
+
+def test_a_moved_copy_dragged_back_by_hand_is_filed_again_on_the_next_pass(engagement):
+    from tracker.filer import FILE_MOVED, MOVED_BACK_SENTENCE, moved_to
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    home = engagement / filed.prepared_location
+    wanderer = drag(home, prepared(engagement, "C01"))
+    file_drops(engagement, today=DAY2)
+    assert read_index(engagement)[0].decision == FILE_MOVED
+
+    drag(wanderer, home.parent)                            # a person puts it back
+    untouched = files_under(engagement)
+    report = file_drops(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILED and moved_to(row) is None
+    sentence = MOVED_BACK_SENTENCE.format(home=filed.prepared_location, date=DAY2.isoformat())
+    assert row.reason.endswith(sentence)
+    assert [e.error for e in report.attention] == [sentence]
+    assert len(events_named(engagement, ledger.COPY_MOVED)) == 2   # one away, one home
+    assert files_under(engagement) == untouched
+
+
+def test_a_moved_row_is_written_once_per_move_and_a_quiet_pass_appends_nothing(engagement):
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    wanderer = drag(engagement / filed.prepared_location, prepared(engagement, "C01"))
+    lines = len(ledger.read_events(engagement))
+
+    file_drops(engagement, today=DAY2)
+    assert len(ledger.read_events(engagement)) == lines + 1        # said once
+    for day in (DAY2, DAY2 + dt.timedelta(days=1)):
+        file_drops(engagement, today=day)
+        assert len(ledger.read_events(engagement)) == lines + 1    # and not again
+
+    drag(wanderer, engagement / PREPARED_DIR_NAME)                 # moved again
+    file_drops(engagement, today=DAY2 + dt.timedelta(days=2))
+    assert len(ledger.read_events(engagement)) == lines + 2
+    assert len(events_named(engagement, ledger.COPY_MOVED)) == 2
+
+
+def test_a_moved_copy_that_is_then_deleted_stays_file_moved_and_says_nowhere(engagement):
+    from tracker.filer import FILE_MOVED, MOVED_GONE_SENTENCE, moved_to
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    wanderer = drag(engagement / filed.prepared_location, prepared(engagement, "C01"))
+    file_drops(engagement, today=DAY2)
+
+    wanderer.unlink()
+    original = (pbc(engagement) / "w2.pdf").read_bytes()
+    report = file_drops(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED and moved_to(row) is None
+    sentence = MOVED_GONE_SENTENCE.format(
+        home=filed.prepared_location, prepared=PREPARED_DIR_NAME,
+        pbc=filed.pbc_location, date=DAY2.isoformat())
+    assert row.reason.endswith(sentence)
+    assert [e.error for e in report.attention] == [sentence]
+    assert (pbc(engagement) / "w2.pdf").read_bytes() == original   # the original is the record
+    lines = len(ledger.read_events(engagement))
+    file_drops(engagement, today=DAY2 + dt.timedelta(days=1))
+    assert len(ledger.read_events(engagement)) == lines            # nowhere, said once
+
+
+def test_a_copy_deleted_outright_is_todays_regression_and_no_row_changes(engagement):
+    """Nothing holds its bytes, so nothing identifies it: the row is what it
+    was and the request regresses, as it has since decision 3."""
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    (engagement / filed.prepared_location).unlink()
+    lines = len(ledger.read_events(engagement))
+
+    report = file_drops(engagement, today=DAY2)
+
+    assert events_named(engagement, ledger.COPY_MOVED) == []
+    assert len(ledger.read_events(engagement)) == lines
+    assert report.attention == []
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.prepared_location == filed.prepared_location
+
+
+def test_a_parked_copy_dragged_into_a_request_folder_is_file_moved_and_comes_back_as_needs_review(
+        engagement):
+    from tracker.filer import FILE_MOVED, moved_to
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    home = engagement / parked.prepared_location
+    wanderer = drag(home, prepared(engagement, "C01"))
+    untouched = files_under(engagement)
+
+    file_drops(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED and moved_to(row) == location_of(engagement, wanderer)
+    assert row.identifier == ""
+    assert files_under(engagement) == untouched
+
+    drag(wanderer, home.parent)
+    file_drops(engagement, today=DAY2)
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW               # a person re-decides in one click
+    assert row.prepared_location == parked.prepared_location
+
+
+def test_a_file_under_a_request_folder_matching_no_row_is_said_every_pass_and_never_moved(engagement):
+    from tracker.filer import UNRECORDED_COPY
+
+    stray = text_pdf(prepared(engagement, "A01") / "someone dragged this.pdf",
+                     "Form W-2 Wage and Tax Statement 2025 Jane")
+    said = UNRECORDED_COPY.format(location=location_of(engagement, stray))
+    untouched = files_under(engagement)
+
+    for day in (DAY1, DAY2):
+        report = file_drops(engagement, today=day)
+        assert [(e.name, e.error, e.left_in_place) for e in report.attention] == [
+            (stray.name, said, True)
+        ]
+    assert ledger.read_events(engagement)[1:] == []         # nothing after the create
+    assert files_under(engagement) == untouched
+
+
+def test_a_copy_whose_bytes_are_not_the_originals_is_unlinked_and_the_drop_is_could_not_be_filed(
+        engagement, monkeypatch):
+    """Decision 17's row, reached by a copy that came out as something else -
+    a virus scanner's stub, a sync client finishing a write for us. The
+    working copy is removed rather than counted, and the original is the
+    record, as it always is."""
+    import tracker.filer as filer_module
+
+    original = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    before = original.read_bytes()
+
+    def truncated(src, dst):
+        filer_module.Path(dst).write_bytes(filer_module.Path(src).read_bytes()[:40])
+
+    monkeypatch.setattr(filer_module.shutil, "copy2", truncated)
+    report = file_drops(engagement, today=DAY1)
+    monkeypatch.undo()
+
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and report.filed == []
+    assert "could not be filed (CopyMismatchError:" in row.reason
+    assert f"{PBC_DIR_NAME}/w2.pdf" in row.reason
+    assert not any(prepared(engagement, "A01").iterdir())    # nothing of it was left behind
+    assert not list(review_dir(engagement).iterdir())
+    assert (pbc(engagement) / "w2.pdf").read_bytes() == before
+
+
+def test_a_second_and_a_third_pass_over_an_unchanged_tree_hash_only_the_pbc_originals(
+        engagement, monkeypatch):
+    """Step 0's measure. Every hash of a file in the firm's folder goes
+    through the store's memo, so a warm pass reads one file per preserved
+    original - decision 68's per-pass reading of the client's own folder,
+    accepted unchanged - and no working copy at all."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.filer import assign_review_file
+    from tracker.scanner import scan_engagement
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    drop(engagement, "notice.pdf", "an agency notice nothing asks for")
+    drop(engagement, "scan0003.pdf", "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    first = file_drops(engagement, today=DAY1)
+    assert len(first.filed) == 2 and len(first.review) == 2
+    assert any(e.also_filed for e in first.filed)            # the decision-94 split
+    parked = next(e for e in first.review if e.original_name == "scan0012.pdf")
+    assign_review_file(engagement, parked.pbc_location, "C01", today=DAY1)
+    scan_engagement(engagement, today=DAY1)                  # the warm pass
+    originals = sorted(p.name for p in pbc(engagement).iterdir())
+    assert len(originals) == 4
+
+    read = counting_hashes(monkeypatch)
+    for day in (DAY2, DAY2 + dt.timedelta(days=1)):          # the second pass, and the third
+        read.clear()
+        file_drops(engagement, today=day)
+        scan_engagement(engagement, today=day)
+        assert sorted(Path(path).name for path in read) == originals, read
+        assert not any(PREPARED_DIR_NAME in path for path in read), read
+
+
+def test_a_dehydrated_home_is_not_read_and_not_called_absent(engagement, monkeypatch):
+    """Hashing a placeholder downloads it. A home the sync client has let go
+    of is not looked at this pass, which is not the same as being gone."""
+    import tracker.filer as filer_module
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    home = engagement / filed.prepared_location
+    lines = len(ledger.read_events(engagement))
+
+    monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == home)
+    read = counting_hashes(monkeypatch)
+    report = file_drops(engagement, today=DAY2)
+
+    assert report.attention == [] and report.errors == []
+    assert str(home) not in read
+    assert len(ledger.read_events(engagement)) == lines
+    assert read_index(engagement)[0].decision == FILED
+
+
+def test_the_sweep_on_a_read_only_prepared_folder_detects_and_touches_nothing(engagement):
+    """The standing rule, on the new path: a pass that cannot write in the
+    firm's folder still says what it found. Windows marks a file read-only
+    and POSIX takes the write bits off the mode; both refuse a write, which
+    is the claim, and neither refuses the read the sweep makes."""
+    from tracker.filer import FILE_MOVED, moved_to
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    wanderer = drag(engagement / filed.prepared_location, prepared(engagement, "C01"))
+    copies = [p for p in (engagement / PREPARED_DIR_NAME).rglob("*") if p.is_file()]
+    for path in copies:
+        os.chmod(path, 0o444)
+    try:
+        untouched = files_under(engagement)
+        report = file_drops(engagement, today=DAY2)
+
+        assert report.errors == [] and len(report.attention) == 1
+        [row] = read_index(engagement)
+        assert row.decision == FILE_MOVED and moved_to(row) == location_of(engagement, wanderer)
+        assert files_under(engagement) == untouched
+    finally:
+        for path in copies:
+            os.chmod(path, 0o666)
+
+
+def test_a_row_without_a_digest_is_never_swept(engagement, monkeypatch):
+    """Decision 65: a row recorded without its bytes is nobody's. Nothing can
+    prove a file is that row's copy, so the row is left exactly as it is -
+    and the file nothing accounts for is said as what it is."""
+    import tracker.filer as filer_module
+    from tracker.filer import UNRECORDED_COPY
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    real = filer_module.sha256_of
+
+    def unreadable(path):
+        if path.parent == pbc(engagement):
+            raise PermissionError("held by the sync client")
+        return real(path)
+
+    monkeypatch.setattr(filer_module, "sha256_of", unreadable)
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    monkeypatch.undo()
+    assert filed.digest == ""
+    wanderer = drag(engagement / filed.prepared_location, prepared(engagement, "C01"))
+
+    report = file_drops(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.digest == ""        # never swept, never adopted
+    assert row.prepared_location == filed.prepared_location
+    assert events_named(engagement, ledger.COPY_MOVED) == []
+    assert UNRECORDED_COPY.format(location=location_of(engagement, wanderer)) in [
+        e.error for e in report.attention
+    ]
+
+
+def test_the_moved_sentence_is_read_back_from_any_path():
+    """The pattern is derived from the template that wrote the sentence, so a
+    client's own file name - spaces, brackets, the (2) a collision makes, a
+    semicolon, a name that is not ASCII at all - comes back exactly as it
+    went in, and the base the next sentence is appended to is the reason as
+    it stood."""
+    from tracker.filer import (
+        FILE_MOVED,
+        MOVED_GONE_SENTENCE,
+        MOVED_SENTENCE,
+        _without_moved_sentence,
+        moved_to,
+    )
+    from tracker.records import IndexEntry
+
+    base = "the file's own words matched A01; assigned by a person on 2026-07-01"
+    home = f"{PREPARED_DIR_NAME}/A01 - W-2 Wage Statements/A01 - W-2 Wage Statements - TY2025.pdf"
+    row = IndexEntry(
+        received=DAY1.isoformat(), original_name="w2.pdf", size_kb=1.0, digest="a" * 64,
+        identifier="A01", prepared_location=home,
+        pbc_location=f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/w2.pdf",
+        decision=FILE_MOVED, reason=base,
+    )
+    for now in (
+        f"{PREPARED_DIR_NAME}/C01 - Mortgage Interest Statement/w2 (2).pdf",
+        f"{PREPARED_DIR_NAME}/C01 - Mortgage Interest Statement/impots; recus (2026) été.pdf",
+        f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/scan 0012 - copy.pdf",
+    ):
+        sentence = MOVED_SENTENCE.format(home=home, now=now, date=DAY2.isoformat())
+        moved = replace(row, reason=f"{base}; {sentence}")
+        assert moved_to(moved) == now
+        assert _without_moved_sentence(moved.reason) == base
+        # The same row once the bytes are nowhere: no path to read back.
+        gone = replace(row, reason="{}; {}".format(base, MOVED_GONE_SENTENCE.format(
+            home=home, prepared=PREPARED_DIR_NAME, pbc=row.pbc_location,
+            date=DAY2.isoformat())))
+        assert moved_to(gone) is None
+        assert _without_moved_sentence(gone.reason) == base
+        # And a row that is not File Moved says nothing about where it is.
+        assert moved_to(replace(moved, decision=FILED)) is None
+    assert _without_moved_sentence(base) == base             # any other reason is left alone
+
+
+def test_a_split_rows_second_copy_dragged_away_is_said_on_the_request_that_lost_it(engagement):
+    """Decision 94 gives one row a working copy in each request that asked for
+    a form the page names, so a row can lose one copy and keep another. The
+    row is File Moved once, the note goes to the request whose folder is
+    empty now, and the request that still holds its own copy says nothing
+    about it and goes on counting it."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker import reasons
+    from tracker.filer import FILE_MOVED, moved_to
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+
+    drop(engagement, "scan0003.pdf",
+         "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    [split] = file_drops(engagement, today=DAY1).filed
+    assert len(split.filed_locations) == 2
+    scan_engagement(engagement, today=DAY1)
+    second = engagement / split.filed_locations[1]
+    wanderer = drag(second, review_dir(engagement))
+    untouched = files_under(engagement)
+
+    file_drops(engagement, today=DAY2)
+    report = scan_engagement(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILE_MOVED
+    assert moved_to(row) == location_of(engagement, wanderer)
+    assert f"{split.filed_locations[1]} -> " in report.updates["C01"].validation_notes
+    assert reasons.FILE_MOVED.matches(report.updates["C01"].validation_notes)
+    assert report.updates["C01"].status == Status.MISSING
+    # A01 still has the copy the split filed there, and is told nothing.
+    assert report.updates["A01"].file_count == 1
+    assert not reasons.FILE_MOVED.matches(report.updates["A01"].validation_notes)
+    assert files_under(engagement) == untouched

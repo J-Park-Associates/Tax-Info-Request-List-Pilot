@@ -183,7 +183,16 @@ same day, and the tool's card there prints that sentence.
    W-2* — but it is a place to start reading, never the answer. Install
    Tesseract (§6, step 5) and those scans are read and filed like any
    other document.
-3. **A locked engagement.** The app shows a notice when a run holds one. If
+3. **A working copy that has moved is yours, before the draft day.** Every
+   pass proves each working copy against the fingerprint its own index row
+   carries (decision 109). A copy somebody dragged out of its request
+   folder makes that row `tracker.filer.FILE_MOVED`, and it is said on the
+   run and on the practice page the same morning: the request reads Missing
+   until it is back, and the client is never asked for it. Put it back, or
+   file it where it now belongs, before Saturday — the draft holds nothing
+   up for it, and a request that reads Missing all week is one nobody is
+   chasing. §4 has the row and what each answer means.
+4. **A locked engagement.** The app shows a notice when a run holds one. If
    it says a run is still going, leave it — **Sort & Scan** waits for it.
    If it says a run left its lock behind, a **Clear lock** button appears;
    it only appears once the lock is older than
@@ -240,7 +249,8 @@ became, and — when it was not filed — why not.
 | The index says | In plain words | What you do |
 |---|---|---|
 | `filer.FILED` | Exactly one request accepted it. | Nothing. |
-| `filer.DUPLICATE` | The same bytes were already filed. | Nothing. The original is kept. |
+| `filer.DUPLICATE` | The same bytes are already in the record, and the reason says what the row holding them is: `filer.DUPLICATE_OF_FILED` says "already filed as" of a filed document, `filer.DUPLICATE_OF_PARKED` says "parked as" of one still waiting for you, `filer.DUPLICATE_OF_MOVED` names the copy of a row whose file is not where the record put it, and `filer.DUPLICATE_OF_UNCOPIED` says plainly that the row holding those bytes never got a working copy. No second copy is made. | Nothing. The original is kept, and the row holding the bytes is where the work is. |
+| `filer.RESENT_AFTER_SET_ASIDE` | The client sent again a document somebody had closed with **Not requested**. It was routed afresh: filed if exactly one request accepts it now, otherwise parked again with a copy of its own. The reason quotes the earlier decision whole — the date and the note whoever closed it typed. | Read what was decided last time, then decide again: file it, or close it again. The copy set aside earlier stays where it is. |
 | `filer.NEEDS_REVIEW` | Parked for a person; the reason says which of the rows below. | Work it in the app. |
 | `filer.ASSIGNED_BY_PERSON` | Someone filed it with **File it**, on the date shown, and what the rules had said is kept after it. | Nothing. This is the audit trail. |
 | `router.UNMATCHED` | No request on this manifest accepted it. | File it to the right request, or add the request. |
@@ -265,12 +275,20 @@ why the rules did or did not reach the answer you would have. The words in
 it are ours — the keywords on the request list, the period asked for, the
 file's own name — never a word out of the client's document.
 
-Two more appear as warnings on the run rather than as index rows:
+Three more appear as warnings on the run rather than as index rows:
 
 | The run warns | In plain words | What you do |
 |---|---|---|
 | `filer.REPLACED_IN_PBC` | The client replaced an original we had already filed; the working copy was made from the earlier file. | Look at both, and re-file if the new one differs. |
 | `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Look at it. Nothing is adopted automatically, by design. |
+| `filer.UNRECORDED_COPY` | A file is sitting in a request folder (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what its folder holds — but nobody can say where it came from. | Open the app and file it, or take it out and drop it in the client's folder so the next pass sorts and records it. Said every pass until you do. |
+
+And since decision 109 the Decision column has a fifth value, for a working
+copy that is not where the record put it:
+
+| The index says | In plain words | What you do |
+|---|---|---|
+| `filer.FILE_MOVED` | Every pass proves each working copy against the fingerprint its own row carries. This row's copy is not in the folder the record filed it into, and its bytes turned up somewhere else under `Prepared/` — somebody dragged it. The Reason names where it belongs and where it is now; the Prepared Location column still says where it *belongs*. Nothing was moved to find that out and nothing is moved because of it. | Open the app: put it back where it belongs, keep it where it is, or send it to review (decision 110's three buttons, coming). Until then, drag it back yourself and the next pass files it again. The request it left reads Missing meanwhile, and the client is never asked for it. |
 
 ## 5. What the Validation Notes mean
 
@@ -289,9 +307,24 @@ read yet.
 **Ours to deal with** (never in the client's email):
 `reasons.PENDING_SYNC`, `reasons.VANISHED`, `reasons.NO_TEXT_LAYER`,
 `reasons.NO_TEXT_AFTER_OCR`, `reasons.OCR_FAILED`,
-`reasons.UNCHECKABLE_TYPE`, `reasons.NO_REQUEST_FOLDER`. These mean the
+`reasons.UNCHECKABLE_TYPE`, `reasons.NO_REQUEST_FOLDER`,
+`reasons.FILE_MOVED`, `reasons.COPY_CHANGED`. These mean the
 document may be perfectly fine and no person here has read it yet — or, for
-the last one, that the request has no folder and the next pass makes it.
+`reasons.NO_REQUEST_FOLDER`, that the request has no folder and the next
+pass makes it. The last two are decision 109's, and they are ours by
+definition: the client sent the document and somebody here moved the copy
+or put another file in its place.
+
+- `reasons.FILE_MOVED` — this request's working copy is not in its folder
+  any more and the record has found it elsewhere under `Prepared/`. The
+  note names where it belongs and where it is; §4 is the row it comes
+  from. The request reads Missing until the copy is back.
+- `reasons.COPY_CHANGED` — the file in the request's folder is not the one
+  the record filed there. The status is still whatever the files earn, so a
+  replacement that passes the rules leaves the row Received and one that
+  does not is an ordinary regression; either way open it, because nothing
+  on the record says what that file is. It is on the practice page too, so
+  you see it across every engagement at once.
 
 **The client's to fix** (translated into one plain sentence in the draft):
 `reasons.PASSWORD_PROTECTED`, `reasons.GOOGLE_STUB`, `reasons.TOO_SMALL`,
@@ -334,7 +367,9 @@ engagement folders, and the new machine builds its own on the first pass;
 copying the old one would only be copying something it can make. The first
 pass there reads every document once - the verdicts the old machine had
 cached were in its database, not in the folders - and is slower for it,
-never wrong.
+never wrong. The same is true of the first pass after this version, on
+whichever machine: it reads every working copy once to prove it against
+the record (decision 109), and every pass after that reads none of them.
 
 1. Install Google Drive for desktop on the new machine, sign in with the
    firm account, and wait for the clients folder to finish syncing. Do not
