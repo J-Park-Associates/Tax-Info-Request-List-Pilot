@@ -358,7 +358,8 @@ read yet.
 `reasons.PENDING_SYNC`, `reasons.VANISHED`, `reasons.NO_TEXT_LAYER`,
 `reasons.NO_TEXT_AFTER_OCR`, `reasons.OCR_FAILED`,
 `reasons.UNCHECKABLE_TYPE`, `reasons.NO_REQUEST_FOLDER`,
-`reasons.FILE_MOVED`, `reasons.COPY_CHANGED`. These mean the
+`reasons.FILE_MOVED`, `reasons.COPY_CHANGED`,
+`reasons.INTERRUPTED_MOVE`, `reasons.INTERRUPTED_MOVE_LOST`. These mean the
 document may be perfectly fine and no person here has read it yet — or, for
 `reasons.NO_REQUEST_FOLDER`, that the request has no folder and the next
 pass makes it. The last two are decision 109's, and they are ours by
@@ -375,6 +376,20 @@ or put another file in its place.
   does not is an ordinary regression; either way open it, because nothing
   on the record says what that file is. It is on the practice page too, so
   you see it across every engagement at once.
+- `reasons.INTERRUPTED_MOVE` — a step that was putting a working copy in
+  this request's folder was interrupted (the machine went off, the power
+  went out) and that place now holds a different file. Nothing there was
+  touched, the document itself is parked for you in `00 - Needs Review`
+  with a copy of its own, and the file that is sitting there is **not**
+  counted, so the request reads Missing rather than Failed Validation for
+  a document the client sent perfectly well. Open the app, file the parked
+  copy, and take the leftover file out of the folder; it is named every
+  pass until you do (decision 119).
+- `reasons.INTERRUPTED_MOVE_LOST` — the same interrupted step, where
+  neither the place it was taking the file from nor the place it was
+  taking it to holds those bytes now. Nothing is guessed: the row is
+  parked and the note says whether the client's own original is still in
+  `Shared/PBC/`, which it nearly always is.
 
 **The client's to fix** (translated into one plain sentence in the draft):
 `reasons.PASSWORD_PROTECTED`, `reasons.GOOGLE_STUB`, `reasons.TOO_SMALL`,
@@ -420,6 +435,20 @@ cached were in its database, not in the folders - and is slower for it,
 never wrong. The same is true of the first pass after this version, on
 whichever machine: it reads every working copy once to prove it against
 the record (decision 109), and every pass after that reads none of them.
+
+**If the machine died in the middle of a pass, nothing is half done for
+long** (decision 119). Before any of it moves a file, a pass or a person's
+click writes down what it is about to do - which file goes where, and the
+fingerprint each end should have - so the next pass on that engagement
+finishes it from the record rather than leaving it for somebody to notice:
+a copy that was not made is made, a copy already in place is recorded, a
+filing somebody pressed just before the lights went out is recorded as
+theirs and dated the day they pressed it. Where the place a file was going
+holds something else now, nothing there is touched: the document parks in
+`00 - Needs Review` with a copy of its own and the note in §5 says so.
+Until that pass has run, the app refuses the buttons on that engagement
+with *a run was interrupted here; the next pass finishes it first* - press
+**Run now** on it and they come back.
 
 1. Install Google Drive for desktop on the new machine, sign in with the
    firm account, and wait for the clients folder to finish syncing. Do not

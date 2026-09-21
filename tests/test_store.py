@@ -132,11 +132,12 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 5
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 6
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
-                          "documents", "events", store.VERDICTS_TABLE, store.FILE_MEMOS_TABLE}
+                          "documents", "events", "intents",
+                          store.VERDICTS_TABLE, store.FILE_MEMOS_TABLE}
     finally:
         conn.close()
 
@@ -513,7 +514,9 @@ def test_a_rebuild_forgets_the_engagements_verdicts_and_the_next_pass_reads_agai
 
     assert cache_rows(engagement) == ({}, {})
     assert store.check(live, root, engagement) == []
-    assert len(ledger.read_events(engagement)) == 3          # the create, the filing, the scan
+    # The create, the two intents the filing wrote before it moved and
+    # copied (decision 119), the filing itself and the scan.
+    assert len(ledger.read_events(engagement)) == 5
 
     calls = counting_extractor(monkeypatch)
     from tracker.scanner import scan_engagement
@@ -981,3 +984,29 @@ def test_document_seqs_names_the_line_that_last_wrote_each_row_and_agrees_after_
     # And an engagement the store does not hold has no rows to be stale.
     store.forget(conn, engagement)
     assert store.document_seqs(conn, engagement) == {}
+
+
+def test_the_check_names_a_move_the_two_sides_do_not_agree_is_open(conn, root, engagement,
+                                                                   monkeypatch):
+    """Decision 119: a recovery finishes what this table says is open, so a
+    table that kept an intent the journal has closed would move a file the
+    record has already recorded. The check compares the two folds and says
+    which key they disagree about."""
+    from tests.test_filer import killed_at_the_record
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    killed_at_the_record(monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        file_drops(engagement, today=DAY1)
+    build(conn, root, engagement)
+    assert said(conn, root, engagement) == []
+    [open_move] = store.open_intents(conn, engagement)
+
+    conn.execute("DELETE FROM intents")
+    sentence = said(conn, root, engagement)[0]
+    assert engagement.name in sentence and open_move[ledger.KEY_KEY] in sentence
+    assert "not in the store" in sentence
+
+    build(conn, root, engagement)                    # and a rebuild puts it back
+    assert said(conn, root, engagement) == []
+    assert store.open_intents(conn, engagement) == [open_move]

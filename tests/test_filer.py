@@ -52,6 +52,9 @@ from tracker.scaffold import (
 
 DAY1 = dt.date(2026, 7, 1)
 DAY2 = dt.date(2026, 7, 9)
+#: The day a pass recovers what a run left half done (decision 119): the
+#: row it records is still dated the day the decision was made.
+DAY3 = dt.date(2026, 7, 15)
 
 ITEMS = [
     RequestItem(
@@ -595,8 +598,15 @@ def test_filing_a_drop_is_one_call_and_one_transaction(engagement, monkeypatch):
 
     file_drops(engagement, today=DAY1)
 
-    # In the order the drops were sorted, which is the order they are named.
-    assert calls == [(ledger.PARKED, ledger.FILED)]
+    # The rows are still one call and so one transaction, in the order the
+    # drops were sorted, which is the order they are named. What each drop
+    # adds before it is touched is its intent (decision 119): one before
+    # the move into the client's folder and one before the copy, each a
+    # line of its own, written before the work it stands for - which is the
+    # one place "one decision, one call" is deliberately two calls.
+    assert [c for c in calls if c != (ledger.MOVING,)] == [(ledger.PARKED, ledger.FILED)]
+    assert calls.count((ledger.MOVING,)) == 4
+    assert calls[-1] == (ledger.PARKED, ledger.FILED)
 
 
 def test_a_person_filing_dismissing_or_unfiling_is_one_call_each(engagement, monkeypatch):
@@ -613,8 +623,11 @@ def test_a_person_filing_dismissing_or_unfiling_is_one_call_each(engagement, mon
 
     # The unfiling's re-scan is a call of its own, and rightly: it is the
     # pass's decision about the request, not the person's about the row.
-    assert calls == [(ledger.ASSIGNED_BY_PERSON,), (ledger.DISMISSED_BY_PERSON,),
-                     (ledger.UNFILED_BY_PERSON,), (ledger.SCANNED,)]
+    # Each action that moves a file writes its intent first (decision 119)
+    # and dismissing moves nothing, so it writes none.
+    assert calls == [(ledger.MOVING,), (ledger.ASSIGNED_BY_PERSON,),
+                     (ledger.DISMISSED_BY_PERSON,),
+                     (ledger.MOVING,), (ledger.UNFILED_BY_PERSON,), (ledger.SCANNED,)]
 
 
 def test_a_pass_that_changed_nothing_records_nothing(engagement, monkeypatch):
@@ -741,7 +754,10 @@ def test_a_persons_keyword_is_recorded_in_the_same_call_as_the_filing(engagement
     result = assign_review_file(engagement, parked.pbc_location, "C01", keyword="lender")
 
     assert result.keyword == "lender" and result.keyword_note == ""
-    assert calls == [(ledger.ASSIGNED_BY_PERSON, ledger.KEYWORD_LEARNED)]
+    # The intent goes down before the copy moves and carries the keyword
+    # with it (decision 119), so a filing finished from the record teaches
+    # the request the word as well; the decision itself is still one call.
+    assert calls == [(ledger.MOVING,), (ledger.ASSIGNED_BY_PERSON, ledger.KEYWORD_LEARNED)]
     assert store.rules(store.connect(), engagement) == before
     assert {i.identifier: i.any_keywords for i in load_manifest(engagement)}["C01"] == ("lender",)
 
@@ -759,7 +775,7 @@ def test_a_keyword_the_request_already_has_is_said_and_not_recorded_twice(engage
                                keyword="LENDER", today=DAY2)
 
     assert again.keyword == "" and "already had the keyword" in again.keyword_note
-    assert calls == [(ledger.ASSIGNED_BY_PERSON,)]
+    assert calls == [(ledger.MOVING,), (ledger.ASSIGNED_BY_PERSON,)]
 
 
 def test_the_filer_holds_the_engagement_lock(engagement):
@@ -1078,9 +1094,13 @@ def test_an_interrupt_after_the_record_landed_does_not_undo_the_filing(engagemen
 
     real = store.record
 
-    def interrupted(*args, **kwargs):
-        real(*args, **kwargs)
-        raise KeyboardInterrupt
+    def interrupted(conn, engagement_dir, *events):
+        # After the decision's own record, not after the intent it wrote
+        # before it moved anything (decision 119): the claim is about a
+        # transaction that committed.
+        real(conn, engagement_dir, *events)
+        if events[0][ledger.EVENT_KEY] != ledger.MOVING:
+            raise KeyboardInterrupt
     monkeypatch.setattr(store, "record", interrupted)
     with pytest.raises(KeyboardInterrupt):
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
@@ -2970,7 +2990,7 @@ def test_put_it_back_moves_the_wanderer_home_and_the_row_is_filed_again(engageme
     # One decision of the person's, and the re-scan that puts the request's
     # status back in the same breath. Nothing else was written.
     assert [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)[lines:]] == [
-        ledger.RESTORED_BY_PERSON, ledger.SCANNED
+        ledger.MOVING, ledger.RESTORED_BY_PERSON, ledger.SCANNED
     ]
     assert result.entry == row
     # The request has its file again, and the pass that follows says nothing
@@ -3372,3 +3392,615 @@ def test_dismiss_still_refuses_a_moved_row_by_name(engagement):
     assert "is not waiting for review" in str(raised.value)
     assert FILE_MOVED in str(raised.value)
     assert every_byte(engagement) == files
+
+# ---------------- an interrupted move is finished from the record (119) ----
+
+
+def digests_under(engagement):
+    """Every file under the engagement, by path, with its bytes' digest.
+
+    The record aside, which a pass is meant to write. What the three
+    conservation checks below are made of.
+    """
+    from tracker.validators import sha256_of
+
+    return {path.relative_to(engagement).as_posix(): sha256_of(path)
+            for path in sorted(engagement.rglob("*"))
+            if path.is_file() and path.name != ledger.LEDGER_FILENAME}
+
+
+def conserved(engagement, before, moves, *, added=(), gone=()):
+    """The three conservation checks every crash claim below ends with.
+
+    (a) every document that was under the engagement is still under it,
+    with exactly the copies the decision meant to make added and the
+    stand-downs it recorded gone; (b) nothing that was already there had
+    its bytes changed - a recovery never overwrites and never deletes what
+    it finds; (c) no intended move was made twice, across the crash and
+    the recovery together. And the store agrees with the record with no
+    move left open, which is the fixture's question asked here too, where
+    its answer is about a folder a run died in the middle of.
+    """
+    from collections import Counter
+
+    after = digests_under(engagement)
+    for path, digest in before.items():
+        assert after.get(path, digest) == digest, f"{path}: the bytes changed"
+    assert Counter(after.values()) == Counter(before.values()) + Counter(added) - Counter(gone)
+    assert len(moves) == len(set(moves)), moves
+    assert store.check(store.connect(), engagement.parent, engagement) == []
+    assert open_intents(engagement) == []
+
+
+def open_intents(engagement):
+    """The moves this engagement has begun and not finished."""
+    return store.open_intents(store.connect(), engagement)
+
+
+def moves_made(monkeypatch) -> list[tuple[str, str]]:
+    """Every rename the filer makes, as it makes it: the check that a move
+    the crash made is not made again by the recovery."""
+    import tracker.filer as filer_module
+
+    real = filer_module._move_whole
+    made: list[tuple[str, str]] = []
+
+    def counted(source, target):
+        made.append((str(source), str(target)))
+        return real(source, target)
+
+    monkeypatch.setattr(filer_module, "_move_whole", counted)
+    return made
+
+
+def killed_after_ops(monkeypatch, after=1):
+    """The machine dies once ``after`` file operations of one decision have
+    been made and before the row that explains them is recorded.
+
+    The only faithful place to inject it: a rollback cannot run on a power
+    cut, so the kill goes where no ``except`` of the caller's can catch it,
+    between the work and the record. Once only, so the pass that recovers
+    runs for real.
+    """
+    import tracker.filer as filer_module
+
+    real = filer_module._do_op
+    state = {"made": 0, "died": False}
+
+    def dying(engagement_dir, op, *, cache=None):
+        real(engagement_dir, op, cache=cache)
+        state["made"] += 1
+        if not state["died"] and state["made"] >= after:
+            state["died"] = True
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(filer_module, "_do_op", dying)
+    return state
+
+
+def killed_at_the_intent(monkeypatch, kind=None):
+    """The machine dies with an intent on the record and not one step of
+    what it stands for done. ``kind`` picks which intent."""
+    real = store.record
+    state = {"died": False}
+
+    def killing(conn, engagement_dir, *events):
+        result = real(conn, engagement_dir, *events)
+        this_one = events[0][ledger.EVENT_KEY] == ledger.MOVING and (
+            kind is None
+            or any(op[ledger.OP_KEY] == kind for op in events[0][ledger.OPS_KEY]))
+        if this_one and not state["died"]:
+            state["died"] = True
+            raise KeyboardInterrupt
+        return result
+
+    monkeypatch.setattr(store, "record", killing)
+    return state
+
+
+def killed_at_the_record(monkeypatch):
+    """The machine dies as the rows of a decision are recorded: the files
+    have moved, the intent is open, the index says nothing yet."""
+    real = store.record
+    state = {"died": False}
+
+    def killing(conn, engagement_dir, *events):
+        if events[0][ledger.EVENT_KEY] != ledger.MOVING and not state["died"]:
+            state["died"] = True
+            raise KeyboardInterrupt
+        return real(conn, engagement_dir, *events)
+
+    monkeypatch.setattr(store, "record", killing)
+    return state
+
+
+def test_an_intent_is_written_before_the_first_file_operation_and_completed_by_the_row(engagement):
+    """The shape of the whole decision: what a pass is about to do is on the
+    record before it does it, and the row it then records completes it, so
+    an uninterrupted pass leaves nothing open behind it."""
+    from tracker.records import entry_to_json
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    file_drops(engagement, today=DAY1)
+
+    events = ledger.read_events(engagement)
+    assert [e[ledger.EVENT_KEY] for e in events] == [
+        ledger.RULES_CHANGED, ledger.MOVING, ledger.MOVING, ledger.FILED]
+    preserving, filing = [e for e in events if e[ledger.EVENT_KEY] == ledger.MOVING]
+    # The drop's own move into the client's folder carries no row: what the
+    # row will say is not decided until the document has been read.
+    assert [op[ledger.OP_KEY] for op in preserving[ledger.OPS_KEY]] == [ledger.OP_MOVE]
+    assert ledger.ROW_KEY not in preserving
+    assert preserving[ledger.DECIDED_BY_KEY] == ledger.BY_PASS
+    # The copy's does, with the event that will complete it.
+    [row] = read_index(engagement)
+    assert [op[ledger.OP_KEY] for op in filing[ledger.OPS_KEY]] == [ledger.OP_COPY]
+    assert filing[ledger.EVENT_KEY_AFTER] == ledger.FILED
+    assert filing[ledger.ROW_KEY] == entry_to_json(row)
+    assert filing[ledger.KEY_KEY] == preserving[ledger.KEY_KEY] == row.pbc_location
+    assert ledger.MOVING not in ledger.ROW_EVENTS
+    assert open_intents(engagement) == []
+
+
+def test_a_quiet_pass_appends_no_intent(engagement):
+    """Nothing is about to happen, so nothing is written down: the record
+    does not grow because a pass looked."""
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    file_drops(engagement, today=DAY1)
+    lines = len(ledger.read_events(engagement))
+
+    file_drops(engagement, today=DAY2)
+
+    assert len(ledger.read_events(engagement)) == lines
+    assert open_intents(engagement) == []
+
+
+def test_a_pass_killed_between_the_move_and_the_copy_is_finished_with_the_day_it_started(
+        engagement, monkeypatch):
+    """The original was preserved and the working copy never made. The
+    document arrived the day the client sent it, and the row says so rather
+    than the day the machine came back."""
+    original = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    arrived = digests_under(engagement)[location_of(engagement, original)]
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+    killed_after_ops(monkeypatch, after=1)
+
+    with pytest.raises(KeyboardInterrupt):
+        file_drops(engagement, today=DAY1)
+
+    assert read_index(engagement) == []              # nothing was recorded
+    assert (pbc(engagement) / "w2.pdf").exists()     # and the original is safe
+    assert open_intents(engagement)
+
+    report = file_drops(engagement, today=DAY2)
+
+    [filed] = report.filed
+    assert filed.received == DAY1.isoformat()
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.received == DAY1.isoformat()
+    assert (engagement / row.prepared_location).is_file()
+    conserved(engagement, before, moves, added=[arrived])
+
+
+def test_a_pass_killed_between_the_copy_and_the_record_finishes_without_a_second_copy(
+        engagement, monkeypatch):
+    """The copy was made and the batch never landed. The next pass proves
+    the copy by its bytes, records the row the intent carried, and makes
+    nothing a second time."""
+    original = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    arrived = digests_under(engagement)[location_of(engagement, original)]
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+    killed_at_the_record(monkeypatch)
+
+    with pytest.raises(KeyboardInterrupt):
+        file_drops(engagement, today=DAY1)
+
+    assert read_index(engagement) == []
+    assert len(list(prepared(engagement, "A01").iterdir())) == 1
+    assert open_intents(engagement)
+
+    file_drops(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.received == DAY1.isoformat()
+    assert [p.name for p in prepared(engagement, "A01").iterdir()] == [row.filed_as]
+    conserved(engagement, before, moves, added=[arrived])
+
+
+def test_a_power_loss_mid_copy_leaves_a_truncated_file_that_is_named_and_the_row_parks(
+        engagement, monkeypatch):
+    """The wreck of a copy the power cut in half. Nothing at that path is
+    touched - the machine never deletes what it finds - the row parks with
+    a working copy of its own, the file is named every pass, and the
+    request reads Missing with the firm's own note instead of Failed
+    Validation for a document the client sent correctly."""
+    import tracker.filer as filer_module
+    from tracker import reasons
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    def power_loss(source, target, *, expect="", cache=None):
+        Path(target).write_bytes(b"%PDF-1.4 half")   # nothing tidies up after a power cut
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(filer_module, "_copy_whole", power_loss)
+    with pytest.raises(KeyboardInterrupt):
+        file_drops(engagement, today=DAY1)
+    monkeypatch.undo()
+
+    truncated = prepared(engagement, "A01") / "A01 - W-2 Wage Statements - TY2025.pdf"
+    assert truncated.read_bytes() == b"%PDF-1.4 half"
+    original = pbc(engagement) / "w2.pdf"
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+
+    report = file_drops(engagement, today=DAY2)
+
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.identifier == ""
+    assert reasons.INTERRUPTED_MOVE.matches(row.reason)
+    assert location_of(engagement, truncated) in row.reason
+    assert truncated.read_bytes() == b"%PDF-1.4 half"          # never touched
+    parked = engagement / row.prepared_location
+    assert parked.parent.name == REVIEW_DIR_NAME
+    assert parked.read_bytes() == original.read_bytes()        # made from the original
+    assert any(reasons.INTERRUPTED_MOVE.matches(e.error) for e in report.attention)
+
+    a01 = scan_engagement(engagement, today=DAY2).updates["A01"]
+    assert a01.status == Status.MISSING and a01.file_count == 0
+    assert reasons.INTERRUPTED_MOVE.matches(a01.validation_notes)
+    conserved(engagement, before, moves, added=[digests_under(engagement)[row.prepared_location]])
+
+
+def test_an_assign_killed_between_the_move_and_the_record_is_finished_as_the_persons_filing(
+        engagement, monkeypatch):
+    """A person filed it and the machine died with the copy moved. The next
+    pass records the filing as theirs, dated the day they made it, with the
+    keyword it taught in the same transaction."""
+    from tracker.filer import ASSIGNED_BY_PERSON, assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+    killed_after_ops(monkeypatch, after=1)
+
+    with pytest.raises(KeyboardInterrupt):
+        assign_review_file(engagement, parked.pbc_location, "C01",
+                           keyword="lender", today=DAY2)
+
+    [waiting] = read_index(engagement)
+    assert waiting.decision == NEEDS_REVIEW          # the record has not moved
+    assert open_intents(engagement)
+    calls = counted_records(monkeypatch)
+
+    file_drops(engagement, today=DAY3)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.identifier == "C01"
+    assert row.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}")
+    assert calls == [(ledger.ASSIGNED_BY_PERSON, ledger.KEYWORD_LEARNED)]
+    assert {i.identifier: i.any_keywords for i in load_manifest(engagement)}["C01"] == ("lender",)
+    conserved(engagement, before, moves)
+
+
+def test_recovery_runs_before_the_sweep_so_an_interrupted_action_is_never_called_a_hand_move(
+        engagement, monkeypatch):
+    """Decision 109's sweep would read a person's half-made filing as a copy
+    somebody dragged, and 110 would ask them to put it back. The recovery
+    runs first, so the sweep never sees it."""
+    from tracker.filer import FILE_MOVED, assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+    killed_after_ops(monkeypatch, after=1)
+    with pytest.raises(KeyboardInterrupt):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+
+    report = file_drops(engagement, today=DAY3)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.decision != FILE_MOVED
+    assert events_named(engagement, ledger.COPY_MOVED) == []
+    assert events_named(engagement, ledger.ASSIGNED_BY_PERSON)
+    assert report.attention == []
+    conserved(engagement, before, moves)
+
+
+def test_an_unfile_killed_between_the_move_and_the_record_is_finished_and_no_second_parked_copy_is_made(
+        engagement, monkeypatch):
+    """The copy went back to review and the row was never rewritten. The
+    next pass records the unfiling as the person's; nothing parks a second
+    copy beside the one already there."""
+    from tracker.filer import UNFILED_BY_PERSON, unfile_document
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+    killed_after_ops(monkeypatch, after=1)
+
+    with pytest.raises(KeyboardInterrupt):
+        unfile_document(engagement, filed.pbc_location, today=DAY2)
+
+    assert read_index(engagement)[0].decision == FILED       # the record has not moved
+    assert open_intents(engagement)
+
+    file_drops(engagement, today=DAY3)
+
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.identifier == ""
+    assert row.reason.startswith(f"{UNFILED_BY_PERSON} on {DAY2.isoformat()}")
+    assert [p.name for p in review_dir(engagement).iterdir()] == ["w2.pdf"]
+    assert not list(prepared(engagement, "A01").iterdir())
+    conserved(engagement, before, moves)
+
+
+def test_an_unfile_killed_between_two_stand_downs_finishes_the_removals_it_recorded(
+        engagement, monkeypatch):
+    """Decision 94's several copies: one goes back under the client's name
+    and the rest stand down, being those same bytes again. A kill between
+    them leaves a copy in a request folder the row no longer claims, and
+    the next pass finishes the stand-down the record already carries."""
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.filer import unfile_document
+
+    drop(engagement, "scan0003.pdf",
+         "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+    (filed,) = file_drops(engagement, today=DAY1).filed
+    assert len(filed.filed_locations) == 2
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+    killed_after_ops(monkeypatch, after=1)           # the move home, not the stand-down
+
+    with pytest.raises(KeyboardInterrupt):
+        unfile_document(engagement, filed.pbc_location, today=DAY2)
+
+    assert (engagement / filed.filed_locations[1]).is_file()      # not stood down yet
+
+    file_drops(engagement, today=DAY3)
+
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.also_filed == ""
+    assert not (engagement / filed.filed_locations[1]).exists()
+    assert [p.name for p in review_dir(engagement).iterdir()] == ["scan0003.pdf"]
+    conserved(engagement, before, moves,
+              gone=[before[filed.filed_locations[1]]])
+
+
+def test_a_restore_killed_between_the_move_and_the_record_is_finished(engagement, monkeypatch):
+    """Decision 110's put-it-back, killed with the copy home and the row
+    still saying it is not. The next pass records the person's answer."""
+    from tracker.filer import PUT_BACK, restore_working_copy
+
+    filed, wanderer = a_moved_filed_row(engagement)
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+    killed_after_ops(monkeypatch, after=1)
+
+    with pytest.raises(KeyboardInterrupt):
+        restore_working_copy(engagement, filed.pbc_location, today=DAY2)
+
+    assert (engagement / filed.prepared_location).is_file() and not wanderer.exists()
+    assert open_intents(engagement)
+
+    file_drops(engagement, today=DAY3)
+
+    [row] = read_index(engagement)
+    assert row.decision == FILED and row.prepared_location == filed.prepared_location
+    assert row.reason.endswith(PUT_BACK.format(
+        home=filed.prepared_location, date=DAY2.isoformat(),
+        now=location_of(engagement, wanderer)))
+    assert len(events_named(engagement, ledger.RESTORED_BY_PERSON)) == 1
+    conserved(engagement, before, moves)
+
+
+def test_a_destination_holding_other_bytes_is_never_touched_and_the_row_parks_naming_it(
+        engagement, monkeypatch):
+    """The contradiction: the step never happened and somebody else's file
+    is where it was going. Nothing there is touched, the row parks naming
+    it, and the copy waiting in review is used rather than doubled."""
+    from tracker import reasons
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    killed_at_the_intent(monkeypatch)
+
+    with pytest.raises(KeyboardInterrupt):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+
+    stranger = (engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest Statement"
+                / "C01 - Mortgage Interest Statement - TY2025.pdf")
+    stranger.parent.mkdir(parents=True, exist_ok=True)
+    stranger.write_bytes(b"%PDF-1.4 somebody elses file")
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+
+    report = file_drops(engagement, today=DAY3)
+
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW and row.identifier == ""
+    assert reasons.INTERRUPTED_MOVE.matches(row.reason)
+    assert location_of(engagement, stranger) in row.reason
+    assert stranger.read_bytes() == b"%PDF-1.4 somebody elses file"     # untouched
+    assert row.prepared_location == parked.prepared_location            # the copy waiting is used
+    assert [p.name for p in review_dir(engagement).iterdir()] == ["scan0012.pdf"]
+    assert any(reasons.INTERRUPTED_MOVE.matches(e.error) for e in report.attention)
+    conserved(engagement, before, moves)
+
+
+def test_bytes_gone_from_both_places_park_the_row_and_say_so(engagement, monkeypatch):
+    """Neither end of the step holds those bytes now. Nothing is guessed:
+    the row parks, the sentence says whether the client's own original is
+    still there, and the copy a person acts on is made from it."""
+    from tracker import reasons
+    from tracker.filer import INTERRUPTED_ORIGINAL_HELD, unfile_document
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    filed = file_drops(engagement, today=DAY1).filed[0]
+    killed_at_the_intent(monkeypatch)
+
+    with pytest.raises(KeyboardInterrupt):
+        unfile_document(engagement, filed.pbc_location, today=DAY2)
+
+    (engagement / filed.prepared_location).unlink()       # and a person deletes the copy
+    original = pbc(engagement) / "w2.pdf"
+    before = digests_under(engagement)
+    moves = moves_made(monkeypatch)
+
+    report = file_drops(engagement, today=DAY3)
+
+    [row] = read_index(engagement)
+    assert row.decision == NEEDS_REVIEW
+    assert reasons.INTERRUPTED_MOVE_LOST.matches(row.reason)
+    assert INTERRUPTED_ORIGINAL_HELD in row.reason
+    assert filed.prepared_location in row.reason
+    assert (engagement / row.prepared_location).read_bytes() == original.read_bytes()
+    assert any(reasons.INTERRUPTED_MOVE_LOST.matches(e.error) for e in report.attention)
+    conserved(engagement, before, moves,
+              added=[digests_under(engagement)[row.prepared_location]])
+
+
+def test_a_person_action_refuses_while_an_intent_is_open_and_the_next_pass_clears_it(
+        engagement, monkeypatch):
+    """One answer for all four actions instead of five recovery paths: the
+    record is in the middle of a decision here, and a pass - which the app's
+    Run now is - finishes it first."""
+    from tracker.filer import (
+        OPEN_INTENT_REFUSAL,
+        FilingError,
+        assign_review_file,
+        dismiss_review_file,
+        restore_working_copy,
+        unfile_document,
+    )
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = file_drops(engagement, today=DAY1).review[0]
+    killed_after_ops(monkeypatch, after=1)
+    with pytest.raises(KeyboardInterrupt):
+        assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    files = every_byte(engagement)
+
+    for act in (lambda: assign_review_file(engagement, parked.pbc_location, "C01", today=DAY3),
+                lambda: dismiss_review_file(engagement, parked.pbc_location, today=DAY3),
+                lambda: unfile_document(engagement, parked.pbc_location, today=DAY3),
+                lambda: restore_working_copy(engagement, parked.pbc_location, today=DAY3)):
+        with pytest.raises(FilingError) as raised:
+            act()
+        assert str(raised.value) == OPEN_INTENT_REFUSAL
+    assert every_byte(engagement) == files               # and none of them touched anything
+
+    file_drops(engagement, today=DAY3)
+
+    assert open_intents(engagement) == []
+    # And the row is a person's to act on again.
+    result = unfile_document(engagement, parked.pbc_location, today=DAY3)
+    assert result.moved_working_copy is True
+
+
+def test_a_refused_record_still_rolls_the_copy_back_and_leaves_no_intent_open(
+        engagement, monkeypatch):
+    """A refusal is not a crash. The files go back where the record says and
+    the move is closed with ``move_abandoned``, so the next pass does not
+    finish forward a move the record would not take - and where even that
+    line cannot be written, the move stays open and the next pass finishes
+    it forward as the record decided, recording the row the person made.
+    """
+    from tracker.filer import assign_review_file
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    drop(engagement, "notice.pdf", "an agency notice nothing asks for")
+    parked = {e.original_name: e for e in file_drops(engagement, today=DAY1).review}
+    real = store.record
+
+    def the_rows_are_refused(conn, engagement_dir, *events):
+        # The journal is writable; it is the decision's own record that is
+        # refused - a store behind its journal, a line it will not fold.
+        if events[0][ledger.EVENT_KEY] in (ledger.MOVING, ledger.MOVE_ABANDONED):
+            return real(conn, engagement_dir, *events)
+        raise store.StoreError("the store will not take this decision")
+
+    monkeypatch.setattr(store, "record", the_rows_are_refused)
+    with pytest.raises(store.StoreError):
+        assign_review_file(engagement, parked["scan0012.pdf"].pbc_location, "C01", today=DAY2)
+    monkeypatch.undo()
+
+    assert (engagement / parked["scan0012.pdf"].prepared_location).is_file()   # put back
+    assert open_intents(engagement) == []                                      # and closed
+    assert [e[ledger.EVENT_KEY] for e in ledger.read_events(engagement)][-2:] == [
+        ledger.MOVING, ledger.MOVE_ABANDONED]
+
+    # And the other way: the abandonment itself cannot be written either.
+    def nothing_is_recorded(conn, engagement_dir, *events):
+        if events[0][ledger.EVENT_KEY] == ledger.MOVING:
+            return real(conn, engagement_dir, *events)
+        raise store.StoreError("the store will not take this decision")
+
+    monkeypatch.setattr(store, "record", nothing_is_recorded)
+    with pytest.raises(store.StoreError):
+        assign_review_file(engagement, parked["notice.pdf"].pbc_location, "C01", today=DAY2)
+    monkeypatch.undo()
+    assert open_intents(engagement)
+
+    file_drops(engagement, today=DAY3)
+
+    rows = {e.original_name: e for e in read_index(engagement)}
+    assert rows["notice.pdf"].decision == FILED and rows["notice.pdf"].identifier == "C01"
+    assert open_intents(engagement) == []
+
+
+#: Where a run is killed, for the conservation claim: every step of a
+#: pass's own decision, and a person's.
+CRASH_POINTS = ("the intent before the move", "after the move",
+                "the intent before the copy", "after the copy",
+                "the record of the rows", "after a person's move")
+
+
+@pytest.mark.parametrize("point", CRASH_POINTS)
+def test_the_conservation_helper_holds_across_every_injected_crash_point(
+        engagement, monkeypatch, point):
+    """Whichever step a run dies on, the engagement holds the same documents
+    afterwards: nothing overwritten, nothing deleted, nothing moved twice,
+    nothing copied twice, and the store saying what the record says."""
+    from tracker.filer import assign_review_file
+
+    if point == "after a person's move":
+        drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+        parked = file_drops(engagement, today=DAY1).review[0]
+        before = digests_under(engagement)
+        added = []
+        moves = moves_made(monkeypatch)
+        killed_after_ops(monkeypatch, after=1)
+        with pytest.raises(KeyboardInterrupt):
+            assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
+    else:
+        original = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+        before = digests_under(engagement)
+        added = [before[location_of(engagement, original)]]      # one working copy
+        moves = moves_made(monkeypatch)
+        if point == "the intent before the move":
+            killed_at_the_intent(monkeypatch, ledger.OP_MOVE)
+        elif point == "after the move":
+            killed_after_ops(monkeypatch, after=1)
+        elif point == "the intent before the copy":
+            killed_at_the_intent(monkeypatch, ledger.OP_COPY)
+        elif point == "after the copy":
+            killed_after_ops(monkeypatch, after=2)
+        else:
+            killed_at_the_record(monkeypatch)
+        with pytest.raises(KeyboardInterrupt):
+            file_drops(engagement, today=DAY1)
+
+    file_drops(engagement, today=DAY2)
+
+    assert len(read_index(engagement)) == 1
+    conserved(engagement, before, moves, added=added)

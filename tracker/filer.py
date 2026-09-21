@@ -108,6 +108,19 @@ Guarantees:
   own, each checks the row's sequence number first and every byte it is
   about to move second, and a home holding a different file is never
   overwritten - that file stays and this document's copy goes to review.
+- **An interrupted move is finished from the record, never guessed**
+  (decision 119). Before the first file operation of any decision - a
+  pass's copy, a person's filing, unfiling or put-back - what it is about
+  to do is written down: the operations in order with the bytes each
+  expects, the row it will record, the event that will complete it and who
+  decided. A run killed in between is finished at the start of the next
+  pass (:func:`_finish_interrupted_moves`), by bytes, before anything else
+  looks - and the row is recorded as the intent said, a person's as theirs
+  and dated their day. **The fingerprint identifies; the record decides:**
+  where a destination holds a different file nothing there is touched, the
+  row parks and says so; where the bytes are at neither end the row parks
+  and says that. A person's action refuses while a move is open here, and
+  the next pass - or Run now - clears it.
 - **An original that leaves the client's own folder is said out loud.**
   ``PBC_DIR_NAME/`` is the provided-by-client record and the client can see
   it, so Explorer will delete, rename and drag what is already there. A row
@@ -143,7 +156,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from tracker import ledger, store
+from tracker import ledger, reasons, store
 from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
 from tracker.locking import engagement_lock
 from tracker.manifest import TEMP_SUFFIX, Override, RequestItem, label_for, load_manifest, override_label
@@ -656,6 +669,144 @@ def _record(
     events = _rows_changed(before, entries, moved or {}, decided or {}) + list(also or [])
     if events:
         store.record(store.connect(), engagement_dir, *events)
+
+
+# ------------------------------------------------------------------ intent ----
+
+#: Whether a pass writes an intent for its own move of a drop into
+#: ``PBC_DIR_NAME/`` (decision 119). The move is atomic and decision 23
+#: already finishes it - an original sitting in the client's folder with no
+#: row is sorted where it is - so the only thing the intent buys is the
+#: ``received`` date: without it, a drop preserved the day it arrived and
+#: recovered the next day is dated the next day. It costs one journal
+#: line per drop, and the
+#: owner can have that line back by setting this to ``False``; nothing else
+#: about the pass changes, and the date drifts as it did before.
+RECORD_PRESERVE_INTENTS = True
+
+#: What a person is told while a run that was interrupted here has a move
+#: still open. The next pass finishes it from the record, and the app's own
+#: Run now is a pass, so the remedy is one click and needs no explaining of
+#: what a half-made move is.
+OPEN_INTENT_REFUSAL = ("a run was interrupted here; the next pass finishes it first "
+                       "(or press Run now)")
+
+
+def _op(engagement_dir: Path, kind: str, source: Path,
+        target: Path | None = None, digest: str = "") -> dict:
+    """One file operation of a decision, as the record carries it.
+
+    Paths relative to the engagement folder and POSIX, as every path the
+    record holds is, so an intent written on one machine reads on another;
+    the digest is what the bytes are expected to be at both ends, which is
+    the whole of how a recovery tells a step that happened from one that
+    did not.
+    """
+    op = {ledger.OP_KEY: kind, ledger.FROM_KEY: source.relative_to(engagement_dir).as_posix(),
+          ledger.DIGEST_KEY: digest}
+    if target is not None:
+        op[ledger.TO_KEY] = target.relative_to(engagement_dir).as_posix()
+    return op
+
+
+def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None) -> None:
+    """Carry out one operation of an intent.
+
+    The one place the plan an intent wrote down and the work it stands for
+    meet: the pass and the person's actions hand their operations here, and
+    so does the recovery that finishes them, so a move a recovery makes is
+    the move the decision would have made and not a second implementation
+    of it. A copy is proved against the digest the intent recorded
+    (decision 109); a move is a rename and nothing else (the caller has
+    checked the destination by bytes).
+    """
+    kind = op[ledger.OP_KEY]
+    source = engagement_dir / op[ledger.FROM_KEY]
+    if kind == ledger.OP_REMOVE:
+        source.unlink(missing_ok=True)
+        return
+    target = engagement_dir / op[ledger.TO_KEY]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if kind == ledger.OP_MOVE:
+        _move_whole(source, target)
+    else:
+        _copy_whole(source, target, expect=op.get(ledger.DIGEST_KEY, ""), cache=cache)
+
+
+def _intend(
+    engagement_dir: Path,
+    key: str,
+    ops: list[dict],
+    *,
+    by: str,
+    row: dict | None = None,
+    then: str = "",
+    also: list[dict] | None = None,
+    day: str = "",
+) -> None:
+    """Write down what this decision is about to do, before it does it.
+
+    **The intent is the decision** (decision 119). The record was already
+    all-or-nothing and the disk was already atomic step by step; what sat
+    between them was a run killed after a file had moved and before the
+    row that explains it was written. So the operations go down first,
+    keyed by the row's own identity, with the row the decision will record
+    and the event that will complete it - and the next pass finishes from
+    the record what the fingerprints say is still undone.
+
+    Its own call, before the operations, which is the one place decision
+    102's "one decision, one call, one transaction" is deliberately two:
+    the second call is the decision's existing one, and it closes this.
+    A decision that moves nothing writes none of this - there is nothing to
+    finish - which is why ``dismiss`` never appears here.
+    """
+    if not ops:
+        return
+    event = ledger.new(ledger.MOVING, **{
+        ledger.KEY_KEY: key, ledger.OPS_KEY: ops, ledger.DECIDED_BY_KEY: by,
+    })
+    if row is not None:
+        event[ledger.ROW_KEY] = row
+    if then:
+        event[ledger.EVENT_KEY_AFTER] = then
+    if also:
+        event[ledger.ALSO_KEY] = list(also)
+    if day:
+        event[ledger.DAY_KEY] = day
+    store.record(store.connect(), engagement_dir, event)
+
+
+def _abandon(engagement_dir: Path, key: str) -> None:
+    """Say the move this key had open is not to be finished forward.
+
+    Written by the rollback on a *refused* record, which puts the files
+    back: without it the next pass would finish a move the record would
+    not take. A refusal is not a crash, and this is how the two are told
+    apart. Best effort by design - the append can itself fail, and the
+    answer to that is in the recovery: the intent stays open, the next
+    pass finishes the move forward and records the row the intent carried,
+    which is the row the person decided.
+    """
+    try:
+        store.record(store.connect(), engagement_dir, ledger.new(
+            ledger.MOVE_ABANDONED, **{ledger.KEY_KEY: key}))
+    except Exception as exc:          # the real error is the one the caller is raising
+        log.error("Could not record that the move of %s was abandoned: %s", key, exc)
+
+
+def _refuse_if_a_move_is_open(engagement_dir: Path) -> None:
+    """Refuse a person's action while a run that was interrupted here has
+    a move still open (decision 119).
+
+    Asked before the row is found and so before 112's freshness check: the
+    record is in the middle of a decision about this folder, and a click
+    made on what the app last drew is a click made on a row that may be
+    about to be rewritten by the recovery. Finishing the move is a pass's
+    work, the pass runs it first thing, and the app's Run now is a pass -
+    which is simpler and safer than five recovery paths, one per action.
+    """
+    if store.open_intents(store.connect(), engagement_dir):
+        raise FilingError(OPEN_INTENT_REFUSAL)
 
 
 def _the_record_holds(engagement_dir: Path, entry: IndexEntry) -> bool:
@@ -1351,6 +1502,309 @@ def _prune_empty_dirs(shared_dir: Path, keep: Path) -> None:
             continue
 
 
+# --------------------------------------------------- an interrupted move ----
+
+#: What the row says when the place an interrupted step was putting its
+#: working copy holds a different file. The detail of
+#: :data:`tracker.reasons.INTERRUPTED_MOVE`, composed here because the
+#: filer is what knows the paths; each name is said once, so the reader
+#: below can be derived from this very template.
+INTERRUPTED_MOVE_DETAIL = ("{name} at {to}, which now holds a different file ({size} KB) - "
+                           "the original is safe in {pbc}")
+#: And when neither end of the step holds those bytes any more. Nothing is
+#: guessed from that: what the sentence adds is whether the client's own
+#: original is still where the record says.
+INTERRUPTED_MOVE_LOST_DETAIL = ("{name} from {source} to {to} and neither holds it now; "
+                                "the original {pbc} {held}")
+INTERRUPTED_ORIGINAL_HELD = "is still there"
+INTERRUPTED_ORIGINAL_GONE = "is not there either"
+#: Attention, for an interrupted step whose file is a cloud placeholder:
+#: reading one would make the sync client download it, so nothing is
+#: touched and nothing is decided, and the move stays open for the pass
+#: after the sync has finished.
+INTERRUPTED_SYNCING = ("an interrupted step was moving {name} and {location} is still "
+                       "syncing; nothing was touched and the next pass finishes it")
+#: Attention, for a drop whose move into the client's own folder could not
+#: be finished as it was decided: the path it was taking holds another
+#: file now, or the drop is nowhere. Nothing is lost by it - the drop is
+#: sorted like any other, under a free name - and it is said once, on the
+#: pass that closes the intent.
+INTERRUPTED_PRESERVE = ("an interrupted step was moving {name} into {pbc} as {location}, "
+                        "which now holds another file or none; it is sorted as it sits")
+
+_INTERRUPTED_TAIL = re.compile(
+    "^(?P<base>.*); " + as_pattern(
+        reasons.INTERRUPTED_MOVE.template,
+        listed=as_pattern(INTERRUPTED_MOVE_DETAIL, name=r".+?", to=r"(?P<to>.+?)",
+                          size=r"[\d.]+", pbc=r".+?"),
+    ) + "$",
+    re.DOTALL,
+)
+
+
+def interrupted_at(entry: IndexEntry) -> str | None:
+    """The path an interrupted step was putting this row's copy at, or None.
+
+    The file there is not this row's - that is the whole of why the row
+    parked - and it is not the request's either: nothing on the record
+    filed it, and counting it would be the corruption decision 109's sweep
+    exists to stop, with a truncated copy standing in for the document the
+    client sent. So the scanner keeps it out of the count and says the
+    firm-side sentence instead, exactly as it does for a copy somebody
+    dragged (:func:`moved_to`).
+
+    Only while the row is still parked. Once a person has filed it, set it
+    aside or sent it back, what sits in that folder is a file they have
+    seen, and the sweep goes on naming it until they take it out.
+    """
+    if entry.decision != NEEDS_REVIEW:
+        return None
+    found = _INTERRUPTED_TAIL.match(entry.reason)
+    return found.group("to") if found else None
+
+
+def interrupted_note(entry: IndexEntry) -> str:
+    """The interrupted-step sentence this row ends with, or ``""``.
+
+    Read off the row rather than written again, so the request's note and
+    the row's Reason are one sentence: the filer wrote it when it could not
+    finish the step, and the scanner puts it in front of the request whose
+    folder the file was going into.
+    """
+    found = _INTERRUPTED_TAIL.match(entry.reason) if entry.decision == NEEDS_REVIEW else None
+    return entry.reason[len(found.group("base")) + 2:] if found else ""
+
+
+#: What :func:`_finish_the_ops` found: every step is done, a file at one
+#: end is still syncing, the destination holds somebody else's bytes, or
+#: neither end holds the bytes the step was moving.
+_FINISHED = "finished"
+_SYNCING = "syncing"
+_TAKEN = "taken"
+_LOST = "lost"
+
+
+def _waiting_on_sync(path: Path) -> bool:
+    """Whether this path is a placeholder the sync client has not brought
+    down. Never read: hashing one downloads it."""
+    return path.is_file() and is_cloud_placeholder(path)
+
+
+def _the_bytes(path: Path) -> str | None:
+    """What this file holds, or None where there is nothing to read - no
+    file, a placeholder, or a file this host cannot read now."""
+    if not path.is_file() or is_cloud_placeholder(path):
+        return None
+    return _digest_or_none(path)
+
+
+def _finish_the_ops(
+    engagement_dir: Path, ops: list[dict], cache: ContentCache | None
+) -> tuple[str, dict | None]:
+    """Finish the steps of one intent that reality says are not done.
+
+    Each step is checked by bytes and only then acted on, in the order the
+    decision wrote them - a step may stand on the one before it. Four
+    answers, and only these:
+
+    - the destination holds the digest: done, and nothing is touched;
+    - the destination is not there and the source holds the digest: the
+      move or the copy is made now, which is what the record decided;
+    - a stand-down whose file is gone is done, and one that still holds the
+      digest is made now (the row says those bytes live elsewhere);
+    - anything else stops this intent where it stands and is answered by
+      the caller - never by moving something.
+
+    A destination that holds *other* bytes is the contradiction, and a
+    destination this host cannot read is treated as one: it is somebody's
+    file either way, and the machine never overwrites and never deletes
+    what it finds. A step whose row carried no digest (decision 65) can be
+    proved by nothing, so the file has only to be there for the step to be
+    made and any file at the destination stops it.
+    """
+    for op in ops:
+        kind = op[ledger.OP_KEY]
+        source = engagement_dir / op[ledger.FROM_KEY]
+        digest = op.get(ledger.DIGEST_KEY, "")
+        if _waiting_on_sync(source):
+            return _SYNCING, op
+        if kind == ledger.OP_REMOVE:
+            if digest and _the_bytes(source) == digest:
+                source.unlink(missing_ok=True)
+            continue                 # gone already, or not provably the row's to take
+        target = engagement_dir / op[ledger.TO_KEY]
+        if target.exists():
+            if _waiting_on_sync(target):
+                return _SYNCING, op
+            # With a digest, the bytes say whether this step happened.
+            # Without one - a drop nobody has hashed yet, a row recorded
+            # without its bytes - a move that has happened is a source that
+            # is gone, and anything else at a destination this decision
+            # chose because it was free is somebody's.
+            if (_the_bytes(target) == digest) if digest else not source.exists():
+                continue             # this step happened
+            return _TAKEN, op
+        if not source.is_file() or (digest and _the_bytes(source) != digest):
+            return _LOST, op
+        _do_op(engagement_dir, op, cache=cache)
+    return _FINISHED, None
+
+
+def _a_copy_to_act_on(
+    engagement_dir: Path, entry: IndexEntry, cache: ContentCache | None
+) -> str:
+    """Where the person's copy of this document is, making one if there is
+    none this row can prove.
+
+    A row the recovery parks has to have a working copy a person can open
+    and file, and the one the interrupted step was making is not there -
+    the place it was going holds somebody else's file. The original in
+    ``PBC_DIR_NAME/`` is the record, so the copy comes from it, into
+    ``REVIEW_DIR_NAME`` under the client's own name, never over anything.
+    A copy that cannot be made leaves the row naming what it named: the
+    pass says the trouble out loud either way, and inventing a path would
+    be worse than an honest one that is empty.
+    """
+    for location in entry.filed_locations:
+        if entry.digest and _the_bytes(engagement_dir / location) == entry.digest:
+            return location
+    review_dir = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    source = engagement_dir / entry.pbc_location
+    # The copy the interrupted step was about to carry out of review is
+    # still there when the step never happened: it is these bytes and it
+    # is the copy a person may have written on, so it is used rather than
+    # doubled (:func:`_existing_copy`, as everywhere else).
+    waiting = _existing_copy(review_dir, source, entry.digest) if entry.digest else None
+    if waiting is not None:
+        return prepared_location(review_dir, waiting.name)
+    try:
+        review_dir.mkdir(parents=True, exist_ok=True)
+        parked = _unique_path(review_dir, entry.original_name)
+        _copy_whole(source, parked, expect=entry.digest, cache=cache)
+    except (OSError, FilingError) as exc:
+        log.error("Could not park a copy of %s from %s: %s",
+                  entry.original_name, entry.pbc_location, exc)
+        return entry.prepared_location
+    return prepared_location(review_dir, parked.name)
+
+
+def _finish_interrupted_moves(
+    engagement_dir: Path,
+    entries: list[IndexEntry],
+    before: dict[str, dict],
+    cache: ContentCache | None,
+) -> tuple[list[FileError], dict[str, str]]:
+    """Finish, from the record, every move a killed run left half made.
+
+    **The fingerprint identifies; the record decides** (decision 119). What
+    is finished here is a decision the record already holds - the intent a
+    pass or a person wrote before touching a file - and the fingerprint
+    says only which half of it happened. Where it cannot say, nothing moves
+    and a person decides: a destination holding another file is never
+    touched, and bytes that are at neither end are never guessed at. It is
+    the same line decision 109 draws (the sweep identifies a moved copy and
+    a person decides), 110 (the person acts) and 111 (the earlier row's
+    decision decides a re-send).
+
+    Runs at the start of every pass, under the lock, before anything else
+    looks: before the digests of rows recorded without them are filled in,
+    before the client's folder is read for strays, and before the sweep -
+    so an interrupted person's filing is finished and recorded as theirs
+    rather than swept up as a copy somebody dragged.
+
+    The row each intent carries is recorded as the intent recorded it - the
+    event it named, the row it named, dated the day the person made the
+    decision - in one call with the events that travelled with it, so a
+    filing recovered is a filing, and the keyword it taught is taught.
+    A drop's own move into the client's folder carries no row: the file is
+    a stray and the ordinary stray path records it, with the day the run
+    that moved it began rather than today's.
+
+    Mutates ``entries`` and ``before`` to what the record holds after it,
+    so the pass that follows reads the rows this finished. Returns the
+    attention lines and the ``received`` day to date each recovered drop.
+    """
+    conn = store.connect()
+    intents = store.open_intents(conn, engagement_dir)
+    if not intents:
+        return [], {}
+    attention: list[FileError] = []
+    received: dict[str, str] = {}
+    rows_recorded = False
+    for intent in intents:
+        key = str(intent.get(ledger.KEY_KEY) or "")
+        row = intent.get(ledger.ROW_KEY)
+        outcome, op = _finish_the_ops(engagement_dir, intent.get(ledger.OPS_KEY) or [], cache)
+        if outcome == _SYNCING:
+            attention.append(FileError(Path(op[ledger.FROM_KEY]).name, INTERRUPTED_SYNCING.format(
+                name=Path(op[ledger.FROM_KEY]).name,
+                location=op.get(ledger.TO_KEY) or op[ledger.FROM_KEY],
+            ), True))
+            continue                 # the move stays open; the next pass looks again
+        if row is None:
+            # A drop's own move into the client's folder. Finished, it is a
+            # stray the pass below sorts, dated the day the run that moved
+            # it began; unfinishable, the drop is sorted where it is under
+            # a free name and this intent has nothing left to say.
+            if outcome == _FINISHED:
+                received[key] = str(intent.get(ledger.DAY_KEY) or "") or ledger.day_of(
+                    str(intent.get(ledger.AT_KEY, ""))).isoformat()
+            else:
+                attention.append(FileError(Path(key).name, INTERRUPTED_PRESERVE.format(
+                    name=Path(op[ledger.FROM_KEY]).name, pbc=PBC_DIR_NAME, location=key,
+                ), True))
+                _abandon(engagement_dir, key)
+            continue
+        entry = entry_from_json(row)
+        if outcome == _FINISHED:
+            events = [ledger.new(str(intent.get(ledger.EVENT_KEY_AFTER) or ledger.PARKED),
+                                 **{ledger.KEY_KEY: key, ledger.ROW_KEY: row})]
+            events += list(intent.get(ledger.ALSO_KEY) or [])
+            store.record(conn, engagement_dir, *events)
+            rows_recorded = True
+            log.warning("Finished the interrupted %s of %s from the record",
+                        intent.get(ledger.EVENT_KEY_AFTER), entry.original_name)
+            continue
+        sentence = _the_trouble(engagement_dir, entry, op, outcome)
+        parked = _a_copy_to_act_on(engagement_dir, entry, cache)
+        new_entry = replace(
+            entry, decision=NEEDS_REVIEW, identifier="", also_filed="",
+            prepared_location=parked,
+            reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+        )
+        store.record(conn, engagement_dir, _ledger_event(ledger.PARKED, new_entry))
+        rows_recorded = True
+        attention.append(FileError(
+            Path(op.get(ledger.TO_KEY) or entry.original_name).name, sentence, True))
+        log.warning("An interrupted step on %s could not be finished: %s",
+                    entry.original_name, sentence)
+    if rows_recorded:
+        fresh = read_index(engagement_dir)
+        entries[:] = fresh
+        before.clear()
+        before.update({ledger_key(one): entry_to_json(one) for one in fresh})
+    return attention, received
+
+
+def _the_trouble(engagement_dir: Path, entry: IndexEntry, op: dict, outcome: str) -> str:
+    """The sentence a row gets when its step could not be finished: the
+    destination holds a different file, or neither end holds the bytes."""
+    if outcome == _TAKEN:
+        where = op[ledger.TO_KEY]
+        try:
+            size = round((engagement_dir / where).stat().st_size / 1024, 1)
+        except OSError:
+            size = 0.0
+        return reasons.INTERRUPTED_MOVE.format(listed=INTERRUPTED_MOVE_DETAIL.format(
+            name=entry.original_name, to=where, size=size, pbc=entry.pbc_location))
+    held = (INTERRUPTED_ORIGINAL_HELD
+            if _the_bytes(engagement_dir / entry.pbc_location) == entry.digest
+            else INTERRUPTED_ORIGINAL_GONE)
+    return reasons.INTERRUPTED_MOVE_LOST.format(listed=INTERRUPTED_MOVE_LOST_DETAIL.format(
+        name=entry.original_name, source=op[ledger.FROM_KEY],
+        to=op.get(ledger.TO_KEY, ""), pbc=entry.pbc_location, held=held))
+
+
 # ------------------------------------------------------------------- file ----
 
 
@@ -1411,6 +1865,19 @@ def file_drops(
         # firm's folder goes through its memo (decision 109), so an
         # unchanged tree costs stats and not reads.
         cache = ContentCache(engagement_dir)
+        # A run killed between one of its moves and the record of it left
+        # the disk ahead of the record. What it was about to do is written
+        # down (decision 119), so it is finished here - before the digests
+        # below are filled in from copies that may still be in flight,
+        # before the client's folder is read for strays, and before the
+        # sweep, which would otherwise call a person's interrupted filing a
+        # copy somebody dragged. A dry run finishes nothing, like
+        # everything else here.
+        received_days: dict[str, str] = {}
+        if not dry_run:
+            finished, received_days = _finish_interrupted_moves(
+                engagement_dir, entries, before, cache)
+            report.attention.extend(finished)
         # An original preserved by a pass that could not read it back has no
         # digest (decision 65). While it has none, a replacement is never
         # noticed and a person's filing of it is never honoured; a later
@@ -1502,7 +1969,7 @@ def file_drops(
                 _sort_all(drops, strays, pbc_dir, entries, stamp, _SortContext(
                     items=items, by_id=by_id, known=known, prepared_dir=prepared_dir,
                     review_dir=review_dir, reserved=reserved, assigned=assigned,
-                    dry_run=dry_run, report=report,
+                    dry_run=dry_run, report=report, received=received_days,
                     cache=cache, pdf_cache=PdfVerdictCache(),
                 ))
         finally:
@@ -1597,7 +2064,15 @@ def _sort_all(
         else:
             try:
                 pbc_target = _unique_path(pbc_dir, drop.name)
-                _move_whole(drop, pbc_target)
+                # The move is atomic and decision 23 finishes it whichever
+                # side of it a kill falls on; what the intent buys is the
+                # date, so a drop preserved the day it arrived and
+                # recovered days later is still that day's (decision 119).
+                preserving = _op(engagement_dir, ledger.OP_MOVE, drop, pbc_target)
+                if RECORD_PRESERVE_INTENTS:
+                    _intend(engagement_dir, preserving[ledger.TO_KEY], [preserving],
+                            by=ledger.BY_PASS, day=stamp)
+                _do_op(engagement_dir, preserving)
             except OSError as exc:
                 report.errors.append(FileError(
                     drop.name,
@@ -1608,6 +2083,11 @@ def _sort_all(
                 log.warning("Left %s in place: %s", drop.name, exc)
                 continue
         pbc_rel = pbc_target.relative_to(engagement_dir).as_posix()
+        # A document arrived the day the client sent it, not the day the
+        # machine came back: a drop a killed run had already moved carries
+        # the day that run began (decision 119), and every other drop is
+        # today's.
+        received = run.received.get(pbc_rel, stamp)
         # The record is of the bytes that were preserved: hashed where
         # they now are, after the move, so a sync client landing a newer
         # version in between can never leave the index describing one
@@ -1627,11 +2107,11 @@ def _sort_all(
             log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
 
         try:
-            entry = _sort_one(drop, pbc_target, pbc_rel, digest, size_kb, stamp, run)
+            entry = _sort_one(drop, pbc_target, pbc_rel, digest, size_kb, received, run)
         except Exception as exc:  # the original is safe; say so and go on
             log.exception("Could not file %s", drop.name)
             entry = IndexEntry(
-                received=stamp, original_name=drop.name, size_kb=size_kb,
+                received=received, original_name=drop.name, size_kb=size_kb,
                 digest=digest, identifier="",
                 prepared_location="", pbc_location=pbc_rel,
                 decision=NEEDS_REVIEW,
@@ -1665,22 +2145,31 @@ class _SortContext:
     assigned: dict[str, list[Path]]        # identifier -> its existing folders
     dry_run: bool
     report: FileReport
+    #: PBC location -> the day the run that preserved it began, for the
+    #: drops a killed run had moved and this one is sorting (decision 119).
+    #: A document is received the day it arrived, not the day the machine
+    #: came back.
+    received: dict[str, str]
     cache: ContentCache
     pdf_cache: PdfVerdictCache
 
 
-def _working_copy(
+def _plan_working_copy(
     item: RequestItem, drop: Path, pbc_target: Path, digest: str, run: _SortContext
-) -> str:
-    """Put one working copy of a preserved original in one request's folder,
-    and say where it went.
+) -> tuple[str, dict | None]:
+    """Where one working copy of a preserved original goes in one request's
+    folder, and the copy that will put it there.
 
     The copy is made from ``pbc_target`` - the preserved original, never
     the drop - under the canonical name for that row, and a copy already
     there holding these bytes is reused rather than doubled
-    (:func:`_existing_copy`: a killed run's). A dry run decides all of it
-    and writes nothing, which is why the names claimed are kept in
-    ``run.reserved`` rather than read back off the disk.
+    (:func:`_existing_copy`: a killed run's), which is what ``None`` says.
+    A dry run decides all of it and writes nothing, which is why the names
+    claimed are kept in ``run.reserved`` rather than read back off the disk.
+
+    Deciding and copying are two steps since decision 119: what the copies
+    will be is written down before any of them is made, so a run killed
+    between them is finished from the record rather than guessed at.
 
     One call per request: decision 94 files a page that carries several
     forms under each of them, and each folder numbers its own names.
@@ -1693,14 +2182,34 @@ def _working_copy(
             else set()
         )
     filed_as = prepared_name_for(item, extension_of(drop), run.reserved[dest_folder])
-    if not run.dry_run:
-        dest_folder.mkdir(parents=True, exist_ok=True)
-        existing = _existing_copy(dest_folder, pbc_target, digest)
-        if existing is not None:
-            filed_as = existing.name
-        else:
-            _copy_whole(pbc_target, dest_folder / filed_as, expect=digest, cache=run.cache)
-    return prepared_location(dest_folder, filed_as)
+    if run.dry_run:
+        return prepared_location(dest_folder, filed_as), None
+    dest_folder.mkdir(parents=True, exist_ok=True)
+    existing = _existing_copy(dest_folder, pbc_target, digest)
+    if existing is not None:
+        return prepared_location(dest_folder, existing.name), None
+    return (prepared_location(dest_folder, filed_as),
+            _op(run.prepared_dir.parent, ledger.OP_COPY, pbc_target,
+                dest_folder / filed_as, digest))
+
+
+def _carry_out(entry: IndexEntry, ops: list[dict], then: str, run: _SortContext) -> None:
+    """Write down what this drop's copies will be, then make them.
+
+    The intent carries the row this pass will record at the end of it and
+    the event it will be recorded as, so a pass killed between the copy and
+    the batch record is finished from the record: the copies that are
+    already there are left alone, the ones that are not are made, and the
+    row is recorded as it was decided, with the day the document arrived
+    (decision 119). A dry run writes nothing, here as everywhere.
+    """
+    if run.dry_run or not ops:
+        return
+    engagement_dir = run.prepared_dir.parent
+    _intend(engagement_dir, ledger_key(entry), ops, by=ledger.BY_PASS,
+            row=entry_to_json(entry), then=then)
+    for op in ops:
+        _do_op(engagement_dir, op, cache=run.cache)
 
 
 def _sort_one(
@@ -1781,7 +2290,8 @@ def _sort_one(
         # own name, and the index keeps one row for it: the copies are
         # this row's, not rows of their own.
         wanted = [item] + [run.by_id[i] for i in routing.also if i in run.by_id]
-        locations = [_working_copy(it, drop, pbc_target, digest, run) for it in wanted]
+        planned = [_plan_working_copy(it, drop, pbc_target, digest, run) for it in wanted]
+        locations = [location for location, _op_for_it in planned]
         entry = IndexEntry(
             received=stamp, original_name=drop.name, size_kb=size_kb,
             digest=digest, identifier=item.identifier,
@@ -1792,10 +2302,13 @@ def _sort_one(
             evidence=format_evidence(routing.evidence_record),
             also_filed=_CANDIDATE_SEP.join(locations[1:]),
         )
+        _carry_out(entry, [op for _location, op in planned if op is not None],
+                   ledger.FILED, run)
         report.filed.append(entry)
         return entry
 
     review_name = drop.name
+    parking: list[dict] = []
     if not dry_run:
         run.review_dir.mkdir(parents=True, exist_ok=True)
         # One row, one working copy. The copy already there holding these
@@ -1807,7 +2320,8 @@ def _sort_one(
         review_target = None if resent else _existing_copy(run.review_dir, pbc_target, digest)
         if review_target is None:
             review_target = _unique_path(run.review_dir, drop.name)
-            _copy_whole(pbc_target, review_target, expect=digest, cache=run.cache)
+            parking.append(_op(run.prepared_dir.parent, ledger.OP_COPY,
+                               pbc_target, review_target, digest))
         review_name = review_target.name
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
@@ -1820,6 +2334,7 @@ def _sort_one(
         candidates=_CANDIDATE_SEP.join(routing.candidates),
         evidence=format_evidence(routing.evidence_record),
     )
+    _carry_out(entry, parking, ledger.PARKED, run)
     report.review.append(entry)
     return entry
 
@@ -1926,6 +2441,7 @@ def assign_review_file(
     # the one lock, so a scheduled pass cannot slip in between.
     with engagement_lock(engagement_dir):
         ensure(engagement_dir)
+        _refuse_if_a_move_is_open(engagement_dir)
         items = {i.identifier: i for i in load_manifest(engagement_dir)}
         item = items.get(identifier)
         if item is None:
@@ -2017,6 +2533,7 @@ def assign_review_file(
 
         moved = reused = parked_stood_in = False
         left_in_review = ""
+        ops: list[dict] = []
         # A copy with these bytes already in the folder is a killed earlier
         # attempt's, and is reused rather than doubled. Otherwise the parked
         # copy is moved, but only while it holds the row's bytes: its name
@@ -2025,24 +2542,28 @@ def assign_review_file(
         # request folder under A's canonical name (the eleventh reading); a
         # copy a reviewer's app re-saved is not the row's bytes either and
         # is left where it is, said so, for the person to keep or discard.
+        # What will move is decided here and written down before any of it
+        # happens (decision 119), so a kill in between is finished from the
+        # record rather than left for another person to notice.
         existing = _existing_copy(dest_folder, source, digest,
                                   ignore=parked if parked_here else None)
         if existing is not None:
             filed_as, target = existing.name, existing
             reused = True
             if parked_here and sha256_of(parked) == digest:
-                parked.unlink()           # the attempt's copy stands in for it, byte for byte
+                # The attempt's copy stands in for it, byte for byte.
                 parked_stood_in = True
+                ops.append(_op(engagement_dir, ledger.OP_REMOVE, parked, digest=digest))
         elif parked_here and sha256_of(parked) == digest:
-            _move_whole(parked, target)   # keeps any notes a person made on it
-            moved = True
+            moved = True                  # keeps any notes a person made on it
+            ops.append(_op(engagement_dir, ledger.OP_MOVE, parked, target, digest))
         else:
             if parked_here:
                 left_in_review = (
                     f"the parked copy {here} no longer holds the bytes this row "
                     f"recorded (annotated, or re-saved) and was left there; {filed_as} was copied from the original"
                 )
-            _copy_whole(source, target, expect=digest)
+            ops.append(_op(engagement_dir, ledger.OP_COPY, source, target, digest))
 
         # A pick the evidence did not point at, when the evidence pointed
         # somewhere, is the person overruling the shortlist, and the row
@@ -2080,6 +2601,13 @@ def assign_review_file(
         taught = [] if note or not keyword else [ledger.new(ledger.KEYWORD_LEARNED, **{
             ledger.IDENTIFIER_KEY: item.identifier, ledger.KEYWORD_KEY: keyword,
         })]
+        # The intent carries the keyword too: a filing recovered from the
+        # record is the whole of the decision the person made, and half of
+        # it would be a request that never learned the word.
+        _intend(engagement_dir, ledger_key(new_entry), ops, by=ledger.BY_PERSON,
+                row=entry_to_json(new_entry), then=ledger.ASSIGNED_BY_PERSON, also=taught)
+        for op in ops:
+            _do_op(engagement_dir, op)
         try:
             _record(engagement_dir, before, entries,
                     decided={ledger_key(new_entry): ledger.ASSIGNED_BY_PERSON},
@@ -2102,6 +2630,9 @@ def assign_review_file(
                         target.unlink(missing_ok=True)
                 except (OSError, FilingError) as undo:  # the copy stays where it is; the real error is the one to hear
                     log.error("Could not put %s back after the record refused it: %s", target.name, undo)
+                # The files are back where the record says, so the move is
+                # not to be finished forward by the next pass (decision 119).
+                _abandon(engagement_dir, ledger_key(new_entry))
             raise
     return AssignResult(
         entry=new_entry, moved_review_copy=moved, keyword=keyword if not note else "",
@@ -2205,6 +2736,7 @@ def dismiss_review_file(
 
     with engagement_lock(engagement_dir):
         ensure(engagement_dir)
+        _refuse_if_a_move_is_open(engagement_dir)
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
         position = find_parked(entries, original)
@@ -2318,6 +2850,7 @@ def unfile_document(
 
     with engagement_lock(engagement_dir):
         ensure(engagement_dir)
+        _refuse_if_a_move_is_open(engagement_dir)
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
         position = find_filed(entries, original, accepting=(FILE_MOVED,))
@@ -2380,21 +2913,21 @@ def unfile_document(
         left_filed = "; ".join(
             LEFT_FILED.format(location=location, parked=parked.name) for location in strangers
         )
-        stood_down: list[Path] = []
+        # A page decision 94 filed under several requests has a copy in
+        # each, and every one of them has to leave its request folder or
+        # the scan goes on counting the document this row no longer
+        # claims. One goes back under the client's name; the rest are
+        # these same bytes over again, and a copy is disposable - the
+        # original in PBC_DIR_NAME/ is the record, and the copy that
+        # went back is byte for byte the one removed here.
+        stood_down: list[Path] = list(mine[1:]) if still_the_rows else []
         if still_the_rows:
-            _move_whole(working, parked)      # keeps any notes a person made on it
-            # A page decision 94 filed under several requests has a copy in
-            # each, and every one of them has to leave its request folder or
-            # the scan goes on counting the document this row no longer
-            # claims. One goes back under the client's name; the rest are
-            # these same bytes over again, and a copy is disposable - the
-            # original in PBC_DIR_NAME/ is the record, and the copy that
-            # went back is byte for byte the one removed here.
-            for copy in mine[1:]:
-                copy.unlink()
-                stood_down.append(copy)
+            # The move keeps any notes a person made on the copy.
+            ops = [_op(engagement_dir, ledger.OP_MOVE, working, parked, entry.digest)]
+            ops += [_op(engagement_dir, ledger.OP_REMOVE, copy, digest=entry.digest)
+                    for copy in stood_down]
         else:
-            _copy_whole(source, parked, expect=entry.digest)
+            ops = [_op(engagement_dir, ledger.OP_COPY, source, parked, entry.digest)]
 
         new_entry = replace(
             entry,
@@ -2405,6 +2938,10 @@ def unfile_document(
             also_filed="",
         )
         entries[position] = new_entry
+        _intend(engagement_dir, ledger_key(new_entry), ops, by=ledger.BY_PERSON,
+                row=entry_to_json(new_entry), then=ledger.UNFILED_BY_PERSON)
+        for op in ops:
+            _do_op(engagement_dir, op)
         try:
             _record(engagement_dir, before, entries,
                     decided={ledger_key(new_entry): ledger.UNFILED_BY_PERSON})
@@ -2423,6 +2960,7 @@ def unfile_document(
                         _copy_whole(working or source, copy, expect=entry.digest)
                 except (OSError, FilingError) as undo:
                     log.error("Could not put %s back after the record refused it: %s", parked.name, undo)
+                _abandon(engagement_dir, ledger_key(new_entry))
             raise
 
     # Outside the lock: the scan takes it for itself. A pass that slips in
@@ -2598,6 +3136,7 @@ def restore_working_copy(
 
     with engagement_lock(engagement_dir):
         ensure(engagement_dir)
+        _refuse_if_a_move_is_open(engagement_dir)
         entries = read_index(engagement_dir)
         before = {ledger_key(e): entry_to_json(e) for e in entries}
         position = find_moved(entries, original)
@@ -2653,6 +3192,7 @@ def restore_working_copy(
         moved_home = copied_from_original = wanderer_moved = False
         parked: Path | None = None
         filled: list[Path] = []
+        ops: list[dict] = []
         if different:
             # Refused, and nothing is touched at home. This document's copy
             # goes to review under the client's own name - the wanderer
@@ -2662,10 +3202,11 @@ def restore_working_copy(
             review_dir.mkdir(parents=True, exist_ok=True)
             parked = _unique_path(review_dir, entry.original_name)
             if wanderer is not None and _holds_the_row(wanderer, entry.digest):
-                _move_whole(wanderer, parked)
+                ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, parked, entry.digest))
                 wanderer_moved = True
             else:
-                _copy_whole(the_original(), parked, expect=entry.digest)
+                ops.append(_op(engagement_dir, ledger.OP_COPY, the_original(), parked,
+                               entry.digest))
                 copied_from_original = True
             sentence = PUT_BACK_REFUSED.format(
                 date=stamp, home=different[0],
@@ -2689,24 +3230,25 @@ def restore_working_copy(
             )
         else:
             home = engagement_dir / absent[0]
-            home.parent.mkdir(parents=True, exist_ok=True)
             if wanderer is not None and _holds_the_row(wanderer, entry.digest):
-                _move_whole(wanderer, home)
+                ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, home, entry.digest))
                 moved_home = wanderer_moved = True
                 sentence = PUT_BACK.format(home=absent[0], date=stamp, now=now)
             else:
-                _copy_whole(the_original(), home, expect=entry.digest)
+                ops.append(_op(engagement_dir, ledger.OP_COPY, the_original(), home,
+                               entry.digest))
                 copied_from_original = True
                 sentence = PUT_BACK_FROM_ORIGINAL.format(
                     home=absent[0], date=stamp, pbc=entry.pbc_location,
                     prepared=PREPARED_DIR_NAME)
             filled.append(home)
             # Decision 94's other copies, if this row has any: each is these
-            # same bytes over again, and the one just put back is them.
+            # same bytes over again, and the one just put back is them - so
+            # each is copied from it, in the order the intent says, and a
+            # recovery that finishes this finds them in that order too.
             for location in absent[1:]:
                 other = engagement_dir / location
-                other.parent.mkdir(parents=True, exist_ok=True)
-                _copy_whole(home, other, expect=entry.digest)
+                ops.append(_op(engagement_dir, ledger.OP_COPY, home, other, entry.digest))
                 filled.append(other)
             new_entry = replace(
                 entry, decision=FILED if entry.identifier else NEEDS_REVIEW,
@@ -2714,6 +3256,10 @@ def restore_working_copy(
             )
 
         entries[position] = new_entry
+        _intend(engagement_dir, ledger_key(new_entry), ops, by=ledger.BY_PERSON,
+                row=entry_to_json(new_entry), then=ledger.RESTORED_BY_PERSON)
+        for op in ops:
+            _do_op(engagement_dir, op)
         try:
             _record(engagement_dir, before, entries,
                     decided={ledger_key(new_entry): ledger.RESTORED_BY_PERSON})
@@ -2738,6 +3284,7 @@ def restore_working_copy(
                 except (OSError, FilingError) as undo:
                     log.error("Could not put %s back after the record refused it: %s",
                               entry.original_name, undo)
+                _abandon(engagement_dir, ledger_key(new_entry))
             raise
 
     # Outside the lock, as the unfiling's is: the request this row answers

@@ -39,6 +39,15 @@ once a pass and its differences were journalled as :data:`RULES_IMPORTED`;
 that name is retired (:data:`RETIRED_EVENTS`): this version folds it,
 because journals from before today carry it, and refuses to write it.
 
+**And it is what a decision is about to do** (decision 119). A pass or a
+person that is about to move a file appends one :data:`MOVING` line first -
+the operations in order with the bytes each expects, the row the decision
+will record and the event that will complete it - so a run killed between
+the disk and the record leaves the *intent* behind rather than a folder
+nobody can explain. The row event that follows completes it; both folds
+here and in :mod:`tracker.store` keep the same set of open intents, and
+the next pass finishes them from the record before it looks at anything.
+
 What keeps it honest is the agreement fixture in ``tests/conftest.py``:
 after every test in the suite a store built from nothing is held to
 :func:`replay` over these lines - the index rows, the statuses and the
@@ -118,6 +127,39 @@ KEYWORD_KEY = "keyword"
 #: by the names they then had. It carries no row - it is a statement about
 #: the folder, not about a document - which is why it is not a row event.
 FILES_KEY = "files"
+#: What a ``MOVING`` event carries besides ``KEY_KEY`` and ``ROW_KEY``
+#: (decision 119). ``OPS_KEY`` is the file operations the decision is about
+#: to make, in order, each ``{OP_KEY: "move"|"copy"|"remove", FROM_KEY: …,
+#: TO_KEY: …, DIGEST_KEY: …}`` with paths relative to the engagement folder,
+#: POSIX, and the digest the bytes are expected to have (a ``remove`` has no
+#: ``TO_KEY``). ``EVENT_KEY_AFTER`` names the row event that will complete
+#: the decision and ``DECIDED_BY_KEY`` says who decided it, so a recovered
+#: person's filing is still recorded as theirs. ``ALSO_KEY`` carries the
+#: events that travel with the row - today the one keyword a person's
+#: filing teaches - whole, as they would have been written.
+OPS_KEY = "ops"
+OP_KEY = "op"
+FROM_KEY = "from"
+TO_KEY = "to"
+DIGEST_KEY = "digest"
+EVENT_KEY_AFTER = "then"
+DECIDED_BY_KEY = "by"
+ALSO_KEY = "also"
+#: The day the run that wrote the intent was working on - the runner's own
+#: day, which is what every row is dated by, and not this line's UTC stamp.
+#: Carried where the intent has no row to carry it: a drop's move into the
+#: client's folder, whose row is written after the document is read, so a
+#: drop preserved one day and recovered the next is still dated the day it
+#: arrived.
+DAY_KEY = "day"
+#: The three operations an intent can carry.
+OP_MOVE = "move"
+OP_COPY = "copy"
+OP_REMOVE = "remove"
+#: What :data:`DECIDED_BY_KEY` says: a pass decided it, or a person did.
+BY_PASS = "pass"
+BY_PERSON = "person"
+
 #: What a ``RULES_CHANGED`` event carries. The rows are whole records -
 #: every one that was added or changed, as ``tracker.records.rule_to_json``
 #: serialises it - rather than a patch, because a patch cannot be read
@@ -205,6 +247,29 @@ ASKED_KEY = "asked"
 HELD_KEY = "held"
 FILE_KEY = "file"
 FINGERPRINT_KEY = "fingerprint"
+#: What one decision is about to do to the disk, written before the first
+#: file operation (decision 119). **The intent is the decision.** The disk
+#: and the record are two things, and a run killed between them used to
+#: leave the disk ahead: a person's filing that had moved its copy and not
+#: yet recorded it was finished only by another person, and a copy that
+#: stopped half way was counted as the document. So the operations are
+#: written down first - what will move where and which bytes each step
+#: expects (:data:`OPS_KEY`), the row the decision will record
+#: (:data:`ROW_KEY`), the event that will complete it
+#: (:data:`EVENT_KEY_AFTER`) and who decided (:data:`DECIDED_BY_KEY`) -
+#: keyed by the row's own identity, and the next pass finishes from the
+#: record what the fingerprints say is still undone.
+#:
+#: **Not a row event**: it carries what a row *will* say, not what it
+#: says, so folding it as one would put a row in the index that no
+#: decision has been taken on yet. It folds into ``Folded.intents``
+#: instead, and the row event that names its key closes it.
+MOVING = "moving"
+#: An intent the record refused (decision 119). The rollback on a refused
+#: record puts the files back, and this says so, so the next pass does not
+#: finish forward a move the record would not take. ``KEY_KEY`` only: the
+#: intent it closes is named, and nothing else about it is a fact.
+MOVE_ABANDONED = "move_abandoned"
 #: A row seeded into the record from an earlier reading of the index: the
 #: bootstrap of decision 87 and the migration of decision 102 wrote these,
 #: and the suite's ``seed_index`` still does.
@@ -224,7 +289,7 @@ ROW_EVENTS = frozenset({
 })
 #: Every event name this version reads.
 EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, DRAFTED, MIGRATED, RULES_CHANGED,
-                                 RULES_IMPORTED})
+                                 RULES_IMPORTED, MOVING, MOVE_ABANDONED})
 #: The names this version reads and never writes: an older journal may
 #: carry them, a new line may not.
 RETIRED_EVENTS = frozenset({RULES_IMPORTED})
@@ -456,6 +521,13 @@ class Folded:
     #: Only the ones any edit has ever recorded: a field nothing has spoken
     #: for is the record's default, not a blank somebody typed.
     info: dict[str, object] = field(default_factory=dict)
+    #: The moves begun and not finished, by the row's identity: the whole
+    #: :data:`MOVING` line, so a reader has the operations, the row, the
+    #: event that completes it and the day it was written (decision 119).
+    #: One per key - a key is one row, and a row is one decision at a time -
+    #: and empty on a record where every decision that began has ended,
+    #: which is every record after an uninterrupted pass.
+    intents: dict[str, dict] = field(default_factory=dict)
 
 
 def apply(state: Folded, event: dict) -> Folded:
@@ -484,6 +556,8 @@ def apply(state: Folded, event: dict) -> Folded:
         return state
     if name in (RULES_CHANGED, RULES_IMPORTED):
         return _apply_rules_event(state, event)
+    if name in (MOVING, MOVE_ABANDONED):
+        return _apply_intent_event(state, event)
     if name not in ROW_EVENTS:
         return state
     key = event.get(KEY_KEY)
@@ -499,6 +573,33 @@ def apply(state: Folded, event: dict) -> Folded:
         else:
             state.rows.pop(was, None)
     state.rows[key] = event[ROW_KEY]
+    # The row event completes the intent this key was moving under: what it
+    # was about to do to the disk is what it has now recorded, so there is
+    # nothing left for a later pass to finish (decision 119). The identity
+    # a row left closes its intent too - the row is the same row, and it
+    # has been written.
+    state.intents.pop(key, None)
+    if was:
+        state.intents.pop(was, None)
+    return state
+
+
+def _apply_intent_event(state: Folded, event: dict) -> Folded:
+    """One move begun, or one abandoned (decision 119).
+
+    ``MOVING`` replaces whatever this key had open: a key is one row and a
+    row is one decision at a time, so the newest intent for it is the one
+    a recovery has to finish. ``MOVE_ABANDONED`` closes it - the record
+    refused the decision and the files went back, so the next pass must
+    not finish forward a move that was undone.
+    """
+    key = event.get(KEY_KEY)
+    if key is None:
+        raise LedgerError(f"a {event.get(EVENT_KEY)!r} event carries no {KEY_KEY!r}")
+    if event.get(EVENT_KEY) == MOVING:
+        state.intents[key] = event
+    else:
+        state.intents.pop(key, None)
     return state
 
 
