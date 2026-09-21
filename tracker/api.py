@@ -43,6 +43,7 @@ from tracker.filer import (
     assign_review_file,
     dismiss_review_file,
     ensure,
+    find_parked,
     read_index,
     unfile_document,
 )
@@ -92,6 +93,7 @@ from tracker.records import (
     EngagementInfo,
     IndexEntry,
     identifier_key,
+    ledger_key,
 )
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
 from tracker.rollover import (
@@ -209,6 +211,12 @@ FILED_HEADING = "Filed documents ({n})"
 #: headings, not decisions - a person may still pick anything on the list.
 SUGGESTED_HEADING = "Suggested"
 OTHER_REQUESTS_HEADING = "Other requests"
+#: What a review command says when it was sent without the row's sequence
+#: number (decision 112). The app is drawn from ``state``, which carries one
+#: for every row, so a spec without it is a caller acting on no view at all -
+#: and an action on no view is exactly what the freshness check exists to
+#: refuse. Not a label: the app shows it as it shows any other refusal.
+NO_SEQ = "The row's record version was not sent; reload the engagement and try again"
 #: Every word the request-list editor shows (decision 104): the button that
 #: opens it, its two titles, its buttons, the paste box's hint, the heading
 #: over the warnings, what the banner says after a save, and how a keyword a
@@ -535,12 +543,15 @@ def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
             for identifier, found in entry.evidence_record.items()}
 
 
-def _triage_payload(triaged: review.Triage) -> dict:
+def _triage_payload(triaged: review.Triage, seqs: dict[str, int]) -> dict:
     """One parked file's shortlist as JSON, in triage order.
 
     The row itself is already in ``state["index"]``; what travels here is
     the part only :mod:`tracker.review` knows, joined back to that row by
-    ``pbc_location`` - the same handle every review command takes.
+    ``pbc_location`` - the same handle every review command takes. The
+    row's sequence number travels here too, beside the row rather than in
+    it, so the card a person acts from carries the version of the record
+    it was drawn on (decision 112).
 
     ``reason`` ships **whole, with its leading identifier**, exactly as
     :class:`tracker.review.Suggestion` built it. One owner: review.py
@@ -552,6 +563,7 @@ def _triage_payload(triaged: review.Triage) -> dict:
     return {
         "original_name": triaged.entry.original_name,
         "pbc_location": triaged.entry.pbc_location,
+        "seq": seqs.get(ledger_key(triaged.entry)),
         "shortlist": [asdict(suggestion) for suggestion in triaged.shortlist],
         # The set-aside rows the evidence points at, named with their
         # year's label and never in the shortlist (decision 116).
@@ -577,6 +589,9 @@ def _state(engagement: Path) -> dict:
     conn = store.connect()
     rules = store.rules(conn, engagement) or []
     taught = store.learned_keywords(conn, engagement)      # keyed without case, as the store keys it
+    # Which journal line last wrote each index row: the freshness handle the
+    # card carries out and a person's action carries back (decision 112).
+    seqs = store.document_seqs(conn, engagement)
     view_path = engagement / VIEW_FILENAME
     return {
         # The derived page, and whether it still describes this engagement.
@@ -612,17 +627,21 @@ def _state(engagement: Path) -> dict:
         # and every working copy's name as a list - one name for nearly
         # every row, and one per request for a page decision 94 filed
         # under several, so the app shows each destination without
-        # knowing a separator or how to cut a path.
+        # knowing a separator or how to cut a path. The sequence number
+        # rides beside the row and never in it: it is the record's
+        # bookkeeping, not a fact about the document, so it reaches the
+        # app and nothing else (decision 112).
         "index": [asdict(e) | {"filed_as": e.filed_as, "filed_names": e.filed_names,
                                "candidates": e.candidate_list,
-                               "evidence": _evidence_payload(e)}
+                               "evidence": _evidence_payload(e),
+                               "seq": seqs.get(ledger_key(e))}
                   for e in entries],
         # The review queue, triaged: one entry per parked file, its
         # shortlist best-first with the sentence behind each suggestion.
         # There is no `review` command - the card draws from the one state
         # the app already reads - and the manifest and the index are handed
         # to triage() so each is read once for the whole screen.
-        "review": [_triage_payload(t)
+        "review": [_triage_payload(t, seqs)
                    for t in review.triage(engagement, entries, items=items)],
         # The reminder as the record and the rows now stand (decision 115):
         # the requests that hold it - a person decides those before any
@@ -957,15 +976,60 @@ def _cmd_rollover(argv: list[str]) -> dict:
     }
 
 
+def _seq_of(spec: dict) -> int:
+    """The row's record version the app sent, refused when it sent none.
+
+    Every review command is made from a card the app drew out of ``state``,
+    and every row there carries its own sequence number (decision 112). A
+    spec without one is a caller acting against no view of the record, so
+    it is refused here rather than passed to the filer, which treats
+    ``None`` as "nothing to be stale against" for the scripts and tests
+    that genuinely have no view.
+    """
+    seq = spec.get("seq")
+    if seq is None:
+        raise ManifestError(NO_SEQ)
+    return int(seq)
+
+
+def _shortlist_now(engagement: Path, original: str) -> list[str]:
+    """What the evidence points at for one parked row, this moment.
+
+    Computed here, outside the lock the filer takes, because the filer
+    does not import :mod:`tracker.review` - that would be a second
+    call-time cycle beside the one deliberate one - and this module is
+    above both and already draws the card the person picked from. The row
+    is found exactly as the filer will find it (:func:`filer.find_parked`),
+    so what is judged is the row that is filed.
+
+    If the row changes between this read and the filer's own under the
+    lock, the sequence number the person sent refuses the action and this
+    shortlist is never written. The one window left is a rules edit in
+    between - which bumps no row's sequence number - and it is
+    milliseconds inside one command.
+    """
+    entries = read_index(engagement)
+    entry = entries[find_parked(entries, original)]
+    return [s.identifier for s in review.shortlist_for(entry, load_manifest(engagement))]
+
+
 def _cmd_assign(argv: list[str]) -> dict:
     """File one parked document under a request, by a person's decision.
 
     JSON spec on stdin: {"original": "<PBC location or original name>",
-                         "identifier": "A01", "keyword": "optional"}
+                         "identifier": "A01", "keyword": "optional",
+                         "seq": <the row's record version, as shown>}
     The working copy is filed under the canonical name, the index row is
     rewritten as Filed (attributed to a person), the keyword - if given - is
     added to the request so the next such file routes itself, and the
     engagement is re-scanned so the status reflects it straight away.
+
+    The row is judged against the record it was picked from: ``seq`` is the
+    row's own sequence number as the card showed it, and a row rewritten
+    since is refused before a file is touched (decision 112). The shortlist
+    the evidence points at is computed here, from the same row the filer
+    will act on, and handed in, so a pick that overrules it is recorded on
+    the row in words.
 
     The filing and the re-scan each take the engagement lock on their own.
     A scheduled pass that slips in between only files and scans the same
@@ -978,8 +1042,10 @@ def _cmd_assign(argv: list[str]) -> dict:
     identifier = str(spec.get("identifier", "")).strip()
     if not original or not identifier:
         raise ManifestError("Pick the file and the request it belongs to")
+    seq = _seq_of(spec)
     result = assign_review_file(
-        engagement, original, identifier, keyword=str(spec.get("keyword", "") or "")
+        engagement, original, identifier, keyword=str(spec.get("keyword", "") or ""),
+        seq=seq, shortlist=_shortlist_now(engagement, original),
     )
     # The re-scan puts the request's status right straight away. There is
     # one reason left for it not to (decision 103): another run holds the
@@ -999,6 +1065,7 @@ def _cmd_assign(argv: list[str]) -> dict:
             "keyword": result.keyword,
             "keyword_note": result.keyword_note,
             "left_in_review": result.left_in_review,
+            "overrode_shortlist": result.overrode_shortlist,
             "scan_note": scan_note,
         },
         "state": _state(engagement),
@@ -1009,10 +1076,15 @@ def _cmd_dismiss(argv: list[str]) -> dict:
     """Record that no request asks for one parked document, by a person's decision.
 
     JSON spec on stdin: {"original": "<PBC location or original name>",
-                         "note": "optional"}
+                         "note": "optional",
+                         "seq": <the row's record version, as shown>}
     The index row is rewritten as Not Requested (attributed to a person) and
     nothing moves: the working copy stays where it is and the client's
     original is untouched. Filing it afterwards is how the decision is undone.
+
+    ``seq`` is the row as the person saw it and is required (decision 112):
+    a row somebody filed or dismissed while the card was open is refused
+    with what the record now says.
 
     There is no re-scan. The document was never filed under a request, so no
     row's status can change; re-scanning would take the lock again and read
@@ -1023,7 +1095,8 @@ def _cmd_dismiss(argv: list[str]) -> dict:
     original = str(spec.get("original", "")).strip()
     if not original:
         raise ManifestError("Pick the file no request asks for")
-    result = dismiss_review_file(engagement, original, str(spec.get("note", "") or ""))
+    result = dismiss_review_file(engagement, original, str(spec.get("note", "") or ""),
+                                 seq=_seq_of(spec))
     return {
         "dismissed": {
             "original_name": result.entry.original_name,
@@ -1039,20 +1112,26 @@ def _cmd_unfile(argv: list[str]) -> dict:
     """Send one filed document back to Needs Review, by a person's decision.
 
     JSON spec on stdin: {"original": "<PBC location or original name>",
-                         "note": "optional"}
+                         "note": "optional",
+                         "seq": <the row's record version, as shown>}
     The working copy goes back under the client's own name, the index row is
     rewritten Needs Review (attributed to a person, with what it said
     before), and the filer re-scans, so the request the document was
     answering reverts with a regression note in the same breath. The scan
     summary comes back in ``state`` - it is summarize() over the rows the
     re-scan has just left, and there is nowhere else it lives.
+
+    ``seq`` is the row as the person saw it and is required (decision 112):
+    a row somebody re-filed in between is a newer filing, and unfiling it
+    would undo a decision this person never saw.
     """
     engagement = _engagement_dir(argv)
     spec = json.loads(sys.stdin.read() or "{}")
     original = str(spec.get("original", "")).strip()
     if not original:
         raise ManifestError("Pick the document to send back for review")
-    result = unfile_document(engagement, original, str(spec.get("note", "") or ""))
+    result = unfile_document(engagement, original, str(spec.get("note", "") or ""),
+                             seq=_seq_of(spec))
     return {
         "unfiled": {
             "original_name": result.entry.original_name,

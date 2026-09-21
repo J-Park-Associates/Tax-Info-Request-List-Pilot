@@ -93,7 +93,13 @@ person types.
 - **File it**, on anything in Needs Review: pick the request (the picker
   starts on the router's own guess), optionally give a keyword, and the
   filer moves the copy under the canonical name, rewrites the index row as
-  assigned by a person, learns the keyword and re-scans. If a run has
+  assigned by a person, learns the keyword and re-scans. Picking a request
+  the suggestions did not point at is recorded on the row as your override,
+  with the shortlist it overruled — you may still file to any request, and
+  the record says when you filed against the evidence. If the row changed
+  after the card was drawn — somebody else filed it, set it aside or sent
+  it back — the app refuses, says what the record now holds and shows you
+  the row as it now is; nothing is moved and you look again. If a run has
   died, its lock is shown with its start time and can be cleared once it
   is older than `tracker.locking.STALE_LOCK_SECONDS`.
 - **Not requested**, on anything in Needs Review no row asks for: an agency
@@ -104,7 +110,9 @@ person types.
   not gone: the weekly draft stops warning about it, the same document sent
   again is a duplicate rather than a second thing to look at, and a person
   who was wrong files it from the folded-away list, which is the only undo
-  there is.
+  there is. As with **File it**, a row that changed after the card was drawn
+  is refused rather than overwritten, and the card is redrawn from the
+  record.
 - **Unfile**, on anything in the folded-away *Filed documents* list: the
   working copy goes back to `00 - Needs Review` under the client's own name,
   the index row is rewritten `tracker.filer.NEEDS_REVIEW` as unfiled by a
@@ -117,7 +125,9 @@ person types.
   said so, because the notes are work and which file the firm wants is not
   the tracker's to decide. The keyword the request learned when it was filed
   is not unlearned — it is a rule about documents, and the request still
-  wants it.
+  wants it. A document somebody re-filed since the list was drawn is a newer
+  filing, and unfiling it is refused with what the record now says rather
+  than undoing a decision you never saw.
 
 ## Collaboration
 

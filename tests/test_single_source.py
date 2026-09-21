@@ -855,3 +855,24 @@ def test_the_package_prose_names_constants_rather_than_their_values():
             assert token not in prose_text, (path.name, token)
         for value in values:
             assert value not in prose_text, (path.name, value)
+
+
+def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
+    """Decision 112: a person's action is judged against the record it was
+    made on, so every review command the app sends carries the row's own
+    sequence number as the card showed it. The API refuses a spec without
+    one, which would make a handler that forgot it a button that never
+    works - and this is the test that says so before anyone clicks it.
+    """
+    import tracker.api as api
+
+    js = read("app/renderer/app.js")
+    for command in ("assign", "dismiss", "unfile"):
+        sent = re.search(rf'call\(withEng\("{command}"\), \{{(.*?)\}}\)', js, re.S)
+        assert sent, command
+        assert "seq:" in sent.group(1), command
+        assert "li.dataset.seq" in sent.group(1), command
+    # Both row builders put it on the element the handlers read it back from.
+    assert js.count("seq: e.seq") == 2
+    # And the sentence a refusal shows is the API's, never the renderer's.
+    assert api.NO_SEQ not in js

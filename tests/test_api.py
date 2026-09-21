@@ -372,7 +372,7 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
 
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"original": parked[0]["pbc_location"], "identifier": "D01",
-                               "keyword": "mortgage notes"})
+                               "keyword": "mortgage notes", "seq": parked[0]["seq"]})
     assert code == 0, payload
     assigned = payload["assigned"]
     assert assigned["identifier"] == "D01" and assigned["moved_review_copy"] is True
@@ -431,7 +431,8 @@ def test_dismiss_records_that_nothing_asks_for_a_parked_document(capsys, demo_ro
     [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
 
     code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
-                        stdin={"original": parked["pbc_location"], "note": "an IRS notice"})
+                        stdin={"original": parked["pbc_location"], "note": "an IRS notice",
+                               "seq": parked["seq"]})
     assert code == 0, payload
     dismissed = payload["dismissed"]
     assert dismissed["decision"] == NOT_REQUESTED
@@ -457,7 +458,8 @@ def test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it(ca
     assert request["status"] == Status.RECEIVED
 
     code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
-                        stdin={"original": filed["pbc_location"], "note": "wrong request"})
+                        stdin={"original": filed["pbc_location"], "note": "wrong request",
+                               "seq": filed["seq"]})
     assert code == 0, payload
     unfiled = payload["unfiled"]
     assert unfiled["decision"] == NEEDS_REVIEW
@@ -477,7 +479,7 @@ def test_unfile_sends_a_filed_document_back_for_review_and_the_status_with_it(ca
 def test_unfile_refuses_what_is_not_filed(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
     code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
-                        stdin={"original": "ghost.pdf"})
+                        stdin={"original": "ghost.pdf", "seq": 1})
     assert code == 1
     assert "nothing in the index is called 'ghost.pdf'" in payload["error"]
     code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement), stdin={})
@@ -487,7 +489,7 @@ def test_unfile_refuses_what_is_not_filed(capsys, demo_root, tmp_path):
 def test_dismiss_refuses_a_file_the_index_does_not_know(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
     code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
-                        stdin={"original": "ghost.pdf"})
+                        stdin={"original": "ghost.pdf", "seq": 1})
     assert code == 1
     assert "nothing in the index is called 'ghost.pdf'" in payload["error"]
     code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement), stdin={})
@@ -497,7 +499,7 @@ def test_dismiss_refuses_a_file_the_index_does_not_know(capsys, demo_root, tmp_p
 # ------------------------------------------------- the review queue, triaged ----
 
 
-def triage_engagement(capsys, demo_root):
+def triage_engagement(capsys, demo_root, extra=()):
     """One engagement whose drop folder holds a document two requests want.
 
     Two rows, each with a plain required keyword, and one document that
@@ -505,6 +507,9 @@ def triage_engagement(capsys, demo_root):
     neither (it matches more than one request) and the row is parked
     carrying both keywords, where they were said, through the filer's own
     writers. Nothing here types an evidence string.
+
+    ``extra`` adds rows the document says nothing about, for the claim that
+    needs a request off the shortlist to file to.
     """
     from tests.test_scanner import text_pdf
 
@@ -513,6 +518,7 @@ def triage_engagement(capsys, demo_root):
          "required_keywords": "mortgage interest", "min_size_kb": 0, "date_pattern": "*"},
         {"identifier": "A02", "document": "Rental Property Statements", "period": "TY2025",
          "required_keywords": "rental income", "min_size_kb": 0, "date_pattern": "*"},
+        *extra,
     ]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     engagement = demo_root / "Reed Property 2025"
@@ -575,7 +581,8 @@ def test_dismissing_a_file_takes_it_out_of_the_review_queue(capsys, demo_root, t
     assert [t["pbc_location"] for t in payload["state"]["review"]] == [parked["pbc_location"]]
 
     code, payload = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
-                        stdin={"original": parked["pbc_location"], "note": "a holiday snap"})
+                        stdin={"original": parked["pbc_location"], "note": "a holiday snap",
+                               "seq": parked["seq"]})
     assert code == 0, payload
 
     # The row is still in the index, said out loud; it is not work any more.
@@ -591,7 +598,8 @@ def test_assigning_a_shortlisted_request_files_it_and_the_queue_drops_it(capsys,
     best = triaged["shortlist"][0]["identifier"]
 
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
-                        stdin={"original": triaged["pbc_location"], "identifier": best})
+                        stdin={"original": triaged["pbc_location"], "identifier": best,
+                               "seq": triaged["seq"]})
     assert code == 0, payload
 
     assert payload["assigned"]["identifier"] == best
@@ -732,7 +740,7 @@ def test_state_ships_each_rows_year_for_the_label(capsys, demo_root):
 def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_path):
     engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
-                        stdin={"original": "ghost.pdf", "identifier": "A01"})
+                        stdin={"original": "ghost.pdf", "identifier": "A01", "seq": 1})
     assert code == 1
     assert "nothing in the index is called 'ghost.pdf'" in payload["error"]
 
@@ -1007,8 +1015,10 @@ def test_the_editor_shows_the_persons_rows_and_never_a_taught_keyword_as_a_typed
     engagement = demo_root / "Smith"
     text_pdf(engagement / SHARED_DIR_NAME / "scan0012.pdf", "nothing the rules recognise")
     assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    [parked] = api._state(engagement)["index"]
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
-                        stdin={"original": "scan0012.pdf", "identifier": "A01", "keyword": "wage statement"})
+                        stdin={"original": "scan0012.pdf", "identifier": "A01",
+                               "keyword": "wage statement", "seq": parked["seq"]})
     assert code == 0, payload
 
     state = payload["state"]
@@ -1374,3 +1384,100 @@ def test_install_schedule_defaults_come_from_scheduling(capsys, demo_root, monke
     assert code == 0, payload
     assert payload["start"] == DEFAULT_START and payload["every"] == DEFAULT_REPEAT_MINUTES
     assert payload["draft_day"] == WEEKDAY_NAMES[DRAFT_WEEKDAY]
+
+
+# ----------- a person's action is judged against the record (d112) ----
+
+
+def test_the_state_ships_each_rows_seq_on_the_index_and_on_the_review_list(
+    capsys, demo_root, tmp_path,
+):
+    """The handle the card carries out. It rides beside the row and never in
+    it: the index row itself is unchanged, and what is added is the record's
+    own bookkeeping - the journal line that last wrote that row."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path,
+                                   "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    state = payload["state"]
+
+    held = store.document_seqs(store.connect(), engagement)
+    assert held, "the rows this pass wrote"
+    assert {e["pbc_location"]: e["seq"] for e in state["index"]} == held
+    assert {t["pbc_location"]: t["seq"] for t in state["review"]} == {
+        e["pbc_location"]: held[e["pbc_location"]]
+        for e in state["index"] if e["decision"] == NEEDS_REVIEW
+    }
+
+
+def test_a_review_command_with_no_seq_is_refused_and_a_stale_one_names_the_newer_decision(
+    capsys, demo_root, tmp_path,
+):
+    """The app is drawn from ``state``, so it always has one; a spec without
+    it is a caller with no view and is refused rather than acted on. And the
+    card a person was called away from is refused with what the record now
+    says, in the filer's own sentence."""
+    from tracker.filer import NOT_REQUESTED, STALE_ROW
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "identifier": "D01"})
+    assert code == 1 and payload["error"] == api.NO_SEQ
+
+    # Somebody else sets the row aside while this card is open. It is still
+    # parked, so the by-name refusal has nothing to say about it.
+    code, after = run(capsys, "dismiss", api.ENGAGEMENT_FLAG, str(engagement),
+                      stdin={"original": parked["pbc_location"], "note": "an IRS notice",
+                             "seq": parked["seq"]})
+    assert code == 0, after
+    [now] = [e for e in after["state"]["index"] if e["decision"] == NOT_REQUESTED]
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "identifier": "D01",
+                               "seq": parked["seq"]})
+    assert code == 1
+    assert payload["error"] == STALE_ROW.format(
+        name=now["original_name"], decision=now["decision"], reason=now["reason"])
+
+
+def test_assign_records_the_override_against_the_shortlist_the_api_computed(capsys, demo_root):
+    """Decision 84 lets a person file to any row on the engagement; the
+    record now says when they filed against the evidence, and the shortlist
+    it says they overruled is the one this command computed from the row the
+    filer then acted on."""
+    from tracker.filer import OVERRODE_SHORTLIST
+
+    engagement = triage_engagement(capsys, demo_root, extra=[
+        {"identifier": "A03", "document": "Prior Year Return", "period": "TY2025",
+         "required_keywords": "prior year return", "min_size_kb": 0, "date_pattern": "*"},
+    ])
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [triaged] = payload["state"]["review"]
+    suggested = [s["identifier"] for s in triaged["shortlist"]]
+    assert suggested == ["A02", "A01"], "the document says nothing about A03"
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": triaged["pbc_location"], "identifier": "A03",
+                               "seq": triaged["seq"]})
+    assert code == 0, payload
+    said = OVERRODE_SHORTLIST.format(listed=", ".join(suggested))
+    assert payload["assigned"]["overrode_shortlist"] == said
+    [row] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    assert said in row["reason"] and row["identifier"] == "A03"
+
+    # The same document filed to the first of its suggestions instead:
+    # nothing was overruled, so nothing is said.
+    code, back = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
+                     stdin={"original": row["pbc_location"], "seq": row["seq"]})
+    assert code == 0, back
+    [again] = back["state"]["review"]
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": again["pbc_location"], "identifier": suggested[0],
+                               "seq": again["seq"]})
+    assert code == 0, payload
+    assert payload["assigned"]["overrode_shortlist"] == ""

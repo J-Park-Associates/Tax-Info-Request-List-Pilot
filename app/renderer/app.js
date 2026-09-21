@@ -216,7 +216,9 @@ function reviewRow(e, choices, ids, open, triage) {
   // own first candidate, which is what it started on before there was one.
   const guess = suggested[0] || (e.candidates || [])[0] || "";
   const picked = guess && ids.has(guess) ? guess : "";
-  return el("li", { dataset: { original: e.pbc_location } },
+  // The row's record version travels with the card and comes back with the
+  // click, so the filer judges the decision against the row it was made on.
+  return el("li", { dataset: { original: e.pbc_location, seq: e.seq } },
     el("span", { className: "r-name" }, e.original_name),
     el("span", { className: "r-why" }, e.reason),
     el("select", { "aria-label": `Request for ${e.original_name}` },
@@ -269,6 +271,7 @@ async function assignParked(li) {
       original: li.dataset.original,
       identifier,
       keyword: typed(li, ".r-keyword"),
+      seq: Number(li.dataset.seq),
     });
     render(result.state);
     const a = result.assigned;
@@ -276,12 +279,24 @@ async function assignParked(li) {
     if (a.keyword) notes.push(`"${a.keyword}" added to ${a.identifier} so the next one files itself`);
     if (a.keyword_note) notes.push(a.keyword_note);
     if (a.left_in_review) notes.push(a.left_in_review);
+    // What the record now says about a pick the evidence did not point at:
+    // the API's sentence, shown as it stands.
+    if (a.overrode_shortlist) notes.push(a.overrode_shortlist);
     if (a.scan_note) notes.push(a.scan_note);
-    banner(notes.join(". ") + ".", a.keyword_note || a.left_in_review || a.scan_note ? "warn" : "ok");
+    banner(notes.join(". ") + ".",
+      a.keyword_note || a.left_in_review || a.overrode_shortlist || a.scan_note ? "warn" : "ok");
   } catch (err) {
-    toast(err.message);
-    btn.disabled = false;
+    await refused(err, btn);
   }
+}
+
+// A refusal a person has to look at again: the sentence is the API's, and
+// the card is redrawn from the record so what they see next is what the
+// record now holds rather than the row they acted on.
+async function refused(err, btn) {
+  toast(err.message);
+  btn.disabled = false;
+  await refresh();
 }
 
 // ── The way back, so nobody corrects a filing in Explorer ────────────────
@@ -297,7 +312,7 @@ function renderUnfileList(state) {
   $("filed-card").classList.toggle("hidden", filed.length === 0);
   $("filed-heading").textContent = fill(vocab.review_labels.filed_heading, { n: filed.length });
   show("filed-list", filed.map((e) =>
-    el("li", { dataset: { original: e.pbc_location } },
+    el("li", { dataset: { original: e.pbc_location, seq: e.seq } },
       el("span", { className: "r-name" }, e.original_name),
       el("span", { className: "r-why" }, `${e.identifier} — ${e.filed_names.join(", ")}`),
       el("input", {
@@ -317,14 +332,14 @@ async function dismissParked(li) {
     const result = await call(withEng("dismiss"), {
       original: li.dataset.original,
       note: typed(li, ".r-note"),
+      seq: Number(li.dataset.seq),
     });
     render(result.state);
     const d = result.dismissed;
     const notes = [`${d.original_name}: ${d.decision}`, d.reason];
     banner(notes.join(". ") + ".", "ok");
   } catch (err) {
-    toast(err.message);
-    btn.disabled = false;
+    await refused(err, btn);
   }
 }
 
@@ -338,6 +353,7 @@ async function unfileDocument(li) {
     const result = await call(withEng("unfile"), {
       original: li.dataset.original,
       note: typed(li, ".r-note"),
+      seq: Number(li.dataset.seq),
     });
     render(result.state);
     const u = result.unfiled;
@@ -346,8 +362,7 @@ async function unfileDocument(li) {
     if (u.scan_note) notes.push(u.scan_note);
     banner(notes.join(". ") + ".", u.left_filed || u.scan_note ? "warn" : "ok");
   } catch (err) {
-    toast(err.message);
-    btn.disabled = false;
+    await refused(err, btn);
   }
 }
 

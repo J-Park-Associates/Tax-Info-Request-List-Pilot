@@ -930,3 +930,47 @@ def test_a_pass_run_on_one_clients_folder_keys_under_the_recorded_root(recorded_
     assert store.check(conn, recorded_root, engagement) == []             # the recorded one
     assert [e.original_name for e in read_index(engagement)] == ["w2.pdf"]
     assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 1
+
+
+# ------------------------------------------------ the freshness handle (d112) ----
+
+
+def test_document_seqs_names_the_line_that_last_wrote_each_row_and_agrees_after_a_rebuild(
+        conn, root, engagement):
+    """The handle a person's action is judged against (decision 112).
+
+    Per row, and only the row: a scan between two readings appends a line
+    and moves the engagement's head, and no row's number with it - which
+    is why a click made during a pass is not refused. A rebuild numbers
+    the same lines the same way, so the mapping survives the recovery.
+    """
+    from tracker.records import ledger_key
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    [parked] = file_drops(engagement, today=DAY1).review
+    key = ledger_key(parked)
+    written = store.document_seqs(conn, engagement)
+    assert list(written) == [key]
+    assert written[key] == len(ledger.read_events(engagement))
+
+    # A scan is a line of its own and rewrites no row.
+    seed_statuses(engagement, {"A01": StatusUpdate(status=Status.MISSING)})
+    head = len(ledger.read_events(engagement))
+    assert head > written[key]
+    assert store.document_seqs(conn, engagement) == written
+
+    # The row rewritten: its number is the line that rewrote it, and the head.
+    from tracker.filer import dismiss_review_file
+
+    dismiss_review_file(engagement, parked.pbc_location, today=DAY2)
+    rewritten = store.document_seqs(conn, engagement)
+    assert rewritten[key] > written[key]
+    assert rewritten[key] == len(ledger.read_events(engagement))
+
+    # The recovery agrees with the reader, line for line.
+    build(conn, root, engagement)
+    assert store.document_seqs(conn, engagement) == rewritten
+
+    # And an engagement the store does not hold has no rows to be stale.
+    store.forget(conn, engagement)
+    assert store.document_seqs(conn, engagement) == {}
