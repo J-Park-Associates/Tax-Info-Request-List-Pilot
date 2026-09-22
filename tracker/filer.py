@@ -159,6 +159,9 @@ from tracker import ledger, reasons, store
 from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
 from tracker.fsio import TEMP_SUFFIX
 from tracker.layout import (
+    MAX_PATH_LENGTH,
+    PATH_TOO_LONG,
+    deepest_path_length,
     household_name_of,
     inbox_of,
     locate,
@@ -171,6 +174,9 @@ from tracker.layout import (
 )
 from tracker.locking import engagement_lock, lock_is_held
 from tracker.manifest import (
+    ANY_EXTENSION,
+    DEFAULT_EXTENSIONS,
+    ManifestError,
     Override,
     RequestItem,
     label_for,
@@ -380,6 +386,41 @@ def prepared_name_for(item: RequestItem, extension: str, taken: set[str]) -> str
 def prepared_location(folder: Path, name: str) -> str:
     """Where a working copy is, relative to the engagement: ``PREPARED_DIR_NAME/<folder>/<name>``."""
     return f"{PREPARED_DIR_NAME}/{folder.name}/{name}"
+
+
+def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestItem]) -> None:
+    """Refuse a return whose deepest working copy would not fit in a path
+    Windows will open.
+
+    The deepest thing the tracker ever writes under a return is a working
+    copy this module writes: ``PREPARED_DIR_NAME/<request folder>/<canonical
+    name>``, over every active row of the list the call is about to record
+    and the longest extension each row allows. The client's own file names
+    are not measured - they are the client's, and :func:`unreachable_drops`
+    already says a name the index cannot hold - and neither are the ``..``
+    locations that cross the trees, because Windows normalises them away
+    before the limit applies and :func:`tracker.layout.locate` normalises
+    them first too.
+
+    Decision 125 put this refusal on creation; decision 126 gave the
+    household rollover the same one, and it lives here rather than in
+    ``tracker.api`` because a rollover at layer 3 cannot reach the API at
+    layer 5 - and because the file it measures is the one this module
+    writes.
+    """
+    subpaths = []
+    for item in items:
+        if getattr(item, "manual_override", "") == Override.NOT_APPLICABLE:
+            continue
+        extensions = [e for e in (item.allowed_extensions or DEFAULT_EXTENSIONS)
+                      if e and e != ANY_EXTENSION] or list(DEFAULT_EXTENSIONS)
+        longest = max(extensions, key=len)
+        name = prepared_name_for(item, longest, set())
+        subpaths.append(f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/{name}")
+    length = deepest_path_length(engagement_dir, subpaths)
+    if length > MAX_PATH_LENGTH:
+        raise ManifestError(PATH_TOO_LONG.format(
+            folder=engagement_dir, length=length, limit=MAX_PATH_LENGTH))
 
 
 def request_folder(item: RequestItem, assigned: dict[str, list[Path]], prepared_dir: Path) -> Path:

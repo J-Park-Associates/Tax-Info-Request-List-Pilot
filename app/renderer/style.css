@@ -886,6 +886,28 @@ body {
 .household-facts dt { color: var(--subtle); }
 .household-facts dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
 .household-returns { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+
+/* ── The sharing checklist (decision 126) ────────────────────────────── */
+/* The two grants a person makes in Drive, once, and the firm's dated word
+   that they were made. No colour of its own: the tracker cannot see
+   Drive's sharing, so nothing here is a status and nothing is chipped. */
+
+.household-checklist { margin: 4px 0 10px; }
+.household-checklist ol {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.household-checklist ol li { margin: 2px 0; overflow-wrap: anywhere; }
+
+/* One return on the rollover's checklist: the tick and its label on one
+   line, its form template and its offers box under them. */
+.roll-return { display: block; padding: 10px 12px; cursor: default; }
+.prior-head { display: flex; align-items: baseline; gap: 10px; cursor: pointer; }
+.roll-return .roll-form { display: block; margin: 8px 0 6px; }
+.roll-return .roll-form span { font-size: 12px; color: var(--subtle); }
+.roll-return input[type="checkbox"] { cursor: pointer; accent-color: var(--blue); }
 #misfits-card { margin: 0 0 14px; }
 #misfits-card #misfits-note { padding: 0; }
 #misfits-list .r-name { color: var(--subtle); overflow-wrap: anywhere; }

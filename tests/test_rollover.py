@@ -14,6 +14,7 @@ from tracker import ledger
 from tracker.layout import inbox_of, root_of
 from tracker.manifest import (
     EngagementInfo,
+    ManifestError,
     Override,
     RequestItem,
     Status,
@@ -847,3 +848,220 @@ def test_rollover_refills_the_greeting_and_the_link_from_the_household_where_bla
     kept = load_engagement_info(return_dir_for(demo_root, "Park Family", 2027,
                                                "1120S - Park Landscaping"))
     assert kept.client == "Park Landscaping LLC"
+
+
+# ------------------------------- the household rolls as a household (d126) ----
+
+
+PARK = "Park Family"
+#: Three short rows: the whole household-year has to fit inside what
+#: Windows will open, and the rollover measures it before it writes.
+W2 = [RequestItem(identifier="A01", document="W-2 Wage Statements", period="TY2026",
+                  allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("w-2",))]
+TB = [RequestItem(identifier="B01", document="Trial Balance", period="TY2026",
+                  allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("trial balance",))]
+
+
+@pytest.fixture
+def park(short_root, tmp_path, monkeypatch):
+    """One household with three returns in one open year, 2026.
+
+    The clients root is recorded the way the app records it, because the
+    store keys a return by its path *below* that root: with no root
+    written down it keys by the folder's parent, and this year's return
+    and next year's would be one row. Short, because the deepest working
+    copy of the whole household has to fit in a path Windows will open.
+    """
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    set_clients_root(short_root)
+    john = make_engagement(short_root, W2, household=PARK, year=2026,
+                           return_name="1040 - John Park",
+                           members=("John Park", "Maria Park"), contact="John & Maria",
+                           link="https://drive.example/park")
+    sofia = make_engagement(short_root, W2, household=PARK, year=2026,
+                            return_name="1040 - Sofia Park")
+    llc = make_engagement(short_root, TB, household=PARK, year=2026,
+                          return_name="1120S - Park Landscaping LLC")
+    return short_root, john, sofia, llc
+
+
+def _household(root):
+    from tracker.layout import private_household_dir
+
+    return private_household_dir(root, PARK)
+
+
+def test_the_household_rollover_rolls_every_ticked_return_into_one_new_year_under_its_own_lock(park):
+    """Roll Forward is the household's, not one return's (decision 126):
+    every ticked return goes into the one new year, each under its own
+    lock and by the same carry rule, the year's folders are made once, and
+    the client's inbox README lists the new year's lists the day it is
+    done."""
+    from tracker.layout import originals_of, return_dir_for
+    from tracker.locking import lock_status
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import ReturnPlan, roll_household
+    from tracker.scaffold import README_NAME
+
+    root, john, sofia, llc = park
+    before = {one: len(ledger.read_events(one)) for one in (john, sofia, llc)}
+
+    done = roll_household(_household(root), target_year=2027,
+                          plans=[ReturnPlan(prior=one) for one in (john, sofia, llc)])
+
+    assert [was.name for was, _, _ in done.rolled] == [
+        "1040 - John Park", "1040 - Sofia Park", "1120S - Park Landscaping LLC"]
+    assert done.skipped == [] and done.retired == []
+    for was, created, _ in done.rolled:
+        assert created == return_dir_for(root, PARK, 2027, was.name)
+        info = load_engagement_info(created)
+        assert (info.household, info.tax_year, info.return_name) == (PARK, 2027, was.name)
+        # The greeting and the inbox link are the household's: the inbox
+        # does not change from one year to the next.
+        assert info.client == "John & Maria"
+        assert info.link == "https://drive.example/park"
+        assert info.rolled_from == str(was)
+        # Its own record, one event: one lock and one transaction per
+        # return, exactly as a create is.
+        assert len(ledger.read_events(created)) == 1
+        assert lock_status(created) is None
+        # And nothing was written to the prior: it is read-only history,
+        # retired by its successor's Rolled From.
+        assert len(ledger.read_events(was)) == before[was]
+
+    # The year's folders are made once, by the first scaffold; the rest
+    # find them.
+    assert originals_of(return_dir_for(root, PARK, 2027, "1040 - John Park")).is_dir()
+    readme = (inbox_of(john) / README_NAME).read_text(encoding="utf-8")
+    for name in ("1040 - John Park", "1040 - Sofia Park", "1120S - Park Landscaping LLC"):
+        assert name in readme
+    assert "2027" in readme
+
+
+def test_a_return_left_out_of_the_household_rollover_is_retired_and_the_household_has_one_open_year(park):
+    """A return nobody ticks is not merely skipped: it is set inactive by
+    one details edit, so the household has exactly one open year again and
+    its inbox goes on being sorted."""
+    from tracker.households import open_years
+    from tracker.manifest import load_engagement_info
+    from tracker.registry import discover_engagements
+    from tracker.rollover import ReturnPlan, roll_household
+    from tracker.runner import TWO_OPEN_YEARS, run_household
+
+    root, john, sofia, llc = park
+    was = len(ledger.read_events(sofia))
+
+    done = roll_household(_household(root), target_year=2027,
+                          plans=[ReturnPlan(prior=john), ReturnPlan(prior=llc)])
+
+    assert done.retired == [sofia]
+    assert load_engagement_info(sofia).active is False
+    # One event, carrying the one field that moved and no row at all.
+    events = ledger.read_events(sofia)
+    assert len(events) == was + 1
+    assert events[-1][ledger.EVENT_KEY] == ledger.RULES_CHANGED
+    assert events[-1][ledger.INFO_KEY] == {"active": False}
+    assert not events[-1].get(ledger.RULES_KEY)
+
+    registry = discover_engagements(root)
+    returns = registry.by_household()[_household(root)]
+    assert open_years(returns) == [2027]
+    # And the next pass sorts: nothing warns about two open years.
+    runs = run_household(_household(root), returns, root=root)
+    said = TWO_OPEN_YEARS.split("(")[0]
+    assert [w for run in runs for w in run.warnings if said in w] == []
+
+
+def test_a_household_with_two_open_years_refuses_to_roll_until_one_is_retired(park):
+    """There is no one year to roll: a person retires a year in the editor
+    first, exactly as the pass refuses to sort on two."""
+    from tracker.rollover import ROLLOVER_TWO_OPEN_YEARS, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    make_engagement(root, W2, household=PARK, year=2027, return_name="1040 - Next Year",
+                    scaffold=False)
+
+    with pytest.raises(ManifestError, match="two open years"):
+        roll_household(_household(root), target_year=2028, plans=[ReturnPlan(prior=john)])
+    assert ROLLOVER_TWO_OPEN_YEARS.format(years="2026, 2027").endswith(
+        "retire one in the editor before rolling forward")
+
+
+def test_one_returns_refusal_does_not_undo_the_others_and_is_said(park):
+    """Each return is its own decision on its own record: the second plan
+    targets a folder that already exists, and the first and the third are
+    rolled all the same."""
+    from tracker.layout import return_dir_for
+    from tracker.rollover import ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    return_dir_for(root, PARK, 2027, "1040 - Sofia Park").mkdir(parents=True)
+
+    done = roll_household(_household(root), target_year=2027,
+                          plans=[ReturnPlan(prior=one) for one in (john, sofia, llc)])
+
+    assert [was.name for was, _, _ in done.rolled] == [
+        "1040 - John Park", "1120S - Park Landscaping LLC"]
+    [(refused, why)] = done.skipped
+    assert refused == sofia and "already exists" in why
+    assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
+    assert return_dir_for(root, PARK, 2027, "1120S - Park Landscaping LLC").is_dir()
+    # A refusal retires nothing either: every plan was ticked.
+    assert done.retired == []
+
+
+def test_the_household_rollover_makes_no_change_under_the_client_tree_but_the_new_year_folder(park):
+    """No permission is changed and no client file is touched: what a roll
+    adds on the client side is one folder for the new year, under the same
+    grant the household was shared with once."""
+    from tracker.layout import CLIENTS_TREE, client_household_dir, originals_dir_for
+    from tracker.rollover import ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    tree = root / CLIENTS_TREE
+    before = set(tree.rglob("*"))
+
+    roll_household(_household(root), target_year=2027,
+                   plans=[ReturnPlan(prior=one) for one in (john, sofia, llc)])
+
+    after = set(tree.rglob("*"))
+    assert after - before == {originals_dir_for(root, PARK, 2027)}
+    assert before - after == set()
+    assert client_household_dir(root, PARK).is_dir()
+
+
+def test_the_command_line_rolls_a_household_and_prints_rolled_not_rolled_and_retired(
+    park, monkeypatch,
+):
+    """One command line, two forms (decision 126): a household's folder
+    rolls the household's year, told apart from a return by what the path
+    holds. It prints what rolled, what refused with its sentence, and what
+    it retired."""
+    import io
+
+    from tracker.layout import return_dir_for
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import NOT_ROLLED_HEADING, RETIRED_HEADING, ROLLED_HEADING
+
+    root, john, sofia, llc = park
+    return_dir_for(root, PARK, 2027, "1120S - Park Landscaping LLC").mkdir(parents=True)
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [
+        str(_household(root)), "--year", "2027",
+        "--only", "1040 - John Park", "--only", "1120S - Park Landscaping LLC",
+    ], console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+
+    assert code == 0, shown
+    assert shown.index(ROLLED_HEADING) < shown.index(NOT_ROLLED_HEADING)
+    assert shown.index(NOT_ROLLED_HEADING) < shown.index(RETIRED_HEADING.format(year=2027))
+    assert "1040 - John Park" in shown and "already exists" in shown
+    assert return_dir_for(root, PARK, 2027, "1040 - John Park").is_dir()
+    # Sofia was not named, so she is retired for the year and told so.
+    assert load_engagement_info(sofia).active is False
+    assert "it was not rolled into 2027" in shown

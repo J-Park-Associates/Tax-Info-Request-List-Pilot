@@ -2631,3 +2631,155 @@ def test_the_scan_command_runs_the_household_pass_and_answers_for_the_return_it_
     assert [row["original_name"] for row in payload["state"]["index"]] == ["tb.pdf"]
     assert [row.original_name for row in read_index(personal)] == [name]
     assert not any(p.suffix == ".pdf" for p in inbox_of(personal).iterdir())
+
+
+# ---------------- one inbox, the household rollover, the sharing (d126) ----
+
+
+def a_park_household(capsys, root):
+    """Park Family with its three returns for the calendar's default year,
+    made through ``create`` exactly as the wizard makes them."""
+    from tracker.layout import private_household_dir
+
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "contact": "John & Maria",
+        "link": "https://drive.example/park", "return_name": "1040 - John Park",
+        "items": [{"identifier": "A01", "document": "W-2 Wage Statements",
+                   "min_size_kb": 0, "any_keywords": "w-2"}]})[0] == 0
+    here = str(private_household_dir(root, "Park Family"))
+    for name, row in (("1040 - Sofia Park", "W-2 Wage Statements"),
+                      ("1120S - Park Landscaping LLC", "Trial Balance")):
+        assert run(capsys, "create", stdin={
+            "household_path": here, "return_name": name,
+            "items": [{"identifier": "A01", "document": row, "min_size_kb": 0,
+                       "any_keywords": "w-2"}]})[0] == 0
+    return [where(root, name, household="Park Family") for name in
+            ("1040 - John Park", "1040 - Sofia Park", "1120S - Park Landscaping LLC")]
+
+
+def test_roll_household_returns_the_rolled_the_skipped_and_the_retired_and_the_state_of_the_first_new_return(
+    capsys, demo_root,
+):
+    """One call rolls the household's year: the returns it was given, the
+    ones that refused with their sentences, the ones it retired - and the
+    state of the first return it made, which is where the app lands."""
+    from tracker.manifest import load_engagement_info
+
+    john, sofia, llc = a_park_household(capsys, demo_root)
+    year = default_tax_year() + 1
+    # The middle plan's target is already there, so it refuses and the
+    # others are rolled all the same.
+    where(demo_root, "1040 - Sofia Park", year=year, household="Park Family").mkdir(parents=True)
+
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(llc), stdin={
+        "year": year,
+        "returns": [{"prior": str(john)}, {"prior": str(sofia)}],
+    })
+    assert code == 0, payload
+
+    assert [one["prior"] for one in payload["rolled"]] == ["1040 - John Park"]
+    assert payload["rolled"][0]["label"] == f"Park Family {year} 1040 - John Park"
+    assert payload["rolled"][0]["created"] == str(
+        where(demo_root, "1040 - John Park", year=year, household="Park Family"))
+    assert payload["rolled"][0]["carried"][0]["identifier"] == "A01"
+    [refused] = payload["skipped"]
+    assert refused["prior"] == "1040 - Sofia Park" and "already exists" in refused["reason"]
+    # The one return nobody ticked is retired, by its label.
+    assert payload["retired"] == [f"Park Family {default_tax_year()} 1120S - Park Landscaping LLC"]
+    assert load_engagement_info(llc).active is False
+    # The state is the first return this call made.
+    assert payload["state"]["paths"]["engagement"] == payload["rolled"][0]["created"]
+    assert payload["target_year"] == year
+
+
+def test_creating_a_households_first_return_hands_back_the_sharing_checklist_and_a_later_return_does_not(
+    capsys, demo_root,
+):
+    """The two grants are made once, when the household is made (decision
+    126). A second return added to it gets no checklist: its inbox was
+    shared when the household was, and nothing is ever re-shared."""
+    from tracker.layout import client_household_dir, inbox_dir_for, private_household_dir
+
+    code, first = run(capsys, "create", stdin={
+        "household": "Park Family", "return_name": "1040 - John Park",
+        "items": [{"identifier": "A01", "document": "W-2", "min_size_kb": 0,
+                   "any_keywords": "w-2"}]})
+    assert code == 0, first
+    checklist = first["checklist"]
+    assert checklist["heading"] == api.SHARING_HEADING
+    assert checklist["note"] == api.SHARING_NOTE
+    assert str(client_household_dir(demo_root, "Park Family")) in checklist["lines"][0]
+    assert "Viewer" in checklist["lines"][0]
+    assert str(inbox_dir_for(demo_root, "Park Family")) in checklist["lines"][1]
+    assert "Contributor" in checklist["lines"][1]
+    assert api.MARK_SHARED_LABEL in checklist["lines"][2]
+
+    code, second = run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Park Family")),
+        "return_name": "1040 - Sofia Park",
+        "items": [{"identifier": "A01", "document": "W-2", "min_size_kb": 0,
+                   "any_keywords": "w-2"}]})
+    assert code == 0, second
+    assert "checklist" not in second
+
+
+def test_mark_shared_refuses_without_a_link_records_one_event_and_the_state_says_the_day(
+    capsys, demo_root,
+):
+    """The firm's word, dated, and nothing else: one event carrying only
+    its stamp, folded by nothing. The link is the one part of the
+    checklist the tracker can see was done, so it insists on that one."""
+    from tracker.households import shared_on
+    from tracker.layout import private_household_dir
+
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "return_name": "1040 - John Park",
+        "items": [{"identifier": "A01", "document": "W-2", "min_size_kb": 0,
+                   "any_keywords": "w-2"}]})[0] == 0
+    john = where(demo_root, "1040 - John Park", household="Park Family")
+    household = private_household_dir(demo_root, "Park Family")
+
+    code, payload = run(capsys, "mark-shared", api.ENGAGEMENT_FLAG, str(john))
+    assert code == 1 and payload["error"] == api.SHARE_LINK_FIRST
+    assert shared_on(household) is None
+
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(john),
+               stdin={"link": "https://drive.example/park"})[0] == 0
+    before = len(ledger.read_events(household))
+    code, payload = run(capsys, "mark-shared", api.ENGAGEMENT_FLAG, str(john))
+    assert code == 0, payload
+
+    today = dt.date.today().isoformat()
+    assert payload["shared_on"] == today
+    assert payload["state"]["household"]["shared_on"] == today
+    # The checklist stops being offered once the word is given.
+    assert payload["state"]["household"]["checklist"] is None
+    events = ledger.read_events(household)
+    assert len(events) == before + 1
+    assert events[-1][ledger.EVENT_KEY] == ledger.SHARING_CONFIRMED
+    assert set(events[-1]) == {ledger.EVENT_KEY, ledger.AT_KEY}
+    # Folded by nothing: the household reads back exactly as it did.
+    assert ledger.replay(events).household == ledger.replay(events[:-1]).household
+
+
+def test_the_sharing_words_are_the_apis_and_the_renderer_types_none(capsys, demo_root):
+    """Every word of the checklist, the two lines about the firm's word and
+    the sentence about a return left unticked is Python's; the page shows
+    what it is handed and types none of it (decision 126)."""
+    from tests.test_single_source import read
+
+    words = api._vocab()["household"]
+    assert words["sharing_heading"] == api.SHARING_HEADING
+    assert words["sharing_note"] == api.SHARING_NOTE
+    assert words["mark_shared"] == api.MARK_SHARED_LABEL
+    assert words["shared_on_line"] == api.SHARED_ON_LINE
+    assert words["not_yet_shared_line"] == api.NOT_YET_SHARED_LINE
+    assert words["rollover_unticked"] == api.ROLLOVER_UNTICKED_NOTE
+
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    for literal in (*api.SHARING_CHECKLIST, api.SHARING_HEADING, api.SHARING_NOTE,
+                    api.MARK_SHARED_LABEL, api.SHARED_ON_LINE, api.NOT_YET_SHARED_LINE,
+                    api.SHARE_LINK_FIRST, api.ROLLOVER_UNTICKED_NOTE):
+        assert literal not in js, literal
+        assert literal not in html, literal

@@ -135,11 +135,21 @@
             <dt id="household-link-label"></dt><dd id="household-link"></dd>
           </dl>
           <p id="household-two-years" class="rem-hold hidden" role="status"></p>
+          <!-- The firm's own word that the two grants were made, and the
+               checklist until it is given (decision 126). The tracker
+               cannot see Drive's sharing; every word here is the API's. -->
+          <p id="household-shared" class="wiz-note"></p>
+          <div id="household-checklist" class="household-checklist hidden">
+            <div id="household-checklist-heading" class="tmpl-head"></div>
+            <ol id="household-checklist-lines"></ol>
+            <p id="household-checklist-note" class="wiz-note"></p>
+          </div>
           <div id="household-returns-head" class="tmpl-head"></div>
           <div id="household-returns" class="household-returns"></div>
           <p id="household-queue" class="wiz-note"></p>
           <div class="editor-actions">
             <button type="button" id="btn-edit-household" class="btn btn-small"></button>
+            <button type="button" id="btn-mark-shared" class="btn btn-small"></button>
           </div>
         </div>
       </section>
@@ -331,43 +341,30 @@
         </div>
       </div>
 
-      <!-- Step 1 (default): returning client — roll last year forward -->
+      <!-- Step 1 (default): returning client — roll the household's year
+           forward (decision 126). A household is what a client sees, so
+           Roll Forward rolls every ticked return of its open year at once
+           and retires the ones left unticked; the sentence saying so is
+           the API's. -->
       <div id="wiz-prior">
         <h3 id="modal-title">New Engagement — returning client</h3>
         <p class="wiz-sub">Last year's list is the starting point. Everything the client actually sent, set aside or under-delivered carries forward - what was set aside as not applicable under its own heading, for a fresh decision; the form template only fills blanks.</p>
 
-        <div class="tmpl-head">Roll forward from</div>
-        <div id="prior-list" class="tmpl-list" role="radiogroup" aria-label="Prior engagement"></div>
-        <p id="prior-empty" class="wiz-note hidden">No prior engagement on file yet — start this client from a form template below.</p>
-
         <div class="roll-grid">
+          <label class="field" id="ro-household-field">
+            <span id="ro-household-label"></span>
+            <select id="ro-household"></select>
+          </label>
           <label class="field">
             <span>Tax year</span>
             <input id="ro-year" type="number" />
           </label>
-          <label class="field">
-            <span>Form template (fills blanks, offers new rows)</span>
-            <select id="ro-form"></select>
-          </label>
         </div>
-        <label class="field">
-          <span id="ro-name-label"></span>
-          <input id="ro-name" type="text" />
-        </label>
-        <div class="roll-grid">
-          <label class="field">
-            <span>Client (greeting name)</span>
-            <input id="ro-client" type="text" />
-          </label>
-          <label class="field">
-            <span>Due date (optional)</span>
-            <input id="ro-due" type="date" />
-          </label>
-        </div>
-        <label class="wiz-check">
-          <input id="ro-include-new" type="checkbox" />
-          <span id="ro-include-note"></span>
-        </label>
+
+        <div class="tmpl-head">Roll forward from</div>
+        <div id="prior-list" class="tmpl-list" aria-label="Returns to roll forward"></div>
+        <p id="prior-empty" class="wiz-note hidden">No prior engagement on file yet — start this client from a form template below.</p>
+        <p id="ro-unticked-note" class="wiz-note"></p>
 
         <div class="modal-actions">
           <button id="wp-new-client" class="btn">New client — start from a form template</button>

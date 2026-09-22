@@ -121,6 +121,24 @@ def test_an_event_this_version_does_not_know_is_refused(bare):
         ledger.append(bare, {ledger.EVENT_KEY: "invented", ledger.AT_KEY: "now"})
 
 
+def test_sharing_confirmed_is_not_a_row_event():
+    """The firm's word that a household was shared is a fact about a day,
+    not a row of any index (decision 126). A reader that folded it as one
+    would look for a row that was never there - which is why it sits
+    beside ``draft_approved`` rather than among the row events, and why it
+    needed no column anywhere."""
+    assert ledger.SHARING_CONFIRMED in ledger.EVENTS
+    assert ledger.SHARING_CONFIRMED not in ledger.ROW_EVENTS
+    assert ledger.SHARING_CONFIRMED not in ledger.RETIRED_EVENTS
+    # It carries nothing but the stamp every event carries.
+    assert set(ledger.new(ledger.SHARING_CONFIRMED)) == {ledger.EVENT_KEY, ledger.AT_KEY}
+    # And folding one changes nothing at all.
+    before = ledger.replay([])
+    after = ledger.replay([ledger.new(ledger.SHARING_CONFIRMED)])
+    assert (after.rows, after.statuses, after.rules, after.household, after.intents) == (
+        before.rows, before.statuses, before.rules, before.household, before.intents)
+
+
 def test_a_journal_that_carries_rules_imported_still_folds_and_is_never_written_again(tmp_path):
     """The retired event of decision 103: an older journal carries it, this
     version folds it exactly as a ``rules_changed``, and refuses to write

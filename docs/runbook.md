@@ -192,30 +192,67 @@ than hidden: `automation.manifest.json` carries it in the dated
 `safety.scheduled_exception` field the Command Center's contract gained the
 same day, and the tool's card there prints that sentence.
 
-### Sharing a household with its client
+### Sharing a household with a client
 
-*A stub. Decision 126 completes this section with the checklist the app
-walks, and records that a household has been shared.*
+The tracker never makes, checks or changes a share. Two grants, made once by
+a person in Google Drive, on the firm's Shared Drive:
 
-Two links per household, and they are not the same link:
+1. Share the household folder under `Clients` (for example `Clients\Park
+   Family`) with the client as **Viewer**. Every year folder under it is then
+   view-only for the client through the parent — they can read what they sent
+   and nothing can be deleted or changed from their side.
+2. Share `Drop files here` inside it with the client as **Contributor**. They
+   can add files there and cannot move, delete or share them. On a Shared
+   Drive the firm owns a file the moment it lands, which is why rule 2 holds:
+   the pass moves each original out of the inbox into the year's folder, and
+   only the firm can move it again.
+3. Paste the inbox's link into the household's *Inbox link* in the app and
+   press **Mark as shared**. The date is recorded as the firm's word; the
+   letters carry the link.
 
-- **The household folder** — `Clients\Park Family` — shared as **Viewer**, so
-  the client can see the years and open what they sent.
-- **`Drop files here`** — shared as **Contributor**, so they can put files in
-  it. Contributor is what lets them upload without letting them delete what
-  the firm has filed.
+The app asks for all three in those words — once, when a household's first
+return is made, and on the household's card until the third step is done. It
+records only that a person said so: Drive for desktop exposes no permission
+to a program, so the tracker cannot see a share and does not pretend to.
+Nothing about filing, scanning or drafting waits on it.
 
-**Two things to confirm on the Shared Drive before the first real client**,
-because Google's Shared Drive settings can forbid both and the answer is the
-firm's, not the tool's:
+Nothing is ever re-shared. A new year is a new folder under the same
+household, view-only through the same grant; Roll Forward changes no
+permission. A household's members list in the app is what the firm typed, not
+what Drive says: keep the two the same by hand.
 
-1. that a folder *inside* the Shared Drive can be shared with someone outside
-   the firm at all, as **Viewer**; and
-2. that the same is true at **Contributor**.
+**Before the first real client (once, by an admin):** confirm in the Shared
+Drive's settings that a folder inside it can be shared with someone outside
+the firm as **Viewer**, and that a folder inside it can be shared with
+someone outside the firm as **Contributor**. If either is off, the client
+cannot be given the inbox and nothing else in this section works. Then check
+with a test account outside the firm: upload from outside, try to delete from
+outside (it must be refused), and let a pass move the file.
 
-Check both with a test account outside the firm: upload from outside, then
-try to delete from outside (it must be refused), then let a pass move the
-file and confirm the firm still owns it.
+### Rolling a household into the next year
+
+Roll Forward in the app takes the **household**, not one return: it shows the
+open year's returns with every one ticked, and rolls each ticked return into
+the next year — its list carried from last year, its greeting and its inbox
+link refilled from the household, its own folder made under the new year.
+
+A return left unticked is **retired for that year**: set inactive, and no
+longer chased. That is deliberate — it is how the household ends up with
+exactly one open year again, which is what lets the pass go on sorting one
+inbox. Tick it later and roll it on its own if that changes.
+
+One return's refusal (a folder of that name already there, a path too long)
+is printed and undoes none of the others; nothing under `Clients\` changes
+but the new year's folder.
+
+On the command line the same two forms live in one command, told apart by
+what you point it at:
+
+```
+python -m tracker.rollover "<clients root>\J Park & Associates\Park Family" --year 2027 --all
+python -m tracker.rollover "<clients root>\J Park & Associates\Park Family" --year 2027 --only "1040 - John Park"
+python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
+```
 
 ## 2. Every morning
 

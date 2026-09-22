@@ -16,7 +16,7 @@ let templates = [];        // template items for the chosen form
 let customItems = [];      // custom rows added in the wizard (plain objects keyed by column)
 let editorRows = [];       // the request-list editor's rows (plain objects keyed by column)
 let priors = [];           // engagements a new year can roll forward from
-let selectedPrior = null;  // path of the prior engagement chosen on page 0
+let rollFor = null;        // path of the household the returning-client page rolls
 let lastState = null;      // the state the household card was drawn from
 
 const $ = (id) => document.getElementById(id);
@@ -89,6 +89,10 @@ function fill(pattern, values) {
 
 // The one button label the app owns; the docs that name it are pinned to it.
 const SCAN_LABEL = "Sort & Scan";
+// What the rollover's per-return box offers, in the page's own words: it
+// is a description of a flag, not a fact the tracker owns.
+const INCLUDE_NEW_NOTE =
+  "Also add checklist rows this client has never had (otherwise they are offered, once, when the rollover is done, and added later in the editor)";
 
 function toast(msg) {
   const el = $("toast");
@@ -928,6 +932,43 @@ function renderHousehold(state) {
     }, r.label)));
   $("household-queue").textContent = fill(words.queue_line, { n: hh.queue });
   $("btn-edit-household").textContent = words.edit;
+  renderSharing(hh);
+}
+
+// Whether the firm has said it shared this household, and the checklist
+// until it does (decision 126). The tracker cannot see Drive's sharing:
+// every line here, including the two grants and the note saying why they
+// cannot be checked, arrives from the API already filled.
+function renderSharing(hh) {
+  const words = vocab.household;
+  $("household-shared").textContent = hh.shared_on
+    ? fill(words.shared_on_line, { day: hh.shared_on })
+    : words.not_yet_shared_line;
+  $("household-checklist").classList.toggle("hidden", !hh.checklist);
+  if (hh.checklist) {
+    $("household-checklist-heading").textContent = hh.checklist.heading;
+    show("household-checklist-lines", hh.checklist.lines.map((line) => el("li", {}, line)));
+    $("household-checklist-note").textContent = hh.checklist.note;
+  }
+  $("btn-mark-shared").textContent = words.mark_shared;
+  $("btn-mark-shared").classList.toggle("hidden", Boolean(hh.shared_on));
+}
+
+// The firm's word, recorded once: one dated event on the household's
+// record and nothing else. The API refuses it while the inbox link is
+// blank, and its sentence is what the person reads.
+async function markShared() {
+  const btn = $("btn-mark-shared");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("mark-shared"));
+    render(result.state);
+    banner(fill(vocab.household.shared_on_line, { day: result.shared_on }), "ok");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // The household's own three fields, saved as one recorded event.
@@ -1033,8 +1074,7 @@ function applyVocabulary() {
   $("hh-link").title = vocab.household.link_help;
   $("ne-name-label").textContent = vocab.household.return_name_label;
   $("ne-name").title = vocab.household.return_name_help;
-  $("ro-name-label").textContent = vocab.household.return_name_label;
-  $("ro-name").title = vocab.household.return_name_help;
+  $("ro-household-label").textContent = vocab.household.heading;
   $("view-label").textContent = vocab.view.open;
   $("edit-label").textContent = vocab.editor.open;
   // The two renderings of the review queue are named by the API too
@@ -1053,14 +1093,11 @@ function applyVocabulary() {
   $("phone-input").placeholder = `${vocab.settings.phone_label} — ${vocab.settings.phone_help}`;
   $("phone-input").title = vocab.settings.phone_help;
   $("phone-input").setAttribute("aria-label", vocab.settings.phone_label);
-  $("ro-include-note").textContent =
-    "Also add checklist rows this client has never had (otherwise they are offered, once, when the rollover is done, and added later in the editor)";
   for (const id of ["ro-year", "ne-year"]) {
     $(id).min = vocab.year_min;
     $(id).max = vocab.year_max;
     $(id).title = vocab.year_note;
   }
-  $("ro-client").placeholder = vocab.origin_prior;
   $("cu-add").textContent = vocab.editor.add_row;
   // The editor's every word: the two titles, the buttons, the paste hint.
   $("ed-title").textContent = vocab.editor.title;
@@ -1215,8 +1252,9 @@ async function openWizard() {
     return;
   }
   selectedForm = null;
-  const open = priors.filter((p) => !p.superseded_by);
-  selectedPrior = open.length ? open[open.length - 1].path : priors.length ? priors[priors.length - 1].path : null;
+  // The page opens on the active return's household (decision 126); the
+  // picker is how a person moves to another one without switching it.
+  rollFor = null;
   renderHouseholdStep();
   renderPriorPage();
   renderFormGrid();
@@ -1287,77 +1325,124 @@ function priorMeta(p) {
   return bits.join(" · ");
 }
 
-function renderPriorPage() {
-  // Grouped by household, because a return keeps its name every year and
-  // two households may each hold one called the same (decision 125).
-  const named = new Map(households.map((h) => [h.path, h.name]));
-  const shown = chosenHousehold ? priors.filter((p) => p.household === chosenHousehold) : priors;
-  show("prior-list", shown.map((p) =>
-    el("label", { className: "prior-item" },
-      el("input", { type: "radio", name: "prior", value: p.path, checked: p.path === selectedPrior }),
-      el("span", { className: "prior-name" }, p.label || p.name),
-      el("span", { className: "prior-meta" },
-        [named.get(p.household) || p.household_name, priorMeta(p)].filter(Boolean).join(" · ")),
-    )));
-  $("prior-list").classList.toggle("hidden", priors.length === 0);
-  $("prior-empty").classList.toggle("hidden", priors.length > 0);
-  $("ro-create").disabled = priors.length === 0;
+// The household's returns for the open year, as the page ticks them: the
+// priors the API listed, grouped by household, with a prior a rollover has
+// already retired left out - it is not an open-year return any more.
+function priorsOfHousehold(path) {
+  return priors.filter((p) => p.household === path && !p.superseded_by);
+}
 
-  show("ro-form", [
-    el("option", { value: "" }, "No template — carry last year's list as it is"),
-    forms.map((f) => el("option", { value: f.id }, `${f.label} · ${f.who}`)),
-  ]);
+// The household this page rolls: the one a person picked here, else the
+// active return's, else the first household that has a prior at all.
+function rollHousehold() {
+  if (rollFor && priorsOfHousehold(rollFor).length) return rollFor;
+  const here = lastState && lastState.household ? lastState.household.path : null;
+  if (here && priorsOfHousehold(here).length) return here;
+  const found = households.find((h) => priorsOfHousehold(h.path).length);
+  return found ? found.path : null;
+}
+
+function renderPriorPage() {
+  // **A household rolls as a household** (decision 126): the page shows
+  // the open year's returns as a checklist, all ticked, and Roll Forward
+  // rolls every ticked one and retires the rest. The picker is here so a
+  // person can roll another household without switching the active
+  // return first.
+  rollFor = rollHousehold();
+  show("ro-household", households
+    .filter((h) => priorsOfHousehold(h.path).length)
+    .map((h) => el("option", { value: h.path, selected: h.path === rollFor }, h.name)));
+  const shown = rollFor ? priorsOfHousehold(rollFor) : [];
+  show("prior-list", shown.map((p, n) =>
+    el("div", { className: "prior-item roll-return" },
+      el("label", { className: "prior-head" },
+        el("input", { type: "checkbox", className: "roll-tick", checked: true,
+                      dataset: { path: p.path } }),
+        el("span", { className: "prior-name" }, p.label || p.name),
+        el("span", { className: "prior-meta" }, priorMeta(p)),
+      ),
+      el("label", { className: "field roll-form" },
+        el("span", {}, "Form template (fills blanks, offers new rows)"),
+        el("select", { className: "roll-form-pick", dataset: { path: p.path } },
+          el("option", { value: "" }, "No template — carry last year's list as it is"),
+          forms.map((f) => el("option", { value: f.id }, `${f.label} · ${f.who}`)),
+        ),
+      ),
+      el("label", { className: "wiz-check" },
+        el("input", { type: "checkbox", className: "roll-include-new",
+                      dataset: { path: p.path }, id: `ro-include-${n}` }),
+        el("span", {}, INCLUDE_NEW_NOTE),
+      ),
+    )));
+  $("prior-list").classList.toggle("hidden", shown.length === 0);
+  $("prior-empty").classList.toggle("hidden", shown.length > 0);
+  $("ro-create").disabled = shown.length === 0;
+  $("ro-household-field").classList.toggle("hidden", households.length < 2);
   syncPriorDefaults();
 }
 
 function syncPriorDefaults() {
-  const prior = priors.find((p) => p.path === selectedPrior);
-  const year = prior && prior.next_year ? prior.next_year : "";
-  $("ro-year").value = year;
-  $("ro-name").value = "";
-  $("ro-client").value = prior ? prior.client || "" : "";
-  $("ro-due").value = "";
-  // A return keeps its name every year, under the same household: the box
-  // is there to rename it, and blank means the prior's own name.
-  $("ro-name").placeholder = prior ? prior.return_name : "";
+  const shown = rollFor ? priorsOfHousehold(rollFor) : [];
+  $("ro-year").value = shown.map((p) => p.next_year).find(Boolean) || "";
+  syncUntickedNote();
+}
+
+// Said before anything is unticked, in the API's words: an unticked return
+// is retired for the year, not merely skipped (decision 126).
+function syncUntickedNote() {
+  $("ro-unticked-note").textContent =
+    fill(vocab.household.rollover_unticked, { year: $("ro-year").value || "" });
 }
 
 async function rollForward() {
-  if (!selectedPrior) {
+  const ticked = [...$("prior-list").querySelectorAll(".roll-tick")].filter((b) => b.checked);
+  const first = priorsOfHousehold(rollFor)[0];
+  if (!first) {
     toast("Pick the engagement to roll forward, or start from a form template.");
     return;
   }
   const btn = $("ro-create");
   btn.disabled = true;
   try {
-    const result = await call(["rollover"], {
-      prior: selectedPrior,
-      return_name: $("ro-name").value.trim(),
-      form: $("ro-form").value,
-      year: Number($("ro-year").value) || null,
-      include_new: $("ro-include-new").checked,
-      client: $("ro-client").value.trim(),
-      due: $("ro-due").value,
-    });
+    const pick = (cls, path) =>
+      $("prior-list").querySelector(`.${cls}[data-path="${CSS.escape(path)}"]`);
+    const result = await call(
+      ["roll-household", vocab.engagement_flag, first.path],
+      {
+        year: Number($("ro-year").value) || null,
+        returns: ticked.map((box) => ({
+          prior: box.dataset.path,
+          form: pick("roll-form-pick", box.dataset.path).value,
+          include_new: pick("roll-include-new", box.dataset.path).checked,
+        })),
+      });
     $("modal").classList.add("hidden");
     await refresh(result.state.paths.engagement);
-    const r = result.rollover;
-    // The reply carries every rolled row with its origin; last year's
-    // set-aside rows are grouped on the API's origin value and said in
-    // the API's one line, apart from the carried count.
-    const setAside = r.carried.filter((c) => c.origin === vocab.origin_not_applicable);
-    const carried = r.carried.length - setAside.length;
-    const parts = [`${carried} request(s) carried from ${r.prior}`];
-    if (setAside.length) parts.push(fill(vocab.not_applicable_carried, { n: setAside.length }));
-    // The offers and last year's unfiled files are said here, once: there
-    // is no sheet to point at, and an offer a person wants is added in the
-    // editor (decision 104).
-    if (r.offered.length) {
-      const offered = r.offered.map((o) => `${o.identifier}${vocab.triage.identifier_separator}${o.document}`).join(", ");
-      parts.push(`${r.offered.length} template row(s) offered but not added: ${offered}`);
+    // The banner: how many returns rolled into the year and how many were
+    // retired, then each return's offers and last year's unfiled files -
+    // said here, once, because there is no sheet to point at and an offer
+    // a person wants is added in the editor (decision 104).
+    const lines = [
+      `${result.rolled.length} return(s) rolled into ${result.target_year}; ` +
+      `${result.retired.length} retired`,
+    ];
+    for (const one of result.rolled) {
+      const setAside = one.carried.filter((c) => c.origin === vocab.origin_not_applicable);
+      const parts = [`${one.carried.length - setAside.length} request(s) carried`];
+      if (setAside.length) parts.push(fill(vocab.not_applicable_carried, { n: setAside.length }));
+      if (one.offered.length) {
+        const offered = one.offered
+          .map((o) => `${o.identifier}${vocab.triage.identifier_separator}${o.document}`).join(", ");
+        parts.push(`${one.offered.length} template row(s) offered but not added: ${offered}`);
+      }
+      if (one.unfiled_last_year.length) {
+        parts.push(`${one.unfiled_last_year.length} file(s) sent last year were never filed`);
+      }
+      lines.push(`• ${one.label}: ${parts.join("; ")}.`);
     }
-    if (r.unfiled_last_year.length) parts.push(`${r.unfiled_last_year.length} file(s) sent last year were never filed`);
-    banner(`Engagement "${result.created}" rolled forward: ${parts.join("; ")}.`, "ok");
+    for (const one of result.retired) lines.push(`• ${one}: retired.`);
+    for (const one of result.skipped) lines.push(`• ${one.prior}: ${one.reason}`);
+    banner(lines.join("\n"), result.skipped.length ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
   } finally {
@@ -1617,10 +1702,19 @@ async function createEngagement() {
     });
     $("modal").classList.add("hidden");
     await refresh(result.state.paths.engagement);
-    banner(
+    const lines = [
       `Engagement "${result.created}" created — ${items.length} request folder(s) scaffolded, client README generated. Open the Client Folder to show it.`,
-      "ok"
-    );
+    ];
+    // A household's first return comes back with the sharing checklist
+    // (decision 126): the two grants a person makes in Drive, once, in
+    // the API's own words. The household card carries the same lines
+    // until somebody gives the firm's word on the card.
+    if (result.checklist) {
+      lines.push(result.checklist.heading);
+      result.checklist.lines.forEach((line, n) => lines.push(`${n + 1}. ${line}`));
+      lines.push(result.checklist.note);
+    }
+    banner(lines.join("\n"), "ok");
   } catch (err) {
     toast(err.message);
   } finally {
@@ -1878,6 +1972,7 @@ $("btn-new").addEventListener("click", openWizard);
 $("btn-inbox").addEventListener("click", () => paths && window.tracker.open(paths.inbox));
 $("btn-client-folder").addEventListener("click", () => paths && window.tracker.open(paths.client_folder));
 $("btn-edit-household").addEventListener("click", openHouseholdEditor);
+$("btn-mark-shared").addEventListener("click", markShared);
 $("hh-edit-cancel").addEventListener("click", () => $("household-modal").classList.add("hidden"));
 $("hh-edit-save").addEventListener("click", saveHousehold);
 $("household-returns").addEventListener("click", (e) => {
@@ -1920,14 +2015,13 @@ $("hh-existing").addEventListener("change", () => {
 $("wf-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
 $("wp-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
 $("wp-new-client").addEventListener("click", () => showStep("form"));
-$("prior-list").addEventListener("change", (e) => {
-  if (e.target.name === "prior") {
-    selectedPrior = e.target.value;
-    syncPriorDefaults();
-  }
+$("ro-household").addEventListener("change", (e) => {
+  rollFor = e.target.value || null;
+  renderPriorPage();
 });
 $("ro-create").addEventListener("click", rollForward);
-$("ro-name").addEventListener("keydown", (e) => e.key === "Enter" && rollForward());
+$("ro-year").addEventListener("keydown", (e) => e.key === "Enter" && rollForward());
+$("ro-year").addEventListener("input", syncUntickedNote);
 $("btn-schedule").addEventListener("click", installSchedule);
 $("btn-save-root").addEventListener("click", saveRoot);
 $("root-input").addEventListener("keydown", (e) => e.key === "Enter" && saveRoot());
