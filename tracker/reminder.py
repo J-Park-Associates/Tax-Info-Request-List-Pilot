@@ -89,6 +89,31 @@ email - appended only when that differs from the last one. The runner
 reads the day of the last draft from it, and the next draft opens with
 what changed since the one before, above the line a person pastes.
 
+**And the draft has a surface** (decision 118). The letter is a structure
+before it is words: :func:`_compose_letter` builds a :class:`Letter` and
+:meth:`Letter.text` is the body the file carries, so the text a person
+pastes, :func:`render_html`'s inline-styled body for the clipboard and the
+shape the app draws its preview from are three renderings of one thing and
+cannot come apart. The stage's own emphasis is one table
+(:data:`STAGE_EMPHASIS`) over colours this module names by their key in
+:data:`tracker.page.PALETTE`, so the letter, the clipboard and the card
+apply one ladder and nothing downstream picks a colour. The HTML is
+rendered when a person asks for it and **never written to disk**: the text
+file is what the pass writes (decisions 11 to 15) and a second file would
+be a second draft to keep in step.
+
+A person who reads that letter in the app may **approve** it, and from
+then until the next draft day the pass treats the file exactly as it
+treats one somebody edited - :func:`is_protected` is the one predicate for
+both, :func:`write_draft` puts the regenerated draft beside it, and
+:func:`set_aside_other_draft` renames what was already standing there
+rather than deleting it, because nothing under an engagement is the
+machine's to throw away. The approval is one ``ledger.DRAFT_APPROVED``
+line carrying a number, a name and identifiers, like every other line
+here. Which day the draft week began is handed in rather than worked out:
+the runner decides the draft day (decision 12) and it sits above this
+module.
+
 One more guard: files sitting in ``REVIEW_DIR_NAME`` are things the client
 *has* already sent that nobody has identified yet. Sending a reminder over
 the top of those risks asking for a document already in hand, so their count
@@ -107,7 +132,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, reasons, store
+from tracker import ledger, page, reasons, store
 from tracker.manifest import (
     ISO_DATE_HINT,
     ManifestError,
@@ -128,6 +153,11 @@ from tracker.validators import iter_candidate_files
 log = logging.getLogger("tracker.reminder")
 
 DRAFT_FILENAME = "reminder-draft.txt"
+#: Where the draft a person approved puts a draft that was standing beside
+#: it (decision 118). Named for the day it was set aside, never deleted:
+#: nothing under an engagement is removed by an approval, and a person
+#: throws these away when they like.
+SET_ASIDE_DRAFT_PATTERN = "reminder-draft.set-aside-{date}.txt"
 DUE_FLAG = "--due"
 #: The command line's one-off dates and the two flags that read a stage
 #: other than today's: what next week's letter will say, today.
@@ -141,6 +171,12 @@ NEW_DRAFT_FILENAME = Path(DRAFT_FILENAME).stem + ".NEW" + Path(DRAFT_FILENAME).s
 _FINGERPRINT_PREFIX = "Fingerprint: "
 _RULE_WIDTH = 60
 _SEPARATOR = "=" * _RULE_WIDTH
+#: What opens the staff-side footer a draft file may end with - the rows
+#: the draft did not ask the client for, and the warning about files
+#: nobody has identified yet. It is the machine's note to the person, as
+#: the header above the letter is, and it has never been part of the
+#: email: :func:`pasted_text` cuts the letter off here.
+FOOTER_RULE = "-" * _RULE_WIDTH
 
 #: Statuses that mean the client still owes us something (re-exported).
 OUTSTANDING = Status.OUTSTANDING
@@ -210,6 +246,46 @@ SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
 SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
 
 SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL)
+
+#: What stands in front of the subject line, in the text a person pastes
+#: and on the card that shows it. One prefix, so the two cannot differ.
+SUBJECT_PREFIX = "Subject: "
+
+
+# ------------------------------------------------- the card's own words ----
+# Decision 118: the reminder gets a surface in the app. Every word on it is
+# here, because the renderer types none - it reads the API's vocabulary,
+# and the API reads this module.
+
+#: The card's heading, and the name a screen reader gives the preview.
+REMINDER_HEADING = "Reminder"
+#: What a screen reader calls the four-button stage toggle.
+STAGE_GROUP_LABEL = "Stage"
+#: The card's three buttons. Nothing sends: one puts the letter on the
+#: clipboard, one makes the shown text this week's draft, one opens the
+#: file a person has always been able to open.
+COPY_LABEL = "Copy for Outlook"
+APPROVE_LABEL = "Approve"
+OPEN_DRAFT_LABEL = "Open the draft file"
+#: What the card's status line says: the record's last word on the draft.
+LAST_DRAFTED_LINE = "last drafted {date} at stage {n}"
+NEVER_DRAFTED_LINE = "not drafted yet"
+APPROVED_LINE = "approved {date} at stage {n}"
+#: Why the toggle is dead on a draft somebody has already worked on, and
+#: what the practice page's Drafted column says about an approved one.
+EDITED_BY_HAND = "edited by hand - approve it as it stands, or delete it to regenerate at a stage"
+APPROVED_NOTE = "approved"
+#: The sentence under the toggle: the pass chose the rung, and moving it is
+#: a person's call, made before they send and not recorded as a fact.
+STAGE_TOGGLE_HINT = ("the pass pre-selects the stage from the Due Date; move it up or down "
+                     "before you send")
+#: What is said after the letter goes on the clipboard. It names what was
+#: copied and what was not, because the subject belongs in Outlook's own
+#: box and a person who pasted the body would otherwise look for it.
+COPIED_NOTE = ("the letter is on the clipboard - paste it into Outlook as the body; "
+               "the subject line is on the card above it")
+#: What is said about a draft an approval moved out of the way.
+SET_ASIDE_LINE = "the other draft was set aside as {name}"
 
 
 # ----------------------------------------------------------------- stages ----
@@ -315,6 +391,61 @@ STAGE_NONE = "Stage: -"
 STAGE_KEY = "stage"
 
 
+# ------------------------------------------------- the ladder of emphasis ----
+
+
+@dataclass(frozen=True, slots=True)
+class Emphasis:
+    """Where one stage spends its colour and its weight, and nowhere else.
+
+    Eight flags, all off by default, so a stage that emphasises nothing is
+    the empty one. Read by the letter's HTML renderer and shipped to the
+    app in the API's vocabulary, so the card's preview and the body on the
+    clipboard apply one table rather than two readings of a brief.
+    """
+
+    subject_colour: bool = False
+    subject_bold: bool = False
+    list_colour: bool = False
+    list_bold: bool = False
+    #: The whole deadline paragraph.
+    deadline_colour: bool = False
+    #: The two dates inside it - the target and the filing deadline.
+    dates_bold: bool = False
+    #: The target date alone, which is all stage 2 marks.
+    target_colour: bool = False
+    #: The final notice's consequences sentence.
+    consequences_bold: bool = False
+
+
+#: Which of :data:`tracker.page.PALETTE`'s colours each stage carries: the
+#: toggle's ink in the app, and the letter's one colour. Stage 1's is the
+#: body's own ink, so applying it colours nothing - the toggle needs a
+#: colour for every rung and the letter needs none at the first, and one
+#: table serves both.
+STAGE_COLOURS = {1: "slate_600", 2: "gold_800", 3: "warning_600", 4: "danger_600"}
+#: What a held reminder is said in: the hold line and the rule beside each
+#: held row. Not a rung of the ladder - a hold is not a letter - but the
+#: same warning the third rung carries, because it is the same kind of
+#: "this needs you" the card is asking for.
+HOLD_COLOUR = "warning_600"
+#: The letter's own surface, by palette key: the body's ink, the quieter
+#: ink its section headings take, and the paper under both.
+LETTER_INK = {"body": "slate_600", "muted": "grey_500", "paper": "white"}
+
+#: The ladder, in one place. Stage 4 marks the subject and the list, and
+#: inside the deadline paragraph the two dates and the consequences
+#: sentence, while the connective text is not: a fully bold paragraph
+#: reads as shouting, and the letter is still meant to be respectful.
+STAGE_EMPHASIS = {
+    1: Emphasis(),
+    2: Emphasis(target_colour=True),
+    3: Emphasis(deadline_colour=True, dates_bold=True, list_bold=True),
+    4: Emphasis(subject_colour=True, subject_bold=True, deadline_colour=True, dates_bold=True,
+                consequences_bold=True, list_colour=True, list_bold=True),
+}
+
+
 class ReminderError(Exception):
     """A reminder could not be drafted from this engagement."""
 
@@ -361,6 +492,87 @@ class FirmSideFlag:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class Run:
+    """One stretch of the deadline paragraph, and what it is.
+
+    ``kind`` is "" for the connective text, or ``target``,
+    ``deadline_date`` or ``consequences`` for the three things a stage may
+    mark. The runs are cut by formatting the stage's own sentence with
+    sentinels around those values and splitting on them - never by looking
+    for a date in the finished sentence, which an engagement's name could
+    also contain.
+    """
+
+    text: str
+    kind: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Section:
+    """One heading of the letter with the request lines under it."""
+
+    heading: str
+    items: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Letter:
+    """The letter as a shape, before it is words on a page (decision 118).
+
+    The text a person pastes and the HTML body that goes on the clipboard
+    are two renderings of this one structure, so they cannot say different
+    things, and the app's preview is drawn from it as DOM nodes - the page
+    is built from data and never from an HTML string. ``intro`` may carry
+    its own line breaks (the quiet week's paragraph is written wrapped);
+    ``deadline`` is empty when the stage has no such paragraph or the
+    engagement has no Due Date to name in it.
+    """
+
+    greeting: str
+    progress: str = ""
+    intro: str = ""
+    sections: tuple[Section, ...] = ()
+    drop: tuple[str, ...] = ()
+    link: str = ""
+    deadline: tuple[Run, ...] = ()
+    close: str = ""
+    signoff: tuple[str, ...] = ()
+    stage: int = 0
+
+    @property
+    def deadline_text(self) -> str:
+        """The deadline paragraph as one sentence again."""
+        return "".join(run.text for run in self.deadline)
+
+    def text(self) -> str:
+        """The body a person pastes: this structure as plain lines.
+
+        The one place the letter becomes text. Every other rendering -
+        the HTML for the clipboard, the app's preview - starts from the
+        same fields, so a sentence cannot reach a client in one and not
+        the other.
+        """
+        out: list[str] = [self.greeting, ""]
+        if self.progress:
+            out += [self.progress, ""]
+        if self.intro:
+            out += [*self.intro.split("\n"), ""]
+        for section in self.sections:
+            out += [section.heading, *section.items, ""]
+        if self.drop:
+            out += list(self.drop)
+            if self.link:
+                out.append(f"  {self.link}")
+            out.append("")
+        if self.deadline:
+            out += [self.deadline_text, ""]
+        if self.close:
+            out += [self.close, ""]
+        out += list(self.signoff)
+        return "\n".join(out).rstrip() + "\n"
+
+
 @dataclass(slots=True)
 class ReminderDraft:
     """A drafted reminder. Nothing here has been, or will be, sent."""
@@ -382,6 +594,10 @@ class ReminderDraft:
     #: Every request on the list, identifier -> label, so a what-changed
     #: line can name a request the draft no longer asks for.
     labels: dict[str, str] = field(default_factory=dict)
+    #: The letter this draft's body was rendered from (decision 118). The
+    #: body is its text; the HTML for the clipboard and the app's preview
+    #: are the same structure rendered two other ways.
+    letter: Letter | None = None
 
     @property
     def has_outstanding(self) -> bool:
@@ -400,7 +616,7 @@ class ReminderDraft:
     @property
     def text(self) -> str:
         """Subject and body as one block, ready to paste into an email."""
-        return f"Subject: {self.subject}\n\n{self.body}"
+        return f"{SUBJECT_PREFIX}{self.subject}\n\n{self.body}"
 
     def section(self, name: str) -> list[ReminderLine]:
         return [line for line in self.lines if line.section == name]
@@ -697,7 +913,63 @@ def _said_date(when: dt.date) -> str:
     return when.strftime("%B %d, %Y")
 
 
-def _compose_body(
+#: What marks a run of the deadline paragraph while it is being cut up. A
+#: character no letter can carry, written round the value and its kind, so
+#: the sentence is split on what was put into it rather than searched for
+#: what might be in it.
+_RUN_MARK = "\x00"
+#: The three things a stage may mark inside that paragraph.
+RUN_TARGET = "target"
+RUN_DEADLINE_DATE = "deadline_date"
+RUN_CONSEQUENCES = "consequences"
+#: The two continuations of the drop-anywhere sentence: with a share link
+#: to give, and without one.
+DROP_WITH_LINK = "folder. One folder, no sorting and no naming needed; we do that:"
+DROP_NO_LINK = "folder we set up. One folder, no sorting and no naming needed."
+#: The quiet week's paragraph, wrapped as it is written into the file.
+NOTHING_OWED = ("Good news - we have everything we asked for on {engagement}.\n"
+                "Nothing further is needed from you right now, and we will be in\n"
+                "touch if anything else comes up.")
+#: How every letter signs off, above the sender and the firm.
+SIGN_OFF = "Thank you,"
+
+
+def _marked(kind: str, text: str) -> str:
+    return f"{_RUN_MARK}{kind}{_RUN_MARK}{text}{_RUN_MARK}"
+
+
+def _cut_runs(marked: str) -> tuple[Run, ...]:
+    """A sentence with marked values in it, cut into runs in order."""
+    parts = marked.split(_RUN_MARK)
+    runs: list[Run] = [Run(parts[0])] if parts[0] else []
+    for i in range(1, len(parts) - 1, 3):
+        runs.append(Run(parts[i + 1], parts[i]))
+        tail = parts[i + 2]
+        if tail:
+            runs.append(Run(tail))
+    return tuple(runs)
+
+
+def _deadline_runs(stage: Stage, *, engagement: str, due_date: dt.date,
+                   filing_deadline: dt.date | None, phone: str) -> tuple[Run, ...]:
+    """The stage's deadline paragraph, cut where its emphasis lands."""
+    marked = stage.deadline.format(
+        engagement=engagement,
+        target=_marked(RUN_TARGET, _said_date(due_date)),
+        deadline_clause=(DEADLINE_CLAUSE.format(
+            deadline=_marked(RUN_DEADLINE_DATE, _said_date(filing_deadline)))
+            if filing_deadline else ""),
+        phone_clause=PHONE_CLAUSE.format(phone=phone) if phone else "",
+    )
+    # The consequences sentence is concatenated into stage 4's paragraph
+    # rather than substituted into it, so it is marked by the constant it
+    # is - a whole sentence this module owns, carrying no value of anyone's.
+    marked = marked.replace(STAGE_4_CONSEQUENCES,
+                            _marked(RUN_CONSEQUENCES, STAGE_4_CONSEQUENCES))
+    return _cut_runs(marked)
+
+
+def _compose_letter(
     lines: Sequence[ReminderLine],
     *,
     client_name: str,
@@ -711,68 +983,48 @@ def _compose_body(
     stage: Stage | None,
     filing_deadline: dt.date | None = None,
     phone: str = "",
-) -> str:
-    """The text a person pastes: the greeting, the stage's own three
-    sentences around the list, and the sign-off.
+) -> Letter:
+    """The letter as a shape: the greeting, the stage's own three sentences
+    around the list, and the sign-off.
 
     ``stage`` is None only on a quiet week, where there is nothing to chase
     and no ladder to be on. The deadline paragraph is written only when the
     engagement has a Due Date to name: a stage the caller forced with no
     date to put in it drops the paragraph rather than printing half of it.
     """
-    out: list[str] = [f"Hi {client_name}," if client_name else "Hello,", ""]
+    greeting = f"Hi {client_name}," if client_name else "Hello,"
+    signoff = (SIGN_OFF, *(name for name in (sender, firm) if name))
 
     if not lines or stage is None:
-        out += [
-            f"Good news - we have everything we asked for on {engagement}.",
-            "Nothing further is needed from you right now, and we will be in",
-            "touch if anything else comes up.",
-            "",
-        ]
-    else:
-        words = {
-            "engagement": engagement,
-            "target": _said_date(due_date) if due_date else "",
-            "deadline_clause": (DEADLINE_CLAUSE.format(deadline=_said_date(filing_deadline))
-                                if filing_deadline else ""),
-            "phone_clause": PHONE_CLAUSE.format(phone=phone) if phone else "",
-        }
-        if received:
-            out += [THANK_YOU.format(received=received, total=total), ""]
-        out += [stage.intro.format(**words), ""]
+        return Letter(greeting=greeting, intro=NOTHING_OWED.format(engagement=engagement),
+                      signoff=signoff)
 
-        for name in SECTION_ORDER:
-            section = [line for line in lines if line.section == name]
-            if not section:
-                continue
-            out.append(name)
-            out.extend(line.render() for line in section)
-            out.append("")
-
-        if share_link:
-            out += [
-                DROP_ANYWHERE,
-                "folder. One folder, no sorting and no naming needed; we do that:",
-                f"  {share_link}",
-                "",
-            ]
-        else:
-            out += [
-                DROP_ANYWHERE,
-                "folder we set up. One folder, no sorting and no naming needed.",
-                "",
-            ]
-
-        if stage.deadline and due_date:
-            out += [stage.deadline.format(**words), ""]
-        out += [stage.close.format(**words), ""]
-
-    out.append("Thank you,")
-    if sender:
-        out.append(sender)
-    if firm:
-        out.append(firm)
-    return "\n".join(out).rstrip() + "\n"
+    words = {
+        "engagement": engagement,
+        "target": _said_date(due_date) if due_date else "",
+        "deadline_clause": (DEADLINE_CLAUSE.format(deadline=_said_date(filing_deadline))
+                            if filing_deadline else ""),
+        "phone_clause": PHONE_CLAUSE.format(phone=phone) if phone else "",
+    }
+    sections = tuple(
+        Section(name, tuple(line.render() for line in lines if line.section == name))
+        for name in SECTION_ORDER
+        if any(line.section == name for line in lines)
+    )
+    return Letter(
+        greeting=greeting,
+        progress=THANK_YOU.format(received=received, total=total) if received else "",
+        intro=stage.intro.format(**words),
+        sections=sections,
+        drop=(DROP_ANYWHERE, DROP_WITH_LINK if share_link else DROP_NO_LINK),
+        link=share_link,
+        deadline=(_deadline_runs(stage, engagement=engagement, due_date=due_date,
+                                 filing_deadline=filing_deadline, phone=phone)
+                  if stage.deadline and due_date else ()),
+        close=stage.close.format(**words),
+        signoff=signoff,
+        stage=stage.number,
+    )
 
 
 def _parked_index_rows(engagement_dir: Path) -> list:
@@ -863,7 +1115,7 @@ def draft_reminder(
     number = (stage if stage is not None else stage_for(due_date, today)) if lines else 0
     rung = stage_named(number) if number else None
 
-    body = _compose_body(
+    letter = _compose_letter(
         lines,
         client_name=client_name,
         engagement=engagement,
@@ -877,6 +1129,7 @@ def draft_reminder(
         filing_deadline=filing_deadline,
         phone=phone,
     )
+    body = letter.text()
 
     if rung is not None:
         subject = rung.subject.format(engagement=engagement, n=len(lines))
@@ -896,7 +1149,189 @@ def draft_reminder(
         total_requests=total,
         received_requests=received,
         labels={item.identifier: item.label for item in items},
+        letter=letter,
     )
+
+
+# ------------------------------------------------- the body, as Outlook reads it ----
+
+
+def stage_emphasis(stage: int) -> Emphasis:
+    """What this stage marks. A quiet week marks nothing."""
+    return STAGE_EMPHASIS.get(stage, Emphasis())
+
+
+def stage_colour(stage: int) -> str:
+    """The colour this stage carries, as a value (decision 118). A letter
+    at no stage is written in the body's own ink, which is stage 1's."""
+    return page.PALETTE[STAGE_COLOURS.get(stage, STAGE_COLOURS[1])]
+
+
+def _styled(tag: str, style: str, inner: str) -> str:
+    return f'<{tag} style="{style}">{inner}</{tag}>'
+
+
+def run_emphasis(run: Run, marks: Emphasis) -> tuple[bool, bool]:
+    """Whether one run of the deadline paragraph is coloured, and whether it
+    is bold, by the stage's own table.
+
+    One answer, read by the body that goes on the clipboard and sent to the
+    app beside the run itself, so the letter and the preview cannot mark
+    different words - and so the page never has to know what a kind means.
+    """
+    colour = run.kind == RUN_TARGET and marks.target_colour
+    bold = ((run.kind in (RUN_TARGET, RUN_DEADLINE_DATE) and marks.dates_bold)
+            or (run.kind == RUN_CONSEQUENCES and marks.consequences_bold))
+    return bool(colour), bool(bold)
+
+
+def _emphasised(runs: Sequence[Run], marks: Emphasis, colour: str) -> str:
+    """The deadline paragraph's runs, each wearing what its stage gives it."""
+    out: list[str] = []
+    for run in runs:
+        text = page.esc(run.text)
+        coloured, bold = run_emphasis(run, marks)
+        if coloured:
+            text = _styled("span", f"color: {colour};", text)
+        if bold:
+            text = _styled("b", "font-weight: bold;", text)
+        out.append(text)
+    return "".join(out)
+
+
+def _paragraph(text: str, style: str) -> str:
+    """One paragraph, its own line breaks kept as the breaks they are."""
+    inner = "<br />".join(page.esc(line) for line in text.split("\n"))
+    return _styled("p", style, inner)
+
+
+def render_html(draft: ReminderDraft) -> str:
+    """The letter as an HTML body, for the clipboard and for nothing else.
+
+    The same words as :attr:`ReminderDraft.body` - both are renderings of
+    one :class:`Letter` - with the stage's own emphasis where
+    :data:`STAGE_EMPHASIS` puts it. **Inline styles only**: Outlook keeps
+    an inline style and drops a style sheet, a class and a variable, so
+    every colour here is a value out of :data:`tracker.page.PALETTE` and
+    there is no ``<style>`` block, no class name and nothing fetched. The
+    one address in it is the client's own share link, which is the point
+    of the paragraph it sits in.
+
+    It is never written to disk. The draft file is what the pass writes
+    (decisions 11 to 15); this is rendered when a person asks for it and
+    goes on the clipboard beside the plain text.
+    """
+    letter = draft.letter
+    if letter is None:
+        return ""
+    ink = page.PALETTE[LETTER_INK["body"]]
+    muted = page.PALETTE[LETTER_INK["muted"]]
+    paper = page.PALETTE[LETTER_INK["paper"]]
+    colour = stage_colour(letter.stage)
+    marks = stage_emphasis(letter.stage)
+    heading_style = (f"margin: 0 0 6px; font-family: {page.FONT_SERIF}; font-size: 13px; "
+                     f"letter-spacing: 0.08em; color: {muted};")
+    item_marks = ""
+    if marks.list_colour:
+        item_marks += f" color: {colour};"
+    if marks.list_bold:
+        item_marks += " font-weight: bold;"
+
+    out = [f'<div style="font-family: {page.FONT_SANS}; font-size: 15px; line-height: 1.6; '
+           f'color: {ink}; background-color: {paper};">']
+    out.append(_paragraph(letter.greeting, "margin: 0 0 14px;"))
+    if letter.progress:
+        out.append(_paragraph(letter.progress, "margin: 0 0 14px;"))
+    if letter.intro:
+        out.append(_paragraph(letter.intro, "margin: 0 0 18px;"))
+    for last, section in _with_last(letter.sections):
+        out.append(_styled("p", heading_style, page.esc(section.heading)))
+        out.append(f'<ul style="margin: 0 0 {18 if last else 16}px; padding: 0; list-style: none;">')
+        for final, line in _with_last(section.items):
+            margin = "margin: 0;" if final else "margin: 0 0 4px;"
+            style = f"{margin} padding-left: 16px; text-indent: -16px;{item_marks}"
+            out.append(_styled("li", style, page.esc(line.strip())))
+        out.append("</ul>")
+    if letter.drop:
+        inner = page.esc(" ".join(letter.drop))
+        if letter.link:
+            address = page.esc(letter.link)
+            inner += ("<br />" + f'<a href="{address}" style="padding-left: 16px; '
+                      f'display: inline-block; color: {ink}; text-decoration: underline;">'
+                      f"{address}</a>")
+        out.append(_styled("p", "margin: 0 0 18px;", inner))
+    if letter.deadline:
+        style = "margin: 0 0 18px;"
+        if marks.deadline_colour:
+            style += f" color: {colour};"
+        out.append(_styled("p", style, _emphasised(letter.deadline, marks, colour)))
+    if letter.close:
+        out.append(_paragraph(letter.close, "margin: 0 0 18px;"))
+    if letter.signoff:
+        out.append(_paragraph("\n".join(letter.signoff),
+                              f"margin: 0; font-family: {page.FONT_SERIF}; font-size: 15px; "
+                              f"line-height: 1.6; color: {ink};"))
+    out.append("</div>")
+    return "".join(out)
+
+
+def pasted_text(path: Path | str) -> str:
+    """The letter in a draft file: what lies between the header's rule and
+    the footer's.
+
+    Both rules fence off notes the machine wrote to the person, and neither
+    side has ever been part of the email. Above: the banner, the stage, the
+    fingerprint, what changed since the last draft. Below
+    (:data:`FOOTER_RULE`): the rows the draft did not put to the client
+    because they are ours, and the warning about files nobody has
+    identified yet - firm-side sentences that must not be one paste from a
+    client, which is exactly what the app's Copy for Outlook would make
+    them (decision 118). A file with no header rule at all is not one this
+    module wrote, so all of it is offered rather than none.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    _, separator, below = text.partition(_SEPARATOR + "\n")
+    body = (below if separator else text).lstrip("\n")
+    letter = body.split(f"\n{FOOTER_RULE}\n", 1)[0]
+    return letter.rstrip("\n") + "\n" if letter.strip() else ""
+
+
+def split_pasted(text: str) -> tuple[str, str]:
+    """A pasted draft as its subject line and the body under it."""
+    if text.startswith(SUBJECT_PREFIX):
+        first, _, rest = text.partition("\n")
+        return first[len(SUBJECT_PREFIX):].strip(), rest.lstrip("\n")
+    return "", text
+
+
+def render_text_html(text: str) -> str:
+    """A body somebody wrote by hand, as HTML for the clipboard.
+
+    A draft a person has edited has no :class:`Letter` behind it any more -
+    the words are theirs - so there is nothing to put a stage's emphasis
+    on and none is put: their paragraphs, in the letter's own type, with
+    the same words the plain text carries. Inline styles only, as the
+    generated body's are, and nothing fetched.
+    """
+    ink = page.PALETTE[LETTER_INK["body"]]
+    paper = page.PALETTE[LETTER_INK["paper"]]
+    out = [f'<div style="font-family: {page.FONT_SANS}; font-size: 15px; line-height: 1.6; '
+           f'color: {ink}; background-color: {paper};">']
+    for block in text.strip("\n").split("\n\n"):
+        if block.strip():
+            out.append(_paragraph(block.strip("\n"), "margin: 0 0 14px;"))
+    out.append("</div>")
+    return "".join(out)
+
+
+def _with_last(values: Sequence):
+    """Each value with whether it is the last one - the only thing the
+    letter's spacing needs to know about where it is."""
+    total = len(values)
+    return [(i == total - 1, value) for i, value in enumerate(values)]
 
 
 def draft_fingerprint(text: str) -> str:
@@ -940,6 +1375,107 @@ def is_unedited(path: Path | str) -> bool:
     if not separator:
         return False
     return draft_fingerprint(body) == recorded
+
+
+# ------------------------------------------------------------- approval ----
+# Decision 118. A person reads the week's draft in the app and approves the
+# text they are looking at. From then until the next draft day the pass
+# treats that file exactly as it treats one somebody edited: never
+# overwritten, a regenerated draft beside it. Nothing is sent, and nothing
+# under the engagement is deleted.
+
+
+def last_approved_event(engagement_dir: Path | str) -> dict | None:
+    """The newest ``DRAFT_APPROVED`` on this engagement's record, or None."""
+    return store.last_event(store.connect(), engagement_dir, ledger.DRAFT_APPROVED)
+
+
+def approved_event(draft: ReminderDraft, written: Path) -> dict:
+    """The ``DRAFT_APPROVED`` event for what a person approved: the stage,
+    the file, the fingerprint in its header and the identifiers it asks
+    for. A number, a name and identifiers - no word of the letter, as the
+    draft's own event carries none."""
+    return ledger.new(ledger.DRAFT_APPROVED, **{
+        STAGE_KEY: draft.stage,
+        ledger.FILE_KEY: Path(written).name,
+        ledger.FINGERPRINT_KEY: recorded_fingerprint(written),
+        ledger.ASKED_KEY: draft.asked,
+    })
+
+
+def is_approved_this_week(engagement_dir: Path | str, path: Path | str, *,
+                          since: dt.date | None) -> bool:
+    """Whether the file at ``path`` is the draft a person approved.
+
+    ``since`` is the draft day that went by (``tracker.runner.last_draft_day``),
+    handed in rather than worked out here: the runner decides the draft day
+    (decision 12) and this module is below it. With one, the approval is
+    spent when that day moves - next week's pass writes the week's draft as
+    before, which is the bound the pass needs and the only caller that ever
+    needed it.
+
+    **``None`` asks only whether this is the approved file**, whenever it
+    was approved. A caller that cannot measure the week - the command line,
+    which is a layer below the runner - would otherwise write over a draft
+    a person approved in the app an hour earlier, and approving is the same
+    act as editing (decision 118). So the conservative answer is the right
+    one, exactly as it is for :func:`is_unedited`: a file we are not certain
+    is ours to replace is left where it is.
+
+    Matched on the fingerprint in the file's own header, not on its name: a
+    different draft written to the same name is not the one that was
+    approved, and a file a person edited after approving it is protected
+    because they edited it.
+    """
+    event = last_approved_event(engagement_dir)
+    if event is None or event.get(ledger.FILE_KEY) != Path(path).name:
+        return False
+    if since is not None and ledger.day_of(str(event.get(ledger.AT_KEY, ""))) < since:
+        return False
+    fingerprint = recorded_fingerprint(path)
+    return bool(fingerprint) and event.get(ledger.FINGERPRINT_KEY) == fingerprint
+
+
+def is_protected(engagement_dir: Path | str, path: Path | str, *,
+                 approved_since: dt.date | None = None) -> bool:
+    """Whether a writer that preserves a person's work must leave this
+    draft file alone.
+
+    One predicate for the two reasons there are, and they are the same
+    reason: somebody edited this draft, or somebody approved it.
+    ``approved_since`` is the draft day that went by, when the caller knows
+    it - the pass does, and it is what spends the approval next week.
+    Without one the approval still protects the file: an approval is not
+    the pass's to overrule, whichever writer is asking.
+    """
+    if not is_unedited(path):
+        return True
+    return is_approved_this_week(engagement_dir, path, since=approved_since)
+
+
+def set_aside_other_draft(engagement_dir: Path | str, today: dt.date) -> Path | None:
+    """Move any standing ``NEW_DRAFT_FILENAME`` out of the way of an approval.
+
+    Renamed, never deleted: a person approving this week's text has said
+    nothing about the other draft, and a file the client's own reminder was
+    written into is not the machine's to throw away. Two on one day get the
+    filer's own ``(2)`` name, so nothing is ever overwritten either.
+    Returns where it went, or None when there was nothing beside it.
+    """
+    from tracker.filer import numbered
+
+    engagement_dir = Path(engagement_dir)
+    standing = engagement_dir / NEW_DRAFT_FILENAME
+    if not standing.is_file():
+        return None
+    name = SET_ASIDE_DRAFT_PATTERN.format(date=today.isoformat())
+    target = engagement_dir / name
+    counter = 2
+    while target.exists():
+        target = engagement_dir / numbered(Path(name).stem, counter, Path(name).suffix)
+        counter += 1
+    standing.rename(target)
+    return target
 
 
 def stage_line(draft: ReminderDraft) -> str:
@@ -990,7 +1526,8 @@ def _changed_block(draft: ReminderDraft, changed_from: dict | None) -> list[str]
 def write_draft(draft: ReminderDraft, path: Path | str | None = None,
                 engagement_dir: Path | str | None = None,
                 preserve_edits: bool = False, *,
-                changed_from: dict | None = None) -> Path:
+                changed_from: dict | None = None,
+                approved_since: dt.date | None = None) -> Path:
     """Write the draft to a text file. Give it ``path`` or ``engagement_dir``.
 
     The file opens with a banner saying it is a draft, because a file that
@@ -1006,6 +1543,11 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
     as ``NEW_DRAFT_FILENAME`` and that path is returned instead. An hour
     of someone's editing is worth more than this week's regenerated text.
 
+    ``approved_since`` is the draft day that went by, when the caller knows
+    it: a draft a person approved in the app since then is protected the
+    same way an edited one is (decision 118), because approving it is the
+    same act — a person has read this week's text and said it is the one.
+
     ``changed_from`` is the last ``DRAFTED`` event that carried what was
     asked, when the caller has one: the header then says what this draft
     asks for that the last one did not, and the other way round - above
@@ -1020,9 +1562,10 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
         path = Path(engagement_dir) / DRAFT_FILENAME
     path = Path(path)
 
-    if preserve_edits and path.exists() and not is_unedited(path):
+    folder = path.parent
+    if preserve_edits and path.exists() and is_protected(folder, path, approved_since=approved_since):
         path = path.with_name(NEW_DRAFT_FILENAME)
-        if path.exists() and not is_unedited(path):
+        if path.exists() and is_protected(folder, path, approved_since=approved_since):
             # Both drafts carry somebody's work. The scheduled repeat runs
             # several times on the draft day; the second one must not
             # take the edits the first one made room for.
@@ -1030,17 +1573,17 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
 
     footer: list[str] = []
     if draft.scaffold_gaps:
-        footer += ["", "-" * _RULE_WIDTH,
+        footer += ["", FOOTER_RULE,
                    f"{HELD_BACK_HEADING} - fix these here first:"]
         footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.scaffold_gaps]
     if draft.needs_attention:
-        footer += ["", "-" * _RULE_WIDTH,
+        footer += ["", FOOTER_RULE,
                    f"{HELD_BACK_HEADING} - waiting on us, not the client:"]
         footer += [f"  {flag.item.label}: {flag.reason}"
                    for flag in draft.needs_attention]
     if draft.needs_review_files:
-        footer += ["", "-" * _RULE_WIDTH,
+        footer += ["", FOOTER_RULE,
                    REVIEW_WARNING.format(n=draft.needs_review_files),
                    REVIEW_ADVICE]
 

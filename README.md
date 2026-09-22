@@ -248,6 +248,15 @@ and sends it. Nothing in the scheduled path sends email — and
 `tests/test_layers.py` pins that no module under `tracker/` imports a mail
 or network module.
 
+The app's **Reminder** card is where that draft is read (decision 118): the
+record's last word on it, the four stages as a toggle that rewrites the
+letter on screen without touching the file, the letter itself in the firm's
+own colours, **Copy for Outlook** (the body as HTML beside the same words as
+plain text), **Approve** — which makes what is on screen this week's draft,
+records it, and has the pass leave it alone for the rest of the week the way
+it leaves one you edited — and **Open the draft file**. There is no send
+button on it, and a held reminder shows the hold and nothing else.
+
 How a season is actually run on the firm's one machine — the morning pass,
 the draft day, what the index's reasons mean, and what to do if that machine
 dies — is [docs/runbook.md](docs/runbook.md).

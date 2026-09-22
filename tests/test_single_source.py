@@ -228,6 +228,33 @@ def test_the_stylesheet_has_a_class_for_every_view_state():
     assert set(re.findall(r"\.view-([a-z-]+)\s*\{", css)) == set(VIEW_STATES)
 
 
+def test_the_renderer_types_no_colour():
+    """Decision 118: the firm's colours are Python's (``tracker.page.PALETTE``)
+    and reach the app through the API's vocabulary, so the renderer looks a
+    colour up by the key a stage carries and never writes one. A hex in
+    ``app.js`` would be a second copy of the design system's value, in the
+    one file the design system cannot check."""
+    js = read("app/renderer/app.js")
+    assert not re.findall(r"#[0-9a-fA-F]{3,8}\b", js), "the renderer types no colour"
+    assert "vocab.reminder.palette" in js or "words.palette" in js
+
+
+def test_the_stylesheet_carries_no_stage_colour():
+    """Decision 118: the ladder is mirrored once, in the page module. The
+    stylesheet reads the four colours as variables the renderer sets from
+    the API, so a stage's value written here would be a second mirror
+    nothing holds to the tokens."""
+    from tracker.page import PALETTE
+    from tracker.reminder import HOLD_COLOUR, LETTER_INK, STAGE_COLOURS
+
+    css = read("app/renderer/style.css").lower()
+    # The four rungs, the colour a hold is said in and the letter's two inks.
+    # Not the paper: white is the app's own card colour and always was.
+    for key in {*STAGE_COLOURS.values(), HOLD_COLOUR, LETTER_INK["body"], LETTER_INK["muted"]}:
+        assert PALETTE[key].lower() not in css, key
+    assert "--stage-ink" in css and "--rem-ink" in css
+
+
 def test_the_renderer_types_no_vocabulary_of_its_own():
     """Every word Python owns reaches the page through the API's vocabulary:
     the statuses, the overrides, the decisions, the defaults, the ten
@@ -573,6 +600,7 @@ def test_the_roadmap_names_every_status_in_bold():
 
 def test_documents_name_buttons_by_their_labels():
     """A doc may say 'the X button' only for a button the page actually has."""
+    from tracker import reminder
     from tracker.api import (
         ACCEPT_LABEL,
         CARD_MODE_LABEL,
@@ -610,6 +638,9 @@ def test_documents_name_buttons_by_their_labels():
     # And the card's three answers with the two words the toggle between the
     # review queue's renderings carries (decision 114).
     labels |= {ACCEPT_LABEL, SKIP_LABEL, OPEN_IN_LIST_LABEL, CARD_MODE_LABEL, LIST_MODE_LABEL}
+    # And the Reminder card's three, filled in at runtime from the module
+    # that owns the draft (decision 118). None of them sends anything.
+    labels |= {reminder.COPY_LABEL, reminder.APPROVE_LABEL, reminder.OPEN_DRAFT_LABEL}
     labels = {label for label in labels if label and "${" not in label}
     for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
         text = read(rel)

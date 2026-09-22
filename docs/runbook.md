@@ -232,8 +232,27 @@ with what changed since the last one — which requests are now asked for
 that were not, and which no longer are — above the line you paste from, so
 you reconcile in seconds rather than comparing two emails by eye.
 
+**Read it in the app.** The engagement's **Reminder** card shows the same
+draft: what the record says about it (the day and the stage of the last one,
+or that it has not been drafted yet), the subject line, and the letter as
+the client will read it. **Copy for Outlook** puts that letter on the
+clipboard twice over — once as a formatted body Outlook keeps, once as plain
+text — so you paste it straight into the message and type the subject from
+the line above it. **Approve** makes the text on screen this week's draft:
+it is written into the file, the approval goes on the record, any other
+draft sitting beside it is renamed out of the way (never deleted), and
+nothing writes over it afterwards — not the scheduled pass, and not
+`python -m tracker.reminder <engagement_dir> --write`; each of them lands
+its fresh draft beside it exactly as it does beside one you edited by
+hand. Next week's pass writes next week's draft as before. **Open the
+draft file** is still there for anyone who would rather work in Notepad,
+and an edited file is shown as it stands with a note saying so — the card
+shows the letter alone, so the staff-side lines under the dashed rule at
+the foot of the file are never on the clipboard.
+
 Open it, read it, edit it, paste it into Gmail and send it. Nothing in the
-tool sends anything, ever.
+tool sends anything, ever — the card has no send button, and there is no
+mail or network code anywhere in the reminder path.
 
 **The letter gets firmer as the date gets closer.** There are four stages,
 and which one you get is decided by how far the draft day is from the
@@ -241,7 +260,14 @@ engagement's **Due Date** — the date you are asking the client to send
 things by, which is one of the engagement's details and yours to change.
 The draft's header says which stage it is on, above the fingerprint line,
 so you can see it without reading the letter; the practice page's Drafted
-column says it too.
+column says it too, and the app's Reminder card shows all four as a toggle
+with the one in force pressed. **Moving that toggle changes the words and
+nothing else** — the same requests are asked for at every stage, the letter
+is regenerated on screen, and the file on disk is not touched until you
+approve. The colour climbs with the rung: nothing at stage 1, the target
+date at stage 2, the whole deadline paragraph at stage 3, and at stage 4
+the subject, the list and the deadline paragraph with the consequences
+sentence in bold.
 
 | Stage | When | What the letter does |
 |---|---|---|
@@ -282,7 +308,10 @@ of the practice page and in the app, with the requests named. Clear the
 question — unfile the copy, fix the rule, or set the row's override — and
 the next pass writes the whole reminder, correct, once. The manual draft
 (`python -m tracker.reminder <engagement_dir> --write`) and `--reminders
-always` are held by the same question; nothing clears it but you.
+always` are held by the same question; nothing clears it but you. So is the
+app's Reminder card: while a reminder is held it shows the hold, the
+requests holding it and the stage the day would write at, and nothing that
+reads like something to send — no letter, no clipboard, no approval.
 
 **And so does a file the client sent that we could not use at all.** A
 locked PDF, an empty upload, a file type nothing accepts: that drop never

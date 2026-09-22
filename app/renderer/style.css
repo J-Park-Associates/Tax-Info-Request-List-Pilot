@@ -126,7 +126,136 @@ body {
 }
 .card-head h3 { font-size: 15px; font-weight: 600; color: var(--navy); }
 .summary { font-size: 12.5px; color: var(--subtle); }
-.summary.held { margin: 0 0 10px; color: #92400e; font-weight: 600; }
+
+/* ── The reminder (decision 118) ─────────────────────────────────────── */
+/* Not one colour of the ladder is written here. The four stage colours,
+   the colour a hold is said in and the letter's own ink are Python's
+   (tracker.page.PALETTE), and the renderer sets them as --stage-ink,
+   --rem-ink, --rem-muted and --rem-paper on the elements below, so this
+   file and the page alike stay free of a hex the design system owns. */
+
+.reminder-body { padding: 0 18px 16px; display: flex; flex-direction: column; gap: 14px; }
+
+.rem-status { font-size: 12.5px; color: var(--subtle); }
+.rem-hold { font-size: 13px; font-weight: 600; color: var(--stage-ink, var(--muted)); }
+.rem-hold-rows { list-style: none; margin: 8px 0 0; padding: 0; }
+.rem-hold-rows li {
+  padding: 7px 0 7px 12px;
+  border-left: 2px solid var(--stage-ink, var(--muted));
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+.rem-hold-rows li:last-child { margin-bottom: 0; }
+.rem-hold-rows .rem-hold-why { display: block; font-size: 12.5px; font-weight: 400; color: var(--subtle); }
+.rem-hold-rows .rem-hold-id { font-weight: 700; color: var(--navy); }
+
+.rem-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.rem-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--stage-ink, var(--muted));
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+.rem-stage::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--stage-ink, var(--muted));
+}
+.rem-stage .rem-stage-n { font-variant-numeric: tabular-nums; opacity: 0.75; }
+.rem-stage:hover { border-color: var(--stage-ink, #cbd5e1); background: #f8fafc; }
+.rem-stage:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+/* Pressed is a ring and heavier ink, not a filled block: the card is where
+   the stage is chosen and the letter is where it is spent, and four solid
+   fills would make every rung equally loud. */
+.rem-stage[aria-pressed="true"] {
+  color: var(--stage-ink, var(--muted));
+  font-weight: 700;
+  background: var(--card);
+  border-color: transparent;
+  box-shadow: inset 0 0 0 2px var(--stage-ink, var(--muted));
+}
+.rem-stage[aria-pressed="true"]:hover { background: var(--card); }
+.rem-stage[aria-pressed="true"] .rem-stage-n { opacity: 1; }
+.rem-stage:disabled { opacity: 0.55; cursor: default; }
+.rem-stage:disabled:hover { background: var(--card); border-color: var(--border); }
+.rem-stage[aria-pressed="true"]:disabled:hover { border-color: transparent; }
+
+.rem-hint { font-size: 12.5px; color: var(--subtle); }
+.rem-edited {
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 9px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.rem-subject { font-size: 13.5px; font-weight: 600; color: var(--text); padding-bottom: 2px; }
+.rem-preview {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--rem-ink, var(--text));
+  background: var(--rem-paper, var(--card));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  /* Capped, or a stage 4 letter makes the card taller than the window. */
+  max-height: 340px;
+  overflow-y: auto;
+}
+.rem-preview p { margin: 0 0 12px; }
+.rem-preview p:last-child { margin-bottom: 0; }
+.rem-preview .rem-sec {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--rem-muted, var(--subtle));
+  margin: 0 0 6px;
+}
+.rem-preview ul { list-style: none; margin: 0 0 12px; padding: 0; }
+.rem-preview li { padding: 2px 0 2px 14px; text-indent: -14px; }
+.rem-preview .rem-sign { font-family: Georgia, "Times New Roman", serif; }
+.rem-preview .rem-link { word-break: break-all; }
+/* The ladder, applied from the stage's own emphasis flags — never from the
+   stage's number, which the page does not read. */
+.rem-preview .rem-em-colour { color: var(--stage-ink, inherit); }
+.rem-preview .rem-em-bold { font-weight: bold; }
+
+.rem-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rem-quiet {
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 6px 2px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--subtle);
+  cursor: pointer;
+  border-bottom: 1.5px solid transparent;
+  border-radius: 0;
+}
+.rem-quiet:hover { color: var(--navy); border-bottom-color: var(--navy); background: none; }
+.rem-quiet:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+@media (max-width: 1100px) {
+  .rem-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* ── Requests table ──────────────────────────────────────────────────── */
 

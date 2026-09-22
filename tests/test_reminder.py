@@ -27,6 +27,7 @@ from tracker.manifest import (
 )
 from tracker.reminder import (
     AMBIGUOUS_HOLD,
+    APPROVED_NOTE,
     CHANGED_ADDED,
     CHANGED_HEADING,
     CHANGED_REMOVED,
@@ -37,6 +38,8 @@ from tracker.reminder import (
     HELD_BACK_HEADING,
     HELD_LINE,
     HELD_REFUSAL,
+    HOLD_COLOUR,
+    LETTER_INK,
     NEW_DRAFT_FILENAME,
     PARKED_HOLD,
     PARTIAL_ASK,
@@ -45,21 +48,31 @@ from tracker.reminder import (
     SECTION_MISSING,
     SECTION_ORDER,
     SECTION_PARTIAL,
+    SET_ASIDE_DRAFT_PATTERN,
+    STAGE_COLOURS,
+    STAGE_EMPHASIS,
     STAGE_KEY,
     STAGE_LINE,
     STAGE_NONE,
     STAGES,
     SUBJECT_COMPLETE,
     SUBJECT_NEEDED,
+    Emphasis,
     ReminderError,
     ReminderHeldError,
+    approved_event,
     client_ask,
     count_needs_review,
     draft_changed,
     draft_reminder,
     drafted_event,
+    is_approved_this_week,
+    is_protected,
     is_unedited,
     recorded_fingerprint,
+    render_html,
+    set_aside_other_draft,
+    stage_colour,
     stage_for,
     stage_named,
     triage,
@@ -998,3 +1011,280 @@ def test_a_parked_locked_file_whose_shortlist_is_partial_holds_it_too(tmp_path):
     assert [flag.item.identifier for flag in draft.held] == ["A02"]
     assert [line.item.identifier for line in draft.lines] == ["A01"]
 
+
+# ---------------------- the letter, the body and the ladder (decision 118) ----
+# The text a person pastes, the HTML body Outlook keeps and the shape the
+# app draws its preview from are three renderings of one Letter. These are
+# the claims that say they cannot come apart.
+
+
+def _plain(markup: str) -> str:
+    """Markup with its tags taken out and its whitespace folded.
+
+    A break and the end of a block are where the text breaks; every other
+    tag is emphasis inside a sentence and closes over no space at all, so
+    a coloured date must not come back with a gap before the full stop.
+    """
+    import html as html_entities
+    import re
+
+    broken = re.sub(r"<(?:br\s*/?|/p|/li|/ul|/div)\s*>", " ", markup)
+    return " ".join(html_entities.unescape(re.sub(r"<[^>]+>", "", broken)).split())
+
+
+def _folded(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _every_letter(tmp_path):
+    """One draft per stage, plus a quiet week: every letter there is."""
+    folder = engagement(tmp_path, SENDABLE, name="Every Letter TY2025")
+    drafts = [draft_reminder(folder, due_date=DUE, filing_deadline=DEADLINE, phone=PHONE,
+                             share_link="https://share.example.test/every-letter",
+                             today=DUE, stage=number) for number in (1, 2, 3, 4)]
+    quiet = engagement(tmp_path, [item("A01", "W-2", Status.RECEIVED, file_count=1)],
+                       name="Quiet Letter TY2025")
+    drafts.append(draft_reminder(quiet, due_date=DUE, today=DUE))
+    return drafts
+
+
+def test_the_html_body_says_exactly_what_the_text_body_says(tmp_path):
+    """Two renderings of one Letter, so a sentence cannot reach a client in
+    one and not the other. Tags out, whitespace folded, every stage and a
+    quiet week - and the subject is in neither, because it goes in
+    Outlook's own box and never in the body."""
+    for draft in _every_letter(tmp_path):
+        assert _plain(render_html(draft)) == _folded(draft.body)
+        assert draft.subject not in _plain(render_html(draft))
+
+
+def test_the_html_carries_the_stages_colour_inline_and_no_style_block_no_class_and_fetches_nothing(tmp_path):
+    """Outlook keeps an inline style and drops everything else, and a letter
+    that fetched anything would tell somebody else who is being chased."""
+    import re
+
+    drafts = _every_letter(tmp_path)
+    for draft in drafts:
+        markup = render_html(draft)
+        for forbidden in ("<style", "class=", "src=", "<link", "@import", "javascript:",
+                          "background-image", "<script"):
+            assert forbidden not in markup, (draft.stage, forbidden)
+        # The one address in it is the client's own share link, and nothing
+        # else is fetched to render it.
+        assert re.findall(r'href="([^"]*)"', markup) in ([], [draft.letter.link])
+    # Each stage wears its own colour, and no letter wears another's.
+    for draft in drafts[1:4]:
+        assert stage_colour(draft.stage) in render_html(draft)
+    for draft in (drafts[0], drafts[4]):
+        markup = render_html(draft)
+        for other in (2, 3, 4):
+            assert stage_colour(other) not in markup, (draft.stage, other)
+
+
+def test_the_palette_mirrors_the_design_systems_tokens():
+    """The app cannot read the design system at run time, so the values are
+    mirrored once in the page module - and held to the tokens wherever the
+    design system is readable from the repository's parent tree."""
+    import re
+
+    from tracker.page import PALETTE
+
+    assert PALETTE == {
+        "navy_900": "#1B2A4A",
+        "slate_600": "#3A4660",
+        "grey_500": "#5C6577",
+        "gold_800": "#7A5F16",
+        "warning_600": "#8A5A10",
+        "danger_600": "#A8362F",
+        "cream_50": "#F5F0E8",
+        "white": "#FFFFFF",
+    }
+    # Every key the ladder and the letter name is one the palette holds.
+    assert set(STAGE_COLOURS.values()) <= set(PALETTE)
+    assert HOLD_COLOUR in PALETTE and set(LETTER_INK.values()) <= set(PALETTE)
+
+    tokens = None
+    for parent in Path(__file__).resolve().parents:
+        branding = parent / "Branding"
+        if not branding.is_dir():
+            continue
+        found = sorted(branding.rglob("tokens.json")) + sorted(branding.rglob("colors.css"))
+        if found:
+            tokens = found[0]
+            break
+    if tokens is None:
+        pytest.skip("the design system is not beside this checkout; the values above are the pin")
+
+    declared = {name.replace("-", "_"): value.upper() for name, value in re.findall(
+        r'[-"]{1,2}([a-z]+-\d{2,3})"?\s*:\s*"?(#[0-9a-fA-F]{6})', tokens.read_text(encoding="utf-8"))}
+    assert declared, f"no primitives read out of {tokens.name}"
+    for name, value in PALETTE.items():
+        if name in declared:
+            assert declared[name] == value.upper(), name
+
+
+def test_the_letter_structure_flattens_to_the_text_body(tmp_path):
+    """The shape the app draws its preview from cannot say a third thing."""
+    for draft in _every_letter(tmp_path):
+        assert draft.letter.text() == draft.body
+    # And the two cases parts of the shape have to be empty for.
+    folder = engagement(tmp_path, SENDABLE, name="Bare TY2025")
+    bare = draft_reminder(folder, today=DUE)          # no Due Date, no share link
+    assert bare.letter.deadline == () and bare.letter.link == ""
+    assert bare.letter.text() == bare.body
+
+
+def test_the_emphasis_table_matches_the_design_notes():
+    """Where each stage spends its colour and its weight, pinned: one table
+    serves the letter, the clipboard and the card, and stage 1's colour is
+    the body's own ink, so applying it colours nothing."""
+    from tracker.page import PALETTE
+
+    assert STAGE_EMPHASIS == {
+        1: Emphasis(),
+        2: Emphasis(target_colour=True),
+        3: Emphasis(deadline_colour=True, dates_bold=True, list_bold=True),
+        4: Emphasis(subject_colour=True, subject_bold=True, deadline_colour=True,
+                    dates_bold=True, consequences_bold=True, list_colour=True, list_bold=True),
+    }
+    assert STAGE_COLOURS == {1: "slate_600", 2: "gold_800", 3: "warning_600", 4: "danger_600"}
+    assert PALETTE[STAGE_COLOURS[1]] == PALETTE[LETTER_INK["body"]]
+    assert HOLD_COLOUR == STAGE_COLOURS[3]
+
+
+def test_the_stage_toggle_regenerates_the_same_recipients_at_every_stage_and_writes_nothing(tmp_path):
+    """Moving the toggle is not drafting: the same rows, different words,
+    and not one byte on disk."""
+    folder = engagement(tmp_path, SENDABLE, name="Toggle TY2025")
+    before = sorted(path.name for path in folder.iterdir())
+    asked = set()
+    for number in (1, 2, 3, 4):
+        draft = draft_reminder(folder, due_date=DUE, today=DUE, stage=number)
+        asked.add(tuple(draft.asked))
+        assert draft.stage == number and render_html(draft) and draft.body
+    assert asked == {("A01", "A02")}
+    assert sorted(path.name for path in folder.iterdir()) == before
+    assert list(folder.glob("reminder-draft*")) == []
+
+
+# ------------------------------------------------------- approve (decision 118) ----
+
+
+def approve(folder, draft, written):
+    """Record an approval the way the app's command does: under the lock."""
+    from tracker import store
+    from tracker.locking import engagement_lock
+
+    with engagement_lock(folder):
+        store.record(store.connect(), folder, approved_event(draft, written))
+
+
+def test_an_approved_draft_is_protected_for_the_week_and_the_approval_is_spent_next_week(tmp_path):
+    """The predicate the pass reads, on its own: approved this week, the
+    file is protected; the draft day moves, and it is this week's draft to
+    write again."""
+    folder = engagement(tmp_path, SENDABLE, name="Approved TY2025")
+    draft = draft_reminder(folder, due_date=DUE, today=DUE)
+    written = write_draft(draft, engagement_dir=folder)
+    week = dt.date.today() - dt.timedelta(days=1)
+    approve(folder, draft, written)
+
+    assert is_approved_this_week(folder, written, since=week)
+    assert is_protected(folder, written, approved_since=week)
+    # A writer that cannot measure the week - the command line is a layer
+    # below the runner - still may not write over what a person approved.
+    assert is_protected(folder, written), "an approval holds against every writer"
+    assert is_approved_this_week(folder, written, since=None)
+    # The pass, which knows the week, is the one caller that spends it.
+    assert not is_approved_this_week(folder, written,
+                                     since=dt.date.today() + dt.timedelta(days=7))
+    # The event carries a number, a name and identifiers - no word of the letter.
+    event = approved_event(draft, written)
+    assert event[STAGE_KEY] == draft.stage
+    assert event[ledger.FILE_KEY] == DRAFT_FILENAME
+    assert event[ledger.FINGERPRINT_KEY] == recorded_fingerprint(written)
+    assert event[ledger.ASKED_KEY] == draft.asked
+
+
+def test_an_approval_names_a_text_and_not_a_filename(tmp_path):
+    """The match is on the fingerprint in the file's own header: another
+    draft written to the same name is not the one that was approved, and a
+    draft a person then edits is protected because they edited it."""
+    folder = engagement(tmp_path, SENDABLE, name="Changed TY2025")
+    draft = draft_reminder(folder, due_date=DUE, today=DUE)
+    written = write_draft(draft, engagement_dir=folder)
+    week = dt.date.today() - dt.timedelta(days=1)
+    approve(folder, draft, written)
+    assert is_approved_this_week(folder, written, since=week)
+
+    # The same file name, a different letter: the approval does not follow it.
+    other = write_draft(draft_reminder(folder, due_date=DUE, today=DUE, stage=1),
+                        engagement_dir=folder)
+    assert other == written and not is_approved_this_week(folder, written, since=week)
+    assert not is_protected(folder, written, approved_since=week)
+
+    written.write_bytes(written.read_bytes() + b"\r\nPS: and the boat.\r\n")
+    assert is_protected(folder, written, approved_since=week), "an edit protects it anyway"
+
+
+def test_approve_sets_the_other_draft_aside_by_name_and_never_deletes_anything(tmp_path):
+    """Nothing under an engagement is deleted by an approval: a draft
+    standing beside the approved one is renamed for the day, and a second
+    on the same day takes the filer's own colliding name."""
+    folder = engagement(tmp_path, SENDABLE, name="Aside TY2025")
+    (folder / NEW_DRAFT_FILENAME).write_bytes(b"another draft\r\n")
+    before = len(list(folder.iterdir()))
+
+    moved = set_aside_other_draft(folder, DUE)
+    assert moved is not None
+    assert moved.name == SET_ASIDE_DRAFT_PATTERN.format(date=DUE.isoformat())
+    assert moved.read_bytes() == b"another draft\r\n"
+    assert not (folder / NEW_DRAFT_FILENAME).exists()
+    assert len(list(folder.iterdir())) == before, "renamed, never deleted"
+
+    (folder / NEW_DRAFT_FILENAME).write_bytes(b"and one more\r\n")
+    second = set_aside_other_draft(folder, DUE)
+    assert second is not None and second != moved and second.exists() and moved.exists()
+
+    assert set_aside_other_draft(folder, DUE) is None, "nothing beside it, nothing to move"
+
+
+def test_the_practice_page_says_approved_in_one_word():
+    """The Drafted column is narrow and the word is the page's, not a sentence."""
+    assert APPROVED_NOTE and " " not in APPROVED_NOTE
+
+
+def test_the_command_lines_write_lands_beside_an_approved_draft_and_never_over_it(tmp_path):
+    """An approval holds against every writer, not only against the pass.
+
+    ``python -m tracker.reminder <dir> --write`` cannot ask the runner
+    which draft week it is - it is a layer below it - so it hands
+    :func:`write_draft` no week at all. That must not make it the one
+    writer allowed to throw away what a person approved in the app an hour
+    earlier: without a week, an approval that still names this file's own
+    header fingerprint protects it, and the fresh draft lands beside it
+    exactly as it lands beside one somebody edited.
+    """
+    from tracker import store
+
+    folder = engagement(tmp_path, SENDABLE, name="CLI Approved TY2025")
+    draft = draft_reminder(folder, due_date=DUE, today=DUE)
+    written = write_draft(draft, engagement_dir=folder)
+    approve(folder, draft, written)
+    kept = written.read_bytes()
+
+    store.close()          # the command line opens the same store for itself
+    repo = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    run = subprocess.run(
+        [sys.executable, "-m", "tracker.reminder", str(folder), "--write",
+         "--due", DUE.isoformat(), "--today", DUE.isoformat(), "--stage", "1"],
+        cwd=repo, capture_output=True, text=True, env=env,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+
+    assert written.read_bytes() == kept, "an approval must never be clobbered"
+    beside = folder / NEW_DRAFT_FILENAME
+    assert beside.is_file() and beside.read_bytes() != kept
+    assert stage_named(1).close in beside.read_text(encoding="utf-8")
+    assert NEW_DRAFT_FILENAME in run.stdout

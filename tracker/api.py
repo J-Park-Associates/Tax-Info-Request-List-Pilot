@@ -15,6 +15,9 @@ Commands:
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
   scan      one pass, exactly as the scheduled run makes it (no draft)
+  reminder  the week's draft as the record and the file now stand, at any
+            of the four stages, with the body Outlook wants (never sends)
+  approve   make the text the panel showed this week's draft, and record it
   assign    file one Needs Review document under a request (a person's call)
   dismiss   record that no request asks for one Needs Review document
   unfile    send one filed document back to Needs Review (a person's call)
@@ -53,7 +56,7 @@ from tracker.filer import (
     unfile_document,
 )
 from tracker.fsio import write_text_atomically
-from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, lock_status
+from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, engagement_lock, lock_status
 from tracker.manifest import (
     ANY_EXTENSION,
     COLUMN_HELP,
@@ -84,7 +87,7 @@ from tracker.manifest import (
     summarize,
     unlearn_keyword,
 )
-from tracker.page import slug
+from tracker.page import PALETTE, slug
 from tracker.records import (
     CANDIDATE_SEP,
     DATE_FIELDS,
@@ -116,12 +119,14 @@ from tracker.rollover import (
 from tracker.runner import (
     DRAFT_WEEKDAY,
     LOG_FILENAME,
+    NOTHING_OUTSTANDING,
     REMINDERS_NEVER,
     STATUS_PAGE_FILENAME,
     WEEKDAY_NAMES,
     EngagementRun,
     RunReport,
     append_log,
+    last_draft_day,
     last_drafted,
     run_engagement,
     status_report,
@@ -369,6 +374,17 @@ def default_engagement_name(client: str, year: int, form: str) -> str:
 _slug = slug
 
 
+def _stages() -> list[dict]:
+    """The reminder's four rungs as the app draws them (decision 118): the
+    number, the name the stage carries, the key its colour has in the
+    palette, and where that stage spends its emphasis. The renderer looks
+    the colour up and applies the flags; it decides neither."""
+    return [{"number": stage.number, "name": stage.name,
+             "colour": reminder.STAGE_COLOURS[stage.number],
+             "emphasis": asdict(reminder.STAGE_EMPHASIS[stage.number])}
+            for stage in reminder.STAGES]
+
+
 def standing_rules() -> list[dict]:
     """The package's standing rules with the folder names filled in."""
     names = {"shared": SHARED_DIR_NAME, "pbc": PBC_DIR_NAME, "review": REVIEW_DIR_NAME,
@@ -479,9 +495,33 @@ def _vocab() -> dict:
             "task_name": TASK_NAME,
         },
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
-        # The one line the app shows for a reminder an ambiguous request
-        # holds (decision 115), from the module that holds it.
-        "reminder": {"held_line": reminder.HELD_SUMMARY},
+        # Every word and colour the Reminder card shows (decisions 115 and
+        # 118), from the module that owns the draft. The card types none of
+        # it: the four stages with the palette key each carries and where
+        # each spends its emphasis, the palette those keys name, the
+        # colour a hold is said in and the three the letter's own surface
+        # takes. A hex never reaches the renderer or the stylesheet.
+        "reminder": {
+            "held_line": reminder.HELD_SUMMARY,
+            "heading": reminder.REMINDER_HEADING,
+            "stage_group": reminder.STAGE_GROUP_LABEL,
+            "subject_prefix": reminder.SUBJECT_PREFIX,
+            "copy": reminder.COPY_LABEL,
+            "approve": reminder.APPROVE_LABEL,
+            "open_draft": reminder.OPEN_DRAFT_LABEL,
+            "last_drafted_line": reminder.LAST_DRAFTED_LINE,
+            "never_drafted_line": reminder.NEVER_DRAFTED_LINE,
+            "approved_line": reminder.APPROVED_LINE,
+            "edited_by_hand": reminder.EDITED_BY_HAND,
+            "stage_toggle_hint": reminder.STAGE_TOGGLE_HINT,
+            "copied": reminder.COPIED_NOTE,
+            "set_aside_line": reminder.SET_ASIDE_LINE,
+            "nothing_to_send": NOTHING_OUTSTANDING,
+            "stages": _stages(),
+            "palette": dict(PALETTE),
+            "hold_colour": reminder.HOLD_COLOUR,
+            "letter_ink": dict(reminder.LETTER_INK),
+        },
         # The settings page's own box for the firm's telephone number
         # (decision 117): its label, the sentence under it, and the number
         # as recorded - so a person who re-points the app at their clients
@@ -802,6 +842,11 @@ def _state(engagement: Path) -> dict:
             # The one a person is meant to open. Named here as well as
             # above because the shell opens only paths this map holds.
             "view": str(view_path),
+            # The week's draft, so the Reminder card's quiet button can
+            # open it (decision 118). Named here for the same reason the
+            # two above are: the shell opens only the paths this map
+            # holds, and the card names no path of its own.
+            "draft": str(engagement / reminder.DRAFT_FILENAME),
             # The practice's page, not this engagement's: it lives in the
             # clients root. Reported here because the shell opens only the
             # paths the API has named, and a person looking at one
@@ -822,10 +867,20 @@ def _reminder_payload(engagement: Path, items, entries) -> dict:
     _, _, _, held = reminder.triage(items, entries)
     drafted = last_drafted(engagement)
     return {
-        "held": [{"identifier": flag.item.identifier, "label": flag.item.label,
-                  "reason": flag.reason} for flag in held],
+        "held": _held_rows(held),
         "last_drafted": drafted.isoformat() if drafted else None,
     }
+
+
+def _held_rows(held) -> list[dict]:
+    """The requests that hold a reminder, as the card names them: the
+    identifier on its own, the document beside it, the whole label for
+    anything that wants one line, and the reason the hold was put on it.
+    The identifier travels apart from the label because the card sets it
+    in its own type, and a page cutting an identifier off a label would be
+    a page parsing a sentence Python wrote."""
+    return [{"identifier": flag.item.identifier, "document": flag.item.document,
+             "label": flag.item.label, "reason": flag.reason} for flag in held]
 
 
 def _cmd_state(argv: list[str]) -> dict:
@@ -1382,6 +1437,209 @@ def _cmd_restore(argv: list[str]) -> dict:
     }
 
 
+# --------------------------------------------------------------- the reminder ----
+# Decision 118. The app shows the week's draft, regenerates it at any of
+# the four stages without touching the file, puts the same words on the
+# clipboard as a body Outlook keeps, and lets a person approve the text
+# they are looking at. Nothing sends, and nothing here can: reading takes
+# no lock and writing takes the engagement's, as every other write does.
+
+#: What a panel that has gone stale is refused with: the draft on disk, or
+#: the rows behind it, moved between the reading and the click.
+DRAFT_MOVED = "the draft changed since it was shown; look again"
+
+
+def _letter_payload(letter) -> dict:
+    """The letter as data, so the app draws it with DOM nodes.
+
+    The page is built from API data and never from an HTML string - its
+    own first rule - so the preview cannot be the clipboard's markup. It
+    is this shape instead, rendered by the renderer, and the HTML string
+    goes to the clipboard alone. The deadline paragraph travels as its
+    runs, each saying what it is, so the emphasis lands where the letter
+    puts it and the page never searches a sentence for a date.
+    """
+    if letter is None:
+        return {}
+    marks = reminder.stage_emphasis(letter.stage)
+    return {
+        "greeting": letter.greeting,
+        "progress": letter.progress,
+        "intro": letter.intro,
+        "sections": [{"heading": section.heading, "items": list(section.items)}
+                     for section in letter.sections],
+        "drop": list(letter.drop),
+        "link": letter.link,
+        "deadline": [_run_payload(run, marks) for run in letter.deadline],
+        "close": letter.close,
+        "signoff": list(letter.signoff),
+        "stage": letter.stage,
+    }
+
+
+def _run_payload(run, marks) -> dict:
+    """One run of the deadline paragraph, with what its stage does to it
+    already decided: the page marks what it is told to mark."""
+    coloured, bold = reminder.run_emphasis(run, marks)
+    return {"text": run.text, "kind": run.kind, "colour": coloured, "bold": bold}
+
+
+def _stage_asked(spec: dict) -> int | None:
+    """The stage a click asked for, or None for the one the record gives."""
+    asked = spec.get("stage")
+    if asked in (None, ""):
+        return None
+    try:
+        return int(asked)
+    except (TypeError, ValueError):
+        raise ManifestError(f"{asked!r} is not a stage number") from None
+
+
+def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> dict:
+    """The reminder as the record and the draft file now stand.
+
+    What both commands work from, so the panel and the approval cannot
+    disagree about what is on screen. Reads only - no lock, no write, no
+    draft file touched (decision 12: the app does not decide the draft
+    day; regenerating in memory is not drafting).
+
+    A held reminder has no letter at all (decision 115's rule, carried to
+    this surface): a held client's composed text would ask for the clean
+    rows alone, which is the partial reminder the hold exists to prevent,
+    and the card is something a person can copy from. So the subject, the
+    text, the body and the letter are all empty while it is held, the
+    toggle stands at the stage the day gives, and a stage asked for is
+    ignored - there is nothing to re-stage.
+    """
+    try:
+        info = load_engagement_info(engagement)
+        draft = reminder.draft_reminder(engagement, today=today)
+    except reminder.ReminderError as exc:
+        raise ManifestError(str(exc)) from None
+
+    day_stage = reminder.stage_for(info.due, today)
+    last = reminder.last_draft_event(engagement, carrying=ledger.FILE_KEY)
+    path = engagement / reminder.DRAFT_FILENAME
+    exists = path.is_file()
+    edited = exists and not reminder.is_unedited(path)
+    approved = reminder.last_approved_event(engagement)
+    in_force = reminder.is_approved_this_week(engagement, path,
+                                              since=last_draft_day(today, DRAFT_WEEKDAY))
+
+    if draft.held:
+        stage = day_stage
+    else:
+        recorded = last.get(reminder.STAGE_KEY) if last else None
+        stage = requested if requested is not None else (recorded or day_stage)
+        if draft.has_outstanding and stage != draft.stage:
+            try:
+                draft = reminder.draft_reminder(engagement, today=today, stage=int(stage))
+            except reminder.ReminderError as exc:
+                raise ManifestError(str(exc)) from None
+
+    if draft.held:
+        subject, text, html, letter = "", "", "", None
+    elif edited:
+        # What a person edited is what they approve and what they copy:
+        # the header above the rule is the machine's note to them and was
+        # never part of the email, and the words below it are theirs, so
+        # no stage's emphasis is put on them.
+        body = reminder.pasted_text(path)
+        subject, text = reminder.split_pasted(body)
+        html, letter = reminder.render_text_html(text), None
+    else:
+        subject, text = draft.subject, draft.body
+        html, letter = reminder.render_html(draft), draft.letter
+
+    shown = f"{reminder.SUBJECT_PREFIX}{subject}\n\n{text}" if subject else text
+    return {
+        "draft": draft,
+        "stage": stage,
+        "held": _held_rows(draft.held),
+        "refusal": reminder.held_refusal(draft) if draft.held else "",
+        "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
+                  "stage": last.get(reminder.STAGE_KEY) or 0,
+                  "asked": list(last.get(ledger.ASKED_KEY) or []),
+                  "file": last.get(ledger.FILE_KEY, "")} if last else None),
+        "approved": ({"date": ledger.day_of(str(approved.get(ledger.AT_KEY, ""))).isoformat(),
+                      "stage": approved.get(reminder.STAGE_KEY) or 0,
+                      "file": approved.get(ledger.FILE_KEY, "")}
+                     if approved and in_force else None),
+        "file": {"name": path.name, "exists": exists, "edited": edited, "path": str(path)},
+        "subject": subject,
+        "text": text,
+        "html": html,
+        "letter": _letter_payload(letter),
+        "fingerprint": reminder.draft_fingerprint(shown),
+        "asked": draft.asked,
+        "stages": _stages(),
+        "editable": not draft.held and not edited and draft.has_outstanding,
+    }
+
+
+def _reminder_card(state: dict) -> dict:
+    """The reminder command's answer: everything above but the draft
+    itself, which is a Python object and stays in this process."""
+    return {key: value for key, value in state.items() if key not in ("draft", "refusal")}
+
+
+def _cmd_reminder(argv: list[str]) -> dict:
+    """The week's draft as the record and the file now stand, at a stage.
+
+    JSON on stdin: ``{"stage": n | null}`` - the rung a person moved the
+    toggle to, or null for the one the record gives (the stage the last
+    draft was written at, else the one the Due Date gives today). Nothing
+    is written: the text at another stage is regenerated in memory, the
+    draft file is read and never touched, and the HTML body is rendered
+    for the clipboard and never stored.
+
+    ``today`` is the day itself. The command line's ``--today`` is for
+    reading next week's letter this week; the app is used on the day.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    return {"reminder": _reminder_card(
+        _reminder_now(engagement, _stage_asked(spec), dt.date.today()))}
+
+
+def _cmd_approve(argv: list[str]) -> dict:
+    """Make the text the panel showed this week's draft, and record it.
+
+    JSON on stdin: ``{"stage": n, "fingerprint": "..."}`` - the rung the
+    toggle stood on and the fingerprint of the text that was on screen. A
+    panel that has gone stale is refused by that fingerprint before a file
+    is touched, exactly as a review card is refused by its row's sequence
+    number (decision 112): what is approved must be what was read.
+
+    Under the engagement lock, because it writes: an unedited draft is
+    written at the chosen stage, a file somebody edited is approved as it
+    stands, any draft standing beside it is set aside by name and never
+    deleted, and one ``draft_approved`` event goes on the record. For the
+    rest of that draft week the pass treats the file as it treats an
+    edited one. A held reminder is refused in the sentence the run and the
+    command line give. Nothing is sent, and no socket is opened.
+    """
+    engagement = _engagement_dir(argv)
+    spec = json.loads(sys.stdin.read() or "{}")
+    requested = _stage_asked(spec)
+    shown = str(spec.get("fingerprint", "") or "")
+    today = dt.date.today()
+    with engagement_lock(engagement):
+        state = _reminder_now(engagement, requested, today)
+        if state["held"]:
+            raise ManifestError(state["refusal"])
+        if shown != state["fingerprint"]:
+            raise ManifestError(DRAFT_MOVED)
+        draft = state["draft"]
+        path = engagement / reminder.DRAFT_FILENAME
+        written = path if state["file"]["edited"] else reminder.write_draft(
+            draft, engagement_dir=engagement, preserve_edits=False)
+        set_aside = reminder.set_aside_other_draft(engagement, today)
+        store.record(store.connect(), engagement, reminder.approved_event(draft, written))
+    return {"reminder": _reminder_card(_reminder_now(engagement, requested, today)),
+            "set_aside": set_aside.name if set_aside else ""}
+
+
 def _cmd_settings(argv: list[str]) -> dict:
     """Where the clients live, who the firm is, and where that is written down."""
     root = clients_root()
@@ -1462,6 +1720,8 @@ COMMANDS = {
     "priors": _cmd_priors,
     "rollover": _cmd_rollover,
     "scan": _cmd_scan,
+    "reminder": _cmd_reminder,
+    "approve": _cmd_approve,
     "templates": _cmd_templates,
     "list": _cmd_list,
     "create": _cmd_create,
