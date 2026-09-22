@@ -103,11 +103,14 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 6` (decision 104 dropped the workbook's
+One file, `PRAGMA user_version = 7` (decision 104 dropped the workbook's
 digest column; decision 107 added the verdict cache's two tables; decision
 116 added the `override_reason` column to `requests`; decision 117 added
 the Filing Deadline to the engagement's details, and a detail is a column
-of `engagements`; decision 119 added the `intents` table; a file at an
+of `engagements`; decision 119 added the `intents` table; decision 125 put
+the household, the tax year and the return name into the engagement's
+details, gave `engagements` the household record's own columns and a `kind`
+saying which of the two a row holds; a file at an
 earlier version is refused by name, and is deleted and rebuilt — nothing
 is lost, the journals are what it is made
 of). A file at any other version is refused by name rather than opened
@@ -115,7 +118,7 @@ hopefully.
 
 | table | what it holds |
 |---|---|
-| `engagements` | one row per engagement folder, keyed by its path relative to the clients root with forward slashes — the root the settings file names whenever the folder is under it, whatever root a caller typed, so one folder is one key for the app, the scheduled pass and the command line alike (decision 106); a caller's own root, or the folder's parent, only on a machine with no settings file. The engagement's own details, the journal's head as it was when the rows were built, how many lines have been applied, and when |
+| `engagements` | one row per folder that has a journal — a return, or a household (decision 125); `kind` says which. Keyed by its path relative to the clients root with forward slashes — the root the settings file names whenever the folder is under it, whatever root a caller typed, so one folder is one key for the app, the scheduled pass and the command line alike (decision 106); a caller's own root, or the folder's parent, only on a machine with no settings file. For a return: its own details, which since decision 125 carry the household, the tax year and the return name. For a household: the `household_` columns — its name, the members a person typed, the contact and the inbox link. And for both: the journal's head as it was when the rows were built, how many lines have been applied, and when |
 | `requests` | the person's rules, one row per identifier — everything the request list's own record holds that is not a status, in the order the person gave the rows. Tuples (keywords, extensions) are JSON text |
 | `statuses` | what the last scan said about one identifier: status, received date, file count, validation notes, and the sequence number that set them |
 | `documents` | the index: one row per preserved original, every column the index row has, plus the identity it is keyed under, the place it holds in the index's own order, and the sequence number that last wrote it - read back by `document_seqs()`, and the app carries it |
@@ -144,8 +147,13 @@ home from the client's original, already home, or refused a home holding
 a different file and sent to review instead. One name again, because the
 row the line carries says which. The rest of the names are not row events and fold their own
 way: `scanned` (the statuses), `keyword_learned`, `rules_changed`,
-`drafted`, `draft_approved`, `moving` and `move_abandoned`, and the retired
-`rules_imported` and `migrated`. `draft_approved` is decision 118's and the
+`drafted`, `draft_approved`, `moving`, `move_abandoned` and
+`household_changed`, and the retired
+`rules_imported` and `migrated`. `household_changed` is decision 125's and
+the only line a household's own journal ever carries: the fields of the
+household record that moved, and nothing else. It is folded into the
+`household_` columns, not into any index row — a household holds no
+documents and no requests. `draft_approved` is decision 118's and the
 newest of them: a person read the week's draft in the app and said it is
 the one to send. It carries the stage, the draft file, the fingerprint in
 that file's header and the requests it asks for — a number, a name and
@@ -348,6 +356,10 @@ store compared with itself — they answer from these very tables. An
 engagement whose journal carries no rules event has no rules on either
 side.
 
+A household's row is checked the same way and by the same call
+(`_check_household`, decision 125): the `household_` columns against the
+fold of that folder's own journal, one sentence per field that differs.
+
 The learned keywords were the last thing here the record could not vouch
 for. The table only ever grew, the journal's fold did not know the event
 at all, and the check never looked: a row planted or dropped behind the
@@ -460,3 +472,20 @@ fingerprint of that file's header — so the store answers "was this draft
 approved this week?" with the same `last_event` query it already answers
 "when was this engagement last drafted?" with. Nothing about the letter's
 words goes in either line, and neither is ever rewritten.
+
+**Afterwards (decision 125) — the household is a row of the same table
+(`user_version` 7).** A client folder is a household with one folder per
+year inside it and one folder per return inside that, and the household has
+a record of its own: its name, the members a person typed as who its folder
+is meant to be shared with, the contact its letters greet and the inbox link
+they paste. It is a `_ledger.jsonl` in the private tree like any other, and
+it is held in `engagements` like any other — a `kind` column says whether a
+row is a `return` or a `household`, the four `household_` columns hold the
+record, and `_check_household` compares them with the fold of that journal.
+A household holds no documents, no requests and no statuses. In the same
+version each return's details gain three fields it could previously only
+infer from its path — the household, the tax year and the return name —
+written at creation and at rollover and never edited, so a folder somebody
+renames is still processed as the record says. Nothing else about the
+tables changed, and a version-6 file is refused by name, deleted and built
+again from the journals.

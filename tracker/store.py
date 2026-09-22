@@ -146,8 +146,10 @@ from tracker.records import (
     RULE_LIST_FIELDS,
     UNKNOWN,
     EngagementInfo,
+    HouseholdInfo,
     IndexEntry,
     StatusUpdate,
+    household_from_json,
     identifier_key,
     info_from_json,
     status_from_json,
@@ -194,7 +196,21 @@ ENV_STORE = "TRACKER_STORE"
 #: the table and leave a version-5 file's earlier lines unfolded into it,
 #: so the file is refused, deleted and rebuilt from the journals like the
 #: others - the intents are ``moving`` lines in them.
-SCHEMA_VERSION = 6
+#: Version 7 (decision 125) added the household, the tax year and the
+#: return name to the engagement's details, which are columns of
+#: ``engagements``, and the household record's own columns and ``kind``: a
+#: version-6 file has none of them, so it is refused, deleted and rebuilt
+#: from the journals like every version before it - the details travel in
+#: the ``rules_changed`` and ``household_changed`` lines.
+SCHEMA_VERSION = 7
+
+#: What a row of ``engagements`` holds the record of: one return, or one
+#: household (decision 125). Both are folders with a journal, keyed by
+#: path and folded by the same machinery, and this is what tells a reader
+#: which of the two it has. A row is a return until a ``household_changed``
+#: line says otherwise.
+KIND_RETURN = "return"
+KIND_HOUSEHOLD = "household"
 
 #: The verdict cache's two tables (decision 107). Named once, here, because
 #: the cache in :mod:`tracker.content_check` and the tests both speak of
@@ -225,11 +241,24 @@ _AFFINITY: dict[str, str] = {
     "bool": "INTEGER",
     "int | None": "INTEGER",
     "dt.date | None": "TEXT",
+    # A list of words is one JSON array in one text column, as a rule
+    # row's keywords already are: SQLite has no list, and a second table
+    # for four names a person typed would be a join to read a card.
+    "tuple[str, ...]": "TEXT",
 }
+#: The record fields held as a JSON array in a text column, by name. Named
+#: because SQLite cannot tell one from a string on the way back, exactly as
+#: ``records.RULE_LIST_FIELDS`` says it for a rule row.
+_LIST_COLUMNS: frozenset[str] = frozenset({"members"})
 
 
-def _column_types(record: type) -> dict[str, str]:
-    """One frozen record's fields as columns: name -> affinity, in field order."""
+def _column_types(record: type, *, prefix: str = "") -> dict[str, str]:
+    """One frozen record's fields as columns: name -> affinity, in field order.
+
+    ``prefix`` is for a record that shares a table with another: the
+    household's details sit in ``engagements`` beside a return's, and a
+    ``name`` column belongs to neither on its own.
+    """
     out: dict[str, str] = {}
     for one in fields(record):
         affinity = _AFFINITY.get(str(one.type))
@@ -238,7 +267,7 @@ def _column_types(record: type) -> dict[str, str]:
                 f"{record.__name__}.{one.name} is typed {one.type!r}, which the store has no "
                 f"column for; teach it one before storing that record"
             )
-        out[one.name] = affinity
+        out[f"{prefix}{one.name}"] = affinity
     return out
 
 
@@ -247,6 +276,11 @@ def _column_types(record: type) -> dict[str, str]:
 DOCUMENT_COLUMNS = _column_types(IndexEntry)
 #: The engagement's details', likewise.
 ENGAGEMENT_COLUMNS = _column_types(EngagementInfo)
+#: The household's details, in the same table under their own prefix
+#: (decision 125): a household folder and a return folder are both rows of
+#: ``engagements``, keyed by path, and ``kind`` says which.
+HOUSEHOLD_PREFIX = "household_"
+HOUSEHOLD_COLUMNS = _column_types(HouseholdInfo, prefix=HOUSEHOLD_PREFIX)
 #: One identifier's scanner columns, likewise.
 STATUS_COLUMNS = _column_types(StatusUpdate)
 
@@ -290,6 +324,8 @@ SCHEMA: tuple[str, ...] = (
         id INTEGER PRIMARY KEY,
         "path" TEXT UNIQUE NOT NULL,
         {_quoted(ENGAGEMENT_COLUMNS)},
+        {_quoted(HOUSEHOLD_COLUMNS)},
+        kind TEXT NOT NULL DEFAULT '{KIND_RETURN}',
         ledger_head TEXT NOT NULL DEFAULT '',
         applied_seq INTEGER NOT NULL DEFAULT 0,
         built_at TEXT NOT NULL
@@ -578,8 +614,9 @@ def _engagement_row(conn: sqlite3.Connection, engagement_dir: Path | str,
     names is exactly one stored path, and a folder there with no row is
     an engagement the store has not met - never another engagement whose
     key its path happens to end with. The pre-integration audit of
-    2026-09-19 found ``Clients/Archive/Smith 2025``, never seen, answered
-    as ``Clients/Smith 2025``'s row: its reads refused the journal as
+    2026-09-19 found an archived copy of one engagement's folder, one
+    level deeper under the root and never seen, answered as that
+    engagement's own row: its reads refused the journal as
     truncated, and a longer journal would have been applied onto the
     other engagement. The store cannot tell "one folder named by a wider
     root" from "a different folder nested under the root" by the paths
@@ -627,6 +664,29 @@ def _to_sql(value: object) -> object:
     if isinstance(value, (tuple, list)):
         return json.dumps(list(value), ensure_ascii=False)
     raise StoreError(f"the store has no column form for {type(value).__name__} ({value!r})")
+
+
+#: The columns every new row of ``engagements`` is laid out with, and the
+#: record defaults behind them. One home for the list, because three
+#: writers insert a row - the reader's top-up, the rebuild and nothing
+#: else - and a column added to either record must reach all of them.
+_NEW_ENGAGEMENT_COLUMNS = f'"path", {_names(ENGAGEMENT_COLUMNS)}, {_names(HOUSEHOLD_COLUMNS)}, ' \
+                          "kind, ledger_head, applied_seq, built_at"
+
+
+def _new_engagement_defaults() -> list[object]:
+    """Both records at their defaults, in ``_NEW_ENGAGEMENT_COLUMNS`` order.
+
+    A folder the store has just met is a return until a
+    ``household_changed`` line says otherwise, and every detail of it is
+    the record's own default until an event speaks for it.
+    """
+    return (
+        [_to_sql(getattr(EngagementInfo(), name)) for name in ENGAGEMENT_COLUMNS]
+        + [_to_sql(getattr(HouseholdInfo(), name.removeprefix(HOUSEHOLD_PREFIX)))
+           for name in HOUSEHOLD_COLUMNS]
+        + [KIND_RETURN]
+    )
 
 
 def _rule_from_sql(stored: sqlite3.Row) -> dict:
@@ -816,6 +876,51 @@ def engagement_info(conn: sqlite3.Connection, engagement_dir: Path | str) -> Eng
     return info_from_json({name: row[name] for name in ENGAGEMENT_COLUMNS})
 
 
+def household_info(conn: sqlite3.Connection, folder: Path | str) -> HouseholdInfo | None:
+    """The household's details as the store holds them, or ``None`` for a
+    folder it does not hold - and for one it holds as a return.
+
+    What ``tracker.households.load_household_info()`` answers from and what
+    a save diffs against. ``None`` rather than a blank household, because
+    a return folder is not a household with nothing typed in it: the
+    registry has to tell the two apart to know what a folder at the
+    household level is (decision 125).
+    """
+    row = _engagement_row(conn, folder)
+    if row is None or row["kind"] != KIND_HOUSEHOLD:
+        return None
+    return household_from_json(_household_from_sql(row))
+
+
+def _household_from_sql(row: sqlite3.Row) -> dict:
+    """One stored household row in the shape a ``household_changed`` event
+    carries it: the prefix off, the members back from JSON text.
+
+    The inverse of :func:`_to_sql` for these columns, for the reason
+    :func:`_rule_from_sql` exists: SQLite cannot tell a JSON array in a
+    text column from a string.
+    """
+    out: dict[str, object] = {}
+    for column in HOUSEHOLD_COLUMNS:
+        name = column.removeprefix(HOUSEHOLD_PREFIX)
+        value = row[column]
+        out[name] = json.loads(value or "[]") if name in _LIST_COLUMNS else value
+    return out
+
+
+def kind(conn: sqlite3.Connection, folder: Path | str) -> str | None:
+    """Whether the store holds this folder as a return or as a household,
+    or ``None`` when it holds it at all.
+
+    The one question discovery asks of a folder at the household level: a
+    journal alone does not say which of the two a folder is, and a return
+    record sitting where a household record belongs is a misfit from the
+    layout before decision 125, not a household.
+    """
+    row = _engagement_row(conn, folder)
+    return None if row is None else row["kind"]
+
+
 def has_rules_event(conn: sqlite3.Connection, engagement_dir: Path | str) -> bool:
     """Whether this engagement's journal has ever carried a rules event -
     a ``rules_changed``, or the ``rules_imported`` an older journal holds.
@@ -995,6 +1100,39 @@ def _write_engagement_info(conn: sqlite3.Connection, engagement_id: int, info: d
     )
 
 
+def _write_household_info(conn: sqlite3.Connection, engagement_id: int, info: dict) -> None:
+    """The household's details, as ``records.household_to_json`` shapes
+    them, and the row said to be a household's (decision 125).
+
+    Only the fields the line carries, as a return's details are written:
+    a ``household_changed`` event names what moved. The ``kind`` is set on
+    every one of them rather than only the first, because it is what a
+    reader asks the row and setting it once would depend on which line the
+    store happened to fold first after a rebuild.
+    """
+    named = [name for name in HOUSEHOLD_COLUMNS if name.removeprefix(HOUSEHOLD_PREFIX) in info]
+    assignments = ", ".join(f'"{name}" = ?' for name in [*named, "kind"])
+    conn.execute(
+        f"UPDATE engagements SET {assignments} WHERE id = ?",
+        (*[_household_cell(name.removeprefix(HOUSEHOLD_PREFIX), info) for name in named],
+         KIND_HOUSEHOLD, engagement_id),
+    )
+
+
+def _household_cell(name: str, info: dict) -> object:
+    """One household field as its column holds it.
+
+    The one field that is a list of words is stored as a JSON array, and a
+    line that wrote one name as a string is read as one member on both
+    sides (``records.household_from_json``) - so the column holds a list
+    either way and :func:`check` compares like with like.
+    """
+    value = info[name]
+    if name not in _LIST_COLUMNS:
+        return _to_sql(value)
+    return _to_sql([value] if isinstance(value, str) else list(value or []))
+
+
 MALFORMED_LINE = "{where}: line {seq} ({event}) {problem}; the journal is not applied past it"
 
 
@@ -1075,8 +1213,6 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         also = event.get(ledger.ALSO_KEY)
         if also is not None and not isinstance(also, list):
             refuse(f"carries {ledger.ALSO_KEY!r} that is not a list")
-        if not isinstance(event.get(ledger.DAY_KEY, ""), str):
-            refuse(f"carries {ledger.DAY_KEY!r} that is not a day")
     elif name in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
         for key in (ledger.IDENTIFIER_KEY, ledger.KEYWORD_KEY):
             value = event.get(key)
@@ -1084,6 +1220,23 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
                 refuse(f"carries {key!r} that is not text: {value!r:.60}")
             if not value:
                 refuse(f"carries a blank {key!r}")
+    elif name == ledger.HOUSEHOLD_CHANGED:
+        # The household's details travel exactly as a return's do, so the
+        # line is checked exactly as one: a mapping of fields, and the one
+        # field that is a list of words is a list of words.
+        household = event.get(ledger.HOUSEHOLD_KEY)
+        if household is not None and not isinstance(household, dict):
+            refuse(f"carries {ledger.HOUSEHOLD_KEY!r} that is not a mapping")
+        members = (household or {}).get("members")
+        # A hand-written line naming one person is read as one member
+        # (``records.household_from_json``) rather than refused: the
+        # journal is a synced file somebody may have opened. A list
+        # holding something that is not a name is not a members list.
+        if members is not None and not isinstance(members, (list, str)):
+            refuse("carries 'members' that is neither a list nor a name")
+        for member in members if isinstance(members, list) else []:
+            if not isinstance(member, str):
+                refuse(f"names a member that is not text: {member!r:.60}")
 
 
 def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, start: int) -> int:
@@ -1155,6 +1308,8 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
             )
         elif name in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
             _apply_rules_event(conn, engagement_id, event)
+        elif name == ledger.HOUSEHOLD_CHANGED:
+            _write_household_info(conn, engagement_id, dict(event.get(ledger.HOUSEHOLD_KEY) or {}))
         ledger.apply(state, event)
     if any(event.get(ledger.EVENT_KEY) in ledger.ROW_EVENTS for event in events):
         _write_documents(conn, engagement_id, state.rows, seqs)
@@ -1317,12 +1472,12 @@ def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_di
             return row["applied_seq"]
         return sync(conn, root, engagement_dir)
     events = ledger.read_events(engagement_dir)
+    defaults = _new_engagement_defaults()
     with _transaction(conn):
-        columns = f'"path", {_names(ENGAGEMENT_COLUMNS)}, ledger_head, applied_seq, built_at'
         cursor = conn.execute(
-            f"INSERT INTO engagements ({columns}) VALUES ({_marks(len(ENGAGEMENT_COLUMNS) + 4)})",
-            (rel, *[_to_sql(getattr(EngagementInfo(), name)) for name in ENGAGEMENT_COLUMNS],
-             ledger.head(engagement_dir), len(events), ledger.stamp()),
+            f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
+            f"VALUES ({_marks(len(defaults) + 4)})",
+            (rel, *defaults, ledger.head(engagement_dir), len(events), ledger.stamp()),
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)
@@ -1479,11 +1634,11 @@ def rebuild_engagement(
         known = _engagement_row(conn, engagement_dir, root)
         if known is not None:
             conn.execute("DELETE FROM engagements WHERE id = ?", (known["id"],))
-        columns = f'"path", {_names(ENGAGEMENT_COLUMNS)}, ledger_head, applied_seq, built_at'
+        defaults = _new_engagement_defaults()
         cursor = conn.execute(
-            f"INSERT INTO engagements ({columns}) VALUES ({_marks(len(ENGAGEMENT_COLUMNS) + 4)})",
-            (rel, *[_to_sql(getattr(EngagementInfo(), name)) for name in ENGAGEMENT_COLUMNS],
-             head, len(events), built_at),
+            f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
+            f"VALUES ({_marks(len(defaults) + 4)})",
+            (rel, *defaults, head, len(events), built_at),
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)
@@ -1522,6 +1677,38 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     problems += _check_rules(conn, engagement["id"], name, folded)
     problems += _check_intents(conn, engagement["id"], name, folded.intents)
     problems += _check_learned(conn, engagement["id"], name, folded.learned)
+    problems += _check_household(conn, engagement["id"], name, folded.household)
+    return problems
+
+
+def _check_household(
+    conn: sqlite3.Connection, engagement_id: int, name: str, recorded: dict[str, object]
+) -> list[str]:
+    """The household's details, table against journal (decision 125).
+
+    A folder whose journal carries a ``household_changed`` line is a
+    household, and the row must say so as well as holding what the line
+    said: a row the store still calls a return would be a household
+    discovery walks straight past. A folder with no such line is compared
+    about nothing, which is every return in the practice.
+    """
+    if not recorded:
+        return []
+    row = conn.execute("SELECT * FROM engagements WHERE id = ?", (engagement_id,)).fetchone()
+    problems = []
+    if row["kind"] != KIND_HOUSEHOLD:
+        problems.append(
+            f"{name}: the record carries the household's details and the store holds the "
+            f"folder as {row['kind']!r}")
+    for field in recorded:
+        column = f"{HOUSEHOLD_PREFIX}{field}"
+        if column not in HOUSEHOLD_COLUMNS:
+            continue
+        theirs = _household_cell(field, recorded)
+        if row[column] != theirs:
+            problems.append(
+                f"{name}: household {field}: the store says {row[column]!r}, "
+                f"the record says {theirs!r}")
     return problems
 
 
@@ -1824,8 +2011,12 @@ if __name__ == "__main__":
         parser.error(f"{given} is not the app folder, a settings file in it, or a {STORE_FILENAME}; "
                      f"nothing was opened and no store was created")
     clients_root = Path(ns.root)
+    # Every folder with a record, households included (decision 125): a
+    # household's row is held in this same table and folded by the same
+    # machinery, so a check that walked only the returns would leave each
+    # of them unchecked without saying so.
     folders = ([Path(ns.engagement)] if ns.engagement
-               else registry.engagement_dirs(clients_root))
+               else registry.record_dirs(clients_root))
 
     print(f"\n{chosen}")
     failures = 0

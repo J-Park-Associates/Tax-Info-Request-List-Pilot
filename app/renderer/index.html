@@ -40,9 +40,17 @@
           New Engagement
         </button>
         <span class="toolbar-spacer"></span>
-        <button id="btn-shared" class="btn">
+        <!-- The household's one inbox, and the household's folder in the
+             tree a client is shared (decision 125). Both labels are the
+             API's (vocab.household); the page types neither, and the shell
+             opens only the paths the API reported. -->
+        <button id="btn-inbox" class="btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          <span id="inbox-label"></span>
+        </button>
+        <button id="btn-client-folder" class="btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          Open Client Folder
+          <span id="client-folder-label"></span>
         </button>
         <!-- The request list and the engagement's details, edited here and
              recorded (decision 104). The label is the API's
@@ -76,6 +84,16 @@
 
       <div id="banner" class="banner hidden" role="status"></div>
 
+      <!-- Every folder under the clients root that does not fit the layout,
+           each with the one sentence saying why it is left alone (decision
+           125, the owner's rule). Shown only when the walk found one; every
+           word of it is the API's. -->
+      <details id="misfits-card" class="dismissed hidden">
+        <summary id="misfits-heading"></summary>
+        <p id="misfits-note" class="wiz-note"></p>
+        <ul id="misfits-list" class="review"></ul>
+      </details>
+
       <!-- First launch: where the clients live. Written once, read by the
            app and the scheduled job alike. -->
       <section id="setup-card" class="card hidden">
@@ -100,6 +118,31 @@
         <span id="lock-text"></span>
         <button id="btn-unlock" class="btn btn-small hidden">Clear lock</button>
       </div>
+
+      <!-- The household this return belongs to (decision 125): who the
+           firm says its folder is shared with, the contact and the link its
+           letters use, the year's returns, and the one queue a person works
+           across it. Every word is the API's (vocab.household). -->
+      <section id="household-card" class="card hidden">
+        <div class="card-head">
+          <h3 id="household-heading"></h3>
+          <span id="household-name" class="summary"></span>
+        </div>
+        <div class="household-body">
+          <dl class="household-facts">
+            <dt id="household-members-label"></dt><dd id="household-members"></dd>
+            <dt id="household-contact-label"></dt><dd id="household-contact"></dd>
+            <dt id="household-link-label"></dt><dd id="household-link"></dd>
+          </dl>
+          <p id="household-two-years" class="rem-hold hidden" role="status"></p>
+          <div id="household-returns-head" class="tmpl-head"></div>
+          <div id="household-returns" class="household-returns"></div>
+          <p id="household-queue" class="wiz-note"></p>
+          <div class="editor-actions">
+            <button type="button" id="btn-edit-household" class="btn btn-small"></button>
+          </div>
+        </div>
+      </section>
 
       <section class="card">
         <div class="card-head">
@@ -215,11 +258,80 @@
     </main>
   </div>
 
+  <!-- The household's own three fields (decision 125): the members a
+       person typed as who its folder is meant to be shared with, the
+       contact its letters greet and the link they paste. Every label is
+       the API's; a save is one recorded event. -->
+  <div id="household-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="hh-edit-title">
+      <h3 id="hh-edit-title"></h3>
+      <label class="field">
+        <span id="hh-edit-members-label"></span>
+        <textarea id="hh-edit-members" rows="3"></textarea>
+      </label>
+      <label class="field">
+        <span id="hh-edit-contact-label"></span>
+        <input id="hh-edit-contact" type="text" />
+      </label>
+      <label class="field">
+        <span id="hh-edit-link-label"></span>
+        <input id="hh-edit-link" type="text" />
+      </label>
+      <p id="hh-edit-note" class="wiz-note"></p>
+      <div class="modal-actions">
+        <button id="hh-edit-cancel" class="btn">Cancel</button>
+        <span class="toolbar-spacer"></span>
+        <button id="hh-edit-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════════════ New Engagement wizard ═══════════════ -->
   <div id="modal" class="modal-overlay hidden">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
 
-      <!-- Step 0 (default): returning client — roll last year forward -->
+      <!-- Step 0 (new): whose household this return belongs to. A client
+           folder is a household since decision 125, so a return is made
+           inside one - an existing one, or one this call makes. Every word
+           is the API's (vocab.household). -->
+      <div id="wiz-household" class="hidden">
+        <h3 id="household-title"></h3>
+        <p class="wiz-sub">A client folder is a household: one folder per tax year inside it, one folder per return inside that, and one inbox the client drops everything into.</p>
+
+        <div class="tmpl-head" id="hh-existing-head"></div>
+        <label class="field">
+          <span id="hh-existing-label"></span>
+          <select id="hh-existing"></select>
+        </label>
+
+        <div class="tmpl-head" id="hh-new-head"></div>
+        <div class="roll-grid">
+          <label class="field">
+            <span id="hh-name-label"></span>
+            <input id="hh-name" type="text" />
+          </label>
+          <label class="field">
+            <span id="hh-contact-label"></span>
+            <input id="hh-contact" type="text" />
+          </label>
+        </div>
+        <label class="field">
+          <span id="hh-members-label"></span>
+          <textarea id="hh-members" rows="3"></textarea>
+        </label>
+        <label class="field">
+          <span id="hh-link-label"></span>
+          <input id="hh-link" type="text" />
+        </label>
+
+        <div class="modal-actions">
+          <button id="wh-cancel" class="btn">Cancel</button>
+          <span class="toolbar-spacer"></span>
+          <button id="wh-next" class="btn btn-primary">Continue</button>
+        </div>
+      </div>
+
+      <!-- Step 1 (default): returning client — roll last year forward -->
       <div id="wiz-prior">
         <h3 id="modal-title">New Engagement — returning client</h3>
         <p class="wiz-sub">Last year's list is the starting point. Everything the client actually sent, set aside or under-delivered carries forward - what was set aside as not applicable under its own heading, for a fresh decision; the form template only fills blanks.</p>
@@ -239,17 +351,13 @@
           </label>
         </div>
         <label class="field">
-          <span>Engagement name</span>
+          <span id="ro-name-label"></span>
           <input id="ro-name" type="text" />
         </label>
-        <div class="roll-grid three">
+        <div class="roll-grid">
           <label class="field">
             <span>Client (greeting name)</span>
             <input id="ro-client" type="text" />
-          </label>
-          <label class="field">
-            <span>Share link (optional)</span>
-            <input id="ro-link" type="text" placeholder="paste once the folder is shared" />
           </label>
           <label class="field">
             <span>Due date (optional)</span>
@@ -290,10 +398,10 @@
         </div>
 
         <label class="field">
-          <span>Engagement name</span>
+          <span id="ne-name-label"></span>
           <input id="ne-name" type="text" />
         </label>
-        <div class="roll-grid four">
+        <div class="roll-grid three">
           <label class="field">
             <span>Client (greeting name)</span>
             <input id="ne-client" type="text" placeholder="e.g. John Smith" />
@@ -301,10 +409,6 @@
           <label class="field">
             <span>Tax year</span>
             <input id="ne-year" type="number" />
-          </label>
-          <label class="field">
-            <span>Share link (optional)</span>
-            <input id="ne-link" type="text" placeholder="paste once the folder is shared" />
           </label>
           <label class="field">
             <span>Due date (optional)</span>

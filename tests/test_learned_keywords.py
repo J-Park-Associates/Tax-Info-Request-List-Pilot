@@ -17,6 +17,8 @@ record in it, and the lists are the shipped catalog recorded through
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.conftest import make_engagement
 from tracker import ledger
 from tracker.manifest import (
@@ -40,10 +42,36 @@ SAID_BY_A_FORM = "qualified tuition and related expenses"
 SAID_BY_NOTHING = "willow lane payroll recap"
 
 
-def engagement(root: Path, *parts: str, items=None, info: EngagementInfo | None = None) -> Path:
-    """One engagement folder with a record in it, as the registry finds them."""
-    return make_engagement(root.joinpath(*parts), template_items("1040") if items is None else items,
-                           info, scaffold=False)
+@pytest.fixture(autouse=True)
+def recorded_root(tmp_path, monkeypatch) -> Path:
+    """The clients root, recorded the way the app records it.
+
+    A return keeps its folder name every year and across households since
+    decision 125, so the store keys a folder by its path below the
+    recorded root; with none written down it falls back to the folder's
+    parent, and two clients' `1040 - Return` would be one row.
+    """
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    root = tmp_path / "Clients"
+    root.mkdir(exist_ok=True)
+    set_clients_root(root)
+    return root
+
+
+def engagement(root: Path, household: str, *, year: int = 2025, return_name: str = "1040 - Return",
+               items=None, info: EngagementInfo | None = None) -> Path:
+    """One return with a record in it, as the registry finds them.
+
+    One household per client, because that is what a client is since
+    decision 125, and the report is a firm-wide list of what each of them
+    taught the router.
+    """
+    return make_engagement(root, template_items("1040") if items is None else items,
+                           info, household=household, year=year,
+                           return_name=return_name, scaffold=False)
 
 
 def taught(folder: Path, identifier: str, keyword: str) -> None:
@@ -155,42 +183,56 @@ def test_the_report_drops_a_keyword_that_was_unlearned(tmp_path):
 
 
 def test_the_default_output_counts_engagements_and_the_flag_names_them(tmp_path, capsys):
-    """An engagement folder is a client's name, so the default report holds none."""
+    """A household is a client's name, and the return's label carries it, so
+    the default report holds neither."""
     root = tmp_path / "Clients"
-    taught(engagement(root, "Willowbrook Family Trust 2025"), "A01", SAID_BY_NOTHING)
+    taught(engagement(root, "Willowbrook Family Trust"), "A01", SAID_BY_NOTHING)
+    label = "Willowbrook Family Trust 2025 1040 - Return"
 
     assert main([str(root)]) == 0
     counted = capsys.readouterr().out
-    assert "Willowbrook Family Trust 2025" not in counted
+    assert "Willowbrook Family Trust" not in counted
     assert line_for(counted, SAID_BY_NOTHING).endswith("1 engagement(s)")
 
     assert main([str(root), "--engagements"]) == 0
-    assert "  - Willowbrook Family Trust 2025" in capsys.readouterr().out
+    assert f"  - {label}" in capsys.readouterr().out
 
 
 def test_an_engagement_the_run_would_not_chase_is_still_read_and_is_flagged(tmp_path):
     """Last year's list and a retired client taught the router too, and the
     catalog they taught is this year's catalog."""
     root = tmp_path / "Clients"
-    prior = engagement(root, "Smith", "Smith - 2025")
-    engagement(root, "Smith", "Smith - 2026", info=EngagementInfo(rolled_from=str(prior.resolve())))
-    dormant = engagement(root, "Old Co 2025", info=EngagementInfo(active=False))
+    prior = engagement(root, "Smith", year=2025, return_name="1040 - Smith")
+    engagement(root, "Smith", year=2026, return_name="1040 - Smith",
+               info=EngagementInfo(rolled_from=str(prior.resolve())))
+    dormant = engagement(root, "Old Co", info=EngagementInfo(active=False))
     for folder in (prior, dormant):
         taught(folder, "A01", SAID_BY_NOTHING)
 
     report = collect(root)
     assert report.read == 3 and report.rolled_forward == 1 and report.inactive == 1
     named = render(report, engagements=True)
-    assert f"Old Co 2025 ({FLAG_INACTIVE})" in named
-    assert f"Smith - 2025 ({SKIP_ROLLED_FORWARD.format(successor='Smith - 2026')})" in named
+    assert f"Old Co 2025 1040 - Return ({FLAG_INACTIVE})" in named
+    assert (f"Smith 2025 1040 - Smith "
+            f"({SKIP_ROLLED_FORWARD.format(successor='Smith 2026 1040 - Smith')})") in named
 
 
 def test_an_engagement_whose_record_cannot_be_read_is_a_problem_line_not_a_silence(tmp_path):
     """A skipped engagement reads as one that taught the router nothing, which is the opposite claim."""
+    from tracker.households import create_household
+    from tracker.layout import private_household_dir, return_dir_for
+    from tracker.records import HouseholdInfo
+
     root = tmp_path / "Clients"
-    taught(engagement(root, "Fine 2025"), "A01", SAID_BY_NOTHING)
-    broken = root / "Broken 2025"
-    broken.mkdir()
+    taught(engagement(root, "Fine"), "A01", SAID_BY_NOTHING)
+    # Where a return goes, so the walk finds it and reads its record: a
+    # folder anywhere else is one the tracker leaves alone, which is a
+    # different sentence for a different thing (decision 125).
+    household = private_household_dir(root, "Broken")
+    household.mkdir(parents=True)
+    create_household(household, HouseholdInfo(name="Broken"))
+    broken = return_dir_for(root, "Broken", 2025, "1040 - Unreadable")
+    broken.mkdir(parents=True)
     ledger.path_for(broken).write_text("{this line is not an event}\n", encoding="utf-8")
 
     report = collect(root)

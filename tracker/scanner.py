@@ -49,7 +49,7 @@ Status policy (docs/ROADMAP.md decision log):
 Strictly read-only where the client's files are concerned: the scanner
 reads the prepared copies and writes only the record, the verdict cache in
 the store (decision 107) and the run-lock. It never touches
-``SHARED_DIR_NAME/`` at all — the client's originals are the filer's
+the household's inbox at all — the client's originals are the filer's
 business, and even there they are only ever moved, never altered. The
 engagement lock (:mod:`tracker.locking`, shared with the filer) prevents
 overlapping runs; stale locks are replaced.
@@ -66,6 +66,7 @@ from pathlib import Path
 
 from tracker import ledger, reasons, store
 from tracker.content_check import ContentCache, check_content
+from tracker.layout import locate
 from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
     COL_EXPECTED_COUNT,
@@ -190,7 +191,7 @@ def _filed_by_a_person(
     for location, row in newest.items():
         if row.decision != FILED or not row.reason.startswith(ASSIGNED_BY_PERSON):
             continue
-        path = engagement_dir / location
+        path = locate(engagement_dir, location)
         if is_cloud_placeholder(path):
             continue              # not read: reading would download it; it waits as Pending Sync
         if row.digest and cache.digest_of(path) == row.digest:
@@ -210,7 +211,7 @@ def _claimed_paths(engagement_dir: Path, rows: list[IndexEntry]) -> dict[Path, I
     for row in rows:
         if row.digest:
             for location in row.filed_locations:
-                claimed[engagement_dir / location] = row
+                claimed[locate(engagement_dir, location)] = row
     return claimed
 
 
@@ -227,7 +228,7 @@ def _wandered(engagement_dir: Path, rows: list[IndexEntry]) -> frozenset[Path]:
     from tracker.filer import moved_to
 
     return frozenset(
-        engagement_dir / now for now in (moved_to(row) for row in rows) if now
+        locate(engagement_dir, now) for now in (moved_to(row) for row in rows) if now
     )
 
 
@@ -249,7 +250,7 @@ def _interrupted(engagement_dir: Path, rows: list[IndexEntry]) -> dict[Path, str
     for row in rows:
         where = interrupted_at(row)
         if where:
-            found[engagement_dir / where] = interrupted_note(row)
+            found[locate(engagement_dir, where)] = interrupted_note(row)
     return found
 
 

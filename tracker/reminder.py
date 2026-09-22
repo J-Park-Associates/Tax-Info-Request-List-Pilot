@@ -133,6 +133,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, page, reasons, store
+from tracker.layout import household_name_of, label_for, locate, year_of
 from tracker.manifest import (
     ISO_DATE_HINT,
     ManifestError,
@@ -899,7 +900,7 @@ def count_needs_review(engagement_dir: Path) -> int:
     # and taken by the next drop called the same is not the earlier decision.
     newest = {row.prepared_location: row for row in rows if row.prepared_location}
     seen = {
-        engagement_dir / location
+        locate(engagement_dir, location)
         for location, row in newest.items() if row.decision == NOT_REQUESTED
     }
     return sum(1 for path in parked if path not in seen)
@@ -1108,7 +1109,14 @@ def draft_reminder(
     lines, attention, gaps, held = triage(items, _parked_index_rows(engagement_dir))
     summary = summarize(items)
     received, total = summary.received, summary.total
-    engagement = engagement_name or engagement_dir.name
+    # The household, the year and the return, as everything that names one
+    # return says it (decision 125) - or whatever a caller handed in, and
+    # whatever the record's own ``name`` holds where one does.
+    engagement = engagement_name or label_for(
+        info.household or household_name_of(engagement_dir),
+        info.tax_year if info.tax_year is not None else year_of(engagement_dir),
+        info.return_name or engagement_dir.name,
+    )
 
     # The stage is the letter's, so a week with nothing to chase has none:
     # "we have everything" is not a rung of a ladder.

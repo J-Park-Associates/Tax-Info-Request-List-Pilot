@@ -44,13 +44,14 @@ def run_entry(args: list[str]) -> tuple[int, bool, str]:
 
 def test_runner_mode_runs_a_pass_without_importing_the_api_layer(tmp_path):
     root = tmp_path / "Clients"
-    make_engagement(root / "Smith 2025", [RequestItem(identifier="A01", document="W-2")])
+    make_engagement(root, [RequestItem(identifier="A01", document="W-2")],
+                    household="Smith Family")
 
     code, api_imported, out = run_entry([RUNNER_MODE_FLAG, str(root), "--dry-run", "--reminders", "never"])
 
     assert code == 0, out
     assert api_imported is False          # so Task Scheduler's empty environment is enough
-    assert "Smith 2025" in out
+    assert "Smith Family 2025 1040 - Test Client" in out     # the label, as every list says it
 
 
 def test_without_the_flag_the_entry_is_the_api(monkeypatch):

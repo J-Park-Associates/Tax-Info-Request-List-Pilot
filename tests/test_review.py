@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, seed_index
+from tests.conftest import make_engagement, seed_index, sort
 from tests.test_scanner import text_pdf
 from tracker import reasons
 from tracker.content_check import (
@@ -36,9 +36,9 @@ from tracker.filer import (
     NEEDS_REVIEW,
     NOT_REQUESTED,
     IndexEntry,
-    file_drops,
     read_index,
 )
+from tracker.layout import inbox_of
 from tracker.locking import LOCK_FILENAME
 from tracker.manifest import Override, RequestItem, Status
 from tracker.review import (
@@ -50,10 +50,6 @@ from tracker.review import (
     triage,
 )
 from tracker.router import UNMATCHED
-from tracker.scaffold import (
-    PBC_DIR_NAME,
-    SHARED_DIR_NAME,
-)
 
 DAY1 = dt.date(2026, 7, 1)
 REPO = Path(__file__).resolve().parent.parent
@@ -88,7 +84,7 @@ ITEMS = [
 
 @pytest.fixture
 def engagement(tmp_path):
-    return make_engagement(tmp_path / "Smith Family 2025", ITEMS)
+    return make_engagement(tmp_path, ITEMS, household="Smith Family")
 
 
 def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candidates=()):
@@ -96,7 +92,7 @@ def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candida
     return IndexEntry(
         received="2026-01-01", original_name=name, size_kb=9.4, digest=name,
         identifier="", prepared_location="",
-        pbc_location=f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/{name}",
+        pbc_location=f"../../../../Clients/Smith Family/2025/{name}",
         decision=decision, reason=reason,
         candidates=_CANDIDATE_SEP.join(candidates),
         evidence=format_evidence(record),
@@ -295,9 +291,9 @@ def test_a_keyword_found_in_the_file_name_is_said_to_be_the_file_name(engagement
 
 def test_a_contested_file_names_the_row_it_looks_like_with_the_rule_that_failed(engagement):
     """Last year's W-2 announces itself as A01 and then fails A01's year check."""
-    text_pdf(engagement / SHARED_DIR_NAME / "old.pdf",
+    text_pdf(inbox_of(engagement) / "old.pdf",
              "Form W-2 Wage and Tax Statement 2024")
-    report = file_drops(engagement, today=DAY1)
+    report = sort(engagement, today=DAY1)
     assert len(report.review) == 1
 
     [triaged] = triage_of(engagement)
@@ -328,8 +324,8 @@ def test_a_locked_file_the_rules_never_read_is_offered_by_its_name_with_the_refu
     """
     from tests.test_validators import write_pdf
 
-    write_pdf(engagement / SHARED_DIR_NAME / "W-2 Jane Smith 2025.pdf", password="secret123")
-    report = file_drops(engagement, today=DAY1)
+    write_pdf(inbox_of(engagement) / "W-2 Jane Smith 2025.pdf", password="secret123")
+    report = sort(engagement, today=DAY1)
     assert len(report.review) == 1
 
     [triaged] = triage_of(engagement)
@@ -361,9 +357,9 @@ def test_two_runs_over_the_same_bytes_give_identical_output(engagement):
 
 
 def test_triage_takes_no_lock_and_writes_nothing(engagement):
-    text_pdf(engagement / SHARED_DIR_NAME / "old.pdf",
+    text_pdf(inbox_of(engagement) / "old.pdf",
              "Form W-2 Wage and Tax Statement 2024")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     before = _fingerprint(engagement)
 
     assert triage_of(engagement)

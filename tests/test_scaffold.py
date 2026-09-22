@@ -2,15 +2,14 @@
 
 import pytest
 
-from tests.conftest import make_engagement
+from tests.conftest import TEST_HOUSEHOLD, TEST_RETURN, TEST_YEAR, make_engagement
+from tracker.layout import inbox_of, originals_of
 from tracker.manifest import EXPECTED_PATTERN, ManifestError, Override, RequestItem
 from tracker.scaffold import (
-    PBC_DIR_NAME,
     PREPARED_DIR_NAME,
     README_HEADING,
     README_NAME,
     REVIEW_DIR_NAME,
-    SHARED_DIR_NAME,
     assign_folders,
     folder_name_for,
     matches_identifier,
@@ -40,7 +39,7 @@ ITEMS = [
 
 @pytest.fixture
 def engagement(tmp_path):
-    return make_engagement(tmp_path / "TY2025 1040", ITEMS, scaffold=False)
+    return make_engagement(tmp_path, ITEMS, scaffold=False)
 
 
 # ------------------------------------------------------------ name rules ----
@@ -83,15 +82,19 @@ def test_assign_folders_longest_identifier_wins(tmp_path):
 # -------------------------------------------------------------- scaffold ----
 
 
-def test_creates_folders_and_readme(engagement):
+def test_the_scaffold_makes_both_trees_and_writes_the_readme_in_the_inbox_grouped_by_return(engagement):
     result = scaffold_engagement(engagement, contact="J Park & Associates")
-    shared = engagement / SHARED_DIR_NAME
+    inbox = inbox_of(engagement)
+    originals = originals_of(engagement)
     prepared = engagement / PREPARED_DIR_NAME
 
-    # Client side: one drop folder plus the place their originals are kept.
-    assert shared.is_dir()
-    assert (shared / PBC_DIR_NAME).is_dir()
-    assert not any(p.is_dir() and p.name.startswith("A01") for p in shared.iterdir())
+    # Client side, in the tree a client is shared: one inbox to drop into
+    # and the year's folder their originals rest in. Nothing of the firm's.
+    assert inbox.is_dir() and inbox.name == "Drop files here"
+    assert originals.is_dir() and originals.name == str(TEST_YEAR)
+    assert inbox.parent == originals.parent
+    assert result.inbox == inbox and result.originals_dir == originals
+    assert not any(p.is_dir() for p in inbox.iterdir())
     # Firm side: one folder per request, plus somewhere for the unclear.
     assert (prepared / REVIEW_DIR_NAME).is_dir()
     assert [p.name for p in result.created] == [
@@ -102,12 +105,22 @@ def test_creates_folders_and_readme(engagement):
     assert result.not_applicable == ["C01"]
     assert not (prepared / "C01 - Fixed Asset Register").exists()
 
-    readme = (shared / README_NAME).read_text(encoding="utf-8")
-    assert "A01 - Dec 2025 Bank Statement" in readme
+    readme = (inbox / README_NAME).read_text(encoding="utf-8")
+    assert f"Household: {TEST_HOUSEHOLD}" in readme
+    assert TEST_RETURN in readme                  # one sub-heading per return
+    assert "  A01 - Dec 2025 Bank Statement" in readme     # its rows, indented under it
     assert f"[{EXPECTED_PATTERN.format(n=12)}]" in readme
     assert "C01" not in readme                    # set-aside items dropped
     assert "J Park & Associates" in readme
     assert "Google Docs" in readme                # export-first guidance
+
+
+def test_the_readme_names_the_open_year_and_the_household_contact(tmp_path):
+    engagement = make_engagement(tmp_path, ITEMS, contact="Maria Park", scaffold=False)
+    result = scaffold_engagement(engagement)
+    readme = result.readme.read_text(encoding="utf-8")
+    assert f"2. Each file moves into your {TEST_YEAR} folder on the next scheduled pass." in readme
+    assert "Questions? Contact Maria Park." in readme
 
 
 def test_idempotent_rerun_creates_nothing(engagement):
@@ -162,7 +175,7 @@ def test_readme_refreshed_on_rerun(engagement):
     """A rerun rewrites the README over whatever is there - and decision 124:
     the heading stays, so this assertion is also the pin on that choice."""
     scaffold_engagement(engagement)
-    readme = engagement / SHARED_DIR_NAME / README_NAME
+    readme = inbox_of(engagement) / README_NAME
     readme.write_text("client scribbled over this", encoding="utf-8")
 
     scaffold_engagement(engagement)
@@ -186,7 +199,7 @@ def test_the_review_folder_is_never_assigned_to_an_identifier(tmp_path):
 def test_the_readme_contact_comes_from_the_engagement_details(tmp_path):
     from tracker.manifest import EngagementInfo, RequestItem
 
-    folder = make_engagement(tmp_path / "Smith 2025", [RequestItem(identifier="A01", document="W-2")],
+    folder = make_engagement(tmp_path, [RequestItem(identifier="A01", document="W-2")],
                              EngagementInfo(firm="J Park & Associates, CPA"), scaffold=False)
     result = scaffold_engagement(folder)
     assert "Questions? Contact J Park & Associates, CPA." in result.readme.read_text(encoding="utf-8")
@@ -199,10 +212,10 @@ def test_a_readme_the_client_side_holds_does_not_stop_the_scaffold(engagement, m
     # client uploading it, or a folder the client made under its name is a
     # log line, not the end of the pass behind it.
     import tracker.scaffold as scaffold_module
-    from tracker.scaffold import README_NAME, SHARED_DIR_NAME, scaffold_engagement
+    from tracker.scaffold import README_NAME, scaffold_engagement
 
     scaffold_engagement(engagement)
-    readme = engagement / SHARED_DIR_NAME / README_NAME
+    readme = inbox_of(engagement) / README_NAME
     readme.unlink()
     readme.mkdir()                                     # a folder under the README's name
 
@@ -220,7 +233,7 @@ def test_each_issuer_gets_its_own_client_folder(tmp_path):
 
     rows = [item_from_spec(issuer_row("F02", "Ashford Holdings, L.P.")),
             item_from_spec(issuer_row("F03", "Birch Lane Partners"))]
-    eng = make_engagement(tmp_path / "TY2025 1040", rows)
+    eng = make_engagement(tmp_path, rows)
 
     names = {f.name for f in (eng / PREPARED_DIR_NAME).iterdir() if f.is_dir()}
     assert "F02 - Schedule K-1 - Ashford Holdings LP" in names

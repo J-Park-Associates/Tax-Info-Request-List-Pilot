@@ -50,7 +50,7 @@ KEY_FIRM_PHONE = "firm_phone"
 #: How a person is told to set the root without the app.
 SET_ROOT_HINT = "python -m tracker.settings <folder>"
 #: The clients-root example every prompt and document shows.
-EXAMPLE_ROOT = r"D:\OneDrive\Clients"
+EXAMPLE_ROOT = r"G:\Shared drives\Clients"
 ENV_SETTINGS_DIR = "TRACKER_SETTINGS_DIR"
 #: The Electron shell passes package.json's productName; from source the
 #: same file is read directly. There is no second copy of the product name.

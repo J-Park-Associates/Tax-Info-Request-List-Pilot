@@ -19,7 +19,8 @@ import tracker.api as api
 from tests.conftest import make_engagement
 from tests.samples import PRIOR_YEAR
 from tracker import ledger, store, view
-from tracker.filer import FILED, NEEDS_REVIEW
+from tracker.filer import FILED, NEEDS_REVIEW, read_index
+from tracker.layout import inbox_of, return_dir_for
 from tracker.locking import STALE_LOCK_SECONDS, lock_line
 from tracker.manifest import (
     COL_DATE_PATTERN,
@@ -33,18 +34,40 @@ from tracker.manifest import (
 )
 from tracker.records import ENGAGEMENT_LABELS
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
-from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME, SHARED_DIR_NAME
+from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 from tracker.scheduling import SCHEDULE_XML_ENCODING, TASK_NAME
 from tracker.templates import BASE_YEAR, default_tax_year
 
+#: The one household every spec below names unless the claim is about
+#: households. A client folder is a household since decision 125, and a
+#: return lives under its year inside it.
+HOUSEHOLD = "Test Household"
+
+
+def where(root, return_name, year=None, household=HOUSEHOLD):
+    """Where the return a spec named landed.
+
+    The layout's answer, never a name a test typed: the private tree, the
+    household, the year, the return (decision 125).
+    """
+    from tracker.templates import default_tax_year
+
+    return return_dir_for(root, household, year or default_tax_year(), return_name)
+
 
 @pytest.fixture
-def demo_root(tmp_path, monkeypatch):
-    """A clients root recorded the way the app records it: settings.json beside the app."""
+def demo_root(short_root, tmp_path, monkeypatch):
+    """A clients root recorded the way the app records it: settings.json beside the app.
+
+    Short, because ``create`` refuses a return whose deepest working copy
+    would pass what Windows will open (decision 125) and a pytest temporary
+    folder spends ninety characters before the layout starts - where the
+    office's own root spends twenty-seven. ``short_root`` is walked by the
+    agreement fixtures exactly as ``tmp_path`` is.
+    """
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root, set_firm
 
-    root = tmp_path / "Clients"
-    root.mkdir()
+    root = short_root
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
     set_clients_root(root)
     set_firm("J Park & Associates, CPA")
@@ -52,7 +75,14 @@ def demo_root(tmp_path, monkeypatch):
 
 
 def run(capsys, *argv, stdin=None):
-    """Run one command the way main.js does: argv in, one JSON object out."""
+    """Run one command the way main.js does: argv in, one JSON object out.
+
+    A ``create`` spec that names no household is given the one these claims
+    use: since decision 125 every return belongs to a household, and most
+    of what is claimed here is about the API rather than about households.
+    """
+    if stdin is not None and argv and argv[0] == "create" and "household" not in stdin:
+        stdin = {"household": HOUSEHOLD, **stdin}
     if stdin is not None:
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr("sys.stdin", io.StringIO(json.dumps(stdin)))
@@ -124,7 +154,7 @@ def test_templates_lists_every_form_with_its_checklist(capsys):
 
 def test_create_builds_the_record_and_folders(capsys, demo_root):
     spec = {
-        "name": "Smith Family 2025 Form 1040",
+        "return_name": "1040 - Smith Family",
         "form": "1040",
         "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]
         + [{"identifier": "X01", "document": "Rental Property Records",
@@ -132,10 +162,14 @@ def test_create_builds_the_record_and_folders(capsys, demo_root):
     }
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    engagement = demo_root / payload["created"]
+    # The label the app shows names the household, the year and the return
+    # (decision 125); where it landed is the layout's answer.
+    assert payload["created"] == f"{HOUSEHOLD} {default_tax_year()} 1040 - Smith Family"
+    engagement = where(demo_root, "1040 - Smith Family")
+    assert Path(payload["state"]["paths"]["engagement"]) == engagement
     assert ledger.path_for(engagement).is_file()
     assert list(engagement.glob("*.xlsx")) == []
-    assert (engagement / SHARED_DIR_NAME).is_dir()
+    assert inbox_of(engagement).is_dir()
     assert any(p.name.startswith("X01") for p in (engagement / PREPARED_DIR_NAME).iterdir())
     assert [i["identifier"] for i in payload["state"]["items"]][-1] == "X01"
     assert [r["identifier"] for r in payload["state"]["rules"]][-1] == "X01"
@@ -145,42 +179,51 @@ def test_create_with_no_name_builds_one_that_stays_under_the_root(capsys, demo_r
     # The tenth reading: a blank name fell back to the raw client field, and
     # a client called "..\\..\\escaped" wrote the engagement above the root,
     # where discovery never finds it and nobody is chased.
-    spec = {"name": "", "client": "..\\..\\escaped", "form": "1040", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "client": "..\\..\\escaped", "form": "1040",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    created = demo_root / payload["created"]
-    assert created.parent == demo_root and ledger.path_for(created).is_file()
+    created = Path(payload["state"]["paths"]["engagement"])
+    assert ledger.path_for(created).is_file()
+    # The return sits under its household and its year, and the client
+    # field that would have been a path is one folder name.
+    assert created.parent.parent.parent == demo_root / "J Park & Associates"
+    assert created.name == api.default_return_name("1040", spec["client"])
     assert not (demo_root.parent.parent / "escaped TY2025 Form 1040").exists()
-    for outside in ("../outside", "sub/child"):          # a separator either platform reads
+    # And a household or a return that is not one folder name is refused
+    # by name, whichever separator a platform reads.
+    for outside in ("../outside", "sub/child"):
         with pytest.raises(api.ManifestError, match="not a folder name"):
-            api._new_engagement_dir(outside)
+            api._new_return_dir(demo_root, HOUSEHOLD, 2025, outside)
+        with pytest.raises(api.ManifestError, match="not a folder name"):
+            api._new_return_dir(demo_root, outside, 2025, "1040 - Smith")
 
 
 def test_the_tax_year_is_within_the_bounds_the_wizard_shows(capsys, demo_root):
     from tracker.manifest import YEAR_MAX, YEAR_MIN
 
     for year in (1000000000, YEAR_MIN - 1, YEAR_MAX + 1):
-        code, payload = run(capsys, "create", stdin={"name": "Bad", "form": "1040", "year": year,
+        code, payload = run(capsys, "create", stdin={"household": HOUSEHOLD, "return_name": "Bad", "form": "1040", "year": year,
                                                      "items": [{"identifier": "A01", "document": "W-2"}]})
         assert code == 1 and f"between {YEAR_MIN} and {YEAR_MAX}" in payload["error"], year
-        assert not (demo_root / "Bad").exists()
-    code, payload = run(capsys, "create", stdin={"name": "Prior", "form": "1040",
+        assert not (where(demo_root, "Bad")).exists()
+    code, payload = run(capsys, "create", stdin={"household": HOUSEHOLD, "return_name": "Prior", "form": "1040",
                                                  "items": [{"identifier": "A01", "document": "W-2"}]})
     assert code == 0, payload
-    code, payload = run(capsys, "rollover", stdin={"prior": payload["created"], "year": "abc"})
+    code, payload = run(capsys, "rollover", stdin={"prior": str(where(demo_root, "Prior")), "year": "abc"})
     assert code == 1 and "whole number" in payload["error"]
 
 
 def test_create_refuses_an_identifier_that_cannot_name_a_folder(capsys, demo_root):
-    spec = {"name": "Bad", "items": [{"identifier": "A:01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "Bad", "items": [{"identifier": "A:01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
     assert "A:01" in payload["error"] and "folder name" in payload["error"]
-    assert not (demo_root / "Bad").exists()  # never leaves a half-built one
+    assert not (where(demo_root, "Bad")).exists()  # never leaves a half-built one
 
 
 def test_create_refuses_a_non_numeric_count_with_a_sentence(capsys, demo_root):
-    spec = {"name": "Bad", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Bad", "items": [
         {"identifier": "A01", "document": "W-2", "expected_count": "two"},
     ]}
     code, payload = run(capsys, "create", stdin=spec)
@@ -189,18 +232,18 @@ def test_create_refuses_a_non_numeric_count_with_a_sentence(capsys, demo_root):
 
 
 def test_create_refuses_a_duplicate_identifier(capsys, demo_root):
-    spec = {"name": "Dup", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Dup", "items": [
         {"identifier": "A01", "document": "One"},
         {"identifier": "a01", "document": "Two"},
     ]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
     assert "Duplicate identifier" in payload["error"]
-    assert not (demo_root / "Dup").exists()
+    assert not (where(demo_root, "Dup")).exists()
 
 
 def test_create_will_not_overwrite_an_existing_engagement(capsys, demo_root):
-    spec = {"name": "Twice", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "Twice", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
@@ -214,15 +257,15 @@ def sample_engagement(capsys, demo_root, tmp_path, *names):
     """A 1040 engagement created through the API with sample documents dropped in."""
     from tests.samples import build_samples
 
-    spec = {"name": "Smith Family 2025", "form": "1040", "client": "John Smith",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith Family 2025", "form": "1040", "client": "John Smith",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith Family 2025"
+    engagement = where(demo_root, "Smith Family 2025")
     samples = tmp_path / "samples"
     build_samples(samples)
     for sample in samples.iterdir():
         if not names or sample.name in names:
-            (engagement / SHARED_DIR_NAME / sample.name).write_bytes(sample.read_bytes())
+            (inbox_of(engagement) / sample.name).write_bytes(sample.read_bytes())
     return engagement
 
 
@@ -271,7 +314,7 @@ def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, 
     pressed on: an engagement nobody scanned is on it too, read rather than run."""
     page = demo_root / STATUS_PAGE_FILENAME
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
-    assert run(capsys, "create", stdin={"name": "Jones Family 2025", "form": "1040",
+    assert run(capsys, "create", stdin={"household": HOUSEHOLD, "return_name": "Jones Family 2025", "form": "1040",
                                         "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]})[0] == 0
     assert not page.exists()
 
@@ -285,9 +328,9 @@ def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, 
 def test_state_carries_the_path_of_the_practices_status_page(capsys, demo_root):
     """The shell opens only paths the API has reported, so the page's path is
     one of them; the app's Open Status button is that path and nothing else."""
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(where(demo_root, "Smith")))
     assert code == 0
     assert payload["paths"]["status"] == str(demo_root / STATUS_PAGE_FILENAME)
 
@@ -306,7 +349,7 @@ def test_item_from_spec_normalizes_extensions():
 
 def test_priors_then_rollover_is_the_desktop_returning_client_path(capsys, demo_root):
     # The wizard's default page: list what is on disk, roll one forward.
-    spec = {"name": "Smith Family 2025", "form": "1040",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith Family 2025", "form": "1040",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
 
@@ -316,10 +359,12 @@ def test_priors_then_rollover_is_the_desktop_returning_client_path(capsys, demo_
     assert payload["priors"][0]["year"] == BASE_YEAR
 
     code, payload = run(capsys, "rollover", stdin={
-        "prior": "Smith Family 2025", "form": "1040", "year": 2026,
+        "prior": str(where(demo_root, "Smith Family 2025")), "form": "1040", "year": 2026,
     })
     assert code == 0, payload
-    assert payload["created"] == "Smith Family 2025 - 2026"
+    # A return keeps its name every year under the same household, so
+    # what is new about the roll is the year (decision 125).
+    assert payload["created"] == f"{HOUSEHOLD} 2026 Smith Family 2025"
     assert payload["rollover"]["prior_year"] == BASE_YEAR
     assert payload["rollover"]["target_year"] == 2026
     carried = {r["identifier"] for r in payload["rollover"]["carried"]}
@@ -327,21 +372,29 @@ def test_priors_then_rollover_is_the_desktop_returning_client_path(capsys, demo_
     assert "A01" in carried and "E01" in offered and not carried & offered
     periods = {i["identifier"]: i["period"] for i in payload["state"]["items"]}
     assert periods["A01"] == "TY2026"          # shifted with the year
-    engagement = demo_root / payload["created"]
-    assert (engagement / SHARED_DIR_NAME).is_dir()  # scaffolded, ready to share
+    engagement = where(demo_root, "Smith Family 2025", year=2026)
+    assert Path(payload["state"]["paths"]["engagement"]) == engagement
+    assert inbox_of(engagement).is_dir()  # scaffolded, ready to share
 
 
 def test_rollover_refuses_a_missing_prior(capsys, demo_root):
-    code, payload = run(capsys, "rollover", stdin={"prior": "Nobody 2020"})
+    code, payload = run(capsys, "rollover", stdin={"prior": str(where(demo_root, "Nobody 2020"))})
     assert code == 1
     assert "No record found" in payload["error"]
 
 
-def test_a_name_of_only_illegal_characters_falls_back(capsys, demo_root):
-    spec = {"name": "///:::", "form": "1040", "items": [{"identifier": "A01", "document": "W-2"}]}
+def test_a_client_of_only_illegal_characters_still_makes_one_folder_name(capsys, demo_root):
+    """The return's folder name is the form and the client, sanitised: a
+    client typed as nothing a folder may hold still makes one name, under
+    the household and the year, and never a path of its own."""
+    spec = {"household": HOUSEHOLD, "form": "1040", "client": "///:::",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == api.default_engagement_name("", default_tax_year(), "1040")
+    created = Path(payload["state"]["paths"]["engagement"])
+    assert created.name == api.default_return_name("1040", "///:::")
+    assert created.parent.name == str(default_tax_year())
+    assert payload["created"].endswith(created.name)
 
 
 def test_state_shows_the_status_the_record_holds(capsys, demo_root):
@@ -350,11 +403,11 @@ def test_state_shows_the_status_the_record_holds(capsys, demo_root):
     from tests.conftest import seed_statuses
     from tracker.manifest import StatusUpdate
 
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    seed_statuses(demo_root / "Smith",
+    seed_statuses(where(demo_root, "Smith"),
                   {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
-    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(where(demo_root, "Smith")))
     assert code == 0
     assert "pending_statuses" not in payload
     assert payload["items"][0]["status"] == Status.RECEIVED
@@ -411,10 +464,10 @@ def test_unlearn_records_one_event_re_scans_and_the_state_no_longer_lists_the_ke
     arrives, and the state that comes back carries a status for every row,
     which only a pass writes.
     """
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"},
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"},
                                        {"identifier": "C01", "document": "Form 1098"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    folder = demo_root / "Smith"
+    folder = where(demo_root, "Smith")
     teach(folder, "A01", "lender")
     state = api._state(folder)
     assert state["learned"] == {"A01": ["lender"]}
@@ -437,9 +490,9 @@ def test_unlearn_refuses_a_blank_or_unknown_pair_by_name(capsys, demo_root):
     """A refusal is the usual error sentence, and nothing is recorded."""
     from tracker.manifest import UNLEARN_REFUSED
 
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    folder = demo_root / "Smith"
+    folder = where(demo_root, "Smith")
     teach(folder, "A01", "lender")
     head = ledger.head(folder)
 
@@ -471,16 +524,29 @@ def test_the_renderer_types_no_unlearn_word(capsys, demo_root):
     assert "vocab.editor.unlearn_label" in js and "vocab.editor.unlearned_note" in js
 
 
-def test_rule_two_is_rendered_in_the_record_and_names_no_file(capsys, demo_root, tmp_path):
-    """Decision 102, the owner's wording of 2026-09-19: the rule used to
-    name the index workbook, and there is no such file any more."""
+def test_rule_two_names_the_inbox_and_the_years_folder_and_is_quoted_everywhere(
+        capsys, demo_root, tmp_path):
+    """Decision 102, the owner's wording of 2026-09-19, re-rendered for the
+    layout of decision 125: the rule used to name the index workbook, and
+    then the two folders `Shared` and `PBC`, and none of the three exists
+    any more. It says the inbox the client drops into and the client's own
+    folder for the year, filled from the one place each is named, and it
+    still names no file."""
     from tracker import api
+    from tracker.layout import INBOX_DIR_NAME
     from tracker.records import THE_RECORD
 
     (rule,) = [r for r in api.standing_rules() if r["headline"].startswith("Originals")]
 
-    assert rule["detail"].endswith(f"every move is recorded in {THE_RECORD}.")
+    assert rule["detail"] == (
+        f"Files are moved byte for byte under their own names out of {INBOX_DIR_NAME} "
+        f"into the client's folder for the year; all work happens on copies, and "
+        f"every move is recorded in {THE_RECORD}."
+    )
     assert ".xlsx" not in rule["detail"]
+    assert "Shared" not in rule["detail"] and "PBC" not in rule["detail"]
+    # And nothing in the rendered rule is a placeholder nobody filled.
+    assert "{" not in rule["detail"] and "}" not in rule["detail"]
 
 
 def test_the_state_the_app_reads_carries_no_deferred_index(capsys, demo_root, tmp_path):
@@ -490,10 +556,10 @@ def test_the_state_the_app_reads_carries_no_deferred_index(capsys, demo_root, tm
     from tracker import api
     from tracker.runner import EngagementRun
 
-    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040", "client": "John Smith",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    state = api._state(demo_root / "Smith 2025")
+    state = api._state(where(demo_root, "Smith 2025"))
 
     assert "index_deferred" not in state
     assert "index" not in state["paths"] and "manifest" not in state["paths"]
@@ -595,7 +661,7 @@ def triage_engagement(capsys, demo_root, extra=()):
     """
     from tests.test_scanner import text_pdf
 
-    spec = {"name": "Reed Property 2025", "client": "Ada Reed", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Reed Property 2025", "client": "Ada Reed", "items": [
         {"identifier": "A01", "document": "Mortgage Interest Statement", "period": "TY2025",
          "required_keywords": "mortgage interest", "min_size_kb": 0, "date_pattern": "*"},
         {"identifier": "A02", "document": "Rental Property Statements", "period": "TY2025",
@@ -603,8 +669,8 @@ def triage_engagement(capsys, demo_root, extra=()):
         *extra,
     ]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Reed Property 2025"
-    text_pdf(engagement / SHARED_DIR_NAME / "packet.pdf", "\n".join([
+    engagement = where(demo_root, "Reed Property 2025")
+    text_pdf(inbox_of(engagement) / "packet.pdf", "\n".join([
         "Rental income summary for the year 2025",
         "Lakeside Property Management",
         *[f"Unit {n:03d} rent collected and expenses paid during the year" for n in range(60)],
@@ -700,7 +766,7 @@ def test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside
 
     # The client sends the same photo again.
     original = engagement / set_aside["pbc_location"]
-    (engagement / SHARED_DIR_NAME / original.name).write_bytes(original.read_bytes())
+    (inbox_of(engagement) / original.name).write_bytes(original.read_bytes())
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, payload
 
@@ -810,12 +876,12 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     for word in (*Override.ALL, OVERRIDE_REASON_OTHER, "Not Applicable in"):
         assert word not in renderer, word
 
-    spec = {"name": "Smith", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
         {"identifier": "A02", "document": "1098", "required_keywords": "1098", "period": "TY2025"},
     ]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
+    engagement = where(demo_root, "Smith")
     rows = payload_of_state(capsys, engagement)["rules"]
     assert all(row["override_reason"] == "" for row in rows)
 
@@ -860,13 +926,13 @@ def test_state_ships_each_rows_year_for_the_label(capsys, demo_root):
     row, from its own Period, and reads nothing out of the Period's text."""
     from tracker.manifest import Override
 
-    spec = {"name": "Smith", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "period": "TY2025", "manual_override": Override.NOT_APPLICABLE},
         {"identifier": "A02", "document": "Prior return", "period": "TY2024", "date_pattern": "*"},
         {"identifier": "A03", "document": "Whenever", "period": "quarterly"},
     ]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    state = payload_of_state(capsys, demo_root / "Smith")
+    state = payload_of_state(capsys, where(demo_root, "Smith"))
     years = {item["identifier"]: item["year"] for item in state["items"]}
     assert years == {"A01": 2025, "A02": 2024, "A03": None}
     [set_aside] = [item for item in state["items"] if item["manual_override"] == Override.NOT_APPLICABLE]
@@ -887,7 +953,7 @@ def test_assign_refuses_a_bad_request_with_a_sentence(capsys, demo_root, tmp_pat
 def test_create_records_the_engagement_details_the_scheduled_run_reads(capsys, demo_root):
     from tracker.registry import discover_engagements
 
-    spec = {"name": "Smith Family 2025", "form": "1040", "client": "John Smith",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith Family 2025", "form": "1040", "client": "John Smith",
             "link": "https://drive.example/abc", "due": "2026-04-15",
             "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
@@ -905,56 +971,59 @@ def test_create_records_the_catalog_the_wizard_chose_and_state_carries_it(capsys
     """Decision 86: the engagement says which checklist it was cut from, in
     the record and in the state the app draws from."""
 
-    spec = {"name": "Willow Inc 2025", "form": "1120S", "client": "Willow Inc",
+    spec = {"household": HOUSEHOLD, "return_name": "Willow Inc 2025", "form": "1120S", "client": "Willow Inc",
             "items": [t for t in api.FORM_TEMPLATES["1120S"] if t["core"]]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
     assert payload["state"]["engagement"]["form"] == "1120S"
-    assert load_engagement_info(demo_root / "Willow Inc 2025").form == "1120S"
+    assert load_engagement_info(where(demo_root, "Willow Inc 2025")).form == "1120S"
 
 
 def test_an_engagement_created_without_a_form_says_nothing_rather_than_guessing(capsys, demo_root):
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
     assert payload["state"]["engagement"]["form"] == ""
 
 
 def test_rollover_carries_the_catalog_the_prior_was_cut_from(capsys, demo_root):
-    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040", "client": "John Smith",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    code, payload = run(capsys, "rollover", stdin={"prior": str(where(demo_root, "Smith 2025")), "year": 2026})
     assert code == 0, payload
     assert payload["state"]["engagement"]["form"] == "1040"
 
 
 def test_rollover_carries_the_client_but_not_last_years_link_or_due(capsys, demo_root):
-    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040", "client": "John Smith",
             "link": "https://drive.example/old", "due": "2026-04-15", "sender": "Jason",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    code, payload = run(capsys, "rollover", stdin={"prior": str(where(demo_root, "Smith 2025")), "year": 2026})
     assert code == 0, payload
     info = payload["state"]["engagement"]
     assert info["client"] == "John Smith" and info["sender"] == "Jason"
-    assert info["link"] == ""
+    # The inbox is the household's and does not change from one year to the
+    # next (decision 125), so the link the household holds is refilled
+    # rather than left blank for somebody to paste again.
+    assert info["link"] == "https://drive.example/old"
     # Last year's due date does not carry either: what is there is this
     # year's own default (decision 117), never the date twelve months gone.
     assert info["due"] != "2026-04-15"
     assert info["name"] == ""                      # the folder is the name
-    assert payload["created"] == api.ROLLOVER_NAME_PATTERN.format(prior="Smith 2025", year=2026)
+    assert payload["created"] == f"{HOUSEHOLD} 2026 Smith 2025"
 
 
 def test_a_bad_due_date_is_a_sentence(capsys, demo_root):
-    spec = {"name": "X", "due": "next friday", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "X", "due": "next friday", "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1
     # The sentence names the field by the label the editor shows, so the
     # two dates are refused in the same words (decision 117).
     assert payload["error"] == f"{ENGAGEMENT_LABELS['due']} must be YYYY-MM-DD, got 'next friday'"
-    assert not (demo_root / "X").exists()
-    bad = {"name": "X", "form": "1040", "filing_deadline": "april",
+    assert not (where(demo_root, "X")).exists()
+    bad = {"household": HOUSEHOLD, "return_name": "X", "form": "1040", "filing_deadline": "april",
            "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=bad)
     assert code == 1
@@ -969,7 +1038,7 @@ def test_create_defaults_both_dates_from_the_form_and_the_year_and_leaves_them_e
     is never written over."""
     from tracker.templates import ask_by_for, filing_deadline_for
 
-    spec = {"name": "Willow 2025", "form": "1040", "year": 2025, "client": "Willow",
+    spec = {"household": HOUSEHOLD, "return_name": "Willow 2025", "form": "1040", "year": 2025, "client": "Willow",
             "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
@@ -977,17 +1046,17 @@ def test_create_defaults_both_dates_from_the_form_and_the_year_and_leaves_them_e
     info = payload["state"]["engagement"]
     assert info["filing_deadline"] == deadline.isoformat()
     assert info["due"] == ask_by_for(deadline).isoformat()
-    assert load_engagement_info(demo_root / "Willow 2025").filing_deadline == deadline
+    assert load_engagement_info(where(demo_root, "Willow 2025")).filing_deadline == deadline
 
     # What a person typed wins over the default, and both stay editable.
-    typed = {**spec, "name": "Typed 2025", "due": "2026-03-01", "filing_deadline": "2026-04-18"}
+    typed = {**spec, "return_name": "Typed 2025", "due": "2026-03-01", "filing_deadline": "2026-04-18"}
     code, payload = run(capsys, "create", stdin=typed)
     assert code == 0, payload
     assert payload["state"]["engagement"]["due"] == "2026-03-01"
     assert payload["state"]["engagement"]["filing_deadline"] == "2026-04-18"
 
     # A form the catalog has no deadline for fills nothing, rather than guessing.
-    none = {"name": "No Form 2025", "items": [{"identifier": "A01", "document": "W-2"}]}
+    none = {"household": HOUSEHOLD, "return_name": "No Form 2025", "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=none)
     assert code == 0, payload
     assert payload["state"]["engagement"]["filing_deadline"] == ""
@@ -995,10 +1064,10 @@ def test_create_defaults_both_dates_from_the_form_and_the_year_and_leaves_them_e
 
 
 def test_the_editor_saves_and_clears_the_filing_deadline(capsys, demo_root):
-    spec = {"name": "Smith", "form": "1040", "year": 2025,
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "form": "1040", "year": 2025,
             "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
+    engagement = where(demo_root, "Smith")
     rows = payload_of_state(capsys, engagement)["rules"]
 
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
@@ -1019,13 +1088,13 @@ def test_rollover_clears_the_filing_deadline_and_redefaults_it_for_the_new_year(
     and the new year's comes from the same table the wizard used."""
     from tracker.templates import ask_by_for, filing_deadline_for
 
-    spec = {"name": "Smith 2025", "form": "1040", "year": 2025, "client": "John Smith",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040", "year": 2025, "client": "John Smith",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    prior = load_engagement_info(demo_root / "Smith 2025")
+    prior = load_engagement_info(where(demo_root, "Smith 2025"))
     assert prior.filing_deadline == filing_deadline_for("1040", 2025)
 
-    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    code, payload = run(capsys, "rollover", stdin={"prior": str(where(demo_root, "Smith 2025")), "year": 2026})
     assert code == 0, payload
     deadline = filing_deadline_for("1040", 2026)
     info = payload["state"]["engagement"]
@@ -1040,12 +1109,12 @@ def test_an_invalid_row_is_refused_by_the_api_with_the_row_and_column_named_and_
     from tests.test_manifest import k1_rows
     from tracker.records import rule_to_json
 
-    spec = {"name": "Smith", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
         {"identifier": "A02", "document": "1098", "required_keywords": "1098"},
     ]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
+    engagement = where(demo_root, "Smith")
     before = ledger.path_for(engagement).read_bytes()
     rows = payload_of_state(capsys, engagement)["rules"]
 
@@ -1071,12 +1140,12 @@ def test_an_invalid_row_is_refused_by_the_api_with_the_row_and_column_named_and_
 
 
 def test_edit_saves_the_list_and_the_details_as_one_event_and_says_what_moved(capsys, demo_root):
-    spec = {"name": "Smith", "client": "John", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "client": "John", "items": [
         {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
         {"identifier": "A02", "document": "1098", "required_keywords": "1098"},
     ]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
+    engagement = where(demo_root, "Smith")
     rows = payload_of_state(capsys, engagement)["rules"]
 
     # The editor's rows: the file types as a string, a new row typed with
@@ -1111,10 +1180,10 @@ def test_the_editor_clears_a_detail_it_sends_blank_and_keeps_one_it_leaves_out(c
     a key present with a blank value clears the recorded value, and a key
     absent keeps it. The wizard's fallback (a blank is nothing typed) is
     the create's and the rollover's, not the editor's."""
-    spec = {"name": "Smith", "client": "John", "link": "https://y", "due": "2026-04-15",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "client": "John", "link": "https://y", "due": "2026-04-15",
             "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
+    engagement = where(demo_root, "Smith")
     rows = payload_of_state(capsys, engagement)["rules"]
 
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
@@ -1139,13 +1208,13 @@ def test_a_date_pattern_of_star_survives_an_unchanged_resave(capsys, demo_root):
     (``vocab.editor.no_date_check``), and a resave of the same list records
     nothing - sent blank instead, ``validated()`` would derive the year
     check and record the row as changed on every Save."""
-    spec = {"name": "Smith", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "period": "TY2025", "required_keywords": "W-2",
          "date_pattern": "*"},
         {"identifier": "A02", "document": "1098", "period": "TY2025", "required_keywords": "1098"},
     ]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
+    engagement = where(demo_root, "Smith")
     rows = payload_of_state(capsys, engagement)["rules"]
     assert rows[0]["date_pattern"] == "" and rows[0]["date_pattern_derived"] is False
     assert rows[1]["date_pattern_derived"] is True
@@ -1162,7 +1231,7 @@ def test_a_date_pattern_of_star_survives_an_unchanged_resave(capsys, demo_root):
 
 def test_a_count_typed_as_infinity_is_refused_with_the_row_and_column_named(capsys, demo_root):
     for typed in ("inf", "Infinity", "1e400"):
-        spec = {"name": f"Bad {typed}", "items": [
+        spec = {"household": HOUSEHOLD, "return_name": f"Bad {typed}", "items": [
             {"identifier": "A01", "document": "W-2", "expected_count": typed}]}
         code, payload = run(capsys, "create", stdin=spec)
         assert code == 1 and f"{COL_EXPECTED_COUNT} must be a whole number, got" in payload["error"], payload
@@ -1174,10 +1243,10 @@ def test_a_name_whose_folder_was_deleted_by_hand_can_be_created_again(capsys, de
     read as truncated and the create would fail once with that sentence."""
     import shutil
 
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"))[0] == 0
-    shutil.rmtree(demo_root / "Smith")
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(where(demo_root, "Smith")))[0] == 0
+    shutil.rmtree(where(demo_root, "Smith"))
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
     assert [r["identifier"] for r in payload["state"]["rules"]] == ["A01"]
@@ -1187,19 +1256,19 @@ def test_a_detail_with_a_line_break_inside_it_is_recorded_on_one_line(capsys, de
     """A sender pasted with a CRLF inside it would carry that break into
     the reminder draft's headers; every detail is one line, inner
     whitespace folded to a space."""
-    spec = {"name": "Smith", "sender": "Jason Park\r\nBcc: x@evil.example", "client": " John\tSmith ",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "sender": "Jason Park\r\nBcc: x@evil.example", "client": " John\tSmith ",
             "items": [{"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
     details = payload["state"]["engagement"]
     assert details["sender"] == "Jason Park Bcc: x@evil.example" and details["client"] == "John Smith"
-    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(demo_root / "Smith"),
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(where(demo_root, "Smith")),
                         stdin={"items": payload["state"]["rules"], "engagement": {"firm": "J Park\n& Associates"}})
     assert code == 0 and payload["state"]["engagement"]["firm"] == "J Park & Associates"
 
 
 def test_a_failed_create_leaves_no_folder_and_no_store_row(capsys, demo_root, monkeypatch):
-    spec = {"name": "Bad", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Bad", "items": [
         {"identifier": "A01", "document": "W-2"},
         {"identifier": "A02", "document": "x", "date_pattern": "(unclosed"},
     ]}
@@ -1207,10 +1276,15 @@ def test_a_failed_create_leaves_no_folder_and_no_store_row(capsys, demo_root, mo
     rows_before = conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0]
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1 and payload["error"].startswith(f"Row 2: {COL_DATE_PATTERN}")
-    assert not (demo_root / "Bad").exists()
+    assert not (where(demo_root, "Bad")).exists()
     conn = store.connect()
     assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == rows_before
-    assert store.rules(conn, demo_root / "Bad") is None
+    assert store.rules(conn, where(demo_root, "Bad")) is None
+
+    # A household the record already knows is adopted, so the only writer
+    # the refusal below meets is the undo's own.
+    assert run(capsys, "create", stdin={"household": HOUSEHOLD, "return_name": "Good",
+                                        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
 
     # A store that cannot be reached at that moment neither replaces the
     # refusal sentence with its own nor leaves the half-built folder behind.
@@ -1220,18 +1294,18 @@ def test_a_failed_create_leaves_no_folder_and_no_store_row(capsys, demo_root, mo
     monkeypatch.setattr(store, "forget", cannot)
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 1 and payload["error"].startswith(f"Row 2: {COL_DATE_PATTERN}")
-    assert not (demo_root / "Bad").exists()
+    assert not (where(demo_root, "Bad")).exists()
 
 
 def test_the_editor_shows_the_persons_rows_and_never_a_taught_keyword_as_a_typed_one(capsys, demo_root, tmp_path):
     from tests.test_scanner import text_pdf
 
-    spec = {"name": "Smith", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "any_keywords": "w-2"},
     ]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
-    text_pdf(engagement / SHARED_DIR_NAME / "scan0012.pdf", "nothing the rules recognise")
+    engagement = where(demo_root, "Smith")
+    text_pdf(inbox_of(engagement) / "scan0012.pdf", "nothing the rules recognise")
     assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
     [parked] = api._state(engagement)["index"]
     code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
@@ -1251,11 +1325,11 @@ def test_state_carries_the_warnings_the_pass_reports(capsys, demo_root):
     from tracker.registry import engagement_from
     from tracker.runner import REMINDERS_NEVER, run_engagement
 
-    spec = {"name": "Smith", "items": [
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
     ]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
+    engagement = where(demo_root, "Smith")
     rows = payload_of_state(capsys, engagement)["rules"]
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
         "items": [*rows, {"identifier": "Z01", "document": "Anything", "allowed_extensions": "pdf"}],
@@ -1274,9 +1348,9 @@ def test_state_shows_the_lock_and_unlock_clears_only_a_stale_one(capsys, demo_ro
 
     from tracker.locking import LOCK_FILENAME
 
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
+    engagement = where(demo_root, "Smith")
     assert run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]["lock"] is None
 
     lock = engagement / LOCK_FILENAME
@@ -1298,7 +1372,7 @@ def test_a_new_client_engagement_is_named_from_client_year_and_form(capsys, demo
             "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == api.default_engagement_name("Smith Family", default_tax_year(), "1040")
+    assert payload["created"].endswith(api.default_return_name("1040", "Smith Family"))
     code, payload = run(capsys, "templates")
     assert payload["default_year"] == default_tax_year()
 
@@ -1311,7 +1385,7 @@ def test_create_shifts_the_checklist_to_the_engagements_year(capsys, demo_root):
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == api.default_engagement_name("Smith", 2027, "1040")
+    assert payload["created"].endswith(api.default_return_name("1040", "Smith"))
     periods = {i["identifier"]: i["period"] for i in payload["state"]["items"]}
     assert periods["A01"] == "TY2027" and periods["B01"] == "TY2026"
 
@@ -1323,24 +1397,26 @@ def test_templates_carries_the_calendars_default_year(capsys):
 
 
 def test_rollover_retires_the_prior_in_the_priors_list(capsys, demo_root):
-    spec = {"name": "Smith 2025", "form": "1040", "client": "John",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040", "client": "John",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    code, payload = run(capsys, "rollover", stdin={"prior": str(where(demo_root, "Smith 2025")), "year": 2026})
     assert code == 0, payload
     assert payload["state"]["engagement"]["rolled_from"].endswith("Smith 2025")
     code, payload = run(capsys, "priors")
-    by_name = {p["name"]: p for p in payload["priors"]}
-    assert by_name["Smith 2025"]["superseded_by"] == api.ROLLOVER_NAME_PATTERN.format(prior="Smith 2025", year=2026)
-    assert by_name[api.ROLLOVER_NAME_PATTERN.format(prior="Smith 2025", year=2026)]["superseded_by"] == ""
+    # A return keeps its name every year, so the priors are told apart by
+    # their labels: the household, the year and the return (decision 125).
+    by_label = {p["label"]: p for p in payload["priors"]}
+    assert by_label[f"{HOUSEHOLD} 2025 Smith 2025"]["superseded_by"] == f"{HOUSEHOLD} 2026 Smith 2025"
+    assert by_label[f"{HOUSEHOLD} 2026 Smith 2025"]["superseded_by"] == ""
 
 
 def test_the_apps_pass_is_the_runners_pass(capsys, demo_root):
     # A row added in the editor gets its folder from the scan button,
     # exactly as the scheduled run would give it: one definition of a pass.
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = demo_root / "Smith"
+    engagement = where(demo_root, "Smith")
     rows = payload_of_state(capsys, engagement)["rules"]
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
         "items": [*rows, {"identifier": "Z01", "document": "Rental Records", "period": "TY2025",
@@ -1414,7 +1490,7 @@ def test_the_firm_is_typed_once_in_settings_and_signs_every_engagement(capsys, d
 
     set_firm("Park & Daughters CPA")
     assert firm() == "Park & Daughters CPA"
-    spec = {"name": "First", "items": [{"identifier": "A01", "document": "W-2"}]}
+    spec = {"household": HOUSEHOLD, "return_name": "First", "items": [{"identifier": "A01", "document": "W-2"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0 and payload["state"]["engagement"]["firm"] == "Park & Daughters CPA"
     # set-root can set it too, once, at first launch.
@@ -1613,13 +1689,13 @@ def test_the_reminder_payload_holds_on_a_parked_client_side_file(capsys, demo_ro
     from tracker import reasons
     from tracker.reminder import PARKED_HOLD
 
-    spec = {"name": "Smith", "form": "1040", "client": "John Smith",
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "form": "1040", "client": "John Smith",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    folder = demo_root / "Smith"
+    folder = where(demo_root, "Smith")
     # The client sent their W-2 with a password on it: nothing in it can
     # be read, so no request accepts it and A01 stays Missing.
-    write_pdf(folder / SHARED_DIR_NAME / f"W-2 Jane Smith {PRIOR_YEAR + 1}.pdf",
+    write_pdf(inbox_of(folder) / f"W-2 Jane Smith {PRIOR_YEAR + 1}.pdf",
               pages=60, password="secret123")     # over the row's size floor
     assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(folder))[0] == 0
 
@@ -1643,10 +1719,10 @@ def test_state_carries_the_held_rows_and_every_word_is_the_vocabularys(capsys, d
     from tracker.manifest import StatusUpdate
     from tracker.reminder import AMBIGUOUS_HOLD, HELD_SUMMARY
 
-    spec = {"name": "Smith", "items": [{"identifier": "A01", "document": "W-2"},
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [{"identifier": "A01", "document": "W-2"},
                                        {"identifier": "C01", "document": "Form 1098"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    folder = demo_root / "Smith"
+    folder = where(demo_root, "Smith")
     seed_statuses(folder, {
         "A01": StatusUpdate(status=Status.MISSING),
         "C01": StatusUpdate(status=Status.FAILED, file_count=1,
@@ -1682,7 +1758,7 @@ def test_the_new_client_name_rule_lives_in_python_and_uses_the_form_label(capsys
             "items": [{"identifier": "A01", "document": "Trial Balance", "any_keywords": "trial balance"}]}
     code, payload = run(capsys, "create", stdin=spec)
     assert code == 0, payload
-    assert payload["created"] == api.default_engagement_name("Acme", 2026, "1120S")
+    assert payload["created"].endswith(api.default_return_name("1120S", "Acme"))
 
 
 def test_priors_carry_next_year_and_the_index_carries_candidates(capsys, demo_root, tmp_path):
@@ -2003,11 +2079,11 @@ def chased_engagement(capsys, demo_root, name="Chase", client="John Smith"):
     from tests.conftest import seed_statuses
     from tracker.manifest import StatusUpdate
 
-    spec = {"name": name, "client": client, "due": "2026-03-15", "filing_deadline": "2026-04-15",
+    spec = {"household": HOUSEHOLD, "return_name": name, "client": client, "due": "2026-03-15", "filing_deadline": "2026-04-15",
             "items": [{"identifier": "A01", "document": "W-2 Wage Statements"},
                       {"identifier": "B01", "document": "Bank Statements"}]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    folder = demo_root / name
+    folder = where(demo_root, name)
     seed_statuses(folder, {"A01": StatusUpdate(status=Status.MISSING),
                            "B01": StatusUpdate(status=Status.MISSING)})
     return folder
@@ -2035,7 +2111,10 @@ def test_the_reminder_command_reads_the_record_and_the_file_and_renders_on_deman
                             "path": str(folder / DRAFT_FILENAME)}
     assert [s["number"] for s in card["stages"]] == [s.number for s in STAGES]
     assert card["stage"] == 4, "the Due Date has gone by, so the day gives the final notice"
-    assert card["subject"] == stage_named(4).subject.format(engagement="Chase", n=2)
+    # The letter names the return as everything does since decision 125:
+    # the household, the year and the return.
+    label = f"{HOUSEHOLD} {default_tax_year()} Chase"
+    assert card["subject"] == stage_named(4).subject.format(engagement=label, n=2)
     assert card["letter"]["greeting"] and card["letter"]["sections"]
     assert card["html"].startswith("<div") and "<style" not in card["html"]
     assert not (folder / DRAFT_FILENAME).exists(), "reading the card never drafts"
@@ -2043,7 +2122,7 @@ def test_the_reminder_command_reads_the_record_and_the_file_and_renders_on_deman
     # The toggle: the same recipients, another stage's words, still no file.
     milder = reminder_card(capsys, folder, stage=1)
     assert milder["stage"] == 1 and milder["asked"] == card["asked"]
-    assert milder["subject"] == stage_named(1).subject.format(engagement="Chase", n=2)
+    assert milder["subject"] == stage_named(1).subject.format(engagement=label, n=2)
     assert milder["letter"]["deadline"] == [], "stage one carries no deadline paragraph"
     assert not (folder / DRAFT_FILENAME).exists()
 
@@ -2256,3 +2335,299 @@ def test_an_edited_drafts_footer_is_neither_shown_nor_copied(capsys, demo_root):
         assert firm_side not in after["text"], firm_side
         assert firm_side not in after["html"], firm_side
     assert written.read_bytes() == kept, "reading the card never touches the file"
+
+
+# ============ the household, in the app (decision 125) =====================
+
+
+def test_the_app_lists_misfits_and_households_from_the_same_walk_the_pass_uses(capsys, demo_root):
+    """What a person sees and what the scheduled job walks are one list:
+    the households with their returns, and every folder left alone with the
+    one sentence saying why."""
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, client_household_dir, inbox_dir_for, private_household_dir
+    from tracker.registry import MISFIT_NOT_A_TREE, MISFIT_NOT_A_YEAR
+
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "members": ["John Park", "Maria Park"],
+        "contact": "John & Maria", "link": "https://drive.example/park",
+        "return_name": "1040 - John & Maria Park", "form": "1040", "year": 2026,
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Park Family")),
+        "return_name": "1120S - Park Landscaping", "year": 2026,
+        "items": [{"identifier": "B01", "document": "Trial Balance"}]})[0] == 0
+    (demo_root / "Archive").mkdir()
+    (private_household_dir(demo_root, "Park Family") / "Old").mkdir()
+
+    code, payload = run(capsys, "list")
+    assert code == 0
+
+    [household] = payload["households"]
+    assert household["name"] == "Park Family"
+    assert household["path"] == str(private_household_dir(demo_root, "Park Family"))
+    assert household["client_folder"] == str(client_household_dir(demo_root, "Park Family"))
+    assert household["inbox"] == str(inbox_dir_for(demo_root, "Park Family"))
+    assert household["members"] == ["John Park", "Maria Park"]
+    assert household["contact"] == "John & Maria" and household["link"] == "https://drive.example/park"
+    assert household["open_years"] == [2026]
+    assert [r["return_name"] for r in household["returns"]] == [
+        "1040 - John & Maria Park", "1120S - Park Landscaping"]
+    assert all(r["year"] == 2026 and r["active"] for r in household["returns"])
+
+    # The picker's own list carries the label and the household it is in.
+    assert [e["name"] for e in payload["engagements"]] == [
+        "Park Family 2026 1040 - John & Maria Park",
+        "Park Family 2026 1120S - Park Landscaping"]
+    assert {e["household"] for e in payload["engagements"]} == {household["path"]}
+
+    said = {Path(m["path"]).name: m["sentence"] for m in payload["misfits"]}
+    assert said["Archive"] == MISFIT_NOT_A_TREE.format(
+        clients=CLIENTS_TREE, private=PRIVATE_TREE)
+    assert said["Old"] == MISFIT_NOT_A_YEAR
+
+
+def test_create_makes_a_household_and_its_first_return_and_undoes_both_on_failure(
+        capsys, demo_root):
+    """The household is written first, so a return never exists under one
+    the record does not know - and a create that fails leaves neither."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+    from tracker.records import HouseholdInfo
+
+    spec = {"household": "Park Family", "members": ["John Park", "Maria Park"],
+            "contact": "John & Maria", "link": "https://drive.example/park",
+            "return_name": "1040 - John & Maria Park", "form": "1040", "year": 2026,
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+
+    household_dir = private_household_dir(demo_root, "Park Family")
+    assert load_household_info(household_dir) == HouseholdInfo(
+        name="Park Family", members=("John Park", "Maria Park"),
+        contact="John & Maria", link="https://drive.example/park")
+    # The return's greeting and link come from the household.
+    assert payload["state"]["engagement"]["client"] == "John & Maria"
+    assert payload["state"]["engagement"]["link"] == "https://drive.example/park"
+
+    # And a create that fails leaves no folder, no record, and no household
+    # it made itself.
+    bad = {**spec, "household": "Vega Landscaping LLC", "return_name": "1120S - Vega",
+           "items": [{"identifier": "A01", "document": "W-2"},
+                     {"identifier": "A02", "document": "x", "date_pattern": "(unclosed"}]}
+    code, payload = run(capsys, "create", stdin=bad)
+    assert code == 1 and COL_DATE_PATTERN in payload["error"]
+    assert not private_household_dir(demo_root, "Vega Landscaping LLC").exists()
+    assert not where(demo_root, "1120S - Vega", year=2026,
+                     household="Vega Landscaping LLC").exists()
+    # The household this call did not make is untouched.
+    assert load_household_info(household_dir).name == "Park Family"
+
+
+def test_create_adds_a_return_to_an_existing_household_and_leaves_its_record_alone(
+        capsys, demo_root):
+    """A household's details are edited in ``edit-household`` and never
+    written over by a return added to it."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "members": ["John Park"], "contact": "John",
+        "link": "https://drive.example/park", "return_name": "1040 - John Park",
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    household_dir = private_household_dir(demo_root, "Park Family")
+
+    code, payload = run(capsys, "create", stdin={
+        "household_path": str(household_dir), "members": ["Somebody Else"],
+        "contact": "Nobody", "link": "https://drive.example/wrong",
+        "return_name": "1120S - Park Landscaping",
+        "items": [{"identifier": "B01", "document": "Trial Balance"}]})
+    assert code == 0, payload
+
+    held = load_household_info(household_dir)
+    assert held.members == ("John Park",) and held.contact == "John"
+    assert held.link == "https://drive.example/park"
+    assert len(ledger.read_events(household_dir)) == 1        # one event, still
+    assert payload["state"]["household"]["returns"][1]["return_name"] == "1120S - Park Landscaping"
+
+    # A household named again by name is that household, not a refusal.
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "return_name": "1065 - Park & Lee LLC",
+        "items": [{"identifier": "C01", "document": "K-1"}]})[0] == 0
+    assert len(ledger.read_events(household_dir)) == 1
+
+
+def test_create_refuses_a_return_whose_deepest_path_would_pass_the_limit_and_says_the_length(
+        capsys, demo_root):
+    """A folder made today that cannot hold a filed document in February is
+    a failure at a filing deadline, so it is refused now, with the length."""
+    from tracker.layout import MAX_PATH_LENGTH
+
+    code, payload = run(capsys, "create", stdin={
+        "household": "Park Family", "return_name": "1040 - " + "x" * 80, "form": "1040",
+        "items": [{"identifier": "A01", "document": "y" * 90}]})
+
+    assert code == 1
+    assert str(MAX_PATH_LENGTH) in payload["error"]
+    assert "shorten the household or the return name" in payload["error"]
+    assert "characters" in payload["error"]
+    assert not any(demo_root.rglob(ledger.LEDGER_FILENAME))   # nothing was made
+
+
+def test_create_refuses_a_household_or_return_name_that_is_not_a_folder_name(capsys, demo_root):
+    """A household and a return are each one folder name: the layout puts
+    them where they go, so a name carrying a separator is a typo."""
+    for field, value in (("household", "../outside"), ("return_name", "sub/child")):
+        spec = {"household": "Park Family", "return_name": "1040 - John",
+                "items": [{"identifier": "A01", "document": "W-2"}], field: value}
+        code, payload = run(capsys, "create", stdin=spec)
+        assert code == 1 and "is not a folder name" in payload["error"], field
+    assert not any(demo_root.rglob(ledger.LEDGER_FILENAME))
+
+
+def test_the_returns_details_carry_household_year_and_return_name_and_the_editor_cannot_change_them(
+        capsys, demo_root):
+    """The folders are the names, and the record is what wins when somebody
+    renames one - so the three are written at creation and never edited."""
+    from tracker.records import ENGAGEMENT_EDITABLE, ENGAGEMENT_FIELDS
+
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "return_name": "1040 - John Park", "year": 2026,
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    engagement = where(demo_root, "1040 - John Park", year=2026, household="Park Family")
+
+    details = api._state(engagement)["engagement"]
+    assert details["household"] == "Park Family"
+    assert details["tax_year"] == 2026
+    assert details["return_name"] == "1040 - John Park"
+
+    rows = api._state(engagement)["rules"]
+    for field in ("household", "tax_year", "return_name"):
+        assert field in {name for _, name in ENGAGEMENT_FIELDS}
+        assert field not in ENGAGEMENT_EDITABLE
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                            stdin={"items": rows, "engagement": {field: "something else"}})
+        assert code == 1 and payload["error"] == f"'{field}' is not edited here"
+    assert api._state(engagement)["engagement"]["household"] == "Park Family"
+
+
+def test_edit_household_saves_members_contact_and_link_as_one_event(capsys, demo_root):
+    """The household's three editable fields, saved as one recorded event
+    carrying exactly what moved - and nothing else is edited here."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "contact": "John", "return_name": "1040 - John Park",
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    engagement = where(demo_root, "1040 - John Park", household="Park Family")
+    household_dir = private_household_dir(demo_root, "Park Family")
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"members": ["John Park", "Maria Park"],
+                               "contact": "John & Maria",
+                               "link": "https://drive.example/park"})
+    assert code == 0, payload
+    assert sorted(payload["saved"]["household"]) == ["contact", "link", "members"]
+    held = load_household_info(household_dir)
+    assert held.members == ("John Park", "Maria Park") and held.contact == "John & Maria"
+    assert payload["state"]["household"]["members"] == ["John Park", "Maria Park"]
+    assert len(ledger.read_events(household_dir)) == 2
+
+    # Nothing changed, nothing written; and a blank clears.
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"members": ["John Park", "Maria Park"],
+                               "contact": "John & Maria",
+                               "link": "https://drive.example/park"})
+    assert code == 0 and payload["saved"]["household"] == []
+    assert len(ledger.read_events(household_dir)) == 2
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"link": ""})
+    assert code == 0 and payload["saved"]["household"] == ["link"]
+    assert load_household_info(household_dir).link == ""
+
+    # And a key that is not one of the three is refused by name.
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"name": "Somebody Else"})
+    assert code == 1 and "Not a household field: name" in payload["error"]
+
+
+def test_state_carries_the_household_its_open_years_its_returns_and_the_queue_count(
+        capsys, demo_root, tmp_path):
+    """The card is drawn from the state and types nothing of its own: the
+    household's record, the years still open, its returns, and the one
+    queue a person works across it."""
+    from tests.samples import build_samples
+    from tracker.layout import client_household_dir, private_household_dir
+
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "members": ["John Park"], "contact": "John",
+        "link": "https://drive.example/park", "return_name": "1040 - John Park",
+        "form": "1040", "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Park Family")),
+        "return_name": "1120S - Park Landscaping",
+        "items": [{"identifier": "B01", "document": "Trial Balance"}]})[0] == 0
+    personal = where(demo_root, "1040 - John Park", household="Park Family")
+    business = where(demo_root, "1120S - Park Landscaping", household="Park Family")
+
+    samples = tmp_path / "samples"
+    build_samples(samples)
+    for name in ("vacation photo.jpg", "Mortgage Notes.docx"):
+        (inbox_of(personal) / name).write_bytes((samples / name).read_bytes())
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(business))[0] == 0
+
+    state = api._state(personal)
+    household = state["household"]
+    assert household["name"] == "Park Family"
+    assert household["members"] == ["John Park"] and household["contact"] == "John"
+    assert household["open_years"] == [default_tax_year()]
+    assert [r["path"] for r in household["returns"]] == [str(personal), str(business)]
+    assert household["queue"] == sum(
+        1 for one in (personal, business)
+        for row in read_index(one) if row.decision == NEEDS_REVIEW)
+    assert household["queue"] >= 1
+
+    paths = state["paths"]
+    assert paths["inbox"] == str(inbox_of(personal))
+    assert paths["client_folder"] == str(client_household_dir(demo_root, "Park Family"))
+    assert paths["household"] == str(private_household_dir(demo_root, "Park Family"))
+    assert paths["originals"] == str(inbox_of(personal).parent / str(default_tax_year()))
+    assert "shared" not in paths and "pbc" not in paths
+
+
+def test_the_scan_command_runs_the_household_pass_and_answers_for_the_return_it_was_asked_about(
+        capsys, demo_root, tmp_path):
+    """One folder feeds every return of the household, so Run now on one
+    return sorts all of it - which is the only honest thing it can do - and
+    the reply is about the return that was asked for."""
+    from tests.samples import build_samples
+    from tests.test_scanner import text_pdf
+    from tracker.layout import private_household_dir
+
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "return_name": "1040 - John Park", "form": "1040",
+        "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Park Family")),
+        "return_name": "1120S - Park Landscaping",
+        "items": [{"identifier": "B01", "document": "Trial Balance", "min_size_kb": 0,
+                   "required_keywords": "trial balance"}]})[0] == 0
+    personal = where(demo_root, "1040 - John Park", household="Park Family")
+    business = where(demo_root, "1120S - Park Landscaping", household="Park Family")
+
+    samples = tmp_path / "samples"
+    build_samples(samples)
+    name = f"W-2 John Smith {BASE_YEAR}.pdf"
+    (inbox_of(personal) / name).write_bytes((samples / name).read_bytes())
+    text_pdf(inbox_of(personal) / "tb.pdf", f"Trial balance as of December 31 {BASE_YEAR}")
+
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(business))
+    assert code == 0, payload
+
+    # The reply is the business return's, and the whole inbox was sorted.
+    assert payload["state"]["paths"]["engagement"] == str(business)
+    assert payload["run"]["filed"] == 1                       # the trial balance
+    assert [row["original_name"] for row in payload["state"]["index"]] == ["tb.pdf"]
+    assert [row.original_name for row in read_index(personal)] == [name]
+    assert not any(p.suffix == ".pdf" for p in inbox_of(personal).iterdir())

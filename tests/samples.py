@@ -23,7 +23,10 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
+from tracker.households import create_household
+from tracker.layout import private_household_dir, return_dir_for
 from tracker.manifest import EngagementInfo, create_engagement
+from tracker.records import HouseholdInfo
 from tracker.scaffold import scaffold_engagement
 from tracker.templates import BASE_YEAR, template_items
 
@@ -35,7 +38,10 @@ PRIOR_YEAR = BASE_YEAR - 1
 #: below is written from nothing, and no client document enters this repo.
 SCRATCH_CLIENT = "John A. Smith"
 SCRATCH_FIRM = "Example CPA"
-SCRATCH_ENGAGEMENT = f"Smith TY{YEAR}"
+#: The household and the return one scratch root holds, in the layout of
+#: decision 125: a household, a year inside it, a return inside that.
+SCRATCH_HOUSEHOLD = "Smith Family"
+SCRATCH_RETURN = "1040 - John A. Smith"
 
 
 def text_pdf(path: Path, lines: list[str]) -> Path:
@@ -288,27 +294,34 @@ def build_samples(samples: Path) -> None:
 
 
 def build_scratch_root(root: Path | str) -> Path:
-    """A throwaway clients root holding one scaffolded engagement with the
-    whole pile already waiting in its drop folder, and the root returned.
+    """A throwaway clients root holding one household with one scaffolded
+    return, the whole pile already waiting in the household's inbox, and
+    the root returned.
 
     The build workflow proves the package it has just frozen by running the
     frozen executable, and a pass over an empty folder proves only that
-    discovery does not crash. This gives it something to walk: the catalog's
-    core rows, the folders the scaffold makes, and the documents a client
-    really sends - one that routes, its byte-identical copy, last year's
-    form, a Google shortcut, a photo - so a single dry pass goes through
-    filing, routing, scanning and drafting the way the scheduled job does.
+    discovery does not crash. This gives it something to walk: the two
+    trees of decision 125, the catalog's core rows, the folders the
+    scaffold makes, and the documents a client really sends - one that
+    routes, its byte-identical copy, last year's form, a Google shortcut,
+    a photo - so a single dry pass goes through filing, routing, scanning
+    and drafting the way the scheduled job does.
 
     Nothing outside ``root`` is written, and nothing in it is a real
     client's: every byte comes from ``build_samples()`` above.
     """
     root = Path(root)
-    engagement = root / SCRATCH_ENGAGEMENT
-    engagement.mkdir(parents=True, exist_ok=True)
-    # The API's own create, not the suite's helper: the build workflow
+    # The API's own creates, not the suite's helper: the build workflow
     # imports this module without conftest.
-    create_engagement(engagement, DEMO_ITEMS, EngagementInfo(client=SCRATCH_CLIENT, firm=SCRATCH_FIRM))
-    build_samples(scaffold_engagement(engagement).shared_dir)
+    household = private_household_dir(root, SCRATCH_HOUSEHOLD)
+    household.mkdir(parents=True, exist_ok=True)
+    create_household(household, HouseholdInfo(name=SCRATCH_HOUSEHOLD, contact=SCRATCH_CLIENT))
+    engagement = return_dir_for(root, SCRATCH_HOUSEHOLD, YEAR, SCRATCH_RETURN)
+    engagement.mkdir(parents=True, exist_ok=True)
+    create_engagement(engagement, DEMO_ITEMS, EngagementInfo(
+        client=SCRATCH_CLIENT, firm=SCRATCH_FIRM, household=SCRATCH_HOUSEHOLD,
+        tax_year=YEAR, return_name=SCRATCH_RETURN))
+    build_samples(scaffold_engagement(engagement).inbox)
     return root
 
 

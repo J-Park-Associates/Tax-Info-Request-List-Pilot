@@ -11,16 +11,73 @@ this page does not repeat it. Why anything is the way it is, is
 |---|---|
 | Designated machine | ______________________ (machine name) |
 | Who sits at it | ______________________ |
-| Clients root | the folder Google Drive for desktop syncs down to that machine |
+| Clients root | the folder Google Drive for desktop syncs down to that machine — a folder on the firm's **Shared Drive**, e.g. `"G:\Shared drives\JPA Clients"` |
 
 Clients drop their own documents into a shared Google Drive folder. Google
 Drive for desktop syncs that folder onto the designated machine, and the
-synced engagement folder carries everything about that engagement: the
-originals, the working copies, the drafts and the engagement's own ledger,
-which holds the request list too. There is no portal and no second copy of any of
+synced return folder carries everything about that return: the
+working copies, the drafts and the return's own ledger,
+which holds the request list too; the originals sit in the client's own
+folder for the year, one tree over. There is no portal and no second copy of any of
 it. There *is* one database — `tracker.db`, beside the app on the
 designated machine — but it is disposable: it is rebuilt from the ledgers
 in the folders, it is never synced and nobody opens it.
+
+**The clients root must be on a Shared Drive, not in My Drive.** In My Drive
+a client owns what they upload: they could delete a document the tracker has
+already filed, and the rule that originals are never altered cannot hold on
+a folder somebody outside the firm can empty. On a Shared Drive the firm owns
+every file in it, whoever uploaded it.
+
+### The layout: a household, a year, a return
+
+A client folder is a **household** (decision 125). Inside it is one folder
+per tax year, and inside that one folder per **return**. Two trees sit under
+the clients root, and the difference between them is the whole point:
+
+```
+"G:\Shared drives\JPA Clients"
+├── Clients\                      ← the only tree a client is ever shared
+│   └── Park Family\
+│       ├── Drop files here\      ← the household's one permanent inbox
+│       ├── 2026\                 ← their originals for this year
+│       └── 2025\
+└── J Park & Associates\          ← never shared with anyone outside the firm
+    └── Park Family\
+        ├── _ledger.jsonl         ← the household's own record
+        └── 2026\
+            ├── 1040 - John & Maria Park\
+            └── 1120S - Park Landscaping LLC\
+```
+
+- A return folder is named **form first** — `1040 - John & Maria Park` — and
+  keeps that name every year. It is what the app and the rest of these pages
+  call the **engagement**.
+- A household has **one** inbox, `Drop files here`, for all of its returns and
+  for every year. A pass runs a whole household at a time: it judges each
+  dropped file against every return of the open year and files it where
+  exactly one request accepts it.
+- An original moves **once** — out of `Drop files here` into the year's folder
+  the client can see — and never again.
+- Type the root with the quotes: the firm's own name has an ampersand in it,
+  and `G:\Shared drives\JPA Clients\J Park & Associates` without quotes is two
+  commands to a Windows shell. `"G:\Shared drives\JPA Clients"` is safe.
+
+**Folders the tracker leaves alone.** The tracker reads that layout and no
+other. Anything else under the root — a stray folder beside the two trees, a
+household with no record, a folder where a year should be that is not four
+digits, a year folder with no return in it, a folder from before September
+2026 holding a `_manifest.xlsx`, a folder Windows will not let it list — is
+**listed with one sentence saying why, and left alone**. Nothing is renamed,
+nothing is moved, nothing is deleted. The list is at the bottom of the status
+page, in the app under the engagement picker, and at the end of every command
+line pass, under **Folders the tracker leaves alone**. If a client's folder
+appears there, that is the tracker telling you it is not set up — read the
+sentence and set it up in the app.
+
+There is no migration and no importer: a folder from an older shape is set up
+again in the app, and the old one is left where it is until somebody deletes
+it by hand.
 
 **Two files sit in an engagement folder, and only one of them is yours to
 open:**
@@ -39,10 +96,10 @@ not in the editor. The engagement's details — client, share link, due
 date, sender, firm, reminders, active — are edited in the same place.
 
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
-The tracker no longer reads it: the Status page lists such a folder as a
-legacy folder, not an engagement, and the engagement is set up again in the
-app (New Engagement, then type or paste the rows). The workbook may be
-deleted once that is done.
+The tracker no longer reads it: it is one of the folders left alone, listed
+with its own sentence rather than treated as an engagement, and the return is
+set up again in the app (New Engagement, then type or paste the rows). The
+workbook may be deleted once that is done.
 
 The status report is one web page with everything about that engagement on
 it: a **Summary**, a **Requests** section (the list with each row's status
@@ -134,6 +191,31 @@ documents are no use arriving a day late. The exception is declared rather
 than hidden: `automation.manifest.json` carries it in the dated
 `safety.scheduled_exception` field the Command Center's contract gained the
 same day, and the tool's card there prints that sentence.
+
+### Sharing a household with its client
+
+*A stub. Decision 126 completes this section with the checklist the app
+walks, and records that a household has been shared.*
+
+Two links per household, and they are not the same link:
+
+- **The household folder** — `Clients\Park Family` — shared as **Viewer**, so
+  the client can see the years and open what they sent.
+- **`Drop files here`** — shared as **Contributor**, so they can put files in
+  it. Contributor is what lets them upload without letting them delete what
+  the firm has filed.
+
+**Two things to confirm on the Shared Drive before the first real client**,
+because Google's Shared Drive settings can forbid both and the answer is the
+firm's, not the tool's:
+
+1. that a folder *inside* the Shared Drive can be shared with someone outside
+   the firm at all, as **Viewer**; and
+2. that the same is true at **Contributor**.
+
+Check both with a test account outside the firm: upload from outside, then
+try to delete from outside (it must be refused), then let a pass move the
+file and confirm the firm still owns it.
 
 ## 2. Every morning
 
@@ -427,7 +509,7 @@ or put another file in its place.
   neither the place it was taking the file from nor the place it was
   taking it to holds those bytes now. Nothing is guessed: the row is
   parked and the note says whether the client's own original is still in
-  `Shared/PBC/`, which it nearly always is.
+  the client's folder for the year, which it nearly always is.
 
 **The client's to fix** (translated into one plain sentence in the draft):
 `reasons.PASSWORD_PROTECTED`, `reasons.GOOGLE_STUB`, `reasons.TOO_SMALL`,
@@ -506,7 +588,7 @@ with *a run was interrupted here; the next pass finishes it first* - press
    with no text layer parks for a person** — it is not filed on what its
    file name says, because the client wrote that name and the form did
    not (owner, 2026-09-18). Nothing breaks and nothing is lost: the
-   originals are filed in the shared folder as always, the shortlist on
+   originals are moved into the client's folder for the year as always, the shortlist on
    each parked file says which request its name points at, and installing
    Tesseract later means the next pass reads those scans itself.
 6. Run one pass — **Sort & Scan** on a single engagement — and read the run

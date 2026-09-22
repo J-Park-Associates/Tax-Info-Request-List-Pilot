@@ -205,12 +205,19 @@ class Report:
 
 
 def _engagement_label(engagement) -> str:
-    """The engagement's folder name, flagged when the run would no longer chase it."""
+    """The return's own name, flagged when the run would no longer chase it.
+
+    The registry's label since decision 125 - the household, the year and
+    the return - because a return keeps its folder name every year and in
+    every household, so the folder name alone no longer says which client
+    taught a word. It is the client's name, which is why the report prints
+    it only when it is asked to.
+    """
     if engagement.superseded_by:
-        return f"{engagement.path.name} ({SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)})"
+        return f"{engagement.label} ({SKIP_ROLLED_FORWARD.format(successor=engagement.superseded_by)})"
     if not engagement.active:
-        return f"{engagement.path.name} ({FLAG_INACTIVE})"
-    return engagement.path.name
+        return f"{engagement.label} ({FLAG_INACTIVE})"
+    return engagement.label
 
 
 def _by_count(row: Row) -> tuple[int, str, str]:

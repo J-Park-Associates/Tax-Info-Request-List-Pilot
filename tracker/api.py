@@ -5,16 +5,21 @@ and exit 1. All real logic lives in the tracker package; this module only
 serializes it, so the UI can never disagree with the scanner.
 
 Commands:
-  list      every engagement under the clients root, plus the vocabulary the app shows
+  list      every household, return and left-alone folder under the clients
+            root, plus the vocabulary the app shows
   templates the form catalog and the calendar's default tax year
-  create    a new engagement from the wizard's spec (JSON on stdin)
+  create    a new return, and its household where it is a new one, from
+            the wizard's spec (JSON on stdin)
   edit      save the request list and the engagement's details from the
             app's editor (JSON on stdin), as one recorded event
+  edit-household  save the household's members, contact and inbox link
+            (JSON on stdin), as one recorded event
   state     the request rows as the record holds them, the index, the
             triaged review queue, the one summary, useful paths
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
-  scan      one pass, exactly as the scheduled run makes it (no draft)
+  scan      one pass over this return's household, exactly as the scheduled
+            run makes it (no draft)
   reminder  the week's draft as the record and the file now stand, at any
             of the four stages, with the body Outlook wants (never sends)
   approve   make the text the panel showed this week's draft, and record it
@@ -51,11 +56,37 @@ from tracker.filer import (
     ensure,
     find_parked,
     moved_to,
+    prepared_name_for,
     read_index,
     restore_working_copy,
     unfile_document,
 )
 from tracker.fsio import write_text_atomically
+from tracker.households import (
+    create_household,
+    household_returns,
+    load_household_info,
+    open_years,
+    save_household,
+)
+from tracker.layout import (
+    CLIENTS_TREE,
+    ENGAGEMENT_LABEL_PATTERN,
+    INBOX_DIR_NAME,
+    MAX_PATH_LENGTH,
+    PATH_TOO_LONG,
+    PRIVATE_TREE,
+    RETURN_NAME_PATTERN,
+    client_household_dir,
+    deepest_path_length,
+    household_of,
+    inbox_dir_for,
+    inbox_of,
+    originals_dir_for,
+    private_household_dir,
+    return_dir_for,
+    year_of,
+)
 from tracker.locking import STALE_LOCK_SECONDS, clear_stale_lock, engagement_lock, lock_status
 from tracker.manifest import (
     ANY_EXTENSION,
@@ -97,15 +128,25 @@ from tracker.records import (
     ENGAGEMENT_LABELS,
     EVIDENCE_PLACES,
     EVIDENCE_RULES,
+    HOUSEHOLD_EDITABLE,
     NO,
+    RETURN_NAME_HELP,
+    RETURN_NAME_LABEL,
     THE_RECORD,
     YES,
     EngagementInfo,
+    HouseholdInfo,
     IndexEntry,
     identifier_key,
     ledger_key,
 )
-from tracker.registry import RegistryError, discover_engagements, engagement_dirs, engagement_from
+from tracker.registry import (
+    Engagement,
+    RegistryError,
+    discover_engagements,
+    engagement_from,
+    mark_superseded,
+)
 from tracker.rollover import (
     ORIGIN_NOT_APPLICABLE,
     ORIGIN_PRIOR,
@@ -128,16 +169,15 @@ from tracker.runner import (
     append_log,
     last_draft_day,
     last_drafted,
-    run_engagement,
+    run_household,
     status_report,
     write_status_page,
 )
 from tracker.scaffold import (
-    PBC_DIR_NAME,
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
-    SHARED_DIR_NAME,
     assign_folders,
+    folder_name_for,
     sanitize_component,
     scaffold_engagement,
 )
@@ -209,8 +249,31 @@ def _root() -> Path:
 
 #: The one flag the app passes: which engagement a command is about.
 ENGAGEMENT_FLAG = "--engagement"
-#: What a new client is called in the name preview before a name is typed.
-NEW_CLIENT_PLACEHOLDER = "New"
+#: Every word the household's card, the wizard's household step and the
+#: misfit list show (decision 125). The renderer types none of it: it
+#: reads these from the vocabulary, as it reads every other word Python
+#: owns.
+HOUSEHOLD_HEADING = "Household"
+HOUSEHOLD_NAME_LABEL = "Household"
+MEMBERS_LABEL = "Shared with (as typed by the firm)"
+MEMBERS_HELP = ("who this household's folder is meant to be shared with - the tracker cannot "
+                "read Drive's sharing, so this is the firm's own note")
+CONTACT_LABEL = "Contact"
+CONTACT_HELP = "the greeting name in every return's letter, filled into each return when it is made"
+INBOX_LINK_LABEL = "Inbox link"
+INBOX_LINK_HELP = "pasted into every return's letter; paste it once the inbox is shared"
+OPEN_CLIENT_FOLDER_LABEL = "Open Client Folder"
+OPEN_INBOX_LABEL = "Open Inbox"
+EDIT_HOUSEHOLD_LABEL = "Edit household"
+NEW_HOUSEHOLD_LABEL = "New household"
+EXISTING_HOUSEHOLD_LABEL = "Add a return to an existing household"
+HOUSEHOLD_RETURNS_HEADING = "Returns this year"
+HOUSEHOLD_QUEUE_LINE = "{n} document(s) waiting for a person across this household"
+MISFITS_HEADING = "Folders the tracker leaves alone"
+MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; nothing in it "
+                "is ever read, moved or renamed.")
+TWO_OPEN_YEARS_NOTE = ("Two years are open in this household ({years}); nothing is sorted from "
+                       "its inbox until one is retired in the editor")
 #: What the Needs Review card calls the decisions a person makes there and
 #: on what is already filed, and what it asks them for. The renderer shows
 #: these; it types none of them.
@@ -302,16 +365,70 @@ FIRM_PHONE_LABEL = "Firm phone"
 FIRM_PHONE_HELP = "named in the final-notice reminder; blank drops that sentence"
 
 
-def _new_engagement_dir(name: str) -> Path:
-    """Where a new engagement goes, refused if the folder is already there
-    or if ``name`` would put it anywhere but straight under the root."""
-    root = _root()
-    engagement = root / name
-    if engagement.resolve().parent != root.resolve():
-        raise ManifestError(f"'{name}' is not a folder name")
+def _folder_name(value: str, what: str) -> str:
+    """One folder name from what a person typed, or the refusal that says
+    which box to fix.
+
+    A household and a return are each **one** folder name: the layout puts
+    them where they go (decision 125), so a name carrying a separator, or
+    one that sanitising leaves empty, is a typo and not a path.
+    """
+    typed = str(value or "").strip()
+    name = sanitize_component(typed)
+    if not name or not any(ch.isalnum() for ch in name) or name != typed.strip():
+        raise ManifestError(f"'{typed}' is not a folder name; {what}")
+    return name
+
+
+def _new_return_dir(root: Path, household: str, year: int, return_name: str,
+                    items: list | None = None) -> Path:
+    """Where a new return goes: ``<root>/<private tree>/<household>/<year>/<return>``.
+
+    Refused when the household or the return is not a single folder name,
+    when the year is outside the bounds the wizard shows, when a return of
+    that name already exists for that household and year, and when the
+    deepest working copy the list implies would pass what Windows will
+    open (§3.9.1 of decision 125): a folder made today that cannot hold a
+    filed document in February is a failure at a filing deadline, and the
+    refusal names the length so a person knows what to shorten.
+    """
+    household = _folder_name(household, "type the household's name on its own")
+    return_name = _folder_name(return_name, "type the return's name on its own")
+    year = check_tax_year(int(year))
+    engagement = return_dir_for(root, household, year, return_name)
     if engagement.exists():
-        raise ManifestError(f"An engagement named '{name}' already exists")
+        raise ManifestError(
+            f"A return named '{return_name}' already exists for {household} {year}")
+    _refuse_a_path_past_the_limit(engagement, items or [])
     return engagement
+
+
+def _refuse_a_path_past_the_limit(engagement: Path, items: list) -> None:
+    """Refuse a return whose deepest working copy would not fit in a path
+    Windows will open.
+
+    The deepest thing the tracker ever writes under a return is a working
+    copy: ``PREPARED_DIR_NAME/<request folder>/<canonical name>.<extension>``, over
+    every active row of the list it is about to record and the longest
+    extension each allows. The client's own file names are not measured -
+    they are the client's, and ``unreachable_drops`` already says a name
+    the index cannot hold - and neither are the ``..`` locations that
+    cross the trees, because Windows normalises them away before the limit
+    applies and :func:`tracker.layout.locate` normalises them first too.
+    """
+    subpaths = []
+    for item in items:
+        if getattr(item, "manual_override", "") == Override.NOT_APPLICABLE:
+            continue
+        extensions = [e for e in (item.allowed_extensions or DEFAULT_EXTENSIONS)
+                      if e and e != ANY_EXTENSION] or list(DEFAULT_EXTENSIONS)
+        longest = max(extensions, key=len)
+        name = prepared_name_for(item, longest, set())
+        subpaths.append(f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/{name}")
+    length = deepest_path_length(engagement, subpaths)
+    if length > MAX_PATH_LENGTH:
+        raise ManifestError(PATH_TOO_LONG.format(
+            folder=engagement, length=length, limit=MAX_PATH_LENGTH))
 
 
 def _engagement_dir(argv: list[str]) -> Path:
@@ -349,12 +466,6 @@ def _under_root(folder: Path) -> Path:
     return folder
 
 
-#: How a new engagement is named when nobody types a name. The renderer
-#: formats the same pattern, so the wizard's preview and the folder agree.
-NAME_PATTERN = "{client} " + PERIOD_PATTERN + " {form}"
-ROLLOVER_NAME_PATTERN = "{prior} - {year}"
-
-
 def form_label(form: str) -> str:
     """``Form 1120-S`` for ``1120S``: the one id -> label map is FORM_TYPES."""
     for entry in FORM_TYPES:
@@ -363,9 +474,18 @@ def form_label(form: str) -> str:
     return FORM_LABEL_PATTERN.format(form=form) if form else "Engagement"
 
 
-def default_engagement_name(client: str, year: int, form: str) -> str:
-    return NAME_PATTERN.format(client=client or NEW_CLIENT_PLACEHOLDER, year=year,
-                               form=form_label(form)).strip()
+def default_return_name(form: str, client: str) -> str:
+    """How a return folder is named when nobody types a name: the form
+    first, the client after (``layout.RETURN_NAME_PATTERN``).
+
+    The catalog's own id, not its label - ``1040 - John & Maria Park``,
+    which is the name the same return keeps every year (decision 125). The
+    renderer fills the same pattern for its preview, so the box and the
+    folder agree.
+    """
+    return sanitize_component(
+        RETURN_NAME_PATTERN.format(form=form, client=client or "New client").strip()
+    )
 
 
 #: A word as a class name, from the module that owns how the firm's pages
@@ -387,8 +507,7 @@ def _stages() -> list[dict]:
 
 def standing_rules() -> list[dict]:
     """The package's standing rules with the folder names filled in."""
-    names = {"shared": SHARED_DIR_NAME, "pbc": PBC_DIR_NAME, "review": REVIEW_DIR_NAME,
-             "record": THE_RECORD}
+    names = {"inbox": INBOX_DIR_NAME, "review": REVIEW_DIR_NAME, "record": THE_RECORD}
     return [{"headline": headline, "detail": detail.format(**names)}
             for headline, detail in STANDING_RULES]
 
@@ -478,10 +597,41 @@ def _vocab() -> dict:
         "evidence": {"rules": list(EVIDENCE_RULES), "places": list(EVIDENCE_PLACES)},
         "year_note": YEAR_NOTE,
         "extension_default_note": EXTENSION_DEFAULT_NOTE,
-        "pbc_dir": PBC_DIR_NAME,
-        "name_pattern": NAME_PATTERN,
-        "rollover_name_pattern": ROLLOVER_NAME_PATTERN,
-        "new_client_placeholder": NEW_CLIENT_PLACEHOLDER,
+        # The shape of the clients root, from the module that owns it
+        # (decision 125): the two trees, the one inbox, and the two
+        # patterns the wizard's previews fill.
+        "layout": {
+            "clients_tree": CLIENTS_TREE,
+            "private_tree": PRIVATE_TREE,
+            "inbox": INBOX_DIR_NAME,
+            "return_name_pattern": RETURN_NAME_PATTERN,
+            "engagement_label_pattern": ENGAGEMENT_LABEL_PATTERN,
+        },
+        # Every word the household's card, the wizard's household step and
+        # the misfit list show. The page types none of them.
+        "household": {
+            "heading": HOUSEHOLD_HEADING,
+            "name_label": HOUSEHOLD_NAME_LABEL,
+            "members_label": MEMBERS_LABEL,
+            "members_help": MEMBERS_HELP,
+            "contact_label": CONTACT_LABEL,
+            "contact_help": CONTACT_HELP,
+            "link_label": INBOX_LINK_LABEL,
+            "link_help": INBOX_LINK_HELP,
+            "return_name_label": RETURN_NAME_LABEL,
+            "return_name_help": RETURN_NAME_HELP,
+            "open_client_folder": OPEN_CLIENT_FOLDER_LABEL,
+            "open_inbox": OPEN_INBOX_LABEL,
+            "edit": EDIT_HOUSEHOLD_LABEL,
+            "new": NEW_HOUSEHOLD_LABEL,
+            "existing": EXISTING_HOUSEHOLD_LABEL,
+            "returns_heading": HOUSEHOLD_RETURNS_HEADING,
+            "queue_line": HOUSEHOLD_QUEUE_LINE,
+            "misfits_heading": MISFITS_HEADING,
+            "misfits_note": MISFITS_NOTE,
+            "two_open_years": TWO_OPEN_YEARS_NOTE,
+            "editable": list(HOUSEHOLD_EDITABLE),
+        },
         "year_min": YEAR_MIN,
         "year_max": YEAR_MAX,
         "example_root": EXAMPLE_ROOT,
@@ -653,6 +803,17 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
     )
 
 
+def _placed(info: EngagementInfo, household: str, year: int, return_name: str) -> EngagementInfo:
+    """The details with the three the layout records (decision 125): where
+    this return sits and what it is called.
+
+    Written at creation and at rollover from the folders they name, and
+    never editable afterwards - the folders are the names, and the record
+    is what wins when somebody renames one.
+    """
+    return replace(info, household=household, tax_year=year, return_name=return_name)
+
+
 def _tax_year(given, default: int | None = None) -> int | None:
     """The tax year a spec asks for: a whole number within the bounds the
     wizard shows (``YEAR_MIN``..``YEAR_MAX``), or ``default`` when none
@@ -664,12 +825,6 @@ def _tax_year(given, default: int | None = None) -> int | None:
     except (TypeError, ValueError):
         raise ManifestError(f"Tax year must be a whole number, got {given!r}") from None
     return check_tax_year(year)
-
-
-def _engagement_name(requested: str, fallback: str) -> str:
-    """A folder name from what the user typed, or the fallback if nothing usable is left."""
-    name = sanitize_component(requested.strip())
-    return name if any(ch.isalnum() for ch in name) else sanitize_component(fallback)
 
 
 def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
@@ -754,6 +909,73 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
     return rows
 
 
+def _root_of(engagement: Path) -> Path:
+    """The clients root this return sits under, positionally: the layout
+    says a return is four levels below it and nothing else is a return."""
+    return engagement.parents[3]
+
+
+def _originals_of(engagement: Path) -> Path:
+    """The folder the client sees for this return's year.
+
+    The record's year where it carries one, the year folder's name where
+    it does not - the record wins over a folder somebody renamed, and a
+    return whose year nobody recorded is answered with its own folder's
+    parent so the app still has a path to offer.
+    """
+    try:
+        recorded = load_engagement_info(engagement).tax_year
+    except ManifestError:
+        recorded = None
+    year = recorded if recorded is not None else year_of(engagement)
+    if year is None:
+        return client_household_dir(_root_of(engagement), household_of(engagement).name)
+    return originals_dir_for(_root_of(engagement), household_of(engagement).name, year)
+
+
+def _household_payload(engagement: Path) -> dict:
+    """The household this return belongs to, as the app's card shows it.
+
+    Its own record (the members a person typed, the contact, the link),
+    the years still open across it, every return under it with its label,
+    and how many documents are waiting for a person across the open year's
+    returns - one number for the household, because the queue a person
+    works is the household's and not one return's.
+    """
+    household_dir = household_of(engagement)
+    try:
+        info = load_household_info(household_dir)
+    except ManifestError:
+        info = HouseholdInfo()
+    # The household's own returns, retired among themselves: a rollover
+    # names its prior by path and a prior is always in the same household,
+    # so the whole practice does not have to be walked to know which of
+    # these years is finished with.
+    returns = mark_superseded([engagement_from(folder)
+                               for folder in household_returns(household_dir)])
+    years = open_years(returns)
+    queue = sum(
+        sum(1 for entry in read_index(one.path) if entry.decision == NEEDS_REVIEW)
+        for one in returns if one.active and one.tax_year in years
+    )
+    return {
+        "name": household_dir.name,
+        "path": str(household_dir),
+        "members": list(info.members),
+        "contact": info.contact,
+        "link": info.link,
+        "open_years": years,
+        "returns": [
+            {"label": one.label, "path": str(one.path),
+             "year": one.tax_year if one.tax_year is not None else year_of(one.path),
+             "return_name": one.info.return_name or one.path.name,
+             "active": one.active, "superseded_by": one.superseded_by}
+            for one in returns
+        ],
+        "queue": queue,
+    }
+
+
 def _state(engagement: Path) -> dict:
     root = clients_root()
     # The store is brought up to the record before anything is read, and
@@ -834,10 +1056,22 @@ def _state(engagement: Path) -> dict:
         # reminder's own triage over the rows already loaded; nothing here
         # reads a draft file, and nothing here drafts (decision 12).
         "reminder": _reminder_payload(engagement, items, entries),
+        # The household this return belongs to (decision 125): its own
+        # record, the years still open across it, its returns and the one
+        # queue a person works. The card is drawn from this and types
+        # nothing of its own.
+        "household": _household_payload(engagement),
         "paths": {
             "engagement": str(engagement),
-            "shared": str(engagement / SHARED_DIR_NAME),
-            "pbc": str(engagement / SHARED_DIR_NAME / PBC_DIR_NAME),
+            # The household's one inbox and the folder the client sees for
+            # the year, both in the tree a client is shared. The shell
+            # opens only the paths this map holds, so the two buttons that
+            # open them are named here.
+            "inbox": str(inbox_of(engagement)),
+            "originals": str(_originals_of(engagement)),
+            "client_folder": str(client_household_dir(_root_of(engagement),
+                                                      household_of(engagement).name)),
+            "household": str(household_of(engagement)),
             "prepared": str(engagement / PREPARED_DIR_NAME),
             # The one a person is meant to open. Named here as well as
             # above because the shell opens only paths this map holds.
@@ -887,7 +1121,7 @@ def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
 
-def _record_pass(run: EngagementRun) -> None:
+def _record_pass(runs: list[EngagementRun] | EngagementRun) -> None:
     """Leave the record the scheduled run leaves: a line in the run log and
     the practice's status page, both in the clients root.
 
@@ -901,6 +1135,7 @@ def _record_pass(run: EngagementRun) -> None:
     allowed to fail the pass: the files have already been moved and the
     statuses recorded, so the person is told what happened either way.
     """
+    every = [runs] if isinstance(runs, EngagementRun) else list(runs)
     root = clients_root()
     if root is None or not root.is_dir():
         return
@@ -909,27 +1144,40 @@ def _record_pass(run: EngagementRun) -> None:
     # may turn a finished pass into an error message in the app.
     try:
         append_log(root / LOG_FILENAME, RunReport(today=dt.date.today(),
-                                                  reminders=REMINDERS_NEVER, runs=[run]))
+                                                  reminders=REMINDERS_NEVER, runs=every))
     except Exception as exc:
         log.warning("Could not write %s (%s)", LOG_FILENAME, exc)
     try:
-        write_status_page(root, status_report(discover_engagements(root), passed=[run]))
+        write_status_page(root, status_report(discover_engagements(root), passed=every))
     except Exception as exc:
         log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, exc)
 
 
 def _cmd_scan(argv: list[str]) -> dict:
-    """One pass over this engagement - the same pass the scheduled job makes.
+    """One pass over this return's **household** - the same pass the
+    scheduled job makes.
 
-    Scaffold, file, scan, in that order, with the same lock, the same
-    error isolation and the same warnings; only the weekly draft is left
-    to the scheduled run (or `python -m tracker.reminder`). There is one
-    definition of a pass, in tracker.runner, and this is it - including the
-    record it leaves behind (:func:`_record_pass`).
+    Scaffold, sort the household's one inbox, scan, in that order, with
+    the same locks, the same error isolation and the same warnings; only
+    the weekly draft is left to the scheduled run (or `python -m
+    tracker.reminder`). There is one definition of a pass, in
+    tracker.runner, and this is it - including the record it leaves behind
+    (:func:`_record_pass`).
+
+    **The whole inbox, always** (decision 125). One folder feeds every
+    return of the household, so Run now on one return sorts all of it;
+    sorting a share of a pile nobody sorted is not a thing the tracker can
+    honestly do. The reply is about the return that was asked for.
     """
     engagement = _engagement_dir(argv)
-    run = run_engagement(engagement_from(engagement), reminders=REMINDERS_NEVER)
-    _record_pass(run)
+    household_dir = household_of(engagement)
+    returns = mark_superseded([engagement_from(folder)
+                               for folder in household_returns(household_dir)]) \
+        or [engagement_from(engagement)]
+    runs = run_household(household_dir, returns, reminders=REMINDERS_NEVER)
+    run = next((one for one in runs if one.engagement.path == engagement),
+               EngagementRun(engagement=engagement_from(engagement)))
+    _record_pass(runs)
     payload = {
         "run": {
             "ok": run.ok,
@@ -1048,58 +1296,158 @@ def _cmd_unlock(argv: list[str]) -> dict:
 
 
 def _cmd_list(argv: list[str]) -> dict:
-    """Every engagement under the root - the same discovery the scheduled run uses."""
+    """Every household, return and left-alone folder under the root - the
+    same discovery the scheduled run uses.
+
+    The app's picker groups the returns by household and the misfit list
+    is drawn from the same walk the pass makes, so what a person sees and
+    what the job walks cannot disagree (decision 125). ``engagements``
+    keeps its two old keys so the picker changes as little as it can.
+    """
     root = clients_root()
+    empty = {"engagements": [], "households": [], "misfits": []}
     if root is None or not root.is_dir():
-        return {"engagements": [], "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
-    engagements = [{"name": child.name, "path": str(child)} for child in engagement_dirs(root)]
-    return {"engagements": engagements, "needs_root": False, "root": str(root), "vocab": _vocab()}
+        return {**empty, "needs_root": True, "root": str(root or ""), "vocab": _vocab()}
+    try:
+        registry = discover_engagements(root)
+    except RegistryError:
+        # An empty root is a practice nobody has set up yet, not a failure.
+        return {**empty, "needs_root": False, "root": str(root), "vocab": _vocab()}
+    grouped = registry.by_household()
+    households = []
+    for household in registry.households:
+        returns = grouped.get(household.path, [])
+        households.append({
+            "name": household.name,
+            "path": str(household.path),
+            "client_folder": str(client_household_dir(root, household.name)),
+            "inbox": str(inbox_dir_for(root, household.name)),
+            "members": list(household.info.members),
+            "contact": household.info.contact,
+            "link": household.info.link,
+            "problem": household.problem,
+            "open_years": open_years(returns),
+            "returns": [
+                {"label": one.label, "path": str(one.path),
+                 "year": one.tax_year if one.tax_year is not None else year_of(one.path),
+                 "return_name": one.info.return_name or one.path.name,
+                 "active": one.active, "superseded_by": one.superseded_by}
+                for one in returns
+            ],
+        })
+    engagements = [
+        {"name": one.label, "path": str(one.path),
+         "household": str(one.household_path),
+         "year": one.tax_year if one.tax_year is not None else year_of(one.path),
+         "return_name": one.info.return_name or one.path.name}
+        for one in registry.engagements
+    ]
+    return {
+        "engagements": engagements,
+        "households": households,
+        "misfits": [{"path": str(misfit.path), "sentence": misfit.sentence}
+                    for misfit in registry.misfits],
+        "needs_root": False, "root": str(root), "vocab": _vocab(),
+    }
 
 
 def _cmd_create(argv: list[str]) -> dict:
-    """Create a new engagement from a JSON spec on stdin:
-    {"name": "...", "form": "1040", "year": 2026, "client": "...", "link": "...",
+    """Create a new return - and, where it is a new one, its household -
+    from a JSON spec on stdin:
+
+    {"household": "...", "household_path": "<an existing household folder, or absent>",
+     "members": [..], "contact": "..", "link": "..",
+     "form": "1040", "year": 2026, "return_name": "...", "client": "...",
      "due": <ISO_DATE_HINT>, "items": [{identifier, document, extensions, ...}, ...]}
-    year defaults to the most recently ended year; catalog rows are shifted to it.
-    client/link/due land in the record as the engagement's details, which is
-    all the scheduled run needs - there is no registry to add the engagement
-    to, and the catalog the rows came from is recorded there beside them.
+
+    With ``household_path`` the household is that one and its own record
+    stands: ``members``, ``contact`` and ``link`` are ignored, because a
+    household's details are edited in ``edit-household`` and not written
+    over by every return added to it. The same holds for a household named
+    by ``household``, where the record already knows one of that name.
+    Otherwise a new household is made first, and the return after it.
+
+    The year defaults to the most recently ended year; catalog rows are
+    shifted to it. The return's greeting and link default to the
+    household's contact and inbox link, so the reminder is filled in from
+    the one place a person typed them (decision 125).
     """
     spec = json.loads(sys.stdin.read() or "{}")
+    root = _root()
     form = str(spec.get("form", "")).strip()
     if form:
         require_form(form)
     client = str(spec.get("client", "") or "").strip()
-    # The engagement's tax year: the calendar's default unless chosen.
+    # The return's tax year: the calendar's default unless chosen.
     year = _tax_year(spec.get("year"), default_tax_year())
-    name = _engagement_name(str(spec.get("name", "")), default_engagement_name(client, year, form))
-    engagement = _new_engagement_dir(name)
+
+    given = str(spec.get("household_path", "") or "").strip()
+    if given:
+        household_dir = _under_root(Path(given))
+        if not ledger.path_for(household_dir).is_file():
+            raise ManifestError(f"No household record found in '{given}'")
+        household = household_dir.name
+    else:
+        household = _folder_name(spec.get("household"), "type the household's name on its own")
+        household_dir = private_household_dir(root, household)
+    # A household the record already knows is that household, whether the
+    # wizard named it by its folder or a person typed its name again: its
+    # own details stand, and ``edit-household`` is where they change.
+    existing = ledger.path_for(household_dir).is_file()
+    made_household: Path | None = None
+    if existing:
+        household_info = load_household_info(household_dir)
+    else:
+        household_info = HouseholdInfo(
+            name=household,
+            members=tuple(" ".join(str(m).split()) for m in (spec.get("members") or [])
+                          if str(m).strip()),
+            contact=" ".join(str(spec.get("contact", "") or "").split()),
+            link=" ".join(str(spec.get("link", "") or "").split()),
+        )
 
     items = [item_from_spec(s) for s in spec.get("items", [])]
     if not items:
         raise ManifestError("Select at least one request item")
     # The wizard sends catalog rows as written (the base year); shift them
-    # to the engagement's year so TY2025 does not get asked for in 2027.
+    # to the return's year so TY2025 does not get asked for in 2027.
     base = base_year(form) if form else None
     if base:
         items = [shift_item(item, year - base) for item in items]
 
-    # The wizard's dates, or the form's own (decision 117) - a new
-    # engagement is on the reminder's ladder from its first draft.
-    info = with_default_dates(_info_from_spec(spec), form, year)
-    engagement.mkdir(parents=True)
+    return_name = str(spec.get("return_name", "") or "").strip() or default_return_name(form, client)
+    engagement = _new_return_dir(root, household, year, return_name, items)
+
+    # The wizard's dates, or the form's own (decision 117) - a new return
+    # is on the reminder's ladder from its first draft. Its greeting and
+    # its link come from the household where the spec is silent.
+    base_info = EngagementInfo(client=household_info.contact, link=household_info.link)
+    info = with_default_dates(_info_from_spec(spec, carry=base_info), form, year)
+    info = _placed(info, household, year, engagement.name)
     try:
-        # The catalog the wizard chose is recorded in the details: an
-        # engagement that cannot say which checklist it came from cannot be
+        # The household first, so a return never exists under one the
+        # record does not know; then the return.
+        if not existing:
+            household_dir.mkdir(parents=True, exist_ok=True)
+            create_household(household_dir, household_info)
+            made_household = household_dir
+        engagement.mkdir(parents=True)
+        # The catalog the wizard chose is recorded in the details: a
+        # return that cannot say which checklist it came from cannot be
         # checked against it later. The list is validated whole before a
         # line is written, so a bad row leaves nothing behind.
         create_engagement(engagement, items, info, form=form)
         scaffold_engagement(engagement)
     except Exception:
-        # Never a half-built engagement, in the folder or in the store.
+        # Never a half-built return, in the folder or in the store - and
+        # never a household this call made and nothing else.
         _undo_create(engagement)
+        if made_household is not None:
+            _undo_create(made_household)
         raise
-    return {"created": name, "state": _state(engagement)}
+    return {"created": Engagement(path=engagement, info=info,
+                                  household_path=household_dir).label,
+            "state": _state(engagement)}
 
 
 def _undo_create(engagement: Path) -> None:
@@ -1109,7 +1457,7 @@ def _undo_create(engagement: Path) -> None:
     then the store's row, in its own try, because a store that cannot be
     reached at this moment (locked, refused by version) must not replace
     the refusal sentence the person is owed with its own, nor leave the
-    folder standing for ``_new_engagement_dir`` to refuse by name. The
+    folder standing for :func:`_new_return_dir` to refuse by name. The
     row it could not drop is a ghost ``create_engagement`` forgets on the
     next attempt.
     """
@@ -1118,6 +1466,38 @@ def _undo_create(engagement: Path) -> None:
         store.forget(store.connect(), engagement)
     except Exception:
         pass
+
+
+def _cmd_edit_household(argv: list[str]) -> dict:
+    """Save the household's own details from the app's small modal.
+
+    ``--engagement`` names any return of the household; the household is
+    the folder above its year. JSON on stdin: the three fields a person
+    may change, and a blank clears one. One ``household_changed`` event,
+    carrying exactly what moved (decision 125).
+    """
+    engagement = _engagement_dir(argv)
+    household_dir = household_of(engagement)
+    spec = json.loads(sys.stdin.read() or "{}")
+    unknown = set(spec) - set(HOUSEHOLD_EDITABLE)
+    if unknown:
+        raise ManifestError(f"Not a household field: {', '.join(sorted(unknown))}")
+    held = load_household_info(household_dir)
+    members = held.members
+    if "members" in spec:
+        typed = spec["members"]
+        if isinstance(typed, str):
+            typed = typed.splitlines()
+        members = tuple(" ".join(str(one).split()) for one in (typed or []) if str(one).strip())
+    info = replace(
+        held,
+        name=held.name or household_dir.name,
+        members=members,
+        contact=" ".join(str(spec.get("contact", held.contact) or "").split()),
+        link=" ".join(str(spec.get("link", held.link) or "").split()),
+    )
+    saved = save_household(household_dir, info)
+    return {"saved": {"household": list(saved.fields)}, "state": _state(engagement)}
 
 
 def _cmd_priors(argv: list[str]) -> dict:
@@ -1138,10 +1518,17 @@ def _cmd_priors(argv: list[str]) -> dict:
         if engagement.problem:
             continue
         items = load_manifest(engagement.path)
-        year = detect_year(items)
+        # The record's year where it carries one (decision 125), the rows'
+        # periods where it does not: a prior recorded before the year was
+        # a detail still knows which year it was for.
+        year = engagement.tax_year if engagement.tax_year is not None else detect_year(items)
         priors.append({
             "name": engagement.path.name,
             "path": str(engagement.path),
+            "label": engagement.label,
+            "household": str(engagement.household_path),
+            "household_name": engagement.info.household or engagement.household_path.name,
+            "return_name": engagement.info.return_name or engagement.path.name,
             "client": engagement.client,
             "rolled_from": engagement.rolled_from,
             "superseded_by": engagement.superseded_by,
@@ -1186,17 +1573,39 @@ def _cmd_rollover(argv: list[str]) -> dict:
         include_new=bool(spec.get("include_new")),
     )
 
-    default_name = ROLLOVER_NAME_PATTERN.format(prior=prior.name, year=report.target_year or UNKNOWN_YEAR_LABEL)
-    name = _engagement_name(str(spec.get("name", "")), default_name)
-    engagement = _new_engagement_dir(name)
+    if report.target_year is None:
+        raise ManifestError("The prior's tax year could not be read; give the year")
+    # **The target is computed, never typed** (decision 125). A return
+    # keeps its name every year under the same household, so the folder is
+    # the layout's answer: the household's, the target year, the prior's
+    # own return name unless a person gives another.
+    prior_info = load_engagement_info(prior)
+    household_dir = household_of(prior)
+    household = prior_info.household or household_dir.name
+    return_name = (str(spec.get("return_name", "") or "").strip()
+                   or prior_info.return_name or prior.name)
+    engagement = _new_return_dir(_root(), household, report.target_year, return_name,
+                                 report.items)
 
     # Last year's details, carried by the one rule (tracker.rollover); the
     # wizard's fields go over it. Rolled From is what retires the prior.
-    carried = carry_engagement_info(load_engagement_info(prior), rolled_from=str(prior))
+    carried = carry_engagement_info(prior_info, rolled_from=str(prior),
+                                    tax_year=report.target_year)
+    # The household's own contact and inbox link refill what the carry
+    # cleared or the prior never had: the inbox is the household's and
+    # does not change from one year to the next.
+    try:
+        household_info = load_household_info(household_dir)
+    except ManifestError:
+        household_info = HouseholdInfo()
+    carried = replace(carried,
+                      client=carried.client or household_info.contact,
+                      link=carried.link or household_info.link)
     # Last year's deadline did not carry, and this year's is the form's:
     # the rolled engagement starts on the ladder as a new one does.
     info = with_default_dates(_info_from_spec(spec, carry=carried),
                               carried.form or form, report.target_year)
+    info = _placed(info, household, report.target_year, engagement.name)
     engagement.mkdir(parents=True)
     try:
         create_engagement(engagement, report.items, info)
@@ -1206,7 +1615,8 @@ def _cmd_rollover(argv: list[str]) -> dict:
         raise
 
     return {
-        "created": name,
+        "created": Engagement(path=engagement, info=info,
+                              household_path=household_dir).label,
         "rollover": {
             "prior": prior.name,
             "prior_year": report.prior_year,
@@ -1730,6 +2140,7 @@ COMMANDS = {
     "unfile": _cmd_unfile,
     "restore": _cmd_restore,
     "edit": _cmd_edit,
+    "edit-household": _cmd_edit_household,
     "unlearn": _cmd_unlearn,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,

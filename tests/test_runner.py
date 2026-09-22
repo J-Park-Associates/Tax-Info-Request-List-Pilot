@@ -16,10 +16,12 @@ from pathlib import Path
 
 import pytest
 
+import tracker.runner as runner_module
 from tests.conftest import make_engagement, seed_index
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, YEAR, build_samples
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
+from tracker.layout import household_of, inbox_of, originals_of
 from tracker.manifest import (
     EngagementInfo,
     Override,
@@ -29,7 +31,13 @@ from tracker.manifest import (
     save_rules,
 )
 from tracker.records import YES, rule_from_json
-from tracker.registry import SKIP_ROLLED_FORWARD, Engagement, Registry, discover_engagements
+from tracker.registry import (
+    SKIP_ROLLED_FORWARD,
+    Engagement,
+    Registry,
+    discover_engagements,
+    engagement_from,
+)
 from tracker.reminder import (
     CHANGED_ADDED,
     CHANGED_HEADING,
@@ -59,15 +67,13 @@ from tracker.runner import (
     is_draft_day,
     last_drafted,
     main,
-    run_engagement,
+    run_household,
     run_registry,
     should_draft,
     write_status_page,
 )
 from tracker.scaffold import (
-    PBC_DIR_NAME,
     PREPARED_DIR_NAME,
-    SHARED_DIR_NAME,
     scaffold_engagement,
 )
 from tracker.settings import product_name
@@ -104,10 +110,36 @@ def stamped_on(monkeypatch):
     return _on
 
 
+def as_engagement(folder, **fields):
+    """The return as the registry reads it, with a detail or two of the
+    test's own laid over.
+
+    Read from the record rather than typed, because the pass reads the
+    household, the year and the return name off it since decision 125 -
+    a hand-built Engagement with none of them is a return no inbox feeds.
+    """
+    from dataclasses import replace
+
+    found = engagement_from(folder)
+    return replace(found, info=replace(found.info, **fields)) if fields else found
+
+
+def a_pass(engagement, **kwargs):
+    """One pass over this return's household, answering for the return.
+
+    A pass is the household's since decision 125 - one inbox feeds every
+    return of it - so this is what the scheduled job does to one folder,
+    and the claims below are about the run it hands back for the return
+    they named.
+    """
+    runs = run_household(household_of(engagement.path), [engagement], **kwargs)
+    return next(run for run in runs if run.engagement.path == engagement.path)
+
+
 def pass_on(stamped_on, engagement, day, **kwargs):
     """One pass on ``day``, with the record stamped that day."""
     stamped_on(day)
-    return run_engagement(engagement, today=day, **kwargs)
+    return a_pass(engagement, today=day, **kwargs)
 
 
 def drafted_events(engagement_dir):
@@ -142,16 +174,22 @@ def test_the_runners_console_guard_is_the_pages(tmp_path, samples, monkeypatch):
 
 
 def build_engagement(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",),
-                     name="Smith TY2025", **kwargs):
-    """A scaffolded engagement with files waiting in the client's drop folder."""
-    # The engagement's details in the record are where the draft learns
-    # who the client is; the Engagement dataclass only echoes it.
-    folder = make_engagement(tmp_path / name, DEMO_ITEMS,
-                             EngagementInfo(client="John Smith", firm="J Park"), scaffold=False)
+                     name="Smith TY2025", household="Test Household", **kwargs):
+    """A scaffolded return with files waiting in its household's inbox."""
+    # The return's details in the record are where the draft learns who the
+    # client is; the Engagement dataclass only echoes it. It is read back
+    # out of the record rather than typed here, because since decision 125
+    # the pass reads the household, the year and the return name off it.
+    from dataclasses import replace
+
+    folder = make_engagement(tmp_path, DEMO_ITEMS,
+                             EngagementInfo(client="John Smith", firm="J Park"),
+                             household=household, return_name=name, scaffold=False)
     result = scaffold_engagement(folder)
     for drop in drops:
-        (result.shared_dir / drop).write_bytes((samples / drop).read_bytes())
-    return Engagement(path=folder, info=EngagementInfo(client="John Smith", firm="J Park", **kwargs))
+        (result.inbox / drop).write_bytes((samples / drop).read_bytes())
+    found = engagement_from(folder)
+    return replace(found, info=replace(found.info, **kwargs)) if kwargs else found
 
 
 def edit_rows(engagement_dir, **fields_by_identifier):
@@ -238,7 +276,7 @@ def test_the_draft_day_can_be_moved():
 
 def test_a_weekday_run_files_and_scans_but_writes_no_draft(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
-    run = run_engagement(engagement, today=FRIDAY)
+    run = a_pass(engagement, today=FRIDAY)
 
     assert run.ok and run.filed == 1
     assert run.statuses[Status.PARTIAL] == 1
@@ -249,7 +287,7 @@ def test_a_weekday_run_files_and_scans_but_writes_no_draft(tmp_path, samples):
 
 def test_the_saturday_run_writes_a_draft(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
-    run = run_engagement(engagement, today=SATURDAY)
+    run = a_pass(engagement, today=SATURDAY)
 
     assert run.drafted == engagement.path / DRAFT_FILENAME
     text = run.drafted.read_text(encoding="utf-8")
@@ -259,19 +297,19 @@ def test_the_saturday_run_writes_a_draft(tmp_path, samples):
 
 def test_a_manual_run_drafts_on_a_weekday(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
-    run = run_engagement(engagement, today=FRIDAY, reminders=REMINDERS_ALWAYS)
+    run = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_ALWAYS)
     assert run.drafted == engagement.path / DRAFT_FILENAME
 
 
 def test_an_edited_draft_survives_the_next_weekly_run(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
-    first = run_engagement(engagement, today=SATURDAY).drafted
+    first = a_pass(engagement, today=SATURDAY).drafted
     # Read and write the bytes as they are: these drafts are CRLF for Windows,
     # and universal-newline translation would make this test lie.
     edited = first.read_bytes() + b"\r\nPS: ask about the rental.\r\n"
     first.write_bytes(edited)
 
-    second = run_engagement(engagement, today=SATURDAY + dt.timedelta(days=7))
+    second = a_pass(engagement, today=SATURDAY + dt.timedelta(days=7))
 
     assert first.read_bytes() == edited, "an edit must never be clobbered"
     assert second.drafted.name == NEW_DRAFT_FILENAME
@@ -284,14 +322,14 @@ def test_an_edited_second_draft_is_never_clobbered_by_the_next_repeat(tmp_path, 
     from tracker.reminder import BOTH_DRAFTS_EDITED
 
     engagement = build_engagement(tmp_path, samples)
-    first = run_engagement(engagement, today=SATURDAY).drafted
+    first = a_pass(engagement, today=SATURDAY).drafted
     first.write_bytes(first.read_bytes() + b"\r\nPS: ask about the rental.\r\n")
-    second = run_engagement(engagement, today=SATURDAY).drafted
+    second = a_pass(engagement, today=SATURDAY).drafted
     assert second.name == NEW_DRAFT_FILENAME
     edited_new = second.read_bytes() + b"\r\nPPS: and the boat.\r\n"
     second.write_bytes(edited_new)
 
-    third = run_engagement(engagement, today=SATURDAY)
+    third = a_pass(engagement, today=SATURDAY)
     assert third.drafted is None and third.ok
     assert third.draft_note == BOTH_DRAFTS_EDITED
     assert second.read_bytes() == edited_new
@@ -303,14 +341,15 @@ def test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft(tm
     # so it is neither stale text nor an old date; a draft a person edited
     # is theirs and stays exactly as it is.
     only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
-    folder = make_engagement(tmp_path / "Settled TY2025", only_the_return, scaffold=False)
+    folder = make_engagement(tmp_path, only_the_return, return_name="Settled TY2025",
+                             scaffold=False)
     scaffolded = scaffold_engagement(folder)
-    engagement = Engagement(path=folder, info=EngagementInfo(client="John Smith"))
+    engagement = as_engagement(folder, client="John Smith")
     drafted = pass_on(stamped_on, engagement, SATURDAY - dt.timedelta(days=7)).drafted
     stale = drafted.read_bytes()
 
     name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
-    (scaffolded.shared_dir / name).write_bytes((samples / name).read_bytes())
+    (scaffolded.inbox / name).write_bytes((samples / name).read_bytes())
     run = pass_on(stamped_on, engagement, SATURDAY)
     assert run.draft_note == NOTHING_OUTSTANDING and run.drafted is None
     assert drafted.exists() and drafted.read_bytes() != stale          # today's words
@@ -327,8 +366,8 @@ def test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft(tm
 
 def test_an_untouched_draft_is_refreshed_in_place(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
-    first = run_engagement(engagement, today=SATURDAY).drafted
-    second = run_engagement(engagement, today=SATURDAY + dt.timedelta(days=7))
+    first = a_pass(engagement, today=SATURDAY).drafted
+    second = a_pass(engagement, today=SATURDAY + dt.timedelta(days=7))
 
     assert second.drafted == first
     assert not (engagement.path / NEW_DRAFT_FILENAME).exists()
@@ -337,12 +376,13 @@ def test_an_untouched_draft_is_refreshed_in_place(tmp_path, samples):
 def test_nothing_outstanding_means_no_draft_file(tmp_path, samples):
     """Everything in: there is nothing to chase, so no draft is written."""
     only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
-    folder = make_engagement(tmp_path / "Settled TY2025", only_the_return, scaffold=False)
+    folder = make_engagement(tmp_path, only_the_return, return_name="Settled TY2025",
+                             scaffold=False)
     scaffolded = scaffold_engagement(folder)
     name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
-    (scaffolded.shared_dir / name).write_bytes((samples / name).read_bytes())
+    (scaffolded.inbox / name).write_bytes((samples / name).read_bytes())
 
-    run = run_engagement(Engagement(path=folder, info=EngagementInfo(client="John Smith")), today=SATURDAY)
+    run = a_pass(as_engagement(folder, client="John Smith"), today=SATURDAY)
 
     assert run.statuses == {Status.RECEIVED: 1}
     assert run.outstanding == 0
@@ -383,12 +423,12 @@ def test_the_draft_step_hands_the_pass_day_to_the_drafter_and_records_the_stage(
 
 def test_a_dry_run_writes_nothing_at_all(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples)
-    run = run_engagement(engagement, today=SATURDAY, dry_run=True)
+    run = a_pass(engagement, today=SATURDAY, dry_run=True)
 
     assert run.drafted is None
     assert "would draft" in run.draft_note
     assert not (engagement.path / DRAFT_FILENAME).exists()
-    assert (engagement.path / SHARED_DIR_NAME / f"W-2 John Smith {YEAR}.pdf").exists(), (
+    assert (inbox_of(engagement.path) / f"W-2 John Smith {YEAR}.pdf").exists(), (
         "a dry run must not move the client's file"
     )
 
@@ -517,7 +557,7 @@ def test_the_drafted_event_is_written_under_the_pass_lock_and_only_when_somethin
     conn = store.connect()
     assert store.last_event(conn, engagement.path, ledger.DRAFTED)[ledger.ASKED_KEY] == events[ledger.ASKED_KEY]
     # A dry run records nothing.
-    run_engagement(engagement, today=SATURDAY, dry_run=True)
+    a_pass(engagement, today=SATURDAY, dry_run=True)
     assert len(drafted_events(engagement.path)) == 2
 
 
@@ -575,7 +615,7 @@ def test_the_practice_page_says_held_with_the_count(tmp_path, samples, stamped_o
 
 
 def test_a_missing_folder_is_recorded_not_raised(tmp_path):
-    run = run_engagement(Engagement(path=tmp_path / "no-such-client"), today=SATURDAY)
+    run = a_pass(Engagement(path=tmp_path / "no-such-client"), today=SATURDAY)
     assert run.error.startswith("folder not found")
 
 
@@ -583,7 +623,7 @@ def test_an_unreadable_record_is_recorded_not_raised(tmp_path):
     folder = tmp_path / "Broken 2025"
     folder.mkdir()
     ledger.path_for(folder).write_text("this is not a record\n", encoding="utf-8")
-    run = run_engagement(Engagement(path=folder), today=SATURDAY)
+    run = a_pass(Engagement(path=folder), today=SATURDAY)
     assert run.error and run.ok is False
 
 
@@ -608,14 +648,17 @@ def test_one_broken_engagement_does_not_stop_the_others(tmp_path, samples):
 
 def test_inactive_engagements_are_skipped_not_failed(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples, active=False)
-    run = run_engagement(engagement, today=SATURDAY)
+    run = a_pass(engagement, today=SATURDAY)
     assert run.ok and run.skipped.startswith("inactive")
     assert run.filed == 0
 
 
 def test_only_selects_a_subset(tmp_path, samples):
-    smith = build_engagement(tmp_path, samples, name="Smith TY2025")
-    jones = build_engagement(tmp_path, samples, name="Jones TY2025")
+    # Two households: a pass is a household's since decision 125, so
+    # ``--only`` picks the household the named return is in and the other
+    # is never touched.
+    smith = build_engagement(tmp_path, samples, household="Smith Family", name="Smith TY2025")
+    jones = build_engagement(tmp_path, samples, household="Jones Family", name="Jones TY2025")
     registry = Registry(source=tmp_path,
                         engagements=[smith, jones])
 
@@ -688,7 +731,7 @@ def test_the_log_appends_rather_than_replaces(tmp_path, samples):
 
 
 def test_a_clients_folder_drives_a_real_run_with_nothing_registered(tmp_path, samples):
-    engagement = build_engagement(tmp_path / "Clients" / "Smith", samples)
+    engagement = build_engagement(tmp_path / "Clients", samples, household="Smith Family")
     # Thirteen days from the draft day, so the pass writes the stage that
     # names the target (decision 117) and the date in the record is one a
     # person can read in the letter.
@@ -762,9 +805,10 @@ def test_a_statuses_entry_of_the_wrong_shape_is_one_folders_problem_and_the_pass
 
 
 def test_rows_the_rules_cannot_act_on_are_reported_not_buried(tmp_path, samples):
-    folder = make_engagement(tmp_path / "Loose 2025", [RequestItem(identifier="A01", document="Anything")])
+    folder = make_engagement(tmp_path, [RequestItem(identifier="A01", document="Anything")],
+                             return_name="Loose 2025")
     engagement = Engagement(path=folder)
-    run = run_engagement(engagement, today=FRIDAY)
+    run = a_pass(engagement, today=FRIDAY)
     assert run.ok
     assert any("never be filed automatically" in w for w in run.warnings)
     text = format_report(run_registry(Registry(source=tmp_path, engagements=[engagement]), today=FRIDAY))
@@ -776,7 +820,7 @@ def test_not_applicable_and_accepted_rows_are_not_outstanding(tmp_path, samples)
     edit_rows(engagement.path, A01={"manual_override": Override.ACCEPTED,
                                     "override_reason": "Client confirmed this is the final version"},
               A02={"manual_override": Override.NOT_APPLICABLE})
-    run = run_engagement(engagement, today=FRIDAY)
+    run = a_pass(engagement, today=FRIDAY)
     assert run.ok
     assert run.statuses.get(Status.RECEIVED) == 1          # the accepted row
     assert Override.NOT_APPLICABLE not in run.statuses
@@ -791,39 +835,48 @@ def test_a_row_added_in_the_editor_has_its_folder_by_the_next_run(tmp_path, samp
     rows.append(RequestItem(identifier="Z01", document="Rental Property Records", period="TY2025",
                             allowed_extensions=("pdf",), any_keywords=("schedule e",)))
     save_rules(engagement.path, rows, load_engagement_info(engagement.path))
-    run = run_engagement(engagement, today=FRIDAY)
+    run = a_pass(engagement, today=FRIDAY)
     assert run.ok
     assert any(p.name.startswith("Z01") for p in (engagement.path / PREPARED_DIR_NAME).iterdir())
-    assert "Z01 - Rental Property Records" in (engagement.path / SHARED_DIR_NAME / README_NAME).read_text(encoding="utf-8")
+    assert "Z01 - Rental Property Records" in (inbox_of(engagement.path) / README_NAME).read_text(encoding="utf-8")
     assert run.statuses.get(Status.MISSING, 0) >= 1 and "folder not found" not in str(run.statuses)
 
 
 def test_a_rolled_forward_engagement_is_retired_by_its_successor(tmp_path, samples):
     from tracker.registry import discover_engagements
 
-    prior = build_engagement(tmp_path / "Clients", samples, name="Smith 2025")
+    prior = build_engagement(tmp_path / "Clients", samples, household="Smith Family",
+                             name="Smith 2025")
     edit_details(prior.path, client="John")
-    new = build_engagement(tmp_path / "Clients", samples, name="Smith 2026", drops=())
+    new = build_engagement(tmp_path / "Clients", samples, household="Smith Family",
+                           name="Smith 2026", drops=())
     edit_details(new.path, client="John", rolled_from=str(prior.path))
 
     registry = discover_engagements(tmp_path / "Clients")
     by_name = {e.path.name: e for e in registry.engagements}
     assert by_name["Smith 2025"].active is False
-    assert by_name["Smith 2025"].superseded_by == "Smith 2026"
+    # The successor is named as everything that names a return names one
+    # since decision 125: the household, the year and the return.
+    assert by_name["Smith 2025"].superseded_by == by_name["Smith 2026"].label
     assert by_name["Smith 2026"].active is True
 
     report = run_registry(registry, today=SATURDAY)
     outcomes = {r.engagement.path.name: r for r in report.runs}
-    assert outcomes["Smith 2025"].skipped == SKIP_ROLLED_FORWARD.format(successor="Smith 2026")
+    assert outcomes["Smith 2025"].skipped == SKIP_ROLLED_FORWARD.format(
+        successor=by_name["Smith 2026"].label)
     assert not (prior.path / DRAFT_FILENAME).exists()          # last year is not chased
-    assert (prior.path / SHARED_DIR_NAME / f"W-2 John Smith {YEAR}.pdf").exists()   # and not touched
+    # The inbox is the household's since decision 125, so what was waiting
+    # in it was sorted by the return that is still open; the prior's own
+    # folder was not touched, and its record says nothing new.
+    assert (originals_of(new.path) / f"W-2 John Smith {YEAR}.pdf").exists()
+    assert read_index(prior.path) == []
     assert outcomes["Smith 2026"].ok
 
 
 def test_strays_in_prepared_reach_the_run_report(tmp_path, samples):
     engagement = build_engagement(tmp_path, samples, drops=())
     (engagement.path / PREPARED_DIR_NAME / "loose.txt").write_text("x", encoding="utf-8")
-    run = run_engagement(engagement, today=FRIDAY)
+    run = a_pass(engagement, today=FRIDAY)
     assert run.ok
     assert any(f"loose.txt is loose in {PREPARED_DIR_NAME}/" in w for w in run.warnings)
 
@@ -855,8 +908,11 @@ def test_the_page_lists_every_engagement_the_registry_finds_including_an_unreada
     """An engagement missing from the page is an engagement nobody chases. One
     whose record cannot be read is on it by name, and named as a problem."""
     clients = tmp_path / "Clients"
-    build_engagement(clients, samples, name="Good TY2025")
-    bad = clients / "Bad TY2025"
+    good = build_engagement(clients, samples, name="Good TY2025")
+    # A return of the same household whose journal will not parse: it sits
+    # where a return sits, because a folder anywhere else is a misfit the
+    # walk leaves alone rather than an engagement (decision 125).
+    bad = good.path.parent / "Bad TY2025"
     bad.mkdir(parents=True)
     ledger.path_for(bad).write_text("{this line is not an event}\n", encoding="utf-8")
 
@@ -872,10 +928,14 @@ def test_the_page_lists_every_engagement_the_registry_finds_including_an_unreada
 def test_the_review_queue_lists_parked_files_newest_first_with_their_reasons(tmp_path, samples):
     """One queue across the practice, because the work is one queue: the file
     that arrived last night is at the top, whichever client sent it."""
-    older = build_engagement(tmp_path, samples, drops=("vacation photo.jpg",), name="Older TY2025")
-    newer = build_engagement(tmp_path, samples, drops=("Mortgage Notes.docx",), name="Newer TY2025")
-    first = run_engagement(older, today=FRIDAY, reminders=REMINDERS_NEVER)
-    second = run_engagement(newer, today=SATURDAY, reminders=REMINDERS_NEVER)
+    # Two households, because one inbox feeds every return of a household
+    # since decision 125 and this claim is about two clients' files.
+    older = build_engagement(tmp_path, samples, drops=("vacation photo.jpg",),
+                             household="Older Family", name="Older TY2025")
+    newer = build_engagement(tmp_path, samples, drops=("Mortgage Notes.docx",),
+                             household="Newer Family", name="Newer TY2025")
+    first = a_pass(older, today=FRIDAY, reminders=REMINDERS_NEVER)
+    second = a_pass(newer, today=SATURDAY, reminders=REMINDERS_NEVER)
     assert first.review == 1 and second.review == 1
 
     page = write_status_page(tmp_path, RunReport(today=SATURDAY, runs=[first, second]))
@@ -918,7 +978,7 @@ def test_the_pass_holds_one_lock_from_the_sort_through_the_scan(tmp_path, sample
         return real(engagement_dir, **kwargs)
 
     monkeypatch.setattr(runner_module, "scan_engagement", scan)
-    run = run_engagement(engagement, today=FRIDAY, reminders=REMINDERS_NEVER)
+    run = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER)
 
     assert run.ok, run.error
     assert refused == [True], "the scan step ran with the pass's lock let go"
@@ -941,7 +1001,7 @@ def test_a_dry_run_takes_no_lock_at_all(tmp_path, samples, monkeypatch):
         return real(engagement_dir, **kwargs)
 
     monkeypatch.setattr(runner_module, "scan_engagement", scan)
-    run = run_engagement(engagement, today=FRIDAY, reminders=REMINDERS_NEVER, dry_run=True)
+    run = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER, dry_run=True)
 
     assert run.ok and taken == [True]
 
@@ -950,13 +1010,13 @@ def test_a_file_named_like_markup_is_shown_as_a_name_not_rendered(tmp_path):
     """Every value on the page goes through html.escape. The name cannot be
     made on Windows, so it arrives the way it would in life: an index row
     written elsewhere, from a client's folder that is not this machine's."""
-    folder = make_engagement(tmp_path / "Evil TY2025", DEMO_ITEMS, scaffold=False)
+    folder = make_engagement(tmp_path, DEMO_ITEMS, return_name="Evil TY2025", scaffold=False)
     name = "<b>evil</b>.pdf"
     reason = "<i>nothing matched</i>"
     seed_index(folder, [IndexEntry(
         received=FRIDAY.isoformat(), original_name=name, size_kb=1.0, digest="0" * 8,
         identifier="", prepared_location="",
-        pbc_location=f"{SHARED_DIR_NAME}/{PBC_DIR_NAME}/{name}",
+        pbc_location=f"../../../../Clients/Test Household/2025/{name}",
         decision=NEEDS_REVIEW, reason=reason,
     )])
 
@@ -1020,8 +1080,8 @@ def test_an_engagement_nobody_passed_is_read_rather_than_run(tmp_path, samples):
     clients = tmp_path / "Clients"
     scanned = build_engagement(clients, samples, name="Scanned TY2025")
     untouched = build_engagement(clients, samples, name="Untouched TY2025")
-    earlier = run_engagement(untouched, today=FRIDAY, reminders=REMINDERS_NEVER)
-    run = run_engagement(scanned, today=FRIDAY, reminders=REMINDERS_NEVER)
+    earlier = a_pass(untouched, today=FRIDAY, reminders=REMINDERS_NEVER)
+    run = a_pass(scanned, today=FRIDAY, reminders=REMINDERS_NEVER)
 
     report = status_report(discover_engagements(clients), passed=[run])
     rows = {r.engagement.path.name: r for r in report.runs}
@@ -1107,3 +1167,171 @@ def test_the_practice_page_says_approved_where_it_would_say_the_stage(tmp_path, 
     run.held = 2
     assert _drafted_cell(run) == STATUS_HELD.format(n=2)
     assert APPROVED_NOTE in run.summary()
+
+
+# ============ the household pass (decision 125) ============================
+
+
+def a_household(tmp_path, samples, household="Park Family", drops=()):
+    """One household with a 1040 and an 1120S of the same open year, and
+    whatever the client has dropped into its one inbox."""
+    from tracker.manifest import RequestItem
+    from tracker.scaffold import scaffold_engagement
+
+    personal = make_engagement(tmp_path, DEMO_ITEMS,
+                               EngagementInfo(client="John Park", firm="J Park"),
+                               household=household, return_name="1040 - John Park",
+                               scaffold=False)
+    business = make_engagement(
+        tmp_path,
+        [RequestItem(identifier="B01", document="Trial Balance", period="TY2025",
+                     allowed_extensions=("pdf",), min_size_kb=0,
+                     required_keywords=("trial balance",))],
+        EngagementInfo(client="Park Landscaping", firm="J Park"),
+        household=household, return_name="1120S - Park Landscaping", scaffold=False)
+    result = scaffold_engagement(personal)
+    scaffold_engagement(business)
+    for name in drops:
+        (result.inbox / name).write_bytes((samples / name).read_bytes())
+    return engagement_from(personal), engagement_from(business)
+
+
+def test_the_household_pass_takes_every_open_returns_lock_in_name_order_and_releases_them(
+        tmp_path, samples, monkeypatch):
+    """One inbox feeds every return of the household, so the pass holds
+    every open return's lock across the whole of it - taken in folder-name
+    order without case, so two passes can never hold each other's returns
+    the wrong way round - and lets go of all of them at the end."""
+    from tracker.locking import LOCK_FILENAME
+
+    personal, business = a_household(tmp_path, samples,
+                                     drops=(f"W-2 John Smith {YEAR}.pdf",))
+    household = household_of(personal.path)
+    taken = []
+    real = runner_module.engagement_lock
+
+    def watched(folder, **kwargs):
+        taken.append(Path(folder).name)
+        return real(folder, **kwargs)
+
+    monkeypatch.setattr(runner_module, "engagement_lock", watched)
+    runs = run_household(household, [personal, business], today=FRIDAY,
+                         reminders=REMINDERS_NEVER)
+
+    assert taken == ["1040 - John Park", "1120S - Park Landscaping"]
+    assert taken == sorted(taken, key=str.lower)
+    assert [run.ok for run in runs] == [True, True]
+    assert sum(run.filed for run in runs) == 1
+    assert not any((one.path / LOCK_FILENAME).exists() for one in (personal, business))
+
+
+def test_a_lock_held_on_one_return_skips_the_whole_household_and_touches_nothing(
+        tmp_path, samples):
+    """What a pass decides from must not change under it, and the section
+    is the household's: one return held elsewhere means nothing of the
+    household is sorted this pass, and every return says why."""
+    import os
+
+    from tracker.locking import LOCK_FILENAME
+
+    personal, business = a_household(tmp_path, samples,
+                                     drops=(f"W-2 John Smith {YEAR}.pdf",))
+    household = household_of(personal.path)
+    (business.path / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
+
+    runs = run_household(household, [personal, business], today=FRIDAY,
+                         reminders=REMINDERS_NEVER)
+
+    assert all(run.skipped.startswith("another run is still going") for run in runs)
+    assert all(run.filed == 0 for run in runs)
+    assert (inbox_of(personal.path) / f"W-2 John Smith {YEAR}.pdf").is_file()
+    assert read_index(personal.path) == []
+
+
+def test_two_open_years_sort_nothing_and_say_so_on_every_return(tmp_path, samples, monkeypatch):
+    """One inbox cannot say which year a document is for, so nothing is
+    sorted from it until a person retires a year in the editor - and every
+    return of the household says so, on the page and in the run."""
+    from tracker.runner import TWO_OPEN_YEARS
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    # The root is recorded the way the app records it: a return keeps its
+    # name every year, and the store keys a folder by its path below that
+    # root - with none written down, this year's and next year's would be
+    # one row.
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    set_clients_root(tmp_path)
+
+    personal, business = a_household(tmp_path, samples,
+                                     drops=(f"W-2 John Smith {YEAR}.pdf",))
+    household = household_of(personal.path)
+    next_year = make_engagement(tmp_path, DEMO_ITEMS,
+                                EngagementInfo(client="John Park", firm="J Park"),
+                                household="Park Family", year=2026,
+                                return_name="1040 - John Park", scaffold=False)
+    every = [personal, business, engagement_from(next_year)]
+
+    runs = run_household(household, every, today=FRIDAY, reminders=REMINDERS_NEVER)
+
+    said = TWO_OPEN_YEARS.format(years="2025, 2026")
+    assert all(said in run.warnings for run in runs)
+    assert all(run.filed == 0 for run in runs)
+    assert (inbox_of(personal.path) / f"W-2 John Smith {YEAR}.pdf").is_file()
+    # The page says it too, and the app reads it from the state.
+    page = write_status_page(tmp_path, RunReport(today=FRIDAY, runs=runs)).read_text(encoding="utf-8")
+    assert str(len(runs[0].warnings)) in page
+    state = api_state(personal.path)
+    assert state["household"]["open_years"] == [2025, 2026]
+
+    # A person retires the year in the editor, and the next pass sorts.
+    edit_details(next_year, active=False)
+    runs = run_household(household, [personal, business, engagement_from(next_year)],
+                         today=FRIDAY, reminders=REMINDERS_NEVER)
+    assert not any(said in run.warnings for run in runs)
+    assert sum(run.filed for run in runs) == 1
+
+
+def api_state(engagement):
+    """The state the app reads for one return."""
+    import tracker.api as api_module
+
+    return api_module._state(Path(engagement))
+
+
+def test_after_any_pass_nothing_under_the_client_tree_is_a_record_a_copy_a_draft_a_lock_or_a_page(
+        tmp_path, samples):
+    """**The guarantee** (decision 125, claim 1): a folder shared one level
+    too high by mistake still exposes only the client's own material. After
+    a whole pass over two households - three returns, drops filed, one
+    parked, a draft day - everything under the tree a client is shared is
+    the README, the year's originals and whatever they have just dropped.
+    """
+    from tracker.layout import CLIENTS_TREE
+    from tracker.ledger import LEDGER_FILENAME
+    from tracker.locking import LOCK_FILENAME
+    from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
+    from tracker.scaffold import README_NAME
+    from tracker.view import VIEW_FILENAME
+
+    personal, business = a_household(
+        tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf", "vacation photo.jpg"))
+    alone = build_engagement(tmp_path, samples, household="Vega Landscaping LLC",
+                             name="1120S - Vega Landscaping")
+    run_registry(discover_engagements(tmp_path), today=SATURDAY)
+
+    client_tree = tmp_path / CLIENTS_TREE
+    assert client_tree.is_dir()
+    everything = sorted(p for p in client_tree.rglob("*") if p.is_file())
+    assert everything, "the client tree holds the README and the originals"
+    for path in everything:
+        assert path.name not in {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME,
+                                 NEW_DRAFT_FILENAME, VIEW_FILENAME}, path
+        assert path.suffix.lower() != ".html", path
+        assert PREPARED_DIR_NAME not in path.parts, path
+        # Every file is the README, or an original where the pass put it.
+        assert path.name == README_NAME or path.parent.name.isdigit(), path
+    # And what the pass did is still on the record, in the other tree.
+    assert sum(len(read_index(one.path)) for one in (personal, business)) >= 2
+    assert any(row.decision == NEEDS_REVIEW
+               for one in (personal, business, alone) for row in read_index(one.path))

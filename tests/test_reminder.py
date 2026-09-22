@@ -18,6 +18,7 @@ import pytest
 
 from tracker import ledger, reasons
 from tracker import reminder as reminder_module
+from tracker.layout import inbox_of
 from tracker.manifest import (
     EXPECTED_PATTERN,
     Override,
@@ -135,6 +136,11 @@ def the_firm_has_no_phone_unless_a_test_says_so(monkeypatch):
     monkeypatch.setattr(reminder_module, "firm_phone", lambda: "")
 
 
+#: How the letter names the return: the household, the year and the return,
+#: as everything that names one says it since decision 125.
+LABEL = "Test Household 2025 Smith TY2025"
+
+
 def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
     """A request list in the record, with the record carrying these statuses.
 
@@ -144,7 +150,7 @@ def engagement(tmp_path, items=SCANNED, name="Smith TY2025"):
     """
     from tests.conftest import make_engagement, seed_statuses
 
-    folder = make_engagement(tmp_path / name, items, scaffold=False)
+    folder = make_engagement(tmp_path, items, return_name=name, scaffold=False)
     updates = {
         i.identifier: StatusUpdate(
             status=i.status,
@@ -295,26 +301,26 @@ def test_a_resend_after_a_dismissal_counts_in_the_files_waiting_warning(tmp_path
     and the fresh copy beside it is, so the warning says there is one file
     waiting rather than none.
     """
-    from tests.conftest import make_engagement, seed_statuses
+    from tests.conftest import make_engagement, seed_statuses, sort
     from tests.test_scanner import text_pdf
-    from tracker.filer import dismiss_review_file, file_drops
+    from tracker.filer import dismiss_review_file
     from tracker.reminder import REVIEW_WARNING
-    from tracker.scaffold import SHARED_DIR_NAME
 
     rows = [item("A01", "W-2 Wage Statements", Status.MISSING, period="TY2025",
                  expected_count=1, allowed_extensions=("pdf",),
                  required_keywords=("W-2",))]
-    folder = make_engagement(tmp_path / "Smith TY2025", rows)
+    folder = make_engagement(tmp_path, rows, household="Smith Family",
+                             return_name="1040 - John A. Smith")
     seed_statuses(folder, {"A01": StatusUpdate(status=Status.MISSING, file_count=0)})
 
-    text_pdf(folder / SHARED_DIR_NAME / "notice.pdf", "nothing the rules recognise")
-    parked = file_drops(folder, today=dt.date(2026, 2, 1)).review[0]
+    text_pdf(inbox_of(folder) / "notice.pdf", "nothing the rules recognise")
+    parked = sort(folder, today=dt.date(2026, 2, 1)).review[0]
     dismiss_review_file(folder, parked.pbc_location, "an IRS notice",
                         today=dt.date(2026, 2, 2))
     assert count_needs_review(folder) == 0, "they have looked at it"
 
-    text_pdf(folder / SHARED_DIR_NAME / "notice.pdf", "nothing the rules recognise")
-    again = file_drops(folder, today=dt.date(2026, 2, 8)).review[0]
+    text_pdf(inbox_of(folder) / "notice.pdf", "nothing the rules recognise")
+    again = sort(folder, today=dt.date(2026, 2, 8)).review[0]
     assert (folder / again.prepared_location).is_file()
 
     review = folder / PREPARED_DIR_NAME / REVIEW_DIR_NAME
@@ -350,7 +356,7 @@ def test_draft_greets_signs_and_counts(tmp_path):
     assert draft.body.rstrip().endswith("J Park & Associates, CPA")
     assert draft.stage == 2
     # A03 holds the draft rather than being asked for; the subject counts the asks.
-    assert draft.subject == SUBJECT_NEEDED.format(engagement="Smith TY2025", n=2)
+    assert draft.subject == SUBJECT_NEEDED.format(engagement=LABEL, n=2)
     assert draft.total_requests == 6 and draft.received_requests == 2
 
 
@@ -363,9 +369,9 @@ def test_draft_with_nothing_outstanding_says_so(tmp_path):
     assert "Good news" in draft.body
 
 
-def test_engagement_name_defaults_to_the_folder_and_can_be_overridden(tmp_path):
+def test_the_letter_names_the_household_the_year_and_the_return_and_can_be_overridden(tmp_path):
     folder = engagement(tmp_path)
-    assert draft_reminder(folder).engagement == "Smith TY2025"
+    assert draft_reminder(folder).engagement == LABEL
     assert draft_reminder(folder, engagement_name="2025 Individual Return").engagement == (
         "2025 Individual Return"
     )
@@ -395,7 +401,7 @@ def test_write_draft_marks_it_as_a_draft(tmp_path):
     assert path == folder / DRAFT_FILENAME
     text = path.read_text(encoding="utf-8")
     assert text.startswith(DRAFT_BANNER)
-    assert f"Subject: {SUBJECT_NEEDED.format(engagement='Smith TY2025', n=2)}" in text
+    assert f"Subject: {SUBJECT_NEEDED.format(engagement=LABEL, n=2)}" in text
 
 
 def test_written_draft_appends_firm_side_notes_below_the_email(tmp_path):
@@ -729,7 +735,7 @@ def test_the_stage_follows_the_due_date_at_the_thresholds(offset, expected):
 def test_each_stage_writes_its_own_intro_deadline_and_close(tmp_path):
     folder = engagement(tmp_path, SENDABLE, name="Smith TY2025")
     words = {
-        "engagement": "Smith TY2025",
+        "engagement": LABEL,
         "target": said(DUE),
         "deadline_clause": DEADLINE_CLAUSE.format(deadline=said(DEADLINE)),
         "phone_clause": PHONE_CLAUSE.format(phone=PHONE),
@@ -738,7 +744,7 @@ def test_each_stage_writes_its_own_intro_deadline_and_close(tmp_path):
         draft = draft_reminder(folder, due_date=DUE, filing_deadline=DEADLINE, phone=PHONE,
                                today=day(30), stage=stage.number)
         assert draft.stage == stage.number
-        assert draft.subject == stage.subject.format(engagement="Smith TY2025", n=2)
+        assert draft.subject == stage.subject.format(engagement=LABEL, n=2)
         assert stage.intro.format(**words) in draft.body
         assert stage.close.format(**words) in draft.body
         if stage.deadline:
@@ -838,7 +844,7 @@ def test_stage_three_regenerates_the_same_lines_at_stage_three(tmp_path):
     folder = engagement(tmp_path, SENDABLE)
     asked = draft_reminder(folder, due_date=DUE, today=DUE, stage=3)
     assert asked.stage == 3 and asked.subject == stage_named(3).subject.format(
-        engagement="Smith TY2025", n=2)
+        engagement=LABEL, n=2)
 
     repo = Path(__file__).resolve().parents[1]
     env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
@@ -886,12 +892,12 @@ def sorted_drop(folder, write):
     typed: what a parked file points at is exactly what a person sees on
     the review card.
     """
-    from tracker.filer import file_drops
-    from tracker.scaffold import SHARED_DIR_NAME, scaffold_engagement
+    from tests.conftest import sort
+    from tracker.scaffold import scaffold_engagement
 
     scaffold_engagement(folder)
-    write(folder / SHARED_DIR_NAME)
-    return file_drops(folder, today=dt.date(2026, 2, 1))
+    write(inbox_of(folder))
+    return sort(folder, today=dt.date(2026, 2, 1))
 
 
 def locked(name, *, password="secret123"):

@@ -18,7 +18,7 @@ import json
 import re
 from pathlib import Path
 
-from tests.samples import SCRATCH_ENGAGEMENT, build_scratch_root
+from tests.samples import SCRATCH_HOUSEHOLD, SCRATCH_RETURN, build_scratch_root
 from tracker.registry import discover_engagements
 from tracker.runner import REMINDER_MODES, RUNNER_MODE_FLAG, main
 from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
@@ -166,8 +166,9 @@ def test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk(tmp_path, ca
 
     found = discover_engagements(root)
 
-    assert [engagement.path.name for engagement in found.engagements] == [SCRATCH_ENGAGEMENT]
+    assert [engagement.path.name for engagement in found.engagements] == [SCRATCH_RETURN]
+    assert [household.name for household in found.households] == [SCRATCH_HOUSEHOLD]
     assert main([str(root), "--dry-run", "--reminders", REMINDER_MODES[1]]) == 0
     printed = capsys.readouterr().out
-    assert SCRATCH_ENGAGEMENT in printed
+    assert SCRATCH_RETURN in printed and SCRATCH_HOUSEHOLD in printed
     assert "0 draft(s) written" in printed                    # dry: decided, not written

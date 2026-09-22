@@ -185,8 +185,7 @@ the knowledge map quoting them exactly:
 
 - **No generative AI ever reads a client financial document.** Every routing
   and status decision comes from deterministic rules in the manifest.
-- **Originals are never altered.** Files are moved byte for byte under their
-  own names into `Shared/PBC/`; all work happens on copies, and every move is
+- **Originals are never altered.** Files are moved byte for byte under their own names out of `Drop files here` into the client's folder for the year; all work happens on copies, and every move is
   recorded in the record.
 - **Nothing is guessed.** A document is filed only when exactly one request
   accepts it — or, when one document names several forms as itself, when each
@@ -196,6 +195,17 @@ the knowledge map quoting them exactly:
 - **Nothing is ever sent.** The system drafts client emails and stops. There
   is no SMTP, no mail client and no network call in the reminder or scheduling
   path.
+
+**The layout.** A client folder is a household, with one folder per tax
+year inside it and one folder per return inside that (decision 125). Two
+trees sit under the clients root: `Clients`, the only one a client is ever
+shared - the household's folder, its one permanent inbox `Drop files here`,
+and one folder per year holding the originals a pass moved out of that
+inbox - and `J Park & Associates`, which never is: the household's own
+record, and under each year one folder per return, named form first
+(`1040 - John & Maria Park`). Discovery is positional, reads that layout
+and no other, and lists every folder that does not fit with one sentence,
+left alone. There is no migration and no importer.
 
 `docs/ROADMAP.md` holds the decision log — the record of *why* things that
 look arbitrary are the way they are. Read it before changing behaviour that

@@ -477,7 +477,24 @@ class EngagementInfo:
     #: Blank on an engagement made before it was recorded, and blank is
     #: unknown to every reader - nothing refuses an engagement for it.
     form: str = ""
+    #: Which household this return belongs to, which year it is for and
+    #: what the return is called (decision 125). Filled at creation and at
+    #: rollover from the folders they name, and **the record wins** over a
+    #: folder somebody renamed: the registry processes the return as these
+    #: three say and warns about the disagreement rather than renaming
+    #: anything. Added last, so a record written before them reads as
+    #: blank, as ``form`` does.
+    household: str = ""
+    tax_year: int | None = None
+    return_name: str = ""
 
+
+#: What the return's own name is called and what it is for. Named here
+#: because the details' table below carries it, and read back out of here
+#: by the API's vocabulary, so the label a person reads in the editor and
+#: the one the wizard's box carries are one string.
+RETURN_NAME_LABEL = "Return"
+RETURN_NAME_HELP = "the return's folder name, form first; the same name every year"
 
 #: The details' labels, in the order the editor and the README show them.
 ENGAGEMENT_FIELDS = (
@@ -494,6 +511,12 @@ ENGAGEMENT_FIELDS = (
     # Added last (decision 86); a stored record that lacks it reads as a
     # blank value (info_from_json ignores what it does not carry).
     ("Form", "form"),
+    # The three the layout of decision 125 records: where this return sits
+    # and what it is called. None of them is editable - the folders are
+    # the names.
+    ("Household", "household"),
+    ("Tax Year", "tax_year"),
+    (RETURN_NAME_LABEL, "return_name"),
 )
 #: field name -> the label, for messages that name a field.
 ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
@@ -515,13 +538,18 @@ ENGAGEMENT_HELP = {
     "sender": "who the reminder is from",
     "firm": "the sign-off line and the client README's contact (typed once at setup)",
     "form": "which catalog the request list was cut from; blank if it was never recorded",
+    "household": "the household this return belongs to; the folder above the year",
+    "tax_year": "the year the return is for; the year folder's name",
+    "return_name": RETURN_NAME_HELP,
     **ENGAGEMENT_NOTES,
 }
 #: The fields a person may change in the app's editor once the engagement
 #: exists. ``name`` is not among them because the folder is the name;
 #: ``rolled_from`` because the rollover writes it and it is what retires
 #: the prior; ``form`` because it records which catalog the list was cut
-#: from, once. The API's ``edit`` refuses any other key by name.
+#: from, once; and the three of decision 125 because the folders are the
+#: names - a person who wants a return in another household or another
+#: year makes one there. The API's ``edit`` refuses any other key by name.
 ENGAGEMENT_EDITABLE: tuple[str, ...] = ("client", "link", "due", "filing_deadline", "sender",
                                         "firm", "reminders", "active")
 assert set(ENGAGEMENT_EDITABLE) <= {field_name for _, field_name in ENGAGEMENT_FIELDS}
@@ -564,7 +592,87 @@ def info_from_json(raw: dict) -> EngagementInfo:
     for name in ("reminders", "active"):
         if name in values:
             values[name] = bool(values[name])
+    # The tax year is a number, and a JSON line may carry the digits as
+    # text. Nothing at all stays nothing: a return whose year nobody
+    # recorded has none, and blank is unknown to every reader.
+    if values.get("tax_year") in (None, ""):
+        values["tax_year"] = None
+    elif "tax_year" in values:
+        values["tax_year"] = int(values["tax_year"])
     return EngagementInfo(**values)
+
+
+# ------------------------------------------------------------ household ----
+
+
+@dataclass(frozen=True, slots=True)
+class HouseholdInfo:
+    """What the firm records about one household (decision 125).
+
+    A household is the set of returns whose people may all see each
+    other's documents, because everyone shared on the household's folder
+    sees everything filed under it. Its record lives in the private tree,
+    at the household level, and is folded by the same machinery a return's
+    journal is.
+
+    ``members`` is **a person's claim, not the tracker's knowledge**: the
+    tracker never makes, reads or changes a Drive share, so this is the
+    firm's own note of who the folder is meant to be shared with, labelled
+    as one wherever it is shown.
+    """
+
+    name: str = ""
+    members: tuple[str, ...] = ()
+    contact: str = ""
+    link: str = ""
+
+
+#: The household's labels, in the order a reader shows them.
+HOUSEHOLD_FIELDS = (
+    ("Household", "name"),
+    ("Members", "members"),
+    ("Contact", "contact"),
+    ("Inbox Link", "link"),
+)
+#: field name -> the label, for messages that name a field.
+HOUSEHOLD_LABELS = {field_name: label for label, field_name in HOUSEHOLD_FIELDS}
+#: The fields a person may change once the household exists. The name is
+#: not among them: the folder is the name, exactly as a return's is.
+HOUSEHOLD_EDITABLE: tuple[str, ...] = ("members", "contact", "link")
+assert set(HOUSEHOLD_EDITABLE) <= {field_name for _, field_name in HOUSEHOLD_FIELDS}
+
+
+def household_to_json(info: HouseholdInfo) -> dict:
+    """The household's details as they are stored: the fields, the members
+    as a JSON list.
+
+    The shape a ``household_changed`` event carries and the shape the
+    store folds back, as :func:`info_to_json` is for a return's details.
+    """
+    payload = asdict(info)
+    payload["members"] = list(info.members)
+    return payload
+
+
+def household_from_json(raw: dict) -> HouseholdInfo:
+    """A HouseholdInfo from a stored one, ignoring a field this version
+    does not know.
+
+    A ``members`` that is one string is read as one member rather than
+    refused: the journal is a synced file a person may have opened, and a
+    hand-written line naming one person must not cost the household its
+    whole record.
+    """
+    known = {f.name for f in fields(HouseholdInfo)}
+    values = {key: value for key, value in raw.items() if key in known}
+    members = values.get("members")
+    if isinstance(members, str):
+        values["members"] = (members,) if members else ()
+    elif members is None:
+        values.pop("members", None)
+    else:
+        values["members"] = tuple(str(one) for one in members)
+    return HouseholdInfo(**values)
 
 
 #: The person's half of a request row: everything the manifest's

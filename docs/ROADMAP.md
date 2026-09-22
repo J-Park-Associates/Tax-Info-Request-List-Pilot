@@ -7,7 +7,7 @@ selects a tailored document request template (`FORM_TEMPLATES` in
 rolled forward from last year instead. The system then scaffolds a cloud-synced folder
 structure (OneDrive or Google Drive) from the engagement's request list, kept in the
 record and edited in the app, gives the client **one folder** to drop everything into, then sorts what arrives: originals are preserved in
-`Shared/PBC/`, renamed working copies are filed into `Prepared/{Identifier} - {Document}/`,
+the client's folder for the year, renamed working copies are filed into `Prepared/{Identifier} - {Document}/`,
 every move is written to the engagement's own record, and so is each request's
 validated status.
 
@@ -18,8 +18,9 @@ The standing rules are worded once, in `tracker/__init__.py`, and quoted here:
 - **No generative AI ever reads a client financial document.** Every routing
   and status decision comes from deterministic rules in the manifest.
 - **Originals are never altered.** Files are moved byte for byte under their
-  own names into `Shared/PBC/`; all work happens on copies, and every move is
-  recorded in the record. The scanner never touches `Shared/` at all.
+  own names out of `Drop files here` into the client's folder for the year; all work happens on
+  copies, and every move is
+  recorded in the record. The scanner never touches the household's inbox at all.
 - **Nothing is guessed.** A document is filed only when exactly one request
   accepts it - or, when one document names several forms as itself, when each
   of those forms is accepted by exactly one request. Ambiguous, contested and
@@ -190,40 +191,48 @@ The standing rules are worded once, in `tracker/__init__.py`, and quoted here:
 | 123 | A rollover defaults its dates wherever it is run | **The wave-2/3 smoke rolled a year forward on the command line and got an engagement with a blank Due Date and a blank Filing Deadline - so every draft it wrote was stage 1, a heads-up, twenty months after the tax year had ended.** Decision 117 fills both from the form's own table for exactly that reason, and said so in its own words: an engagement nobody typed a date into would sit on its first rung for ever and the escalation would be a feature nobody switched on. But the defaulting lived in `tracker/api.py`, where only the app's create and rollover commands could reach it. **Two paths make an engagement from a form and a year** - the app's command, and `python -m tracker.rollover` - and only one of them applied the rule: the command line creates the engagement from `carry_engagement_info()`, which clears both dates on purpose because a statutory date belongs to its year, and nothing refilled them. **Decided: the defaulting lives beside the carry rule, and every rollover applies it.** The function moved out of the API into `tracker/rollover.py` as a public `with_default_dates()`, same body and same words; the command line now creates the engagement with it, over the carried details, using the form the prior recorded (else the one `--form` asked for) and the target year the rollover computed; the API's create and rollover call the same function by import and behave exactly as before. The no-guess rule is kept whole: a form the catalog has no deadline for, or a prior with no recorded form and no `--form`, still fills nothing - a guessed statutory date is read out to a client, and a blank is silent - and a date a person typed is never written over. |
 | 118 | The reminder in the app: the draft from the record, a stage toggle, approve, and an HTML body for Outlook | **The escalation was built as text and had no surface.** The four stages sat in a file a person opened in Notepad; the pre-set stage the patch note describes as a toggle in the editor, the colours that climb with it, and the approve step were still a rename by hand. **A Reminder card in the app, drawn from the record.** It says what the record says - the last draft's day and stage, or that one was approved, or the hold and the requests holding it - shows the draft as it stands, and regenerates the unsent text at any of the four stages without touching the file; who is asked never changes with the stage. **Copy for Outlook** puts the same words on the clipboard as an HTML body in the firm's own colours beside the plain text: Stage 1 calm, Stage 2 the gold ink accent on the target date, Stage 3 the warning colour with the target and the list in bold, Stage 4 the danger colour on the subject and the deadline with the consequences sentence in bold - the design system's tokens, mirrored once in the page module as `PALETTE` and pinned against the tokens themselves; the app types no hex and the stylesheet carries none of the four, because the renderer sets them as variables from the API. The body carries the subject in neither: it goes in Outlook's own box, and the card shows it as text a person selects. **The letter is a structure before it is words.** The composer was refactored into one `Letter` - greeting, progress, intro, sections, the drop-anywhere lines and the link, the deadline paragraph as runs that say which is the target, which the filing deadline and which the consequences sentence, close, sign-off - and the plain text, the HTML body and the card's preview are three renderings of it, so none of them can say what the others do not. The runs are cut by formatting the stage's own sentence with sentinels round those values, never by searching the finished sentence for a date an engagement's name could also contain, and the preview is built from that shape with DOM nodes because the page is built from data and never from markup. **Approve** approves the text the panel shows: an unedited draft is written at the chosen stage, a file somebody edited is approved as it stands, a panel the record has moved under is refused by the fingerprint of what it showed, one `draft_approved` event carries the stage, the file, that file's fingerprint and the identifiers asked, any other draft file is set aside as `reminder-draft.set-aside-<date>.txt` and never deleted, and afterwards no writer overwrites it - the pass and the command line's own `--write` each land their fresh draft beside it exactly as they do beside one somebody edited, because approving is the same act as editing, and the practice page's Drafted column says approved instead of the stage - while the pass, the one caller that knows which draft week it is, spends the approval on the next draft day. What the card shows and copies is the letter alone: the staff-side lines a draft file may end with, under their own rule, are the machine's note to the person as the header is, and neither side of the letter has ever been part of the email. A held reminder is one shape and one only: the hold, the requests holding it and the stage the day would write at, disabled - no subject, no letter, no clipboard, no approval and no file to open, because a held client's composed text would ask for the clean rows alone and the card is a surface a person can copy from. Decision 115's one-line hold notice leaves the Document Requests card with it, so a hold is said once. Nothing is sent and nothing can be: the guard that no mail or network module is imported anywhere stands, and approve opens no socket. THE-PLAN's text-file rule is superseded for the app and kept for the file: the `.txt` is still what the pass writes and the HTML is rendered for the clipboard and never stored. No schema change - `draft_approved` is an event in `events`, folded by nothing, as `drafted` is. Accepted unchanged: the pass decides the draft day, so the reminder module is handed the week rather than working it out; the app's own page palette, older than the design system, stays as it is; the command line. Deleted: nothing. |
 | 124 | Intentional, and written down | **Three things the tracker does on purpose look like oversights to a new reader, and nobody should "fix" them.** *First*, the reminder's third section, `RECEIVED, BUT WE COULD NOT USE IT`, is one no pass can reach: since decision 115 a document the client sent that fails its request's rules holds the whole draft for a person instead of being asked for again, so the section's heading is kept in the code for the day a person's own "ask the client again" action puts a row there, and it stays out of the order the letter is built from. *Second*, the client README's heading stays `WHAT WE STILL NEED` and the list under it is every active request, received or not - the client reads it as the list they were sent, and a heading that changed with the statuses would tell the client what the firm has filed, which is the Status Report's job and not the README's (D-1: leave it). *Third*, a failed document on a filed copy holds the reminder rather than being re-asked, for the same reason as the first: a person decides whether the client resends or the firm fixes it here, and the letter says nothing until they have (D-4). **Decided by the owner, 2026-09-21.** One test pins the third section's exact words and its absence from the letter's order, so a clean-up cannot delete or rename it in silence. Ridden by two housekeeping items with no behaviour in them: the repository map's two drifted sentences (the API note that lost `DECISION 110` and `DECISION 113` in a rebase; the store note that still named user_version 3) are mended, the store note now naming the constant and the decisions that raised it rather than a number; and the Decision Log says at its top that its rows are in landing order, not numeric order, so nobody re-sorts it. Also on this row, as prose: the owner's GitHub Actions cost discipline of 2026-09-22 joins `CLAUDE.md` - no `windows` label by habit, commits batched before a push, fewer and larger merges to `main` - a process convention, not a change to what the software does. No code changes. Deleted: nothing. |
+| 125 | The client folder: a household, a year, a return | **One folder per client with one year inside it could not hold the practice: most clients are a business and its owner's 1040, some are ten entities, some are families, and two 1040s share every row of their request lists, so a drop folder that fed one return could not say whose W-2 it held.** The owner decided the shape on 2026-09-21/22: a client folder is a **household**, with one folder per **tax year** inside it and one folder per **return** inside that; two trees under the clients root, `Clients` (the only tree a client is ever shared) and `J Park & Associates` (never shared); one permanent inbox, `Drop files here`, per household, in the client tree; a return folder named form first, `1040 - John & Maria Park`, the same name every year; **one layout only** - the earlier idea of reading two layouts for ever is withdrawn, there is no migration and no importer, and **every folder that does not fit is listed with one sentence from a fixed set and left alone** (the owner's rule); the clients root on the firm's Shared Drive, because under My Drive a client owns what they upload and could delete a filed original, which rule 2 cannot allow. **Fable's design.** The client tree is flat per year: an original moves once, out of the inbox into the year's folder the client can see, and never again, because the original's resting place is the record's identity for the document and every recovery of decisions 109, 110 and 119 keys on it; the firm's working copies stay sorted by request under `Prepared/`, and the plan's drawing of originals sorted by request in the client tree is not built, because sorting them there would move an original again at every filing and again at every unfiling, changing the row's key each time and rewriting that recovery machinery for a view of their own folder no client asked for. The record's paths stay relative to the return, and an original across the trees is written with `..` through one helper and read back through one; discovery is positional - it knows the two trees, the household, the year and the return, walks nothing under `Clients`, never stops at a record, and lists every misfit (a stray tree, a record in the wrong place, a household without a record, a year not named as one, a return without a record, a legacy workbook folder, a folder it cannot list) with its sentence on the practice page, in the app and on the command line; a folder whose name disagrees with its record is processed as the record says and warned, and nothing is ever renamed. **The household pass.** One inbox feeds every return of the household's open year: the pass takes their locks in name order, preserves each drop once, judges duplicates by whichever return's record holds the bytes, routes against every return's request list and files where exactly one accepts; a drop several accept parks in the first accepting return naming them all, a drop none accepts parks in the first return by name; a household with two open years sorts nothing from its inbox and says so until a year is retired. The household has a record of its own in the private tree - its name, the members a person typed as who it is meant to be shared with, the contact and the inbox link - folded by the same store as a return's record; each return's details gain the household, the tax year and the return name, filled at creation and rollover, and a return's greeting and link are filled from the household; the store is at version 7. Creation refuses a return whose deepest working-copy path would pass the 260 characters Windows allows, naming the length. The app gains the household in the wizard and the picker, a household card with the members, the contact, the link, the year's returns and the household's queue, *Open Client Folder* and *Open Inbox*, and the list of folders left alone. **Retired with this layout:** decision 119's preserve intent, whose home was the one engagement an inbox belonged to - a drop a killed run had already moved is sorted as a stray the next pass, dated that day, the cost 119 priced; and the two folder names `Shared` and `PBC`, which survive only in the history of this log. Accepted unchanged: one lock and one transaction per return; every event; the router, the scanner, the reminder; the rollover's carry rule (it now keeps the household and the return name). Departures from the plan, all Fable's: the client tree is flat per year, with no return level and no request level under it, because an original moves exactly once; the household pass lands here rather than in 129, because a household with two returns in one year already has one inbox and 129 only widens the set of returns to the feed list; `TWO_OPEN_YEARS` lands here too, because the pass cannot say which year an inbox feeds without it, while 126 keeps the household rollover and the sharing checklist; a parked row has a home return - the first request that accepted it by return-folder order, else the first return by that order - and its reason names every return that accepted it, until 129 adds filing under another; the household record is a `_ledger.jsonl` like every other, because positional discovery never stops at a record, so the plan's differently named file is not needed and one journal machinery serves both; decision 119's preserve intent is retired rather than re-homed, because its home was the one engagement an inbox belonged to and 119 §9.7 already priced dropping it; and discovery goes to depth 4, not 5, because a return is level four and nothing below it is ever walked, so the plan's "deeper than the tracker looks" sentence is not needed. Thirteen test files rewritten by hand; 1731 tests. |
 
 ## Architecture
 
 ```
-OneDrive / Google Drive (synced locally on Windows)
-└── Clients/
-    └── {ClientName}/
-        └── {EngagementName}/
-            ├── _ledger.jsonl         ← the engagement's record: the request list, the index, the statuses
-            ├── Status Report.html    ← this engagement on one page, redrawn by every pass
-            ├── Prepared/             ← firm-side working set (NOT shared)
-            │   ├── A01 - W-2 Wage Statements - All Employers/
-            │   │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
-            │   ├── A02 - 1099-INT - 1099-DIV - Interest & Dividend Income/
-            │   └── 00 - Needs Review/  ← could not be identified; a person decides
-            └── Shared/               ← client's edit-rights link points HERE
-                ├── _README.txt       ← "just drop everything here" (auto-generated)
-                ├── (client drops land here, briefly)
-                └── PBC/              ← their originals, untouched, still visible
-                    ├── scan0012.pdf
-                    └── W-2 John Smith 2025.pdf
+A Shared Drive, mounted locally on Windows (decision 125)
+└── {ClientsRoot}/
+    ├── Clients/                      ← the only tree a client is ever shared
+    │   └── Park Family/              ← the household; shared as Viewer
+    │       ├── Drop files here/      ← the inbox; shared as Contributor
+    │       │   ├── _README.txt       ← "just drop everything here" (auto-generated)
+    │       │   └── (client drops land here, briefly)
+    │       └── 2026/                 ← their originals for the year, untouched, still visible
+    │           ├── scan0012.pdf
+    │           └── W-2 John Smith 2025.pdf
+    └── J Park & Associates/          ← never shared
+        └── Park Family/
+            ├── _ledger.jsonl         ← the household's record: its members, contact and inbox link
+            └── 2026/
+                ├── 1040 - John & Maria Park/
+                │   ├── _ledger.jsonl         ← the return's record: the request list, the index, the statuses
+                │   ├── Status Report.html    ← this return on one page, redrawn by every pass
+                │   └── Prepared/             ← firm-side working set (NOT shared)
+                │       ├── A01 - W-2 Wage Statements - All Employers/
+                │       │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
+                │       ├── A02 - 1099-INT - 1099-DIV - Interest & Dividend Income/
+                │       └── 00 - Needs Review/  ← could not be identified; a person decides
+                └── 1120S - Park Landscaping LLC/
 ```
 
 One scheduled job runs against the local synced path (Windows Task Scheduler or n8n
-cron) and walks the clients folder for every engagement (any folder holding
-`_ledger.jsonl`; the record carries the client's details):
+cron) and walks the clients folder by position - the private tree, the household,
+the year, the return - running a whole household at a time, because one inbox feeds
+every return of it:
 
 ```
-python -m tracker.runner "D:\OneDrive\Clients" --log
+python -m tracker.runner "G:\Shared drives\Clients" --log
 ```
 
 Per engagement it does, in order:
 
-1. `tracker.filer` — sort the drop folder: preserve each original in `PBC/`, file a
+1. `tracker.filer` — sort the household's inbox: preserve each original in the year's folder, file a
    renamed copy into `Prepared/`, record every move in `_ledger.jsonl` and the store.
 2. `tracker.scanner` — validate `Prepared/` and record each row's status in the record.
 3. `tracker.reminder` — **on Saturdays only**, draft the client chase email into
@@ -343,10 +352,10 @@ no-genAI-on-financial-docs rule.)*
   placeholder attributes; mark **Pending Sync**;
   never force-hydrate (a cloud-only 500 MB file must not be silently downloaded every scan).
 - Client drops a whole folder → recursed into and flattened; the folder itself is left behind.
-- Same document sent twice under different names → both originals preserved in `PBC/`,
+- Same document sent twice under different names → both originals preserved in the year's folder,
   filed once (content-hash match), the second recorded in the index as a duplicate.
 - Two files that would take the same prepared name → `(2)`, `(3)`… never an overwrite.
-- A name already used in `PBC/` → the newcomer becomes `name (2).ext`; nothing is replaced.
+- A name already used in the year's folder → the newcomer becomes `name (2).ext`; nothing is replaced.
 - Google-native documents (`.gdoc`, `.gsheet`, ...) → tier-2 fail with a note asking the
   client to upload an exported PDF/Excel copy; Google Drive `.tmp.drive*` transfer temps
   are ignored as junk.

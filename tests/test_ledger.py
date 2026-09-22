@@ -20,17 +20,17 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement
+from tests.conftest import make_engagement, sort
 from tests.test_scanner import text_pdf
 from tracker import ledger, store
 from tracker.filer import (
     ASSIGNED_BY_PERSON,
     FILED,
     assign_review_file,
-    file_drops,
     ledger_key,
     read_index,
 )
+from tracker.layout import inbox_of
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     RequestItem,
@@ -40,7 +40,6 @@ from tracker.manifest import (
     save_rules,
 )
 from tracker.records import rule_from_json, rule_to_json
-from tracker.scaffold import SHARED_DIR_NAME
 from tracker.scanner import scan_engagement
 
 REPO = Path(__file__).resolve().parents[1]
@@ -62,7 +61,7 @@ ITEMS = [
 
 @pytest.fixture
 def engagement(tmp_path):
-    return make_engagement(tmp_path / "Smith Family 2025", ITEMS)
+    return make_engagement(tmp_path, ITEMS, household="Smith Family")
 
 
 @pytest.fixture
@@ -74,7 +73,7 @@ def bare(tmp_path):
 
 
 def drop(engagement, name, text):
-    return text_pdf(engagement / SHARED_DIR_NAME / name, text)
+    return text_pdf(inbox_of(engagement) / name, text)
 
 
 def lines(engagement):
@@ -201,11 +200,16 @@ def test_a_line_that_is_not_an_event_in_the_middle_is_refused(bare):
 
 # ------------------------------------------------------------------- fold ----
 
+#: Where the original of the rows these tests write by hand sits: in
+#: the household's folder for the year, which is across the two trees
+#: from the return - so the location begins with ``..`` (decision 125).
+A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
+
 
 def row(**fields) -> dict:
     base = {"received": "2026-07-01", "original_name": "w2.pdf", "size_kb": 1.0,
             "digest": "abc", "identifier": "", "prepared_location": "",
-            "pbc_location": "Shared/PBC/w2.pdf", "decision": "Needs Review",
+            "pbc_location": A_ROW_ORIGINAL, "decision": "Needs Review",
             "reason": "", "candidates": "", "evidence": ""}
     return {**base, **fields}
 
@@ -333,7 +337,7 @@ def test_the_head_changes_with_every_append_and_not_otherwise(bare):
 def test_a_pass_records_what_it_filed_and_what_it_parked(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
 
     events = ledger.read_events(engagement)
     names = [e[ledger.EVENT_KEY] for e in events if e[ledger.EVENT_KEY] in ledger.ROW_EVENTS]
@@ -344,7 +348,7 @@ def test_a_pass_records_what_it_filed_and_what_it_parked(engagement):
 
 def test_a_person_filing_a_parked_file_is_recorded_as_theirs(engagement):
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    parked = file_drops(engagement, today=DAY1).review[0]
+    parked = sort(engagement, today=DAY1).review[0]
 
     assign_review_file(engagement, parked.pbc_location, "C01", keyword="lender", today=DAY2)
 
@@ -355,7 +359,7 @@ def test_a_person_filing_a_parked_file_is_recorded_as_theirs(engagement):
 
 def test_a_quiet_pass_appends_no_scan(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
     scanned = [e for e in ledger.read_events(engagement) if e[ledger.EVENT_KEY] == ledger.SCANNED]
     assert scanned                                   # the first scan said something
@@ -369,7 +373,7 @@ def test_a_scan_that_changes_a_status_records_it(engagement):
     scan_engagement(engagement, today=DAY1)
     head = ledger.head(engagement)
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY2)
+    sort(engagement, today=DAY2)
     scan_engagement(engagement, today=DAY2)
 
     assert ledger.head(engagement) != head
@@ -387,9 +391,9 @@ def test_a_scan_that_changes_a_status_records_it(engagement):
 def test_the_index_is_the_record_folded_and_nothing_else(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    file_drops(engagement, today=DAY2)
+    sort(engagement, today=DAY2)
 
     rows = read_index(engagement)
     # The same rows, in the same order. The order is the audit trail's and
@@ -419,7 +423,7 @@ def test_every_status_comes_from_the_record_and_nowhere_else(engagement):
     means. The request itself is always the person's.
     """
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
     assert ledger.statuses(ledger.read_events(engagement))["A01"]["status"] == Status.RECEIVED
 
@@ -437,7 +441,7 @@ def test_an_unreadable_record_refuses_every_reader_by_name(engagement):
     they still owe - with a shrug is the thing this record exists to stop.
     """
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
     path = ledger.path_for(engagement)
     whole = path.read_bytes()
@@ -458,7 +462,7 @@ def test_the_rollover_reads_last_years_statuses_from_the_record(engagement):
     from tracker.rollover import roll_forward
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
 
     def prior_status(report):
@@ -471,7 +475,7 @@ def test_the_app_shows_a_persons_filing_the_moment_they_make_it(engagement):
     from tracker import api
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    parked = file_drops(engagement, today=DAY1).review[0]
+    parked = sort(engagement, today=DAY1).review[0]
     assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
 
     [row] = api._state(engagement)["index"]
@@ -501,7 +505,7 @@ def test_the_command_line_no_longer_offers_a_comparison_with_a_workbook(engageme
 
 def test_the_cli_prints_what_the_folder_holds(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
 
     out = subprocess.run(
         [sys.executable, "-m", "tracker.ledger", str(engagement)],
@@ -522,13 +526,13 @@ def test_a_copy_moved_event_folds_as_a_row_event_in_both_folds_and_check_agrees(
     from tracker.scaffold import REVIEW_DIR_NAME
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    filed = file_drops(engagement, today=DAY1).filed[0]
+    filed = sort(engagement, today=DAY1).filed[0]
     home = engagement / filed.prepared_location
     elsewhere = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
     elsewhere.mkdir(parents=True, exist_ok=True)
     home.rename(elsewhere / home.name)
 
-    file_drops(engagement, today=DAY2)
+    sort(engagement, today=DAY2)
 
     events = ledger.read_events(engagement)
     assert [e[ledger.EVENT_KEY] for e in events][-1] == ledger.COPY_MOVED
@@ -566,13 +570,13 @@ def test_a_moving_event_folds_to_an_open_intent_and_the_row_event_that_names_its
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     killed_at_the_record(monkeypatch)
     with pytest.raises(KeyboardInterrupt):
-        file_drops(engagement, today=DAY1)
+        sort(engagement, today=DAY1)
 
     events = ledger.read_events(engagement)
     open_now = ledger.replay(events).intents
     assert ledger.MOVING not in ledger.ROW_EVENTS
     assert [e[ledger.EVENT_KEY] for e in events][-1] == ledger.MOVING
-    assert list(open_now) == [f"{SHARED_DIR_NAME}/PBC/w2.pdf"]
+    assert list(open_now) == [A_ROW_ORIGINAL]
     assert open_now == {events[-1][ledger.KEY_KEY]: events[-1]}
     assert ledger.fold(events) == {}                 # and no row yet: it was not recorded
 
@@ -588,10 +592,10 @@ def test_a_moving_event_folds_to_an_open_intent_and_the_row_event_that_names_its
     finally:
         fresh.close()
 
-    file_drops(engagement, today=DAY2)               # the pass finishes it and records the row
+    sort(engagement, today=DAY2)               # the pass finishes it and records the row
 
     closed = ledger.read_events(engagement)
     assert ledger.replay(closed).intents == {}
     assert store.open_intents(store.connect(), engagement) == []
-    assert list(ledger.fold(closed)) == [f"{SHARED_DIR_NAME}/PBC/w2.pdf"]
+    assert list(ledger.fold(closed)) == [A_ROW_ORIGINAL]
     assert store.check(store.connect(), tmp_path, engagement) == []

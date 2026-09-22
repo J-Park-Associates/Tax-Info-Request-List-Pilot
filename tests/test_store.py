@@ -24,10 +24,11 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, seed_statuses
+from tests.conftest import make_engagement, seed_statuses, sort
 from tests.test_scanner import text_pdf
 from tracker import ledger, store
-from tracker.filer import file_drops, read_index
+from tracker.filer import read_index
+from tracker.layout import inbox_of, location_of, originals_of
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     RequestItem,
@@ -37,7 +38,6 @@ from tracker.manifest import (
     save_rules,
 )
 from tracker.records import RULE_FIELDS, StatusUpdate, entry_to_json, rule_from_json
-from tracker.scaffold import SHARED_DIR_NAME
 
 REPO = Path(__file__).resolve().parents[1]
 DAY1 = dt.date(2026, 7, 1)
@@ -66,7 +66,13 @@ def root(tmp_path):
 
 @pytest.fixture
 def engagement(root):
-    return make_engagement(root / "Smith Family 2025", ITEMS)
+    return make_engagement(root, ITEMS, household="Smith Family")
+
+
+def original_at(engagement, name):
+    """How a row names an original: relative to the return folder, POSIX,
+    and across the two trees since decision 125."""
+    return location_of(engagement, originals_of(engagement) / name)
 
 
 @pytest.fixture
@@ -92,7 +98,7 @@ def conn(tmp_path):
 
 
 def drop(engagement, name, text):
-    return text_pdf(engagement / SHARED_DIR_NAME / name, text)
+    return text_pdf(inbox_of(engagement) / name, text)
 
 
 def build(conn, root, engagement):
@@ -116,6 +122,16 @@ def rows(conn, table):
     return [tuple(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
 
 
+def id_of(conn, folder):
+    """The store's id for one folder.
+
+    Since decision 125 a household is a row of ``engagements`` too - the
+    same table, keyed by path, with ``kind`` saying which - so a question
+    about one return's rows names that return rather than reading the
+    first row of a table."""
+    return store._engagement_row(conn, folder)["id"]
+
+
 def learned(identifier: str, keyword: str) -> dict:
     """A person's filing teaching one request one word."""
     return ledger.new(ledger.KEYWORD_LEARNED, **{ledger.IDENTIFIER_KEY: identifier,
@@ -128,10 +144,20 @@ def unlearned(identifier: str, keyword: str) -> dict:
                                                    ledger.KEYWORD_KEY: keyword})
 
 
+#: How the store keys the one return these tests make: its path below the
+#: clients root, in the layout of decision 125.
+KEY = "J Park & Associates/Smith Family/2025/1040 - Test Client"
+
+#: Where the original of the row these tests write by hand sits: in the
+#: household's folder for the year, which is across the two trees from the
+#: return - so the location begins with ``..`` (decision 125).
+A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
+
+
 def a_row(**fields) -> dict:
     base = {"received": "2026-07-01", "original_name": "w2.pdf", "size_kb": 1.0,
             "digest": "abc", "identifier": "", "prepared_location": "",
-            "pbc_location": "Shared/PBC/w2.pdf", "decision": "Needs Review",
+            "pbc_location": A_ROW_ORIGINAL, "decision": "Needs Review",
             "reason": "", "candidates": "", "evidence": "", "also_filed": ""}
     return {**base, **fields}
 
@@ -145,7 +171,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 6
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 7
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -167,14 +193,17 @@ def test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name(tmp_pat
     assert str(path) in str(raised.value) and str(store.SCHEMA_VERSION + 1) in str(raised.value)
 
 
-def test_a_version_two_store_is_refused_by_name(tmp_path):
+def test_a_version_six_store_is_refused_and_rebuilt(tmp_path):
     """Decision 107 added the verdict cache's two tables; a file from before
     it has no ``verdicts`` table, and is refused by the same sentence a
     version-1 file was - delete it and rebuild, nothing is lost.
 
     And so is a file at the version before this one, whatever that is
-    today: decision 117 put the Filing Deadline in ``engagements`` and a
-    file without that column is a file this code would write wrongly.
+    today: decision 125 put the household, the tax year and the return name
+    in ``engagements`` with the household's own columns and ``kind``, and a
+    version-6 file has none of them. The details travel in the
+    ``rules_changed`` and ``household_changed`` lines, so a rebuild from
+    the journals puts every one of them back.
     """
     path = tmp_path / "app" / store.STORE_FILENAME
     for version in (2, store.SCHEMA_VERSION - 1):
@@ -222,7 +251,7 @@ def test_recording_outside_the_lock_writes_to_neither_the_journal_nor_the_store(
 
 def test_one_call_is_one_transaction_over_the_journal_and_the_tables(conn, root, by_hand):
     build(conn, root, by_hand)
-    filed = ledger.new(ledger.FILED, key="Shared/PBC/w2.pdf",
+    filed = ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
                        row=a_row(decision="Filed", identifier="A01"))
     taught = ledger.new(ledger.KEYWORD_LEARNED, **{ledger.IDENTIFIER_KEY: "A01",
                                                    ledger.KEYWORD_KEY: "lender"})
@@ -232,10 +261,15 @@ def test_one_call_is_one_transaction_over_the_journal_and_the_tables(conn, root,
 
     assert applied == 3                                   # after the create's own line
     assert len(ledger.read_events(by_hand)) == 3
-    assert [row["seq"] for row in conn.execute("SELECT seq FROM events ORDER BY seq")] == [1, 2, 3]
-    assert conn.execute("SELECT decision FROM documents").fetchone()[0] == "Filed"
-    assert conn.execute("SELECT keyword FROM learned_keywords").fetchone()[0] == "lender"
-    assert conn.execute("SELECT applied_seq FROM engagements").fetchone()[0] == 3
+    mine = (id_of(conn, by_hand),)
+    assert [row["seq"] for row in conn.execute(
+        "SELECT seq FROM events WHERE engagement_id = ? ORDER BY seq", mine)] == [1, 2, 3]
+    assert conn.execute(
+        "SELECT decision FROM documents WHERE engagement_id = ?", mine).fetchone()[0] == "Filed"
+    assert conn.execute(
+        "SELECT keyword FROM learned_keywords WHERE engagement_id = ?", mine).fetchone()[0] == "lender"
+    assert conn.execute(
+        "SELECT applied_seq FROM engagements WHERE id = ?", mine).fetchone()[0] == 3
 
 
 def test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it_up(
@@ -258,8 +292,11 @@ def test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it
     monkeypatch.undo()
 
     assert store.sync(conn, root, by_hand) == 2
-    assert conn.execute("SELECT decision FROM documents").fetchone()[0] == "Filed"
-    assert conn.execute("SELECT applied_seq FROM engagements").fetchone()[0] == 2
+    mine = (id_of(conn, by_hand),)
+    assert conn.execute(
+        "SELECT decision FROM documents WHERE engagement_id = ?", mine).fetchone()[0] == "Filed"
+    assert conn.execute(
+        "SELECT applied_seq FROM engagements WHERE id = ?", mine).fetchone()[0] == 2
     assert store.sync(conn, root, by_hand) == 2         # and again changes nothing
 
 
@@ -267,9 +304,9 @@ def test_a_torn_last_line_is_not_replayed_until_it_is_whole(conn, root, by_hand)
     build(conn, root, by_hand)
     with engagement_lock(by_hand):
         store.record(conn, by_hand, ledger.new(
-            ledger.FILED, key="Shared/PBC/w2.pdf", row=a_row(decision="Filed")))
+            ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed")))
     path = ledger.path_for(by_hand)
-    path.write_bytes(path.read_bytes() + b'{"event": "filed", "key": "Shared/PBC/tor')
+    path.write_bytes(path.read_bytes() + b'{"event": "filed", "key": "../../../../Clients/tor')
 
     assert store.sync(conn, root, by_hand) == 2           # the create's line and the filing
     assert len(rows(conn, "documents")) == 1
@@ -279,10 +316,10 @@ def test_recording_while_the_store_is_behind_the_journal_is_refused(conn, root, 
     build(conn, root, by_hand)
     with engagement_lock(by_hand):
         ledger.append(by_hand, ledger.new(
-            ledger.FILED, key="Shared/PBC/w2.pdf", row=a_row()))
+            ledger.FILED, key=A_ROW_ORIGINAL, row=a_row()))
         with pytest.raises(store.StoreError, match="sync"):
             store.record(conn, by_hand, ledger.new(
-                ledger.FILED, key="Shared/PBC/other.pdf", row=a_row()))
+                ledger.FILED, key=A_ROW_ORIGINAL.replace("w2.pdf", "other.pdf"), row=a_row()))
 
 
 # ------------------------------------------------------------- the rebuild ----
@@ -291,7 +328,7 @@ def test_recording_while_the_store_is_behind_the_journal_is_refused(conn, root, 
 def test_a_rebuild_run_twice_says_and_holds_exactly_the_same(conn, root, engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
 
     build(conn, root, engagement)
     first = (said(conn, root, engagement), rows(conn, "documents"),
@@ -311,7 +348,7 @@ def test_a_reader_finding_no_rows_at_all_builds_them_from_the_journal_alone(
     engagement is made to describe it without taking a lock or writing a
     byte in the folder."""
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     recorded = len(ledger.read_events(engagement))
     fresh = store.open(tmp_store(engagement))
     try:
@@ -400,7 +437,9 @@ def test_the_state_is_current_behind_or_unknown(conn, root, by_hand):
     # and the one stamp - the journal's head - is what says so.
     edit_rules(by_hand, A01={"any_keywords": ("lender",)})
     assert now() == store.CURRENT
-    assert conn.execute("SELECT ledger_head FROM engagements").fetchone()[0] == ledger.head(by_hand)
+    assert conn.execute(
+        "SELECT ledger_head FROM engagements WHERE id = ?",
+        (id_of(conn, by_hand),)).fetchone()[0] == ledger.head(by_hand)
     with engagement_lock(by_hand):
         store.record(conn, by_hand, ledger.new(
             ledger.FILED, key="p/one", row=a_row(pbc_location="p/one")))
@@ -417,7 +456,7 @@ def test_the_state_is_current_behind_or_unknown(conn, root, by_hand):
 def test_the_export_writes_every_cell_as_text_and_a_formula_shaped_name_stays_a_name(
         conn, root, engagement, tmp_path):
     drop(engagement, "=SUM scan.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     build(conn, root, engagement)
 
     written = store.export(conn, tmp_path / "out")
@@ -451,7 +490,7 @@ def test_the_export_disarms_a_request_named_like_a_command(conn, root, engagemen
 def test_the_export_carries_nothing_the_index_and_the_request_list_do_not(
         conn, root, engagement, tmp_path):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025 Jane Q Client")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     build(conn, root, engagement)
 
     store.export(conn, tmp_path / "out")
@@ -471,7 +510,7 @@ def test_a_rebuild_from_the_journal_alone_equals_the_store(root, engagement):
     edit_rules(engagement, A01={"any_keywords": ("wage statement",)})
     edit_rules(engagement, C01={"expected_count": 2}, A01={"period": "TY2025 "})
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
 
     live = store.connect()
@@ -505,7 +544,7 @@ def cache_rows(engagement):
 def a_pass(engagement):
     from tracker.scanner import scan_engagement
 
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     return scan_engagement(engagement, today=DAY1)
 
 
@@ -527,9 +566,10 @@ def test_a_rebuild_forgets_the_engagements_verdicts_and_the_next_pass_reads_agai
 
     assert cache_rows(engagement) == ({}, {})
     assert store.check(live, root, engagement) == []
-    # The create, the two intents the filing wrote before it moved and
-    # copied (decision 119), the filing itself and the scan.
-    assert len(ledger.read_events(engagement)) == 5
+    # The create, the one intent the filing wrote before it copied
+    # (decision 119 - the move out of the inbox writes none since 125),
+    # the filing itself and the scan.
+    assert len(ledger.read_events(engagement)) == 4
 
     calls = counting_extractor(monkeypatch)
     from tracker.scanner import scan_engagement
@@ -661,10 +701,8 @@ def cli(*argv):
 
 
 def test_the_command_line_builds_every_engagement_under_a_root(root, tmp_path):
-    for name in ("Smith Family 2025", "Jones Family 2025"):
-        folder = root / name
-        folder.mkdir()
-        make_engagement(folder, ITEMS)
+    for household in ("Smith Family", "Jones Family"):
+        make_engagement(root, ITEMS, household=household)
     path = tmp_path / "app" / store.STORE_FILENAME
 
     built = cli(path, "rebuild", root)
@@ -672,16 +710,62 @@ def test_the_command_line_builds_every_engagement_under_a_root(root, tmp_path):
 
     conn = store.open(path)
     try:
-        assert {row[0] for row in conn.execute("SELECT path FROM engagements")} == {
-            "Smith Family 2025", "Jones Family 2025"}
+        # Two returns and the two household records they sit under: both
+        # kinds of folder are rows of this table, keyed by path, and
+        # ``kind`` says which (decision 125).
+        assert {row[0] for row in conn.execute(
+            "SELECT path FROM engagements WHERE kind = ?", (store.KIND_RETURN,))} == {
+            "J Park & Associates/Smith Family/2025/1040 - Test Client",
+            "J Park & Associates/Jones Family/2025/1040 - Test Client",
+        }
     finally:
         conn.close()
     assert cli(path, "check", root).returncode == 0
 
 
+def test_the_command_line_builds_and_checks_the_household_records_too(root, tmp_path):
+    """A household's record is a journal held in this same table, so the
+    one check the runbook tells an operator to run has to reach it: a
+    household row nobody compares is a row that can rot in silence."""
+    from tracker.layout import private_household_dir
+
+    for household in ("Smith Family", "Jones Family"):
+        make_engagement(root, ITEMS, household=household, members=("A Person",),
+                        contact="A Person", link="https://drive.example/inbox")
+    path = tmp_path / "app" / store.STORE_FILENAME
+    assert cli(path, "rebuild", root).returncode == 0
+
+    conn = store.open(path)
+    try:
+        assert {row[0] for row in conn.execute(
+            "SELECT path FROM engagements WHERE kind = ?", (store.KIND_HOUSEHOLD,))} == {
+            "J Park & Associates/Smith Family",
+            "J Park & Associates/Jones Family",
+        }
+    finally:
+        conn.close()
+
+    built = cli(path, "check", root)
+    assert built.returncode == 0
+    assert "agrees  Smith Family" in built.stdout          # named, not skipped
+
+    # A household column made to say something the journal never said.
+    conn = store.open(path)
+    try:
+        conn.execute("UPDATE engagements SET household_contact = ? WHERE kind = ?",
+                     ("Somebody Else", store.KIND_HOUSEHOLD))
+    finally:
+        conn.close()
+
+    disagreed = cli(path, "check", root)
+    assert disagreed.returncode == 1
+    assert "contact" in disagreed.stdout and "Somebody Else" in disagreed.stdout
+    assert private_household_dir(root, "Smith Family").name in disagreed.stdout
+
+
 def test_the_command_lines_check_exits_one_and_names_what_disagrees(root, engagement, tmp_path):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     path = tmp_path / "app" / store.STORE_FILENAME
     assert cli(path, "rebuild", root).returncode == 0
     assert cli(path, "check", root).returncode == 0
@@ -791,7 +875,7 @@ def test_the_store_names_no_reader_at_load_time():
 
 def test_the_check_names_the_engagement_the_row_and_the_field(conn, root, engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     build(conn, root, engagement)
     assert said(conn, root, engagement) == []
 
@@ -895,7 +979,7 @@ def test_the_rebuilt_rows_are_the_readers_rows_after_a_person_files_a_parked_one
     from tracker.filer import assign_review_file
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    parked = file_drops(engagement, today=DAY1).review[0]
+    parked = sort(engagement, today=DAY1).review[0]
     assign_review_file(engagement, parked.pbc_location, "C01", keyword="lender", today=DAY2)
 
     build(conn, root, engagement)
@@ -935,7 +1019,7 @@ def test_a_status_the_record_holds_is_in_the_store_and_answers_load_manifest(
 
 def test_the_documents_table_holds_every_column_the_index_row_has(conn, root, engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     build(conn, root, engagement)
 
     entry = read_index(engagement)[0]
@@ -966,7 +1050,8 @@ def test_a_pass_and_the_command_line_key_one_engagement_the_same_way(root, engag
     assert "current" in cli(db, "state", root).stdout
     # and the same engagement named by a different root is still that row
     conn = store.connect()
-    assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 1
+    # One row for the return, and one for the household record above it.
+    assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 2
     assert store.check(conn, root.parent, engagement) == []
     assert next(i.status for i in load_manifest(engagement) if i.identifier == "A01") == Status.RECEIVED
 
@@ -997,19 +1082,22 @@ def test_a_folder_nested_under_the_clients_root_is_never_another_engagement(reco
     from tracker.manifest import load_manifest
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    file_drops(engagement, today=DAY1)
+    sort(engagement, today=DAY1)
     conn = store.connect()
-    assert store._engagement_row(conn, engagement)["path"] == "Smith Family 2025"
+    assert store._engagement_row(conn, engagement)["path"] == KEY
 
-    deep = recorded_root / "Archive" / "Smith Family 2025"
+    deep = recorded_root / "Archive" / KEY
     deep.mkdir(parents=True)
     assert store._engagement_row(conn, deep) is None                       # not met, never a tail
     assert store._engagement_row(conn, deep, recorded_root) is None
     assert store.state(conn, deep, ledger_head_now="") == store.UNKNOWN
 
-    nested = make_engagement(deep, ITEMS)                               # now it is its own engagement
-    assert [r["path"] for r in conn.execute("SELECT path FROM engagements ORDER BY path")] == [
-        "Archive/Smith Family 2025", "Smith Family 2025",
+    # Now it is its own return, under its own household, in a tree of its
+    # own below the root: its key ends with the other's and is not it.
+    nested = make_engagement(recorded_root / "Archive", ITEMS, household="Smith Family")
+    assert [r["path"] for r in conn.execute(
+        "SELECT path FROM engagements WHERE kind = ? ORDER BY path", (store.KIND_RETURN,))] == [
+        f"Archive/{KEY}", KEY,
     ]
     assert read_index(nested) == []
     assert [e.original_name for e in read_index(engagement)] == ["w2.pdf"]
@@ -1018,24 +1106,26 @@ def test_a_folder_nested_under_the_clients_root_is_never_another_engagement(reco
     assert {i.identifier for i in load_manifest(nested)} == {i.identifier for i in ITEMS}
 
 
-def test_a_pass_run_on_one_clients_folder_keys_under_the_recorded_root(recorded_root, engagement):
-    """Decision 106: the root on the command line is not the key when the
-    settings file names a wider one. A pass run over one client's folder,
-    or ``check`` given the drive, keys the engagement exactly as the app
-    and the scheduled pass do - one folder, one row, whichever root was
-    typed - because under the recorded root nothing but the exact key
+def test_a_pass_keys_one_return_the_same_way_whichever_root_is_named(recorded_root, engagement):
+    """Decision 106: the root a caller has in hand is not the key when the
+    settings file names one. ``check`` given the return folder, the drive
+    above the root, or the recorded root keys the return exactly as the
+    app and the scheduled pass do - one folder, one row, whichever root
+    was named - because under the recorded root nothing but the exact key
     answers, and two spellings of one folder must never be two rows."""
     from tracker.runner import REMINDERS_NEVER, main
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    assert main([str(engagement), "--reminders", REMINDERS_NEVER]) == 0   # the client's folder, not the root
+    assert main([str(recorded_root), "--reminders", REMINDERS_NEVER]) == 0
     conn = store.connect()
-    assert [r["path"] for r in conn.execute("SELECT path FROM engagements")] == ["Smith Family 2025"]
-    assert store.check(conn, engagement, engagement) == []                # the same narrow root
+    assert [r["path"] for r in conn.execute(
+        "SELECT path FROM engagements WHERE kind = ?", (store.KIND_RETURN,))] == [KEY]
+    assert store.check(conn, engagement, engagement) == []                # the narrowest root
     assert store.check(conn, recorded_root.parent, engagement) == []      # a wider one
     assert store.check(conn, recorded_root, engagement) == []             # the recorded one
     assert [e.original_name for e in read_index(engagement)] == ["w2.pdf"]
-    assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 1
+    # Two rows: this return, and the household record above it.
+    assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 2
 
 
 # ------------------------------------------------ the freshness handle (d112) ----
@@ -1053,7 +1143,7 @@ def test_document_seqs_names_the_line_that_last_wrote_each_row_and_agrees_after_
     from tracker.records import ledger_key
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
-    [parked] = file_drops(engagement, today=DAY1).review
+    [parked] = sort(engagement, today=DAY1).review
     key = ledger_key(parked)
     written = store.document_seqs(conn, engagement)
     assert list(written) == [key]
@@ -1093,7 +1183,7 @@ def test_the_check_names_a_move_the_two_sides_do_not_agree_is_open(conn, root, e
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     killed_at_the_record(monkeypatch)
     with pytest.raises(KeyboardInterrupt):
-        file_drops(engagement, today=DAY1)
+        sort(engagement, today=DAY1)
     build(conn, root, engagement)
     assert said(conn, root, engagement) == []
     [open_move] = store.open_intents(conn, engagement)

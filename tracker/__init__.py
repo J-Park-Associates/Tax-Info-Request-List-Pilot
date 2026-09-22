@@ -2,6 +2,8 @@
 
 See docs/ROADMAP.md for the build plan. Component modules:
 
+- layout        : the shape of the clients root - the two trees, the household, the year, the return - and the one way a stored path is written and read
+- households    : the household's own record: its members, its contact, its inbox link
 - records       : the record types every layer names - the index row, the evidence, the routing decision, the engagement - and each one's own serialisation
 - manifest      : the request list: its schema, validation, and its reading from and writing to the record
 - scaffold      : folder scaffolding from the request list
@@ -48,8 +50,8 @@ STANDING_RULES: tuple[tuple[str, str], ...] = (
     ("No generative AI ever reads a client financial document.",
      "Every routing and status decision comes from deterministic rules in the manifest."),
     ("Originals are never altered.",
-     "Files are moved byte for byte under their own names into {shared}/{pbc}/; "
-     "all work happens on copies, and every move is recorded in {record}."),
+     "Files are moved byte for byte under their own names out of {inbox} into the client's "
+     "folder for the year; all work happens on copies, and every move is recorded in {record}."),
     ("Nothing is guessed.",
      "A document is filed only when exactly one request accepts it - or, when one document "
      "names several forms as itself, when each of those forms is accepted by exactly one "

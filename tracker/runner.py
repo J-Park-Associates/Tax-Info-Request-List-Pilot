@@ -63,6 +63,20 @@ opens that rather than the index, and a view whose replace does not land
 is simply not replaced: the run carries ``view_stale`` and succeeds,
 because the view holds no fact of its own.
 
+**A household at a time** (decision 125). A client folder is a household
+with one folder per tax year inside it and one folder per return inside
+that, and the household has one permanent inbox. So a pass is over a
+household: it takes every open return's lock in folder-name order, sorts
+the one inbox across all of them at once - a drop is filed where exactly
+one return's requests accept it, and parked where several or none do - and
+then scans, drafts and draws each return in turn. A household with two
+open years sorts nothing from its inbox and says so on every return, until
+a person retires a year in the editor.
+
+**Every folder that does not fit the layout is listed and left alone.** The
+practice page ends with them, each with the one sentence saying why
+(``tracker.registry``). Nothing in one is ever read, moved or renamed.
+
 One engagement's failure never stops the others. An unreadable record, a
 scan already running, a drop that would not sort — each is recorded against
 that engagement and the run moves on, because one client's problem must not
@@ -76,13 +90,15 @@ import datetime as dt
 import logging
 import traceback
 from collections.abc import Iterable
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, store
-from tracker.filer import NEEDS_REVIEW, ensure, file_drops, read_index
+from tracker.filer import NEEDS_REVIEW, ensure, file_household_drops, read_index
 from tracker.fsio import write_text_atomically
+from tracker.households import open_years
+from tracker.layout import inbox_of, originals_dir_for, root_of
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -97,6 +113,7 @@ from tracker.records import ENGAGEMENT_LABELS, NO, YES
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
     Engagement,
+    Misfit,
     Registry,
     RegistryError,
     discover_engagements,
@@ -117,7 +134,7 @@ from tracker.reminder import (
     record_draft,
     write_draft,
 )
-from tracker.scaffold import scaffold_engagement
+from tracker.scaffold import scaffold_engagement, scaffold_household
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.settings import SettingsError, firm, product_name
 from tracker.store import StoreError
@@ -244,6 +261,10 @@ class RunReport:
     dry_run: bool = False
     reminders: str = REMINDERS_AUTO
     runs: list[EngagementRun] = field(default_factory=list)
+    #: The folders the walk left alone, each with the one sentence saying
+    #: why (decision 125). Carried on the report because the practice page
+    #: is drawn from the report and never from a fresh walk.
+    misfits: list[Misfit] = field(default_factory=list)
 
     @property
     def processed(self) -> list[EngagementRun]:
@@ -348,6 +369,137 @@ def should_draft(
 # --------------------------------------------------------------- one pass ----
 
 
+#: What every return of a household is warned with while two of its years
+#: are open. One inbox feeds the household (decision 125) and it cannot say
+#: which year a document is for, so nothing is sorted from it until a year
+#: is retired in the editor - which is a person's decision and never the
+#: machine's guess.
+TWO_OPEN_YEARS = ("two years are open in this household ({years}); nothing is sorted from its "
+                  "inbox until one is retired in the editor")
+
+
+def run_household(
+    household: Path,
+    returns: list[Engagement],
+    *,
+    root: Path | None = None,
+    today: dt.date | None = None,
+    dry_run: bool = False,
+    reminders: str = REMINDERS_AUTO,
+    weekday: int = DRAFT_WEEKDAY,
+) -> list[EngagementRun]:
+    """One pass over a whole household: sort its one inbox across every
+    return of its open year, then scan, draft and draw each return.
+
+    **The household is the unit of a pass** (decision 125). A household has
+    one inbox, so the sort has to judge each drop against every open-year
+    return under their locks together: taking them one at a time would let
+    a click in the app step between two returns that one document was
+    being judged against. The locks are taken in folder-name order,
+    without case, before anything is read - one order, so two passes over
+    two households can never hold each other's returns the wrong way
+    round - and one held elsewhere skips the whole household this pass,
+    with nothing touched.
+
+    **Two open years sorts nothing.** The inbox cannot say which year a
+    document is for, so every return of the household is warned and the
+    inbox is not read; the scan, the draft and the page still run, because
+    what each return already holds is still true.
+
+    Never raises for a return-level problem: anything that goes wrong is
+    recorded on that return's :class:`EngagementRun` so the caller can keep
+    going through the rest of the practice.
+    """
+    today = today or dt.date.today()
+    # Stamped before anything is touched, so a return that fails its
+    # pre-checks still says when it was last looked at.
+    runs = [EngagementRun(engagement=one, last_pass=dt.datetime.now()) for one in returns]
+    working = [run for run in runs if _worth_a_pass(run)]
+    if not working:
+        return runs
+
+    years = open_years([run.engagement for run in working])
+    if len(years) > 1:
+        note = TWO_OPEN_YEARS.format(years=", ".join(str(year) for year in years))
+        for run in working:
+            run.warnings.append(note)
+    # The locks, in folder-name order without case: the order the sort
+    # calls "first by order" too, so the return a contested drop parks in
+    # is the return whose lock was taken first.
+    working.sort(key=lambda run: run.engagement.path.name.lower())
+    sorting = [run for run in working
+               if len(years) == 1 and run.engagement.tax_year == years[0]]
+
+    try:
+        with ExitStack() as locks:
+            # A dry run takes none: it writes nothing and must never block
+            # a real run.
+            if not dry_run:
+                for run in working:
+                    locks.enter_context(engagement_lock(run.engagement.path))
+            # The household's own side - the inbox, the year's folder and
+            # the README that lists every return of the open year - is laid
+            # out once for the lot, before the inbox is read.
+            if not dry_run:
+                scaffold_household(household, returns=[run.engagement.path for run in working])
+            if sorting:
+                _sort_step(household, sorting, today=today, dry_run=dry_run)
+            for run in working:
+                run_engagement(run.engagement, root=root, today=today, dry_run=dry_run,
+                               reminders=reminders, weekday=weekday, lock_held=not dry_run,
+                               run=run)
+    except ScanLockedError as exc:
+        for run in working:
+            run.skipped = f"another run is still going ({exc})"
+    except Exception as exc:  # the household's surprise must not stop the practice
+        for run in working:
+            if not run.error:
+                run.error = f"{exc.__class__.__name__}: {exc}"
+                run.draft_note = traceback.format_exc(limit=3).strip().splitlines()[-1]
+    for run in working:
+        if run.file_errors and not run.error:
+            # The rest of the pass went ahead, but a drop that could not be
+            # sorted is a failure the scheduler must show, not a footnote.
+            run.error = (
+                f"{len(run.file_errors)} file(s) could not be sorted "
+                f"(filed {run.filed}, review {run.review}): "
+                + "; ".join(run.file_errors[:3])
+            )
+    return runs
+
+
+def _sort_step(household: Path, sorting: list[EngagementRun], *,
+               today: dt.date, dry_run: bool) -> None:
+    """The household's one inbox, sorted across the returns of its open year.
+
+    One call, under the locks the caller holds, and one transaction per
+    return inside it (decision 102, unchanged). Each return's report fills
+    its own run.
+    """
+    first = sorting[0].engagement.path
+    # The year the record says, not the year folder's name: a folder
+    # somebody renamed is processed as the record says and warned about
+    # (``tracker.registry.NAME_DISAGREES``), never renamed.
+    year = sorting[0].engagement.tax_year
+    originals = originals_dir_for(root_of(first), household.name, year)
+    reports = file_household_drops(
+        inbox_of(first), originals, [run.engagement.path for run in sorting],
+        today=today, dry_run=dry_run,
+    )
+    for run in sorting:
+        filed = reports.get(run.engagement.path)
+        if filed is None:
+            continue
+        run.filed = len(filed.filed)
+        run.review = len(filed.review)
+        run.waiting = len(filed.waiting)
+        run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]
+        # An original already sorted whose record no longer fits the disk
+        # is for a person to look at, every pass - but nothing was left
+        # unsorted, so it rides the warnings rather than failing the run.
+        run.warnings.extend(f"{e.name}: {e.error}" for e in filed.attention)
+
+
 def run_engagement(
     engagement: Engagement,
     *,
@@ -356,52 +508,43 @@ def run_engagement(
     dry_run: bool = False,
     reminders: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
+    lock_held: bool = False,
+    run: EngagementRun | None = None,
 ) -> EngagementRun:
-    """File, scan and (on the draft day) draft for one engagement.
+    """Scaffold, scan and (on the draft day) draft and draw one return.
 
-    Never raises for an engagement-level problem: anything that goes wrong is
+    **The per-return half of a pass** since decision 125: the sort is the
+    household's, because one inbox feeds every return of it, and
+    :func:`run_household` does that half under every open return's lock and
+    hands each run here. ``lock_held`` says the caller already holds this
+    return's lock and this must not take it again - which is what decision
+    102 has said since a pass became one locked section.
+
+    Never raises for a return-level problem: anything that goes wrong is
     recorded on the returned :class:`EngagementRun` so the caller can keep
-    going through the rest of the registry.
+    going through the rest of the practice.
     """
     today = today or dt.date.today()
-    # Stamped before anything is touched, so an engagement that fails its
+    # Stamped before anything is touched, so a return that fails its
     # pre-checks still says when it was last looked at.
-    run = EngagementRun(engagement=engagement, last_pass=dt.datetime.now())
-    if not _worth_a_pass(run):
-        return run
-
+    if run is None:
+        run = EngagementRun(engagement=engagement, last_pass=dt.datetime.now())
+        if not _worth_a_pass(run):
+            return run
     try:
-        # **One lock, across the whole pass** (decision 102). The filer and
-        # the scanner used to take the engagement's lock one after the
-        # other, which left a gap between them that a click in the app
-        # could step into: the sort's rows landed, another run filed
-        # something, and the scan then read a folder neither of them had
-        # decided from. What a pass decides from must not change under it,
-        # and that is one section, not two. Each step is told the lock is
-        # already held so it does not try to take it again. A dry run takes
-        # none: it writes nothing and must never block a real run.
-        with nullcontext() if dry_run else engagement_lock(engagement.path):
+        # A dry run takes no lock: it writes nothing and must never block
+        # a real run.
+        with nullcontext() if dry_run or lock_held else engagement_lock(engagement.path):
             # **The store is brought up to the record first.** Everything
             # below answers from it; a rules edit a person saved since the
             # last pass is already in the journal (decision 104).
             ensure(engagement.path, root)
-            # A row added, or made applicable again, in the app gets its folder and its
-            # README line here, on the next pass, rather than when somebody
-            # remembers to re-run scaffold. Idempotent: nothing existing is
-            # touched.
+            # A row added, or made applicable again, in the app gets its
+            # folder and its README line here, on the next pass, rather
+            # than when somebody remembers to re-run scaffold. Idempotent:
+            # nothing existing is touched.
             if not dry_run:
-                scaffold_engagement(engagement.path)   # contact line from the details
-            filed = file_drops(engagement.path, today=today, dry_run=dry_run,
-                               lock_held=not dry_run)
-            run.filed = len(filed.filed)
-            run.review = len(filed.review)
-            run.waiting = len(filed.waiting)
-            run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]
-            # An original already sorted whose record no longer fits the disk
-            # is for a person to look at, every pass - but nothing was left
-            # unsorted, so it rides the warnings rather than failing the run.
-            run.warnings.extend(f"{e.name}: {e.error}" for e in filed.attention)
-
+                scaffold_engagement(engagement.path)   # contact from the household
             scanned = scan_engagement(engagement.path, root=root, today=today, dry_run=dry_run,
                                       lock_held=not dry_run)
             summary = scanned.summary
@@ -418,7 +561,6 @@ def run_engagement(
 
             if not dry_run and not run.error:
                 _view_step(run)
-
     except ScanLockedError as exc:
         run.skipped = f"another run is still going ({exc})"
     except (ManifestError, ReminderError) as exc:
@@ -426,15 +568,6 @@ def run_engagement(
     except Exception as exc:  # one client's surprise must not stop the rest
         run.error = f"{exc.__class__.__name__}: {exc}"
         run.draft_note = traceback.format_exc(limit=3).strip().splitlines()[-1]
-
-    if run.file_errors and not run.error:
-        # The rest of the pass went ahead, but a drop that could not be
-        # sorted is a failure the scheduler must show, not a footnote.
-        run.error = (
-            f"{len(run.file_errors)} file(s) could not be sorted "
-            f"(filed {run.filed}, review {run.review}): "
-            + "; ".join(run.file_errors[:3])
-        )
     return run
 
 
@@ -653,20 +786,32 @@ def run_registry(
     weekday: int = DRAFT_WEEKDAY,
     only: str = "",
 ) -> RunReport:
-    """Run every engagement in the registry, in the order it lists them."""
+    """Run every household in the registry, in the order it lists them.
+
+    **A household at a time** (decision 125), because its returns share one
+    inbox and the sort has to judge a drop against all of them at once.
+    ``only`` still selects returns and the report still holds those: what
+    it cannot do is sort half a household's inbox, so the household the
+    selected return is in gets a whole pass and the report says what was
+    asked about.
+    """
     if reminders not in REMINDER_MODES:
         raise ValueError(
             f"reminders must be one of {', '.join(REMINDER_MODES)}, got {reminders!r}"
         )
     today = today or dt.date.today()
-    selected = registry.find(only) if only else registry.engagements
+    selected = {e.path for e in (registry.find(only) if only else registry.engagements)}
 
-    report = RunReport(today=today, dry_run=dry_run, reminders=reminders)
-    report.runs = [
-        run_engagement(engagement, root=registry.source, today=today, dry_run=dry_run,
-                       reminders=reminders, weekday=weekday)
-        for engagement in selected
-    ]
+    report = RunReport(today=today, dry_run=dry_run, reminders=reminders,
+                       misfits=list(registry.misfits))
+    for household, returns in registry.by_household().items():
+        if not any(one.path in selected for one in returns):
+            continue
+        report.runs.extend(
+            run for run in run_household(household, returns, root=registry.source, today=today,
+                                         dry_run=dry_run, reminders=reminders, weekday=weekday)
+            if run.engagement.path in selected
+        )
     return report
 
 
@@ -737,6 +882,12 @@ STATUS_REVIEW_HEADING = "Waiting for a person"
 STATUS_PROBLEMS_HEADING = "Problems"
 STATUS_NOTHING_PARKED = "Nothing is waiting for a person."
 STATUS_NO_PROBLEMS = "Nothing failed."
+#: The folders the walk left alone (decision 125), and what is said when
+#: there are none. The sentence on each is the registry's; this is only the
+#: heading a person reads and the two columns it is drawn in.
+STATUS_MISFITS_HEADING = "Folders the tracker leaves alone"
+STATUS_NO_MISFITS = "Every folder fits the layout."
+MISFIT_COLUMNS = ("Folder", "Why it is left alone")
 #: What the last-pass cell says for an engagement the page read rather than ran.
 STATUS_NOT_PASSED = "not this pass"
 #: What the Drafted cell says for an engagement whose reminder is held (decision 115).
@@ -911,6 +1062,13 @@ def write_status_page(root: Path | str, report: RunReport, *,
         f"<h2>{esc(STATUS_PROBLEMS_HEADING)} ({len(problems)})</h2>",
         *(["<ul>", *(f"<li>{esc(problem)}</li>" for problem in problems), "</ul>"]
           if problems else [f"<p>{esc(STATUS_NO_PROBLEMS)}</p>"]),
+        # Every folder that does not fit the layout, with the one sentence
+        # saying why it is left alone (decision 125, the owner's rule).
+        # Nothing in one is ever read, moved or renamed; a person fixes it.
+        f"<h2>{esc(STATUS_MISFITS_HEADING)} ({len(report.misfits)})</h2>",
+        *(table(MISFIT_COLUMNS,
+                ((_under(root, misfit.path), misfit.sentence) for misfit in report.misfits))
+          if report.misfits else [f"<p>{esc(STATUS_NO_MISFITS)}</p>"]),
         "</body>",
         "</html>",
     ]
@@ -945,6 +1103,15 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
     return run
 
 
+def _under(root: Path, path: Path) -> str:
+    """A folder as a person reads it on the practice page: its path below
+    the clients root, or the whole path when it is not under one."""
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
 def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
                   today: dt.date | None = None) -> RunReport:
     """Every engagement in ``registry``, with the runs in ``passed`` folded in.
@@ -960,6 +1127,7 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
         today=today or dt.date.today(),
         runs=[ran[engagement.path] if engagement.path in ran else _engagement_status(engagement)
               for engagement in registry.engagements],
+        misfits=list(registry.misfits),
     )
 
 

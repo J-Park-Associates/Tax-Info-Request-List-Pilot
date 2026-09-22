@@ -90,6 +90,7 @@ from tracker.filer import (
     read_index,
 )
 from tracker.fsio import write_text_atomically
+from tracker.layout import household_name_of, label_for, year_of
 from tracker.manifest import (
     ANY_EXTENSION,
     COL_ALLOWED_EXTENSIONS,
@@ -112,6 +113,7 @@ from tracker.manifest import (
     Override,
     RequestItem,
     Status,
+    load_engagement_info,
     load_manifest,
     override_label,
 )
@@ -398,6 +400,28 @@ def _not_applicable_blocks(items: list[RequestItem]) -> list[str]:
 # ------------------------------------------------------------------ write ----
 
 
+def label_of(engagement_dir: Path) -> str:
+    """How this return is named in the page's title: the household, the
+    year and the return (``layout.ENGAGEMENT_LABEL_PATTERN``).
+
+    The record's three details where it carries them, the folders' names
+    where it does not - the same fallback ``tracker.registry.Engagement``
+    makes, because two households may each hold ``2025/1040 - John Park``
+    and a page titled with the folder alone would not say which. The
+    Summary's ``Engagement folder`` is untouched: it is the folder, and a
+    reader compares it with one (``read_stamp``).
+    """
+    try:
+        info = load_engagement_info(engagement_dir)
+    except (ManifestError, OSError):
+        return engagement_dir.name
+    return label_for(
+        info.household or household_name_of(engagement_dir),
+        info.tax_year if info.tax_year is not None else year_of(engagement_dir),
+        info.return_name or engagement_dir.name,
+    )
+
+
 def _readers(
     engagement_dir: Path,
     items: list[RequestItem] | None,
@@ -496,7 +520,7 @@ def _body(
 ) -> list[str]:
     active = [item for item in items if item.manual_override != Override.NOT_APPLICABLE]
     return [
-        f"<h1>{esc(engagement_dir.name)} — {esc(VIEW_LABEL)}</h1>",
+        f"<h1>{esc(label_of(engagement_dir))} — {esc(VIEW_LABEL)}</h1>",
         f'<p class="stamp">{esc(VIEW_NOTE)}</p>',
         "<nav>",
         *(f'<a href="#{esc(_anchor(section))}">{esc(section)}</a>' for section in SECTIONS),
@@ -532,7 +556,7 @@ def _page(
         '<html lang="en">',
         "<head>",
         '<meta charset="utf-8">',
-        f"<title>{esc(engagement_dir.name)} — {esc(VIEW_LABEL)}</title>",
+        f"<title>{esc(label_of(engagement_dir))} — {esc(VIEW_LABEL)}</title>",
         *(f'<meta name="{esc(META_NAMES[label])}" content="{esc(value)}">'
           for label, value in stamp.items() if label in META_NAMES),
         f"<style>{_STYLE}</style>",

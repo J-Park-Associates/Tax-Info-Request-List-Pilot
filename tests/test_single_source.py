@@ -263,6 +263,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     renderer, so the app cannot disagree with the tracker about a word."""
     from tracker.api import _slug
     from tracker.filer import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
+    from tracker.layout import INBOX_DIR_NAME
     from tracker.manifest import (
         ANY_EXTENSION,
         DEFAULT_EXTENSIONS,
@@ -275,7 +276,6 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
         Status,
     )
     from tracker.records import NO, YES
-    from tracker.scaffold import PBC_DIR_NAME
     from tracker.scheduling import DEFAULT_START
     from tracker.settings import EXAMPLE_ROOT
 
@@ -292,10 +292,36 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     # The dashboard's own table heads its columns in plain English, so the
     # one-word headers are not looked for in the page; the two-word ones
     # are the list's alone.
-    for literal in (PBC_DIR_NAME, EXAMPLE_ROOT, str(YEAR_MIN), str(YEAR_MAX),
+    for literal in (INBOX_DIR_NAME, EXAMPLE_ROOT, str(YEAR_MIN), str(YEAR_MAX),
                     UNSCANNED_LABEL, *[h for h in HEADERS if " " in h]):
         assert literal not in html, literal
     assert 'min="' not in html and 'max="' not in html
+    # Every word the household's card, the wizard's household step and the
+    # misfit list show is the API's too, and so are the two trees and the
+    # two patterns the wizard's previews fill (decision 125).
+    import tracker.api as api_module
+
+    words = api_module._vocab()
+    for literal in (*words["household"].values(), *words["layout"].values()):
+        if not isinstance(literal, str):
+            continue
+        assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
+        assert f">{literal}<" not in html, literal
+
+
+def test_the_renderers_one_list_writer_flattens_what_it_is_handed():
+    """Half the callers build a list as "one fixed node, then a mapped
+    array", and ``replaceChildren`` turns an array it is handed into the
+    text ``[object HTMLOptionElement],...`` instead of its elements - so
+    the wizard's list of existing households and the rollover's list of
+    form templates each came out holding one option and a line of noise.
+    One flatten in the writer, not a rule every call site has to remember.
+    """
+    js = read("app/renderer/app.js")
+    body = js.split("function show(id, nodes) {", 1)[1].split("}", 1)[0]
+    assert "nodes.flat(" in body, body
+    # And the pattern the flatten exists for is still written this way.
+    assert re.search(r'show\("hh-existing", \[\s*\n.*\n\s*households\.map\(', js)
 
 
 def test_the_renderer_names_no_catalog_of_its_own():
@@ -772,18 +798,35 @@ def test_documents_quote_the_any_value_only_as_the_constants_say_it():
             assert ANY_EXTENSION == "*", rel   # the docs quote it; the constant had better be it
 
 
-def test_documents_name_the_engagement_folders_as_the_scaffold_does():
-    """Every `Something/` a document quotes as a folder is one the scaffold names."""
-    from tracker.scaffold import PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME, SHARED_DIR_NAME
+def test_documents_name_the_engagement_folders_as_the_layout_does():
+    """Every `Something/` a document quotes as a folder is one the layout
+    names (decision 125). ``Shared`` and ``PBC`` are the layout before it
+    and survive only in the decision log's own rows."""
+    from tracker.layout import (
+        CLIENTS_TREE,
+        INBOX_DIR_NAME,
+        PREPARED_DIR_NAME,
+        PRIVATE_TREE,
+        REVIEW_DIR_NAME,
+    )
 
-    folders = {SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME}
+    folders = {CLIENTS_TREE, PRIVATE_TREE, INBOX_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME}
+
+    def a_decision_row(line: str) -> bool:
+        """A row of the Decision Log, which is history and says what the
+        layout was when that decision was taken."""
+        return line.startswith("| ") and line.split("|")[1].strip().isdigit()
+
     for rel in (*DOCUMENTS, "docs/repo-map.curated.json"):
-        for quoted in re.findall(r"`((?:[A-Z][A-Za-z]+/)+)`", read(rel)):
-            for part in quoted.rstrip("/").split("/"):
-                assert part in folders, (rel, quoted)
-        for word in re.findall(r"\b([A-Z][a-z]+)/", read(rel)):
-            if word in ("Shared", "Prepared", "PBC", "Prepared"):
-                assert word in folders, (rel, word)
+        for line in read(rel).splitlines():
+            if a_decision_row(line):
+                continue
+            for quoted in re.findall(r"`((?:[A-Z][A-Za-z]+/)+)`", line):
+                for part in quoted.rstrip("/").split("/"):
+                    assert part in folders, (rel, quoted)
+            # The two folder names decision 125 retired live on in the
+            # log's own rows and nowhere else.
+            assert "Shared/" not in line and "PBC/" not in line, (rel, line[:80])
 
 
 def test_gitignore_ignores_the_junk_the_validators_ignore():
@@ -899,19 +942,20 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     """A docstring or comment may name LEDGER_FILENAME; it may not spell the value."""
     import ast
 
+    from tracker.layout import (
+        CLIENTS_TREE,
+        INBOX_DIR_NAME,
+        PREPARED_DIR_NAME,
+        PRIVATE_TREE,
+        README_NAME,
+        REVIEW_DIR_NAME,
+    )
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
     from tracker.manifest import Override, Status
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME
-    from tracker.scaffold import (
-        PBC_DIR_NAME,
-        PREPARED_DIR_NAME,
-        README_NAME,
-        REVIEW_DIR_NAME,
-        SHARED_DIR_NAME,
-    )
     from tracker.settings import SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
@@ -920,7 +964,8 @@ def test_the_package_prose_names_constants_rather_than_their_values():
               LOG_FILENAME, LEGACY_MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME,
               RETIRED_CACHE_FILENAME,
               SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
-              f"{SHARED_DIR_NAME}/", f"{PBC_DIR_NAME}/", f"{PREPARED_DIR_NAME}/"}
+              f"{CLIENTS_TREE}/", f"{PRIVATE_TREE}/", f"{INBOX_DIR_NAME}/",
+              f"{PREPARED_DIR_NAME}/"}
     quoted = {f"``{v}``" for v in set(Status.ALL) | set(Override.ALL)}
     for path in (REPO / "tracker").glob("*.py"):
         text = path.read_text(encoding="utf-8")

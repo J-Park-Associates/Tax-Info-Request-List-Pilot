@@ -7,7 +7,8 @@ engagement - a scheduled run overlapping a click in the desktop app, or
 Task Scheduler's repeat firing while an OCR-heavy pass is still going -
 would race on the same files and the same journal, and the loser's rows
 would be written from a stale picture. That is the one way an original can
-end up in ``PBC_DIR_NAME/`` with no record of how it got there, so the lock
+end up in the client's folder for the year with no record of how it got
+there, so the lock
 is not optional and it is not per step: whoever holds ``LOCK_FILENAME``
 owns the engagement until they let go.
 

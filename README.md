@@ -8,17 +8,21 @@ prepared (1040, 1120, 1120-S, 1065, 1041, 990) and get a request list
 tailored to that form. **The client gets one folder and drops everything
 into it** — no sorting, no naming, no matching files to a list. A scheduled
 job then files what arrives: their originals are preserved untouched in
-`PBC/`, renamed working copies are sorted into per-request folders on the
-firm's side, and the engagement's own record holds every rename, every move
-and each request's validated status.
+the client's folder for the year, renamed working copies are sorted into
+per-request folders on the firm's side, and the return's own record holds
+every rename, every move and each request's validated status.
+
+A client folder is a **household**, with one folder per **tax year** inside
+it and one folder per **return** inside that (decision 125). Two trees sit
+under the clients root: `Clients`, the only one a client is ever shared,
+and `J Park & Associates`, which never is.
 
 The standing rules, worded once in `tracker/__init__.py` and upheld by every
 module:
 
 - **No generative AI ever reads a client financial document.** Every routing
   and status decision comes from deterministic rules in the manifest.
-- **Originals are never altered.** Files are moved byte for byte under their
-  own names into `Shared/PBC/`; all work happens on copies, and every move is
+- **Originals are never altered.** Files are moved byte for byte under their own names out of `Drop files here` into the client's folder for the year; all work happens on copies, and every move is
   recorded in the record.
 - **Nothing is guessed.** A document is filed only when exactly one request
   accepts it - or, when one document names several forms as itself, when each
@@ -40,18 +44,31 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
 ## How it works
 
 ```
-{EngagementName}/
-├── _ledger.jsonl         ← the engagement's record: the request list, every original, every status, every rules edit
-├── Status Report.html    ← this engagement on one page, redrawn by every pass
-├── Prepared/             ← the firm's working set (the client never sees it)
-│   ├── A01 - W-2 Wage Statements - All Employers/
-│   │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
-│   └── 00 - Needs Review/   ← couldn't be identified; a person decides
-└── Shared/               ← the only folder the client sees
-    ├── _README.txt       ← "just drop everything here"
-    └── PBC/              ← their originals: same names, same bytes
-        └── scan0012.pdf
+{ClientsRoot}/
+├── Clients/                      ← the only tree a client is ever shared
+│   └── Park Family/              ← the household, shared as Viewer
+│       ├── Drop files here/      ← the inbox, shared as Contributor
+│       │   └── _README.txt       ← "just drop everything here"
+│       └── 2026/                 ← their originals for the year: same names, same bytes
+│           └── scan0012.pdf
+└── J Park & Associates/          ← never shared
+    └── Park Family/              ← the household's record
+        └── 2026/
+            └── 1040 - John & Maria Park/    ← the return
+                ├── _ledger.jsonl            ← the return's record: the request list, every original, every status, every rules edit
+                ├── Status Report.html       ← this return on one page, redrawn by every pass
+                └── Prepared/                ← the firm's working set (the client never sees it)
+                    ├── A01 - W-2 Wage Statements - All Employers/
+                    │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
+                    └── 00 - Needs Review/   ← couldn't be identified; a person decides
 ```
+
+**One inbox per household.** A household with a business and its owner's
+1040 has one folder to drop into, and a pass judges each drop against every
+return of the open year: it is filed where exactly one accepts it, and
+parked for a person where several or none do. **The engagement is the
+software's word for one return in one year** - the return folder is the
+engagement folder.
 
 **The request list and the engagement's details are in the record.** The
 eleven columns an accountant edits, and the client, link, due date and the
@@ -77,13 +94,15 @@ decides. `docs/runbook.md` §4 is what each answer means in plain words.
    `tracker/templates.py` and nowhere else
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
-3. `python -m tracker.scaffold <engagement_dir>` — builds `Shared/` and
-   `Prepared/`, and writes the client's README
-4. Share `Shared/` with the client. They drop everything in; that's their
-   whole job
-5. `python -m tracker.filer <engagement_dir>` — moves each original into
-   `Shared/PBC/` untouched, files a renamed copy into the matching
-   `Prepared/` folder, and records what it did in the engagement's record
+3. `python -m tracker.scaffold <return_dir>` — builds the household's
+   inbox and the year's folder, and this return's `Prepared/`, and writes
+   the client's README
+4. Share the household's folder with the client as Viewer and its inbox as
+   Contributor. They drop everything in; that's their whole job
+5. `python -m tracker.filer <return_dir>` — moves each original out of the
+   inbox into the client's folder for the year, untouched, files a renamed
+   copy into the matching `Prepared/` folder, and records what it did in
+   the return's record
 6. `python -m tracker.scanner <engagement_dir>` — validates `Prepared/` in
    three deterministic tiers (existence → integrity → content
    keywords/dates) and records each row's status (`Status.ALL` in
@@ -188,6 +207,9 @@ whether the engagement is still active:
 | Active | `no` = the scheduled run skips this folder |
 | Rolled From | written by the rollover; the engagement it names is no longer chased |
 | Form | which catalog the request list was cut from; blank if it was never recorded |
+| Household | the household this return belongs to; the folder above the year |
+| Tax Year | the year the return is for; the year folder's name |
+| Return | the return's folder name, form first; the same name every year |
 
 The app asks for that folder on first launch and writes it to
 `settings.json` beside itself (`python -m tracker.settings <folder>` does the
@@ -198,13 +220,13 @@ is left out of the letter entirely when it is blank. Everything else reads
 that one value:
 
 ```
-python -m tracker.runner "D:\OneDrive\Clients" --log     # or the app's Install Schedule button
+python -m tracker.runner "G:\Shared drives\Clients" --log     # or the app's Install Schedule button
 ```
 
 That single command is the whole scheduled task. Per engagement it files the
 drop folder, scans it, and **on Saturdays** drafts the chase email. Creating
 an engagement in the app is all it takes for the next run to include it —
-`python -m tracker.registry "D:\OneDrive\Clients"` lists what the run would
+`python -m tracker.registry "G:\Shared drives\Clients"` lists what the run would
 find and flags any manifest it cannot read.
 
 Every real pass also writes `tracker.runner.STATUS_PAGE_FILENAME` into that
@@ -274,11 +296,11 @@ The schedule is a default, not a cage:
 | | |
 |---|---|
 | draft for one client, any day | `python -m tracker.reminder <engagement_dir> --write` |
-| draft the whole batch today | `python -m tracker.runner "D:\OneDrive\Clients" --reminders always` |
-| file and scan, no drafts | `python -m tracker.runner "D:\OneDrive\Clients" --reminders never` |
-| just one client | `python -m tracker.runner "D:\OneDrive\Clients" --only smith` |
-| see what would happen | `python -m tracker.runner "D:\OneDrive\Clients" --dry-run` |
-| move the drafting day | `python -m tracker.runner "D:\OneDrive\Clients" --weekday monday` |
+| draft the whole batch today | `python -m tracker.runner "G:\Shared drives\Clients" --reminders always` |
+| file and scan, no drafts | `python -m tracker.runner "G:\Shared drives\Clients" --reminders never` |
+| just one client | `python -m tracker.runner "G:\Shared drives\Clients" --only smith` |
+| see what would happen | `python -m tracker.runner "G:\Shared drives\Clients" --dry-run` |
+| move the drafting day | `python -m tracker.runner "G:\Shared drives\Clients" --weekday monday` |
 
 `Reminders: no` in an engagement's details is a standing decision that this
 client isn't chased by email — neither the schedule nor `--reminders always`
