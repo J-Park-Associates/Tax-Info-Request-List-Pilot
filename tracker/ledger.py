@@ -28,7 +28,11 @@ so the check can hold one to the other.
 held the whole draft back for a person, and which file it wrote - when
 that differs from the last one - so ``tracker.runner.last_drafted()`` reads
 the day of the draft from the record rather than from a file time a sync
-client may have set, and the next draft can say what changed since it.
+client may have set, and the next draft can say what changed since it. A
+person who reads that draft in the app and approves it appends one
+:data:`DRAFT_APPROVED` beside it (decision 118), and for the rest of that
+draft week the pass leaves the file it names exactly as it leaves one
+somebody edited. Neither line carries a word of the letter.
 
 **And it is the person's own rules** (decisions 103 and 104). The request
 list and the engagement's details are created, edited and read only here:
@@ -260,6 +264,15 @@ ASKED_KEY = "asked"
 HELD_KEY = "held"
 FILE_KEY = "file"
 FINGERPRINT_KEY = "fingerprint"
+#: A person read the week's draft in the app and approved it (decision
+#: 118). Folded by nothing, exactly as :data:`DRAFTED` is: it is a fact
+#: about a week, not a row of the index. It carries the same four keys a
+#: written draft does - the stage (``tracker.reminder.STAGE_KEY``), the
+#: file, the fingerprint in that file's header and the identifiers asked -
+#: and, like every event here, not one word a client would read. Until the
+#: next draft day the pass treats the file it names as it treats one a
+#: person edited: never overwritten, a regenerated draft beside it.
+DRAFT_APPROVED = "draft_approved"
 #: What one decision is about to do to the disk, written before the first
 #: file operation (decision 119). **The intent is the decision.** The disk
 #: and the record are two things, and a run killed between them used to
@@ -302,6 +315,7 @@ ROW_EVENTS = frozenset({
 })
 #: Every event name this version reads.
 EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, KEYWORD_UNLEARNED, DRAFTED,
+                                 DRAFT_APPROVED,
                                  MIGRATED, RULES_CHANGED, RULES_IMPORTED, MOVING,
                                  MOVE_ABANDONED})
 #: The names this version reads and never writes: an older journal may

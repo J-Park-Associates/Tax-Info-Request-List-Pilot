@@ -135,14 +135,6 @@ function render(state) {
   // in the record (decisions 103 and 104).
   $("summary").textContent = state.summary ? state.summary.line : "";
 
-  // One line when an ambiguous request holds this client's reminder
-  // (decision 115): the API sorted the rows and owns the sentence; the
-  // page shows the count and nothing more. The rows themselves are in the
-  // table above with their notes.
-  const held = state.reminder ? state.reminder.held || [] : [];
-  $("reminder-held").textContent = held.length ? fill(vocab.reminder.held_line, { n: held.length }) : "";
-  $("reminder-held").classList.toggle("hidden", held.length === 0);
-
   // The catalog the engagement was cut from, beside its name in the
   // toolbar. It is shown exactly as the record holds it — the catalog's
   // own key is how a person names the return — so the app carries no word
@@ -166,6 +158,241 @@ function render(state) {
   renderReview(state);
   renderUnfileList(state);
   renderLock(state);
+  renderReminder(state);
+}
+
+// ── The week's reminder (decision 118) ──────────────────────────────────
+
+// The card is the one place a person sees the draft, moves it up or down
+// the ladder, copies it and approves it. It is drawn from its own command
+// rather than from `state`, because the letter is regenerated in memory at
+// whatever stage the toggle stands on and `state` is the record as it is.
+// Nothing here sends: there is no send button, no mail link and no form.
+//
+// Which rung the person moved the toggle to is the only thing the page
+// holds of its own, and it is not a fact about the engagement (decision
+// 83), so it is never recorded and it is dropped when the engagement
+// changes - the next client's draft opens on the rung its own record gives.
+let reminderStage = null;    // the stage a person picked, or null for the record's
+let reminderFor = null;      // which engagement that choice belongs to
+let reminderCard = null;     // the payload the card was last drawn from
+
+function stageOf(number) {
+  return vocab.reminder.stages.find((s) => s.number === number) || null;
+}
+
+function stageInk(number) {
+  const stage = stageOf(number);
+  return stage ? vocab.reminder.palette[stage.colour] : "";
+}
+
+// The two marks a stage can put on anything, as classes; which of them to
+// put on what is the API's answer, never this file's.
+function marked(colour, bold) {
+  return `${colour ? "rem-em-colour" : ""} ${bold ? "rem-em-bold" : ""}`.trim();
+}
+
+function renderReminder(state) {
+  if (reminderFor !== active) {
+    reminderStage = null;
+    reminderFor = active;
+  }
+  loadReminder();
+}
+
+async function loadReminder() {
+  if (!active) {
+    $("reminder-card").classList.add("hidden");
+    return;
+  }
+  try {
+    const result = await call(withEng("reminder"), { stage: reminderStage });
+    drawReminder(result.reminder);
+  } catch (err) {
+    // An engagement nobody has scanned yet has no reminder to show, and
+    // the request table above already says so row by row. The card is
+    // simply not there until there is a draft to put in it.
+    reminderCard = null;
+    $("reminder-card").classList.add("hidden");
+  }
+}
+
+function drawReminder(card) {
+  reminderCard = card;
+  const words = vocab.reminder;
+  const held = (card.held || []).length > 0;
+  const quiet = !held && (card.asked || []).length === 0;
+  $("reminder-card").classList.remove("hidden");
+  // Held, the card is the hold, the rows holding it and the toggle, and
+  // nothing else at all — not even what the record last drafted.
+  $("reminder-status").textContent = held ? "" : reminderStatus(card);
+  $("reminder-status").classList.toggle("hidden", held);
+
+  // The hold, said once and here: the sentence, then the requests under it
+  // with the reason each carries (decision 115's rows, in 118's card).
+  const hold = $("reminder-hold");
+  hold.classList.toggle("hidden", !held);
+  hold.style.setProperty("--stage-ink", words.palette[words.hold_colour]);
+  $("reminder-held").textContent =
+    held ? fill(vocab.reminder.held_line, { n: card.held.length }) : "";
+  show("reminder-held-rows", (card.held || []).map((row) =>
+    el("li", {},
+      el("span", { className: "rem-hold-id" }, row.identifier),
+      ` ${row.document}`,
+      el("span", { className: "rem-hold-why" }, row.reason))));
+
+  // The four rungs, each in its own colour, the one in force pressed. Live
+  // only when there is a generated letter to re-stage: a held reminder and
+  // one somebody edited by hand both leave it standing but dead.
+  $("reminder-stages").setAttribute("aria-label", words.stage_group);
+  show("reminder-stages", words.stages.map((stage) => {
+    const button = el("button", {
+      type: "button",
+      className: `rem-stage rem-stage-${stage.number}`,
+      "aria-pressed": String(card.stage === stage.number),
+      disabled: !card.editable,
+      dataset: { stage: stage.number },
+    }, el("span", { className: "rem-stage-n" }, stage.number), ` ${stage.name}`);
+    button.style.setProperty("--stage-ink", vocab.reminder.palette[stage.colour]);
+    return button;
+  }));
+
+  $("reminder-hint").textContent = quiet ? words.nothing_to_send : words.stage_toggle_hint;
+  $("reminder-hint").classList.toggle("hidden", held || (!card.editable && !quiet));
+  $("reminder-edited").textContent = words.edited_by_hand;
+  $("reminder-edited").classList.toggle("hidden", held || !card.file.edited);
+
+  const subject = $("reminder-subject");
+  const marks = (stageOf(card.stage) || {}).emphasis || {};
+  subject.textContent = card.subject ? `${words.subject_prefix}${card.subject}` : "";
+  subject.className = `rem-subject ${marked(marks.subject_colour, marks.subject_bold)}`.trim();
+  subject.style.setProperty("--stage-ink", stageInk(card.stage));
+  subject.classList.toggle("hidden", held || !card.subject);
+
+  // The letter, drawn from its own shape as nodes - the page is built from
+  // data and never from markup, so the body the clipboard carries is not
+  // the body on screen even though both say exactly the same words.
+  const preview = $("reminder-preview");
+  preview.setAttribute("aria-label", words.heading);
+  preview.style.setProperty("--stage-ink", stageInk(card.stage));
+  preview.style.setProperty("--rem-ink", words.palette[words.letter_ink.body]);
+  preview.style.setProperty("--rem-muted", words.palette[words.letter_ink.muted]);
+  preview.style.setProperty("--rem-paper", words.palette[words.letter_ink.paper]);
+  preview.classList.toggle("hidden", held);
+  show("reminder-preview", held ? [] : letterNodes(card));
+
+  // Held: the hold line, the rows and the toggle, and nothing that reads
+  // like something to send. There is no file to open either.
+  $("reminder-actions").classList.toggle("hidden", held);
+  $("btn-open-draft").disabled = !card.file.exists;
+}
+
+function reminderStatus(card) {
+  const words = vocab.reminder;
+  if (card.approved) {
+    return fill(words.approved_line, { date: card.approved.date, n: card.approved.stage });
+  }
+  if (card.last) return fill(words.last_drafted_line, { date: card.last.date, n: card.last.stage });
+  return words.never_drafted_line;
+}
+
+// A line break inside a paragraph is a break, not a space: the quiet
+// week's paragraph and the sign-off are written wrapped.
+function lines(text) {
+  const out = [];
+  String(text).split("\n").forEach((line, i) => {
+    if (i) out.push(el("br"));
+    out.push(line);
+  });
+  return out;
+}
+
+function letterNodes(card) {
+  const letter = card.letter || {};
+  const marks = (stageOf(card.stage) || {}).emphasis || {};
+  if (!letter.greeting) {
+    // A draft somebody edited by hand: their own paragraphs, and no
+    // stage's emphasis on words the machine did not write.
+    return String(card.text || "").split("\n\n")
+      .filter((block) => block.trim())
+      .map((block) => el("p", {}, ...lines(block.replace(/^\n+|\n+$/g, ""))));
+  }
+  const nodes = [el("p", {}, ...lines(letter.greeting))];
+  if (letter.progress) nodes.push(el("p", {}, letter.progress));
+  if (letter.intro) nodes.push(el("p", {}, ...lines(letter.intro)));
+  for (const section of letter.sections || []) {
+    nodes.push(el("p", { className: "rem-sec" }, section.heading));
+    nodes.push(el("ul", {}, section.items.map((line) =>
+      el("li", { className: marked(marks.list_colour, marks.list_bold) }, line))));
+  }
+  if ((letter.drop || []).length) {
+    // A span and never a link: an address the window followed would take
+    // the app somewhere, and the client's own letter is where it is live.
+    const drop = el("p", {}, letter.drop.join(" "));
+    if (letter.link) drop.append(el("br"), el("span", { className: "rem-link" }, letter.link));
+    nodes.push(drop);
+  }
+  if ((letter.deadline || []).length) {
+    nodes.push(el("p", { className: marked(marks.deadline_colour, false) },
+      letter.deadline.map((run) =>
+        run.colour || run.bold
+          ? el("span", { className: marked(run.colour, run.bold) }, run.text)
+          : run.text)));
+  }
+  if (letter.close) nodes.push(el("p", {}, letter.close));
+  if ((letter.signoff || []).length) {
+    nodes.push(el("p", { className: "rem-sign" }, ...lines(letter.signoff.join("\n"))));
+  }
+  return nodes;
+}
+
+// The same words twice, so whichever one Outlook takes is the letter: the
+// body as HTML it keeps, and the plain text beside it. The subject is not
+// on the clipboard - it goes in Outlook's own box, and the card shows it
+// as text a person selects.
+async function copyReminder() {
+  if (!reminderCard) return;
+  const btn = $("btn-copy");
+  btn.disabled = true;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      "text/html": new Blob([reminderCard.html], { type: "text/html" }),
+      "text/plain": new Blob([reminderCard.text], { type: "text/plain" }),
+    })]);
+    banner(vocab.reminder.copied, "ok");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// What you see is what you approve: the fingerprint of the text on screen
+// goes with the click, and a panel the record has moved under is refused
+// by the API and read again (decision 112's rule, on this card).
+async function approveReminder() {
+  if (!reminderCard) return;
+  const btn = $("btn-approve");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("approve"), {
+      stage: reminderCard.stage,
+      fingerprint: reminderCard.fingerprint,
+    });
+    drawReminder(result.reminder);
+    const approved = result.reminder.approved;
+    const said = approved
+      ? fill(vocab.reminder.approved_line, { date: approved.date, n: approved.stage })
+      : vocab.reminder.approve;
+    banner(result.set_aside
+      ? `${said}. ${fill(vocab.reminder.set_aside_line, { name: result.set_aside })}.`
+      : said, "ok");
+  } catch (err) {
+    toast(err.message);
+    await loadReminder();
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── A copy that wandered: the three answers, all of them a person's ─────
@@ -680,6 +907,12 @@ function applyVocabulary() {
   // (decision 114); the page carries no word for either of them.
   $("review-mode-cards").textContent = vocab.review_labels.card_mode;
   $("review-mode-list").textContent = vocab.review_labels.list_mode;
+  // The Reminder card's heading and its three buttons (decision 118).
+  // Nothing here sends, and none of these words is the page's.
+  $("reminder-heading").textContent = vocab.reminder.heading;
+  $("btn-copy").textContent = vocab.reminder.copy;
+  $("btn-approve").textContent = vocab.reminder.approve;
+  $("btn-open-draft").textContent = vocab.reminder.open_draft;
   $("root-input").placeholder = `e.g. ${vocab.example_root}`;
   // The firm's own telephone number, beside its name: the label, the
   // sentence under it and the number itself are all Python's.
@@ -1461,6 +1694,15 @@ $("btn-shared").addEventListener("click", () => paths && window.tracker.open(pat
 $("btn-edit").addEventListener("click", openEditor);
 $("btn-view").addEventListener("click", () => paths && window.tracker.open(paths.view));
 $("btn-status").addEventListener("click", () => paths && window.tracker.open(paths.status));
+$("btn-copy").addEventListener("click", copyReminder);
+$("btn-approve").addEventListener("click", approveReminder);
+$("btn-open-draft").addEventListener("click", () => paths && window.tracker.open(paths.draft));
+$("reminder-stages").addEventListener("click", (e) => {
+  const button = e.target.closest(".rem-stage");
+  if (!button || button.disabled) return;
+  reminderStage = Number(button.dataset.stage);
+  loadReminder();
+});
 $("eng-select").addEventListener("change", (e) => {
   active = e.target.value;
   refresh(active);

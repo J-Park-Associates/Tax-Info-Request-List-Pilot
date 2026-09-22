@@ -73,15 +73,16 @@ person types.
 - **Nothing is guessed.** If a file is in `00 - Needs Review`, a person
   decides — in the app, by picking the request and clicking *File it*. The
   filer does the move, the rename, the index row and the re-scan.
-- **Nothing is ever sent by the system.** Open `reminder-draft.txt`, edit
-  it, send it yourself. An edited draft is never overwritten.
+- **Nothing is ever sent by the system.** Read the draft in the app's
+  Reminder card or open `reminder-draft.txt`, edit it, send it yourself.
+  There is no send button anywhere, and an edited draft is never overwritten.
 - **Catalog changes affect every future engagement.** Edit
   `tracker/templates.py` and commit it; the test suite checks every row can
   recognise its own document. The keywords staff have taught one engagement
   at a time are listed together by `python tools/learned_keywords.py`, once a
   season — that list is what the next catalog commit is made of.
 
-## Five things a person still does in the app
+## Six things a person still does in the app
 
 - **Edit Request List** opens the list in the app: add, change, remove or
   paste rows and the engagement's details; a bad value is refused when you
@@ -174,6 +175,31 @@ person types.
   already home is named every pass until you remove it yourself. A page
   filed under several requests is put back and never kept or sent from
   here, because which copy you meant is not the tracker's to guess.
+- **The Reminder card**, under the request table: the week's draft, and the
+  only place in the app a client letter is read (decision 118). It says what
+  the record says — the day and stage of the last draft, or that one was
+  approved, or that there has been none — and shows the subject line and the
+  letter as the client will read it. The four stages are a toggle with the
+  one the Due Date gives pressed; moving it rewrites the letter on screen at
+  that rung and touches no file, and who is asked never changes with it.
+  **Copy for Outlook** puts the body on the clipboard twice, as formatted
+  HTML and as plain text with the same words, so it pastes into Outlook with
+  the ladder's colour intact; the subject is not on the clipboard, because
+  it goes in Outlook's own box. **Approve** makes the text on screen this
+  week's draft: it is written to `reminder-draft.txt`, one
+  `tracker.ledger.DRAFT_APPROVED` event records the stage and the
+  fingerprint, any draft standing beside it is renamed
+  `reminder-draft.set-aside-<date>.txt` and never deleted, and no writer
+  overwrites it afterwards — the pass and the command line's own `--write`
+  both land beside it, as they do beside one you edited, and the pass
+  spends the approval on the next draft day. **Open the draft file** opens
+  the file itself. A draft you have edited by hand is shown as it stands
+  with the toggle dead — approve it as it is, or delete it to get a
+  regenerated one. What the card shows and copies is the letter alone: the
+  staff-side lines the file ends with, under their own dashed rule, are the
+  machine's note to you and never reach the clipboard. A held reminder
+  shows the hold and the requests holding it and nothing that reads like
+  something to send.
 
 ## Collaboration
 

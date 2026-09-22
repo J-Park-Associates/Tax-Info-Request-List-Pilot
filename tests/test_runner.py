@@ -47,6 +47,7 @@ from tracker.runner import (
     REMINDERS_ALWAYS,
     REMINDERS_AUTO,
     REMINDERS_NEVER,
+    STAGE_NOTE,
     STATUS_GENERATED,
     STATUS_HELD,
     STATUS_PAGE_FILENAME,
@@ -1033,3 +1034,76 @@ def test_an_engagement_nobody_passed_is_read_rather_than_run(tmp_path, samples):
 
     text = write_status_page(clients, report).read_text(encoding="utf-8")
     assert STATUS_NOT_PASSED in text
+
+
+# ----------------------------- an approved draft, in the pass (decision 118) ----
+# A person read this week's draft in the app and approved it. Until the next
+# draft day the pass treats it exactly as it treats one somebody edited:
+# never overwritten, a regenerated draft beside it, and the practice page
+# says so instead of a stage.
+
+
+def approve_the_standing_draft(engagement_dir, today):
+    """What the app's approve command leaves behind, without the app: the
+    draft_approved event for the file that is standing, under the lock."""
+    from tracker.locking import engagement_lock
+    from tracker.reminder import approved_event, draft_reminder
+
+    draft = draft_reminder(engagement_dir, today=today)
+    with engagement_lock(engagement_dir):
+        store.record(store.connect(), engagement_dir,
+                     approved_event(draft, engagement_dir / DRAFT_FILENAME))
+
+
+def test_an_approved_draft_is_not_overwritten_by_the_days_repeat_and_is_superseded_next_week(
+        tmp_path, samples, stamped_on):
+    engagement = build_engagement(tmp_path, samples)
+    first = pass_on(stamped_on, engagement, SATURDAY).drafted
+    assert first == engagement.path / DRAFT_FILENAME
+    kept = first.read_bytes()
+    approve_the_standing_draft(engagement.path, SATURDAY)
+
+    # The draft day's repeat: the approved file is left, and the week's
+    # regenerated draft lands beside it exactly as it does beside an edit.
+    repeat = pass_on(stamped_on, engagement, SATURDAY)
+    assert first.read_bytes() == kept, "an approval must never be clobbered"
+    assert repeat.drafted.name == NEW_DRAFT_FILENAME
+    assert repeat.approved is True
+
+    # Next draft week the approval is spent: the week's draft is written
+    # as the week's draft, and the page stops saying approved.
+    (engagement.path / NEW_DRAFT_FILENAME).unlink()
+    later = pass_on(stamped_on, engagement, SATURDAY + dt.timedelta(days=7))
+    assert later.drafted == first and later.approved is False
+    assert first.read_bytes() != kept or is_unedited(first)
+
+
+def test_an_approved_draft_survives_a_hold_like_an_edited_one(tmp_path, samples, stamped_on):
+    """A hold retires the run's own unedited drafts. One a person approved
+    is not the run's - it is this week's answer, and it stays."""
+    engagement = build_chased_engagement(tmp_path, samples)
+    first = pass_on(stamped_on, engagement, SATURDAY).drafted
+    assert first == engagement.path / DRAFT_FILENAME
+    kept = first.read_bytes()
+    approve_the_standing_draft(engagement.path, SATURDAY)
+
+    make_ambiguous(engagement.path)
+    run = pass_on(stamped_on, engagement, SATURDAY)
+    assert run.held and run.drafted is None
+    assert first.exists() and first.read_bytes() == kept
+
+
+def test_the_practice_page_says_approved_where_it_would_say_the_stage(tmp_path, samples):
+    """One column, one answer per engagement: held, then approved, then the
+    rung the letter was written at."""
+    from tracker.reminder import APPROVED_NOTE
+    from tracker.runner import _drafted_cell
+
+    engagement = build_engagement(tmp_path, samples)
+    run = EngagementRun(engagement=engagement, drafted=engagement.path / DRAFT_FILENAME, stage=3)
+    assert _drafted_cell(run) == STAGE_NOTE.format(n=3)
+    run.approved = True
+    assert _drafted_cell(run) == APPROVED_NOTE
+    run.held = 2
+    assert _drafted_cell(run) == STATUS_HELD.format(n=2)
+    assert APPROVED_NOTE in run.summary()

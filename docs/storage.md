@@ -144,8 +144,15 @@ home from the client's original, already home, or refused a home holding
 a different file and sent to review instead. One name again, because the
 row the line carries says which. The rest of the names are not row events and fold their own
 way: `scanned` (the statuses), `keyword_learned`, `rules_changed`,
-`drafted`, `moving` and `move_abandoned`, and the retired
-`rules_imported` and `migrated`.
+`drafted`, `draft_approved`, `moving` and `move_abandoned`, and the retired
+`rules_imported` and `migrated`. `draft_approved` is decision 118's and the
+newest of them: a person read the week's draft in the app and said it is
+the one to send. It carries the stage, the draft file, the fingerprint in
+that file's header and the requests it asks for — a number, a name and
+identifiers, and not one word of the letter — and nothing folds it: it is
+a fact about a week, like `drafted`, not a row of the index. Until the next
+draft day the pass reads it and leaves that file exactly as it leaves one
+somebody edited.
 
 ## The intent is the decision
 
@@ -443,3 +450,13 @@ nothing; the version is what a file written before it cannot have. The
 firm's phone number, which only the final notice says, is **not** here at
 all: it belongs to the firm rather than to an engagement, and it is kept
 beside the firm's name in the settings file.
+
+**Afterwards (decision 118) — a person approves the week's draft.** No
+schema change at all: `draft_approved` is an event in `events`, folded by
+nothing, exactly as `drafted` is. The reminder is a fact about a week
+rather than about a row, and both lines say the same kind of thing — this
+is what the week's letter asked for, this is the file it is in, this is the
+fingerprint of that file's header — so the store answers "was this draft
+approved this week?" with the same `last_event` query it already answers
+"when was this engagement last drafted?" with. Nothing about the letter's
+words goes in either line, and neither is ever rewritten.

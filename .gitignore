@@ -68,3 +68,4 @@ tracker.db-shm
 tax-tracker.xml
 reminder-draft.txt
 reminder-draft.NEW.txt
+reminder-draft.set-aside-*.txt

@@ -31,6 +31,15 @@ a style sheet link or an image, because a page naming the firm's clients
 that reaches the network to render is a page telling somebody else which
 firm is reading what. A page's own style is inline, in the module that owns
 the page.
+
+**The firm's colours live here too** (decision 118). :data:`PALETTE` and the
+two font stacks mirror the design system's tokens, once: the reminder's
+HTML body carries them inline because Outlook cannot read a variable, and
+the app reads them out of the API rather than typing a colour of its own.
+The design system is a folder beside the repository that nothing here may
+read at run time - a page that fetched its own colours would be a page
+reaching outside the engagement it describes - so this is the mirror, and
+a test holds it to the tokens wherever they can be read.
 """
 
 from __future__ import annotations
@@ -45,6 +54,30 @@ from dataclasses import dataclass
 #: until somebody clicks; a page with no script shows a plain table and the
 #: attribute means nothing, which is the point.
 SORT_ATTRIBUTE = "data-sort"
+
+#: The firm's colours, by the design system's own primitive names, mirrored
+#: here once (decision 118). Each line names the token it mirrors. Nothing
+#: downstream writes a colour: the reminder's HTML body reads these because
+#: Outlook keeps an inline style and drops a variable, and the desktop app
+#: reads them through the API's vocabulary so the renderer types none.
+PALETTE: dict[str, str] = {
+    "navy_900": "#1B2A4A",      # navy-900, the ink-strong of the light set
+    "slate_600": "#3A4660",     # slate-600, ink-body
+    "grey_500": "#5C6577",      # grey-500, ink-muted
+    "gold_800": "#7A5F16",      # gold-800, ink-accent
+    "warning_600": "#8A5A10",   # warning-600
+    "danger_600": "#A8362F",    # danger-600
+    "cream_50": "#F5F0E8",      # cream-50, surface-page
+    "white": "#FFFFFF",         # white, surface-raised
+}
+
+#: The two faces a letter is written in, named in full wherever they are
+#: used. Not the design system's display faces: an email is read in
+#: whatever the reader's mail client has, and neither Outlook nor a phone
+#: has the firm's own, so these are the fallbacks the design pass chose on
+#: purpose and they are what ships.
+FONT_SANS = "Arial, Helvetica, sans-serif"
+FONT_SERIF = "Georgia, 'Times New Roman', serif"
 
 
 def esc(value: object) -> str:

@@ -102,6 +102,7 @@ from tracker.registry import (
     discover_engagements,
 )
 from tracker.reminder import (
+    APPROVED_NOTE,
     DRAFT_FILENAME,
     NEW_DRAFT_FILENAME,
     DraftsEditedError,
@@ -110,7 +111,8 @@ from tracker.reminder import (
     draft_reminder,
     drafted_event,
     held_refusal,
-    is_unedited,
+    is_approved_this_week,
+    is_protected,
     last_draft_event,
     record_draft,
     write_draft,
@@ -190,6 +192,10 @@ class EngagementRun:
     #: Which of the reminder's four stages the draft was written at
     #: (decision 117), and 0 when no draft was written at all.
     stage: int = 0
+    #: Whether this week's standing draft is one a person approved in the
+    #: app (decision 118). The pass leaves it exactly as it leaves an
+    #: edited one, and the practice page says so instead of a stage.
+    approved: bool = False
     #: How many ambiguous rows hold this engagement's reminder (decision 115);
     #: ``draft_note`` names them.
     held: int = 0
@@ -223,6 +229,8 @@ class EngagementRun:
             parts.append(f"drafted {self.drafted.name}")
             if self.stage:
                 parts.append(STAGE_NOTE.format(n=self.stage))
+        if self.approved:
+            parts.append(APPROVED_NOTE)
         if self.held:
             parts.append(f"held {self.held}")
         return f"OK      {self.engagement.label}: {', '.join(parts)}"
@@ -530,6 +538,11 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
     # and a dated run says what it would have said on that date.
     draft = draft_reminder(engagement.path, today=today)   # reads the details itself
     week = last_draft_day(today, weekday)
+    # A draft a person approved in the app this week is this week's answer
+    # (decision 118): the pass leaves the file alone exactly as it leaves
+    # one somebody edited, and the page says so.
+    run.approved = is_approved_this_week(engagement.path, engagement.path / DRAFT_FILENAME,
+                                         since=week)
 
     if draft.is_held:
         # One ambiguous row holds the whole reminder: nothing that reads
@@ -540,20 +553,21 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
         # always: the mode forces the attempt, and the attempt is held.
         run.held = len(draft.held)
         run.draft_note = held_refusal(draft)
-        _retire_unedited_drafts(engagement.path)
+        _retire_unedited_drafts(engagement.path, approved_since=week)
         _record(engagement.path, previous, drafted_event(draft, None))
         return
 
     if not draft.has_outstanding:
         run.draft_note = NOTHING_OUTSTANDING
-        refreshed = _refresh_stale_draft(draft, engagement.path, changed_from=last_asked)
+        refreshed = _refresh_stale_draft(draft, engagement.path, changed_from=last_asked,
+                                         approved_since=week)
         _record(engagement.path, previous,
                 drafted_event(draft, refreshed[0] if refreshed else None), since=week)
         return
 
     try:
         written = write_draft(draft, engagement_dir=engagement.path, preserve_edits=True,
-                              changed_from=last_asked)
+                              changed_from=last_asked, approved_since=week)
     except DraftsEditedError as exc:
         run.draft_note = str(exc)
         return
@@ -581,13 +595,15 @@ def _record(engagement_dir: Path, previous: dict | None, event: dict, *,
         record_draft(engagement_dir, event)
 
 
-def _retire_unedited_drafts(engagement_dir: Path) -> None:
+def _retire_unedited_drafts(engagement_dir: Path, *,
+                            approved_since: dt.date | None = None) -> None:
     """A held client has no draft file (decision 115): the run's own
     unedited drafts from an earlier week are removed, and one a person has
-    edited is left byte for byte - it is their work, not the run's."""
+    edited - or approved this week (decision 118) - is left byte for byte;
+    it is their work, not the run's."""
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
         path = engagement_dir / name
-        if not path.is_file() or not is_unedited(path):
+        if not path.is_file() or is_protected(engagement_dir, path, approved_since=approved_since):
             continue
         try:
             path.unlink()
@@ -595,12 +611,14 @@ def _retire_unedited_drafts(engagement_dir: Path) -> None:
             log.warning("Could not retire %s (%s)", path.name, exc)
 
 
-def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | None = None) -> list[Path]:
+def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | None = None,
+                         approved_since: dt.date | None = None) -> list[Path]:
     """Nothing is outstanding, and a draft from a week that had something to
     chase is still there. The run's own unedited draft is rewritten as what
     the run would say today - the same text ``python -m tracker.reminder``
     writes - so it is neither stale nor dated as if untouched; one a person
-    has edited is theirs and is left exactly as it is. Returns the files it
+    has edited, or approved this week, is theirs and is left exactly as it
+    is. Returns the files it
     refreshed: the first is what the ``DRAFTED`` event names, so
     ``last_drafted`` reads this draft day and no weekday pass mistakes the
     quiet week for a missed one.
@@ -608,7 +626,7 @@ def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | No
     refreshed: list[Path] = []
     for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
         path = engagement_dir / name
-        if not path.is_file() or not is_unedited(path):
+        if not path.is_file() or is_protected(engagement_dir, path, approved_since=approved_since):
             continue
         try:
             refreshed.append(write_draft(draft, path=path, changed_from=changed_from))
@@ -816,10 +834,13 @@ def _page_title(root: Path) -> str:
 
 def _drafted_cell(run: EngagementRun) -> str:
     """What the practice page's Drafted column says about one engagement:
-    the hold and its count, else the stage the draft was written at, else
-    yes for a draft from before the stages, else nothing at all."""
+    the hold and its count, else that a person has approved this week's
+    draft, else the stage the draft was written at, else yes for a draft
+    from before the stages, else nothing at all."""
     if run.held:
         return STATUS_HELD.format(n=run.held)
+    if run.approved:
+        return APPROVED_NOTE
     if run.stage:
         return STAGE_NOTE.format(n=run.stage)
     return YES if run.drafted else ""

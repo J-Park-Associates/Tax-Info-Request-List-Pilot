@@ -106,7 +106,6 @@
           <h3>Document Requests</h3>
           <span id="summary" class="summary"></span>
         </div>
-        <p id="reminder-held" class="summary held hidden" role="status"></p>
         <table class="requests" aria-label="Document requests">
           <thead>
             <tr>
@@ -120,6 +119,40 @@
           </thead>
           <tbody id="rows"></tbody>
         </table>
+      </section>
+
+      <!-- The week's reminder (decision 118): what the record says about it,
+           the four stages as a toggle, the letter as it will read, and the
+           three things a person does with it — copy it, approve it, or open
+           the file. Nothing sends: there is no send button here and no mail
+           link anywhere in the app. Every word and every colour is the API's
+           (vocab.reminder); the page types neither, and the preview is built
+           from the letter's own shape with DOM nodes, never from markup. -->
+      <section id="reminder-card" class="card hidden">
+        <div class="card-head">
+          <h3 id="reminder-heading"></h3>
+          <span class="summary"></span>
+        </div>
+        <div class="reminder-body">
+          <p id="reminder-status" class="rem-status"></p>
+          <!-- One shape per state: held is the hold line, the rows and the
+               toggle, and nothing that reads like something to send. -->
+          <div id="reminder-hold" class="hidden">
+            <p id="reminder-held" class="rem-hold" role="status"></p>
+            <ul id="reminder-held-rows" class="rem-hold-rows"></ul>
+          </div>
+          <div id="reminder-stages" class="rem-stages" role="group"></div>
+          <p id="reminder-hint" class="rem-hint"></p>
+          <p id="reminder-edited" class="rem-edited hidden"></p>
+          <p id="reminder-subject" class="rem-subject"></p>
+          <div id="reminder-preview" class="rem-preview" tabindex="0"></div>
+          <div id="reminder-actions" class="rem-actions">
+            <button type="button" id="btn-copy" class="btn btn-primary"></button>
+            <button type="button" id="btn-approve" class="btn"></button>
+            <span class="toolbar-spacer"></span>
+            <button type="button" id="btn-open-draft" class="rem-quiet"></button>
+          </div>
+        </div>
       </section>
 
       <!-- The copies that wandered (decision 110): above the review queue, because a
