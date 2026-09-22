@@ -372,6 +372,11 @@ def _write_readme(
         "   find them; there's no need to wait and send everything at once.",
         "4. Original PDFs or Excel files are preferred; scans and photos",
         "   are fine as long as they are readable.",
+        # Decision 128, Jason's sign-off: a named request files only where
+        # the name is on the page, and a report sent as its middle pages
+        # has no name on it. Asked once, in the client's own words.
+        "   Statements and reports should show the name they were issued",
+        "   to - please send the whole page, with its header.",
         "5. If a document lives in Google Docs or Google Sheets, please",
         f"   download it first ({GOOGLE_EXPORT_HINT}) and upload",
         f"   that copy - Google shortcut files ({google_stub_examples()}) can't be read.",

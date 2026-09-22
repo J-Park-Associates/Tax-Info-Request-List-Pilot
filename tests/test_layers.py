@@ -65,6 +65,14 @@ a return's list and details, this owns the household's - and it reaches
 the manifest does. ``records`` and ``ledger`` do not import ``layout``:
 they hold no path arithmetic.
 
+``names`` joins L2 with decision 128, beside ``router``: it is the matcher
+for the name on a page - normalising, whole-phrase containment, the
+spellings the app proposes and the three-way verdict - and it imports
+``records`` for the one way a name is cut into words and ``content_check``
+for the one page-break character. Like the router it decides nothing about
+a folder: the check itself runs one layer up, in the filer's household
+pass, where the returns and their people lists are.
+
 ``store`` joins L1 with decision 101 and is deliberately narrower than its
 layer allows: it imports ``records``, ``ledger`` and ``locking`` and
 nothing else of the package, not even the in-layer ``manifest``.
@@ -87,7 +95,7 @@ LAYERS: dict[int, frozenset[str]] = {
     0: frozenset({"__init__", "reasons", "locking", "page", "fsio", "settings", "layout"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
-    2: frozenset({"content_check", "router"}),
+    2: frozenset({"content_check", "names", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     4: frozenset({"runner", "scheduling"}),
     5: frozenset({"api"}),

@@ -91,7 +91,9 @@ from pathlib import Path
 # the manifest.
 from tracker.records import (
     COL_IDENTIFIER,
+    NO,
     RULE_FIELDS,
+    YES,
     EngagementInfo,
     StatusUpdate,
     identifier_key,
@@ -112,13 +114,17 @@ COL_ANY_KEYWORDS = "Any Keywords"
 COL_DATE_PATTERN = "Date Pattern"
 COL_MANUAL_OVERRIDE = "Manual Override"
 COL_OVERRIDE_REASON = "Override Reason"
+#: Whether this request's document carries a name (decision 128). Last, as
+#: it was added last, and yes by default everywhere: strict is the rule the
+#: owner asked for.
+COL_NAMED = "Named"
 COL_STATUS = "Status"
 COL_RECEIVED_DATE = "Received Date"
 COL_FILE_COUNT = "File Count"
 COL_VALIDATION_NOTES = "Validation Notes"
 
 #: Each column's key in the record and the API, beside its header: the
-#: eleven columns a person edits, in the order the editor shows them. The
+#: twelve columns a person edits, in the order the editor shows them. The
 #: keys are ``records.RULE_FIELDS`` less the two the person never types
 #: (``row`` is the position, ``date_pattern_derived`` is what
 #: ``validated()`` decided), and the assertion below holds the two lists
@@ -135,6 +141,7 @@ COLUMNS: tuple[tuple[str, str], ...] = (
     (COL_DATE_PATTERN, "date_pattern"),
     (COL_MANUAL_OVERRIDE, "manual_override"),
     (COL_OVERRIDE_REASON, "override_reason"),
+    (COL_NAMED, "named"),
 )
 #: The headers, in order. The roadmap's schema table lists exactly
 #: these (``tests/test_single_source.py`` holds it to that), the Status
@@ -176,6 +183,11 @@ COLUMN_HELP: dict[str, str] = {
         "for the year"
     ),
     "override_reason": "Why the rules were overridden; required when Manual Override is Accepted",
+    "named": (
+        "yes: the document carries the taxpayer's or the entity's name and files only where "
+        "that name is on the page; no: a receipt, a log or a headerless export, filed by its "
+        "keywords alone when the name is absent"
+    ),
 }
 assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
 
@@ -311,7 +323,7 @@ UNLEARN_REFUSED = "{identifier} was never taught {keyword!r}; nothing to unlearn
 class RequestItem:
     """One request: the person's rule, and what the record says about it.
 
-    ``records.RULE_FIELDS`` names the person's half - the eleven columns
+    ``records.RULE_FIELDS`` names the person's half - the twelve columns
     (:data:`COLUMNS`) plus ``row``, the request's 1-based position in the
     list - and that half is what a ``rules_changed`` event and the
     store's ``requests`` table carry. The four status fields are the
@@ -336,6 +348,12 @@ class RequestItem:
     validation_notes: str = ""
     row: int = 0                               # 1-based position in the list
     override_reason: str = ""                  # why; required with Override.ACCEPTED
+    #: Whether this request's document carries a name (decision 128).
+    #: True by default and everywhere a row is read without one: strict is
+    #: the rule, so a row nobody has marked is a row that needs the name on
+    #: the page. False is a receipt, a log or a headerless export - filed
+    #: on its keywords alone when no name is there to find.
+    named: bool = True
 
     @property
     def label(self) -> str:
@@ -740,6 +758,28 @@ def _override_reason(value: object, override: str, where: str) -> str:
     return text
 
 
+def _named(value: object, where: str) -> bool:
+    """A Named mark as the editor sends it, as the catalog writes it, or as
+    the store hands it back: the two yes/no words, a boolean, or blank.
+
+    **Blank is yes.** A row nobody has marked is strict (decision 128): a
+    list pasted from a spreadsheet without the column, a row typed in the
+    wizard, and a rule stored before the mark existed all need the name on
+    the page. Anything else is refused with the column named, exactly as a
+    Manual Override nobody recognises is.
+    """
+    if value is None or value == "":
+        return True
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text == YES:
+        return True
+    if text == NO:
+        return False
+    raise ManifestError(f"{where}: {COL_NAMED} must be {YES} or {NO} (or blank), got {value!r}")
+
+
 def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem:
     """One request row from plain values: the editor's JSON, a catalog spec,
     a test's dict.
@@ -785,6 +825,7 @@ def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem
         date_pattern="" if fields.get("date_pattern_derived") else text("date_pattern"),
         manual_override=_override(fields.get("manual_override"), where),
         override_reason=text("override_reason"),
+        named=_named(fields.get("named"), where),
     )
 
 

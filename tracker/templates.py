@@ -22,6 +22,18 @@ recognise its document, so it never auto-files (see :mod:`tracker.router`);
 a template row like that would be a request the system can only ever park
 for a person, which defeats the point of a template. The year check is not
 written here: a Period like ``TY2025`` implies it (:func:`tracker.manifest.derived_date_pattern`).
+
+Every row also carries a **name mark** (decision 128): whether the document
+this request asks for is addressed to somebody. A W-2, a 1099, a K-1, a
+mortgage statement, a bank statement and a return are named - the payer,
+the lender, the agency or the return itself writes a name on the page - and
+a receipt, a log, a trial balance, a schedule or a spreadsheet export is
+not. Forty of the eighty-four rows here are named. Financial statements and
+bank statements are named because a statement without the entity's name on
+it is not one, which is why the client README asks for reports with their
+headers on. The mark decides what the household pass does when a document
+names nobody on the return: a named request parks it for a person, an
+unnamed one files it on its keywords alone.
 """
 
 from __future__ import annotations
@@ -90,10 +102,11 @@ DEC = f"Dec {BASE_YEAR}"
 AS_OF_YEAR_END = f"As of 12/31/{BASE_YEAR}"
 
 
-def _row(identifier: str, document: str, *, core: bool, period: str = TY, extensions: str = "pdf",
-         required_keywords: str = "", any_keywords: str = "", expected_count: int = 1) -> dict:
+def _row(identifier: str, document: str, *, core: bool, named: bool, period: str = TY,
+         extensions: str = "pdf", required_keywords: str = "", any_keywords: str = "",
+         expected_count: int = 1) -> dict:
     row = {"identifier": identifier, "document": document, "period": period,
-           "extensions": extensions, "core": core}
+           "extensions": extensions, "core": core, "named": named}
     if expected_count > 1:
         row["expected_count"] = expected_count
     if required_keywords:
@@ -214,16 +227,16 @@ SHARED = {
 }
 
 
-def _shared(identifier: str, key: str, *, core: bool) -> dict:
-    return _row(identifier, core=core, **SHARED[key])
+def _shared(identifier: str, key: str, *, core: bool, named: bool) -> dict:
+    return _row(identifier, core=core, named=named, **SHARED[key])
 
 
 # Per-form request templates shown on the wizard's second page. "core" items
 # are pre-checked.
 FORM_TEMPLATES = {
     "1040": [
-        _row("A01", "W-2 Wage Statements - All Employers", core=True, required_keywords="W-2, wage and tax statement, employee's social security number", expected_count=2),
-        _row("A02", "1099-INT / 1099-DIV - Interest & Dividend Income", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-oid", expected_count=3),
+        _row("A01", "W-2 Wage Statements - All Employers", core=True, named=True, required_keywords="W-2, wage and tax statement, employee's social security number", expected_count=2),
+        _row("A02", "1099-INT / 1099-DIV - Interest & Dividend Income", core=True, named=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-oid", expected_count=3),
         # Decision 90, the owner's: a 1040 gets one row per 1099 a person
         # actually receives, and each is known by its own number. Its
         # printed title is not always usable: the IRS "Attention" page
@@ -233,8 +246,8 @@ FORM_TEMPLATES = {
         # well, and `certain government payments` is said by the 1040-ES
         # package and not by the 1099-G at all. The two printed titles no
         # form but its own says are kept.
-        _row("A03", "1099-NEC - Nonemployee Compensation", core=False, extensions="pdf, csv", any_keywords="1099-nec"),
-        _row("A04", "1099-MISC - Miscellaneous Income", core=False, extensions="pdf, csv", any_keywords="1099-misc, miscellaneous information"),
+        _row("A03", "1099-NEC - Nonemployee Compensation", core=False, named=True, extensions="pdf, csv", any_keywords="1099-nec"),
+        _row("A04", "1099-MISC - Miscellaneous Income", core=False, named=True, extensions="pdf, csv", any_keywords="1099-misc, miscellaneous information"),
         # The 1099-K prints "Payment Card and Third Party Network
         # Transactions" across three boxes, so its whole title is never on
         # one line; `payment card` is what the form's box 1a and a
@@ -242,24 +255,24 @@ FORM_TEMPLATES = {
         # title on a checklist's line, where a menu's words are not the
         # document's (decision 73). `third party network transactions`
         # would not: it begins mid-title, past where the menu rule reads.
-        _row("A05", "1099-K - Payment Card & Third-Party Network Transactions", core=False, extensions="pdf, csv", any_keywords="1099-k, payment card"),
-        _row("A06", "1099-G - Certain Government Payments", core=False, extensions="pdf, csv", any_keywords="1099-g"),
-        _row("B01", "Prior-Year Federal & State Tax Returns", core=True, period=TY_PRIOR,
+        _row("A05", "1099-K - Payment Card & Third-Party Network Transactions", core=False, named=True, extensions="pdf, csv", any_keywords="1099-k, payment card"),
+        _row("A06", "1099-G - Certain Government Payments", core=False, named=True, extensions="pdf, csv", any_keywords="1099-g"),
+        _row("B01", "Prior-Year Federal & State Tax Returns", core=True, named=True, period=TY_PRIOR,
              required_keywords=_prior_return("individual income tax return", "filing status", JURAT,
                                              state=("resident income tax return",))),
-        _row("C01", "Mortgage Interest Statement - Form 1098", core=True, required_keywords="1098, mortgage interest"),
+        _row("C01", "Mortgage Interest Statement - Form 1098", core=True, named=True, required_keywords="1098, mortgage interest"),
         # `thank you for your donation` is a salutation every fundraiser
         # prints: a political committee's receipt and a crowdfunding site's
         # both opened with it and both say they are not deductible. The row
         # keys on receipt wording only; a per-row refusal ("not
         # tax-deductible") is the structural fix and waits for Phase C.
-        _row("D01", "Charitable Contribution Receipts", core=True, extensions="pdf, xlsx", any_keywords="donation receipt, giving statement, statement of giving, giving summary, giving record, donor statement, charitable contribution statement, charitable giving, tax-deductible donation, tax-deductible gift, donated goods, no goods or services, receipt for your donation, acknowledge your donation, acknowledge your charitable contribution"),
+        _row("D01", "Charitable Contribution Receipts", core=True, named=False, extensions="pdf, xlsx", any_keywords="donation receipt, giving statement, statement of giving, giving summary, giving record, donor statement, charitable contribution statement, charitable giving, tax-deductible donation, tax-deductible gift, donated goods, no goods or services, receipt for your donation, acknowledge your donation, acknowledge your charitable contribution"),
         # `realized gain and loss` is the firm's own wording; a broker heads
         # the export itself "Realized Gain/Loss" (Schwab) or "Realized
         # GainLoss" (a workbook's sheet name), and sends it as a workbook as
         # often as a CSV (decision 85). No IRS form in tests/irs/ says either.
-        _row("E01", "1099-B / Brokerage Year-End Statements", core=False, extensions="pdf, csv, xlsx", any_keywords="1099-b, proceeds from broker, brokerage statement, realized gain and loss, realized gain/loss, realized gain loss"),
-        _row("E02", "1099-R Retirement Distributions", core=False, any_keywords="1099-r, retirement distribution"),
+        _row("E01", "1099-B / Brokerage Year-End Statements", core=False, named=True, extensions="pdf, csv, xlsx", any_keywords="1099-b, proceeds from broker, brokerage statement, realized gain and loss, realized gain/loss, realized gain loss"),
+        _row("E02", "1099-R Retirement Distributions", core=False, named=True, any_keywords="1099-r, retirement distribution"),
         # The catalog keeps **one** K-1 row (decision 93, the owner's), and
         # a federal and a state K-1 file on it alike: California heads its
         # Schedule K-1 (568) "Member's Share of Income, Deductions,
@@ -269,72 +282,72 @@ FORM_TEMPLATES = {
         # instead, added to that engagement's own list from this one
         # (`issuer_row`, `docs/runbook.md`); the catalog cannot know which
         # entities a client is a partner in.
-        _row("F01", "Schedule K-1s Received", core=False, any_keywords="partner's share of income, shareholder's share of income, beneficiary's share of income, member's share of income"),
+        _row("F01", "Schedule K-1s Received", core=False, named=True, any_keywords="partner's share of income, shareholder's share of income, beneficiary's share of income, member's share of income"),
         # The bill's own titles. `assessor` and `parcel number` are printed
         # by the assessor's "Notice of Assessed Value - This is not a tax
         # bill", and `property tax bill` by the servicer's escrow analysis,
         # which lists the bill it paid; a county bill that prints nothing
         # but "property tax bill" mid-page parks for a person.
-        _row("G01", "Property Tax Statements", core=False, any_keywords="secured property tax bill, annual secured property tax, property tax statement, real estate tax bill, property tax notice"),
-        _shared("H01", "estimated_tax", core=False),
+        _row("G01", "Property Tax Statements", core=False, named=True, any_keywords="secured property tax bill, annual secured property tax, property tax statement, real estate tax bill, property tax notice"),
+        _shared("H01", "estimated_tax", core=False, named=False),
         # `advance payment of premium tax credit` is the marketplace's
         # eligibility notice's sentence as much as the form's column head,
         # and it never matched the form anyway: the 1095-A wraps it across
         # two lines. The form's own identifiers are enough.
-        _row("I01", "Form 1095-A - Marketplace Health Insurance", core=False, any_keywords="1095-a, marketplace identifier, monthly enrollment premium"),
+        _row("I01", "Form 1095-A - Marketplace Health Insurance", core=False, named=True, any_keywords="1095-a, marketplace identifier, monthly enrollment premium"),
         # The matcher reads the space between a keyword's words as optional,
         # so `child care statement` already finds "Childcare Statement" and
         # `day care receipt` finds "Daycare Receipt"; the run-together
         # spellings were a second copy of every keyword. What was missing
         # was the two-word one a provider actually prints.
-        _row("J01", "Childcare Provider Statements - Name, EIN, Amounts", core=False, extensions="pdf, xlsx", any_keywords="child care statement, day care statement, child care provider statement, day care provider statement, dependent care provider statement, child care receipt, day care receipt, child care tax statement, statement of child care expenses, statement of day care expenses, year-end child care, year-end day care"),
-        _row("K01", "IRA / HSA Contribution Statements - Form 5498", core=False, any_keywords="5498, 5498-sa, 5498-esa, ira contribution information, medicare advantage msa information"),
-        _row("L01", "Tuition Statements - Form 1098-T", core=False, any_keywords="1098-t, qualified tuition and related expenses"),
+        _row("J01", "Childcare Provider Statements - Name, EIN, Amounts", core=False, named=False, extensions="pdf, xlsx", any_keywords="child care statement, day care statement, child care provider statement, day care provider statement, dependent care provider statement, child care receipt, day care receipt, child care tax statement, statement of child care expenses, statement of day care expenses, year-end child care, year-end day care"),
+        _row("K01", "IRA / HSA Contribution Statements - Form 5498", core=False, named=True, any_keywords="5498, 5498-sa, 5498-esa, ira contribution information, medicare advantage msa information"),
+        _row("L01", "Tuition Statements - Form 1098-T", core=False, named=True, any_keywords="1098-t, qualified tuition and related expenses"),
     ],
     "1120": [
         # No state corporate return is in the corpus the suite defends, so
         # this row's alternatives are the federal words alone; California's
         # Form 100 would be one more phrase (decision 90).
-        _row("A01", "Prior-Year Federal & State Corporate Returns", core=True, period=TY_PRIOR,
+        _row("A01", "Prior-Year Federal & State Corporate Returns", core=True, named=True, period=TY_PRIOR,
              required_keywords=_prior_return("u.s. corporation income tax return", JURAT)),
-        _shared("A02", "trial_balance", core=True),
-        _shared("A03", "general_ledger", core=True),
-        _shared("B01", "financial_statements", core=True),
-        _shared("B02", "december_bank", core=True),
-        _shared("C01", "fixed_assets", core=True),
-        _shared("C02", "depreciation", core=False),
-        _shared("D01", "loans", core=False),
-        _shared("E01", "payroll_returns", core=True),
-        _shared("E02", "officer_comp", core=False),
-        _shared("F01", "business_estimated_tax", core=False),
-        _row("G01", "Shareholder List & Ownership Changes", core=False, extensions="xlsx, pdf", any_keywords="shareholder list, stock ledger, cap table, capitalization table"),
-        _shared("H01", "apportionment", core=False),
-        _row("I01", "Book-Tax Difference Support - Schedule M-1 Items", core=False, extensions="xlsx, pdf", any_keywords="book-tax difference, m-1 adjustment, m-1 support, book to tax reconciliation"),
+        _shared("A02", "trial_balance", core=True, named=False),
+        _shared("A03", "general_ledger", core=True, named=False),
+        _shared("B01", "financial_statements", core=True, named=True),
+        _shared("B02", "december_bank", core=True, named=True),
+        _shared("C01", "fixed_assets", core=True, named=False),
+        _shared("C02", "depreciation", core=False, named=False),
+        _shared("D01", "loans", core=False, named=True),
+        _shared("E01", "payroll_returns", core=True, named=True),
+        _shared("E02", "officer_comp", core=False, named=False),
+        _shared("F01", "business_estimated_tax", core=False, named=False),
+        _row("G01", "Shareholder List & Ownership Changes", core=False, named=False, extensions="xlsx, pdf", any_keywords="shareholder list, stock ledger, cap table, capitalization table"),
+        _shared("H01", "apportionment", core=False, named=False),
+        _row("I01", "Book-Tax Difference Support - Schedule M-1 Items", core=False, named=False, extensions="xlsx, pdf", any_keywords="book-tax difference, m-1 adjustment, m-1 support, book to tax reconciliation"),
     ],
     "1120S": [
         # California heads Form 100S "California S Corporation / Franchise
         # or Income Tax Return", and the second line is what survives the
         # break; no form in tests/irs/ says it (decision 90).
-        _row("A01", "Prior-Year Federal & State S-Corp Returns", core=True, period=TY_PRIOR,
+        _row("A01", "Prior-Year Federal & State S-Corp Returns", core=True, named=True, period=TY_PRIOR,
              required_keywords=_prior_return("income tax return for an s corporation", JURAT,
                                              state=("franchise or income tax return",))),
-        _shared("A02", "trial_balance", core=True),
-        _shared("A03", "general_ledger", core=True),
-        _shared("B01", "financial_statements", core=True),
-        _shared("B02", "december_bank", core=True),
-        _row("C01", "Shareholder List with Ownership % & Changes", core=True, extensions="xlsx, pdf", any_keywords="shareholder list, stock ledger, cap table, capitalization table"),
-        _row("C02", "Distributions by Shareholder", core=True, extensions="xlsx", any_keywords="distributions by shareholder, shareholder distribution schedule, distribution detail by shareholder"),
-        _row("C03", "Shareholder Basis Schedules", core=False, extensions="xlsx, pdf", any_keywords="shareholder basis schedule, stock basis schedule, stock and debt basis, basis computation"),
-        _row("D01", "Officer / Shareholder W-2 Compensation Detail", core=True, extensions="xlsx, pdf", any_keywords="officer compensation detail, shareholder w-2, officer w-2"),
-        _row("D02", "Health Insurance Premiums for >2% Shareholders", core=False, extensions="pdf, xlsx", any_keywords="health insurance premiums paid, 2% shareholder, shareholder health insurance premiums"),
-        _shared("E01", "payroll_returns", core=False),
-        _shared("F01", "fixed_assets", core=False),
-        _shared("F02", "depreciation", core=False),
+        _shared("A02", "trial_balance", core=True, named=False),
+        _shared("A03", "general_ledger", core=True, named=False),
+        _shared("B01", "financial_statements", core=True, named=True),
+        _shared("B02", "december_bank", core=True, named=True),
+        _row("C01", "Shareholder List with Ownership % & Changes", core=True, named=False, extensions="xlsx, pdf", any_keywords="shareholder list, stock ledger, cap table, capitalization table"),
+        _row("C02", "Distributions by Shareholder", core=True, named=False, extensions="xlsx", any_keywords="distributions by shareholder, shareholder distribution schedule, distribution detail by shareholder"),
+        _row("C03", "Shareholder Basis Schedules", core=False, named=False, extensions="xlsx, pdf", any_keywords="shareholder basis schedule, stock basis schedule, stock and debt basis, basis computation"),
+        _row("D01", "Officer / Shareholder W-2 Compensation Detail", core=True, named=True, extensions="xlsx, pdf", any_keywords="officer compensation detail, shareholder w-2, officer w-2"),
+        _row("D02", "Health Insurance Premiums for >2% Shareholders", core=False, named=False, extensions="pdf, xlsx", any_keywords="health insurance premiums paid, 2% shareholder, shareholder health insurance premiums"),
+        _shared("E01", "payroll_returns", core=False, named=True),
+        _shared("F01", "fixed_assets", core=False, named=False),
+        _shared("F02", "depreciation", core=False, named=False),
         # `shareholder loan agreement` is inside `loan agreement`; the row
         # was missing the two words an amortisation schedule and a loan
         # statement print, which the shared loans row has always had.
-        _row("G01", "Loan Agreements & Shareholder Loan Activity", core=False, extensions="pdf, xlsx", any_keywords="loan agreement, promissory note, loan statement, amortization schedule, principal balance"),
-        _shared("H01", "apportionment", core=False),
+        _row("G01", "Loan Agreements & Shareholder Loan Activity", core=False, named=True, extensions="pdf, xlsx", any_keywords="loan agreement, promissory note, loan statement, amortization schedule, principal balance"),
+        _shared("H01", "apportionment", core=False, named=False),
     ],
     "1065": [
         # California heads Form 568 "Limited Liability Company / Return of
@@ -343,21 +356,21 @@ FORM_TEMPLATES = {
         # said by the blank Form 1065 as well, which is this same row's
         # federal document, so it takes nothing the row must not have
         # (decision 90).
-        _row("A01", "Prior-Year Federal & State Partnership Returns", core=True, period=TY_PRIOR,
+        _row("A01", "Prior-Year Federal & State Partnership Returns", core=True, named=True, period=TY_PRIOR,
              required_keywords=_prior_return("return of partnership income", JURAT,
                                              state=("return of income", "partnership return"))),
-        _row("A02", "Partnership Agreement & Amendments", core=True, period="Current", any_keywords="partnership agreement, operating agreement"),
-        _shared("A03", "trial_balance", core=True),
-        _shared("A04", "general_ledger", core=False),
-        _shared("B01", "financial_statements", core=True),
-        _shared("B02", "december_bank", core=True),
-        _row("C01", "Partner List with Ownership % & Changes", core=True, extensions="xlsx, pdf", any_keywords="partner list, partner roster, member list, cap table, capitalization table"),
-        _row("C02", "Partner Capital Account Detail", core=True, extensions="xlsx", any_keywords="capital account detail, capital account statement, capital account analysis by partner"),
-        _row("C03", "Contributions & Distributions by Partner", core=True, extensions="xlsx", any_keywords="contributions and distributions by partner, partner contribution detail, partner distribution detail"),
-        _row("C04", "Guaranteed Payment Detail", core=False, extensions="xlsx, pdf", any_keywords="guaranteed payment detail, guaranteed payments by partner"),
-        _shared("D01", "fixed_assets", core=False),
-        _shared("D02", "depreciation", core=False),
-        _shared("E01", "loans", core=False),
+        _row("A02", "Partnership Agreement & Amendments", core=True, named=True, period="Current", any_keywords="partnership agreement, operating agreement"),
+        _shared("A03", "trial_balance", core=True, named=False),
+        _shared("A04", "general_ledger", core=False, named=False),
+        _shared("B01", "financial_statements", core=True, named=True),
+        _shared("B02", "december_bank", core=True, named=True),
+        _row("C01", "Partner List with Ownership % & Changes", core=True, named=False, extensions="xlsx, pdf", any_keywords="partner list, partner roster, member list, cap table, capitalization table"),
+        _row("C02", "Partner Capital Account Detail", core=True, named=False, extensions="xlsx", any_keywords="capital account detail, capital account statement, capital account analysis by partner"),
+        _row("C03", "Contributions & Distributions by Partner", core=True, named=False, extensions="xlsx", any_keywords="contributions and distributions by partner, partner contribution detail, partner distribution detail"),
+        _row("C04", "Guaranteed Payment Detail", core=False, named=False, extensions="xlsx, pdf", any_keywords="guaranteed payment detail, guaranteed payments by partner"),
+        _shared("D01", "fixed_assets", core=False, named=False),
+        _shared("D02", "depreciation", core=False, named=False),
+        _shared("E01", "loans", core=False, named=True),
         # Decision 85's F1 is still open here, and decision 93 does not
         # close it: a CA Schedule K-1 (568) prints "Enter member's
         # percentage (without regard to special allocations)", so it files
@@ -367,45 +380,45 @@ FORM_TEMPLATES = {
         # for it to go and nothing to route it away with: `special
         # allocation` is this row's only plain-English word, and dropping
         # it to fix one corpus document would leave the row blind.
-        _row("F01", "Special Allocation Support - Section 704(b)", core=False, extensions="xlsx, pdf", any_keywords="special allocation, section 704(b)"),
-        _shared("G01", "apportionment", core=False),
+        _row("F01", "Special Allocation Support - Section 704(b)", core=False, named=False, extensions="xlsx, pdf", any_keywords="special allocation, section 704(b)"),
+        _shared("G01", "apportionment", core=False, named=False),
     ],
     "1041": [
         # A bare `trust agreement` is what a custodian heads an IRA's
         # "Traditional IRA Trust Agreement and Disclosure Statement" with;
         # the estate's own instrument names the kind of trust it is.
-        _row("A01", "Trust Instrument / Will & Amendments", core=True, period="Current", any_keywords="revocable trust agreement, irrevocable trust agreement, declaration of trust, certification of trust, trust instrument, amendment to the trust, last will, codicil"),
-        _row("A02", "IRS EIN Assignment Letter", core=False, period="Current", any_keywords="cp 575, ein assignment, assigned you employer identification number, assigned you an employer identification number"),
-        _row("A03", "Prior-Year Fiduciary Returns", core=True, period=TY_PRIOR,
+        _row("A01", "Trust Instrument / Will & Amendments", core=True, named=True, period="Current", any_keywords="revocable trust agreement, irrevocable trust agreement, declaration of trust, certification of trust, trust instrument, amendment to the trust, last will, codicil"),
+        _row("A02", "IRS EIN Assignment Letter", core=False, named=True, period="Current", any_keywords="cp 575, ein assignment, assigned you employer identification number, assigned you an employer identification number"),
+        _row("A03", "Prior-Year Fiduciary Returns", core=True, named=True, period=TY_PRIOR,
              required_keywords=_prior_return("income tax return for estates and trusts", JURAT)),
         # A broker's realized gain/loss export is the trust's 1099-B by
         # another name: the trust reports the same lots, and the export is
         # what arrives where the consolidated 1099 does not (decision 85).
         # Decision 68's composite is untouched - it never prints the words.
-        _row("B01", "1099s for Trust / Estate Accounts", core=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-b, 1099-oid, 1099-r, 1099-misc, 1099-nec, realized gain/loss, realized gain loss", expected_count=3),
+        _row("B01", "1099s for Trust / Estate Accounts", core=True, named=True, extensions="pdf, csv", any_keywords="1099-int, 1099-div, 1099-b, 1099-oid, 1099-r, 1099-misc, 1099-nec, realized gain/loss, realized gain loss", expected_count=3),
         # `year-end account statement` is a bank's heading as much as a
         # broker's, and a bank's year-end statement is not the brokerage
         # statement this row asks for; a document titled only that parks.
-        _row("B02", "Brokerage Year-End Statements", core=True, any_keywords="brokerage statement, realized gain and loss"),
+        _row("B02", "Brokerage Year-End Statements", core=True, named=True, any_keywords="brokerage statement, realized gain and loss"),
         # `distribution schedule` is a mutual fund's own heading for its
         # year-end capital gains dates.
-        _row("C01", "Distributions to Beneficiaries - Dates & Amounts", core=True, extensions="xlsx, pdf", any_keywords="distributions to beneficiaries, beneficiary distribution"),
-        _row("C02", "Beneficiary Names, Addresses & Tax IDs", core=True, period="Current", extensions="xlsx, pdf", any_keywords="beneficiary information, beneficiary list, beneficiary names"),
-        _row("D01", "Fiduciary, Attorney & Accounting Fees Paid", core=False, extensions="pdf, xlsx", any_keywords="fiduciary fees paid, trustee fees, accounting fees paid, legal fees paid, attorney fees paid, fee invoice"),
+        _row("C01", "Distributions to Beneficiaries - Dates & Amounts", core=True, named=False, extensions="xlsx, pdf", any_keywords="distributions to beneficiaries, beneficiary distribution"),
+        _row("C02", "Beneficiary Names, Addresses & Tax IDs", core=True, named=False, period="Current", extensions="xlsx, pdf", any_keywords="beneficiary information, beneficiary list, beneficiary names"),
+        _row("D01", "Fiduciary, Attorney & Accounting Fees Paid", core=False, named=False, extensions="pdf, xlsx", any_keywords="fiduciary fees paid, trustee fees, accounting fees paid, legal fees paid, attorney fees paid, fee invoice"),
         # An estate's basis is the value at death, which its schedules call
         # stepped-up. A bare `date of death` is not the row's: the Form
         # 5498's instructions tell an estate to ask for a date-of-death
         # value, and the blank form would have filed here.
-        _row("E01", "Cost Basis for Assets Sold During the Year", core=False, extensions="xlsx, pdf", any_keywords="cost basis schedule, basis of assets sold, date acquired and date sold, purchase price and sale price, stepped-up basis"),
-        _row("F01", "Rental / Business Income & Expense Detail", core=False, extensions="xlsx, pdf", any_keywords="rental income and expenses, rent roll, schedule e detail, schedule c detail"),
+        _row("E01", "Cost Basis for Assets Sold During the Year", core=False, named=False, extensions="xlsx, pdf", any_keywords="cost basis schedule, basis of assets sold, date acquired and date sold, purchase price and sale price, stepped-up basis"),
+        _row("F01", "Rental / Business Income & Expense Detail", core=False, named=False, extensions="xlsx, pdf", any_keywords="rental income and expenses, rent roll, schedule e detail, schedule c detail"),
     ],
     "990": [
-        _row("A01", "Prior-Year Form 990 & State Filings", core=True, period=TY_PRIOR,
+        _row("A01", "Prior-Year Form 990 & State Filings", core=True, named=True, period=TY_PRIOR,
              required_keywords=_prior_return("return of organization exempt from income tax", JURAT)),
-        _shared("A02", "trial_balance", core=True),
-        _shared("B01", "financial_statements", core=True),
-        _shared("B02", "december_bank", core=True),
-        _row("C01", "Board of Directors List & Meeting Minutes", core=True, extensions="pdf, xlsx", any_keywords="board of directors list, list of directors, meeting minutes, board minutes, minutes of the, board roster, directors and officers"),
+        _shared("A02", "trial_balance", core=True, named=False),
+        _shared("B01", "financial_statements", core=True, named=True),
+        _shared("B02", "december_bank", core=True, named=True),
+        _row("C01", "Board of Directors List & Meeting Minutes", core=True, named=False, extensions="pdf, xlsx", any_keywords="board of directors list, list of directors, meeting minutes, board minutes, minutes of the, board roster, directors and officers"),
         # `compensation of officers` is the line every 990's Part VII and
         # every nonprofit Statement of Functional Expenses prints, and the
         # 1120 prints it too; the schedule this row asks for is headed
@@ -413,18 +426,18 @@ FORM_TEMPLATES = {
         # the Part VII heading ("Directors, Trustees, Key Employees") does
         # not have - a keyword cannot carry the comma, since Any Keywords
         # is a comma-separated column.
-        _row("C02", "Officer & Key Employee Compensation Detail", core=True, extensions="xlsx, pdf", any_keywords="officer compensation detail, key employee compensation, directors and trustees"),
-        _row("D01", "Contribution / Donor Detail - Schedule B Support", core=True, extensions="xlsx, csv", any_keywords="donor list, donor detail, contributions by donor, schedule b"),
+        _row("C02", "Officer & Key Employee Compensation Detail", core=True, named=False, extensions="xlsx, pdf", any_keywords="officer compensation detail, key employee compensation, directors and trustees"),
+        _row("D01", "Contribution / Donor Detail - Schedule B Support", core=True, named=False, extensions="xlsx, csv", any_keywords="donor list, donor detail, contributions by donor, schedule b"),
         # A bare `grantee` is the word on a grant award letter the charity
         # *received*; this row is the grants it made. A bare `grants paid`
         # is line 25 of the 990-PF ("contributions, gifts, grants paid"),
         # so the schedule is named by its own heading.
-        _row("D02", "Grants Made - Recipients & Amounts", core=False, extensions="xlsx, pdf", any_keywords="grants paid schedule, grants made, schedule of grants, grantee list"),
+        _row("D02", "Grants Made - Recipients & Amounts", core=False, named=False, extensions="xlsx, pdf", any_keywords="grants paid schedule, grants made, schedule of grants, grantee list"),
         # `program description` is a grant proposal's own heading.
-        _row("E01", "Program Service Accomplishment Descriptions", core=False, extensions="pdf, xlsx", any_keywords="program service accomplishment, program accomplishments"),
-        _row("F01", "Fundraising Event Revenue & Expense Detail", core=False, extensions="xlsx, pdf", any_keywords="fundraising event detail, special event revenue, event revenue and expense"),
-        _shared("G01", "payroll_returns", core=False),
-        _row("H01", "Unrelated Business Income Detail", core=False, extensions="xlsx, pdf", any_keywords="form 990-t, unrelated business income detail, ubti schedule"),
+        _row("E01", "Program Service Accomplishment Descriptions", core=False, named=False, extensions="pdf, xlsx", any_keywords="program service accomplishment, program accomplishments"),
+        _row("F01", "Fundraising Event Revenue & Expense Detail", core=False, named=False, extensions="xlsx, pdf", any_keywords="fundraising event detail, special event revenue, event revenue and expense"),
+        _shared("G01", "payroll_returns", core=False, named=True),
+        _row("H01", "Unrelated Business Income Detail", core=False, named=False, extensions="xlsx, pdf", any_keywords="form 990-t, unrelated business income detail, ubti schedule"),
     ],
 }
 
@@ -481,6 +494,11 @@ def issuer_row(identifier: str, entity: str) -> dict:
         identifier,
         ISSUER_DOCUMENT.format(entity=name),
         core=False,
+        # A K-1 is addressed to its recipient, so the row it is cut from is
+        # named and so is this one (decision 128). The entity's name in
+        # Required Keywords is still a keyword and never a name: it says
+        # *which* K-1 this is, and the people list says whose it is.
+        named=source["named"],
         period=source["period"],
         extensions=source["extensions"],
         required_keywords=name,

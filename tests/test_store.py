@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, seed_statuses, sort
+from tests.conftest import make_engagement, named_page, seed_statuses, sort
 from tests.test_scanner import text_pdf
 from tracker import ledger, store
 from tracker.filer import read_index
@@ -98,7 +98,9 @@ def conn(tmp_path):
 
 
 def drop(engagement, name, text):
-    return text_pdf(inbox_of(engagement) / name, text)
+    """One document into the household's inbox, with the return's person on
+    the page - a named request files only where a name confirms (128)."""
+    return text_pdf(inbox_of(engagement) / name, named_page(text))
 
 
 def build(conn, root, engagement):
@@ -171,7 +173,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 7
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 8
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -193,17 +195,16 @@ def test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name(tmp_pat
     assert str(path) in str(raised.value) and str(store.SCHEMA_VERSION + 1) in str(raised.value)
 
 
-def test_a_version_six_store_is_refused_and_rebuilt(tmp_path):
+def test_a_version_seven_store_is_refused_and_rebuilt(tmp_path):
     """Decision 107 added the verdict cache's two tables; a file from before
     it has no ``verdicts`` table, and is refused by the same sentence a
     version-1 file was - delete it and rebuild, nothing is lost.
 
     And so is a file at the version before this one, whatever that is
-    today: decision 125 put the household, the tax year and the return name
-    in ``engagements`` with the household's own columns and ``kind``, and a
-    version-6 file has none of them. The details travel in the
-    ``rules_changed`` and ``household_changed`` lines, so a rebuild from
-    the journals puts every one of them back.
+    today: decision 128 put the return's people in ``engagements`` and the
+    ``named`` mark in ``requests``, and a version-7 file has neither. Both
+    travel in the ``rules_changed`` lines, so a rebuild from the journals
+    puts every one of them back.
     """
     path = tmp_path / "app" / store.STORE_FILENAME
     for version in (2, store.SCHEMA_VERSION - 1):

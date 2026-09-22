@@ -23,8 +23,8 @@ the client, so a backtest that let the router see the name would be
 scoring the firm's own naming discipline, not the routing rules. Each
 document is therefore routed through a hard link (a copy where the file
 system refuses one) in a scratch folder outside the repository, named
-``NEUTRAL_STEM`` plus the document's own extension, with the text read once
-and handed to :func:`tracker.router.route_file` as ``text``. The link is
+``NEUTRAL_STEM`` plus the document's own extension, with the document read
+once and handed to :func:`tracker.router.route_file` as ``reading``. The link is
 the same bytes, so every tier-2 check - the extension, the size, whether
 the PDF opens - still sees the real document.
 
@@ -242,7 +242,7 @@ def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | 
         if not ocr:
             return None, True
         return route_file(path, rows).identifier, False
-    return route_file(path, rows, text=reading.text).identifier, False
+    return route_file(path, rows, reading=reading).identifier, False
 
 
 def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tuple[list[Outcome], float]:

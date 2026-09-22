@@ -11,8 +11,8 @@ row 104 retired the last workbook: **everything is in the record.**
 
 | | |
 |---|---|
-| **the record** holds the person's rules | the eleven accountant columns, and nothing else: a request's identifier, its document, its period, how many files are expected, which types and how small, its keywords, its date rule, a Manual Override and its Override Reason. Edited in the app's **Edit Request List** editor and nowhere else; every save is one `rules_changed` event. |
-| **the record** holds the engagement's details | the client, the share link, the due date, the filing deadline, the sender, the firm, whether they are chased, whether the run skips them, what the engagement was rolled from and which catalog it was cut from. Written by the wizard, edited in the same editor, carried in the same event. |
+| **the record** holds the person's rules | the twelve accountant columns, and nothing else: a request's identifier, its document, its period, how many files are expected, which types and how small, its keywords, its date rule, a Manual Override and its Override Reason, and whether the document it asks for carries a name. Edited in the app's **Edit Request List** editor and nowhere else; every save is one `rules_changed` event. |
+| **the record** holds the engagement's details | the client, the share link, the due date, the filing deadline, the sender, the firm, whether they are chased, whether the run skips them, what the engagement was rolled from, which catalog it was cut from and who the return is for - the people whose names its documents print, with the spellings they print them in. Written by the wizard, edited in the same editor, carried in the same event. |
 | **the record** holds what the machine decided | every document and where it went, every request's Status, Received Date, File Count and Validation Notes, every keyword a person's filing taught a request. |
 
 A person reads the last of those on the **Status Report**, which every pass

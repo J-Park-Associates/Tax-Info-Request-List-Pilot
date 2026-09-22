@@ -18,7 +18,7 @@ import pytest
 
 import tracker.runner as runner_module
 from tests.conftest import make_engagement, seed_index
-from tests.samples import DEMO_ITEMS, PRIOR_YEAR, YEAR, build_samples
+from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, build_samples
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
 from tracker.layout import household_of, inbox_of, originals_of
@@ -182,9 +182,12 @@ def build_engagement(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",),
     # the pass reads the household, the year and the return name off it.
     from dataclasses import replace
 
+    # The pile is addressed to the two people the samples name, so the
+    # return lists them (decision 128) as the office's would.
     folder = make_engagement(tmp_path, DEMO_ITEMS,
                              EngagementInfo(client="John Smith", firm="J Park"),
-                             household=household, return_name=name, scaffold=False)
+                             household=household, return_name=name,
+                             people=SCRATCH_PEOPLE, scaffold=False)
     result = scaffold_engagement(folder)
     for drop in drops:
         (result.inbox / drop).write_bytes((samples / drop).read_bytes())
@@ -342,7 +345,7 @@ def test_a_draft_day_with_nothing_to_chase_refreshes_the_runs_own_stale_draft(tm
     # is theirs and stays exactly as it is.
     only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
     folder = make_engagement(tmp_path, only_the_return, return_name="Settled TY2025",
-                             scaffold=False)
+                             people=SCRATCH_PEOPLE, scaffold=False)
     scaffolded = scaffold_engagement(folder)
     engagement = as_engagement(folder, client="John Smith")
     drafted = pass_on(stamped_on, engagement, SATURDAY - dt.timedelta(days=7)).drafted
@@ -377,7 +380,7 @@ def test_nothing_outstanding_means_no_draft_file(tmp_path, samples):
     """Everything in: there is nothing to chase, so no draft is written."""
     only_the_return = [i for i in DEMO_ITEMS if i.identifier == "B01"]
     folder = make_engagement(tmp_path, only_the_return, return_name="Settled TY2025",
-                             scaffold=False)
+                             people=SCRATCH_PEOPLE, scaffold=False)
     scaffolded = scaffold_engagement(folder)
     name = f"{PRIOR_YEAR} Form 1040 Tax Return.pdf"
     (scaffolded.inbox / name).write_bytes((samples / name).read_bytes())
@@ -1181,7 +1184,7 @@ def a_household(tmp_path, samples, household="Park Family", drops=()):
     personal = make_engagement(tmp_path, DEMO_ITEMS,
                                EngagementInfo(client="John Park", firm="J Park"),
                                household=household, return_name="1040 - John Park",
-                               scaffold=False)
+                               people=SCRATCH_PEOPLE, scaffold=False)
     business = make_engagement(
         tmp_path,
         [RequestItem(identifier="B01", document="Trial Balance", period="TY2025",

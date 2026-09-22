@@ -119,7 +119,7 @@ def test_a_scan_with_a_good_name_parks_and_suggests_rather_than_filing(tmp_path,
     ):
         f = tmp_path / name
         text_pdf(f, "")  # valid PDF, no usable text
-        routing = route_file(f, ITEMS, text=None)
+        routing = route_file(f, ITEMS)
         assert routing.identifier is None, name
         assert routing.evidence == "", name        # no tier: nothing was decided
         assert routing.candidates == (), name      # nothing accepted it

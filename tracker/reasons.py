@@ -259,6 +259,47 @@ INTERRUPTED_MOVE_LOST = Reason(
               "those bytes now; a person here looks - never the client",
 )
 
+# ---- the name on the page (decision 128) ---------------------------------
+
+#: How a spelling and the return it belongs to are said together, in the
+#: one sentence that carries both (:data:`NAMES_ANOTHER_RETURN`). Worded
+#: here because both the filer, which composes it, and
+#: :mod:`tracker.review`, which reads the other return's label back off the
+#: row for the card, derive from this template through
+#: :func:`tracker.records.as_pattern` - so rewording it moves its reader.
+NAME_AND_RETURN = "{spelling} ({label})"
+
+#: The page names nobody on this return's people list, and the request that
+#: accepted it is one whose document carries a name. Firm-side, always: the
+#: people list is the firm's and may simply be short a spelling, and asking
+#: the client to send a document they already sent would be the firm's
+#: paperwork put to them as their mistake.
+NAME_NOT_ON_PAGE = Reason(
+    "name-absent",
+    "the page names none of this return's people ({listed}); a person should confirm",
+    "names none of this return's people", firm_side=True,
+    firm_note="the name check found none of the return's spellings; add a spelling in the "
+              "editor if the page does name them",
+)
+#: The page names somebody who is on another return of this household, and
+#: nobody here. Filing it here would put one person's document under
+#: another's return, which is exactly the failure the name tier exists to
+#: stop, so it parks and says whose it looks like.
+NAMES_ANOTHER_RETURN = Reason(
+    "name-other",
+    "the page names {listed}, who is on another return; a person should confirm",
+    "who is on another return", firm_side=True, firm_note=FIRM_WAITING,
+)
+#: The return lists nobody yet, so a named request has nothing to confirm
+#: against. Strict, on purpose: filing on the keywords alone is what the
+#: name tier replaced, and the fix is one edit in the editor.
+NO_PEOPLE_ON_FILE = Reason(
+    "no-people",
+    "this return lists no people yet ({listed}); add them in the editor before its named "
+    "requests can file",
+    "lists no people yet", firm_side=True, firm_note=FIRM_WAITING,
+)
+
 #: One page, several forms (decision 94, the owner's). Neither of these is
 #: a refusal, so neither is a :class:`Reason` and neither is in ``ALL``:
 #: they are what the index's Reason column says about a document that
@@ -299,6 +340,7 @@ ALL: tuple[Reason, ...] = (
     NO_PAGES, UNREADABLE_PDF, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
     ISSUER_NOT_NAMED,
+    NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE,
     FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST,
     PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,

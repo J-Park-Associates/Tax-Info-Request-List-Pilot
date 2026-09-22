@@ -7,7 +7,13 @@ from dataclasses import replace
 
 import pytest
 
-from tests.conftest import TEST_HOUSEHOLD, TEST_RETURN, TEST_YEAR, make_engagement
+from tests.conftest import (
+    TEST_HOUSEHOLD,
+    TEST_PEOPLE,
+    TEST_RETURN,
+    TEST_YEAR,
+    make_engagement,
+)
 from tracker import ledger, store
 from tracker.manifest import (
     COL_DATE_PATTERN,
@@ -16,6 +22,7 @@ from tracker.manifest import (
     COL_IDENTIFIER,
     COL_MANUAL_OVERRIDE,
     COL_MIN_SIZE_KB,
+    COL_NAMED,
     COL_OVERRIDE_REASON,
     COLUMN_HELP,
     COLUMNS,
@@ -86,10 +93,12 @@ def placed(info: EngagementInfo) -> EngagementInfo:
     household, the tax year and the return name (decision 125) - so a
     record read back carries three fields nobody typed. They are not
     editable, and ``tests/test_api.py`` is where that is claimed; here they
-    are simply what a round trip has to allow for.
+    are simply what a round trip has to allow for. The people the return is
+    for (decision 128) are the fourth: the suite's helper gives every
+    return the one test person, as the wizard makes a person give it one.
     """
     return replace(info, household=TEST_HOUSEHOLD, tax_year=TEST_YEAR,
-                   return_name=TEST_RETURN)
+                   return_name=TEST_RETURN, people=TEST_PEOPLE)
 
 
 @pytest.fixture
@@ -179,14 +188,15 @@ def test_create_refuses_a_bad_list_before_a_line_is_written(tmp_path):
     assert store.rules(store.connect(), folder) is None      # nothing in the store either
 
 
-def test_the_list_is_the_eleven_columns_a_person_edits():
+def test_the_list_is_the_twelve_columns_a_person_edits():
     """Decision 103 took the four scanner columns out of the schema; 104
     keeps the ten, keyed by the record's own field names, each with the
     sentence the editor shows under its heading; 116 adds the eleventh,
-    the reason an override was made."""
+    the reason an override was made; 128 the twelfth, whether the document
+    this request asks for carries a name."""
     assert HEADERS == tuple(header for header, _ in COLUMNS)
-    assert len(HEADERS) == 11
-    assert HEADERS[-1] == COL_OVERRIDE_REASON
+    assert len(HEADERS) == 12
+    assert HEADERS[-2:] == (COL_OVERRIDE_REASON, COL_NAMED)
     assert tuple(field for _, field in COLUMNS) == tuple(
         f for f in RULE_FIELDS if f not in ("row", "date_pattern_derived"))
     assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
@@ -896,3 +906,41 @@ def test_two_unrelated_rows_may_share_a_name(tmp_path):
     ]
     folder = make_engagement(tmp_path / "S", rows, scaffold=False)
     assert len(load_manifest(folder)) == 2
+
+
+def test_a_stored_row_without_the_named_column_reads_as_named():
+    """Decision 128, strict by default. A rules event written before the
+    mark existed carries no ``named``, and a store column filled from one
+    holds null; both read as **named**, so a W-2 in an engagement made last
+    season needs the name on the page exactly as a new one does. The record
+    owns that default (``RULE_FLAG_DEFAULTS``), not the store."""
+    from tracker.manifest import item_from_record
+    from tracker.records import RULE_FLAG_DEFAULTS, rule_from_json, rule_to_json
+
+    old = {"identifier": "A01", "document": "W-2", "required_keywords": ["w-2"]}
+    assert "named" not in rule_from_json(old)
+    assert item_from_record(old).named is True
+    assert RULE_FLAG_DEFAULTS["named"] is True
+
+    # And the mark travels whole once it is there, either way round.
+    assert rule_to_json(RequestItem(identifier="D01", document="Receipts", named=False))["named"] \
+        is False
+    assert item_from_record(rule_to_json(
+        RequestItem(identifier="D01", document="Receipts", named=False))).named is False
+
+
+def test_the_named_mark_is_read_as_the_editors_two_words_and_anything_else_is_refused():
+    """The editor sends the record's own yes/no words, the catalog sends a
+    boolean and a pasted row sends nothing at all; blank is yes, because a
+    row nobody marked is a row that needs the name."""
+    from tracker.manifest import item_from_fields
+    from tracker.records import NO, YES
+
+    base = {"identifier": "A01", "document": "W-2"}
+    assert item_from_fields(base, where="Row 1").named is True
+    assert item_from_fields({**base, "named": ""}, where="Row 1").named is True
+    assert item_from_fields({**base, "named": YES}, where="Row 1").named is True
+    assert item_from_fields({**base, "named": NO.upper()}, where="Row 1").named is False
+    assert item_from_fields({**base, "named": False}, where="Row 1").named is False
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_NAMED} must be"):
+        item_from_fields({**base, "named": "maybe"}, where="Row 1")

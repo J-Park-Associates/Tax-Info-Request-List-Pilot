@@ -498,9 +498,10 @@ def test_the_readme_engagement_details_table_matches_the_fields():
 
 
 def test_the_roadmap_schema_table_lists_exactly_the_manifest_headers():
-    """The list is the eleven columns a person edits (decisions 103 and 116),
-    and the schema table is those eleven and no others: a row left in it for a column
-    the machine stopped writing is a column somebody will go looking for."""
+    """The list is the twelve columns a person edits (decisions 103, 116 and
+    128), and the schema table is those twelve and no others: a row left in
+    it for a column the machine stopped writing is a column somebody will go
+    looking for."""
     from tracker.manifest import HEADERS
 
     listed = _schema_table("Manifest Schema")
@@ -879,7 +880,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 #: tolerant_console(), and each of these takes it before it parses a flag.
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
-                   "view", "ledger", "validators")
+                   "view", "ledger", "validators", "names")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
 CONSOLE_EXEMPT = {

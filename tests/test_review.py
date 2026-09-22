@@ -47,9 +47,11 @@ from tracker.review import (
     PLACE_STRENGTH,
     PLACE_WORDS,
     RULE_STRENGTH,
+    NameSaid,
+    shortlist_for,
     triage,
 )
-from tracker.router import UNMATCHED
+from tracker.router import AMBIGUOUS, UNMATCHED
 
 DAY1 = dt.date(2026, 7, 1)
 REPO = Path(__file__).resolve().parent.parent
@@ -384,6 +386,98 @@ def test_the_cli_prints_each_parked_file_and_its_shortlist(engagement):
     assert "statement.pdf" in done.stdout
     assert "C01" in done.stdout and "'1098' in the title" in done.stdout
     assert "mystery.pdf" in done.stdout and NOTHING_SUGGESTED in done.stdout
+
+
+# --------------------------------------------- the name on the page (d128) ----
+
+
+def test_a_confirmed_name_ranks_a_suggestion_first_and_the_card_says_whose_page_it_is(engagement):
+    """Decision 128. A keyword says what a document is; a name says whose
+    it is, and in a household where two returns ask for the same row that
+    is the harder half - so a row whose name the page confirmed takes the
+    rank's first slot, whatever its keywords said, and the card says which
+    of the three it was in the sentence behind the suggestion."""
+    from tracker.names import NAME_ABSENT, NAME_CONFIRMED, NAME_VETOED
+    from tracker.records import RULE_NAME
+    from tracker.review import (
+        IDENTITY_AGREES,
+        IDENTITY_UNKNOWN,
+        NAME_ABSENT_NOTE,
+        NAME_CONFIRMED_NOTE,
+        NAME_OTHER_NOTE,
+    )
+
+    park(engagement, parked_row("w2.pdf", {
+        # A01 is only an any-keyword deep in the page; C01 is a required
+        # keyword in the title, which would win outright without the name.
+        "A01": (Evidence(RULE_ANY, "wage", WHERE_DEEP, 4),
+                Evidence(RULE_NAME, "John Park", WHERE_FIRST_PAGE, 1)),
+        "C01": (Evidence(RULE_REQUIRED, "1098", WHERE_TITLE, 1),
+                Evidence(RULE_NAME, "John Park", WHERE_FIRST_PAGE, 1)),
+    }, reason=AMBIGUOUS))
+    [triaged] = triage_of(engagement)
+
+    first = triaged.shortlist[0]
+    assert first.rank[0] == IDENTITY_AGREES
+    assert all(one.rank[0] == IDENTITY_AGREES for one in triaged.shortlist)
+    assert first.name.outcome == NAME_CONFIRMED and first.name.spelling == "John Park"
+    # The name took the identity slot; it does not also take the strength
+    # slot, or every candidate on the row would share the same minimum and
+    # the keywords would order nothing. C01's required keyword in the title
+    # still beats A01's any-keyword deep in the page, though A01 comes
+    # first in the catalog.
+    assert [one.identifier for one in triaged.shortlist][:2] == ["C01", "A01"]
+    # The sentence carries the note after the keyword clauses, and the
+    # name itself is never quoted as one of the row's own keywords.
+    assert first.reason.endswith(NAME_CONFIRMED_NOTE.format(spelling="John Park"))
+    assert "'John Park'" not in first.reason
+
+    # A page that named nobody: the card says so and nothing ranks first.
+    absent = parked_row("other.pdf", {"A01": (Evidence(RULE_ANY, "wage", WHERE_DEEP, 4),)},
+                        reason=reasons.NAME_NOT_ON_PAGE.format(listed="1040 - Test Client"))
+    assert shortlist_for(absent, ITEMS)[0].name.outcome == NAME_ABSENT
+    assert shortlist_for(absent, ITEMS)[0].rank[0] == IDENTITY_UNKNOWN
+    assert shortlist_for(absent, ITEMS)[0].reason.endswith(NAME_ABSENT_NOTE)
+
+    # And one that named somebody on another return: the spelling and that
+    # return's label are read back off the row's own sentence.
+    listed = reasons.NAME_AND_RETURN.format(
+        spelling="Maria Park", label="Park Family 2025 1040 - Maria Park")
+    vetoed = parked_row(
+        "hers.pdf",
+        {"A01": (Evidence(RULE_ANY, "wage", WHERE_DEEP, 4),
+                 Evidence(RULE_NAME, "Maria Park", WHERE_FIRST_PAGE, 1))},
+        reason=reasons.NAMES_ANOTHER_RETURN.format(listed=listed))
+    said = shortlist_for(vetoed, ITEMS)[0]
+    assert said.name == NameSaid(NAME_VETOED, "Maria Park",
+                                 "Park Family 2025 1040 - Maria Park")
+    assert said.reason.endswith(NAME_OTHER_NOTE.format(
+        spelling="Maria Park", label="Park Family 2025 1040 - Maria Park"))
+
+
+def test_a_vetoed_row_is_never_read_as_confirmed_even_when_the_return_name_holds_a_parenthesis():
+    """A vetoed row's name evidence carries the *other* return's spelling,
+    so reading the veto out of the prose and missing it would say the page
+    names this return's person when it names somebody else's - the very
+    mistake decision 128 exists to stop, told to a person by the card. The
+    veto is therefore read from the reason's own marker, and the label,
+    which may itself hold a parenthesis, is read whole."""
+    from tracker.names import NAME_VETOED
+    from tracker.records import RULE_NAME
+    from tracker.review import IDENTITY_UNKNOWN, NAME_OTHER_NOTE
+
+    label = "Park Family 2025 1120S - Park (USA) Inc"
+    listed = reasons.NAME_AND_RETURN.format(spelling="Park (USA) Inc", label=label)
+    vetoed = parked_row(
+        "statement.pdf",
+        {"A01": (Evidence(RULE_ANY, "wage", WHERE_DEEP, 4),
+                 Evidence(RULE_NAME, "Park (USA) Inc", WHERE_FIRST_PAGE, 1))},
+        reason=reasons.NAMES_ANOTHER_RETURN.format(listed=listed))
+
+    said = shortlist_for(vetoed, ITEMS)[0]
+    assert said.name == NameSaid(NAME_VETOED, "Park (USA) Inc", label)
+    assert said.rank[0] == IDENTITY_UNKNOWN
+    assert said.reason.endswith(NAME_OTHER_NOTE.format(spelling="Park (USA) Inc", label=label))
 
 
 # ------------------------------------------------------------------ helpers ----

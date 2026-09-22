@@ -106,6 +106,19 @@ person types.
 - **Nothing is ever sent by the system.** Read the draft in the app's
   Reminder card or open `reminder-draft.txt`, edit it, send it yourself.
   There is no send button anywhere, and an edited draft is never overwritten.
+- **A document is filed only where the name on it confirms** (decision
+  128). Every return carries the people it is for, with the spellings
+  their documents use, typed and ticked by a person at setup and edited in
+  the app. The catalog says which requests ask for a document that carries
+  a name — a W-2, a 1099, a K-1, a statement, a return — and for one of
+  those the pass files where a spelling is on the page, parks where none
+  is, and parks where the page names somebody on another return of the
+  household instead. A receipt, a log or a headerless export is marked
+  unnamed and files on its keywords alone, as it always did. A spelling is
+  at least two words, so a family name never confirms a business; a name
+  is never a keyword and a keyword is never a name; and what the record
+  keeps is the firm's own spelling that matched, never a word of the
+  document and no part of anybody's tax identification number.
 - **Catalog changes affect every future engagement.** Edit
   `tracker/templates.py` and commit it; the test suite checks every row can
   recognise its own document. The keywords staff have taught one engagement

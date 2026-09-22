@@ -519,8 +519,9 @@ function renderReview(state) {
   // The triage the API computed, by the same handle every review command
   // takes. Only a parked row has one; a set-aside row is not triaged.
   const triaged = new Map((state.review || []).map((t) => [t.pbc_location, t]));
+  const people = (state.engagement || {}).people || [];
   show("review-list", parked.map((e) =>
-    reviewRow(e, choices, ids, true, triaged.get(e.pbc_location))));
+    reviewRow(e, choices, ids, true, triaged.get(e.pbc_location), people)));
   // The same queue drawn the other way (decision 114), from the same state:
   // both renderings are always drawn and the mode shows one of them.
   renderDeck(state);
@@ -528,7 +529,35 @@ function renderReview(state) {
   $("dismissed-card").classList.toggle("hidden", dismissed.length === 0);
   $("dismissed-heading").textContent =
     fill(vocab.review_labels.dismissed_heading, { n: dismissed.length });
-  show("dismissed-list", dismissed.map((e) => reviewRow(e, choices, ids, false, null)));
+  show("dismissed-list", dismissed.map((e) => reviewRow(e, choices, ids, false, null, people)));
+}
+
+// The card's offer beside a page that named nobody on this return
+// (decision 128): the person it belongs to, and the spelling this page
+// prints. Offered only where the API said the name was absent - the app
+// decides nothing about a name - and pre-filled with nothing, because the
+// person types what the page shows.
+function teachSpelling(triage, people) {
+  const said = ((triage && triage.shortlist) || [])
+    .map((s) => s.name).find(Boolean);
+  if (!said || said.outcome !== vocab.people.outcomes.absent || !people.length) return null;
+  const words = vocab.people;
+  return el("div", { className: "r-teach" },
+    el("span", { className: "tmpl-rules" }, words.teach),
+    el("select", { className: "r-person", "aria-label": words.teach },
+      people.map((p) => el("option", { value: p.name }, p.name))),
+    el("input", {
+      type: "text", className: "r-spelling", placeholder: words.teach_hint,
+      "aria-label": words.teach_hint,
+    }));
+}
+
+// What the card is sending about a spelling, or nothing at all.
+function spellingFrom(node) {
+  const box = node.querySelector(".r-spelling");
+  const who = node.querySelector(".r-person");
+  if (!box || !box.value.trim()) return null;
+  return { person: who ? who.value : "", spelling: box.value.trim() };
 }
 
 // One entry of the picker: the identifier and the document, joined by the
@@ -548,7 +577,7 @@ function requestOption(item, picked) {
 // can carry no second line, and the reason is the whole point - a person
 // reads why before they pick. Everything below the divider is every other
 // request, because a suggestion is a suggestion and nothing is taken away.
-function reviewRow(e, choices, ids, open, triage) {
+function reviewRow(e, choices, ids, open, triage, people = []) {
   const shortlist = (triage && triage.shortlist) || [];
   const suggested = shortlist.map((s) => s.identifier);
   const byId = new Map(choices.map((i) => [i.identifier, i]));
@@ -580,6 +609,7 @@ function reviewRow(e, choices, ids, open, triage) {
       // the API's sentence, with the row's year label, one line each.
       ((triage && triage.set_aside) || []).map((s) =>
         el("li", { className: "r-set-aside" }, fill(vocab.triage.set_aside_note, s)))),
+    open && teachSpelling(triage, people),
     open && el("input", {
       type: "text", className: "r-keyword", placeholder: "keyword to learn (optional)",
       "aria-label": "Keyword to add to the request",
@@ -606,20 +636,24 @@ function typed(li, className) {
 // record-version rule (decision 112), the same sentences afterwards. Two
 // call sites could drift apart - one cannot, and a guard in
 // tests/test_single_source.py keeps it the only one.
-async function fileRow(original, identifier, seq, keyword) {
-  const result = await call(withEng("assign"), { original, identifier, keyword, seq });
+async function fileRow(original, identifier, seq, keyword, spelling) {
+  const result = await call(withEng("assign"), { original, identifier, keyword, spelling, seq });
   render(result.state);
   const a = result.assigned;
   const notes = [`${a.original_name} filed as ${a.filed_as}`];
   if (a.keyword) notes.push(`"${a.keyword}" added to ${a.identifier} so the next one files itself`);
   if (a.keyword_note) notes.push(a.keyword_note);
+  // A spelling taught with the filing (decision 128), in the API's words.
+  if (a.spelling) notes.push(`"${a.spelling}" added so the next page that prints it confirms itself`);
+  if (a.spelling_note) notes.push(a.spelling_note);
   if (a.left_in_review) notes.push(a.left_in_review);
   // What the record now says about a pick the evidence did not point at:
   // the API's sentence, shown as it stands.
   if (a.overrode_shortlist) notes.push(a.overrode_shortlist);
   if (a.scan_note) notes.push(a.scan_note);
   banner(notes.join(". ") + ".",
-    a.keyword_note || a.left_in_review || a.overrode_shortlist || a.scan_note ? "warn" : "ok");
+    a.keyword_note || a.spelling_note || a.left_in_review || a.overrode_shortlist || a.scan_note
+      ? "warn" : "ok");
 }
 
 async function assignParked(li) {
@@ -631,7 +665,8 @@ async function assignParked(li) {
   const btn = li.querySelector(".r-file");
   btn.disabled = true;
   try {
-    await fileRow(li.dataset.original, identifier, Number(li.dataset.seq), typed(li, ".r-keyword"));
+    await fileRow(li.dataset.original, identifier, Number(li.dataset.seq),
+                  typed(li, ".r-keyword"), spellingFrom(li));
   } catch (err) {
     await refused(err, btn);
   }
@@ -723,7 +758,8 @@ function renderDeck(state) {
   // sending a card to the back never changes it.
   const place = deck.length ? (skipped.length % deck.length) + 1 : 0;
   show("review-deck", deck.length
-    ? [deckCard(deck[0], rows.get(deck[0].pbc_location), place, deck.length)]
+    ? [deckCard(deck[0], rows.get(deck[0].pbc_location), place, deck.length,
+                (state.engagement || {}).people || [])]
     : []);
 }
 
@@ -731,7 +767,7 @@ function renderDeck(state) {
 // sentence behind it, the rows the evidence points at that are set aside,
 // and the three answers. A card with nothing suggested has no Accept -
 // there is nothing to accept - and says so in the API's words.
-function deckCard(t, row, place, total) {
+function deckCard(t, row, place, total, people = []) {
   const best = (t.shortlist || [])[0];
   // The suggestion Accept files to travels on the card, as the row's record
   // version does: what comes back with the click is what was on the screen.
@@ -747,6 +783,7 @@ function deckCard(t, row, place, total) {
         : el("li", { className: "r-nothing" }, vocab.triage.nothing_suggested),
       (t.set_aside || []).map((s) =>
         el("li", { className: "r-set-aside" }, fill(vocab.triage.set_aside_note, s)))),
+    teachSpelling(t, people),
     el("input", {
       type: "text", className: "r-keyword", placeholder: "keyword to learn (optional)",
       "aria-label": "Keyword to add to the request",
@@ -768,7 +805,7 @@ async function acceptCard(card) {
   btn.disabled = true;
   try {
     await fileRow(card.dataset.original, identifier, Number(card.dataset.seq),
-                  typed(card, ".r-keyword"));
+                  typed(card, ".r-keyword"), spellingFrom(card));
   } catch (err) {
     await refused(err, btn);
   }
@@ -924,15 +961,34 @@ function renderHousehold(state) {
     ? fill(words.two_open_years, { years: hh.open_years.join(", ") }) : "";
   $("household-returns-head").textContent = words.returns_heading;
   const open = hh.open_years.length === 1 ? hh.open_years[0] : null;
+  // Each return of the open year, with its own reminder's state beside it
+  // (decision 128), so the household's letters stand side by side. There
+  // is still one letter per return and the Reminder card is still where a
+  // person approves one: this is a line, never a send.
   show("household-returns", hh.returns
     .filter((r) => open === null || r.year === open)
-    .map((r) => el("button", {
-      className: `btn btn-small${r.path === active ? " btn-primary" : ""}`,
-      dataset: { path: r.path },
-    }, r.label)));
+    .map((r) => el("div", { className: "household-return" },
+      el("button", {
+        className: `btn btn-small${r.path === active ? " btn-primary" : ""}`,
+        dataset: { path: r.path },
+      }, r.label),
+      r.reminder && el("span", { className: "wiz-note" }, returnReminderLine(r.reminder)))));
   $("household-queue").textContent = fill(words.queue_line, { n: hh.queue });
   $("btn-edit-household").textContent = words.edit;
   renderSharing(hh);
+}
+
+// One return's reminder, in the same words its own card uses: approved
+// beats last-drafted beats never, and a hold is said after it. Every
+// pattern is the API's (vocab.reminder) and the page types none of them.
+function returnReminderLine(state) {
+  const words = vocab.reminder;
+  const said = state.approved
+    ? fill(words.approved_line, { date: state.approved.date, n: state.approved.stage })
+    : state.last
+      ? fill(words.last_drafted_line, { date: state.last.date, n: state.last.stage })
+      : words.never_drafted_line;
+  return state.held ? `${said} · ${fill(words.held_line, { n: state.held })}` : said;
 }
 
 // Whether the firm has said it shared this household, and the checklist
@@ -1361,6 +1417,15 @@ function renderPriorPage() {
         el("span", { className: "prior-name" }, p.label || p.name),
         el("span", { className: "prior-meta" }, priorMeta(p)),
       ),
+      // The people the roll carries unchanged (decision 128), under the
+      // return they belong to, with the way to look at them. Nothing
+      // blocks on the look: strict parking is the safety net.
+      el("div", { className: "prior-people" },
+        el("span", { className: "prior-meta" },
+          `${vocab.people.label}: ${(p.people || []).map((one) => one.name).join(", ") || "—"}`),
+        el("button", { type: "button", className: "btn btn-small roll-review-people",
+                       dataset: { path: p.path } }, vocab.people.review_people),
+      ),
       el("label", { className: "field roll-form" },
         el("span", {}, "Form template (fills blanks, offers new rows)"),
         el("select", { className: "roll-form-pick", dataset: { path: p.path } },
@@ -1425,6 +1490,9 @@ async function rollForward() {
     const lines = [
       `${result.rolled.length} return(s) rolled into ${result.target_year}; ` +
       `${result.retired.length} retired`,
+      // The people carried unchanged and are worth one look (decision
+      // 128), in the API's words.
+      fill(vocab.people.rolled_note, { n: result.rolled.length }),
     ];
     for (const one of result.rolled) {
       const setAside = one.carried.filter((c) => c.origin === vocab.origin_not_applicable);
@@ -1474,6 +1542,13 @@ function chooseForm(formId) {
   $("ne-client").value = householdContact();
   syncNameDefault();
   $("ne-due").value = "";
+  // The return's people (decision 128): one taxpayer to start with, whose
+  // name pre-fills from the household's contact, because that is who the
+  // household said the return is for.
+  wizardPeople = [{ ...blankPerson(), name: householdContact() }];
+  labelPeopleBlock("wp-head", "wp-help", "wp-add");
+  renderPeople("wp-people", wizardPeople, () => {});
+  if (wizardPeople[0].name) refreshProposals(wizardPeople[0], () => renderPeople("wp-people", wizardPeople, () => {}));
   renderTemplateList();
   renderCustomRows();
   showStep("items");
@@ -1508,6 +1583,115 @@ function renderTemplateList() {
       el("span", { className: "tmpl-doc" }, t.document, " ",
         el("span", { className: "tmpl-rules" }, templateSummary(t))),
     )));
+}
+
+// ── the People block (decision 128) ──────────────────────────────────────
+// Who a return is for, with the spellings its documents use. Every label,
+// every kind and both refusals are the API's; the proposals are the API's
+// too (`propose-spellings`, a read that records nothing) and a person
+// ticks them. Nothing here infers a person from a document, and no
+// spelling is ever learned except by somebody typing it.
+
+let wizardPeople = [];     // the wizard's list, before the return exists
+let editorPeople = [];     // the editor's list, as the record holds it
+
+function blankPerson() {
+  return { kind: vocab.people.kinds[0].value, name: "", proposed: [], own: [] };
+}
+
+// One person as the API stores them: the ticked proposals and whatever
+// spellings the person typed themselves, in that order.
+function personSpec(person) {
+  return {
+    kind: person.kind,
+    name: person.name,
+    spellings: [...person.proposed.filter((p) => p.on).map((p) => p.text), ...person.own],
+  };
+}
+
+// The record's people as the block edits them: every spelling it holds is
+// a ticked one, because that is what it means for the record to hold it.
+function personFromRecord(one) {
+  return {
+    kind: one.kind, name: one.name,
+    proposed: (one.spellings || []).map((text) => ({ text, on: true })), own: [],
+  };
+}
+
+// What the API would propose for this name, merged over what is there: a
+// spelling somebody has already untick stays unticked, a new one arrives
+// ticked, and a spelling they typed themselves is never touched.
+async function refreshProposals(person, redraw) {
+  if (!person.name.trim()) return;
+  let result;
+  try {
+    result = await call(["propose-spellings"], { name: person.name, kind: person.kind });
+  } catch (err) {
+    toast(err.message);
+    return;
+  }
+  const held = new Map(person.proposed.map((p) => [p.text, p.on]));
+  person.proposed = result.spellings.map((text) => ({ text, on: held.get(text) !== false }));
+  redraw();
+}
+
+function renderPeople(id, people, onChange) {
+  const words = vocab.people;
+  const redraw = () => { renderPeople(id, people, onChange); onChange(); };
+  show(id, people.map((person, index) => {
+    const kind = el("select", { "aria-label": words.kind_label },
+      words.kinds.map((k) =>
+        el("option", { value: k.value, selected: person.kind === k.value }, k.label)));
+    kind.addEventListener("change", () => {
+      person.kind = kind.value;
+      refreshProposals(person, redraw);
+      onChange();
+    });
+    const name = el("input", { type: "text", value: person.name, "aria-label": words.name_label });
+    name.addEventListener("input", () => { person.name = name.value; onChange(); });
+    // The proposals are fetched when the name is finished, not on every
+    // keystroke: each call to the API is a process of its own, and a
+    // half-typed name proposes half a spelling.
+    name.addEventListener("change", () => { person.name = name.value; refreshProposals(person, redraw); });
+    const ticks = person.proposed.map((spelling) => {
+      const box = el("input", { type: "checkbox", checked: spelling.on });
+      box.addEventListener("change", () => { spelling.on = box.checked; onChange(); });
+      return el("label", { className: "wiz-check" }, box, el("span", {}, spelling.text));
+    });
+    // One spelling per line, never comma-separated: a comma is part of the
+    // very form a document prints (`Park, John`), so splitting on one would
+    // turn what a person typed into two one-word spellings and refuse both.
+    const own = el("textarea", {
+      className: "person-own", rows: 2, placeholder: words.own_spelling,
+      "aria-label": words.own_spelling,
+    });
+    // A textarea's text is its content, not a `value` attribute: set after.
+    own.value = person.own.join("\n");
+    own.addEventListener("input", () => {
+      person.own = own.value.split(/\r?\n/).map((one) => one.trim()).filter(Boolean);
+      onChange();
+    });
+    const remove = el("button", { type: "button", className: "btn btn-small" }, words.remove);
+    remove.addEventListener("click", () => {
+      people.splice(index, 1);
+      redraw();
+    });
+    return el("div", { className: "person" },
+      el("label", { className: "field" }, el("span", {}, words.kind_label), kind),
+      el("label", { className: "field" }, el("span", {}, words.name_label), name),
+      el("div", { className: "person-spellings" },
+        el("span", { className: "tmpl-rules", title: words.spellings_help }, words.spellings_label),
+        ticks.length ? ticks : el("span", { className: "wiz-note" }, words.help),
+        own),
+      el("div", { className: "editor-actions" }, remove));
+  }));
+}
+
+// The block's headings and its Add button, wherever it is drawn.
+function labelPeopleBlock(headId, helpId, addId) {
+  $(headId).textContent = vocab.people.label;
+  $(helpId).textContent = vocab.people.help;
+  $(addId).textContent = vocab.people.add;
 }
 
 // ── the one row component: the wizard's custom rows and the editor's ─────
@@ -1696,6 +1880,7 @@ async function createEngagement() {
       return_name: $("ne-name").value.trim(),
       form: selectedForm,
       items,
+      people: wizardPeople.filter((p) => p.name.trim()).map(personSpec),
       client: $("ne-client").value.trim(),
       due: $("ne-due").value,
       year: Number($("ne-year").value) || null,
@@ -1841,9 +2026,12 @@ function addEditorRow() {
 // rollover writes Rolled From; the form was recorded once). Which fields
 // take a date box is Python's answer too (vocab.editor.date_fields), so
 // the page names no detail of its own.
+// `people` is laid out by its own block below these (decision 128): a
+// person is a kind, a name and a list of ticked spellings, which is not a
+// box, so it is drawn where it can be edited rather than shown as one.
 function renderEngagementFields(info) {
   show("ed-fields", vocab.editor.engagement_fields
-    .filter((f) => f.key !== "name")
+    .filter((f) => f.key !== "name" && f.key !== "people")
     .map((f) => {
       const value = info[f.key];
       if (!f.editable) {
@@ -1865,6 +2053,10 @@ function engagementFromFields() {
   for (const box of $("ed-fields").querySelectorAll("[data-field]")) {
     details[box.dataset.field] = box.type === "checkbox" ? box.checked : box.value.trim();
   }
+  // The people travel with the rest of the details, as one edit
+  // (decision 128): a person with no name yet is a row somebody started
+  // and is not sent.
+  details.people = editorPeople.filter((p) => p.name.trim()).map(personSpec);
   return details;
 }
 
@@ -1885,6 +2077,11 @@ async function openEditor() {
   }
   editorRows = (editorState.rules || []).map(editorRow);
   renderEngagementFields(editorState.engagement || {});
+  // The return's people, as the record holds them (decision 128): edited
+  // here and nowhere else, and saved with the rest of the details.
+  editorPeople = ((editorState.engagement || {}).people || []).map(personFromRecord);
+  labelPeopleBlock("ep-head", "ep-help", "ep-add");
+  renderPeople("ep-people", editorPeople, () => {});
   renderEditorRows();
   $("ed-paste").value = "";
   editorNote("", "ok");
@@ -2040,6 +2237,27 @@ $("cu-add").addEventListener("click", addCustomItem);
 $("cu-rows").addEventListener("addrow", addCustomItem);
 $("ed-add").addEventListener("click", addEditorRow);
 $("ed-rows").addEventListener("addrow", addEditorRow);
+// The People block's one button, in the wizard and in the editor
+// (decision 128); the rows wire their own controls as they are drawn.
+$("wp-add").addEventListener("click", () => {
+  wizardPeople.push(blankPerson());
+  renderPeople("wp-people", wizardPeople, () => {});
+});
+$("ep-add").addEventListener("click", () => {
+  editorPeople.push(blankPerson());
+  renderPeople("ep-people", editorPeople, () => {});
+});
+// The returning-client page's button for looking at a return's people
+// opens the editor on that return, which is where the block lives and the
+// only place a person is added, changed or removed.
+$("prior-list").addEventListener("click", async (e) => {
+  const button = e.target.closest("button.roll-review-people");
+  if (!button) return;
+  $("modal").classList.add("hidden");
+  active = button.dataset.path;
+  await refresh(active);
+  openEditor();
+});
 $("ed-paste-btn").addEventListener("click", () => {
   const added = pasteRows($("ed-paste").value);
   if (added) $("ed-paste").value = "";

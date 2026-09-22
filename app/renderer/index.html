@@ -413,6 +413,17 @@
           </label>
         </div>
 
+        <!-- Who the return is for (decision 128). Every label, the kinds,
+             the proposals and the two refusals are the API's; the page
+             types none of them, and no spelling is ever inferred from a
+             document - the app proposes and a person ticks. -->
+        <div class="tmpl-head" id="wp-head"></div>
+        <p id="wp-help" class="wiz-note"></p>
+        <div id="wp-people" class="people-block"></div>
+        <div class="editor-actions">
+          <button type="button" id="wp-add" class="btn btn-small"></button>
+        </div>
+
         <div class="tmpl-head" id="tmpl-head-label">Standard request list — tick what applies</div>
         <div id="tmpl-list" class="tmpl-list"></div>
 
@@ -445,6 +456,14 @@
       <fieldset id="ed-engagement" class="ed-engagement">
         <legend id="ed-engagement-title"></legend>
         <div id="ed-fields" class="ed-fields"></div>
+        <!-- The same People block the wizard shows (decision 128): the
+             return's own list, edited here and nowhere else. -->
+        <div class="tmpl-head" id="ep-head"></div>
+        <p id="ep-help" class="wiz-note"></p>
+        <div id="ep-people" class="people-block"></div>
+        <div class="editor-actions">
+          <button type="button" id="ep-add" class="btn btn-small"></button>
+        </div>
       </fieldset>
       <div id="ed-list-title" class="tmpl-head"></div>
       <div id="ed-rows" class="editor-rows"></div>

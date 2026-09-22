@@ -50,6 +50,17 @@ and the machine never files under a row somebody said does not apply
 and a row sent back by ``UNFILED_BY_PERSON`` (decision 77) is parked and
 is.
 
+**A name outranks every keyword** (decision 128). The household pass checks
+the name on a page against the return's own people list, and what it found
+rides the same evidence record as the keywords
+(:data:`tracker.records.RULE_NAME`). A confirmed name takes the rank's
+first slot - the one reserved for identity since C5 - so a suggestion on a
+page that says whose it is is offered before one that only says what it is;
+and the card says which of the three it was in one sentence, because a
+person working the queue in March wants "the page names Maria Park" before
+they want "'W-2' in the title". The spelling quoted is the firm's own, as
+every other word here is.
+
 **Three at most.** A shortlist is something a person reads at a glance and
 acts on. Every row that ever said "1099", ranked, is the request list
 again - which they already have, on the screen, beside this.
@@ -63,16 +74,19 @@ already draw.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from tracker import reasons
 from tracker.filer import NEEDS_REVIEW
 from tracker.manifest import Override, RequestItem, load_manifest, override_label
+from tracker.names import NAME_ABSENT, NAME_CONFIRMED, NAME_VETOED
 from tracker.records import (
     RULE_ANY,
     RULE_DATE,
     RULE_FILENAME,
+    RULE_NAME,
     RULE_REFUSED,
     RULE_REQUIRED,
     WHERE_DEEP,
@@ -81,6 +95,7 @@ from tracker.records import (
     WHERE_TITLE,
     Evidence,
     IndexEntry,
+    as_pattern,
 )
 
 #: How many requests one parked file is offered. Past three a shortlist
@@ -97,7 +112,12 @@ MAX_SUGGESTIONS = 3
 #: is the weakest of all: the client chose that name, not the form.
 #: ``RULE_REFUSED`` is deliberately absent - a refusal is never evidence
 #: *for* a request, only a caveat on one (see :func:`_refusals_for`).
+#: ``RULE_NAME`` sits **above** required keywords (decision 128), which is
+#: what the negative number says: a keyword says what a document is and a
+#: name says whose it is, and in a household where two returns ask for the
+#: same row, whose it is is the harder half.
 RULE_STRENGTH: dict[str, int] = {
+    RULE_NAME: -1,
     RULE_REQUIRED: 0,
     RULE_ANY: 1,
     RULE_DATE: 2,
@@ -117,15 +137,25 @@ PLACE_STRENGTH: dict[str, int] = {
     WHERE_DEEP: 3,
 }
 
-#: The rank's first slot, reserved for identity: a name or a number on the
-#: document agreeing with the engagement's own, the year right before the
-#: year wrong. Nothing reads identity yet (it arrives with C5), so every
-#: suggestion carries ``IDENTITY_UNKNOWN`` today and the order below it is
-#: the whole order. The slot is here so that when identity does arrive it
-#: sorts *above* every content tier without renumbering anything.
+#: The rank's first slot: whether the document's own identity agrees with
+#: the return's. Reserved since C5 and filled by decision 128 - a
+#: suggestion whose row carries a **confirmed name**
+#: (:data:`tracker.records.RULE_NAME`) ranks ``IDENTITY_AGREES`` and sorts
+#: above every content tier; everything else is ``IDENTITY_UNKNOWN``.
+#: ``IDENTITY_AGREES_WRONG_YEAR`` stays reserved on purpose: the year is a
+#: *check* on a document and never evidence of which one it is (decision
+#: 40), so nothing may rank on it.
 IDENTITY_AGREES = 0
 IDENTITY_AGREES_WRONG_YEAR = 1
 IDENTITY_UNKNOWN = 2
+
+#: What the card says the page said about whose it is (decision 128). One
+#: of the three, after the keyword sentence; the app types none of them.
+#: ``{spelling}`` is always the firm's own spelling and ``{label}`` the
+#: other return's own label - never a word of the document.
+NAME_CONFIRMED_NOTE = "the page names {spelling}"
+NAME_OTHER_NOTE = "the page names {spelling}, who is on {label}"
+NAME_ABSENT_NOTE = "the page names none of this return's people"
 
 #: How each place is said in a reason sentence - the one mapping, so the
 #: app can label a place without typing a word of its own (the vocabulary
@@ -164,20 +194,41 @@ _REASON_BY_CODE: dict[str, reasons.Reason] = {reason.code: reason for reason in 
 
 
 @dataclass(frozen=True, slots=True)
+class NameSaid:
+    """What the page said about whose document this is (decision 128).
+
+    ``outcome`` is one of :mod:`tracker.names`' three; ``spelling`` is the
+    firm's own spelling that decided it, and ``label`` the other return's
+    own label where the name belonged to somebody else. Both are blank
+    where the page named nobody, which is the whole of an absent verdict.
+    """
+
+    outcome: str
+    spelling: str = ""
+    label: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Suggestion:
     """One request a parked file might belong to, and why it is offered.
 
     ``rank`` sorts ascending, lowest first: ``(identity, strength,
-    catalog)``. ``identity`` is the reserved slot above; ``strength`` is
-    the best thing the evidence said about this request (:func:`_strength`);
-    ``catalog`` is the row's position in the manifest, which breaks a tie
-    the only way that is not a guess. Two requests with equal evidence
-    therefore agree on the first two slots and differ only in the third.
+    catalog)``. ``identity`` is the slot above - a confirmed name ranks
+    first; ``strength`` is the best thing the evidence said about this
+    request (:func:`_strength`); ``catalog`` is the row's position in the
+    manifest, which breaks a tie the only way that is not a guess. Two
+    requests with equal evidence therefore agree on the first two slots
+    and differ only in the third.
+
+    ``name`` is what the page said about whose it is, where it said
+    anything: the same answer for every suggestion on one row, because it
+    is the row's return that was judged and not the row's request.
     """
 
     identifier: str
     reason: str
     rank: tuple[int, ...]
+    name: NameSaid | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +299,69 @@ def _said(evidence: Evidence) -> str:
     return f"{TERM_WORDS.format(term=evidence.term)} {_where_said(evidence)}"
 
 
+def _label_of(reason: str, spelling: str) -> str:
+    """The other return's label, read back off the sentence the filer wrote.
+
+    The pattern is built from the very sentences the filer wrote - the
+    Reason's own template and the one way a spelling and a return are said
+    together - so rewording either moves this reader with it, exactly as
+    ``filer.moved_to`` reads a path back off a Reason (decisions 108 and
+    109). The row is the only place the other return's label is kept, and
+    it is kept there because the name's *evidence* is the spelling and a
+    label is not evidence of anything.
+
+    The spelling is known before the search - it is the row's own
+    ``RULE_NAME`` evidence - so it goes into the pattern escaped, and the
+    label group is greedy: a return name may itself hold a parenthesis
+    (``1120S - Park (USA) Inc``), and what closes the label is the
+    sentence's fixed tail rather than the first ``)``.
+    """
+    found = re.search(as_pattern(
+        reasons.NAMES_ANOTHER_RETURN.template,
+        listed=as_pattern(reasons.NAME_AND_RETURN,
+                          spelling=re.escape(spelling), label=r"(?P<label>.+)"),
+    ), reason)
+    return found.group("label") if found is not None else ""
+
+
+def _name_said(entry: IndexEntry, found: tuple[Evidence, ...]) -> NameSaid | None:
+    """What the page said about whose document this is, from the row alone.
+
+    The row's Reason says which of the three it was - the filer wrote one
+    of :mod:`tracker.reasons`' three name sentences when the name is what
+    parked it - and the :data:`tracker.records.RULE_NAME` evidence carries
+    the spelling. A row the name tier said nothing about (an ordinary
+    unmatched file, a duplicate) gets ``None`` and the card says nothing,
+    which is right: no suggestion is better than an invented one.
+
+    A veto is told from a confirmation by the reason's own marker
+    (decision 121: one way to read a reason), never by whether a regular
+    expression over the prose happened to match - because on a vetoed row
+    the ``RULE_NAME`` evidence carries the *other* return's spelling, and a
+    failed match would read it as this return's and say the page names a
+    person it does not.
+    """
+    spelling = next((e.term for e in found if e.rule == RULE_NAME), "")
+    if reasons.NAMES_ANOTHER_RETURN.matches(entry.reason):
+        return NameSaid(NAME_VETOED, spelling, _label_of(entry.reason, spelling))
+    if (reasons.NAME_NOT_ON_PAGE.matches(entry.reason)
+            or reasons.NO_PEOPLE_ON_FILE.matches(entry.reason)):
+        return NameSaid(NAME_ABSENT)
+    return NameSaid(NAME_CONFIRMED, spelling) if spelling else None
+
+
+def _name_note(said: NameSaid | None) -> str:
+    """One of the three sentences, filled, or "" where the page said
+    nothing about whose it is."""
+    if said is None:
+        return ""
+    if said.outcome == NAME_CONFIRMED:
+        return NAME_CONFIRMED_NOTE.format(spelling=said.spelling)
+    if said.outcome == NAME_VETOED:
+        return NAME_OTHER_NOTE.format(spelling=said.spelling, label=said.label)
+    return NAME_ABSENT_NOTE
+
+
 def _refusals_for(entry: IndexEntry, identifier: str, found: tuple[Evidence, ...]) -> list[str]:
     """The rules that refused this request, said in the words reasons.py gives them.
 
@@ -271,10 +385,24 @@ def _refusals_for(entry: IndexEntry, identifier: str, found: tuple[Evidence, ...
     return said
 
 
-def _reason_for(entry: IndexEntry, identifier: str, found: tuple[Evidence, ...]) -> str:
-    """The one-line sentence behind a suggestion, strongest clause first."""
-    content = sorted((e for e in found if e.rule != RULE_REFUSED), key=_strength)
-    said = FOUND_SEPARATOR.join(_said(e) for e in content)
+def _reason_for(
+    entry: IndexEntry, identifier: str, found: tuple[Evidence, ...],
+    said_of_the_name: str = "",
+) -> str:
+    """The one-line sentence behind a suggestion, strongest clause first.
+
+    The keyword clauses, then what the page said about whose it is
+    (decision 128), then the rules that refused it - the order a person
+    reads them in: what it looks like, whose it looks like, why it was not
+    filed. The name's own evidence is not quoted twice: it is the sentence
+    rather than a ``'term' on page 1`` clause, because a name is not one of
+    the row's keywords.
+    """
+    content = sorted((e for e in found if e.rule not in (RULE_REFUSED, RULE_NAME)), key=_strength)
+    clauses = [_said(e) for e in content]
+    said = FOUND_SEPARATOR.join(clauses)
+    if said_of_the_name:
+        said = FOUND_SEPARATOR.join([said, said_of_the_name]) if said else said_of_the_name
     refusals = _refusals_for(entry, identifier, found)
     if refusals:
         said = REFUSAL_SEPARATOR.join([said, *refusals])
@@ -289,6 +417,12 @@ def shortlist_for(entry: IndexEntry, items: list[RequestItem]) -> tuple[Suggesti
     is the router saying the file could not be this request - and a
     candidate no longer on the manifest is not offered either, since there
     is no row left to file it into.
+
+    A row whose name the page confirmed ranks first, whatever its keywords
+    said (decision 128): the return was judged, not the request, so every
+    suggestion on that row takes the same first slot - and the name is then
+    left out of the strength that sorts them within it, so the keywords
+    keep their own order underneath.
     """
     catalog = {item.identifier: (position, item) for position, item in enumerate(items)}
     suggestions: list[Suggestion] = []
@@ -302,8 +436,21 @@ def shortlist_for(entry: IndexEntry, items: list[RequestItem]) -> tuple[Suggesti
         content = tuple(e for e in found if e.rule != RULE_REFUSED)
         if not content:
             continue
-        rank = (IDENTITY_UNKNOWN, min(_strength(e) for e in content), position)
-        suggestions.append(Suggestion(identifier, _reason_for(entry, identifier, found), rank))
+        said = _name_said(entry, found)
+        identity = (IDENTITY_AGREES if said is not None and said.outcome == NAME_CONFIRMED
+                    else IDENTITY_UNKNOWN)
+        # The name has taken the identity slot already, so it is left out
+        # of the strength slot: it is on every candidate of the row and at
+        # the strongest tier there is, so counting it again would give
+        # every candidate the same minimum and leave the keyword tiers
+        # ordering nothing - an any-keyword row would sort above a
+        # required-keyword one on catalog position alone. A candidate whose
+        # only evidence *is* the name has no keyword tier to fall back on
+        # and keeps the rank it had.
+        keywords = [e for e in content if e.rule != RULE_NAME]
+        rank = (identity, min(_strength(e) for e in (keywords or content)), position)
+        suggestions.append(Suggestion(
+            identifier, _reason_for(entry, identifier, found, _name_note(said)), rank, said))
     suggestions.sort(key=lambda suggestion: suggestion.rank)
     return tuple(suggestions[:MAX_SUGGESTIONS])
 
