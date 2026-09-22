@@ -80,7 +80,13 @@ import pytest
 from tracker import ledger, store, view
 from tracker.filer import ensure, file_household_drops
 from tracker.households import create_household
-from tracker.layout import inbox_of, originals_of, private_household_dir, return_dir_for
+from tracker.layout import (
+    inbox_of,
+    lock_order_key,
+    originals_of,
+    private_household_dir,
+    return_dir_for,
+)
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import EngagementInfo, create_engagement
@@ -237,25 +243,30 @@ def make_engagement(root, items, info: EngagementInfo | None = None, *,
     return folder
 
 
-def sort_all(returns, *, today=None, dry_run: bool = False):
+def sort_all(returns, *, home=None, today=None, dry_run: bool = False):
     """One pass of the household's sort over these returns, answering for
     every one of them: the mapping ``file_household_drops`` returns.
 
     One inbox feeds them all (decision 125), so one call is the whole
-    sort - a second would find nothing left to do.
+    sort - a second would find nothing left to do. The first return's
+    household is the one whose inbox is sorted; ``home`` names that
+    household's **own** returns when the list also holds returns it feeds
+    (decision 129), and the locks are taken in the one global order, as
+    the pass takes them.
     """
     folders = [Path(one) for one in returns]
     with ExitStack() as locks:
         if not dry_run:
-            for folder in folders:
+            for folder in sorted(folders, key=lock_order_key):
                 locks.enter_context(engagement_lock(folder))
         return file_household_drops(
             inbox_of(folders[0]), originals_of(folders[0]), folders,
+            home=None if home is None else [Path(one) for one in home],
             today=today, dry_run=dry_run,
         )
 
 
-def sort(engagement, *, returns=None, today=None, dry_run: bool = False):
+def sort(engagement, *, returns=None, home=None, today=None, dry_run: bool = False):
     """Sort one household's inbox the way a pass does, and answer for
     ``engagement``.
 
@@ -266,7 +277,7 @@ def sort(engagement, *, returns=None, today=None, dry_run: bool = False):
     """
     engagement = Path(engagement)
     folders = returns if returns is not None else [engagement]
-    return sort_all(folders, today=today, dry_run=dry_run)[engagement]
+    return sort_all(folders, home=home, today=today, dry_run=dry_run)[engagement]
 
 
 def _check_view(engagement_dir) -> None:

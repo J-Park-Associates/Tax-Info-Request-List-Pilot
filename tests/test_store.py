@@ -173,7 +173,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 8
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 9
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -195,16 +195,16 @@ def test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name(tmp_pat
     assert str(path) in str(raised.value) and str(store.SCHEMA_VERSION + 1) in str(raised.value)
 
 
-def test_a_version_seven_store_is_refused_and_rebuilt(tmp_path):
+def test_a_version_eight_store_is_refused_and_rebuilt(tmp_path):
     """Decision 107 added the verdict cache's two tables; a file from before
     it has no ``verdicts`` table, and is refused by the same sentence a
     version-1 file was - delete it and rebuild, nothing is lost.
 
     And so is a file at the version before this one, whatever that is
-    today: decision 128 put the return's people in ``engagements`` and the
-    ``named`` mark in ``requests``, and a version-7 file has neither. Both
-    travel in the ``rules_changed`` lines, so a rebuild from the journals
-    puts every one of them back.
+    today: decision 129 put the household's feed list in ``engagements``,
+    and a version-8 file has no column for it. It travels in the
+    ``household_changed`` lines, so a rebuild from the journals puts every
+    feed back.
     """
     path = tmp_path / "app" / store.STORE_FILENAME
     for version in (2, store.SCHEMA_VERSION - 1):

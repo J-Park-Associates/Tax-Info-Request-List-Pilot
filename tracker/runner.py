@@ -66,12 +66,23 @@ because the view holds no fact of its own.
 **A household at a time** (decision 125). A client folder is a household
 with one folder per tax year inside it and one folder per return inside
 that, and the household has one permanent inbox. So a pass is over a
-household: it takes every open return's lock in folder-name order, sorts
-the one inbox across all of them at once - a drop is filed where exactly
-one return's requests accept it, and parked where several or none do - and
-then scans, drafts and draws each return in turn. A household with two
-open years sorts nothing from its inbox and says so on every return, until
-a person retires a year in the editor.
+household: it takes every open return's lock, sorts the one inbox across
+all of them at once - a drop is filed where exactly one return's requests
+accept it, and parked where several or none do - and then scans, drafts
+and draws each return in turn. A household with two open years sorts
+nothing from its inbox and says so on every return, until a person retires
+a year in the editor.
+
+**And a drop folder may feed further than its own household** (decision
+129). A person may extend it to named return lines in other households -
+the co-owned business, the adult daughter's return a parent relays - and
+the pass judges the inbox against those returns too, files into them, and
+moves the original under the household the return that took it lives in.
+Every lock it needs, its own and the fed ones, is taken in one global
+order - household folder name, then return folder name, without case -
+before anything is read, so two passes running at once cannot take the
+same two returns the other way round. Nothing is ever inferred into that
+list: a household is assembled by a person, and so is a feed.
 
 **Every folder that does not fit the layout is listed and left alone.** The
 practice page ends with them, each with the one sentence saying why
@@ -97,8 +108,8 @@ from pathlib import Path
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, ensure, file_household_drops, read_index
 from tracker.fsio import write_text_atomically
-from tracker.households import open_years
-from tracker.layout import inbox_of, originals_dir_for, root_of
+from tracker.households import load_household_info, open_years, resolve_feeds
+from tracker.layout import inbox_of, lock_order_key, originals_dir_for, root_of
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -377,6 +388,16 @@ def should_draft(
 TWO_OPEN_YEARS = ("two years are open in this household ({years}); nothing is sorted from its "
                   "inbox until one is retired in the editor")
 
+#: What a household's pass says about a document it filed into a return it
+#: feeds (decision 129). The row belongs to the return that took it and the
+#: report of it belongs to that return's own pass, so without this sentence
+#: the household that sorted the drop said "filed 0" of a pass that filed
+#: something - true of its own returns and misleading about the pass. One
+#: sentence per fed return that received a filing, on the first of this
+#: household's own returns, in the warnings: the channel the unresolved
+#: feed already speaks through.
+FILED_INTO_FED = "{n} document(s) filed into {label} from this drop folder"
+
 
 def run_household(
     household: Path,
@@ -387,19 +408,28 @@ def run_household(
     dry_run: bool = False,
     reminders: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
+    registry: object | None = None,
 ) -> list[EngagementRun]:
     """One pass over a whole household: sort its one inbox across every
-    return of its open year, then scan, draft and draw each return.
+    return it feeds, then scan, draft and draw each of its own returns.
 
     **The household is the unit of a pass** (decision 125). A household has
     one inbox, so the sort has to judge each drop against every open-year
     return under their locks together: taking them one at a time would let
     a click in the app step between two returns that one document was
-    being judged against. The locks are taken in folder-name order,
-    without case, before anything is read - one order, so two passes over
-    two households can never hold each other's returns the wrong way
-    round - and one held elsewhere skips the whole household this pass,
-    with nothing touched.
+    being judged against.
+
+    **And the inbox may feed further** (decision 129). A person may extend
+    a household's drop folder to named return lines in other households -
+    the co-owned business, the adult daughter's return a parent relays -
+    and those returns are judged, locked and filed into exactly like the
+    household's own; ``registry`` is the walk the feeds are resolved
+    against, and without one only the household's own returns are fed.
+    The locks - its own and every fed one - are taken in the **one global
+    order** (``layout.lock_order_key``: the household's folder name, then
+    the return's, without case) before anything is read, so two processes
+    can never take the same two returns the other way round, and one held
+    elsewhere skips the whole household this pass, with nothing touched.
 
     **Two open years sorts nothing.** The inbox cannot say which year a
     document is for, so every return of the household is warned and the
@@ -423,27 +453,42 @@ def run_household(
         note = TWO_OPEN_YEARS.format(years=", ".join(str(year) for year in years))
         for run in working:
             run.warnings.append(note)
-    # The locks, in folder-name order without case: the order the sort
-    # calls "first by order" too, so the return a contested drop parks in
-    # is the return whose lock was taken first.
-    working.sort(key=lambda run: run.engagement.path.name.lower())
+    # The one global lock order: the household's folder name, then the
+    # return's, without case. Within one household that is the return
+    # folder's own order, which is what the sort calls "first by order"
+    # too, so the return a contested drop parks in is the return whose
+    # lock was taken first.
+    working.sort(key=lambda run: lock_order_key(run.engagement.path))
     sorting = [run for run in working
                if len(years) == 1 and run.engagement.tax_year == years[0]]
+    # The return lines in other households this drop folder also feeds
+    # (decision 129), resolved to this year's returns; a line that answers
+    # to nothing is said on every one of the household's own returns.
+    fed: list[Engagement] = []
+    if sorting and registry is not None:
+        fed, unresolved = _feeds_of(household, years[0], registry)
+        for run in working:
+            run.warnings.extend(unresolved)
 
     try:
         with ExitStack() as locks:
             # A dry run takes none: it writes nothing and must never block
             # a real run.
             if not dry_run:
-                for run in working:
-                    locks.enter_context(engagement_lock(run.engagement.path))
+                for folder in sorted([*(run.engagement.path for run in working),
+                                      *(one.path for one in fed)],
+                                     key=lock_order_key):
+                    locks.enter_context(engagement_lock(folder))
             # The household's own side - the inbox, the year's folder and
             # the README that lists every return of the open year - is laid
-            # out once for the lot, before the inbox is read.
+            # out once for the lot, before the inbox is read. The fed
+            # returns are not in it: a fed return's own household lays out
+            # its own folders, and its request list is not this client's
+            # to read.
             if not dry_run:
                 scaffold_household(household, returns=[run.engagement.path for run in working])
             if sorting:
-                _sort_step(household, sorting, today=today, dry_run=dry_run)
+                _sort_step(household, sorting, fed, today=today, dry_run=dry_run)
             for run in working:
                 run_engagement(run.engagement, root=root, today=today, dry_run=dry_run,
                                reminders=reminders, weekday=weekday, lock_held=not dry_run,
@@ -468,13 +513,44 @@ def run_household(
     return runs
 
 
-def _sort_step(household: Path, sorting: list[EngagementRun], *,
+def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engagement], list[str]]:
+    """The returns this household's drop folder also feeds this year, and
+    the sentences for the feeds nothing answers (decision 129).
+
+    Each one whole, not only its folder: the sort needs the path and the
+    pass needs the label, because a filing into a fed return is reported
+    on the dropping household's own run by the name a person reads.
+
+    A household whose own record cannot be read feeds nothing but its own:
+    the problem is said elsewhere, and a feed nobody can prove is a route
+    nothing should take.
+    """
+    try:
+        feeds = load_household_info(household).feeds
+    except Exception:
+        return [], []
+    if not feeds:
+        return [], []
+    found, said = resolve_feeds(household, feeds, year, registry)
+    return found, said
+
+
+def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engagement], *,
                today: dt.date, dry_run: bool) -> None:
-    """The household's one inbox, sorted across the returns of its open year.
+    """The household's one inbox, sorted across the returns of its open year
+    and the returns it feeds.
 
     One call, under the locks the caller holds, and one transaction per
-    return inside it (decision 102, unchanged). Each return's report fills
-    its own run.
+    return inside it (decision 102, unchanged). Each of this household's
+    own returns fills its own run; a fed return's report belongs to the
+    pass of the household it lives in, which records what it filed for it.
+
+    What this pass filed into a fed return is still this pass's to say
+    (decision 129): the rows are the other return's, but the drop folder
+    was this household's, and a pass that reported "filed 0" of documents
+    it had just filed elsewhere was telling a person the wrong thing about
+    their own inbox. One sentence per fed return that received something,
+    on the first own return's run, in its warnings.
     """
     first = sorting[0].engagement.path
     # The year the record says, not the year folder's name: a folder
@@ -482,9 +558,15 @@ def _sort_step(household: Path, sorting: list[EngagementRun], *,
     # (``tracker.registry.NAME_DISAGREES``), never renamed.
     year = sorting[0].engagement.tax_year
     originals = originals_dir_for(root_of(first), household.name, year)
+    own = [run.engagement.path for run in sorting]
     reports = file_household_drops(
-        inbox_of(first), originals, [run.engagement.path for run in sorting],
+        inbox_of(first), originals, [*own, *(one.path for one in fed)], home=own,
         today=today, dry_run=dry_run,
+    )
+    sorting[0].warnings.extend(
+        FILED_INTO_FED.format(n=len(reports[one.path].filed), label=one.label)
+        for one in fed
+        if one.path in reports and reports[one.path].filed
     )
     for run in sorting:
         filed = reports.get(run.engagement.path)
@@ -809,7 +891,8 @@ def run_registry(
             continue
         report.runs.extend(
             run for run in run_household(household, returns, root=registry.source, today=today,
-                                         dry_run=dry_run, reminders=reminders, weekday=weekday)
+                                         dry_run=dry_run, reminders=reminders, weekday=weekday,
+                                         registry=registry)
             if run.engagement.path in selected
         )
     return report

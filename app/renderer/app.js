@@ -622,7 +622,28 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
     el("button", { className: "btn btn-primary r-file" },
       open ? vocab.review_labels.file : vocab.review_labels.file_anyway),
     open && el("button", { className: "btn r-dismiss" }, vocab.review_labels.dismiss),
+    // And the answer that files it under a request of another return this
+    // drop folder feeds (decision 129), offered only where there is one.
+    fedReturns().length
+      && el("button", { className: "btn r-hand-over" }, vocab.review_labels.hand_over),
   );
+}
+
+// Every return this drop folder feeds, as the picker offers them: the
+// household's own open-year returns and the return lines a person extended
+// it to, minus the one being looked at. The state carries both, so the
+// page asks nothing of its own and can offer nothing the feed list does
+// not already go to.
+function fedReturns() {
+  const hh = lastState && lastState.household;
+  if (!hh) return [];
+  const open = hh.open_years || [];
+  const own = (hh.returns || [])
+    .filter((r) => r.active && open.includes(r.year) && r.path !== active)
+    .map((r) => ({ path: r.path, label: r.label }));
+  const fed = (hh.feeds || []).filter((f) => f.path)
+    .map((f) => ({ path: f.path, label: f.label }));
+  return [...own, ...fed];
 }
 
 function typed(li, className) {
@@ -654,6 +675,73 @@ async function fileRow(original, identifier, seq, keyword, spelling) {
   banner(notes.join(". ") + ".",
     a.keyword_note || a.spelling_note || a.left_in_review || a.overrode_shortlist || a.scan_note
       ? "warn" : "ok");
+}
+
+// ── File under another return (decision 129) ─────────────────────────────
+//
+// One decision the API carries out whole: the original moves where it must
+// rest, the working copy is made in the taking return's request folder, the
+// parked copy here goes, and this return's row closes. The page picks the
+// return and the request and sends both; it decides nothing.
+
+// The row being handed over while the modal is open.
+let handingOver = null;
+
+async function openHandOver(original, seq) {
+  const words = vocab.review_labels;
+  const offered = fedReturns();
+  if (!offered.length) return;
+  handingOver = { original, seq };
+  $("ho-title").textContent = words.hand_over;
+  $("ho-name").textContent = original;
+  $("ho-return-label").textContent = words.hand_over_return;
+  $("ho-request-label").textContent = words.hand_over_request;
+  $("ho-file").textContent = words.file;
+  show("ho-return", offered.map((one) => el("option", { value: one.path }, one.label)));
+  $("handover-modal").classList.remove("hidden");
+  await loadHandOverRequests();
+}
+
+// The taking return's own request list, read from its state - the same
+// answer the editor and the pass read, so the picker can only offer a
+// request that return really has.
+async function loadHandOverRequests() {
+  const target = $("ho-return").value;
+  show("ho-request", [el("option", { value: "" }, "…")]);
+  try {
+    const state = await call(["state", vocab.engagement_flag, target]);
+    show("ho-request", state.items.map((i) => requestOption(i, "")));
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function fileHandOver() {
+  const btn = $("ho-file");
+  const identifier = $("ho-request").value;
+  if (!handingOver || !identifier) {
+    toast("Pick the request this document belongs to first.");
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("assign"), {
+      original: handingOver.original, identifier, target: $("ho-return").value,
+      seq: handingOver.seq,
+    });
+    $("handover-modal").classList.add("hidden");
+    render(result.state);
+    const a = result.handed_over;
+    const notes = [`${a.original_name} filed as ${a.filed_as} under ${a.label}`];
+    if (a.left_in_review) notes.push(a.left_in_review);
+    if (a.scan_note) notes.push(a.scan_note);
+    banner(notes.join(". ") + ".", a.left_in_review || a.scan_note ? "warn" : "ok");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    handingOver = null;
+  }
 }
 
 async function assignParked(li) {
@@ -793,6 +881,10 @@ function deckCard(t, row, place, total, people = []) {
       fill(vocab.review_labels.card_position, { n: place, total })),
     best && el("button", { className: "btn btn-primary c-accept" }, vocab.review_labels.accept),
     el("button", { className: "btn c-open" }, vocab.review_labels.open_in_list),
+    // The deck offers what the list offers: a request of another return
+    // this drop folder feeds (decision 129).
+    fedReturns().length
+      && el("button", { className: "btn c-hand-over" }, vocab.review_labels.hand_over),
     el("button", { className: "btn c-skip" }, vocab.review_labels.skip),
   );
 }
@@ -975,7 +1067,28 @@ function renderHousehold(state) {
       r.reminder && el("span", { className: "wiz-note" }, returnReminderLine(r.reminder)))));
   $("household-queue").textContent = fill(words.queue_line, { n: hh.queue });
   $("btn-edit-household").textContent = words.edit;
+  renderFeeds(hh);
   renderSharing(hh);
+}
+
+// What this drop folder also feeds, and whose drop folders feed a return
+// here (decision 129). Labels and household names only: who is shared on
+// another household is on that household's own card, never here. A feed
+// that answers to no return this year says so in the API's sentence.
+function renderFeeds(hh) {
+  const words = vocab.household;
+  const feeds = hh.feeds || [];
+  const fed = hh.fed_by || [];
+  const listed = feeds.filter((f) => f.label).map((f) => f.label);
+  $("household-feeds").classList.toggle("hidden", !listed.length);
+  $("household-feeds").textContent = listed.length
+    ? fill(words.feeds_line, { listed: listed.join(", ") }) : "";
+  $("household-fed-by").classList.toggle("hidden", !fed.length);
+  $("household-fed-by").textContent = fed.length
+    ? fill(words.fed_by_line, { listed: fed.map((h) => h.name).join(", ") }) : "";
+  const said = feeds.map((f) => f.warning).filter(Boolean);
+  $("household-feeds-unresolved").classList.toggle("hidden", !said.length);
+  $("household-feeds-unresolved").textContent = said.join(" · ");
 }
 
 // One return's reminder, in the same words its own card uses: approved
@@ -1027,7 +1140,29 @@ async function markShared() {
   }
 }
 
-// The household's own three fields, saved as one recorded event.
+// The feed list as the editor holds it while the modal is open: a list a
+// person built from the returns that already exist. Nothing is typed and
+// nothing is inferred - a household is assembled by a person, and so is a
+// feed (decision 129).
+let editorFeeds = [];
+
+// What the picker is offering right now, in the order it draws the options.
+// An option's value is its index here and nothing else: a feed is two
+// fields - a household name and a return line - and every one of them
+// carries spaces, so a value that packed the pair into one string had to be
+// taken apart again on a guess. The index is exact, and what is added is
+// the object the option was drawn from, field for field.
+let feedChoices = [];
+
+// And where the two fields must be one key - the set of feeds already
+// added, which is a lookup and not a value sent anywhere - the pair is
+// keyed as the pair, rather than run together into one string with a
+// separator a name might itself carry.
+function feedKey(household, returnName) {
+  return JSON.stringify([household, returnName]);
+}
+
+// The household's own fields, saved as one recorded event.
 function openHouseholdEditor() {
   const words = vocab.household;
   const hh = lastState && lastState.household;
@@ -1040,7 +1175,62 @@ function openHouseholdEditor() {
   $("hh-edit-members").value = hh.members.join("\n");
   $("hh-edit-contact").value = hh.contact || "";
   $("hh-edit-link").value = hh.link || "";
+  $("hh-edit-feeds-label").textContent = words.feeds_label;
+  $("hh-edit-feeds-help").textContent = words.feeds_help;
+  $("hh-edit-feed-add").textContent = words.add_feed;
+  $("hh-edit-feed-warning").classList.add("hidden");
+  editorFeeds = (hh.feeds || []).map((f) => ({ household: f.household, return_name: f.return_name,
+                                               label: f.label }));
+  renderEditorFeeds();
   $("household-modal").classList.remove("hidden");
+}
+
+// The return lines this drop folder feeds, and the picker of every other
+// household's return lines it could. The picker is drawn from the same
+// walk the pass uses (the `list` command), so a person can only pick a
+// return the tracker already knows about.
+function renderEditorFeeds() {
+  const hh = lastState && lastState.household;
+  const here = hh ? hh.name : "";
+  show("hh-edit-feeds", editorFeeds.map((feed, at) => el("li", {},
+    el("span", {}, feed.label || `${feed.household} ${feed.return_name}`),
+    el("button", { className: "btn btn-small hh-feed-remove", dataset: { at: String(at) } },
+      vocab.editor.remove_row))));
+  const taken = new Set(editorFeeds.map((f) => feedKey(f.household, f.return_name)));
+  const options = [];
+  feedChoices = [];
+  for (const other of households) {
+    if (other.name === here) continue;
+    const open = other.open_years || [];
+    for (const one of other.returns || []) {
+      if (!one.active || !open.includes(one.year)) continue;
+      if (taken.has(feedKey(other.name, one.return_name))) continue;
+      options.push(el("option", { value: String(feedChoices.length) }, one.label));
+      feedChoices.push({ household: other.name, return_name: one.return_name,
+                         label: one.label, members: other.members || [] });
+    }
+  }
+  show("hh-edit-feed-pick", options.length ? options : [el("option", { value: "" }, "—")]);
+  $("hh-edit-feed-add").disabled = !options.length;
+}
+
+// Every feed added is warned about, every time: anyone with access to this
+// drop folder may drop for that return, and its documents will rest under
+// the folder it lives in, shared with whoever that household's card says.
+// The sentence and the stand-in for an untyped members list are the API's.
+function addEditorFeed() {
+  const picked = $("hh-edit-feed-pick").value;
+  if (!picked) return;
+  const chosen = feedChoices[Number(picked)];
+  if (!chosen) return;
+  const members = chosen.members.length ? chosen.members.join(", ")
+    : vocab.household.nobody_typed;
+  editorFeeds.push({ household: chosen.household, return_name: chosen.return_name,
+                     label: chosen.label });
+  renderEditorFeeds();
+  const warning = $("hh-edit-feed-warning");
+  warning.textContent = fill(vocab.household.feed_warning, { members });
+  warning.classList.remove("hidden");
 }
 
 async function saveHousehold() {
@@ -1051,6 +1241,7 @@ async function saveHousehold() {
       members: $("hh-edit-members").value.split("\n").map((one) => one.trim()).filter(Boolean),
       contact: $("hh-edit-contact").value.trim(),
       link: $("hh-edit-link").value.trim(),
+      feeds: editorFeeds.map((f) => ({ household: f.household, return_name: f.return_name })),
     });
     $("household-modal").classList.add("hidden");
     render(result.state);
@@ -1130,6 +1321,10 @@ function applyVocabulary() {
   $("hh-link").title = vocab.household.link_help;
   $("ne-name-label").textContent = vocab.household.return_name_label;
   $("ne-name").title = vocab.household.return_name_help;
+  // What adding a return to a household shows, said every time on both
+  // pages that add one (decision 129).
+  $("hh-return-warning").textContent = vocab.household.return_warning;
+  $("ne-return-warning").textContent = vocab.household.return_warning;
   $("ro-household-label").textContent = vocab.household.heading;
   $("view-label").textContent = vocab.view.open;
   $("edit-label").textContent = vocab.editor.open;
@@ -2172,6 +2367,19 @@ $("btn-edit-household").addEventListener("click", openHouseholdEditor);
 $("btn-mark-shared").addEventListener("click", markShared);
 $("hh-edit-cancel").addEventListener("click", () => $("household-modal").classList.add("hidden"));
 $("hh-edit-save").addEventListener("click", saveHousehold);
+$("hh-edit-feed-add").addEventListener("click", addEditorFeed);
+$("hh-edit-feeds").addEventListener("click", (e) => {
+  const remove = e.target.closest("button.hh-feed-remove");
+  if (!remove) return;
+  editorFeeds.splice(Number(remove.dataset.at), 1);
+  renderEditorFeeds();
+});
+$("ho-cancel").addEventListener("click", () => {
+  $("handover-modal").classList.add("hidden");
+  handingOver = null;
+});
+$("ho-return").addEventListener("change", loadHandOverRequests);
+$("ho-file").addEventListener("click", fileHandOver);
 $("household-returns").addEventListener("click", (e) => {
   const button = e.target.closest("button[data-path]");
   if (!button) return;
@@ -2285,6 +2493,11 @@ $("review-list").addEventListener("click", (e) => {
   if (file) assignParked(file.closest("li"));
   const dismiss = e.target.closest(".r-dismiss");
   if (dismiss) dismissParked(dismiss.closest("li"));
+  const over = e.target.closest(".r-hand-over");
+  if (over) {
+    const li = over.closest("li");
+    openHandOver(li.dataset.original, Number(li.dataset.seq));
+  }
 });
 $("review-mode").addEventListener("click", (e) => {
   if (e.target.closest("#review-mode-cards")) setReviewMode(MODE_CARDS);
@@ -2297,6 +2510,11 @@ $("review-deck").addEventListener("click", (e) => {
   if (open) openCardInList(open.closest(".deck-card"));
   const skip = e.target.closest(".c-skip");
   if (skip) skipCard(skip.closest(".deck-card"));
+  const over = e.target.closest(".c-hand-over");
+  if (over) {
+    const card = over.closest(".deck-card");
+    openHandOver(card.dataset.original, Number(card.dataset.seq));
+  }
 });
 $("dismissed-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".r-file");

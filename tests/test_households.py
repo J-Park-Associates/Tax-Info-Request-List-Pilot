@@ -269,3 +269,93 @@ def test_a_return_and_its_household_are_two_rows_of_one_table(tmp_path, househol
     assert store.kind(conn, household) == store.KIND_HOUSEHOLD
     assert store.household_info(conn, engagement) is None      # a return is not a household
     assert store.kind(conn, return_dir_for(tmp_path, "Smith Family", 2030, "nobody")) is None
+
+
+# ============ the feed list (decision 129) =================================
+#
+# A client with a co-owned business keeps one drop folder, and the business
+# lives in a household shared to its co-owners: so a household's drop folder
+# may feed named return lines in other households. What is recorded is the
+# line, not the return, and the pass resolves it each time.
+
+
+def _feeding(tmp_path, feeds):
+    """Park Family's household record, feeding whatever this test says.
+
+    A person extends the feed list in the editor, which is one
+    ``household_changed`` event of exactly what moved - so this is a save,
+    not a second create.
+    """
+    from dataclasses import replace
+
+    folder = private_household_dir(tmp_path, "Park Family")
+    held = load_household_info(folder)
+    save_household(folder, replace(held, feeds=tuple(feeds)))
+    return folder
+
+
+def test_a_feed_is_a_return_line_and_resolves_to_the_open_years_return_or_is_said(tmp_path):
+    """A feed names a household and a return line - the name a return keeps
+    every year - and the pass resolves it to that household's open-year
+    return of that name. So the rollover carries nothing about feeds, and a
+    line that answers to no active return this year is said rather than
+    quietly feeding nothing."""
+    from tracker.households import FEED_UNRESOLVED, resolve_feeds
+    from tracker.records import Feed
+    from tracker.registry import discover_engagements
+
+    make_engagement(tmp_path, ITEMS, household="Park Family",
+                    return_name="1040 - John Park", year=2025, scaffold=False)
+    llc = make_engagement(tmp_path, ITEMS, household="Park & Lee LLC",
+                          return_name="1120S - Park & Lee LLC", year=2025, scaffold=False)
+    household = _feeding(tmp_path, [
+        Feed("Park & Lee LLC", "1120S - Park & Lee LLC"),
+        Feed("Park & Lee LLC", "1065 - a line nobody has"),
+    ])
+    registry = discover_engagements(tmp_path)
+
+    found, said = resolve_feeds(household, load_household_info(household).feeds, 2025, registry)
+
+    assert [one.path for one in found] == [llc]
+    assert said == [FEED_UNRESOLVED.format(household="Park & Lee LLC",
+                                           return_name="1065 - a line nobody has", year=2025)]
+    # The same list, a year the other household has not opened: the line is
+    # the same line, and it is said rather than resolved to last year's.
+    _found, later = resolve_feeds(household, load_household_info(household).feeds, 2026, registry)
+    assert len(later) == 2 and all("2026" in one for one in later)
+
+
+def test_a_household_cannot_feed_itself_and_a_duplicate_feed_is_refused(tmp_path):
+    """Its own returns are fed already, so a household feeding itself names
+    nothing; a line the list already holds is refused rather than folded
+    away, so a person sees that the one they picked was already there. Both
+    are the API's refusal, in the record's own words."""
+    from tracker.api import _feeds_from_spec
+    from tracker.households import resolve_feeds
+    from tracker.records import FEED_REFUSED, Feed
+    from tracker.registry import discover_engagements
+
+    make_engagement(tmp_path, ITEMS, household="Park Family",
+                    return_name="1040 - John Park", year=2025, scaffold=False)
+    household = _feeding(tmp_path, [Feed("Park Family", "1040 - John Park")])
+    registry = discover_engagements(tmp_path)
+
+    # A feed naming this household resolves to nothing and is not warned
+    # about: there is nothing to say about a return that is fed already.
+    assert resolve_feeds(household, load_household_info(household).feeds, 2025, registry) == ([], [])
+
+    for sent, refused in (
+        ([{"household": "Park Family", "return_name": "1040 - John Park"}],
+         FEED_REFUSED.format(household="Park Family", return_name="1040 - John Park")),
+        ([{"household": "", "return_name": "1120S - x"}],
+         FEED_REFUSED.format(household="(blank)", return_name="1120S - x")),
+        ([{"household": "Park & Lee LLC", "return_name": "1120S - L"},
+          {"household": "park & lee llc", "return_name": "1120S - L"}],
+         FEED_REFUSED.format(household="park & lee llc", return_name="1120S - L")),
+    ):
+        with pytest.raises(ManifestError) as raised:
+            _feeds_from_spec(sent, household)
+        assert str(raised.value) == refused
+
+    assert _feeds_from_spec([{"household": "Park & Lee LLC", "return_name": "1120S - L"}],
+                            household) == (Feed("Park & Lee LLC", "1120S - L"),)

@@ -49,6 +49,7 @@ from tracker.reminder import (
 )
 from tracker.runner import (
     DRAFT_WEEKDAY,
+    FILED_INTO_FED,
     LOG_FILENAME,
     NOTHING_OUTSTANDING,
     RECORD_UNREADABLE,
@@ -1338,3 +1339,131 @@ def test_after_any_pass_nothing_under_the_client_tree_is_a_record_a_copy_a_draft
     assert sum(len(read_index(one.path)) for one in (personal, business)) >= 2
     assert any(row.decision == NEEDS_REVIEW
                for one in (personal, business, alone) for row in read_index(one.path))
+
+
+# ============ the household routes: the feed list (decision 129) ===========
+#
+# A household's drop folder feeds its own returns unless a person extends it
+# to named return lines in other households. The pass then judges the inbox
+# against those returns too - under every lock it needs, taken in one global
+# order - and says so when a line answers to nothing.
+
+TRIAL_BALANCE = [RequestItem(identifier="B01", document="Trial Balance", period=f"TY{YEAR}",
+                             allowed_extensions=("pdf",), min_size_kb=0,
+                             required_keywords=("trial balance",))]
+
+
+def a_fed_household(tmp_path, samples, *, years=(YEAR,), drops=()):
+    """Park Family with its own 1040, an Aaa Holdings household with an
+    1120S of each of ``years``, and Park Family's drop folder feeding the
+    Aaa Holdings return line.
+
+    "Aaa Holdings" sorts before "Park Family" as a household and its return
+    sorts after Park's as a return: the two orders disagree, which is what
+    the global lock order is for.
+    """
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+    from tracker.records import Feed
+    from tracker.scaffold import scaffold_engagement
+
+    personal = make_engagement(tmp_path, DEMO_ITEMS,
+                               EngagementInfo(client="John Park", firm="J Park"),
+                               household="Park Family", return_name="1040 - John Park",
+                               people=SCRATCH_PEOPLE, scaffold=False)
+    fed = [make_engagement(tmp_path, TRIAL_BALANCE,
+                           EngagementInfo(client="Aaa Holdings", firm="J Park"),
+                           household="Aaa Holdings", year=year,
+                           return_name="1120S - Aaa Holdings", people=SCRATCH_PEOPLE,
+                           scaffold=False)
+           for year in years]
+    result = scaffold_engagement(personal)
+    for one in fed:
+        scaffold_engagement(one)
+    home = private_household_dir(tmp_path, "Park Family")
+    save_household(home, replace(load_household_info(home),
+                                 feeds=(Feed("Aaa Holdings", "1120S - Aaa Holdings"),)))
+    for name in drops:
+        (result.inbox / name).write_bytes((samples / name).read_bytes())
+    return engagement_from(personal), [engagement_from(one) for one in fed]
+
+
+def test_the_pass_takes_every_lock_it_needs_in_one_global_order_across_households(
+        tmp_path, samples, monkeypatch):
+    """A drop folder may feed a return in another household, so a pass
+    holds locks in two households at once. Every one of them is taken in
+    the one global order - the household's folder name, then the return's,
+    without case - before anything is read, so two passes running at once
+    can never take the same two returns the other way round."""
+    from tracker.layout import lock_order_key
+    from tracker.locking import LOCK_FILENAME
+
+    personal, [fed] = a_fed_household(tmp_path, samples,
+                                      drops=(f"W-2 John Smith {YEAR}.pdf",))
+    household = household_of(personal.path)
+    taken = []
+    real = runner_module.engagement_lock
+
+    def watched(folder, **kwargs):
+        taken.append(Path(folder))
+        return real(folder, **kwargs)
+
+    monkeypatch.setattr(runner_module, "engagement_lock", watched)
+    runs = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                         registry=discover_engagements(tmp_path))
+
+    assert [one.name for one in taken] == ["1120S - Aaa Holdings", "1040 - John Park"]
+    assert taken == sorted(taken, key=lock_order_key)
+    # And the return-folder name alone would have ordered them the other
+    # way round, which is why the household is the first part of the key.
+    assert [one.name for one in taken] != sorted(one.name for one in taken)
+    assert [run.ok for run in runs] == [True]
+    assert not any((one / LOCK_FILENAME).exists() for one in (personal.path, fed.path))
+
+
+def test_a_fed_household_with_two_open_years_leaves_that_feed_unresolved_and_the_rest_proceeds(
+        tmp_path, samples):
+    """A household with two open years sorts nothing from its own inbox
+    because nothing can say which year a document is for (decision 125) -
+    and for the same reason a feed into one of its returns resolves to
+    nothing this pass. It is said on every return of the household that
+    feeds it, and that household's own sort goes ahead."""
+    from tracker.households import FEED_UNRESOLVED
+
+    personal, _fed = a_fed_household(tmp_path, samples, years=(YEAR, YEAR + 1),
+                                     drops=(f"W-2 John Smith {YEAR}.pdf",))
+    household = household_of(personal.path)
+
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=discover_engagements(tmp_path))
+
+    assert FEED_UNRESOLVED.format(household="Aaa Holdings",
+                                  return_name="1120S - Aaa Holdings", year=YEAR) in run.warnings
+    assert run.ok and run.filed == 1        # the rest of the pass proceeded
+
+
+def test_the_dropping_households_pass_says_what_it_filed_into_a_fed_return(tmp_path, samples):
+    """A filing into a fed return is the other return's row and the other
+    household's report - but it came out of *this* drop folder, and a pass
+    that said "filed 0" of a document it had just filed elsewhere told the
+    person watching the wrong thing about their own inbox. One sentence per
+    fed return that received something, on the first of this household's
+    own returns. The same sentence rides the app's *Run now* reply, which
+    ``tests/test_api.py`` pins from the other side."""
+    from tests.samples import SCRATCH_CLIENT, text_pdf
+    from tracker.filer import FILED
+
+    personal, [fed] = a_fed_household(tmp_path, samples)
+    text_pdf(inbox_of(personal.path) / "trial balance.pdf",
+             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT])
+    household = household_of(personal.path)
+
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=discover_engagements(tmp_path))
+
+    assert run.ok and run.filed == 0 and read_index(personal.path) == []
+    assert FILED_INTO_FED.format(n=1, label=fed.label) in run.warnings
+    [row] = read_index(fed.path)
+    assert row.decision == FILED and row.identifier == "B01"

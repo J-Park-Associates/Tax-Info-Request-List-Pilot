@@ -95,10 +95,20 @@ def test_accept_and_file_it_are_one_call_site():
     afterwards. One function makes the call and every button reaches it, so
     there is nothing for them to differ about; the same function is what
     Keep it here on a moved copy (decision 110) goes through.
+
+    **One call site per decision**, which since decision 129 is two: a
+    hand-over is a different decision from a filing - it closes the row
+    here and opens one in the return that takes the document - and it
+    reaches the same command with a ``target``. The list and the deck both
+    reach *that* through one function too.
     """
     js = read("app/renderer/app.js")
-    assert js.count('withEng("assign")') == 1
+    assert js.count('withEng("assign")') == 2
     assert len(re.findall(r"\bfileRow\(", js)) == 4      # the one definition and its three callers
+    # The hand-over's own call site is the only one that names a target,
+    # and the two buttons that offer it both reach it.
+    assert js.count("target: $(\"ho-return\").value") == 1
+    assert len(re.findall(r"\bopenHandOver\(", js)) == 3
 
 
 def test_the_review_mode_key_is_a_key_and_not_a_word():
@@ -1011,3 +1021,36 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     assert js.count("seq: e.seq") == 2
     # And the sentence a refusal shows is the API's, never the renderer's.
     assert api.NO_SEQ not in js
+
+
+def test_the_feed_editor_picks_a_return_by_index_and_never_takes_a_value_apart():
+    """Decision 129: a feed is two fields - a household name and a return
+    line - and every real one of both carries spaces. A picker whose option
+    value ran the pair together had to take it apart again on a guess, and
+    the guess saved a feed nobody typed: recorded, warned unresolved every
+    pass, feeding nothing. So the option's value is its index into the list
+    the page is showing, and what is added is the object that option was
+    drawn from, field for field. The API's own test never reaches the page,
+    which is why this is pinned here.
+    """
+    js = read("app/renderer/app.js")
+    render = re.search(r"function renderEditorFeeds\(\) \{.*?\n\}", js, re.S)
+    add = re.search(r"function addEditorFeed\(\) \{.*?\n\}", js, re.S)
+    assert render and add
+    # The option carries its position in the list being drawn...
+    assert 'el("option", { value: String(feedChoices.length) }' in render.group(0)
+    assert "feedChoices.push({ household: other.name, return_name: one.return_name" \
+        in render.group(0)
+    # ...and the handler reads that position back and uses the whole object.
+    assert "feedChoices[Number(picked)]" in add.group(0)
+    # Neither of them splits a value into fields, on any separator.
+    for body in (render.group(0), add.group(0)):
+        assert ".split(" not in body
+    # Where the two fields must be one key - the set of feeds already added,
+    # which is a lookup and nothing the page sends - they are keyed as the
+    # pair rather than run together with a separator a name might carry.
+    assert re.search(r"function feedKey\(household, returnName\) \{\s*"
+                     r"return JSON\.stringify\(\[household, returnName\]\);", js)
+    # And no separator a source file cannot show: a raw NUL in this file is
+    # what made the earlier bug read as a space to everything that looked.
+    assert chr(0) not in js

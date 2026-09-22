@@ -230,6 +230,64 @@ cannot be given the inbox and nothing else in this section works. Then check
 with a test account outside the firm: upload from outside, try to delete from
 outside (it must be refused), and let a pass move the file.
 
+### Households that feed each other
+
+A household's drop folder feeds that household's own returns. Sometimes it
+has to feed one somewhere else, and a person extends it, by name, in the
+household's editor — *Also feeds*. Two shapes come up every season:
+
+- **A co-owned business.** The father's household holds his 1040. The LLC
+  he owns with his partner is a household of its own, shared to both
+  co-owners, with its own inbox and its own returns. Each owner's drop
+  folder feeds the LLC's return line, so either of them can drop the trial
+  balance into the folder they already use.
+- **An adult daughter's return the father relays.** Her return lives in her
+  own household, shared to her and to nobody else. The father's drop folder
+  feeds it, so a W-2 he sends on her behalf files to her return — and the
+  document then rests under *her* folder, which he cannot see.
+
+The sub-rule, in the owner's words: **a drop folder may feed a return whose
+folder the dropper cannot see. Dropping does not require seeing.** That is
+the point of the arrangement, and it is also why a document handed to a fed
+return **moves** into that household's year folder: the dropper stops seeing
+it unless they are shared there too.
+
+What the tracker does and does not do:
+
+- The document is judged against every return the drop folder feeds, its own
+  and the fed ones together: the request lists accept, the name on the page
+  confirms or vetoes, and exactly one return is left or the document waits
+  for a person **in the household it was dropped in**.
+- A feed is a **return line**, not a return: the household and the return's
+  name, the name it keeps every year. Roll Forward carries nothing about
+  feeds, and a line the other household has retired is said on the card
+  rather than quietly feeding nothing.
+- Nothing is ever inferred. The tracker never looks at two households and
+  suggests that one feeds the other, any more than it decides who belongs
+  in a household. Both are a person's assembly.
+- **Ownership changes are a person's too.** When somebody buys in or sells
+  out, a person changes the Drive grant, changes the members in the app and
+  extends or trims the feed. The tracker records the change and does nothing
+  else about it — it cannot see a share and does not pretend to.
+
+Every feed a person adds is warned about, every time: anyone with access to
+that drop folder may drop for that return, and its documents will rest under
+the folder it lives in, shared with whoever that household's card says.
+Adding a return to a household is warned about too: everyone with access to
+the folder will see that return's documents.
+
+A parked document can be filed under a request of any return the drop folder
+feeds — *File under another return*, in the queue. It is one decision: the
+original moves where it must rest, the working copy is made in that return's
+request folder, the copy waiting here goes, and the row here closes as
+*Handed Over*. Nothing hands it back; if it went to the wrong return, unfile
+it **there**, where it now is.
+
+If a feed is trimmed while one of those hand-overs is only half made — the
+machine died mid-decision — the home return refuses every action in its queue
+and says so on every pass, until somebody puts that feed back for one pass
+and lets it finish.
+
 ### Rolling a household into the next year
 
 Roll Forward in the app takes the **household**, not one return: it shows the

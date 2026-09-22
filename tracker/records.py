@@ -786,6 +786,76 @@ def info_from_json(raw: dict) -> EngagementInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class Feed:
+    """One return line in another household that this household's drop
+    folder also feeds (decision 129).
+
+    **A return line, not a return.** A client with a co-owned business
+    keeps one drop folder and the business lives in a household shared to
+    its co-owners, so one inbox has to be able to feed a return in another
+    household. What is recorded is the household and the return's name -
+    the name a return keeps every year - and the pass resolves it to that
+    household's open-year return of that name. Year-independent by
+    construction: the rollover carries nothing, and a line that is retired
+    is *said* (``tracker.households.FEED_UNRESOLVED``) rather than
+    silently dropped.
+
+    Never inferred. A household is assembled by a person and so is a feed:
+    nothing anywhere looks at two households and suggests one.
+    """
+
+    household: str                  # the household whose return is fed
+    return_name: str                # the return's folder name, the same every year
+
+
+#: What a feed that is not a return line another household can feed is
+#: refused with: a household feeding itself (its own returns are fed
+#: already), a blank name, or one the list already holds.
+FEED_REFUSED = "{household} / {return_name} is not a return line another household can feed"
+
+
+def feed_to_json(feed: Feed) -> dict:
+    """One feed as the record stores it: the household and the return line."""
+    return {"household": feed.household, "return_name": feed.return_name}
+
+
+def feed_from_json(raw: object) -> Feed:
+    """One stored feed read back, refusing a shape no reader could use.
+
+    A feed naming no household or no return line points at nothing the
+    pass could resolve, so it is refused here - where
+    :func:`tracker.store._refuse_a_malformed_line` sends a hand-edited
+    journal's feeds to be judged - rather than written into a column a
+    later pass trusts.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError(f"a feed is {type(raw).__name__}, not an object")
+    household = str(raw.get("household", "")).strip()
+    return_name = str(raw.get("return_name", "")).strip()
+    if not household or not return_name:
+        raise ValueError(FEED_REFUSED.format(household=household or "(blank)",
+                                             return_name=return_name or "(blank)"))
+    return Feed(household=household, return_name=return_name)
+
+
+def feeds_from_json(raw: object) -> tuple[Feed, ...]:
+    """A household's feed list as the record holds it: a list of objects
+    from a journal line, or the JSON text one column holds.
+
+    SQLite cannot tell a JSON array in a text column from a string, so the
+    text is read back here for the same reason the people are
+    (:func:`people_from_json`).
+    """
+    if raw in (None, "", ()):
+        return ()
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError(f"the feeds are {type(raw).__name__}, not a list")
+    return tuple(feed_from_json(one) for one in raw)
+
+
+@dataclass(frozen=True, slots=True)
 class HouseholdInfo:
     """What the firm records about one household (decision 125).
 
@@ -805,6 +875,11 @@ class HouseholdInfo:
     members: tuple[str, ...] = ()
     contact: str = ""
     link: str = ""
+    #: The return lines in **other** households this household's drop
+    #: folder also feeds (decision 129). Empty for nearly every household:
+    #: a drop folder feeds its own returns unless a person extends it, and
+    #: nothing ever infers one.
+    feeds: tuple[Feed, ...] = ()
 
 
 #: The household's labels, in the order a reader shows them.
@@ -813,12 +888,16 @@ HOUSEHOLD_FIELDS = (
     ("Members", "members"),
     ("Contact", "contact"),
     ("Inbox Link", "link"),
+    ("Also feeds", "feeds"),
 )
 #: field name -> the label, for messages that name a field.
 HOUSEHOLD_LABELS = {field_name: label for label, field_name in HOUSEHOLD_FIELDS}
 #: The fields a person may change once the household exists. The name is
 #: not among them: the folder is the name, exactly as a return's is.
-HOUSEHOLD_EDITABLE: tuple[str, ...] = ("members", "contact", "link")
+#: ``feeds`` is (decision 129) and is edited through its own list rather
+#: than a box, because a feed is a household and a return line picked from
+#: what is already there.
+HOUSEHOLD_EDITABLE: tuple[str, ...] = ("members", "contact", "link", "feeds")
 assert set(HOUSEHOLD_EDITABLE) <= {field_name for _, field_name in HOUSEHOLD_FIELDS}
 
 
@@ -831,6 +910,10 @@ def household_to_json(info: HouseholdInfo) -> dict:
     """
     payload = asdict(info)
     payload["members"] = list(info.members)
+    # The feeds as a list of objects, through their own writer, so the
+    # journal's line and the store's column hold exactly one shape
+    # (decision 129).
+    payload["feeds"] = [feed_to_json(one) for one in info.feeds]
     return payload
 
 
@@ -852,6 +935,13 @@ def household_from_json(raw: dict) -> HouseholdInfo:
         values.pop("members", None)
     else:
         values["members"] = tuple(str(one) for one in members)
+    # The feeds come back as a list of objects from a journal line and as
+    # JSON text from the store's column; both are read the one way, and a
+    # shape no pass could resolve raises rather than being half-read
+    # (``feeds_from_json``). A household record from before decision 129
+    # names none, which reads as none.
+    if "feeds" in values:
+        values["feeds"] = feeds_from_json(values["feeds"])
     return HouseholdInfo(**values)
 
 

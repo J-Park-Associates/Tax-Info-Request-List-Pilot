@@ -146,6 +146,13 @@
           </div>
           <div id="household-returns-head" class="tmpl-head"></div>
           <div id="household-returns" class="household-returns"></div>
+          <!-- What this drop folder also feeds, and whose drop folders
+               feed a return here (decision 129). Both lines are the
+               API's, filled with labels and household names - never with
+               who is shared on anybody's folder. -->
+          <p id="household-feeds" class="wiz-note hidden"></p>
+          <p id="household-fed-by" class="wiz-note hidden"></p>
+          <p id="household-feeds-unresolved" class="rem-hold hidden" role="status"></p>
           <p id="household-queue" class="wiz-note"></p>
           <div class="editor-actions">
             <button type="button" id="btn-edit-household" class="btn btn-small"></button>
@@ -287,11 +294,49 @@
         <span id="hh-edit-link-label"></span>
         <input id="hh-edit-link" type="text" />
       </label>
+      <!-- The return lines in other households this drop folder also
+           feeds (decision 129). Picked from the returns that already
+           exist - nothing is typed and nothing is inferred - and every
+           one added is warned about what its sharing will show. -->
+      <div class="field">
+        <span id="hh-edit-feeds-label"></span>
+        <ul id="hh-edit-feeds" class="household-feeds"></ul>
+        <div class="feed-add">
+          <select id="hh-edit-feed-pick"></select>
+          <button type="button" id="hh-edit-feed-add" class="btn btn-small"></button>
+        </div>
+        <p id="hh-edit-feeds-help" class="wiz-note"></p>
+        <p id="hh-edit-feed-warning" class="rem-hold hidden" role="status"></p>
+      </div>
       <p id="hh-edit-note" class="wiz-note"></p>
       <div class="modal-actions">
         <button id="hh-edit-cancel" class="btn">Cancel</button>
         <span class="toolbar-spacer"></span>
         <button id="hh-edit-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filing a parked document under a request of another return this
+       drop folder feeds (decision 129). The returns offered are the feed
+       list's and nothing else; the requests are read from that return's
+       own state. Every word is the API's. -->
+  <div id="handover-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ho-title">
+      <h3 id="ho-title"></h3>
+      <p id="ho-name" class="wiz-note"></p>
+      <label class="field">
+        <span id="ho-return-label"></span>
+        <select id="ho-return"></select>
+      </label>
+      <label class="field">
+        <span id="ho-request-label"></span>
+        <select id="ho-request"></select>
+      </label>
+      <div class="modal-actions">
+        <button id="ho-cancel" class="btn">Cancel</button>
+        <span class="toolbar-spacer"></span>
+        <button id="ho-file" class="btn btn-primary"></button>
       </div>
     </div>
   </div>
@@ -333,6 +378,10 @@
           <span id="hh-link-label"></span>
           <input id="hh-link" type="text" />
         </label>
+        <!-- What adding a return to a household shows, every time
+             (decision 129): everyone on the folder sees the return's
+             documents. The API's sentence, shown as it stands. -->
+        <p id="hh-return-warning" class="rem-hold" role="status"></p>
 
         <div class="modal-actions">
           <button id="wh-cancel" class="btn">Cancel</button>
@@ -398,6 +447,9 @@
           <span id="ne-name-label"></span>
           <input id="ne-name" type="text" />
         </label>
+        <!-- And again on the page that makes the return (decision 129),
+             because this is the page a person is on when they make one. -->
+        <p id="ne-return-warning" class="rem-hold" role="status"></p>
         <div class="roll-grid three">
           <label class="field">
             <span>Client (greeting name)</span>
