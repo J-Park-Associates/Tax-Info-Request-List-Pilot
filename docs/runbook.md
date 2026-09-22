@@ -358,14 +358,14 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    same answer is on the command line, without the app:
    `python -m tracker.review` against the engagement folder prints it.
 
-   **Until OCR is installed on this machine, every scanned PDF is in that
-   queue.** Nothing is filed on a file name (owner, 2026-09-18): a client
-   called the file "W2 2025.pdf", the form did not, and a document nobody
-   here can read is filed by nobody. What the name says is not thrown
-   away — it is the bottom line of the shortlist, *the file name says
-   W-2* — but it is a place to start reading, never the answer. Install
-   Tesseract (§6, step 5) and those scans are read and filed like any
-   other document.
+   **Until OCR is installed on this machine, every scanned PDF and every
+   photo is in that queue.** Nothing is filed on a file name (owner,
+   2026-09-18): a client called the file "W2 2025.pdf", the form did not,
+   and a document nobody here can read is filed by nobody. What the name
+   says is not thrown away — it is the bottom line of the shortlist, *the
+   file name says W-2* — but it is a place to start reading, never the
+   answer. Install Tesseract (§6, step 5) and those scans and photos are
+   read and filed like any other document.
 3. **A working copy that has moved is yours, and it is the first card on
    the screen.** Every pass proves each working copy against the
    fingerprint its own index row carries (decision 109). A copy somebody
@@ -522,8 +522,10 @@ became, and — when it was not filed — why not.
 | `router.UNMATCHED` | No request on this manifest accepted it. | File it to the right request, or add the request. |
 | `router.AMBIGUOUS` | More than one request accepted it. | Pick the right one. |
 | `router.CONTESTED_PREFIX` | It looks like a named request but failed one of that request's own rules — last year's W-2, say. | Read the named rule. Usually it is the wrong year or the wrong client. |
-| `router.OCR_ONLY` | A scan with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
-| `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan with no text layer and no OCR on this machine, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it, or install OCR (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
+| `router.OCR_ONLY` | A scan or a photo with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
+| `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo with no OCR on this machine, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it, or install OCR (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
+| `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
+| `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Re-install from `requirements.txt` (`pillow-heif`). Until then, open the photo and file it by hand. |
 | `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | File it to the right row, or add a row for that issuer (§8) and it files itself next pass. |
 | `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same card; if it is somebody else's, file it by hand on the return it belongs to. |
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
@@ -576,6 +578,7 @@ read yet.
 **Ours to deal with** (never in the client's email):
 `reasons.PENDING_SYNC`, `reasons.VANISHED`, `reasons.NO_TEXT_LAYER`,
 `reasons.NO_TEXT_AFTER_OCR`, `reasons.OCR_FAILED`,
+`reasons.HEIC_NOT_SUPPORTED`,
 `reasons.UNCHECKABLE_TYPE`, `reasons.NO_REQUEST_FOLDER`,
 `reasons.FILE_MOVED`, `reasons.COPY_CHANGED`,
 `reasons.INTERRUPTED_MOVE`, `reasons.INTERRUPTED_MOVE_LOST`. These mean the
@@ -682,14 +685,19 @@ with *a run was interrupted here; the next pass finishes it first* - press
 3. Start the app. It asks where the clients live on first launch — give it
    the same folder, the synced one.
 4. Press **Install Schedule**.
-5. If the firm's scans need OCR, install the Tesseract engine and the
-   optional packages `requirements.txt` names. **Without them every scan
-   with no text layer parks for a person** — it is not filed on what its
-   file name says, because the client wrote that name and the form did
-   not (owner, 2026-09-18). Nothing breaks and nothing is lost: the
-   originals are moved into the client's folder for the year as always, the shortlist on
+5. Install the **Tesseract engine** (the UB Mannheim Windows installer),
+   with the `eng` and `osd` language data — `osd` is ticked by default and
+   is what turns a page the right way up before it is read. The reader
+   packages themselves ship with the app; the engine is the one thing to
+   install by hand. **Without it every scan with no text layer and every
+   photo parks for a person** — neither is filed on what its file name
+   says, because the client wrote that name and the form did not (owner,
+   2026-09-18). Nothing breaks and nothing is lost: the originals are
+   moved into the client's folder for the year as always, the shortlist on
    each parked file says which request its name points at, and installing
-   Tesseract later means the next pass reads those scans itself.
+   Tesseract later means the next pass reads those scans and photos itself.
+   Photos need nothing beyond this — a JPEG, a PNG, an iPhone's HEIC and a
+   scanner's TIFF are all read by the same install.
 6. Run one pass — **Sort & Scan** on a single engagement — and read the run
    log before trusting the schedule.
 

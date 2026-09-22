@@ -73,6 +73,17 @@ log = logging.getLogger("tracker.scaffold")
 
 #: Heads the client README's request list.
 README_HEADING = "WHAT WE STILL NEED"
+#: Step 4 of the client README, in the owner's own words (decision 127,
+#: his sign-off item). Until then the step said "scans and photos are fine
+#: as long as they are readable" while every request refused an image, so
+#: the one sentence the client actually read was the one thing the
+#: software would not do. It is a constant because a person's promise to a
+#: client belongs where a test can hold the code to it.
+README_PHOTO_LINE = (
+    "4. Original PDFs or Excel files are preferred. A clear photo from your\n"
+    "   phone is fine too: one document per photo, the whole page in the\n"
+    "   frame, straight on, in good light."
+)
 
 # ``PREPARED_DIR_NAME``, ``REVIEW_DIR_NAME`` and ``README_NAME`` are
 # imported above rather than declared here: the shape of the clients root
@@ -370,8 +381,7 @@ def _write_readme(
         "   yours to look at. Nothing is ever renamed or deleted.",
         "3. Keep going until the lists below are covered. Send them as you",
         "   find them; there's no need to wait and send everything at once.",
-        "4. Original PDFs or Excel files are preferred; scans and photos",
-        "   are fine as long as they are readable.",
+        *README_PHOTO_LINE.split("\n"),
         # Decision 128, Jason's sign-off: a named request files only where
         # the name is on the page, and a report sent as its middle pages
         # has no name on it. Asked once, in the client's own words.

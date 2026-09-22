@@ -439,7 +439,9 @@ pip install -r requirements.txt
 python -m pytest -q        # verify: all green
 ```
 
-Optional OCR for scanned PDFs: see [requirements.txt](requirements.txt).
+Reading scans and photos needs the Tesseract engine as well as the pinned
+packages — the installer, the `eng` and `osd` data, and what happens
+without it: [docs/runbook.md](docs/runbook.md) §6, step 5.
 
 ## Running the app
 

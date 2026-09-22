@@ -304,7 +304,12 @@ def build_samples(samples: Path) -> None:
     # delivered document, and it disappears on its own once sync finishes.
     (samples / f"W-2 Jane Smith {YEAR}.pdf.tmp.driveupload").write_bytes(b"\x00" * 4096)
 
-    (samples / "vacation photo.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"J" * 9000)
+    # A file no request accepts, whatever its whitelist says. It was a .jpg
+    # until decision 127 made a photo a document: a JPEG is now accepted
+    # wherever a PDF is, so the pile keeps a bitmap instead - the same
+    # claim (a drop no row takes parks with an empty shortlist) about a
+    # file type the tracker still has no use for.
+    (samples / "vacation photo.bmp").write_bytes(b"BM" + b"J" * 9000)
 
 
 def build_scratch_root(root: Path | str) -> Path:

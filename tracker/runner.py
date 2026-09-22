@@ -198,6 +198,16 @@ RECORD_UNREADABLE = "the record could not be read: {problem}"
 #: What a pass says about a view whose replace did not land. Not an error:
 #: the view carries no fact, so the old one standing costs a person one pass.
 VIEW_NOT_REGENERATED = "status report open (not regenerated)"
+#: When a reading is slow enough to be worth saying (decision 127). A
+#: scanned page costs about a second to read on the office machine, so
+#: twenty seconds is a document doing something unusual - a long scan, a
+#: photo of a whole desk, a page the four-way scorer had to read four
+#: times. **Nothing is cut short at this number or any other**: it decides
+#: only whether the run's line mentions the document. Photos and scans are
+#: the readings the owner's speed ceiling will be measured against, and a
+#: pass that quietly abandoned the slow ones could not measure them.
+SLOW_READING_SECONDS = 20.0
+SLOW_READING_NOTE = "slow reading: {name} took {seconds:.0f} s"
 
 
 @dataclass(slots=True)
@@ -227,6 +237,11 @@ class EngagementRun:
     #: How many ambiguous rows hold this engagement's reminder (decision 115);
     #: ``draft_note`` names them.
     held: int = 0
+    #: This engagement's slowest readings, longest first (decision 127):
+    #: (the document's own name, seconds). Carried from the filing report
+    #: so the run's own line can say when one passed
+    #: :data:`SLOW_READING_SECONDS`.
+    slowest: list[tuple[str, float]] = field(default_factory=list)
     draft_note: str = ""      # why there is no draft, when there is a reason
     skipped: str = ""         # why the whole engagement was passed over
     error: str = ""           # what went wrong, if anything did
@@ -261,6 +276,12 @@ class EngagementRun:
             parts.append(APPROVED_NOTE)
         if self.held:
             parts.append(f"held {self.held}")
+        # A reading that took its time is said, once, with the document
+        # that took it (decision 127). It was never cut short: the words
+        # are in the record and the row was decided on them.
+        for name, seconds in self.slowest[:1]:
+            if seconds >= SLOW_READING_SECONDS:
+                parts.append(SLOW_READING_NOTE.format(name=name, seconds=seconds))
         return f"OK      {self.engagement.label}: {', '.join(parts)}"
 
 
@@ -576,6 +597,7 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
         run.review = len(filed.review)
         run.waiting = len(filed.waiting)
         run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]
+        run.slowest = filed.slowest
         # An original already sorted whose record no longer fits the disk
         # is for a person to look at, every pass - but nothing was left
         # unsorted, so it rides the warnings rather than failing the run.

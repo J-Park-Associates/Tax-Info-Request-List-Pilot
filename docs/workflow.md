@@ -20,8 +20,8 @@ people side.
 - **Preparer / staff** — works the `Prepared/` tree, files anything in
   `00 - Needs Review` with the app's *File it* action, sets `Manual Override`
   when their judgment beats the rules, and sends the drafted reminders.
-- **Client** — a household, with one folder to drop everything into. Nothing
-  else.
+- **Client** — a household, with one folder to drop everything into — PDFs,
+  spreadsheets, or photos from a phone. Nothing else.
 
 ## The folders
 

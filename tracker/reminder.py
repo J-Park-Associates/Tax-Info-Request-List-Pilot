@@ -149,7 +149,7 @@ from tracker.scaffold import (
     REVIEW_DIR_NAME,
 )
 from tracker.settings import firm_phone  # the firm's number, not an engagement's
-from tracker.validators import iter_candidate_files
+from tracker.validators import PDF_EXTENSION, iter_candidate_files
 
 log = logging.getLogger("tracker.reminder")
 
@@ -236,6 +236,10 @@ REVIEW_ADVICE = "Identify them before sending, or you may ask for something you 
 PARTIAL_ASK = "{have} of {expected} received, {missing} still to come"
 #: The file-type ask, in the row's own terms (the reason's generic ask is for rows that take anything).
 EXTENSION_ASK = "we cannot open that file type; please send it as {accepted}"
+#: What the file-type ask adds where the row accepts a PDF (decision 127):
+#: an image is a scan, so a photo of the document is one of the things
+#: that row will take, and the client should be told so in the same breath.
+EXTENSION_ASK_PHOTO = "a photo"
 PARTIAL_ASK_COMPLETE = "{have} of {expected} received"
 
 SECTION_MISSING = "NOT YET RECEIVED"
@@ -695,9 +699,17 @@ def client_ask(item: RequestItem) -> str:
 def _ask_for(reason: reasons.Reason, item: RequestItem) -> str:
     """The reason's client ask, in the row's own terms where it has them:
     "a PDF or an Excel file" would send a client whose row wants a
-    spreadsheet round the loop again."""
+    spreadsheet round the loop again.
+
+    A row that takes a PDF takes a photo of the same document (decision
+    127), so it is offered - and a row that wants a spreadsheet still is
+    not, because a photo of a general ledger is no use to anybody.
+    """
     if reason is reasons.EXTENSION_NOT_ALLOWED and item.allowed_extensions:
-        return EXTENSION_ASK.format(accepted=" or ".join(f".{ext}" for ext in item.allowed_extensions))
+        accepted = [f".{ext}" for ext in item.allowed_extensions]
+        if PDF_EXTENSION in item.allowed_extensions:
+            accepted.append(EXTENSION_ASK_PHOTO)
+        return EXTENSION_ASK.format(accepted=" or ".join(accepted))
     return reason.client_ask
 
 

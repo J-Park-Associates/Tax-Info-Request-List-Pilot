@@ -33,6 +33,7 @@ from pathlib import Path
 import pytest
 
 from tests.test_scanner import text_pdf
+from tracker.content_check import extract
 from tracker.manifest import RequestItem, validated
 from tracker.router import route_file
 from tracker.settings import (
@@ -136,6 +137,28 @@ def catalogs(tmp_path_factory):
     return rows
 
 
+#: Why a corpus row is skipped rather than failed: the document has no
+#: words until a reader gives it some, and this machine has no reader
+#: (decision 127). A photo is always such a document; so is a scan.
+#: Skipped by name, so a green run on a machine with no engine says which
+#: rows nobody measured rather than quietly measuring nothing.
+NO_ENGINE = "OCR engine not on this machine"
+
+
+def ocr_engine_present() -> bool:
+    """Whether Tesseract itself is on this machine (the packages are pinned)."""
+    try:
+        import pytesseract
+
+        pytesseract.get_tesseract_version()
+    except Exception:
+        return False
+    return True
+
+
+ENGINE = ocr_engine_present()
+
+
 @pytest.mark.parametrize("name, form, year, expected", EXPECT or [NOTHING],
                          ids=[f"{n}-{f}" for n, f, _, _ in EXPECT] or ["no-corpus"])
 def test_the_firms_own_documents_file_where_they_belong_or_park(catalogs, name, form, year, expected):
@@ -143,6 +166,12 @@ def test_the_firms_own_documents_file_where_they_belong_or_park(catalogs, name, 
         pytest.skip(f"{ENV_REAL_CORPUS} names no folder holding {EXPECTATIONS_FILENAME}")
     path = FOLDER / name
     assert path.is_file(), f"{EXPECTATIONS_FILENAME} names {name}, which is not in {FOLDER}"
+    # A row may name a photo as readily as a PDF (decision 127), and either
+    # may be a document with no text layer. Without the engine there are no
+    # words to route on, and a failure would say the routing was wrong when
+    # nothing was routed at all.
+    if not ENGINE and extract(path, ocr=False).needs_ocr:
+        pytest.skip(NO_ENGINE)
     routing = route_file(path, catalogs(form, year))
     assert filed_to(routing) == expected, (name, form, routing.reason)
 
@@ -183,6 +212,43 @@ def test_a_corpus_is_read_and_routed_the_way_the_shipped_catalogs_route(tmp_path
     for name, form, year, expected in rows:
         routing = route_file(folder / name, catalog_rows(tmp_path, form, year, built))
         assert filed_to(routing) == expected, (name, routing.reason)
+
+
+def test_an_image_row_in_the_expectations_is_routed_or_skipped_by_name_without_the_engine(
+    tmp_path, monkeypatch,
+):
+    """A photo is a document the corpus may name (decision 127). It has no
+    text layer - it never will have one - so on a machine with the engine
+    it is read and routed like any scan, and on a machine without one the
+    row is skipped **by name**: a row nobody could measure says so instead
+    of failing as though the routing were wrong."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    corpus = scratch_corpus(tmp_path)
+    photo = corpus / "1098 photo.jpg"
+    picture = Image.new("RGB", (1000, 260), "white")
+    ImageDraw.Draw(picture).text(
+        (20, 80), "Form 1098 Mortgage Interest Statement 2025",
+        font=ImageFont.load_default(size=44), fill="black",
+    )
+    picture.save(photo)
+    (corpus / EXPECTATIONS_FILENAME).write_text("\n".join([
+        ",".join(EXPECTATIONS_COLUMNS),
+        "1098 photo.jpg,1040,2025,C01",
+        "",
+    ]), encoding="utf-8")
+    monkeypatch.setenv(ENV_REAL_CORPUS, str(corpus))
+    folder, rows = real_corpus()
+    assert rows == [("1098 photo.jpg", "1040", 2025, "C01")]
+
+    reading = extract(photo, ocr=False)
+    assert reading.needs_ocr, "a photo never has a text layer"
+    if not ocr_engine_present():
+        pytest.skip(NO_ENGINE)
+
+    built: dict = {}
+    routing = route_file(photo, catalog_rows(tmp_path, "1040", 2025, built))
+    assert filed_to(routing) == "C01", routing.reason
 
 
 def test_a_blank_expected_column_means_the_document_must_park(tmp_path, monkeypatch):

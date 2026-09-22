@@ -5,10 +5,15 @@ openpyxl==3.1.5
 pypdf==6.7.4
 pdfplumber==0.11.10
 
-# Optional OCR fallback for scanned/image-only PDFs. Without these,
-# such PDFs are flagged for a person (reasons.NO_TEXT_LAYER) — nothing breaks.
-#   pip install pytesseract pypdfium2 pillow
-#   plus the Tesseract engine: https://github.com/UB-Mannheim/tesseract/wiki
+# OCR readers. The packages are bundled; the Tesseract engine is a Windows
+# installer (UB Mannheim build) and must be on PATH with `eng` and `osd`
+# data: without it every scan and every photo parks for a person
+# (reasons.NO_TEXT_LAYER) and nothing breaks.
+#   https://github.com/UB-Mannheim/tesseract/wiki
+pillow==12.3.0
+pillow-heif==1.7.0
+pytesseract==0.3.13
+pypdfium2==5.11.0
 
 # Dev / test
 pytest==9.1.1

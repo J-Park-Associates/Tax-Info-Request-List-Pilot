@@ -113,6 +113,21 @@ FORBIDDEN_MODULES: tuple[str, ...] = (
     "requests",
 )
 
+#: The four readers decision 127 pinned, imported inside the functions that
+#: need them (``content_check`` for the reading, ``validators`` for the HEIC
+#: opener) and named here so the test below can say what they drag in.
+READER_MODULES: tuple[str, ...] = ("PIL.Image", "pillow_heif", "pypdfium2", "pytesseract")
+
+#: The forbidden names the readers reach on the way in, which the package
+#: itself may still never import. ``pytesseract`` imports pandas where it is
+#: installed - for a DataFrame nothing here ever asks it for - and pandas
+#: reaches ``socket`` and ``urllib``; ``pypdfium2`` reaches ``socket``
+#: through the standard library. Neither opens anything: a reader takes a
+#: path and gives back text. Naming the two is the point - a reader that
+#: started reaching for ``http``, ``ssl``, ``requests`` or a mail module
+#: would fail the test below rather than arrive quietly in a build.
+READER_IMPORTS_ALLOWED: frozenset[str] = frozenset({"socket", "urllib"})
+
 
 def _is_main_guard(node: ast.If) -> bool:
     test = node.test
@@ -289,3 +304,44 @@ def test_no_module_under_tracker_imports_a_mail_or_network_module():
             if top in FORBIDDEN_MODULES:
                 found.append(f"{path.name} imports {name}")
     assert not found, found
+
+
+def test_no_reader_imports_a_network_module():
+    """Decision 127 put four readers inside the package's reading path, and
+    the standing rule is about what the machine can reach, not about who
+    wrote the code: a reader that could open a connection would put a
+    client's document one import away from leaving the office.
+
+    Each is imported in an interpreter of its own, so what it drags in is
+    measured rather than guessed, and the only forbidden names allowed
+    back are the two :data:`READER_IMPORTS_ALLOWED` explains. Nothing here
+    is a network *call* - it is the capability being held to a list that
+    somebody has to change on purpose.
+    """
+    import json
+    import subprocess
+    import sys
+
+    program = (
+        "import json,sys\n"
+        "before={m.split('.')[0] for m in sys.modules}\n"
+        "names=json.loads(sys.argv[1])\n"
+        "missing=[]\n"
+        "for name in names:\n"
+        "    try:\n"
+        "        __import__(name)\n"
+        "    except ImportError:\n"
+        "        missing.append(name)\n"
+        "after={m.split('.')[0] for m in sys.modules}\n"
+        "print(json.dumps({'added':sorted(after-before),'missing':missing}))\n"
+    )
+    for reader in READER_MODULES:
+        done = subprocess.run(
+            [sys.executable, "-c", program, json.dumps([reader])],
+            capture_output=True, text=True, check=True,
+        )
+        result = json.loads(done.stdout)
+        if result["missing"]:
+            continue          # not installed here; requirements.txt pins it for CI
+        reached = {name for name in result["added"] if name in FORBIDDEN_MODULES}
+        assert reached <= READER_IMPORTS_ALLOWED, (reader, sorted(reached))

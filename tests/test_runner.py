@@ -934,7 +934,7 @@ def test_the_review_queue_lists_parked_files_newest_first_with_their_reasons(tmp
     that arrived last night is at the top, whichever client sent it."""
     # Two households, because one inbox feeds every return of a household
     # since decision 125 and this claim is about two clients' files.
-    older = build_engagement(tmp_path, samples, drops=("vacation photo.jpg",),
+    older = build_engagement(tmp_path, samples, drops=("vacation photo.bmp",),
                              household="Older Family", name="Older TY2025")
     newer = build_engagement(tmp_path, samples, drops=("Mortgage Notes.docx",),
                              household="Newer Family", name="Newer TY2025")
@@ -945,7 +945,7 @@ def test_the_review_queue_lists_parked_files_newest_first_with_their_reasons(tmp
     page = write_status_page(tmp_path, RunReport(today=SATURDAY, runs=[first, second]))
     text = page.read_text(encoding="utf-8")
 
-    assert text.index("Mortgage Notes.docx") < text.index("vacation photo.jpg")
+    assert text.index("Mortgage Notes.docx") < text.index("vacation photo.bmp")
     assert SATURDAY.isoformat() in text and FRIDAY.isoformat() in text
     for engagement in (older, newer):
         parked = [e for e in read_index(engagement.path)
@@ -1319,7 +1319,7 @@ def test_after_any_pass_nothing_under_the_client_tree_is_a_record_a_copy_a_draft
     from tracker.view import VIEW_FILENAME
 
     personal, business = a_household(
-        tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf", "vacation photo.jpg"))
+        tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf", "vacation photo.bmp"))
     alone = build_engagement(tmp_path, samples, household="Vega Landscaping LLC",
                              name="1120S - Vega Landscaping")
     run_registry(discover_engagements(tmp_path), today=SATURDAY)
