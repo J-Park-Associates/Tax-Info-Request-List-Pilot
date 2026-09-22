@@ -240,3 +240,27 @@ Conventions worth matching:
 
 Client data never enters the repo: `runs.log` and the
 drafts are gitignored because they carry real client names and share links.
+
+## Standing rule: GitHub Actions cost discipline
+
+Windows CI runners bill at 2x Linux, and a burst of pushes/PRs re-runs the full
+`gate.yml` matrix each time. An audit on 2026-09-22 found 30 CI runs in 34.5
+hours (2026-09-21) costing ~890 GitHub-billed minute-equivalents — enough to
+blow through a typical monthly Actions quota in about 3 days — with Windows
+jobs alone accounting for more than 65% of that despite already being gated.
+
+- **Don't add the `windows` PR label by habit.** Only label a PR `windows` when
+  it actually touches the held engagement lock, the atomic replace, path
+  handling, or a Windows-only test — exactly what `ci.yml`'s own comment says
+  the label is for. Every unnecessary label doubles that PR's CI bill.
+- **Batch commits before pushing** rather than pushing after every small
+  fixup. `concurrency: cancel-in-progress` only saves runs *superseded* on the
+  same ref before they finish — a run that completes is billed regardless, so
+  fewer, larger pushes cost less than many small ones.
+- **Prefer fewer, larger merges to `main`** over merging each small patch the
+  moment it's approved, when the work allows it — every push to `main` runs
+  the Windows pair unconditionally.
+- This is a process/cost convention governing how commits and PRs are made,
+  not a change to what the software does — it does not need a Fable SPEC.
+
+Set by Jason on 2026-09-22.

@@ -662,7 +662,12 @@ def test_no_what_changed_block_when_nothing_changed_or_no_earlier_draft(tmp_path
 
 def test_section_failed_is_unreachable_from_a_pass(tmp_path):
     """Nothing a pass sorts lands under the old "RECEIVED, BUT WE COULD NOT
-    USE IT": every Failed row is either the firm's or held."""
+    USE IT": every Failed row is either the firm's or held.
+
+    Decision 124: the heading is kept by choice, with these exact words, and
+    stays out of the letter's order; a clean-up must not delete or rename it.
+    """
+    assert SECTION_FAILED == "RECEIVED, BUT WE COULD NOT USE IT"
     assert SECTION_FAILED not in SECTION_ORDER
     every_failed = [
         item(f"F{n:02d}", "Doc", Status.FAILED, validation_notes="x.pdf: " + reason.marker)
