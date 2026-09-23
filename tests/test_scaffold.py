@@ -159,6 +159,8 @@ def test_not_applicable_folder_left_alone_if_it_exists(engagement):
 
 
 def test_readme_refreshed_on_rerun(engagement):
+    """A rerun rewrites the README over whatever is there - and decision 124:
+    the heading stays, so this assertion is also the pin on that choice."""
     scaffold_engagement(engagement)
     readme = engagement / SHARED_DIR_NAME / README_NAME
     readme.write_text("client scribbled over this", encoding="utf-8")
