@@ -102,6 +102,7 @@ from tracker.manifest import (
     COL_IDENTIFIER,
     COL_MANUAL_OVERRIDE,
     COL_MIN_SIZE_KB,
+    COL_NAMED,
     COL_OVERRIDE_REASON,
     COL_PERIOD,
     COL_RECEIVED_DATE,
@@ -123,8 +124,10 @@ from tracker.records import (
     CURRENT,
     INDEX_COLUMNS,
     INDEX_LAYOUT,
+    NO,
     STATES,
     UNKNOWN,
+    YES,
     IndexEntry,
 )
 
@@ -306,7 +309,7 @@ def _text(value: object) -> str:
     return str(value)
 
 
-#: What the page shows about a request: the eleven columns a person edits
+#: What the page shows about a request: the twelve columns a person edits
 #: (``manifest.HEADERS``) and the four the record holds. A person wants to
 #: read them side by side, and this is the page that shows them. The
 #: status columns come last, as they always did.
@@ -337,6 +340,10 @@ def request_row(item: RequestItem) -> dict[str, str]:
         # The override as a person reads it: a set-aside row says its year.
         COL_MANUAL_OVERRIDE: override_label(item),
         COL_OVERRIDE_REASON: _text(item.override_reason),
+        # Whether the document this request asks for carries a name
+        # (decision 128), in the two words the record describes a yes/no
+        # in - the same words the editor's box shows.
+        COL_NAMED: YES if item.named else NO,
         COL_STATUS: _text(item.status),
         COL_RECEIVED_DATE: _text(item.received_date),
         COL_FILE_COUNT: _text(item.file_count),

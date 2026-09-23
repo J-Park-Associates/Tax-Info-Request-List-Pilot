@@ -141,7 +141,11 @@ CACHE_VERSION = 9
 #: CamScanner", "Page 1 of 2"), not the document, and is not read as one.
 #: Pages are counted from the page breaks ``_extract_pdf`` writes.
 _MIN_TEXT_CHARS = 25
-_PAGE_BREAK = "\f"
+#: What one page of a reading ends with. Public since decision 128:
+#: :mod:`tracker.names` counts the same breaks to say which page a name was
+#: printed on, and a second module holding its own copy of the character
+#: would be a second answer to "which page is this".
+PAGE_BREAK = "\f"
 
 #: Read at most this many pages of any PDF, with or without OCR. The words
 #: that identify a document - its form number, the tax year, the payer -
@@ -926,8 +930,8 @@ def _in_its_own_words_at(low: str, keyword: str) -> int | None:
 def _in_the_footer(low: str, at: int) -> bool:
     """Whether ``at`` falls in the last ``_FOOTER_LINES`` non-blank lines of
     its page - where a form repeats its own number on every copy."""
-    start = low.rfind(_PAGE_BREAK, 0, at) + 1
-    end = low.find(_PAGE_BREAK, at)
+    start = low.rfind(PAGE_BREAK, 0, at) + 1
+    end = low.find(PAGE_BREAK, at)
     end = len(low) if end < 0 else end
     spans: list[tuple[int, int]] = []
     offset = start
@@ -946,7 +950,7 @@ def _where_said(text: str, at: int) -> tuple[str, int]:
     is a real place on page 1 as much as on page 7, and only then the rest
     of the first page.
     """
-    page = text.count(_PAGE_BREAK, 0, at) + 1
+    page = text.count(PAGE_BREAK, 0, at) + 1
     if at < len(_title(text)):
         return WHERE_TITLE, page
     if _in_the_footer(text, at):
@@ -1114,7 +1118,7 @@ def _extract_pdf(path: Path) -> str:
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages[:MAX_PAGES]:
             parts.append(page.extract_text() or "")
-    return _PAGE_BREAK.join(parts)
+    return PAGE_BREAK.join(parts)
 
 
 def _extract_xlsx(path: Path) -> str:
@@ -1225,7 +1229,7 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
         return Extraction(
             None, reason=reasons.UNCHECKABLE_TYPE.format(extension=extension), extractable=False,
         )
-    pages = text.count(_PAGE_BREAK) + 1
+    pages = text.count(PAGE_BREAK) + 1
     if extension == PDF_EXTENSION and len(text.strip()) < _MIN_TEXT_CHARS * pages:
         if not ocr:
             return Extraction(text, needs_ocr=True)

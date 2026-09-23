@@ -14,6 +14,8 @@ Commands:
             app's editor (JSON on stdin), as one recorded event
   edit-household  save the household's members, contact and inbox link
             (JSON on stdin), as one recorded event
+  propose-spellings  what a document might print one name as, for a person
+            to tick (a read: nothing is recorded)
   state     the request rows as the record holds them, the index, the
             triaged review queue, the one summary, useful paths
   priors    list engagements a new year could be rolled forward from
@@ -47,7 +49,7 @@ import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from tracker import STANDING_RULES, ledger, reminder, review, store
+from tracker import STANDING_RULES, ledger, names, reminder, review, store
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -55,6 +57,7 @@ from tracker.filer import (
     NEEDS_REVIEW,
     NOT_REQUESTED,
     FilingError,
+    Spelling,
     assign_review_file,
     dismiss_review_file,
     ensure,
@@ -120,6 +123,7 @@ from tracker.manifest import (
     summarize,
     unlearn_keyword,
 )
+from tracker.names import NO_PEOPLE, ONE_WORD_SPELLING, propose_spellings
 from tracker.page import PALETTE, slug
 from tracker.records import (
     CANDIDATE_SEP,
@@ -132,6 +136,10 @@ from tracker.records import (
     EVIDENCE_RULES,
     HOUSEHOLD_EDITABLE,
     NO,
+    PEOPLE_HELP,
+    PEOPLE_LABEL,
+    PERSON_KIND_LABELS,
+    PERSON_KINDS,
     RETURN_NAME_HELP,
     RETURN_NAME_LABEL,
     THE_RECORD,
@@ -139,8 +147,11 @@ from tracker.records import (
     EngagementInfo,
     HouseholdInfo,
     IndexEntry,
+    Person,
     identifier_key,
+    is_a_spelling,
     ledger_key,
+    person_to_json,
 )
 from tracker.registry import (
     Engagement,
@@ -393,6 +404,33 @@ NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them 
 FIRM_PHONE_LABEL = "Firm phone"
 FIRM_PHONE_HELP = "named in the final-notice reminder; blank drops that sentence"
 
+# ---- the people block (decision 128) ----------------------------------------
+#: Every word the wizard's and the editor's People block shows. The record
+#: owns the heading and what the list is for (``records.PEOPLE_LABEL`` and
+#: ``PEOPLE_HELP``) and :mod:`tracker.names` owns the two refusals; these
+#: are the block's own controls, and the page types none of them.
+PERSON_KIND_LABEL = "Who"
+PERSON_NAME_LABEL = "Name"
+SPELLINGS_LABEL = "Spellings documents use"
+SPELLINGS_HELP = ("ticked spellings are what a page is matched against; untick one a document "
+                  "never prints, and add any the app did not propose")
+ADD_PERSON_LABEL = "Add a person"
+REMOVE_PERSON_LABEL = "Remove"
+#: The box for a spelling the app did not propose takes one per line: a
+#: comma is part of the very form a document prints (``Park, John``), so
+#: splitting on one would turn the form a person typed into two one-word
+#: spellings and then refuse both.
+OWN_SPELLING_HINT = "another spelling, one per line"
+REVIEW_PEOPLE_LABEL = "Review people"
+#: Said once after a household rolls forward: the people carried unchanged
+#: and are worth one look (decision 128). Nothing blocks on it - strict
+#: parking is the safety net.
+PEOPLE_ROLLED_NOTE = "{n} return(s) rolled; review each return's people once"
+#: The card's offer beside a page that named nobody, and what the box asks
+#: for. Pre-filled with nothing: the person types what the page shows.
+TEACH_SPELLING_LABEL = "Teach this spelling"
+TEACH_SPELLING_HINT = "the name as this page prints it"
+
 
 def _folder_name(value: str, what: str) -> str:
     """One folder name from what a person typed, or the refusal that says
@@ -587,6 +625,30 @@ def _vocab() -> dict:
                    "places": dict(review.PLACE_WORDS),
                    "max_suggestions": review.MAX_SUGGESTIONS,
                    "set_aside_note": review.SET_ASIDE_NOTE},
+        # The name tier's words (decision 128), from the two modules that
+        # own them: the three kinds of person, the labels each is shown
+        # under, the two refusals, and what the card says and offers where
+        # a page named nobody. The page types none of them.
+        "people": {
+            "label": PEOPLE_LABEL,
+            "help": PEOPLE_HELP,
+            "kinds": [{"value": kind, "label": PERSON_KIND_LABELS[kind]} for kind in PERSON_KINDS],
+            "kind_label": PERSON_KIND_LABEL,
+            "name_label": PERSON_NAME_LABEL,
+            "spellings_label": SPELLINGS_LABEL,
+            "spellings_help": SPELLINGS_HELP,
+            "add": ADD_PERSON_LABEL,
+            "remove": REMOVE_PERSON_LABEL,
+            "own_spelling": OWN_SPELLING_HINT,
+            "one_word": ONE_WORD_SPELLING,
+            "none_yet": NO_PEOPLE,
+            "review_people": REVIEW_PEOPLE_LABEL,
+            "rolled_note": PEOPLE_ROLLED_NOTE,
+            "outcomes": {"confirmed": names.NAME_CONFIRMED, "other": names.NAME_VETOED,
+                         "absent": names.NAME_ABSENT},
+            "teach": TEACH_SPELLING_LABEL,
+            "teach_hint": TEACH_SPELLING_HINT,
+        },
         "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
         "expected_pattern": EXPECTED_PATTERN,
         "period_pattern": PERIOD_PATTERN,
@@ -757,6 +819,9 @@ def _info_payload(info: EngagementInfo) -> dict:
     for name in DATE_FIELDS:
         value = getattr(info, name)
         payload[name] = value.isoformat() if value else ""
+    # The people through their own writer, so the editor's block gets the
+    # shape it sends back (decision 128).
+    payload["people"] = [person_to_json(one) for one in info.people]
     return payload
 
 
@@ -811,8 +876,44 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
         firm=text("firm", base.firm or firm()),
         reminders=bool(spec.get("reminders", base.reminders)),
         active=bool(spec.get("active", base.active)),
+        people=_people_from_spec(spec["people"]) if "people" in spec else base.people,
         **{key: date(key) for key in DATE_FIELDS},
     )
+
+
+def _people_from_spec(sent: object) -> tuple[Person, ...]:
+    """The return's people as the wizard and the editor's block send them:
+    a list of ``{kind, name, spellings}`` (decision 128).
+
+    Every refusal is by name and in the words their one owner gives them:
+    a kind nothing knows, a name nobody typed, a spelling of one word
+    (:data:`tracker.names.ONE_WORD_SPELLING`). Nothing is inferred here -
+    the app *proposes* spellings through ``propose-spellings`` and a person
+    ticks them, and what arrives is what they ticked.
+    """
+    if not isinstance(sent, list):
+        raise ManifestError(f"{PEOPLE_LABEL} must be a list of people")
+    people: list[Person] = []
+    for one in sent:
+        if not isinstance(one, dict):
+            raise ManifestError(f"{PEOPLE_LABEL} must be a list of people")
+        kind = str(one.get("kind", "") or "").strip()
+        if kind not in PERSON_KINDS:
+            raise ManifestError(f"'{kind}' is not one of {', '.join(PERSON_KINDS)}")
+        name = " ".join(str(one.get("name", "") or "").split())
+        if not name:
+            raise ManifestError(f"Every person needs a name ({PERSON_KIND_LABELS[kind]})")
+        spellings: list[str] = []
+        for spelling in one.get("spellings") or []:
+            spelling = " ".join(str(spelling).split())
+            if not spelling:
+                continue
+            if not is_a_spelling(spelling):
+                raise ManifestError(ONE_WORD_SPELLING)
+            if spelling not in spellings:
+                spellings.append(spelling)
+        people.append(Person(kind=kind, name=name, spellings=tuple(spellings)))
+    return tuple(people)
 
 
 def _placed(info: EngagementInfo, household: str, year: int, return_name: str) -> EngagementInfo:
@@ -866,6 +967,11 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int]) -> dict:
     ``identifier`` and a separator of its own. The identifier travels
     beside it as data too, because that is what ``assign`` is given, and a
     caller must never have to read it back out of a sentence.
+
+    Each suggestion carries ``name`` - what the page said about whose
+    document this is, as ``{"outcome", "spelling", "label"}`` or null
+    (decision 128) - so the card can offer *Teach this spelling* where the
+    page named nobody without deciding anything of its own.
     """
     return {
         "original_name": triaged.entry.original_name,
@@ -963,6 +1069,41 @@ def _sharing_checklist(root: Path, household: str) -> dict:
     }
 
 
+def _return_reminder(path: Path, today: dt.date) -> dict:
+    """One return's reminder state for the household card (decision 128):
+    when it was last drafted, whether this week's draft is approved, and
+    how many requests are holding it.
+
+    Three numbers and two dates - never a word of the letter. The card
+    puts them into the sentences the Reminder card already uses
+    (``vocab.reminder``'s ``last_drafted_line``, ``approved_line``,
+    ``never_drafted_line`` and ``held_line``), so the returns of a
+    household stand side by side in the words their own panel uses and the
+    page types nothing new. A return whose record this read cannot open
+    says nothing rather than breaking the card.
+    """
+    blank = {"last": None, "approved": None, "held": 0}
+    try:
+        items = load_manifest(path)
+        entries = read_index(path)
+        _, _, _, held = reminder.triage(items, entries)
+        last = reminder.last_draft_event(path, carrying=ledger.FILE_KEY)
+        approved = reminder.last_approved_event(path)
+        in_force = reminder.is_approved_this_week(
+            path, path / reminder.DRAFT_FILENAME,
+            since=last_draft_day(today, DRAFT_WEEKDAY))
+    except Exception:                        # said elsewhere; the card still draws
+        return blank
+    return {
+        "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
+                  "stage": last.get(reminder.STAGE_KEY) or 0} if last else None),
+        "approved": ({"date": ledger.day_of(str(approved.get(ledger.AT_KEY, ""))).isoformat(),
+                      "stage": approved.get(reminder.STAGE_KEY) or 0}
+                     if approved and in_force else None),
+        "held": len(held),
+    }
+
+
 def _household_payload(engagement: Path) -> dict:
     """The household this return belongs to, as the app's card shows it.
 
@@ -971,7 +1112,14 @@ def _household_payload(engagement: Path) -> dict:
     and how many documents are waiting for a person across the open year's
     returns - one number for the household, because the queue a person
     works is the household's and not one return's.
+
+    Each open-year return also carries its reminder's state
+    (:func:`_return_reminder`, decision 128), so the letters stand side by
+    side. There is still **one letter per return** and the Reminder card
+    is still the surface a person approves from: this is a line, never a
+    send, and never a bundle.
     """
+    today = dt.date.today()
     household_dir = household_of(engagement)
     try:
         info = load_household_info(household_dir)
@@ -1001,7 +1149,9 @@ def _household_payload(engagement: Path) -> dict:
             {"label": one.label, "path": str(one.path),
              "year": one.tax_year if one.tax_year is not None else year_of(one.path),
              "return_name": one.info.return_name or one.path.name,
-             "active": one.active, "superseded_by": one.superseded_by}
+             "active": one.active, "superseded_by": one.superseded_by,
+             "reminder": (_return_reminder(one.path, today)
+                          if one.active and one.tax_year in years else None)}
             for one in returns
         ],
         "queue": queue,
@@ -1245,6 +1395,26 @@ def _cmd_templates(argv: list[str]) -> dict:
     return {"forms": FORM_TYPES, "templates": FORM_TEMPLATES, "default_year": default_tax_year()}
 
 
+def _cmd_propose_spellings(argv: list[str]) -> dict:
+    """What a document might print one name as, for a person to tick.
+
+    JSON spec on stdin: ``{"name": "John A. Park", "kind": "taxpayer"}``
+    -> ``{"spellings": [...]}``. A **read**:
+    no folder is touched, no lock taken and nothing recorded, because a
+    proposal is not a decision - what a return matches on is what somebody
+    ticked and the wizard or the editor then saves with the rest of the
+    details (decision 128).
+
+    The twenty-third command, and the only one the wizard calls while
+    somebody is still typing.
+    """
+    spec = json.loads(sys.stdin.read() or "{}")
+    kind = str(spec.get("kind", "") or "").strip()
+    if kind not in PERSON_KINDS:
+        raise ManifestError(f"'{kind}' is not one of {', '.join(PERSON_KINDS)}")
+    return {"spellings": list(propose_spellings(str(spec.get("name", "") or ""), kind))}
+
+
 def _cmd_edit(argv: list[str]) -> dict:
     """Save the request list and the engagement's details from the editor.
 
@@ -1463,6 +1633,11 @@ def _cmd_create(argv: list[str]) -> dict:
     base_info = EngagementInfo(client=household_info.contact, link=household_info.link)
     info = with_default_dates(_info_from_spec(spec, carry=base_info), form, year)
     info = _placed(info, household, year, engagement.name)
+    # A return with nobody on it can never file a named request (decision
+    # 128), so it is refused at setup rather than left to park every W-2
+    # that arrives and say why afterwards.
+    if not info.people:
+        raise ManifestError(NO_PEOPLE)
     try:
         # The household first, so a return never exists under one the
         # record does not know; then the return.
@@ -1577,6 +1752,10 @@ def _cmd_priors(argv: list[str]) -> dict:
             "household_name": engagement.info.household or engagement.household_path.name,
             "return_name": engagement.info.return_name or engagement.path.name,
             "client": engagement.client,
+            # Who the return is for (decision 128): the returning-client
+            # page lists them under each ticked return, because the roll
+            # carries the list unchanged and it is worth one look.
+            "people": [person_to_json(one) for one in engagement.info.people],
             "rolled_from": engagement.rolled_from,
             "superseded_by": engagement.superseded_by,
             "year": year,
@@ -1831,11 +2010,14 @@ def _cmd_assign(argv: list[str]) -> dict:
 
     JSON spec on stdin: {"original": "<PBC location or original name>",
                          "identifier": "A01", "keyword": "optional",
+                         "spelling": {"person": "...", "spelling": "..."},
                          "seq": <the row's record version, as shown>}
     The working copy is filed under the canonical name, the index row is
     rewritten as Filed (attributed to a person), the keyword - if given - is
-    added to the request so the next such file routes itself, and the
-    engagement is re-scanned so the status reflects it straight away.
+    added to the request so the next such file routes itself, the spelling
+    - if given - is added to that person on the return so the next document
+    that prints it confirms itself (decision 128), and the engagement is
+    re-scanned so the status reflects it straight away.
 
     The row is judged against the record it was picked from: ``seq`` is the
     row's own sequence number as the card showed it, and a row rewritten
@@ -1856,9 +2038,14 @@ def _cmd_assign(argv: list[str]) -> dict:
     if not original or not identifier:
         raise ManifestError("Pick the file and the request it belongs to")
     seq = _seq_of(spec)
+    taught = spec.get("spelling") or {}
+    spelling = Spelling(
+        person=str(taught.get("person", "") or "").strip(),
+        spelling=str(taught.get("spelling", "") or "").strip(),
+    ) if taught else None
     result = assign_review_file(
         engagement, original, identifier, keyword=str(spec.get("keyword", "") or ""),
-        seq=seq, shortlist=_shortlist_now(engagement, original),
+        spelling=spelling, seq=seq, shortlist=_shortlist_now(engagement, original),
     )
     # The re-scan puts the request's status right straight away. There is
     # one reason left for it not to (decision 103): another run holds the
@@ -1879,6 +2066,8 @@ def _cmd_assign(argv: list[str]) -> dict:
             "keyword_note": result.keyword_note,
             "left_in_review": result.left_in_review,
             "overrode_shortlist": result.overrode_shortlist,
+            "spelling": result.spelling,
+            "spelling_note": result.spelling_note,
             "scan_note": scan_note,
         },
         "state": _state(engagement),
@@ -2295,6 +2484,7 @@ COMMANDS = {
     "restore": _cmd_restore,
     "edit": _cmd_edit,
     "edit-household": _cmd_edit_household,
+    "propose-spellings": _cmd_propose_spellings,
     "unlearn": _cmd_unlearn,
     "unlock": _cmd_unlock,
     "settings": _cmd_settings,

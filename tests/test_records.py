@@ -122,7 +122,8 @@ def test_every_rule_and_place_is_in_the_list_that_names_them():
     """The two lists are the app's vocabulary; a value named nowhere would
     reach a screen with no word for it."""
     assert set(EVIDENCE_RULES) == {RULE_REQUIRED, RULE_ANY, records.RULE_DATE,
-                                   records.RULE_FILENAME, records.RULE_REFUSED}
+                                   records.RULE_FILENAME, records.RULE_REFUSED,
+                                   records.RULE_NAME}
     assert set(EVIDENCE_PLACES) == {WHERE_TITLE, records.WHERE_FIRST_PAGE,
                                     records.WHERE_FOOTER, WHERE_DEEP}
 
@@ -210,14 +211,16 @@ def test_the_records_import_nothing_of_the_package():
 
 def test_nothing_here_reaches_a_file_or_a_workbook():
     """A record knows nothing about where it is stored. The imports say so:
-    no openpyxl, no os, `pathlib` only because a Routing names a path, and
+    no openpyxl, no os, `pathlib` only because a Routing names a path,
     `re` only because as_pattern() turns a sentence's template into the
-    pattern that reads it back (decision 109)."""
+    pattern that reads it back (decision 109), and `json` only because the
+    return's people come back as JSON text from the one column that holds
+    them (decision 128) - reading a value is not knowing where it lives."""
     source = (Path(records.__file__)).read_text(encoding="utf-8")
     imported = {line.split()[1] for line in source.splitlines()
                 if line.startswith("import ") or line.startswith("from ")}
 
-    assert imported == {"__future__", "datetime", "dataclasses", "pathlib", "re"}, imported
+    assert imported == {"__future__", "datetime", "dataclasses", "json", "pathlib", "re"}, imported
     assert isinstance(records.EngagementInfo().due, type(None))
     assert EngagementInfo(due=dt.date(2026, 4, 15)).due.year == 2026
 

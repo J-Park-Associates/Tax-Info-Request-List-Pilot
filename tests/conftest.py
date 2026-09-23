@@ -84,7 +84,8 @@ from tracker.layout import inbox_of, originals_of, private_household_dir, return
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import EngagementInfo, create_engagement
-from tracker.records import HouseholdInfo, entry_to_json, ledger_key, status_to_json
+from tracker.names import propose_spellings
+from tracker.records import HouseholdInfo, Person, entry_to_json, ledger_key, status_to_json
 from tracker.scaffold import scaffold_engagement
 
 
@@ -173,11 +174,29 @@ def short_root():
 TEST_HOUSEHOLD = "Test Household"
 TEST_RETURN = "1040 - Test Client"
 TEST_YEAR = 2025
+#: Who a test's return is for when it does not care (decision 128). Every
+#: named request files only where one of this person's spellings is on the
+#: page, so the suite's documents carry this name - ``named_page()`` puts
+#: it there - exactly as a real W-2 carries its employee's.
+TEST_CLIENT = "Test Client"
+TEST_PEOPLE = (Person("taxpayer", TEST_CLIENT, propose_spellings(TEST_CLIENT, "taxpayer")),)
+
+
+def named_page(text: str, who: str = TEST_CLIENT) -> str:
+    """``text`` as a page addressed to somebody - the document's words with
+    the name on it, which is what a real named document has.
+
+    Every helper that drops a document into an inbox goes through this, so
+    the suite's pages are pages the name tier can confirm (decision 128)
+    and a test that means "a page naming nobody" says so by not using it.
+    """
+    return f"{text}\n{who}" if text else who
 
 
 def make_engagement(root, items, info: EngagementInfo | None = None, *,
                     household: str = TEST_HOUSEHOLD, year: int = TEST_YEAR,
                     return_name: str = TEST_RETURN,
+                    people: tuple[Person, ...] | None = None,
                     members: tuple[str, ...] = (), contact: str = "", link: str = "",
                     form: str = "", scaffold: bool = True) -> Path:
     """The one way a test makes a return: its household's record where the
@@ -204,9 +223,14 @@ def make_engagement(root, items, info: EngagementInfo | None = None, *,
     folder = return_dir_for(root, household, year, return_name)
     folder.mkdir(parents=True, exist_ok=True)
     details = info or EngagementInfo()
+    # Who the return is for (decision 128). ``people=()`` is a test saying
+    # "nobody is listed yet", which is a real state and parks every named
+    # request; anything else, said or unsaid, is the one test person.
+    if people is None:
+        people = details.people or TEST_PEOPLE
     create_engagement(folder, list(items),
                       replace(details, household=household, tax_year=year,
-                              return_name=return_name),
+                              return_name=return_name, people=tuple(people)),
                       form=form)
     if scaffold:
         scaffold_engagement(folder)

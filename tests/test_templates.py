@@ -212,3 +212,58 @@ def test_the_ask_by_default_is_five_days_before_the_deadline_moved_back_to_a_wee
     for days in range(0, 400):
         target = ask_by_for(dt.date(2026, 1, 1) + dt.timedelta(days=days))
         assert target.weekday() < 5
+
+
+# ------------------------------------------------- the name mark (d128) ----
+
+#: What Fable marked named, per catalog: the count, and the identifiers.
+#: The payer, the lender, the agency or the return itself addresses a
+#: person or an entity on every one of these; a receipt, a log, a schedule,
+#: a list, an export or a description is on none of them. Pinned by
+#: identifier as well as by count, so a row moved from one side to the
+#: other is a test somebody has to change on purpose.
+NAMED_ROWS: dict[str, tuple[str, ...]] = {
+    "1040": ("A01", "A02", "A03", "A04", "A05", "A06", "B01", "C01",
+             "E01", "E02", "F01", "G01", "I01", "K01", "L01"),
+    "1120": ("A01", "B01", "B02", "D01", "E01"),
+    "1120S": ("A01", "B01", "B02", "D01", "E01", "G01"),
+    "1065": ("A01", "A02", "B01", "B02", "E01"),
+    "1041": ("A01", "A02", "A03", "B01", "B02"),
+    "990": ("A01", "B01", "B02", "G01"),
+}
+#: Fable's counts, said as the SPEC says them: named of all, per catalog.
+NAMED_COUNTS: dict[str, tuple[int, int]] = {
+    "1040": (15, 18), "1120": (5, 14), "1120S": (6, 15),
+    "1065": (5, 15), "1041": (5, 10), "990": (4, 12),
+}
+
+
+def test_every_shipped_row_carries_a_named_mark_and_the_counts_are_fable_s():
+    """Decision 128. Every catalog row says whether the document it asks for
+    carries a name, because that is what decides whether a page naming
+    nobody parks or files; a row with no mark would be a request whose
+    strictness nobody chose. Forty of the eighty-four are named."""
+    named = 0
+    total = 0
+    for form, rows in FORM_TEMPLATES.items():
+        for spec in rows:
+            assert isinstance(spec.get("named"), bool), (form, spec["identifier"])
+        marked = tuple(spec["identifier"] for spec in rows if spec["named"])
+        assert marked == NAMED_ROWS[form], form
+        assert (len(marked), len(rows)) == NAMED_COUNTS[form], form
+        named += len(marked)
+        total += len(rows)
+    assert (named, total) == (40, 84)
+    # The mark reaches the row a person's list is cut from, not just the spec.
+    assert all(item_from_spec(spec).named for spec in FORM_TEMPLATES["1040"][:1])
+    assert not item_from_spec(
+        next(s for s in FORM_TEMPLATES["1040"] if s["identifier"] == "D01")).named
+
+
+def test_an_issuer_row_is_named_because_the_k1_row_it_is_cut_from_is():
+    """A K-1 is addressed to its recipient, so the row a person adds for one
+    issuer is as named as the catalog row it was cut from - and the entity's
+    name in Required Keywords is still a keyword, saying which K-1 this is
+    and never whose."""
+    assert k1_row()["named"] is True
+    assert issuer_row("F02", "Ashford Holdings LP")["named"] is True

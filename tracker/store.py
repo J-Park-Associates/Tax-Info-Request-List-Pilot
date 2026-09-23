@@ -136,12 +136,13 @@ from contextlib import contextmanager
 from dataclasses import fields
 from pathlib import Path
 
-from tracker import ledger
+from tracker import ledger, records
 from tracker.locking import lock_is_held
 from tracker.records import (
     BEHIND,
     CURRENT,
     RULE_FIELDS,
+    RULE_FLAG_DEFAULTS,
     RULE_FLAG_FIELDS,
     RULE_LIST_FIELDS,
     UNKNOWN,
@@ -202,7 +203,12 @@ ENV_STORE = "TRACKER_STORE"
 #: version-6 file has none of them, so it is refused, deleted and rebuilt
 #: from the journals like every version before it - the details travel in
 #: the ``rules_changed`` and ``household_changed`` lines.
-SCHEMA_VERSION = 7
+#: Version 8 (decision 128) added the return's people to the engagement's
+#: details - one column of ``engagements``, holding the list as JSON text -
+#: and the ``named`` mark to ``requests``: a version-7 file has neither, so
+#: it is refused, deleted and rebuilt from the journals like every version
+#: before it, and both travel in the ``rules_changed`` lines.
+SCHEMA_VERSION = 8
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -245,6 +251,13 @@ _AFFINITY: dict[str, str] = {
     # row's keywords already are: SQLite has no list, and a second table
     # for four names a person typed would be a join to read a card.
     "tuple[str, ...]": "TEXT",
+    # The return's people (decision 128), likewise: a list of small
+    # objects in one text column, read back by the record's own reader
+    # (``records.people_from_json``). A table of its own would be a join
+    # to answer one question - whose page is this - that is asked once per
+    # drop while the lock is already held, and nothing else joins on a
+    # person.
+    "tuple[Person, ...]": "TEXT",
 }
 #: The record fields held as a JSON array in a text column, by name. Named
 #: because SQLite cannot tell one from a string on the way back, exactly as
@@ -303,6 +316,7 @@ _RULE_AFFINITIES: dict[str, str] = {
     "manual_override": "TEXT",
     "row": "INTEGER",
     "override_reason": "TEXT",
+    "named": "INTEGER",
 }
 RULE_COLUMNS: dict[str, str] = {name: _RULE_AFFINITIES[name] for name in RULE_FIELDS}
 
@@ -662,7 +676,13 @@ def _to_sql(value: object) -> object:
     if isinstance(value, dt.date):
         return value.isoformat()
     if isinstance(value, (tuple, list)):
-        return json.dumps(list(value), ensure_ascii=False)
+        # Sorted keys, exactly as the journal writes a line
+        # (``ledger.append``), so a list of small objects - the return's
+        # people (decision 128) - has one text form whichever side wrote
+        # it, and ``check()`` compares the column with the fold rather
+        # than two orderings of the same fact. A list of words is
+        # unaffected: there are no keys to sort.
+        return json.dumps(list(value), ensure_ascii=False, sort_keys=True)
     raise StoreError(f"the store has no column form for {type(value).__name__} ({value!r})")
 
 
@@ -707,7 +727,11 @@ def _rule_from_sql(stored: sqlite3.Row) -> dict:
         if name in RULE_LIST_FIELDS:
             row[name] = json.loads(value or "[]")
         elif name in RULE_FLAG_FIELDS:
-            row[name] = bool(value)
+            # A null is a line that never said - a journal from before the
+            # field existed - and what that means is the record's answer,
+            # not this module's (``records.RULE_FLAG_DEFAULTS``): a rule
+            # stored before decision 128 reads as named.
+            row[name] = RULE_FLAG_DEFAULTS[name] if value is None else bool(value)
         else:
             row[name] = value
     return row
@@ -1179,6 +1203,16 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         info = event.get(ledger.INFO_KEY)
         if info is not None and not isinstance(info, dict):
             refuse(f"carries {ledger.INFO_KEY!r} that is not a mapping")
+        # The return's people (decision 128). The journal is a synced file
+        # somebody may have opened, and a person of a kind nothing knows or
+        # a spelling of one word is a line the name check would either pass
+        # over or misfile on - so it is refused here, by the record's own
+        # reader, rather than written into a column a later pass trusts.
+        if isinstance(info, dict) and "people" in info:
+            try:
+                records.people_from_json(info["people"])
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                refuse(f"carries people this version cannot read ({exc})")
     elif name == ledger.SCANNED:
         statuses = event.get(ledger.STATUSES_KEY)
         if statuses is not None and not isinstance(statuses, dict):

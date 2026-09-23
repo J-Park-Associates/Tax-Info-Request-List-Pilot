@@ -71,8 +71,8 @@ software's word for one return in one year** - the return folder is the
 engagement folder.
 
 **The request list and the engagement's details are in the record.** The
-eleven columns an accountant edits, and the client, link, due date and the
-rest, are edited in the app's **Edit Request List** editor and nowhere
+twelve columns an accountant edits, and the client, link, due date, the
+people the return is for and the rest, are edited in the app's **Edit Request List** editor and nowhere
 else; every save is journalled as one event and folded into one database
 on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
 beside each request's Status, Received Date, File Count and Validation
@@ -213,6 +213,7 @@ whether the engagement is still active:
 | Household | the household this return belongs to; the folder above the year |
 | Tax Year | the year the return is for; the year folder's name |
 | Return | the return's folder name, form first; the same name every year |
+| People | who this return is for, with the spellings documents use; a named request files only where one of these is on the page |
 
 The app asks for that folder on first launch and writes it to
 `settings.json` beside itself (`python -m tracker.settings <folder>` does the

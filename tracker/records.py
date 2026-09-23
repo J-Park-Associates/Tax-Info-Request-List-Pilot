@@ -66,6 +66,7 @@ the module that moves the client's files.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
@@ -124,16 +125,25 @@ def as_pattern(template: str, **groups: str) -> str:
 
 #: Which of the manifest row's rules found the term. ``required`` and ``any``
 #: are the row's keyword lists, ``date`` its Period check, ``filename`` the
-#: router's by-name fallback and ``refused`` a tier-2 refusal travelling as
-#: evidence (the Reason's code). One list, named once, so the router, the
-#: index and the app's vocabulary all say the same words.
+#: router's by-name fallback, ``refused`` a tier-2 refusal travelling as
+#: evidence (the Reason's code) and ``name`` the people list of the return
+#: the document was judged against (decision 128). One list, named once, so
+#: the router, the index and the app's vocabulary all say the same words.
 RULE_REQUIRED = "required"
 RULE_ANY = "any"
 RULE_DATE = "date"
 RULE_FILENAME = "filename"
 RULE_REFUSED = "refused"
+#: The name tier (decision 128). Not a rule of the request row at all - it
+#: is the return's own people list, checked after the request lists have
+#: accepted a document - but it is evidence of the same kind: a term the
+#: firm typed, found in the document, in a place the record can name. It
+#: rides the Evidence cell rather than a column of its own, and
+#: ``tracker.review`` ranks it above every keyword, because a name is the
+#: strongest thing a page can say about *whose* it is.
+RULE_NAME = "name"
 EVIDENCE_RULES: tuple[str, ...] = (
-    RULE_REQUIRED, RULE_ANY, RULE_DATE, RULE_FILENAME, RULE_REFUSED,
+    RULE_REQUIRED, RULE_ANY, RULE_DATE, RULE_FILENAME, RULE_REFUSED, RULE_NAME,
 )
 
 #: Where in the document the term was said. ``title`` is within
@@ -441,6 +451,145 @@ class Routing:
         return () if self.identifier is None else (self.identifier, *self.also)
 
 
+# ---------------------------------------------------------------- people ----
+
+#: What a person on a return can be (decision 128). A return's documents
+#: are addressed to somebody - a taxpayer, a spouse, a dependent, a company,
+#: the name a company trades under, whoever an account is held in the name
+#: of, a decedent, a trust or estate, the fiduciary acting for one - and the
+#: kind is what the editor labels the row with. It never changes a filing:
+#: every kind's spellings are matched the same way.
+PERSON_KINDS: tuple[str, ...] = (
+    "taxpayer", "spouse", "dependent", "entity", "dba", "owner", "decedent", "trust", "fiduciary",
+)
+PERSON_KIND_LABELS = {"taxpayer": "Taxpayer", "spouse": "Spouse", "dependent": "Dependent",
+                      "entity": "Entity (legal name)", "dba": "DBA or abbreviation",
+                      "owner": "Owner (accounts held so)", "decedent": "Decedent",
+                      "trust": "Trust or estate", "fiduciary": "Fiduciary"}
+assert set(PERSON_KIND_LABELS) == set(PERSON_KINDS)
+
+#: How few words a spelling may have, and the one way a name is cut into
+#: them. A family name alone (``Park``) is a whole phrase inside ``Park
+#: Landscaping LLC``, so a one-word spelling would confirm a business's
+#: bank statement as the family's; two words is the floor everything that
+#: reads a spelling holds to (``tracker.names``, the API's refusal, the
+#: store's guard against a hand-edited journal).
+MIN_SPELLING_WORDS = 2
+
+
+def name_parts(text: str) -> list[tuple[str, int]]:
+    """Each letters-and-digits word of a name, lower-cased, with where in
+    ``text`` it begins.
+
+    **The one cut.** Everything that is not a letter or a digit is a
+    separator, so ``O'Brien``, ``Park, John A.`` and ``PARK JOHN A`` all
+    come apart the same way and case and punctuation never decide whether
+    a page names somebody. The offsets travel with the words because the
+    matcher has to say *where* on the page a spelling was found
+    (:data:`RULE_NAME` evidence) and the page is counted in the text the
+    reader produced, not in the folded copy.
+
+    It lives here rather than beside the matcher because it is a fact
+    about the record - what a spelling's words are is what
+    :data:`MIN_SPELLING_WORDS` counts, and this module imports nothing.
+    """
+    out: list[tuple[str, int]] = []
+    word: list[str] = []
+    start = 0
+    for at, char in enumerate(text or ""):
+        if char.isalnum():
+            if not word:
+                start = at
+            word.append(char.lower())
+            continue
+        if word:
+            out.append(("".join(word), start))
+            word = []
+    if word:
+        out.append(("".join(word), start))
+    return out
+
+
+def name_words(text: str) -> tuple[str, ...]:
+    """The words of a name, lower-cased, in order (:func:`name_parts`)."""
+    return tuple(word for word, _at in name_parts(text))
+
+
+def is_a_spelling(text: str) -> bool:
+    """Whether ``text`` is long enough to be a spelling: two words or more."""
+    return len(name_words(text)) >= MIN_SPELLING_WORDS
+
+
+@dataclass(frozen=True, slots=True)
+class Person:
+    """One person a return is for, and the spellings their documents use.
+
+    ``name`` is the display form, as a person typed it; ``spellings`` are
+    the forms a document may print it in, proposed by the app and ticked
+    by a person (:func:`tracker.names.propose_spellings`) - never inferred
+    from a document and never one word.
+
+    There is no family-name-first mark: a page printing the family name
+    first is matched already, because the matcher reads punctuation as a
+    space and ``Park John A`` and ``Park, John A.`` are therefore one
+    spelling.
+
+    Nothing here is read out of a client's document: a spelling is the
+    firm's own term, exactly as a keyword is, which is why the matched one
+    may be recorded as evidence.
+    """
+
+    kind: str                       # one of PERSON_KINDS
+    name: str                       # as typed, the display form
+    spellings: tuple[str, ...] = ()  # the confirmed spellings that match
+
+
+def person_to_json(person: Person) -> dict:
+    """One person as the record stores them: the fields, the spellings as a list."""
+    return {"kind": person.kind, "name": person.name,
+            "spellings": list(person.spellings)}
+
+
+def person_from_json(raw: object) -> Person:
+    """One stored person read back, refusing a shape no reader could use.
+
+    A kind this version does not know, or a spelling of one word, is a
+    line the matcher would either ignore or misfile on, so it is refused
+    here - which is where :func:`tracker.store._refuse_a_malformed_line`
+    sends a hand-edited journal's people to be judged.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError(f"a person is {type(raw).__name__}, not an object")
+    kind = str(raw.get("kind", ""))
+    if kind not in PERSON_KINDS:
+        raise ValueError(f"{kind!r} is not one of {', '.join(PERSON_KINDS)}")
+    spellings = raw.get("spellings") or ()
+    if isinstance(spellings, str):
+        spellings = (spellings,)
+    listed = tuple(str(one) for one in spellings)
+    for spelling in listed:
+        if not is_a_spelling(spelling):
+            raise ValueError(f"{spelling!r} is one word; a spelling needs two or more")
+    return Person(kind=kind, name=str(raw.get("name", "")), spellings=listed)
+
+
+def people_from_json(raw: object) -> tuple[Person, ...]:
+    """A return's people as the record holds them: a list of objects from a
+    journal line, or the JSON text one column holds.
+
+    SQLite cannot tell a JSON array in a text column from a string, so the
+    text is read back here for the same reason a rule row's keywords are
+    (:data:`RULE_LIST_FIELDS`).
+    """
+    if raw in (None, "", ()):
+        return ()
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError(f"the people are {type(raw).__name__}, not a list")
+    return tuple(person_from_json(one) for one in raw)
+
+
 # ------------------------------------------------------------ engagement ----
 
 #: The two yes/no words the engagement's details are described in: the
@@ -487,6 +636,12 @@ class EngagementInfo:
     household: str = ""
     tax_year: int | None = None
     return_name: str = ""
+    #: Who this return is for, with the spellings their documents use
+    #: (decision 128). Added last, so a record written before it reads as
+    #: nobody - and a return that lists nobody parks every named request
+    #: until a person adds them, which is the strict rule the owner asked
+    #: for rather than a silent filing on keywords alone.
+    people: tuple[Person, ...] = ()
 
 
 #: What the return's own name is called and what it is for. Named here
@@ -495,6 +650,13 @@ class EngagementInfo:
 #: the one the wizard's box carries are one string.
 RETURN_NAME_LABEL = "Return"
 RETURN_NAME_HELP = "the return's folder name, form first; the same name every year"
+
+#: What the return's people list is called and what it is for (decision
+#: 128). One home for both, read back by the editor's block and the
+#: wizard's, so the words a person sees are the record's.
+PEOPLE_LABEL = "People"
+PEOPLE_HELP = ("who this return is for, with the spellings documents use; a named request "
+               "files only where one of these is on the page")
 
 #: The details' labels, in the order the editor and the README show them.
 ENGAGEMENT_FIELDS = (
@@ -517,6 +679,10 @@ ENGAGEMENT_FIELDS = (
     ("Household", "household"),
     ("Tax Year", "tax_year"),
     (RETURN_NAME_LABEL, "return_name"),
+    # Who the return is for (decision 128). Edited through its own block
+    # rather than a text box: a person is a kind, a name, and the
+    # spellings the app proposed and somebody ticked.
+    (PEOPLE_LABEL, "people"),
 )
 #: field name -> the label, for messages that name a field.
 ENGAGEMENT_LABELS = {field_name: label for label, field_name in ENGAGEMENT_FIELDS}
@@ -541,6 +707,7 @@ ENGAGEMENT_HELP = {
     "household": "the household this return belongs to; the folder above the year",
     "tax_year": "the year the return is for; the year folder's name",
     "return_name": RETURN_NAME_HELP,
+    "people": PEOPLE_HELP,
     **ENGAGEMENT_NOTES,
 }
 #: The fields a person may change in the app's editor once the engagement
@@ -549,9 +716,12 @@ ENGAGEMENT_HELP = {
 #: the prior; ``form`` because it records which catalog the list was cut
 #: from, once; and the three of decision 125 because the folders are the
 #: names - a person who wants a return in another household or another
-#: year makes one there. The API's ``edit`` refuses any other key by name.
+#: year makes one there. ``people`` is among them (decision 128) and is
+#: edited through its own block rather than a box, because a person is
+#: three values and a list of ticked spellings. The API's ``edit`` refuses
+#: any other key by name.
 ENGAGEMENT_EDITABLE: tuple[str, ...] = ("client", "link", "due", "filing_deadline", "sender",
-                                        "firm", "reminders", "active")
+                                        "firm", "reminders", "active", "people")
 assert set(ENGAGEMENT_EDITABLE) <= {field_name for _, field_name in ENGAGEMENT_FIELDS}
 
 #: Which details are dates, said once (decision 117). The record's
@@ -575,6 +745,10 @@ def info_to_json(info: EngagementInfo) -> dict:
     for name in DATE_FIELDS:
         value = getattr(info, name)
         payload[name] = value.isoformat() if value else None
+    # The people as a list of objects, through their own writer, so the
+    # journal's line and the store's column hold exactly one shape
+    # (``asdict`` would give the same keys and no owner for them).
+    payload["people"] = [person_to_json(one) for one in info.people]
     return payload
 
 
@@ -599,6 +773,12 @@ def info_from_json(raw: dict) -> EngagementInfo:
         values["tax_year"] = None
     elif "tax_year" in values:
         values["tax_year"] = int(values["tax_year"])
+    # The people come back as a list of objects from a journal line and as
+    # JSON text from the store's column; both are read the one way, and a
+    # shape no matcher could use raises rather than being half-read
+    # (``people_from_json``).
+    if "people" in values:
+        values["people"] = people_from_json(values["people"])
     return EngagementInfo(**values)
 
 
@@ -683,8 +863,12 @@ def household_from_json(raw: dict) -> HouseholdInfo:
 #: ``requests`` table is these columns - while the parsing of the values
 #: they came from stays with the manifest. ``tracker.store`` builds its
 #: column list from this, so a field added to the row is added in one place.
-#: ``override_reason`` (decision 116) is last: every row stored before it
-#: existed reads as blank through :func:`rule_from_json`'s default.
+#: ``override_reason`` (decision 116) is last but one: every row stored
+#: before it existed reads as blank through :func:`rule_from_json`'s
+#: default. ``named`` (decision 128) is last for the same reason, and its
+#: default is **strict**: a row stored before the mark existed reads as
+#: named, so a W-2 in an old engagement needs the name on the page exactly
+#: as a new one does.
 RULE_FIELDS: tuple[str, ...] = (
     "identifier",
     "document",
@@ -699,6 +883,7 @@ RULE_FIELDS: tuple[str, ...] = (
     "manual_override",
     "row",
     "override_reason",
+    "named",
 )
 
 
@@ -712,7 +897,13 @@ RULE_LIST_FIELDS: frozenset[str] = frozenset({
 #: The rule fields that are yes/no. Stored as 0 and 1, like every other
 #: flag the store holds, and turned back into booleans here so a row read
 #: from the record is the row that was written and not a near-enough copy.
-RULE_FLAG_FIELDS: frozenset[str] = frozenset({"date_pattern_derived"})
+RULE_FLAG_FIELDS: frozenset[str] = frozenset({"date_pattern_derived", "named"})
+#: What a yes/no rule field means when the line that wrote the row never
+#: said - a journal from before the field existed, and so a column holding
+#: null. The record owns the answer, because it is the record's default:
+#: ``named`` is **true**, so a row written before decision 128 is strict.
+RULE_FLAG_DEFAULTS: dict[str, bool] = {"date_pattern_derived": False, "named": True}
+assert set(RULE_FLAG_DEFAULTS) == set(RULE_FLAG_FIELDS)
 
 
 def rule_to_json(item: object) -> dict:

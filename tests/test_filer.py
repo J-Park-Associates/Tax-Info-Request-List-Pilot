@@ -21,9 +21,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, sort, sort_all
+from tests.conftest import TEST_CLIENT, make_engagement, named_page, sort, sort_all
 from tests.test_scanner import text_pdf
-from tracker import ledger, store
+from tracker import ledger, reasons, store
 from tracker.filer import (
     DUPLICATE,
     FILED,
@@ -41,7 +41,15 @@ from tracker.manifest import (
     load_manifest,
     save_rules,
 )
-from tracker.records import rule_from_json, rule_to_json
+from tracker.names import propose_spellings
+from tracker.records import (
+    RULE_NAME,
+    WHERE_FIRST_PAGE,
+    Evidence,
+    Person,
+    rule_from_json,
+    rule_to_json,
+)
 from tracker.router import UNMATCHED
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
@@ -73,9 +81,15 @@ def engagement(tmp_path):
     return make_engagement(tmp_path, ITEMS)
 
 
-def drop(engagement, name, text):
-    """Client drops one document into the household's one inbox."""
-    return text_pdf(inbox_of(engagement) / name, text)
+def drop(engagement, name, text, who=TEST_CLIENT):
+    """Client drops one document into the household's one inbox.
+
+    The page carries the return's person on it (decision 128), the way a
+    real W-2 carries its employee's name: a named request files only where
+    one of the return's spellings is on the page. A test that means "a
+    page naming nobody here" passes ``who=""`` or writes the PDF itself.
+    """
+    return text_pdf(inbox_of(engagement) / name, named_page(text, who) if who else text)
 
 
 def originals(engagement):
@@ -165,7 +179,7 @@ def test_second_file_for_the_same_request_is_numbered(engagement):
 def test_client_subfolders_are_flattened(engagement):
     nested = inbox_of(engagement) / "tax stuff"
     nested.mkdir()
-    text_pdf(nested / "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    text_pdf(nested / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
 
     report = sort(engagement, today=DAY1)
     assert len(report.filed) == 1
@@ -822,7 +836,8 @@ def test_a_document_renamed_in_the_editor_keeps_filing_into_its_existing_folder(
 def test_a_file_dropped_straight_into_the_years_folder_is_filed_and_indexed(engagement):
     # The client can see the year's folder and was told to drop things
     # anywhere, so some land there rather than in the inbox.
-    original = text_pdf(originals(engagement) / "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    original = text_pdf(originals(engagement) / "w2.pdf",
+                        named_page("Form W-2 Wage and Tax Statement 2025"))
     before = original.read_bytes()
     report = sort(engagement, today=DAY1)
     assert [e.original_name for e in report.filed] == ["w2.pdf"]
@@ -1745,9 +1760,10 @@ def test_a_resend_after_a_dismissal_files_when_the_list_now_asks_for_it(engageme
     (filed,) = report.filed
     assert report.review == [] and report.duplicates == []
     assert filed.identifier == "C01"
-    assert filed.reason.endswith(
-        f"; {RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason)}"
-    )
+    # The re-send is name-checked before it files (decision 128), so the
+    # confirmation follows the sentence that says it was set aside.
+    assert f"; {RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason)}" in filed.reason
+    assert filed.reason.endswith(f"; name confirmed ({TEST_CLIENT})")
     copy = engagement / filed.prepared_location
     assert copy.is_file() and copy.read_bytes() == (originals(engagement) / "notice (2).pdf").read_bytes()
     # The set-aside row keeps its own parked copy; only the re-send was filed.
@@ -4251,7 +4267,8 @@ def test_a_stray_no_record_names_is_sorted_like_a_drop_across_the_household(two_
     """Decision 23, across the returns: an original in the year's folder
     that no row of any return accounts for is sorted where it lies."""
     personal, business = two_returns
-    text_pdf(originals(personal) / "tb.pdf", "Trial balance as of December 31 2025")
+    text_pdf(originals(personal) / "tb.pdf",
+             named_page("Trial balance as of December 31 2025"))
 
     second = sort_all(two_returns, today=DAY1)[business]
 
@@ -4347,3 +4364,306 @@ def test_a_persons_filing_unfiling_and_restore_still_work_with_originals_across_
     put_back = restore_working_copy(engagement, row.pbc_location, today=DAY2).entry
     assert put_back.decision == FILED and home.is_file()
     assert api_module._state(engagement)["moved"] == []
+
+
+# ============ the name on the page (decision 128) ==========================
+#
+# Two 1040s share every row of their request lists, so the keywords cannot
+# say whose W-2 this is. The name on the page can: every return carries the
+# people it is for, and a request that asks for a named document files only
+# where one of that return's spellings is on the page.
+
+JOHN = Person("taxpayer", "John Park", propose_spellings("John Park", "taxpayer"))
+MARIA = Person("spouse", "Maria Park", propose_spellings("Maria Park", "spouse"))
+LANDSCAPING = Person("entity", "Park Landscaping LLC",
+                     propose_spellings("Park Landscaping LLC", "entity"))
+
+#: A trial balance is a bookkeeping export with no name on it, which is
+#: what every catalog's trial-balance row says.
+UNNAMED_BUSINESS = [
+    RequestItem(
+        identifier="B01", document="Trial Balance", period="TY2025",
+        allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("trial balance",),
+        named=False,
+    ),
+]
+
+
+@pytest.fixture
+def two_1040s(tmp_path):
+    """One household, two 1040s, one person each: the plan's headline case."""
+    john = make_engagement(tmp_path, ITEMS, household="Park Family",
+                           return_name="1040 - John Park", people=(JOHN,))
+    maria = make_engagement(tmp_path, ITEMS, household="Park Family",
+                            return_name="1040 - Maria Park", people=(MARIA,))
+    return john, maria
+
+
+def test_a_w2_naming_one_spouse_files_to_that_1040_in_a_two_1040_household(two_1040s):
+    """The headline case. Both lists accept the W-2 on its keywords; only
+    one return's people are on the page, so only one is left when the
+    exactly-one rule is asked, and the row says the name confirmed it."""
+    john, maria = two_1040s
+    drop(john, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="Maria Park")
+
+    done = sort_all(two_1040s, today=DAY1)
+
+    assert done[john].handled == 0 and read_index(john) == []
+    [filed] = done[maria].filed
+    assert filed.decision == FILED and filed.identifier == "A01"
+    assert filed.reason.endswith("; name confirmed (Maria Park)")
+
+
+def test_a_w2_naming_nobody_on_the_list_parks_even_in_a_one_return_household(tmp_path):
+    """Strict, with no soft fail-open: the request plainly wanted this
+    document and the page names nobody on the return, so a person looks."""
+    engagement = make_engagement(tmp_path, ITEMS, people=(JOHN,))
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="Sofia Ruiz")
+
+    [parked] = sort(engagement, today=DAY1).review
+
+    assert parked.decision == NEEDS_REVIEW
+    assert reasons.NAME_NOT_ON_PAGE.matches(parked.reason)
+    assert "1040 - Test Client" in parked.reason           # the return it parked in
+    assert parked.candidates == "A01"                      # what the keywords said
+    assert (engagement / parked.prepared_location).is_file()
+
+
+def test_a_document_naming_another_returns_person_parks_and_names_them(tmp_path):
+    """The page names somebody on another return of the household and
+    nobody here: filing it here is exactly the failure the name tier
+    exists to stop, so it parks and says whose it looks like."""
+    john = make_engagement(tmp_path, ITEMS, household="Park Family",
+                           return_name="1040 - John Park", people=(JOHN,))
+    business = make_engagement(tmp_path, UNNAMED_BUSINESS, household="Park Family",
+                               return_name="1120S - Park Landscaping",
+                               people=(LANDSCAPING,))
+    drop(john, "w2.pdf", "Form W-2 Wage and Tax Statement 2025",
+         who="Park Landscaping LLC")
+
+    done = sort_all([john, business], today=DAY1)
+
+    assert read_index(business) == []
+    [parked] = done[john].review
+    assert reasons.NAMES_ANOTHER_RETURN.matches(parked.reason)
+    assert "Park Landscaping LLC (Park Family 2025 1120S - Park Landscaping)" in parked.reason
+    # The evidence carries the other return's spelling, as a rule of its own.
+    assert Evidence(RULE_NAME, "Park Landscaping LLC", WHERE_FIRST_PAGE, 1) \
+        in parked.evidence_record["A01"]
+
+
+def test_an_unnamed_request_files_on_keywords_alone_when_no_name_is_on_the_page(tmp_path):
+    """A trial balance has no name on it, which is what the row says, so
+    the keywords file it exactly as they did before the name tier."""
+    business = make_engagement(tmp_path, UNNAMED_BUSINESS, people=(LANDSCAPING,))
+    drop(business, "tb.pdf", "Trial balance as of December 31 2025", who="")
+
+    [filed] = sort(business, today=DAY1).filed
+
+    assert filed.decision == FILED and filed.identifier == "B01"
+    assert "name confirmed" not in filed.reason          # there was no name to confirm
+    assert RULE_NAME not in {e.rule for e in filed.evidence_record["B01"]}
+
+
+def test_an_unnamed_request_is_vetoed_by_another_returns_name(tmp_path):
+    """Unnamed means a *missing* name decides nothing - it does not mean
+    the name is ignored. A schedule that plainly names the other return's
+    person is not filed here."""
+    business = make_engagement(tmp_path, UNNAMED_BUSINESS, household="Park Family",
+                               return_name="1120S - Park Landscaping",
+                               people=(LANDSCAPING,))
+    john = make_engagement(tmp_path, ITEMS, household="Park Family",
+                           return_name="1040 - John Park", people=(JOHN,))
+    drop(business, "tb.pdf", "Trial balance as of December 31 2025", who="John Park")
+
+    done = sort_all([business, john], today=DAY1)
+
+    assert read_index(john) == []
+    [parked] = done[business].review
+    assert reasons.NAMES_ANOTHER_RETURN.matches(parked.reason)
+    assert "John Park (Park Family 2025 1040 - John Park)" in parked.reason
+
+
+def test_a_return_with_no_people_parks_its_named_requests_with_the_add_them_sentence(tmp_path):
+    """A return nobody has listed anybody on cannot confirm anything, and
+    the fix is one edit rather than one spelling - so it is said
+    differently."""
+    engagement = make_engagement(tmp_path, ITEMS, people=())
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    [parked] = sort(engagement, today=DAY1).review
+
+    assert reasons.NO_PEOPLE_ON_FILE.matches(parked.reason)
+    assert "add them in the editor" in parked.reason
+
+
+def test_the_pass_reads_a_document_once_for_every_return_it_feeds(two_1040s, monkeypatch):
+    """One inbox feeds every return of the open year, and a photo OCR'd
+    once per return would cost a household twice what it should. The pass
+    reads each drop once and hands that reading to every return."""
+    import tracker.filer as filer_module
+
+    john, _maria = two_1040s
+    drop(john, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="John Park")
+    readings: list[str] = []
+    real = filer_module.read_once
+
+    def counted(path):
+        readings.append(path.name)
+        return real(path)
+
+    monkeypatch.setattr(filer_module, "read_once", counted)
+
+    sort_all(two_1040s, today=DAY1)
+
+    assert readings == ["w2.pdf"]          # two returns, one reading
+
+
+def test_a_confirmed_name_is_evidence_of_its_own_rule_and_says_where(tmp_path):
+    """What the record keeps is the firm's own spelling that matched and
+    where on the page it was said - a rule of evidence of its own, beside
+    the keywords, and never a word of the document."""
+    engagement = make_engagement(tmp_path, ITEMS, people=(JOHN,))
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="John Park")
+
+    [filed] = sort(engagement, today=DAY1).filed
+
+    found = [e for e in filed.evidence_record["A01"] if e.rule == RULE_NAME]
+    assert found == [Evidence(RULE_NAME, "John Park", WHERE_FIRST_PAGE, 1)]
+    # The cell round-trips through the index, as every other evidence does,
+    # and it carries the firm's own spelling - never the page's words.
+    assert "John Park@first_page:1 name" in filed.evidence
+    assert "Employee" not in filed.evidence
+
+
+def test_ocr_text_still_files_on_required_keywords_only_with_the_name_confirmed(
+        tmp_path, monkeypatch):
+    """Decision 50 through decision 128: OCR's reading routes on required
+    keywords alone, and the name check reads the same words - so a scan
+    OCR rescued files where its name confirms and nowhere else."""
+    import tracker.content_check as content_check
+
+    engagement = make_engagement(tmp_path, ITEMS, people=(JOHN,))
+    text_pdf(inbox_of(engagement) / "scan0012.pdf", "")            # no text layer
+    read_by_ocr = "Form W-2 Wage and Tax Statement 2025 Employee: John Park"
+    monkeypatch.setattr(content_check, "_ocr_pdf", lambda path: read_by_ocr)
+
+    [filed] = sort(engagement, today=DAY1).filed
+
+    assert filed.identifier == "A01"
+    assert filed.reason.endswith("; name confirmed (John Park)")
+
+
+def test_a_decision_94_split_is_named_if_any_of_its_forms_request_is_named(tmp_path):
+    """A sheet holding a W-2 and a 1098 is two documents and the W-2's row
+    is named, so the strict rule applies to the whole page rather than to
+    whichever request happened to be named first: the page names nobody
+    here, and the split parks whole rather than filing the half that would
+    otherwise pass."""
+    both = [
+        ITEMS[0],
+        RequestItem(identifier="D01", document="Mortgage Interest", period="TY2025",
+                    allowed_extensions=("pdf",), min_size_kb=0,
+                    any_keywords=("1098",), named=False),
+    ]
+    engagement = make_engagement(tmp_path, both, people=(JOHN,))
+    text_pdf(inbox_of(engagement) / "stack.pdf", "\n".join([
+        "Form W-2 Wage and Tax Statement 2025",
+        "a Employee's social security number 123-45-6789",
+        "1 Wages, tips, other compensation 64,200.00",
+        "Copy B To Be Filed With Employee's FEDERAL Tax Return",
+        "Form 1098 Mortgage Interest Statement 2025",
+        "1 Mortgage interest received from payer or borrower 12,411.08",
+        "Recipient: Sofia Ruiz",
+    ]))
+
+    [parked] = sort(engagement, today=DAY1).review
+
+    assert reasons.NAME_NOT_ON_PAGE.matches(parked.reason)
+
+
+#: A named row of a business's list: a bank statement without the entity's
+#: name on it is not one, which is what every catalog's statement row says.
+NAMED_BUSINESS = [
+    RequestItem(
+        identifier="D01", document="Bank Statements", period="TY2025",
+        allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("bank statement",),
+    ),
+]
+
+
+def test_a_name_parked_document_parks_in_the_first_return_that_accepted_it(tmp_path):
+    """A parked row's home is the return of the first request that accepted
+    the document (decision 125), and the name tier does not change that:
+    the 1040's list never asked for a bank statement, so parking it in the
+    1040's queue would put it where no row can take it and name a return
+    nobody was asking about. It parks in the 1120S, whose row wanted it,
+    with that return's own candidates."""
+    john = make_engagement(tmp_path, ITEMS, household="Park Family",
+                           return_name="1040 - John Park", people=(JOHN,))
+    business = make_engagement(tmp_path, NAMED_BUSINESS, household="Park Family",
+                               return_name="1120S - Park Landscaping",
+                               people=(LANDSCAPING,))
+    # First by folder order, and it accepts nothing here; the page names
+    # nobody at all, so the name tier empties what the 1120S accepted.
+    drop(john, "statement.pdf", "Bank statement for the period ending December 31 2025",
+         who="")
+
+    done = sort_all([john, business], today=DAY1)
+
+    assert done[john].handled == 0 and read_index(john) == []
+    [parked] = done[business].review
+    assert parked.decision == NEEDS_REVIEW
+    assert reasons.NAME_NOT_ON_PAGE.matches(parked.reason)
+    assert "Park Family 2025 1120S - Park Landscaping" in parked.reason
+    assert parked.candidates == "D01"          # the accepting return's, not the 1040's
+    assert (business / parked.prepared_location).is_file()
+
+
+@pytest.mark.parametrize("earlier", ("set aside", "working copy deleted"))
+@pytest.mark.parametrize("who, confirms", (("Sofia Ruiz", False), ("John Park", True)))
+def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
+        tmp_path, earlier, who, confirms):
+    """Decision 111's two roads route a re-send afresh inside the one
+    return, and both of them are name-checked before they file (decision
+    128). Without the check a W-2 set aside the day the list had no row for
+    it, or one whose working copy a preparer deleted, would file on its
+    keywords alone whoever the page named - the very failure the name tier
+    exists to stop, arriving by the back door."""
+    from tracker.filer import dismiss_review_file
+
+    page = "Form W-2 Wage and Tax Statement 2025"
+    w2 = RequestItem(identifier="A01", document="W-2 Wage Statements", period="TY2025",
+                     allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("W-2",))
+    if earlier == "set aside":
+        # Nothing on the list asks for a W-2 yet, so the first arrival
+        # parks whoever it names and a person sets it aside; then the list
+        # gains the row.
+        engagement = make_engagement(tmp_path, [ITEMS[1]], people=(JOHN,))
+        drop(engagement, "w2.pdf", page, who=who)
+        parked = sort(engagement, today=DAY1).review[0]
+        dismiss_review_file(engagement, parked.pbc_location, today=DAY1)
+        rows = [ITEMS[1], w2]
+    else:
+        # The row is on the list but nobody had marked it Named, so the
+        # first arrival files on its keywords alone; a preparer deletes the
+        # working copy and a person ticks Named in the editor.
+        engagement = make_engagement(tmp_path, [replace(w2, named=False)], people=(JOHN,))
+        drop(engagement, "w2.pdf", page, who=who)
+        filed = sort(engagement, today=DAY1).filed[0]
+        (engagement / filed.prepared_location).unlink()
+        rows = [w2]
+    save_rules(engagement, rows, load_engagement_info(engagement))
+
+    drop(engagement, "w2.pdf", page, who=who)          # the same bytes again
+    report = sort(engagement, today=DAY2)
+
+    if confirms:
+        [again] = report.filed
+        assert again.identifier == "A01"
+        assert again.reason.endswith("; name confirmed (John Park)")
+    else:
+        assert report.filed == []
+        [again] = report.review
+        assert again.decision == NEEDS_REVIEW
+        assert reasons.NAME_NOT_ON_PAGE.matches(again.reason)

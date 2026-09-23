@@ -184,6 +184,13 @@ from tracker.manifest import (
     load_manifest,
     override_label,
 )
+from tracker.names import (
+    NAME_CONFIRMED,
+    NAME_VETOED,
+    ONE_WORD_SPELLING,
+    NameVerdict,
+    check_name,
+)
 
 # The records themselves live in tracker/records.py (decision 100). The two
 # names this module no longer uses are re-exported from here so that every
@@ -191,16 +198,22 @@ from tracker.manifest import (
 # kept for one release; import from tracker.records.
 from tracker.records import (
     CANDIDATE_SEP,
-    Evidence,  # noqa: F401
+    RULE_NAME,
+    EngagementInfo,
+    Evidence,
     IndexEntry,
+    Person,
     as_pattern,
     entry_from_json,
     entry_to_json,
     format_evidence,
+    is_a_spelling,
     ledger_key,
+    name_words,
     parse_evidence,  # noqa: F401
+    person_to_json,
 )
-from tracker.router import route_file
+from tracker.router import read_once, route_file
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
     README_NAME,
@@ -1875,6 +1888,12 @@ class _ReturnRun:
     cache: ContentCache
     report: FileReport
     context: _SortContext
+    #: Who this return is for (decision 128), off its own record. Empty
+    #: for a return nobody has listed yet **and** for one whose record this
+    #: pass could not read - and both park every named request, which is
+    #: the strict rule: a return the pass cannot say the people of is not a
+    #: return a document may be filed into on keywords alone.
+    people: tuple[Person, ...] = ()
     moved_keys: dict[str, str] = field(default_factory=dict)
     swept: dict[str, str] = field(default_factory=dict)
 
@@ -1885,6 +1904,12 @@ class _ReturnRun:
     @property
     def known(self) -> dict[str, IndexEntry]:
         return self.context.known
+
+    @property
+    def spellings(self) -> tuple[str, ...]:
+        """Every spelling of every person on this return, in the list's
+        order: what a page is asked whether it says."""
+        return tuple(one for person in self.people for one in person.spellings)
 
 
 def file_household_drops(
@@ -2014,9 +2039,11 @@ def _prepare_return(engagement_dir: Path, stamp: str, *, dry_run: bool) -> _Retu
     # to know about its working copy (same bytes): the verdicts go into the
     # return's verdict cache in the store, keyed by content (decision 107).
     cache = ContentCache(engagement_dir)
+    details = _details_of(engagement_dir)
     run = _ReturnRun(
         engagement_dir=engagement_dir,
-        label=_label_of(engagement_dir),
+        label=_label_of(engagement_dir, details),
+        people=() if details is None else details.people,
         entries=entries, before=before, cache=cache, report=report,
         context=_SortContext(
             engagement_dir=engagement_dir,
@@ -2077,13 +2104,21 @@ def _prepare_return(engagement_dir: Path, stamp: str, *, dry_run: bool) -> _Retu
     return run
 
 
-def _label_of(engagement_dir: Path) -> str:
+def _details_of(engagement_dir: Path) -> EngagementInfo | None:
+    """The return's own details, or None for a record this pass has already
+    said is unreadable. Read once per return per pass: the label and the
+    people list are both drawn from it."""
+    try:
+        return load_engagement_info(engagement_dir)
+    except Exception:
+        return None
+
+
+def _label_of(engagement_dir: Path, info: EngagementInfo | None) -> str:
     """How one return is named in a sentence a person reads - the household,
     the year and the return - from its own record, falling back to the
     folders when the record carries none of the three."""
-    try:
-        info = load_engagement_info(engagement_dir)
-    except Exception:               # a record this pass has already said is unreadable
+    if info is None:
         return engagement_dir.name
     return label_for_return(
         info.household or household_name_of(engagement_dir),
@@ -2260,58 +2295,206 @@ def _sort_all(
             run.known[digest] = entry
 
 
+#: What a filed row's Reason gains when the name on the page confirmed it
+#: (decision 128). The firm's own spelling, never a word of the document -
+#: which is the same line :class:`tracker.records.Evidence` draws.
+NAME_CONFIRMED_NOTE = "name confirmed ({spelling})"
+
+#: The order a parked document's name reason is chosen in when the
+#: household's returns dropped it for different ones. The most useful
+#: first: "the page names nobody here" is the one a person can act on with
+#: a spelling, "it names somebody there" tells them where to look, and
+#: "this return lists nobody" is a setup step somebody skipped.
+_NAME_REASONS = (reasons.NAME_NOT_ON_PAGE, reasons.NAMES_ANOTHER_RETURN, reasons.NO_PEOPLE_ON_FILE)
+
+
+def _is_named(run: _ReturnRun, routing) -> bool:
+    """Whether the request this return accepted the document under carries a
+    name (decision 128).
+
+    A page decision 94 split across several requests is named when **any**
+    of them is: a sheet holding a W-2 and a 1099-INT is two documents and
+    both are addressed to somebody, so the strict rule applies to the whole
+    page rather than to whichever request happened to be named first.
+    """
+    return any(item.named for identifier in routing.filed_to
+               if (item := run.context.by_id.get(identifier)) is not None)
+
+
+def _with_the_name(routing, verdict: NameVerdict):
+    """``routing`` with the name's own evidence added to every candidate it
+    names (decision 128, :data:`tracker.records.RULE_NAME`).
+
+    A confirmed or vetoed verdict leaves the spelling that decided it and
+    where on the page it was said; an absent one leaves nothing, because
+    there is nothing to say. The term is the firm's own spelling either
+    way - it is a term the firm typed, exactly as a keyword is - and no
+    word of the document travels with it.
+    """
+    term = verdict.matched or verdict.other
+    if not term:
+        return routing
+    found = Evidence(RULE_NAME, term, verdict.where, verdict.page)
+    return replace(routing, evidence_record={
+        identifier: (*said, found) for identifier, said in routing.evidence_record.items()
+    })
+
+
+@dataclass(slots=True)
+class _NameStage:
+    """What the name tier made of one drop across the household's returns.
+
+    ``kept`` is what is still accepting, each routing carrying the name's
+    evidence; ``graded`` is every accepting return's routing with that
+    evidence on it, by the return's identity, so a document that parks in
+    the home return still keeps what the name said there; ``met`` is the
+    reasons met, in the order they were met; ``confirmed`` is the note each
+    kept return's Reason gains when it files.
+    """
+
+    kept: list[tuple[_ReturnRun, object]] = field(default_factory=list)
+    graded: dict[int, object] = field(default_factory=dict)
+    met: list[tuple[object, str]] = field(default_factory=list)
+    confirmed: dict[int, str] = field(default_factory=dict)
+
+    @property
+    def reason(self) -> str:
+        """The one sentence a document the name tier emptied the list for
+        carries: the first of :data:`_NAME_REASONS` any return met, filled
+        with what that return said."""
+        for reason in _NAME_REASONS:
+            for one, listed in self.met:
+                if one is reason:
+                    return reason.format(listed=listed)
+        return ""
+
+
+def _by_the_name(
+    text: str, accepting: list[tuple[_ReturnRun, object]], runs: list[_ReturnRun]
+) -> _NameStage:
+    """The name tier (decision 128), run over what the request lists accepted.
+
+    For each accepting return, in order, the page is asked whether it names
+    one of that return's people, somebody on another return the drop may
+    feed, or nobody (:func:`tracker.names.check_name`). Then the table the
+    owner settled:
+
+    ====================  =========  ======================  ===================
+    the accepted item is  confirmed  absent                  another return's
+    ====================  =========  ======================  ===================
+    **named**             stays      dropped, and it parks   dropped
+    **unnamed**           stays      stays (today's rule)    dropped
+    ====================  =========  ======================  ===================
+
+    A return with no people at all treats every named acceptance as absent
+    and says so differently: nobody has listed anybody yet, and the fix is
+    one edit rather than one spelling.
+    """
+    stage = _NameStage()
+    for run, routing in accepting:
+        others = {other.label: other.spellings for other in runs if other is not run}
+        verdict = check_name(text, run.spellings, others)
+        routing = _with_the_name(routing, verdict)
+        stage.graded[id(run)] = routing
+        if verdict.outcome == NAME_CONFIRMED:
+            stage.confirmed[id(run)] = NAME_CONFIRMED_NOTE.format(spelling=verdict.matched)
+            stage.kept.append((run, routing))
+        elif verdict.outcome == NAME_VETOED:
+            stage.met.append((reasons.NAMES_ANOTHER_RETURN, reasons.NAME_AND_RETURN.format(
+                spelling=verdict.other, label=verdict.other_label)))
+        elif not _is_named(run, routing):
+            stage.kept.append((run, routing))   # a receipt, a log, a headerless export
+        elif run.people:
+            stage.met.append((reasons.NAME_NOT_ON_PAGE, run.label))
+        else:
+            stage.met.append((reasons.NO_PEOPLE_ON_FILE, run.label))
+    return stage
+
+
 def _decide_across(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str, runs: list[_ReturnRun]
 ) -> tuple[_ReturnRun, IndexEntry]:
     """Which of the household's returns this one preserved original belongs
     to, and the row that says so.
 
-    In order (decision 125):
+    In order (decisions 125 and 128):
 
     - **the bytes first.** Every return's record is asked whether it
       already holds them, in order, and the first that does decides - by
       decision 111's rule, in its own record. The content hash identifies;
       the earlier decision decides;
-    - **then the requests.** Each return's list is routed against, in
-      order. Exactly one accepting return files it; several park it in the
-      first accepting return naming them all; none parks it in the first
-      return by order. That is the third standing rule - nothing is
+    - **then the requests.** The document is read **once**
+      (:func:`tracker.router.read_once`) and that one reading is routed
+      against every return's list, in order, so a two-return household
+      costs one reading and never OCRs a photo twice;
+    - **then the name.** Whose document this is is asked of the same
+      reading, against each accepting return's own people list
+      (:func:`_by_the_name`): two 1040s share every row of their lists, so
+      the keywords cannot say whose W-2 this is and the name can;
+    - **then exactly one.** Exactly one return left files it; several park
+      it in the first accepting return naming them all; none parks it in
+      the first return that accepted it - the first by order where nothing
+      did (decision 125's home) - with the name's reason where the name is
+      what emptied the list. That is the third standing rule - nothing is
       guessed - read across the household instead of across one list.
     """
     if digest:
         for run in runs:
             if digest in run.known:
-                return run, _sort_one(drop, original, digest, size_kb, stamp, run)
+                return run, _sort_one(drop, original, digest, size_kb, stamp, run, runs)
 
-    routed = [(run, route_file(original if not run.context.dry_run else drop, run.items,
+    # One reading, however many returns judge it (decision 128). A dry run
+    # judges the drop where it lies, as it always has.
+    judged = drop if runs[0].context.dry_run else original
+    reading = read_once(judged)
+    routed = [(run, route_file(judged, run.items, reading=reading,
                                digest=digest, cache=run.cache, pdf_cache=run.context.pdf_cache))
               for run in runs]
     accepting = [(run, routing) for run, routing in routed if routing.routed]
 
-    if len(accepting) == 1:
-        run, routing = accepting[0]
+    # The name check runs on the same reading. With no words at all the
+    # router has already parked the document (UNREADABLE) and nothing
+    # accepted it, so the stage has nothing to judge.
+    text = "" if reading.needs_ocr else (reading.text or "")
+    stage = _by_the_name(text, accepting, runs)
+    kept = stage.kept
+
+    if len(kept) == 1:
+        run, routing = kept[0]
         item = run.context.by_id.get(routing.identifier or "")
         if item is not None:
-            return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item)
+            return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
+                                 confirmed=stage.confirmed.get(id(run), ""))
 
-    if len(accepting) > 1:
+    if len(kept) > 1:
         # Two returns of one household ask for the same row - two 1040s
-        # share every row of their lists - and which person's document this
-        # is cannot be read off the requests. The sentence names every
-        # return that accepted it and the requests each accepted it under,
-        # so the person choosing is choosing from what the tracker saw.
-        home, routing = accepting[0]
-        listed = "; ".join(f"{run.label}: {', '.join(one.filed_to)}" for run, one in accepting)
+        # share every row of their lists - and the name did not tell them
+        # apart either, which since decision 128 means a page naming both
+        # spouses. The sentence names every return that accepted it and the
+        # requests each accepted it under, so the person choosing is
+        # choosing from what the tracker saw.
+        home, routing = kept[0]
+        listed = "; ".join(f"{run.label}: {', '.join(one.filed_to)}" for run, one in kept)
         return home, _park_it(
             drop, original, digest, size_kb, stamp, home,
             reason=CONTESTED_BETWEEN_RETURNS.format(listed=listed),
             candidates=routing.candidates, evidence=format_evidence(routing.evidence_record),
         )
 
-    home, routing = routed[0]
+    # Nothing left. The home is decision 125's: the return of the first
+    # request that accepted the document, and only where nothing accepted
+    # it at all the first return by folder order. A bank statement only the
+    # 1120S's list asks for, naming nobody, parks in the 1120S's queue -
+    # where the row that wanted it is and where a person can file it by
+    # hand - rather than in a 1040 that never asked for it and has nothing
+    # to take it. Where the name is what emptied the list, the row says so
+    # in the name's own words rather than the router's "matched no
+    # request", which would be a lie about a W-2 the list plainly wanted.
+    home, routing = (accepting or routed)[0]
+    routing = stage.graded.get(id(home), routing)   # with the name's evidence, where it judged
     return home, _park_it(
         drop, original, digest, size_kb, stamp, home,
-        reason=routing.reason, candidates=routing.candidates,
+        reason=stage.reason or routing.reason, candidates=routing.candidates,
         evidence=format_evidence(routing.evidence_record),
     )
 
@@ -2403,6 +2586,7 @@ def _carry_out(entry: IndexEntry, ops: list[dict], then: str, run: _SortContext)
 def _file_it(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str,
     run: _ReturnRun, routing, item: RequestItem, *, refiled: str = "", resent: str = "",
+    confirmed: str = "",
 ) -> IndexEntry:
     """File one preserved original under the request that accepted it.
 
@@ -2411,6 +2595,11 @@ def _file_it(
     row. The original is preserved once, under its own name, in the
     client's folder for the year, and the index keeps one row for it: the
     copies are this row's, not rows of their own.
+
+    ``confirmed`` is what the name on the page said (decision 128), added
+    last to the Reason: the firm's own spelling that matched, so a person
+    reading the row a year later sees both that the keywords placed it and
+    that the name agreed.
     """
     context = run.context
     wanted = [item] + [context.by_id[i] for i in routing.also if i in context.by_id]
@@ -2421,7 +2610,7 @@ def _file_it(
         digest=digest, identifier=item.identifier,
         prepared_location=locations[0],
         pbc_location=location_of(run.engagement_dir, original), decision=FILED,
-        reason="; ".join(part for part in (routing.reason, refiled, resent) if part),
+        reason="; ".join(part for part in (routing.reason, refiled, resent, confirmed) if part),
         candidates=_CANDIDATE_SEP.join(routing.candidates),
         evidence=format_evidence(routing.evidence_record),
         also_filed=_CANDIDATE_SEP.join(locations[1:]),
@@ -2477,6 +2666,7 @@ def _sort_one(
     size_kb: float,
     stamp: str,
     run: _ReturnRun,
+    runs: list[_ReturnRun],
 ) -> IndexEntry:
     """Decide one preserved original's fate inside the one return whose
     record already holds its bytes, and, unless dry-running, copy it.
@@ -2486,6 +2676,15 @@ def _sort_one(
     A re-send whose earlier row was filed and whose copy is gone is filed
     again; one a person set aside is routed afresh against that return's
     list; anything else is a duplicate of the row that holds it.
+
+    Both roads that route afresh are name-checked before they file
+    (decision 128): a W-2 set aside the day the list had no row for it and
+    re-sent once the row was added would otherwise file on its keywords
+    alone, whoever the page named - which is the one failure the name tier
+    exists to stop, arriving by the back door. ``runs`` is the household's
+    returns, so the other returns' spellings can veto here exactly as they
+    do in the household pass; the reading is taken once and handed to the
+    router, as it is there.
     """
     context = run.context
     refiled = resent = ""
@@ -2537,14 +2736,29 @@ def _sort_one(
         run.report.duplicates.append(entry)
         return entry
 
+    judged = drop if context.dry_run else original
+    reading = read_once(judged)
     routing = route_file(
-        original if not context.dry_run else drop, context.items,
+        judged, context.items, reading=reading,
         digest=digest, cache=context.cache, pdf_cache=context.pdf_cache,
     )
     item = context.by_id.get(routing.identifier or "")
     if routing.routed and item is not None:
-        return _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
-                        refiled=refiled, resent=resent)
+        # The same name tier the household pass runs, over the one return
+        # this arrival belongs to: the page confirms it, another return's
+        # person vetoes it, and on a named request a page naming nobody
+        # parks it.
+        text = "" if reading.needs_ocr else (reading.text or "")
+        stage = _by_the_name(text, [(run, routing)], runs)
+        if stage.kept:
+            _kept, routing = stage.kept[0]
+            return _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
+                            refiled=refiled, resent=resent,
+                            confirmed=stage.confirmed.get(id(run), ""))
+        routing = stage.graded.get(id(run), routing)
+        return _park_it(drop, original, digest, size_kb, stamp, run,
+                        reason=stage.reason or routing.reason, candidates=routing.candidates,
+                        evidence=format_evidence(routing.evidence_record), resent=resent)
     return _park_it(drop, original, digest, size_kb, stamp, run,
                     reason=routing.reason, candidates=routing.candidates,
                     evidence=format_evidence(routing.evidence_record), resent=resent)
@@ -2582,6 +2796,22 @@ def _refuse_if_stale(engagement_dir: Path, entry: IndexEntry, seq: int | None) -
 # ----------------------------------------------------------------- assign ----
 
 
+#: What a filing refuses a spelling for a person the return does not list
+#: with, and the note when the person already had it. Both are said once
+#: here, and the app shows them as it shows the keyword's.
+PERSON_NOT_ON_RETURN = "{person} is not on this return"
+ALREADY_SPELLED = "{person} already had the spelling {spelling!r}"
+
+
+@dataclass(frozen=True, slots=True)
+class Spelling:
+    """One spelling a person taught while filing (decision 128): whose name
+    it is, as the return lists it, and the form the page printed it in."""
+
+    person: str
+    spelling: str
+
+
 @dataclass(frozen=True, slots=True)
 class AssignResult:
     """What filing one parked document by hand did."""
@@ -2592,6 +2822,41 @@ class AssignResult:
     keyword_note: str = ""       # why it was not added, when it was not
     left_in_review: str = ""     # a parked copy that no longer held the row's bytes, and stayed
     overrode_shortlist: str = ""  # the sentence written when the pick was off the shortlist
+    spelling: str = ""           # spelling added to one of the return's people, if any
+    spelling_note: str = ""      # why it was not added, when it was not
+
+
+def _taught_spelling(
+    engagement_dir: Path, taught: Spelling | None
+) -> tuple[list[dict], str, str]:
+    """The one ``rules_changed`` event a spelling taught from the queue is,
+    or nothing at all (decision 128).
+
+    The return's whole people list travels, with the spelling added to the
+    one person it names, because that is the shape the details are
+    recorded in and a line the record can be rebuilt from must mean
+    something on its own. A spelling of one word is refused - a family name
+    alone would confirm a business's statement - and so is a person this
+    return does not list; a person who already has the spelling is a note
+    and not an event, exactly as a keyword the row already had is.
+    """
+    if taught is None or not taught.spelling.strip():
+        return [], "", ""
+    spelling = " ".join(taught.spelling.split())
+    if not is_a_spelling(spelling):
+        raise FilingError(ONE_WORD_SPELLING)
+    people = load_engagement_info(engagement_dir).people
+    wanted = name_words(taught.person)
+    found = next((one for one in people if name_words(one.name) == wanted), None)
+    if found is None:
+        raise FilingError(PERSON_NOT_ON_RETURN.format(person=taught.person))
+    if any(name_words(one) == name_words(spelling) for one in found.spellings):
+        return [], "", ALREADY_SPELLED.format(person=found.name, spelling=spelling)
+    grown = replace(found, spellings=(*found.spellings, spelling))
+    listed = [grown if one is found else one for one in people]
+    return [ledger.new(ledger.RULES_CHANGED, **{
+        ledger.INFO_KEY: {"people": [person_to_json(one) for one in listed]},
+    })], spelling, ""
 
 
 def assign_review_file(
@@ -2600,6 +2865,7 @@ def assign_review_file(
     identifier: str,
     *,
     keyword: str = "",
+    spelling: Spelling | None = None,
     today: dt.date | None = None,
     seq: int | None = None,
     shortlist: Sequence[str] | None = None,
@@ -2618,6 +2884,14 @@ def assign_review_file(
     Any Keywords by every reader (``manifest.load_manifest``). It is
     recorded, never typed into the row (decision 103): the one note left
     is that the request already had the word.
+
+    ``spelling`` is optional too, and rides the same transaction
+    (decision 128): a spelling the page printed, added to one of the
+    return's people, so the next document that prints it confirms itself.
+    A spelling of one word and a person the return does not list are both
+    refused before a byte is read. Unfiling never takes a spelling back,
+    exactly as it never takes a keyword back (decision 77); a spelling is
+    removed in the editor.
 
     A ``FILE_MOVED`` row is filed from here too - decision 110's "keep it
     here", the answer to a copy somebody dragged into a request's folder
@@ -2812,6 +3086,11 @@ def assign_review_file(
         taught = [] if note or not keyword else [ledger.new(ledger.KEYWORD_LEARNED, **{
             ledger.IDENTIFIER_KEY: item.identifier, ledger.KEYWORD_KEY: keyword,
         })]
+        # A spelling taught here rides the same transaction, for the same
+        # reason the keyword does: a filing that teaches is one decision,
+        # and half of it would be a return that never learned the name.
+        spelled, said, spelling_note = _taught_spelling(engagement_dir, spelling)
+        taught += spelled
         # The intent carries the keyword too: a filing recovered from the
         # record is the whole of the decision the person made, and half of
         # it would be a request that never learned the word.
@@ -2848,6 +3127,7 @@ def assign_review_file(
     return AssignResult(
         entry=new_entry, moved_review_copy=moved, keyword=keyword if not note else "",
         keyword_note=note, left_in_review=left_in_review, overrode_shortlist=overrode,
+        spelling=said, spelling_note=spelling_note,
     )
 
 

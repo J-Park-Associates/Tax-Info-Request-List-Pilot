@@ -105,6 +105,18 @@ half a person needs. It decides nothing - every verdict above is reached
 exactly as it was before there was a record - and it is what the index's
 Evidence column, and the person working the review queue, then read.
 
+**The router knows no person** (decision 128). Whose document this is is a
+different question from which request it answers, and it is asked
+elsewhere: the household pass checks the name on the page against the
+return's own people list after the request lists have accepted a document
+and before the exactly-one rule (:mod:`tracker.names`,
+:func:`tracker.filer.file_household_drops`). Nothing here reads a name, and
+a request row's ``named`` mark is not consulted here either - it says what
+the *pass* does with an absent name, not whether this row accepts the file.
+What the router gained is the ``reading`` argument: the pass reads each
+document once and routes it against every return the drop may feed, so a
+two-return household costs one reading rather than two.
+
 The decision itself - :class:`tracker.records.Routing` - lives in
 :mod:`tracker.records` since decision 100: the decision is a record, and this
 module is the deciding. It is re-exported here for one release.
@@ -398,7 +410,7 @@ def _multi_form(
     )
 
 
-def _read(path: Path, text: str | None) -> Extraction:
+def read_once(path: Path) -> Extraction:
     """The document's words, the way the scanner will read them.
 
     The text layer first; a scan with none is read by OCR, if OCR is
@@ -409,26 +421,37 @@ def _read(path: Path, text: str | None) -> Extraction:
     says "W-2" is exactly the one whose content has to be read. It is the
     same reading the scanner makes of the same bytes later, so the two
     never disagree about what the file says.
+
+    Public since decision 128: a household's pass reads each drop **once**
+    and routes it against every return the drop may feed
+    (:func:`tracker.filer.file_household_drops`), so a two-return household
+    does not OCR every photo twice. The reading is handed back into
+    :func:`route_file` as ``reading``.
     """
-    return Extraction(text) if text is not None else extract(path)
+    return extract(path)
 
 
 def route_file(
     path: Path,
     items: list[RequestItem],
     *,
-    text: str | None = None,
+    reading: Extraction | None = None,
     digest: str | None = None,
     cache: ContentCache | None = None,
     pdf_cache: PdfVerdictCache | None = None,
 ) -> Routing:
     """Decide which request ``path`` belongs to.
 
-    ``text`` may be supplied by a caller that has already extracted it;
-    otherwise it is read here (once, and reused across every request).
-    With a ``cache`` (and the file's ``digest``, if the caller has it), the
-    per-request verdicts are kept for the scan that follows. ``pdf_cache``
-    spares parsing the same PDF once per manifest row.
+    ``reading`` may be supplied by a caller that has already read the
+    document (:func:`read_once`); otherwise it is read here, once, and
+    reused across every request. It is the whole :class:`Extraction` and
+    not the text alone, because ``from_ocr`` is part of what the words are
+    worth: decision 50 reads OCR's words more strictly than a text layer's,
+    and a caller handing over a bare string would quietly promote an OCR
+    reading to a text layer's standing. With a ``cache`` (and the file's
+    ``digest``, if the caller has it), the per-request verdicts are kept
+    for the scan that follows. ``pdf_cache`` spares parsing the same PDF
+    once per manifest row.
     """
     if is_cloud_placeholder(path):
         return Routing(path=path, identifier=None, reason=PENDING, pending=True)
@@ -439,7 +462,7 @@ def route_file(
         return Routing(path=path, identifier=None, reason=stub)
 
     pdf_cache = pdf_cache or PdfVerdictCache()
-    reading = _read(path, text)
+    reading = read_once(path) if reading is None else reading
     # A text layer below _MIN_TEXT_CHARS (a scanned form's page breaks, a
     # "Page 1 of 2" stamp) is no reading at all, and neither is a scan OCR
     # could not rescue: with no words there is no candidate, and the file

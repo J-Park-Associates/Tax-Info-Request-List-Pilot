@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 
-from tests.conftest import make_engagement, sort
+from tests.conftest import make_engagement, named_page, sort
 from tracker import ledger, reasons, store
 from tracker.content_check import CACHE_VERSION, RETIRED_CACHE_FILENAME
 from tracker.layout import inbox_of
@@ -631,7 +631,7 @@ def a_filed_pdf(engagement, text="Chase Bank Statement Dec 2025"):
     """One document sorted and scanned the ordinary way: A01, Received."""
     from tests.conftest import sort
 
-    text_pdf(inbox_of(engagement) / "chase.pdf", text)
+    text_pdf(inbox_of(engagement) / "chase.pdf", named_page(text))
     filed = sort(engagement, today=DAY1).filed[0]
     scan_engagement(engagement, today=DAY1)
     assert statuses(engagement)["A01"].status == Status.RECEIVED

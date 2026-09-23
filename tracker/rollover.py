@@ -222,6 +222,11 @@ def carry_engagement_info(
     is last year's list. So do the household and the return's own name
     (decision 125): a return keeps its name every year, under the same
     household, which is what lets one return line be followed and named.
+    So do the **people** (decision 128): the same person files the same
+    return next year and their documents print their name the same way, so
+    the list carries unchanged and the returning-client page asks for one
+    look at it - nothing blocks on that look, because strict parking is
+    the safety net if nobody gives it.
     The share link, the due date and the filing
     deadline are this year's to set - a statutory date is the year's, and
     one carried forward would put a date twelve months gone into a client's

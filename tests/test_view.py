@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, sort
+from tests.conftest import make_engagement, named_page, sort
 from tests.test_scanner import text_pdf
 from tracker import ledger, review, view
 from tracker.filer import NEEDS_REVIEW, read_index
@@ -75,7 +75,9 @@ def engagement(tmp_path):
 
 
 def drop(engagement, name, text):
-    return text_pdf(inbox_of(engagement) / name, text)
+    """One document into the household's inbox, with the return's person on
+    the page - a named request files only where a name confirms (128)."""
+    return text_pdf(inbox_of(engagement) / name, named_page(text))
 
 
 def a_pass(engagement, today=DAY1):

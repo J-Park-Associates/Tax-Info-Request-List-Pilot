@@ -26,7 +26,8 @@ from openpyxl import Workbook
 from tracker.households import create_household
 from tracker.layout import private_household_dir, return_dir_for
 from tracker.manifest import EngagementInfo, create_engagement
-from tracker.records import HouseholdInfo
+from tracker.names import propose_spellings
+from tracker.records import HouseholdInfo, Person
 from tracker.scaffold import scaffold_engagement
 from tracker.templates import BASE_YEAR, template_items
 
@@ -37,7 +38,16 @@ PRIOR_YEAR = BASE_YEAR - 1
 #: The invented client one scratch root is built for. Nobody real: the pile
 #: below is written from nothing, and no client document enters this repo.
 SCRATCH_CLIENT = "John A. Smith"
+SCRATCH_SPOUSE = "Jane R. Smith"
 SCRATCH_FIRM = "Example CPA"
+#: Who the pile's return is for (decision 128). The documents below are
+#: addressed to these two - a W-2 to each, a joint return and a joint 1098
+#: to both - so a named request files only where one of their spellings is
+#: on the page, exactly as it would in the office.
+SCRATCH_PEOPLE = (
+    Person("taxpayer", SCRATCH_CLIENT, propose_spellings(SCRATCH_CLIENT, "taxpayer")),
+    Person("spouse", SCRATCH_SPOUSE, propose_spellings(SCRATCH_SPOUSE, "spouse")),
+)
 #: The household and the return one scratch root holds, in the layout of
 #: decision 125: a household, a year inside it, a return inside that.
 SCRATCH_HOUSEHOLD = "Smith Family"
@@ -259,8 +269,12 @@ def build_samples(samples: Path) -> None:
         samples / "1099-INT First National.pdf",
         lines_1099_int("First National Bank", "John A. Smith", YEAR),
     )
+    # A broker's year-end summary carries the account holder's name at the
+    # head of it, the way every real one does - which is why the catalog
+    # marks the 1099 row named (decision 128).
     (samples / f"1099-DIV Vanguard {YEAR}.csv").write_text(
         f"Form 1099-DIV dividend summary - Vanguard Brokerage {YEAR}\n"
+        f"Recipient,{SCRATCH_CLIENT}\n"
         + "date,fund,ordinary dividends,qualified dividends\n" * 300,
         encoding="utf-8",
     )
@@ -320,7 +334,7 @@ def build_scratch_root(root: Path | str) -> Path:
     engagement.mkdir(parents=True, exist_ok=True)
     create_engagement(engagement, DEMO_ITEMS, EngagementInfo(
         client=SCRATCH_CLIENT, firm=SCRATCH_FIRM, household=SCRATCH_HOUSEHOLD,
-        tax_year=YEAR, return_name=SCRATCH_RETURN))
+        tax_year=YEAR, return_name=SCRATCH_RETURN, people=SCRATCH_PEOPLE))
     build_samples(scaffold_engagement(engagement).inbox)
     return root
 

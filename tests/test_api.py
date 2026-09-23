@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
-from tests.conftest import make_engagement
-from tests.samples import PRIOR_YEAR
+from tests.conftest import TEST_CLIENT, make_engagement
+from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
 from tracker import ledger, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.layout import inbox_of, return_dir_for
@@ -32,6 +32,7 @@ from tracker.manifest import (
     load_engagement_info,
     load_manifest,
 )
+from tracker.names import propose_spellings
 from tracker.records import ENGAGEMENT_LABELS
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
@@ -42,6 +43,13 @@ from tracker.templates import BASE_YEAR, default_tax_year
 #: households. A client folder is a household since decision 125, and a
 #: return lives under its year inside it.
 HOUSEHOLD = "Test Household"
+#: Who every spec below says the return is for, unless the claim is about
+#: the people list. A return is refused without one since decision 128.
+PEOPLE = [{"kind": "taxpayer", "name": TEST_CLIENT,
+           "spellings": list(propose_spellings(TEST_CLIENT, "taxpayer"))}]
+#: Who the sample pile's documents are addressed to, as a spec sends them.
+SAMPLE_PEOPLE = [{"kind": one.kind, "name": one.name, "spellings": list(one.spellings)}
+                 for one in SCRATCH_PEOPLE]
 
 
 def where(root, return_name, year=None, household=HOUSEHOLD):
@@ -80,9 +88,14 @@ def run(capsys, *argv, stdin=None):
     A ``create`` spec that names no household is given the one these claims
     use: since decision 125 every return belongs to a household, and most
     of what is claimed here is about the API rather than about households.
+    The same for the people it is for: since decision 128 a return is
+    refused without one, and most of what is claimed here is not about the
+    name tier.
     """
     if stdin is not None and argv and argv[0] == "create" and "household" not in stdin:
         stdin = {"household": HOUSEHOLD, **stdin}
+    if stdin is not None and argv and argv[0] == "create" and "people" not in stdin:
+        stdin = {"people": PEOPLE, **stdin}
     if stdin is not None:
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr("sys.stdin", io.StringIO(json.dumps(stdin)))
@@ -257,7 +270,10 @@ def sample_engagement(capsys, demo_root, tmp_path, *names):
     """A 1040 engagement created through the API with sample documents dropped in."""
     from tests.samples import build_samples
 
+    # The pile is addressed to the two people the samples name, so the
+    # return lists them (decision 128) exactly as the office's would.
     spec = {"household": HOUSEHOLD, "return_name": "Smith Family 2025", "form": "1040", "client": "John Smith",
+            "people": SAMPLE_PEOPLE,
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
     engagement = where(demo_root, "Smith Family 2025")
@@ -866,7 +882,8 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     assert vocab["triage"]["set_aside_note"] == SET_ASIDE_NOTE
     assert vocab["origin_not_applicable"] == ORIGIN_NOT_APPLICABLE
     assert vocab["not_applicable_carried"] == api.NOT_APPLICABLE_CARRIED
-    assert [c["key"] for c in vocab["columns"]][-2:] == ["manual_override", "override_reason"]
+    assert [c["key"] for c in vocab["columns"]][-3:] == [
+        "manual_override", "override_reason", "named"]
     renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
         encoding="utf-8"
     )
@@ -2611,8 +2628,10 @@ def test_the_scan_command_runs_the_household_pass_and_answers_for_the_return_it_
     assert run(capsys, "create", stdin={
         "household_path": str(private_household_dir(demo_root, "Park Family")),
         "return_name": "1120S - Park Landscaping",
+        # A trial balance is a bookkeeping export with no name on it, which
+        # is what every catalog's trial-balance row says (decision 128).
         "items": [{"identifier": "B01", "document": "Trial Balance", "min_size_kb": 0,
-                   "required_keywords": "trial balance"}]})[0] == 0
+                   "named": "no", "required_keywords": "trial balance"}]})[0] == 0
     personal = where(demo_root, "1040 - John Park", household="Park Family")
     business = where(demo_root, "1120S - Park Landscaping", household="Park Family")
 
@@ -2783,3 +2802,160 @@ def test_the_sharing_words_are_the_apis_and_the_renderer_types_none(capsys, demo
                     api.SHARE_LINK_FIRST, api.ROLLOVER_UNTICKED_NOTE):
         assert literal not in js, literal
         assert literal not in html, literal
+
+
+# ------------------------------------------- the name on the page (d128) ----
+
+
+def test_teaching_a_spelling_from_a_filing_rides_the_filings_transaction_and_a_one_word_spelling_is_refused(
+        capsys, demo_root, tmp_path):
+    """Decision 128. A filing that teaches a spelling is one decision: the
+    row, the move and the return's people are recorded in one transaction,
+    exactly as a taught keyword is. A spelling of one word is refused
+    before a byte is read - a family name alone would confirm a business -
+    and so is a person the return does not list."""
+    from tracker.names import ONE_WORD_SPELLING
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path,
+                                   f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
+    assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    state = api._state(engagement)
+    [parked] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW]
+    spec = {"original": parked["pbc_location"], "identifier": "A01", "seq": parked["seq"]}
+
+    # One word: refused, and nothing is recorded.
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={**spec, "spelling": {"person": "Jane R. Smith",
+                                                    "spelling": "Smith"}})
+    assert code == 1 and payload["error"] == ONE_WORD_SPELLING
+    # A person the return does not list: refused by name.
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={**spec, "spelling": {"person": "Nobody Here",
+                                                    "spelling": "Nobody Here"}})
+    assert code == 1 and "Nobody Here is not on this return" in payload["error"]
+    assert [e["decision"] for e in api._state(engagement)["index"]] == [NEEDS_REVIEW]
+
+    # And the real thing: one event, in the filing's own transaction.
+    before = len(ledger.read_events(engagement))
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={**spec, "spelling": {"person": "Jane R. Smith",
+                                                    "spelling": "J. R. Smith"}})
+    assert code == 0, payload
+    assert payload["assigned"]["spelling"] == "J. R. Smith"
+    people = load_engagement_info(engagement).people
+    assert "J. R. Smith" in next(p for p in people if p.name == "Jane R. Smith").spellings
+    # The filing and the teaching are one decision, so one of the new lines
+    # is the row and one is the rules edit - and nothing else.
+    added = ledger.read_events(engagement)[before:]
+    # The intent, the row and the rules edit - one decision. (The re-scan
+    # that follows the filing writes its own `scanned` line, as it always
+    # has; the teaching is inside the filing's transaction, not beside it.)
+    assert [e[ledger.EVENT_KEY] for e in added if e[ledger.EVENT_KEY] != ledger.SCANNED] == [
+        ledger.MOVING, ledger.ASSIGNED_BY_PERSON, ledger.RULES_CHANGED]
+    assert next(e for e in added if e[ledger.EVENT_KEY] == ledger.RULES_CHANGED
+                )[ledger.INFO_KEY].keys() == {"people"}
+
+    # Teaching the same spelling again is a note, not a second event.
+    state = api._state(engagement)
+    [again] = [e for e in state["index"] if e["decision"] == NEEDS_REVIEW] or [None]
+    assert again is None
+
+
+def test_create_refuses_a_return_with_no_people_and_the_editor_saves_people_as_one_event(
+        capsys, demo_root):
+    """A return with nobody on it can never file a named request, so it is
+    refused at setup rather than left to park every W-2 that arrives; and
+    the people are edited in the one editor, saved in the one event that
+    carries every other detail."""
+    from tracker.names import NO_PEOPLE, ONE_WORD_SPELLING
+
+    spec = {"return_name": "No People", "form": "1040", "people": [],
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 1 and payload["error"] == NO_PEOPLE
+
+    code, payload = run(capsys, "create", stdin={
+        **spec, "people": [{"kind": "taxpayer", "name": "John Park", "spellings": ["Park"]}]})
+    assert code == 1 and payload["error"] == ONE_WORD_SPELLING
+
+    assert run(capsys, "create", stdin={**spec, "people": PEOPLE})[0] == 0
+    engagement = where(demo_root, "No People")
+    before = len(ledger.read_events(engagement))
+
+    state = api._state(engagement)
+    assert state["engagement"]["people"] == list(PEOPLE)
+    edited = [*PEOPLE, {"kind": "spouse", "name": "Maria Park",
+                        "spellings": ["Maria Park", "Park, Maria"]}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": state["rules"], "engagement": {"people": edited}})
+    assert code == 0, payload
+    assert payload["saved"]["engagement"] == ["people"]
+    assert len(ledger.read_events(engagement)) == before + 1       # one event
+    assert [p.name for p in load_engagement_info(engagement).people] == [
+        TEST_CLIENT, "Maria Park"]
+
+
+def test_propose_spellings_is_a_read_and_the_renderer_types_no_kind_label_or_note(
+        capsys, demo_root):
+    """The twenty-third command proposes and records nothing: what a return
+    matches on is what somebody ticked. And every word the People block and
+    the card show is the API's - the page types none of them."""
+    from tests.test_single_source import read
+    from tracker import review
+    from tracker.records import PERSON_KIND_LABELS, PERSON_KINDS
+
+    code, payload = run(capsys, "propose-spellings",
+                        stdin={"name": "John A. Park", "kind": "taxpayer"})
+    assert code == 0
+    assert payload == {"spellings": list(propose_spellings("John A. Park", "taxpayer"))}
+    assert not list(demo_root.rglob("*_ledger.jsonl"))         # a read: nothing recorded
+    assert run(capsys, "propose-spellings", stdin={"name": "x", "kind": "nope"})[0] == 1
+
+    words = run(capsys, "list")[1]["vocab"]["people"]
+    assert [k["value"] for k in words["kinds"]] == list(PERSON_KINDS)
+    assert [k["label"] for k in words["kinds"]] == [PERSON_KIND_LABELS[k] for k in PERSON_KINDS]
+
+    js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
+    # Every phrase of the block and the card, from its owner. The one-word
+    # labels are not pinned here - "Who" and "Name" are English as much as
+    # they are labels, and a guard that fails on a comment teaches nobody;
+    # the kinds above prove the page reads the list rather than holding one.
+    for literal in ("Entity (legal name)", "DBA or abbreviation",
+                    "Owner (accounts held so)", "Trust or estate",
+                    api.SPELLINGS_LABEL, api.SPELLINGS_HELP, api.ADD_PERSON_LABEL,
+                    api.OWN_SPELLING_HINT, api.REVIEW_PEOPLE_LABEL,
+                    api.PEOPLE_ROLLED_NOTE, api.TEACH_SPELLING_LABEL,
+                    api.TEACH_SPELLING_HINT, words["one_word"], words["none_yet"],
+                    review.NAME_CONFIRMED_NOTE, review.NAME_OTHER_NOTE,
+                    review.NAME_ABSENT_NOTE):
+        assert literal not in js, literal
+        assert literal not in html, literal
+
+
+def test_the_household_card_shows_every_returns_reminder_state(capsys, demo_root):
+    """One letter per return, as before - and the household card puts their
+    states side by side, in the words the Reminder card already uses, so a
+    person can see the household's letters at a glance without a bundle."""
+    from tracker import reminder
+    from tracker.layout import private_household_dir
+
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "contact": "John", "return_name": "1040 - John Park",
+        "form": "1040", "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Park Family")),
+        "return_name": "1120S - Park Landscaping", "form": "1120S",
+        "items": [{"identifier": "B01", "document": "Trial Balance", "named": "no"}]})[0] == 0
+    personal = where(demo_root, "1040 - John Park", household="Park Family")
+
+    returns = api._state(personal)["household"]["returns"]
+
+    assert [one["return_name"] for one in returns] == [
+        "1040 - John Park", "1120S - Park Landscaping"]
+    for one in returns:
+        assert one["reminder"] == {"last": None, "approved": None, "held": 0}
+    # The words the card fills those numbers into are the reminder's own.
+    words = run(capsys, "list")[1]["vocab"]["reminder"]
+    assert words["never_drafted_line"] == reminder.NEVER_DRAFTED_LINE
+    assert words["held_line"] == reminder.HELD_SUMMARY

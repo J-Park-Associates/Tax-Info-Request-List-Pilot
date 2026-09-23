@@ -88,12 +88,13 @@ open:**
 | `_ledger.jsonl` | Never open it. It is the machine's own record of what it decided — the audit trail of every document, every status, and every edit you make to the request list. |
 
 The request list is edited in the app — **Edit Request List** — and nowhere
-else. The eleven columns you edit there are Identifier, Document, Period,
+else. The twelve columns you edit there are Identifier, Document, Period,
 Expected Count, Allowed Extensions, Min Size KB, Required Keywords, Any
-Keywords, Date Pattern, Manual Override and Override Reason; **each request's status,
+Keywords, Date Pattern, Manual Override, Override Reason and Named; **each request's status,
 Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
-date, sender, firm, reminders, active — are edited in the same place.
+date, sender, firm, reminders, active — and the **people** the return is
+for are edited in the same place.
 
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
 The tracker no longer reads it: it is one of the folders left alone, listed
@@ -466,6 +467,9 @@ became, and — when it was not filed — why not.
 | `router.OCR_ONLY` | A scan with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan with no text layer and no OCR on this machine, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | Open it and file it, or install OCR (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | File it to the right row, or add a row for that issuer (§8) and it files itself next pass. |
+| `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same card; if it is somebody else's, file it by hand on the return it belongs to. |
+| `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
+| `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
 | `reasons.SEVERAL_FORMS_UNSORTED` | One page prints two or more forms' own names (a stack scanned in one pass) and they will not sort one to a request: a form no row asks for, two rows wanting one form, or a row that accepted the page on a phrase rather than a form number. When they do sort, the page files a copy under each request and the row's Reason says so (`reasons.NAMES_SEVERAL_FORMS`). | Split the scan, or file the whole page to the one request that matters and note the rest. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. |
 | `router.PENDING` | A cloud placeholder, still copying down. | Nothing. The next pass picks it up. |
@@ -502,7 +506,7 @@ copy that is not where the record put it:
 **Where to read them:** on the engagement's **Status Report**, in the
 Requests section, beside each row's status — and in the app. They used to
 be a column of the request list; since September 2026 the list holds only
-the eleven columns you edit, and every note the machine writes is in the
+the twelve columns you edit, and every note the machine writes is in the
 record and on the page.
 
 Some rows failed because of something the client did. Some failed because
@@ -755,3 +759,67 @@ the same way.
 
 Nothing here sends an email, moves money, or tells a client anything. Every
 message a client gets was read and sent by a person at this firm.
+
+## 10. Names
+
+**Why there is a name check at all.** Two 1040s in one household share
+every row of their request lists. Once that household's inbox held two
+people's papers, the keywords could not say whose W-2 this was — and the
+mistake they allowed was the worst kind: filed quietly on the wrong
+return, where nobody would look for it. So every return carries the names
+its documents will show, and a document is filed only where the name on it
+confirms.
+
+**What the people list is.** Each return has one, edited in the app —
+**Edit Request List**, the People block — and nowhere else. A person on it
+is three things: *who they are* (taxpayer, spouse, dependent, entity, DBA,
+owner, decedent, trust or estate, fiduciary), *their name* as you would
+write it, and *the spellings a document might print it in*. The app
+proposes the obvious spellings — `John A. Park`, `John Park`, `Park, John
+A.`, `Park, John` — and **you tick the ones you want**; you can add any the
+app did not think of, one per line. The wizard asks for the first person
+when the return is made, and a return with nobody on it is refused. There
+is nothing to tick for a person who writes the family name first: because
+punctuation is ignored, `Park, John A.` already matches a page that prints
+`PARK JOHN A`.
+
+**Two words, always.** A spelling has to be at least two words. A family
+name on its own would match inside a company's name — `Park` is inside
+`Park Landscaping LLC` — so the app refuses a one-word spelling wherever
+one is typed. An entity's spellings are its name with and without its
+suffix (`Park Landscaping LLC`, `Park Landscaping`), and both are two
+words.
+
+**How a page is matched.** Case and punctuation are ignored, so `O'Brien`,
+`PARK JOHN A` and `Park, John A.` all read alike. A spelling matches only
+as a *whole phrase*, never inside a longer word. Nothing is guessed: the
+page either prints one of your spellings or it does not.
+
+**Named and unnamed requests.** Each row of the request list says whether
+the document it asks for carries a name — the **Named** column. A W-2, a
+1099, a K-1, a mortgage statement, a bank statement, a return: named. A
+receipt, a mileage log, a trial balance, a schedule, a spreadsheet export:
+not. Forty of the eighty-four shipped rows are named. For a named request
+the name must confirm or the document parks; for an unnamed one a missing
+name is nothing at all and the keywords file it as they always did. Either
+way, a page naming somebody on *another* return of the household parks
+rather than files.
+
+**A name is never a keyword, and a keyword is never a name.** The K-1
+issuer rows (§8) carry an entity's name in Required Keywords: that says
+*which* K-1 this is. The people list says *whose* it is. They are two
+questions and two columns, and neither stands in for the other.
+
+**What the record keeps.** The firm's own spelling that matched, and the
+outcome — nothing else. Not a word of the client's document, and no part
+of anybody's tax identification number, ever, anywhere.
+
+**When one parks.** The card says which of the three it was, and the three
+rows in §4 say what to do. The usual one is a spelling the list has not
+got: file the document and type the spelling the page prints into the box
+beside **Teach this spelling**, and the next one like it files itself.
+
+**Next year.** The rollover carries the people unchanged and asks you to
+look at the list once — a child who now files their own return, a spouse's
+new name. Nothing waits on that look; the check simply parks what it
+cannot confirm until you give it.
