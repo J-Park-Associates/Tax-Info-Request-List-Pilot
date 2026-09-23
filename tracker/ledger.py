@@ -259,6 +259,17 @@ RULES_CHANGED = "rules_changed"
 #: and ``save_household`` and by nothing else. Not a row event: it carries
 #: no index row and says nothing about a document.
 HOUSEHOLD_CHANGED = "household_changed"
+#: The firm says it has shared this household's folders with the client
+#: (decision 126). Written into the household's journal by
+#: ``tracker.api``'s ``mark-shared`` command and by nothing else, when a
+#: person presses *Mark as shared*. **Folded by nothing**, exactly as
+#: :data:`DRAFT_APPROVED` is: it is the firm's own dated word, not a field
+#: of the household and not a row of any index, and it is read back by
+#: name out of the events (``tracker.households.shared_on``). It carries
+#: nothing at all but the stamp - no member list, no link, not one word a
+#: client would read - because the tracker cannot see Drive's sharing and
+#: must not pretend to have recorded what it cannot check.
+SHARING_CONFIRMED = "sharing_confirmed"
 #: What decision 103 called the same event, when the list was a workbook
 #: read once a pass. Retired by decision 104: journals from before it
 #: carry these lines, so :func:`apply` folds them exactly as
@@ -335,7 +346,7 @@ ROW_EVENTS = frozenset({
 EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, KEYWORD_UNLEARNED, DRAFTED,
                                  DRAFT_APPROVED,
                                  MIGRATED, RULES_CHANGED, RULES_IMPORTED, MOVING,
-                                 MOVE_ABANDONED, HOUSEHOLD_CHANGED})
+                                 MOVE_ABANDONED, HOUSEHOLD_CHANGED, SHARING_CONFIRMED})
 #: The names this version reads and never writes: an older journal may
 #: carry them, a new line may not.
 RETIRED_EVENTS = frozenset({RULES_IMPORTED})

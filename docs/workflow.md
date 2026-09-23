@@ -46,10 +46,13 @@ The request list is built from one catalog, `tracker/templates.py`, and
 an engagement's list is cut from it into the record, where the app's
 editor shows it.
 
-- **Returning client (the default):** roll last year's engagement forward.
-  In the desktop app, *New Engagement* opens on the returning-client page;
-  on the command line it is `python -m tracker.rollover <last year> <new
-  folder> --form 1040`. Last year's rows win on every field; the form
+- **Returning client (the default):** roll the household's year forward.
+  In the desktop app, *New Engagement* opens on the returning-client page,
+  which lists the household's open-year returns with every one ticked and
+  rolls them all at once; a return left unticked is retired for that year.
+  On the command line it is `python -m tracker.rollover <the household's
+  folder> --year 2027 --all`, or `<last year's return> --form 1040` for one
+  return on its own. Last year's rows win on every field; the form
   template only fills blanks and *offers* rows the client has never had.
 - **New client:** pick the return type (`tracker.templates.FORM_TYPES`),
   tick what applies, add anything unusual. Every request needs a
@@ -59,6 +62,11 @@ editor shows it.
 Either way the result is the request list in the record plus the
 scaffolded household inbox and `Prepared/` tree, and a `_README.txt` for the
 client.
+
+A household is shared **once**, by the checklist the app shows when its
+first return is made: the household folder as Viewer, `Drop files here` as
+Contributor, then the inbox's link pasted in and marked shared. Nothing is
+ever re-shared — a new year is a new folder under the same grant.
 
 ## Lifecycle of a request
 

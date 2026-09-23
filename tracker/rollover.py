@@ -42,28 +42,49 @@ last year's unfiled files were also written to a Carried Forward sheet of
 next year's workbook; there is no workbook, and that sheet is not written.)
 
 Nothing here writes to the prior year's engagement — it is read-only history.
+
+**A household rolls as a household** (decision 126). A client sees one
+folder and one inbox, so Roll Forward takes the household's open year and
+rolls every ticked return into the next one, each under its own lock by
+the rule above, and retires every return left unticked with a single
+details edit (``active: no``) — so the household has exactly one open
+year again when it is done and its inbox goes on being sorted.
+:func:`roll_household` is that loop; :func:`roll_forward` stays the
+primitive it calls and the per-return command line still rolls one. One
+return's refusal is said and undoes none of the others. A return that
+*was* rolled needs no edit: its successor's Rolled From is what retires
+it, exactly as it always has been.
 """
 
 from __future__ import annotations
 
+import datetime as dt
+import os
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from tracker.households import household_returns, load_household_info, open_years
+from tracker.layout import return_dir_for, root_of
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
     ManifestError,
     Override,
     RequestItem,
     Status,
     check_tax_year,
+    create_engagement,
     detect_year,
+    item_from_record,
+    load_engagement_info,
     load_manifest,
     override_label,
+    save_rules,
     shift_item,
     shift_years,
 )
-from tracker.records import EngagementInfo
-from tracker.templates import ask_by_for, filing_deadline_for
+from tracker.records import EngagementInfo, HouseholdInfo
+from tracker.templates import ask_by_for, filing_deadline_for, template_items
 
 #: Why a row is on the new list. Reported in the CLI and the API's reply.
 ORIGIN_PRIOR = "carried from last year"
@@ -82,6 +103,28 @@ PREVIOUS_NOT_APPLICABLE_HEADING = "Previous Year Not Applicable - decide afresh:
 UNKNOWN_YEAR_LABEL = "next year"
 #: Heads the CLI's list of last year's unmatched documents.
 UNFILED_HEADING = "Sent last year but never filed — check these are covered:"
+
+#: Why a household cannot be rolled: the inbox cannot say which year a
+#: document is for, and neither can a rollover say which year it is
+#: rolling. A person retires a year before rolling the household
+#: (decision 126; ``tracker.runner.TWO_OPEN_YEARS`` is the pass's half of
+#: the same rule).
+ROLLOVER_TWO_OPEN_YEARS = (
+    "this household has two open years ({years}); retire one in the editor before rolling forward"
+)
+#: Why one plan is not this household's business: a household rollover
+#: rolls the returns of its own open year and nothing else.
+ROLLOVER_NOT_THIS_HOUSEHOLD = "{prior} is not an open-year return of {household}"
+#: What a return left unticked by a household rollover is retired with.
+#: The retirement itself is an ordinary details edit (``active: no``) and
+#: the reason is not a detail field, so it is said where a person reads
+#: it: beside the retired return on the command line, and in the runbook.
+RETIRED_BY_ROLLOVER = "retired by the household's rollover on {day}: it was not rolled into {year}"
+#: The command line's three headings over what one household rollover did.
+ROLLED_HEADING = "ROLLED"
+NOT_ROLLED_HEADING = "NOT ROLLED"
+RETIRED_HEADING = "RETIRED (not rolled into {year})"
+
 
 @dataclass(frozen=True, slots=True)
 class RolledItem:
@@ -122,6 +165,42 @@ class RolloverReport:
     @property
     def not_applicable(self) -> list[RolledItem]:
         return [r for r in self.rolled if r.origin == ORIGIN_NOT_APPLICABLE]
+
+
+@dataclass(frozen=True, slots=True)
+class ReturnPlan:
+    """One return a household rollover was asked to roll.
+
+    ``prior`` is the return folder the new year is built from; ``form`` is
+    the catalog template consulted to fill blanks (blank: last year's list
+    as it stands); ``include_new`` adds the rows that template only
+    offers; ``return_name`` renames the return, and blank keeps the name
+    it has had every year, which is the ordinary case - the app's
+    checklist sends no name at all.
+    """
+
+    prior: Path
+    form: str = ""
+    include_new: bool = False
+    return_name: str = ""
+
+
+@dataclass(slots=True)
+class HouseholdRollover:
+    """What one household rollover did: what rolled, what was left behind,
+    and what refused.
+
+    ``rolled`` is ``(prior, created, report)`` per return, in the order
+    they were rolled; ``retired`` is every open-year return that was not
+    planned, each now ``active: no`` by one event of its own; ``skipped``
+    is ``(prior, sentence)`` for a return whose own roll refused, which
+    undoes none of the others.
+    """
+
+    target_year: int
+    rolled: list[tuple[Path, Path, RolloverReport]] = field(default_factory=list)
+    retired: list[Path] = field(default_factory=list)
+    skipped: list[tuple[Path, str]] = field(default_factory=list)
 
 
 # ------------------------------------------------------------- carry rules ----
@@ -359,49 +438,320 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
     return [f"{name} — {reason}" for name, reason in seen.items()]
 
 
+# ------------------------------------------------------- the household roll ----
+
+
+def _same_folder(path: Path) -> str:
+    """One folder, as two spellings of it compare: resolved, and without
+    case, because Windows hands the same folder back under either."""
+    try:
+        return os.path.normcase(str(Path(path).resolve()))
+    except OSError:                       # an unreachable drive is not a match
+        return os.path.normcase(str(Path(path)))
+
+
+def _rows_as_stored(return_dir: Path) -> list[RequestItem]:
+    """The return's rules exactly as the record holds them.
+
+    Not :func:`tracker.manifest.load_manifest`, which lays the keywords a
+    person's filing taught over each row's typed ones: saving those back
+    would turn a taught word into a typed one and make a retirement carry
+    a list somebody has to read. The retirement changes one field, so the
+    rows it saves must be the rows already stored, byte for byte.
+    """
+    from tracker import store
+
+    return [item_from_record(row)
+            for row in store.rules(store.connect(), return_dir) or []]
+
+
+def open_year_returns(household_dir: Path | str) -> tuple[list[int], list]:
+    """The household's one open year and its active returns, or a refusal.
+
+    The first thing a household rollover reads, and what the command line
+    asks to turn ``--all`` and ``--only`` into plans - one reading of the
+    household, used by both, so what the CLI offers and what the roll
+    accepts cannot drift apart. More than one open year is refused here
+    (:data:`ROLLOVER_TWO_OPEN_YEARS`): there is no single year to roll, and
+    a person retires one in the editor first.
+    """
+    from tracker.registry import engagement_from, mark_superseded
+
+    folder = Path(household_dir)
+    returns = mark_superseded([engagement_from(one) for one in household_returns(folder)])
+    years = open_years(returns)
+    if len(years) > 1:
+        raise ManifestError(ROLLOVER_TWO_OPEN_YEARS.format(
+            years=", ".join(str(year) for year in years)))
+    return years, [one for one in returns
+                   if one.active and years and one.tax_year == years[0]]
+
+
+def roll_household(
+    household_dir: Path | str,
+    *,
+    target_year: int,
+    plans: Sequence[ReturnPlan],
+    today: dt.date | None = None,
+) -> HouseholdRollover:
+    """Roll one household's year forward, return by return, and retire what
+    it leaves behind (decision 126).
+
+    **The household is what a person rolls**, because the household is what
+    the client sees: one inbox, one folder, and however many returns the
+    firm keeps under it. Roll Forward takes the open year's active returns,
+    rolls each ticked one into ``target_year`` exactly as the per-return
+    rollover does - the same carry rule, the same defaults, its own lock -
+    and sets every unticked one ``active: no`` with one details edit. So
+    the household has **exactly one open year again** when it is done,
+    whichever returns were ticked, and the next pass sorts its inbox
+    instead of refusing on two open years.
+
+    **Each return is its own decision, on its own record.** A refusal on
+    one - a target that already exists, a path past what Windows will
+    open, a year that is not after the prior's - is recorded in
+    ``skipped`` with its sentence and the loop goes on; nothing rolled
+    before it is undone, for the same reason decision 102 made one
+    transaction per engagement.
+
+    **A return rolled here needs no retiring:** its successor's Rolled
+    From is what retires it, as it always has been
+    (``tracker.registry.mark_superseded``). Only a return left out of the
+    plan gets the details edit.
+
+    Refuses the whole call when the household has more than one open year
+    (:data:`ROLLOVER_TWO_OPEN_YEARS` - there is no one year to roll) and
+    when a plan names a return that is not one of that year's active ones
+    (:data:`ROLLOVER_NOT_THIS_HOUSEHOLD`). **No permission is changed and
+    nothing under the client tree is touched but the new year's folder**,
+    which the first scaffold makes and the rest find; the inbox's README
+    is rewritten once at the end, so the client sees the new year's lists
+    in the same folder they have always used.
+    """
+    from tracker.scaffold import scaffold_household
+
+    household_dir = Path(household_dir)
+    today = today or dt.date.today()
+    check_tax_year(target_year)
+
+    _, open_returns = open_year_returns(household_dir)
+    by_folder = {_same_folder(one.path): one for one in open_returns}
+
+    planned: list[tuple[object, ReturnPlan]] = []
+    for plan in plans:
+        prior = Path(plan.prior)
+        one = by_folder.get(_same_folder(prior))
+        if one is None:
+            raise ManifestError(ROLLOVER_NOT_THIS_HOUSEHOLD.format(
+                prior=prior.name, household=household_dir.name))
+        planned.append((one, plan))
+    # Folder-name order without case: the order the pass takes the locks
+    # in and the order a person reads the household's returns in, so "the
+    # first return by order" means one thing wherever it is said.
+    planned.sort(key=lambda pair: pair[0].path.name.lower())
+
+    try:
+        household_info = load_household_info(household_dir)
+    except ManifestError:                 # a household whose record cannot be read
+        household_info = HouseholdInfo()
+
+    result = HouseholdRollover(target_year=target_year)
+    for one, plan in planned:
+        _roll_one(one.path, one.info, plan, household_dir.name, household_info,
+                  target_year=target_year, result=result)
+
+    # What nobody ticked is finished with: one details edit on its own
+    # record, under its own lock, carrying the one field that moved. A
+    # return that *was* ticked is never retired here - rolled, its
+    # successor's Rolled From retires it; refused, it is still this
+    # year's work and the refusal is what a person acts on.
+    ticked = {_same_folder(one.path) for one, _ in planned}
+    for one in open_returns:
+        if _same_folder(one.path) in ticked:
+            continue
+        save_rules(one.path, _rows_as_stored(one.path), replace(one.info, active=False))
+        result.retired.append(one.path)
+
+    # The client's side, once, at the end: the year folders the rolls made
+    # are already there, and the README now lists the new year's returns.
+    scaffold_household(household_dir)
+    return result
+
+
+def _roll_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
+              household_name: str, household_info: HouseholdInfo, *,
+              target_year: int, result: HouseholdRollover) -> Path | None:
+    """One return of a household rollover, or ``None`` with its refusal in
+    ``result.skipped``.
+
+    Everything the per-return rollover does, in its order: last year's
+    rows, the target the layout computes, the refusals creation makes, the
+    details carried and refilled from the household, the dates the form
+    implies, the record under the new return's own lock, and the scaffold.
+    """
+    from tracker import store
+    from tracker.filer import refuse_a_path_past_the_limit
+    from tracker.scaffold import scaffold_engagement
+
+    target: Path | None = None
+    try:
+        report = roll_forward(prior, target_year=target_year,
+                              template=template_items(plan.form) if plan.form else [],
+                              include_new=plan.include_new)
+        household = prior_info.household or household_name
+        return_name = plan.return_name or prior_info.return_name or prior.name
+        target = return_dir_for(root_of(prior), household, target_year, return_name)
+        if target.exists():
+            raise ManifestError(
+                f"A return named '{return_name}' already exists for {household} {target_year}")
+        refuse_a_path_past_the_limit(target, report.items)
+
+        carried = carry_engagement_info(prior_info, rolled_from=str(prior),
+                                        tax_year=target_year)
+        # The inbox is the household's and does not change from one year
+        # to the next, so its link and its greeting are refilled here
+        # rather than left blank for somebody to notice in February.
+        carried = replace(carried,
+                          client=carried.client or household_info.contact,
+                          link=carried.link or household_info.link,
+                          household=household, return_name=return_name)
+        info = with_default_dates(carried, carried.form or plan.form, target_year)
+        target.mkdir(parents=True)
+        try:
+            create_engagement(target, report.items, info)
+            scaffold_engagement(target)
+        except Exception:
+            # Never a half-built return, in the folder or in the store -
+            # the folder first, so the name is free again whatever
+            # happens next, then the store's row in its own try, because
+            # a store that cannot be reached at this moment must not
+            # replace the refusal the person is owed with its own.
+            shutil.rmtree(target, ignore_errors=True)
+            try:
+                store.forget(store.connect(), target)
+            except Exception:
+                pass
+            raise
+    except (ManifestError, OSError) as exc:
+        result.skipped.append((prior, str(exc)))
+        return None
+    result.rolled.append((prior, target, report))
+    return target
+
+
 # --------------------------------------------------------------------- CLI ----
 
 if __name__ == "__main__":
     import argparse
 
+    from tracker import ledger, store
     from tracker.page import tolerant_console
-    from tracker.templates import require_form, template_items
+    from tracker.templates import require_form
 
     # The report names the client's folders and carries an arrow a cp1252
     # console cannot encode; the record is written before a word is
     # printed, and a re-run into that folder is refused (decision 108).
     tolerant_console()
 
+    # **Two forms, one command line** (decision 126): a household's private
+    # folder rolls the household's year, a return folder rolls that one
+    # return. They are told apart by what the path holds - the record's own
+    # answer (``store.kind``), not the folder's position - so a person who
+    # points this at the wrong level is refused rather than surprised.
     parser = argparse.ArgumentParser(
-        description="Build next year's request list from a returning client's prior engagement"
+        description="Roll a returning client forward: one household's year, or one return"
     )
-    parser.add_argument("prior_engagement_dir", help="last year's folder (read only)")
+    parser.add_argument("folder",
+                        help="the household's folder in the private tree, or last year's return")
     parser.add_argument("--year", type=int, default=None, help="target tax year")
-    parser.add_argument("--form", default="", help="form template used to fill blanks (e.g. 1040)")
+    parser.add_argument("--form", action="append", default=[],
+                        help="form template used to fill blanks (e.g. 1040); on a household, "
+                             "once for every return or one per --only, in the same order")
+    parser.add_argument("--all", action="store_true",
+                        help="household: roll every return of the open year")
+    parser.add_argument("--only", action="append", default=[], metavar="RETURN",
+                        help="household: roll this return by name (repeat for several); "
+                             "every return left out is retired")
     parser.add_argument(
         "--include-new", action="store_true",
         help="also add checklist rows this client has never had (default: just offer them)",
     )
-    parser.add_argument("--scaffold", action="store_true", help="also build the folders")
+    parser.add_argument("--scaffold", action="store_true",
+                        help="one return: also build the folders (a household always does)")
     ns = parser.parse_args()
-
-    template = []
-    if ns.form:
+    forms: list[str] = list(ns.form)
+    for named in forms:
         try:
-            require_form(ns.form)
+            require_form(named)
         except ManifestError as exc:
             parser.error(str(exc))
-        template = template_items(ns.form)
+
+    given = Path(ns.folder).resolve()
+    if not ledger.path_for(given).is_file():
+        parser.error(f"no record in {given}")
+    store.follow_the_journal(store.connect(), store.root_for(given), given)
+
+    if store.kind(store.connect(), given) == store.KIND_HOUSEHOLD:
+        if ns.year is None:
+            parser.error("give the year to roll this household into (--year)")
+        if bool(ns.all) == bool(ns.only):
+            parser.error("say which returns to roll: --all, or --only \"<return name>\" for each")
+        try:
+            open_years_now, open_now = open_year_returns(given)
+        except ManifestError as exc:
+            parser.error(str(exc))
+        chosen = list(open_now)
+        if ns.only:
+            by_name = {one.path.name.lower(): one for one in open_now}
+            chosen = []
+            for name in ns.only:
+                one = by_name.get(name.strip().lower())
+                if one is None:
+                    parser.error(ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=name,
+                                                                    household=given.name))
+                chosen.append(one)
+        if len(forms) > 1 and len(forms) != len(chosen):
+            parser.error("give --form once for every return, or one per --only in the same order")
+        day = dt.date.today()
+        done = roll_household(given, target_year=ns.year, today=day, plans=[
+            ReturnPlan(prior=one.path,
+                       form=forms[n] if len(forms) > 1 else (forms[0] if forms else ""),
+                       include_new=ns.include_new)
+            for n, one in enumerate(chosen)
+        ])
+
+        span = (f"{open_years_now[0]} → {ns.year}" if open_years_now
+                else f"{UNKNOWN_YEAR_LABEL} ({ns.year})")
+        print(f"Rolled {given.name} forward ({span})\n")
+        print(f"  {ROLLED_HEADING}")
+        for was, created, one_report in done.rolled:
+            print(f"    {was.name} → {created}")
+            print(f"      {len(one_report.carried)} carried, {len(one_report.added)} new, "
+                  f"{len(one_report.offered)} offered, "
+                  f"{len(one_report.unfiled_last_year)} never filed last year")
+        if done.skipped:
+            print(f"\n  {NOT_ROLLED_HEADING}")
+            for was, why in done.skipped:
+                print(f"    {was.name}: {why}")
+        if done.retired:
+            print(f"\n  {RETIRED_HEADING.format(year=ns.year)}")
+            for one in done.retired:
+                print(f"    {one.name}")
+                print(f"      {RETIRED_BY_ROLLOVER.format(day=day.isoformat(), year=ns.year)}")
+        print()
+        raise SystemExit(0)
+
+    template = template_items(forms[0]) if forms else []
+    ns.form = forms[0] if forms else ""
 
     result = roll_forward(
-        ns.prior_engagement_dir,
+        given,
         target_year=ns.year,
         template=template,
         include_new=ns.include_new,
     )
 
-    from tracker.layout import household_name_of, return_dir_for, root_of
-    from tracker.manifest import create_engagement, load_engagement_info
+    from tracker.layout import household_name_of
 
     # Next year's list, in the record, where the editor shows it: the rows
     # this rollover built and last year's details carried by the one rule.
@@ -444,9 +794,9 @@ if __name__ == "__main__":
     # record, so that folder could not be tried again (decision 108).
     scaffolded = None
     if ns.scaffold:
-        from tracker.scaffold import scaffold_engagement
+        from tracker.scaffold import scaffold_engagement as scaffold_one
 
-        scaffolded = scaffold_engagement(target)
+        scaffolded = scaffold_one(target)
 
     span = f"{result.prior_year} → {result.target_year}" if result.prior_year else UNKNOWN_YEAR_LABEL
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")

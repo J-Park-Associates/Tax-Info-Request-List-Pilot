@@ -1237,6 +1237,16 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         for member in members if isinstance(members, list) else []:
             if not isinstance(member, str):
                 refuse(f"names a member that is not text: {member!r:.60}")
+    elif name == ledger.SHARING_CONFIRMED:
+        # The firm's word, dated, and nothing else (decision 126): the
+        # stamp is the whole of it. A line carrying a payload is either a
+        # newer version's or a hand-written one, and either way this
+        # version would be storing something it cannot fold - so it is
+        # refused by name here rather than silently kept in the events
+        # table where a reader would later trust it.
+        carried = sorted(set(event) - {ledger.EVENT_KEY, ledger.AT_KEY})
+        if carried:
+            refuse(f"carries {', '.join(repr(key) for key in carried)}; it carries nothing")
 
 
 def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, start: int) -> int:

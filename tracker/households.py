@@ -27,6 +27,14 @@ which. A second file format for four fields would have been a second thing
 to keep honest; discovery tells the two apart positionally (it knows what
 each level of the layout is) rather than by a file name.
 
+**The firm's word about the share** (decision 126) is the one thing here
+that is not a field. The tracker cannot see Drive's sharing, so pressing
+*Mark as shared* records a :data:`tracker.ledger.SHARING_CONFIRMED` event
+carrying nothing but its stamp, folded by nothing and read back by day
+(:func:`shared_on`) - the pattern an approved draft uses. A field would
+have claimed the household *is* shared; a dated event says only that a
+person said so, which is the whole of what can honestly be recorded.
+
 **What is never in it.** Not one word of a client's document, and no
 document at all: a household record is about the folder, not about the
 papers in it. The returns under it hold those.
@@ -40,6 +48,7 @@ does.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -158,6 +167,32 @@ def save_household(
             ledger.HOUSEHOLD_KEY: moved,
         }))
     return HouseholdSaved(fields=tuple(moved), recorded=True)
+
+
+def shared_on(household_dir: Path | str) -> dt.date | None:
+    """The day the firm said it had shared this household, or ``None``.
+
+    Decision 126. The tracker cannot see Drive's sharing - Drive for
+    desktop exposes no permission to a program - so the two grants are a
+    person's to make, once, and *Mark as shared* records that they did.
+    The record of it is one :data:`tracker.ledger.SHARING_CONFIRMED` event
+    carrying nothing but its stamp, **folded by nothing**, exactly as an
+    approved draft is (:data:`tracker.ledger.DRAFT_APPROVED`): it is not a
+    field of the household, so it costs the store no column and the
+    journal no new shape, and it is read back by name out of the events.
+
+    The newest one, as a local day, because the day is what a person
+    reads; a household nobody has marked answers ``None`` and the card
+    says so. **Nothing in the pass reads this.** It is the firm's note to
+    itself, dated - not a condition of sorting, filing or drafting, none
+    of which the tracker could make wait on a share it cannot see.
+    """
+    from tracker import ledger, store
+
+    folder = Path(household_dir)
+    conn = _the_record(folder)
+    event = store.last_event(conn, folder, ledger.SHARING_CONFIRMED)
+    return ledger.day_of(str(event.get(ledger.AT_KEY, ""))) if event else None
 
 
 def household_returns(household_dir: Path | str) -> list[Path]:

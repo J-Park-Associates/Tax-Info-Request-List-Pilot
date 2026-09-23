@@ -18,6 +18,10 @@ Commands:
             triaged review queue, the one summary, useful paths
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
+  roll-household  roll every ticked return of a household's open year into
+            the next one, and retire the returns left out (JSON on stdin)
+  mark-shared  record that the firm has shared this household's folder and
+            inbox with the client - the firm's word, dated
   scan      one pass over this return's household, exactly as the scheduled
             run makes it (no draft)
   reminder  the week's draft as the record and the file now stand, at any
@@ -56,8 +60,8 @@ from tracker.filer import (
     ensure,
     find_parked,
     moved_to,
-    prepared_name_for,
     read_index,
+    refuse_a_path_past_the_limit,
     restore_working_copy,
     unfile_document,
 )
@@ -68,17 +72,15 @@ from tracker.households import (
     load_household_info,
     open_years,
     save_household,
+    shared_on,
 )
 from tracker.layout import (
     CLIENTS_TREE,
     ENGAGEMENT_LABEL_PATTERN,
     INBOX_DIR_NAME,
-    MAX_PATH_LENGTH,
-    PATH_TOO_LONG,
     PRIVATE_TREE,
     RETURN_NAME_PATTERN,
     client_household_dir,
-    deepest_path_length,
     household_of,
     inbox_dir_for,
     inbox_of,
@@ -151,10 +153,13 @@ from tracker.rollover import (
     ORIGIN_NOT_APPLICABLE,
     ORIGIN_PRIOR,
     UNKNOWN_YEAR_LABEL,
+    ReturnPlan,
     carry_engagement_info,
     detect_year,
     next_tax_year,
+    open_year_returns,
     roll_forward,
+    roll_household,
     with_default_dates,
 )
 from tracker.runner import (
@@ -177,7 +182,6 @@ from tracker.scaffold import (
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
     assign_folders,
-    folder_name_for,
     sanitize_component,
     scaffold_engagement,
 )
@@ -274,6 +278,31 @@ MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; 
                 "is ever read, moved or renamed.")
 TWO_OPEN_YEARS_NOTE = ("Two years are open in this household ({years}); nothing is sorted from "
                        "its inbox until one is retired in the editor")
+#: The two grants a person makes in Drive, once per household, and the one
+#: thing the tracker can check was done (decision 126). **The tracker
+#: cannot see Drive's sharing** - Drive for desktop exposes no permission
+#: to a program - so it asks for the grants in words, in order, and
+#: records only that a person said they had made them. Shown when a
+#: household's first return is made, and on the household's card until
+#: somebody presses *Mark as shared*. The renderer types none of it.
+SHARING_CHECKLIST = (
+    "Share the household folder, {client_folder}, with the client as Viewer.",
+    "Share {inbox} with the client as Contributor.",
+    "Paste the inbox's link into the household's Inbox link, then press Mark as shared.",
+)
+SHARING_HEADING = "Before the client can drop anything"
+MARK_SHARED_LABEL = "Mark as shared"
+SHARED_ON_LINE = "Marked as shared on {day} by the firm"
+NOT_YET_SHARED_LINE = "Not yet marked as shared"
+SHARING_NOTE = ("The tracker cannot see Drive's sharing. The two grants are the firm's to make, once; "
+                "the year folders are view-only through the household folder, and nothing is ever re-shared.")
+#: Why *Mark as shared* refuses: the inbox's link is the one part of the
+#: three the tracker can see was done, so it is the one part it insists on.
+SHARE_LINK_FIRST = "paste the inbox's link into the household first"
+#: What the returning-client page says under its checklist of returns, so
+#: nobody unticks a return expecting it to sit still (decision 126).
+ROLLOVER_UNTICKED_NOTE = ("A return left unticked is retired for {year}: it is set inactive and "
+                          "stops being chased. Tick it later and roll it on its own if that changes.")
 #: What the Needs Review card calls the decisions a person makes there and
 #: on what is already filed, and what it asks them for. The renderer shows
 #: these; it types none of them.
@@ -399,36 +428,8 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
     if engagement.exists():
         raise ManifestError(
             f"A return named '{return_name}' already exists for {household} {year}")
-    _refuse_a_path_past_the_limit(engagement, items or [])
+    refuse_a_path_past_the_limit(engagement, items or [])
     return engagement
-
-
-def _refuse_a_path_past_the_limit(engagement: Path, items: list) -> None:
-    """Refuse a return whose deepest working copy would not fit in a path
-    Windows will open.
-
-    The deepest thing the tracker ever writes under a return is a working
-    copy: ``PREPARED_DIR_NAME/<request folder>/<canonical name>.<extension>``, over
-    every active row of the list it is about to record and the longest
-    extension each allows. The client's own file names are not measured -
-    they are the client's, and ``unreachable_drops`` already says a name
-    the index cannot hold - and neither are the ``..`` locations that
-    cross the trees, because Windows normalises them away before the limit
-    applies and :func:`tracker.layout.locate` normalises them first too.
-    """
-    subpaths = []
-    for item in items:
-        if getattr(item, "manual_override", "") == Override.NOT_APPLICABLE:
-            continue
-        extensions = [e for e in (item.allowed_extensions or DEFAULT_EXTENSIONS)
-                      if e and e != ANY_EXTENSION] or list(DEFAULT_EXTENSIONS)
-        longest = max(extensions, key=len)
-        name = prepared_name_for(item, longest, set())
-        subpaths.append(f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/{name}")
-    length = deepest_path_length(engagement, subpaths)
-    if length > MAX_PATH_LENGTH:
-        raise ManifestError(PATH_TOO_LONG.format(
-            folder=engagement, length=length, limit=MAX_PATH_LENGTH))
 
 
 def _engagement_dir(argv: list[str]) -> Path:
@@ -631,6 +632,17 @@ def _vocab() -> dict:
             "misfits_note": MISFITS_NOTE,
             "two_open_years": TWO_OPEN_YEARS_NOTE,
             "editable": list(HOUSEHOLD_EDITABLE),
+            # The sharing checklist and the firm's dated word about it
+            # (decision 126). The page shows these and types none of them;
+            # the three lines themselves arrive filled, in `checklist`.
+            "sharing_heading": SHARING_HEADING,
+            "sharing_note": SHARING_NOTE,
+            "mark_shared": MARK_SHARED_LABEL,
+            "shared_on_line": SHARED_ON_LINE,
+            "not_yet_shared_line": NOT_YET_SHARED_LINE,
+            # And the one line the returning-client page needs of its own:
+            # what unticking a return does to it.
+            "rollover_unticked": ROLLOVER_UNTICKED_NOTE,
         },
         "year_min": YEAR_MIN,
         "year_max": YEAR_MAX,
@@ -933,6 +945,24 @@ def _originals_of(engagement: Path) -> Path:
     return originals_dir_for(_root_of(engagement), household_of(engagement).name, year)
 
 
+def _sharing_checklist(root: Path, household: str) -> dict:
+    """The two grants and the paste, as a person does them, with this
+    household's own folders named (decision 126).
+
+    Filled here and nowhere else: the page shows the lines it is handed,
+    so the folder a person is told to share is the folder the tracker
+    would read, character for character.
+    """
+    client_folder = client_household_dir(root, household)
+    return {
+        "heading": SHARING_HEADING,
+        "lines": [line.format(client_folder=client_folder,
+                              inbox=inbox_dir_for(root, household))
+                  for line in SHARING_CHECKLIST],
+        "note": SHARING_NOTE,
+    }
+
+
 def _household_payload(engagement: Path) -> dict:
     """The household this return belongs to, as the app's card shows it.
 
@@ -945,8 +975,10 @@ def _household_payload(engagement: Path) -> dict:
     household_dir = household_of(engagement)
     try:
         info = load_household_info(household_dir)
+        marked = shared_on(household_dir)
     except ManifestError:
         info = HouseholdInfo()
+        marked = None
     # The household's own returns, retired among themselves: a rollover
     # names its prior by path and a prior is always in the same household,
     # so the whole practice does not have to be walked to know which of
@@ -973,6 +1005,13 @@ def _household_payload(engagement: Path) -> dict:
             for one in returns
         ],
         "queue": queue,
+        # The firm's own dated word that this household was shared, and
+        # the checklist until it is given (decision 126). Nothing in the
+        # pass reads either: the tracker cannot see Drive's sharing and
+        # must not make filing wait on what it cannot check.
+        "shared_on": marked.isoformat() if marked else None,
+        "checklist": None if marked else _sharing_checklist(
+            _root_of(engagement), household_dir.name),
     }
 
 
@@ -1445,9 +1484,17 @@ def _cmd_create(argv: list[str]) -> dict:
         if made_household is not None:
             _undo_create(made_household)
         raise
-    return {"created": Engagement(path=engagement, info=info,
-                                  household_path=household_dir).label,
-            "state": _state(engagement)}
+    reply = {"created": Engagement(path=engagement, info=info,
+                                   household_path=household_dir).label,
+             "state": _state(engagement)}
+    # A household's **first** return is the moment the two grants have to
+    # be made, so the checklist comes back with it and the app shows it
+    # once (decision 126). A second return added to a household already
+    # set up gets none: its inbox was shared when the household was, and
+    # nothing is ever re-shared.
+    if made_household is not None:
+        reply["checklist"] = _sharing_checklist(root, household)
+    return reply
 
 
 def _undo_create(engagement: Path) -> None:
@@ -1621,20 +1668,125 @@ def _cmd_rollover(argv: list[str]) -> dict:
             "prior": prior.name,
             "prior_year": report.prior_year,
             "target_year": report.target_year,
-            "carried": [
-                {"identifier": r.item.identifier, "document": r.item.document,
-                 "origin": r.origin, "note": r.note}
-                for r in report.rolled
-            ],
-            "offered": [
-                {"identifier": r.item.identifier, "document": r.item.document,
-                 "note": r.note}
-                for r in report.offered
-            ],
-            "unfiled_last_year": report.unfiled_last_year,
+            **_carried_payload(report),
         },
         "state": _state(engagement),
     }
+
+
+def _carried_payload(report) -> dict:
+    """One return's rollover as the app reads it: every rolled row with its
+    origin and note, the rows only offered, and last year's unfiled files."""
+    return {
+        "carried": [
+            {"identifier": r.item.identifier, "document": r.item.document,
+             "origin": r.origin, "note": r.note}
+            for r in report.rolled
+        ],
+        "offered": [
+            {"identifier": r.item.identifier, "document": r.item.document, "note": r.note}
+            for r in report.offered
+        ],
+        "unfiled_last_year": report.unfiled_last_year,
+    }
+
+
+def _cmd_roll_household(argv: list[str]) -> dict:
+    """Roll a whole household's year forward, and retire what is left out.
+
+    ``--engagement`` names **any** return of the household; the household
+    is the folder above its year. JSON on stdin::
+
+        {"year": 2027 | null,
+         "returns": [{"prior": "<return folder>", "form": "1040",
+                      "include_new": false, "return_name": ""}, ...]}
+
+    Every ticked return is rolled into the year, one at a time, each under
+    its own lock and by the same carry rule the per-return ``rollover``
+    uses - which stays the primitive this calls. **Every open-year return
+    the list leaves out is retired** with one details edit, so the
+    household has exactly one open year again and its inbox goes on being
+    sorted (decision 126). One return's refusal is reported in ``skipped``
+    and undoes none of the others.
+
+    The year defaults to the one after the household's open year. Nothing
+    under the client tree is touched but the new year's folder, and no
+    permission is changed: the inbox was shared once, and a new year is a
+    new folder under the same grant.
+    """
+    engagement = _engagement_dir(argv)
+    household_dir = household_of(engagement)
+    spec = json.loads(sys.stdin.read() or "{}")
+    years, _ = open_year_returns(household_dir)
+    target_year = _tax_year(spec.get("year"),
+                            next_tax_year(years[0]) if years else None)
+    if target_year is None:
+        raise ManifestError("The household's open year could not be read; give the year")
+
+    plans = []
+    for one in spec.get("returns") or []:
+        given = str((one or {}).get("prior", "") or "").strip()
+        if not given:
+            raise ManifestError("Pick the returns to roll forward")
+        prior = _under_root(Path(given) if Path(given).is_absolute() else _root() / given)
+        named = str((one or {}).get("return_name", "") or "").strip()
+        plans.append(ReturnPlan(
+            prior=prior,
+            form=str((one or {}).get("form", "") or "").strip(),
+            include_new=bool((one or {}).get("include_new")),
+            # A name a person typed is one folder name, checked here as
+            # every other typed name is; blank keeps the prior's own.
+            return_name=_folder_name(named, "type the return's name on its own") if named else "",
+        ))
+
+    done = roll_household(household_dir, target_year=target_year, plans=plans)
+    rolled = [
+        {"prior": was.name, "created": str(created),
+         "label": Engagement(path=created, household_path=household_dir,
+                             info=load_engagement_info(created)).label,
+         **_carried_payload(one_report)}
+        for was, created, one_report in done.rolled
+    ]
+    # The state the app lands on: the first return this call made, else
+    # the one it was pointed at - a household rollover that rolled nothing
+    # still has a household card to redraw.
+    landed = done.rolled[0][1] if done.rolled else engagement
+    return {
+        "rolled": rolled,
+        "skipped": [{"prior": was.name, "reason": why} for was, why in done.skipped],
+        "retired": [Engagement(path=one, household_path=household_dir,
+                               info=load_engagement_info(one)).label
+                    for one in done.retired],
+        "target_year": target_year,
+        "state": _state(landed),
+    }
+
+
+def _cmd_mark_shared(argv: list[str]) -> dict:
+    """Record that the firm has shared this household with its client.
+
+    ``--engagement`` names any return of the household; no stdin. One
+    ``sharing_confirmed`` event goes on the household's record, under its
+    lock, carrying nothing but the day (decision 126).
+
+    **The tracker cannot see Drive's sharing**, so this records a person's
+    word and claims nothing more. The one part of the checklist it *can*
+    see was done is the inbox's link, and a household with none is refused
+    (:data:`SHARE_LINK_FIRST`): a household marked shared with no link
+    would send a letter pointing at nothing. Nothing in the pass reads the
+    day - filing never waits on a share the tracker cannot check.
+    """
+    engagement = _engagement_dir(argv)
+    household_dir = household_of(engagement)
+    info = load_household_info(household_dir)
+    if not info.link.strip():
+        raise ManifestError(SHARE_LINK_FIRST)
+    with engagement_lock(household_dir):
+        # The store is brought up to the household's journal before a line
+        # is written, which is what load_household_info() has just done.
+        store.record(store.connect(), household_dir, ledger.new(ledger.SHARING_CONFIRMED))
+    marked = shared_on(household_dir)
+    return {"shared_on": marked.isoformat() if marked else None, "state": _state(engagement)}
 
 
 def _seq_of(spec: dict) -> int:
@@ -2129,6 +2281,8 @@ COMMANDS = {
     "state": _cmd_state,
     "priors": _cmd_priors,
     "rollover": _cmd_rollover,
+    "roll-household": _cmd_roll_household,
+    "mark-shared": _cmd_mark_shared,
     "scan": _cmd_scan,
     "reminder": _cmd_reminder,
     "approve": _cmd_approve,

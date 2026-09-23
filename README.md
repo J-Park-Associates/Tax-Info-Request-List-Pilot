@@ -98,7 +98,10 @@ decides. `docs/runbook.md` §4 is what each answer means in plain words.
    inbox and the year's folder, and this return's `Prepared/`, and writes
    the client's README
 4. Share the household's folder with the client as Viewer and its inbox as
-   Contributor. They drop everything in; that's their whole job
+   Contributor, paste the inbox's link into the household and mark it
+   shared — the app asks for all three, once, and `docs/runbook.md` §1
+   "Sharing a household with a client" is the whole of it. They drop
+   everything in; that's their whole job
 5. `python -m tracker.filer <return_dir>` — moves each original out of the
    inbox into the client's folder for the year, untouched, files a renamed
    copy into the matching `Prepared/` folder, and records what it did in
