@@ -11,6 +11,7 @@ import pytest
 
 from tests.conftest import ensure, make_engagement, seed_statuses
 from tracker import ledger
+from tracker.layout import inbox_of, root_of
 from tracker.manifest import (
     EngagementInfo,
     Override,
@@ -71,9 +72,21 @@ TEMPLATE = [
 
 
 @pytest.fixture
-def prior(tmp_path):
-    """Last year's engagement, scanned: A01 received 3 files, C01 never came."""
-    eng = make_engagement(tmp_path / "Smith Family 2025", PRIOR, scaffold=False)
+def prior(tmp_path, monkeypatch):
+    """Last year's return, scanned: A01 received 3 files, C01 never came.
+
+    The clients root is recorded the way the app records it, because a
+    return keeps its name every year under the same household (decision
+    125) and the store keys a folder by its path below that root: with no
+    root written down it keys by the folder's parent, and this year's
+    return and next year's would be one row.
+    """
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    set_clients_root(tmp_path)
+    eng = make_engagement(tmp_path, PRIOR, household="Smith Family", scaffold=False)
     seed_statuses(eng, {
         "A01": StatusUpdate(status=Status.RECEIVED, file_count=3,
                             received_date=dt.date(2026, 3, 1)),
@@ -88,13 +101,24 @@ def rolled_by_id(report):
     return {r.item.identifier: r for r in report.rolled}
 
 
-def next_year(tmp_path, report, name="Smith Family 2026"):
-    """Next year's engagement, created from the rollover's rows the way the
-    API and the command line create it: into the record, no scaffold."""
-    folder = tmp_path / name
+def next_year(tmp_path, report, household="Smith Family", name="1040 - Test Client"):
+    """Next year's return, created from the rollover's rows the way the API
+    and the command line create it: into the record, no scaffold - under
+    the same household, the same name, the year above (decision 125)."""
+    from tracker.layout import return_dir_for
+
+    folder = return_dir_for(tmp_path, household, report.target_year or 2026, name)
     folder.mkdir(parents=True, exist_ok=True)
     create_engagement(folder, report.items)
     return folder
+
+
+def rolled_into(prior, year):
+    """Where the rollover puts next year's return: the same household, the
+    same name, the year above (decision 125)."""
+    from tracker.layout import household_name_of, return_dir_for, root_of
+
+    return return_dir_for(root_of(prior), household_name_of(prior), year, prior.name)
 
 
 # ------------------------------------------------------------- year shifting ----
@@ -161,7 +185,7 @@ def test_template_only_fills_blanks(prior):
     """A blank has nothing to override, so the template may fill it."""
     sparse = [RequestItem(identifier="A01", document="W-2s", period="TY2025",
                           min_size_kb=0)]
-    eng = make_engagement(prior.parent / "Sparse 2025", sparse, scaffold=False)
+    eng = make_engagement(root_of(prior), sparse, household="Sparse Family", scaffold=False)
 
     a01 = rolled_by_id(roll_forward(eng, template=TEMPLATE))["A01"].item
     assert a01.document == "W-2s"                          # prior still wins
@@ -415,11 +439,11 @@ def test_the_rollover_command_line_records_where_the_prior_year_really_is(prior)
 
     repo = Path(__file__).resolve().parent.parent
     subprocess.run(
-        [sys.executable, "-m", "tracker.rollover", prior.name, "Smith TY2026"],
+        [sys.executable, "-m", "tracker.rollover", prior.name, "--year", "2026"],
         cwd=prior.parent, check=True, capture_output=True,
         env={**__import__("os").environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
     )
-    info = load_engagement_info(prior.parent / "Smith TY2026")
+    info = load_engagement_info(rolled_into(prior, 2026))
     assert Path(info.rolled_from).is_absolute() and Path(info.rolled_from) == prior.resolve()
 
 
@@ -466,17 +490,19 @@ def test_the_rollover_command_line_writes_the_carried_form_into_next_year(tmp_pa
 
     from tracker.manifest import load_engagement_info
 
-    prior = make_engagement(tmp_path / "Smith Family 2025", PRIOR,
-                            EngagementInfo(client="John Smith", form="1040"), scaffold=False)
+    prior = make_engagement(tmp_path, PRIOR,
+                            EngagementInfo(client="John Smith", form="1040"),
+                            household="Smith Family", scaffold=False)
     repo = Path(__file__).resolve().parent.parent
     subprocess.run(
-        [sys.executable, "-m", "tracker.rollover", prior.name, "Smith TY2026"],
+        [sys.executable, "-m", "tracker.rollover", prior.name, "--year", "2026"],
         cwd=prior.parent, check=True, capture_output=True,
         env={**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"},
     )
-    info = load_engagement_info(prior.parent / "Smith TY2026")
+    rolled = rolled_into(prior, 2026)
+    info = load_engagement_info(rolled)
     assert info.form == "1040" and info.client == "John Smith"
-    assert list((prior.parent / "Smith TY2026").glob("*.xlsx")) == []
+    assert list(rolled.glob("*.xlsx")) == []
 
 
 def test_the_rollover_command_line_fills_the_new_years_dates_from_the_form(tmp_path):
@@ -499,24 +525,26 @@ def test_the_rollover_command_line_fills_the_new_years_dates_from_the_form(tmp_p
     repo = Path(__file__).resolve().parent.parent
     env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
 
-    prior = make_engagement(tmp_path / "Smith Family 2025", PRIOR,
-                            EngagementInfo(client="John Smith", form="1040"), scaffold=False)
+    prior = make_engagement(tmp_path, PRIOR,
+                            EngagementInfo(client="John Smith", form="1040"),
+                            household="Smith Family", scaffold=False)
     subprocess.run(
-        [sys.executable, "-m", "tracker.rollover", prior.name, "Smith TY2026", "--year", "2026"],
+        [sys.executable, "-m", "tracker.rollover", prior.name, "--year", "2026"],
         cwd=prior.parent, check=True, capture_output=True, env=env,
     )
-    info = load_engagement_info(prior.parent / "Smith TY2026")
+    info = load_engagement_info(rolled_into(prior, 2026))
     assert info.filing_deadline == filing_deadline_for("1040", 2026)
     assert info.due == ask_by_for(info.filing_deadline)
 
     # No form recorded and none asked for: a statutory date is never guessed.
-    unknown = make_engagement(tmp_path / "Jones Family 2025", PRIOR,
-                              EngagementInfo(client="Jane Jones"), scaffold=False)
+    unknown = make_engagement(tmp_path, PRIOR, EngagementInfo(client="Jane Jones"),
+                              household="Jones Family", return_name="1040 - Jones",
+                              scaffold=False)
     subprocess.run(
-        [sys.executable, "-m", "tracker.rollover", unknown.name, "Jones TY2026", "--year", "2026"],
+        [sys.executable, "-m", "tracker.rollover", unknown.name, "--year", "2026"],
         cwd=unknown.parent, check=True, capture_output=True, env=env,
     )
-    rolled = load_engagement_info(unknown.parent / "Jones TY2026")
+    rolled = load_engagement_info(rolled_into(unknown, 2026))
     assert rolled.filing_deadline is None and rolled.due is None
 
 
@@ -550,23 +578,26 @@ def test_the_rollover_command_line_finishes_its_work_on_a_console_that_cannot_pr
     second run into that folder was refused."""
     import io
 
+    from tracker.layout import inbox_of, originals_of
     from tracker.manifest import load_engagement_info
-    from tracker.scaffold import PBC_DIR_NAME, README_NAME, SHARED_DIR_NAME
+    from tracker.scaffold import README_NAME
 
     console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
-    target = prior.parent / "Smith TY2026"
     code = run_the_command_line(
-        monkeypatch, [str(prior), str(target), "--form", "1040", "--scaffold"], console,
+        monkeypatch, [str(prior), "--year", "2026", "--form", "1040", "--scaffold"], console,
     )
     console.flush()
     shown = console.buffer.getvalue().decode("cp1252")
 
+    target = rolled_into(prior, 2026)
     assert code == 0, shown
     assert load_engagement_info(target).rolled_from == str(prior.resolve())
-    assert (target / SHARED_DIR_NAME).is_dir()
-    assert (target / SHARED_DIR_NAME / PBC_DIR_NAME).is_dir()
+    # The inbox is the household's and does not change from one year to the
+    # next; what the roll adds on the client side is the year's folder.
+    assert inbox_of(target) == inbox_of(prior)
+    assert originals_of(target).is_dir() and originals_of(target).name == "2026"
     assert (target / PREPARED_DIR_NAME).is_dir()
-    assert (target / SHARED_DIR_NAME / README_NAME).is_file()
+    assert (inbox_of(target) / README_NAME).is_file()
     assert "2025 \\u2192 2026" in shown            # the arrow, as its escape
 
 
@@ -576,9 +607,9 @@ def test_the_rollover_command_line_prints_previous_year_not_applicable_after_car
     import io
 
     console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
-    target = prior.parent / "Smith TY2026"
+    target = rolled_into(prior, 2026)
     code = run_the_command_line(
-        monkeypatch, [str(prior), str(target), "--form", "1040", "--include-new"], console,
+        monkeypatch, [str(prior), "--year", "2026", "--form", "1040", "--include-new"], console,
     )
     console.flush()
     shown = console.buffer.getvalue().decode("utf-8")
@@ -600,19 +631,21 @@ def test_the_rollover_command_line_scaffolds_before_it_reports(prior, monkeypatc
     import builtins
     import io
 
+    from tracker.layout import inbox_of
     from tracker.manifest import load_engagement_info
-    from tracker.scaffold import README_NAME, SHARED_DIR_NAME
+    from tracker.scaffold import README_NAME
 
     def refuse_to_print(*args, **kwargs):
         raise RuntimeError("the console is broken")
 
     monkeypatch.setattr(builtins, "print", refuse_to_print)
-    target = prior.parent / "Smith TY2026"
+    target = rolled_into(prior, 2026)
     with pytest.raises(RuntimeError, match="the console is broken"):
-        run_the_command_line(monkeypatch, [str(prior), str(target), "--scaffold"], io.StringIO())
+        run_the_command_line(monkeypatch, [str(prior), "--year", "2026", "--scaffold"],
+                             io.StringIO())
 
     assert load_engagement_info(target).rolled_from == str(prior.resolve())
-    assert (target / SHARED_DIR_NAME / README_NAME).is_file()
+    assert (inbox_of(target) / README_NAME).is_file()
     assert (target / PREPARED_DIR_NAME).is_dir()
 
 
@@ -656,7 +689,7 @@ def test_the_rollover_carries_a_row_per_issuer(tmp_path):
 
 
 def test_the_rollover_carries_rules_engagement_details_and_learned_keywords_into_next_years_record(
-    capsys, tmp_path, monkeypatch,
+    capsys, short_root, tmp_path, monkeypatch,
 ):
     """The whole of a returning client, through the API: last year's rows
     with a keyword a filing taught, its form and its client carried, its
@@ -665,29 +698,32 @@ def test_the_rollover_carries_rules_engagement_details_and_learned_keywords_into
     import tracker.api as api
     from tests.test_api import run
     from tracker import store
+    from tracker.layout import return_dir_for
     from tracker.locking import engagement_lock
     from tracker.manifest import load_engagement_info
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
-    demo_root = tmp_path / "Clients"                # recorded the way the app records it
-    demo_root.mkdir()
+    # A short root, recorded the way the app records it: the whole 1040
+    # core list has to fit inside what Windows will open (decision 125).
+    demo_root = short_root
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
     set_clients_root(demo_root)
 
-    spec = {"name": "Smith 2025", "form": "1040", "client": "John Smith",
-            "link": "https://drive.example/old", "due": "2026-04-15",
+    spec = {"household": "Smith Family", "return_name": "1040 - Smith", "form": "1040",
+            "client": "John Smith", "link": "https://drive.example/old", "due": "2026-04-15",
             "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
     assert run(capsys, "create", stdin=spec)[0] == 0
-    prior = demo_root / "Smith 2025"
+    prior = return_dir_for(demo_root, "Smith Family", 2025, "1040 - Smith")
     with engagement_lock(prior):
         ensure(prior)
         store.record(store.connect(), prior, ledger.new(ledger.KEYWORD_LEARNED, **{
             ledger.IDENTIFIER_KEY: "C01", ledger.KEYWORD_KEY: "home lending",
         }))
 
-    code, payload = run(capsys, "rollover", stdin={"prior": "Smith 2025", "year": 2026})
+    code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2026})
     assert code == 0, payload
-    new = demo_root / payload["created"]
+    new = return_dir_for(demo_root, "Smith Family", 2026, "1040 - Smith")
 
     rows = {i.identifier: i for i in load_manifest(new)}
     assert "home lending" in rows["C01"].any_keywords
@@ -695,7 +731,9 @@ def test_the_rollover_carries_rules_engagement_details_and_learned_keywords_into
     assert store.learned_keywords(store.connect(), new) == {}       # carried as typed, not taught
     info = load_engagement_info(new)
     assert info.form == "1040" and info.client == "John Smith"
-    assert info.link == ""
+    # The inbox is the household's and does not change from one year to the
+    # next, so its link is refilled rather than left for somebody to paste.
+    assert info.link == "https://drive.example/old"
     # Neither of last year's dates carries: the new year's are the form's
     # own, so the reminder's ladder works from the first draft (decision 117).
     from tracker.templates import ask_by_for, filing_deadline_for
@@ -704,3 +742,108 @@ def test_the_rollover_carries_rules_engagement_details_and_learned_keywords_into
     assert info.due == ask_by_for(info.filing_deadline)
     assert info.rolled_from == str(prior)
     assert list(demo_root.rglob("*.xlsx")) == []
+
+
+# ------------------------------------------- the target is the layout's ----
+
+
+def test_rollover_rolls_a_return_into_the_next_years_folder_of_the_same_household_under_the_same_name(
+    capsys, short_root, tmp_path, monkeypatch,
+):
+    """**The target is computed, never typed** (decision 125). A return
+    keeps its folder name every year, under the same household, so neither
+    the API nor the command line takes a target folder: they are given the
+    prior and the year, and the layout says where it goes.
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import tracker.api as api
+    from tests.test_api import run
+    from tracker.layout import household_of, originals_of, return_dir_for
+    from tracker.manifest import load_engagement_info
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    demo_root = short_root
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    set_clients_root(demo_root)
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "return_name": "1040 - John Park", "form": "1040",
+        "client": "John", "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]})[0] == 0
+    prior = return_dir_for(demo_root, "Park Family", 2025, "1040 - John Park")
+
+    code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2026})
+    assert code == 0, payload
+    target = return_dir_for(demo_root, "Park Family", 2026, "1040 - John Park")
+
+    assert target.is_dir()
+    assert payload["created"] == "Park Family 2026 1040 - John Park"
+    assert household_of(target) == household_of(prior)          # the same household
+    assert target.name == prior.name                            # the same name
+    assert load_engagement_info(target).return_name == "1040 - John Park"
+    assert load_engagement_info(target).tax_year == 2026
+    # The client side gains the year's folder and keeps the one inbox.
+    assert originals_of(target).is_dir() and originals_of(target).name == "2026"
+    assert inbox_of(target) == inbox_of(prior)
+
+    # The command line takes no target either: the prior and the year.
+    repo = Path(__file__).resolve().parent.parent
+    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8",
+           ENV_SETTINGS_DIR: str(tmp_path / "app")}
+    done = subprocess.run(
+        [sys.executable, "-m", "tracker.rollover", str(target), "--year", "2027"],
+        cwd=repo, capture_output=True, text=True, encoding="utf-8", env=env,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert return_dir_for(demo_root, "Park Family", 2027, "1040 - John Park").is_dir()
+
+
+def test_rollover_refills_the_greeting_and_the_link_from_the_household_where_blank(
+    capsys, short_root, tmp_path, monkeypatch,
+):
+    """The inbox is the household's and does not change from one year to
+    the next, so a rolled return whose prior never carried a greeting or a
+    link gets the household's rather than a blank somebody has to notice.
+    """
+    from dataclasses import replace
+
+    from tests.test_api import run
+    from tracker.layout import return_dir_for
+    from tracker.manifest import load_engagement_info, save_rules
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    demo_root = short_root
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    set_clients_root(demo_root)
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "contact": "John & Maria",
+        "link": "https://drive.example/park", "return_name": "1120S - Park Landscaping",
+        "client": "", "items": [{"identifier": "B01", "document": "Trial Balance"}]})[0] == 0
+    prior = return_dir_for(demo_root, "Park Family", 2025, "1120S - Park Landscaping")
+    # The prior's own greeting and link cleared, the way a record written
+    # before the household had either would read.
+    before = load_engagement_info(prior)
+    save_rules(prior, load_manifest(prior), replace(before, client="", link=""))
+    assert load_engagement_info(prior).client == "" and load_engagement_info(prior).link == ""
+
+    code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2026})
+    assert code == 0, payload
+
+    rolled = load_engagement_info(return_dir_for(demo_root, "Park Family", 2026,
+                                                 "1120S - Park Landscaping"))
+    assert rolled.client == "John & Maria"
+    assert rolled.link == "https://drive.example/park"
+
+    # And a greeting the prior does carry is not written over by the
+    # household's: the return's own details win.
+    save_rules(prior, load_manifest(prior),
+               replace(load_engagement_info(prior), client="Park Landscaping LLC"))
+    code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2027})
+    assert code == 0, payload
+    kept = load_engagement_info(return_dir_for(demo_root, "Park Family", 2027,
+                                               "1120S - Park Landscaping"))
+    assert kept.client == "Park Landscaping LLC"

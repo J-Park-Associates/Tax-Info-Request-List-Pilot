@@ -55,6 +55,15 @@ nobody can explain. The row event that follows completes it; both folds
 here and in :mod:`tracker.store` keep the same set of open intents, and
 the next pass finishes them from the record before it looks at anything.
 
+**And it is the household's own details** (decision 125). A household is a
+folder in the private tree with a journal of its own, holding
+:data:`HOUSEHOLD_CHANGED` lines - its name, the members a person typed as
+who the folder is meant to be shared with, the contact the letters greet
+and the inbox link they paste. It is the same machinery a return's journal
+uses, folded by the same functions and rebuilt by the same store, because
+one journal machinery for the two is one thing to keep honest instead of
+two. Nothing about a document goes in it, and no client's text ever does.
+
 What keeps it honest is the agreement fixture in ``tests/conftest.py``:
 after every test in the suite a store built from nothing is held to
 :func:`replay` over these lines - the index rows, the statuses and the
@@ -154,13 +163,6 @@ DIGEST_KEY = "digest"
 EVENT_KEY_AFTER = "then"
 DECIDED_BY_KEY = "by"
 ALSO_KEY = "also"
-#: The day the run that wrote the intent was working on - the runner's own
-#: day, which is what every row is dated by, and not this line's UTC stamp.
-#: Carried where the intent has no row to carry it: a drop's move into the
-#: client's folder, whose row is written after the document is read, so a
-#: drop preserved one day and recovered the next is still dated the day it
-#: arrived.
-DAY_KEY = "day"
 #: The three operations an intent can carry.
 OP_MOVE = "move"
 OP_COPY = "copy"
@@ -181,6 +183,14 @@ BY_PERSON = "person"
 RULES_KEY = "rules"
 REMOVED_KEY = "removed"
 INFO_KEY = "info"
+
+#: What a ``HOUSEHOLD_CHANGED`` event carries: the household fields that
+#: moved, as ``tracker.records.household_to_json`` names them. The same
+#: shape ``RULES_CHANGED`` carries its details in, because it is the same
+#: kind of fact - the first one, written when the household is made,
+#: carries the whole of it and every one after it only what moved, so the
+#: fold of them all is the household.
+HOUSEHOLD_KEY = "household"
 
 #: One original was preserved and its record says where it now is. A pass
 #: that sorts a drop decides and preserves in one row, so it appends one of
@@ -241,6 +251,14 @@ KEYWORD_UNLEARNED = "keyword_unlearned"
 #: all is the list. Written by ``tracker.manifest.create_engagement`` and
 #: ``save_rules`` and by nothing else.
 RULES_CHANGED = "rules_changed"
+#: The household's own details were recorded or edited (decision 125): its
+#: name, the members a person typed as who the folder is meant to be
+#: shared with, the contact the letters greet and the inbox link they
+#: paste, under :data:`HOUSEHOLD_KEY`. Written into the household's
+#: journal, in the private tree, by ``tracker.households.create_household``
+#: and ``save_household`` and by nothing else. Not a row event: it carries
+#: no index row and says nothing about a document.
+HOUSEHOLD_CHANGED = "household_changed"
 #: What decision 103 called the same event, when the list was a workbook
 #: read once a pass. Retired by decision 104: journals from before it
 #: carry these lines, so :func:`apply` folds them exactly as
@@ -317,7 +335,7 @@ ROW_EVENTS = frozenset({
 EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, KEYWORD_UNLEARNED, DRAFTED,
                                  DRAFT_APPROVED,
                                  MIGRATED, RULES_CHANGED, RULES_IMPORTED, MOVING,
-                                 MOVE_ABANDONED})
+                                 MOVE_ABANDONED, HOUSEHOLD_CHANGED})
 #: The names this version reads and never writes: an older journal may
 #: carry them, a new line may not.
 RETIRED_EVENTS = frozenset({RULES_IMPORTED})
@@ -550,6 +568,12 @@ class Folded:
     #: Only the ones any edit has ever recorded: a field nothing has spoken
     #: for is the record's default, not a blank somebody typed.
     info: dict[str, object] = field(default_factory=dict)
+    #: The household's own details, as ``records.household_to_json`` writes
+    #: them, folded the same way ``info`` is (decision 125). Empty on every
+    #: return's journal - a household record is a journal of its own, in
+    #: the household's folder in the private tree - and empty on a
+    #: household nothing has recorded yet.
+    household: dict[str, object] = field(default_factory=dict)
     #: The moves begun and not finished, by the row's identity: the whole
     #: :data:`MOVING` line, so a reader has the operations, the row, the
     #: event that completes it and the day it was written (decision 119).
@@ -594,6 +618,11 @@ def apply(state: Folded, event: dict) -> Folded:
         return state
     if name in (RULES_CHANGED, RULES_IMPORTED):
         return _apply_rules_event(state, event)
+    if name == HOUSEHOLD_CHANGED:
+        # The same fold the details take: what the line carries is set,
+        # and a field it does not name keeps what the household had.
+        state.household.update(event.get(HOUSEHOLD_KEY) or {})
+        return state
     if name in (MOVING, MOVE_ABANDONED):
         return _apply_intent_event(state, event)
     if name in (KEYWORD_LEARNED, KEYWORD_UNLEARNED):

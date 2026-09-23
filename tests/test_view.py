@@ -27,10 +27,11 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement
+from tests.conftest import make_engagement, sort
 from tests.test_scanner import text_pdf
 from tracker import ledger, review, view
-from tracker.filer import NEEDS_REVIEW, file_drops, read_index
+from tracker.filer import NEEDS_REVIEW, read_index
+from tracker.layout import household_of, inbox_of
 from tracker.manifest import (
     COL_ANY_KEYWORDS,
     COL_STATUS,
@@ -44,8 +45,7 @@ from tracker.manifest import (
 from tracker.page import slug
 from tracker.records import rule_from_json
 from tracker.registry import RegistryError, discover_engagements, engagement_dirs
-from tracker.runner import run_engagement
-from tracker.scaffold import SHARED_DIR_NAME
+from tracker.runner import run_household
 from tracker.scanner import scan_engagement
 
 REPO = Path(__file__).resolve().parents[1]
@@ -71,16 +71,16 @@ ITEMS = [
 
 @pytest.fixture
 def engagement(tmp_path):
-    return make_engagement(tmp_path / "Smith Family 2025", ITEMS)
+    return make_engagement(tmp_path, ITEMS, household="Smith Family")
 
 
 def drop(engagement, name, text):
-    return text_pdf(engagement / SHARED_DIR_NAME / name, text)
+    return text_pdf(inbox_of(engagement) / name, text)
 
 
 def a_pass(engagement, today=DAY1):
     """What a pass does to the folder, without a registry: sort, then scan."""
-    file_drops(engagement, today=today)
+    sort(engagement, today=today)
     scan_engagement(engagement, today=today)
 
 
@@ -507,7 +507,9 @@ def test_a_pass_whose_view_cannot_be_replaced_reports_it_and_still_succeeds(
         raise PermissionError(13, "The process cannot access the file")
 
     monkeypatch.setattr(view, "write_text_atomically", held)
-    run = run_engagement(engagement_from(engagement), today=DAY1)
+    # The pass is the household's since decision 125 - one inbox feeds
+    # every return of it - and this return's run is what it answers with.
+    [run] = run_household(household_of(engagement), [engagement_from(engagement)], today=DAY1)
 
     assert run.ok and not run.error
     assert run.view_stale
@@ -564,10 +566,11 @@ def test_a_pass_regenerates_the_view_and_a_dry_run_writes_none(tmp_path, engagem
     from tracker.registry import engagement_from
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    run_engagement(engagement_from(engagement), today=DAY1, dry_run=True)
+    run_household(household_of(engagement), [engagement_from(engagement)],
+                  today=DAY1, dry_run=True)
     assert not view.path_for(engagement).exists()
 
-    run = run_engagement(engagement_from(engagement), today=DAY1)
+    [run] = run_household(household_of(engagement), [engagement_from(engagement)], today=DAY1)
     assert not run.view_stale
     assert view.view_state(engagement) == view.CURRENT
     assert index_table(engagement)[1:] == [
@@ -581,7 +584,7 @@ def test_a_pass_writes_no_workbook_for_a_person_to_open(engagement):
     from tracker.registry import engagement_from
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    run_engagement(engagement_from(engagement), today=DAY1)
+    run_household(household_of(engagement), [engagement_from(engagement)], today=DAY1)
 
     assert view.path_for(engagement).suffix == ".html"
     assert sorted(p.name for p in engagement.rglob("*.xlsx")) == []
@@ -614,9 +617,10 @@ def test_the_registry_never_mistakes_the_view_for_an_engagement(tmp_path, engage
     assert engagement_dirs(tmp_path) == [engagement]
     assert [e.path for e in discover_engagements(tmp_path).engagements] == [engagement]
 
+    # And a root with nothing under it at all is a typo in the scheduled
+    # task, not an empty practice.
     alone = tmp_path / "alone"
-    (alone / "Client 2025").mkdir(parents=True)
-    (alone / "Client 2025" / view.VIEW_FILENAME).write_bytes(b"not a manifest")
+    alone.mkdir()
     with pytest.raises(RegistryError):
         discover_engagements(alone)
 

@@ -42,11 +42,19 @@ about a build from nothing. This runs the store over every drop sorted,
 every file a person filed, every rules edit and every ledger path the
 suite has, and it is the gate each stage was built on.
 
-**Making an engagement** (``make_engagement``) **is one call**: the folder,
-the list and the details recorded through ``create_engagement()`` - the
-same call the API makes - and the scaffold on top when asked. It is the
-one way a test makes an engagement, so a seeded engagement is the one the
-app would have made.
+**Making an engagement** (``make_engagement``) **is one call**: the
+household's record where its folder has none, the return folder under its
+year, the list and the details recorded through ``create_engagement()`` -
+the same calls the API makes - and the scaffold on top when asked. It
+takes the **clients root**, not a folder, because since decision 125 where
+a return goes is the layout's answer and not a test's: a household, a
+year, a return. Two returns in one household is the same call twice with
+the same ``household``.
+
+**Sorting one household's inbox** (``sort``) is the pass's own call
+(``file_household_drops``) under the locks the pass holds, over whichever
+returns the test names. One return is the ordinary case and reads as one
+line.
 
 **Seeding an index** (``seed_index``) **and a status**
 (``seed_statuses``). A test that needs rows or statuses to exist records
@@ -61,17 +69,22 @@ an engagement folder.
 from __future__ import annotations
 
 import datetime as dt
+import shutil
 import tempfile
+from contextlib import ExitStack
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from tracker import ledger, store, view
-from tracker.filer import ensure
+from tracker.filer import ensure, file_household_drops
+from tracker.households import create_household
+from tracker.layout import inbox_of, originals_of, private_household_dir, return_dir_for
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import EngagementInfo, create_engagement
-from tracker.records import entry_to_json, ledger_key, status_to_json
+from tracker.records import HouseholdInfo, entry_to_json, ledger_key, status_to_json
 from tracker.scaffold import scaffold_engagement
 
 
@@ -96,15 +109,23 @@ def a_store_of_its_own(tmp_path):
     is shared with the test, and a test calling ``monkeypatch.undo()`` -
     several do, to put a patched writer back - would take this variable
     with it and point the next line at the repository's own database.
+
+    It sets up first and tears down last, so it is also where the short
+    clients roots of :func:`short_root` are cleared and removed: the
+    agreement fixtures below have to still see them when they run.
     """
     patch = pytest.MonkeyPatch()
     patch.setenv(store.ENV_STORE, str(tmp_path / "app" / store.STORE_FILENAME))
     store.close()
+    _ALSO_WALK.clear()
     try:
         yield
     finally:
         store.close()
         patch.undo()
+        for folder in _ALSO_WALK:
+            shutil.rmtree(folder, ignore_errors=True)
+        _ALSO_WALK.clear()
 
 
 #: Engagements the comparison passes over, by folder name, with the decision
@@ -112,24 +133,116 @@ def a_store_of_its_own(tmp_path):
 #: the record disagreed about.
 KNOWN_DISAGREEMENTS: dict[str, str] = {}
 
+#: Folders outside this test's ``tmp_path`` the agreement fixtures walk too.
+#: A pytest temporary folder is ninety characters before the layout starts,
+#: and creation refuses a return whose deepest working copy would pass what
+#: Windows will open (decision 125) - which is a refusal about the whole
+#: path, so a test that creates a real catalog needs a root as short as the
+#: office's. Registered here rather than moved out of the suite's sight:
+#: the store and the view are held to the record inside them exactly as
+#: they are under ``tmp_path``.
+_ALSO_WALK: list[Path] = []
 
-def make_engagement(folder, items, info: EngagementInfo | None = None, *,
-                    form: str = "", scaffold: bool = True) -> Path:
-    """The one way a test makes an engagement: the folder, its record and,
-    unless told not to, its scaffold.
 
-    ``create_engagement()`` is the API's own create, so what a test seeds
-    is exactly what the app would have made: one ``rules_changed`` event
-    carrying the whole list and the details, validated on the way in. The
-    scaffold is the folders the filer and the scanner need; a test that
-    wants only the record says ``scaffold=False``. Returns the folder.
+@pytest.fixture
+def short_root():
+    """A clients root short enough that a real request list fits inside
+    what Windows will open.
+
+    Straight in the machine's temporary folder, not under pytest's own:
+    ``tmp_path`` is the test's name spelled out under two more folders,
+    and even ``tmp_path_factory.mktemp`` keeps ``pytest-of-<user>/pytest-N/``
+    above it - which is seventy-odd characters on a build runner whose
+    account is called ``runneradmin``, and the 1040 core list went five
+    characters past the limit there while it fitted on this machine. One
+    short folder in the temporary directory is about what the office's own
+    root costs. It is walked by the agreement fixtures and removed when
+    the test ends.
     """
-    folder = Path(folder)
+    import tempfile
+
+    # Resolved, because a build runner's TEMP is the 8.3 short name
+    # (``C:\Users\RUNNER~1\...``) while the recorded root is the long one,
+    # and the two would not compare equal.
+    root = Path(tempfile.mkdtemp(prefix="c", dir=tempfile.gettempdir())).resolve()
+    _ALSO_WALK.append(root)
+    return root
+
+
+#: What a test's household and return are called when it does not care.
+TEST_HOUSEHOLD = "Test Household"
+TEST_RETURN = "1040 - Test Client"
+TEST_YEAR = 2025
+
+
+def make_engagement(root, items, info: EngagementInfo | None = None, *,
+                    household: str = TEST_HOUSEHOLD, year: int = TEST_YEAR,
+                    return_name: str = TEST_RETURN,
+                    members: tuple[str, ...] = (), contact: str = "", link: str = "",
+                    form: str = "", scaffold: bool = True) -> Path:
+    """The one way a test makes a return: its household's record where the
+    household has none, the return folder under its year, its record and,
+    unless told not to, its scaffold. Returns the **return folder**.
+
+    ``create_household()`` and ``create_engagement()`` are the API's own
+    creates, so what a test seeds is exactly what the app would have made:
+    one ``household_changed`` event carrying the whole household, one
+    ``rules_changed`` event carrying the whole list and the details,
+    validated on the way in. The scaffold is the folders the filer and the
+    scanner need; a test that wants only the record says ``scaffold=False``.
+
+    A test that wants two returns in one household calls this twice with
+    the same ``household`` - the second finds the household's record
+    already there and leaves it alone.
+    """
+    root = Path(root)
+    household_dir = private_household_dir(root, household)
+    household_dir.mkdir(parents=True, exist_ok=True)
+    if not ledger.path_for(household_dir).is_file():
+        create_household(household_dir, HouseholdInfo(
+            name=household, members=tuple(members), contact=contact, link=link))
+    folder = return_dir_for(root, household, year, return_name)
     folder.mkdir(parents=True, exist_ok=True)
-    create_engagement(folder, list(items), info, form=form)
+    details = info or EngagementInfo()
+    create_engagement(folder, list(items),
+                      replace(details, household=household, tax_year=year,
+                              return_name=return_name),
+                      form=form)
     if scaffold:
         scaffold_engagement(folder)
     return folder
+
+
+def sort_all(returns, *, today=None, dry_run: bool = False):
+    """One pass of the household's sort over these returns, answering for
+    every one of them: the mapping ``file_household_drops`` returns.
+
+    One inbox feeds them all (decision 125), so one call is the whole
+    sort - a second would find nothing left to do.
+    """
+    folders = [Path(one) for one in returns]
+    with ExitStack() as locks:
+        if not dry_run:
+            for folder in folders:
+                locks.enter_context(engagement_lock(folder))
+        return file_household_drops(
+            inbox_of(folders[0]), originals_of(folders[0]), folders,
+            today=today, dry_run=dry_run,
+        )
+
+
+def sort(engagement, *, returns=None, today=None, dry_run: bool = False):
+    """Sort one household's inbox the way a pass does, and answer for
+    ``engagement``.
+
+    The pass takes every open return's lock before anything is read
+    (decision 125), so this does too; ``returns`` names the household's
+    returns when a test has more than one, and one return is the ordinary
+    case. A dry run takes no lock, as the pass takes none.
+    """
+    engagement = Path(engagement)
+    folders = returns if returns is not None else [engagement]
+    return sort_all(folders, today=today, dry_run=dry_run)[engagement]
 
 
 def _check_view(engagement_dir) -> None:
@@ -171,9 +284,10 @@ def the_view_agrees_with_the_readers(tmp_path):
     halves of the store to the journal.
     """
     yield
-    for path in sorted(tmp_path.rglob(view.VIEW_FILENAME)):
-        if path.parent.name not in KNOWN_DISAGREEMENTS:
-            _check_view(path.parent)
+    for root in (tmp_path, *_ALSO_WALK):
+        for path in sorted(root.rglob(view.VIEW_FILENAME)):
+            if path.parent.name not in KNOWN_DISAGREEMENTS:
+                _check_view(path.parent)
 
 
 def _store_check(root, engagement_dir, conn) -> None:
@@ -192,16 +306,17 @@ def the_store_agrees_with_the_record(tmp_path):
     """After every test: a store built from the journal alone, for every
     engagement the test left behind, says what the journal says."""
     yield
-    folders = sorted({path.parent for path in tmp_path.rglob(ledger.LEDGER_FILENAME)})
-    if not folders:
-        return
-    with tempfile.TemporaryDirectory() as scratch:
-        conn = store.open(Path(scratch) / store.STORE_FILENAME)
-        try:
-            for folder in folders:
-                _store_check(tmp_path, folder, conn)
-        finally:
-            conn.close()
+    for root in (tmp_path, *_ALSO_WALK):
+        folders = sorted({path.parent for path in root.rglob(ledger.LEDGER_FILENAME)})
+        if not folders:
+            continue
+        with tempfile.TemporaryDirectory() as scratch:
+            conn = store.open(Path(scratch) / store.STORE_FILENAME)
+            try:
+                for folder in folders:
+                    _store_check(root, folder, conn)
+            finally:
+                conn.close()
 
 
 def seed_index(engagement_dir, entries):

@@ -6,9 +6,10 @@ from dataclasses import replace
 
 import pytest
 
-from tests.conftest import make_engagement
+from tests.conftest import make_engagement, sort
 from tracker import ledger, reasons, store
 from tracker.content_check import CACHE_VERSION, RETIRED_CACHE_FILENAME
+from tracker.layout import inbox_of
 from tracker.locking import LOCK_FILENAME, STALE_LOCK_SECONDS
 from tracker.manifest import (
     SUMMARY_SEPARATOR,
@@ -90,7 +91,7 @@ def text_pdf(path, text: str, pages: int = 1):
 
 @pytest.fixture
 def engagement(tmp_path):
-    return make_engagement(tmp_path / "TY2025 1040", ITEMS)
+    return make_engagement(tmp_path, ITEMS)
 
 
 def edit_row(engagement, identifier, **fields):
@@ -176,7 +177,7 @@ def test_manual_override_status_untouched(tmp_path):
             status=Status.RECEIVED, received_date=DAY1,
         ),
     ]
-    eng = make_engagement(tmp_path / "Eng", items)
+    eng = make_engagement(tmp_path, items, return_name="1040 - Another Client")
     # the status the last scan recorded, which the override keeps
     from tests.conftest import seed_statuses
     from tracker.manifest import StatusUpdate
@@ -265,13 +266,11 @@ def test_a_document_a_person_said_nothing_asks_for_is_not_a_warning_either(engag
     from tracker.filer import (
         NOT_REQUESTED,
         dismiss_review_file,
-        file_drops,
-        read_index,
+            read_index,
     )
-    from tracker.scaffold import SHARED_DIR_NAME
 
-    text_pdf(engagement / SHARED_DIR_NAME / "irs-notice.pdf", "nothing the rules recognise")
-    parked = file_drops(engagement, today=DAY1).review[0]
+    text_pdf(inbox_of(engagement) / "irs-notice.pdf", "nothing the rules recognise")
+    parked = sort(engagement, today=DAY1).review[0]
     dismiss_review_file(engagement, parked.pbc_location, today=DAY1)
 
     report = scan_engagement(engagement, today=DAY2)
@@ -583,12 +582,12 @@ def test_a_document_a_person_filed_is_not_second_guessed_by_the_rules(engagement
     # A person filed it from Needs Review; the row's required keyword is not
     # in it. Their decision stands: Received, not "wrong document" and a
     # client asked for the right file.
-    from tracker.filer import assign_review_file, file_drops
-    from tracker.scaffold import SHARED_DIR_NAME
+    from tests.conftest import sort
+    from tracker.filer import assign_review_file
     from tracker.scanner import ACCEPTED_NOTE
 
-    text_pdf(engagement / SHARED_DIR_NAME / "statement.pdf", "Annual account statement 2025 interest paid")
-    parked = file_drops(engagement, today=DAY1).review[0]
+    text_pdf(inbox_of(engagement) / "statement.pdf", "Annual account statement 2025 interest paid")
+    parked = sort(engagement, today=DAY1).review[0]
     assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1)
     scan_engagement(engagement, today=DAY1)
     row = statuses(engagement)["A01"]
@@ -607,11 +606,11 @@ def test_a_persons_acceptance_covers_only_the_bytes_they_filed(engagement):
     # do route into that folder passes the same rules the scan applies, so
     # the only way a stranger reaches that name is a person putting it
     # there. That is what this writes, and the claim is unchanged.
-    from tracker.filer import assign_review_file, file_drops
-    from tracker.scaffold import SHARED_DIR_NAME
+    from tests.conftest import sort
+    from tracker.filer import assign_review_file
 
-    text_pdf(engagement / SHARED_DIR_NAME / "statement.pdf", "Annual account statement 2025 interest paid")
-    parked = file_drops(engagement, today=DAY1).review[0]
+    text_pdf(inbox_of(engagement) / "statement.pdf", "Annual account statement 2025 interest paid")
+    parked = sort(engagement, today=DAY1).review[0]
     filed = assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1).entry
     (engagement / filed.prepared_location).unlink()
     text_pdf(engagement / filed.prepared_location, "Some other bank's statement for 2025")
@@ -630,11 +629,10 @@ def copy_moved_events(engagement):
 
 def a_filed_pdf(engagement, text="Chase Bank Statement Dec 2025"):
     """One document sorted and scanned the ordinary way: A01, Received."""
-    from tracker.filer import file_drops
-    from tracker.scaffold import SHARED_DIR_NAME
+    from tests.conftest import sort
 
-    text_pdf(engagement / SHARED_DIR_NAME / "chase.pdf", text)
-    filed = file_drops(engagement, today=DAY1).filed[0]
+    text_pdf(inbox_of(engagement) / "chase.pdf", text)
+    filed = sort(engagement, today=DAY1).filed[0]
     scan_engagement(engagement, today=DAY1)
     assert statuses(engagement)["A01"].status == Status.RECEIVED
     return filed
@@ -645,13 +643,14 @@ def test_a_moved_copys_request_reads_missing_with_the_firm_side_note_and_the_wan
     """The whole of decision 109 from the scan's side: the request whose copy
     was dragged away is Missing, truthfully, and says whose fault that is;
     the request the copy was dragged into counts nothing it did not earn."""
-    from tracker.filer import FILE_MOVED, file_drops, moved_to, read_index
+    from tests.conftest import sort
+    from tracker.filer import FILE_MOVED, moved_to, read_index
 
     filed = a_filed_pdf(engagement)
     home = engagement / filed.prepared_location
     home.rename(folder(engagement, "A02") / home.name)      # dragged by hand
 
-    file_drops(engagement, today=DAY2)
+    sort(engagement, today=DAY2)
     report = scan_engagement(engagement, today=DAY2)
 
     [row] = read_index(engagement)
@@ -673,14 +672,14 @@ def test_a_filed_copy_replaced_by_a_different_passing_file_stays_received_with_c
     """Decision 3 extended: the status is what the files earn, and the row
     says the file is not the one the record filed there - which no count
     can say, because the newcomer passes every rule."""
-    from tracker.filer import file_drops
+    from tests.conftest import sort
 
     filed = a_filed_pdf(engagement)
     home = engagement / filed.prepared_location
     home.unlink()
     text_pdf(home, "Chase Bank Statement Nov 2025, the other account")
 
-    file_drops(engagement, today=DAY2)
+    sort(engagement, today=DAY2)
     report = scan_engagement(engagement, today=DAY2)
 
     row = report.updates["A01"]
@@ -696,14 +695,14 @@ def test_a_filed_copy_replaced_by_a_different_passing_file_stays_received_with_c
 
 def test_a_filed_copy_replaced_by_a_failing_file_is_decision_threes_regression_and_says_copy_changed(
         engagement):
-    from tracker.filer import file_drops
+    from tests.conftest import sort
 
     filed = a_filed_pdf(engagement)
     home = engagement / filed.prepared_location
     home.unlink()
     text_pdf(home, "Wells Fargo Statement Dec 2025")         # A01 asks for Chase
 
-    file_drops(engagement, today=DAY2)
+    sort(engagement, today=DAY2)
     report = scan_engagement(engagement, today=DAY2)
 
     row = report.updates["A01"]
@@ -718,13 +717,14 @@ def test_an_unrecorded_file_in_a_request_folder_is_counted_and_said(engagement):
     its folder holds. A file a person can see going uncounted would be a lie
     in the other direction, so it counts - and the pass says every pass that
     nothing on the record put it there."""
-    from tracker.filer import UNRECORDED_COPY, file_drops
+    from tests.conftest import sort
+    from tracker.filer import UNRECORDED_COPY
 
     stray = text_pdf(folder(engagement, "A01") / "someone dragged this.pdf",
                      "Chase Bank Statement Dec 2025")
     location = stray.relative_to(engagement).as_posix()
 
-    report = file_drops(engagement, today=DAY1)
+    report = sort(engagement, today=DAY1)
     scanned = scan_engagement(engagement, today=DAY1)
 
     assert [e.error for e in report.attention] == [UNRECORDED_COPY.format(location=location)]
@@ -739,13 +739,12 @@ def test_the_scans_memo_survives_for_parked_copies_and_strays(engagement, monkey
     copy and a file nothing claims were forgotten every scan and read again
     every pass. Every file in the firm's folder keeps its memo."""
     import tracker.content_check as content_check_module
-    from tracker.filer import file_drops
-    from tracker.scaffold import SHARED_DIR_NAME
+    from tests.conftest import sort
 
-    text_pdf(engagement / SHARED_DIR_NAME / "irs-notice.pdf", "nothing the rules recognise")
+    text_pdf(inbox_of(engagement) / "irs-notice.pdf", "nothing the rules recognise")
     stray = text_pdf(folder(engagement, "A01") / "someone dragged this.pdf",
                      "Chase Bank Statement Dec 2025")
-    parked = file_drops(engagement, today=DAY1).review[0]
+    parked = sort(engagement, today=DAY1).review[0]
     scan_engagement(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY2)
 
@@ -772,13 +771,13 @@ def test_a_person_filed_copy_is_proved_through_the_memo(engagement, monkeypatch)
     under the firm's folder, so a second scan over an unchanged tree reads
     nothing at all."""
     import tracker.content_check as content_check_module
-    from tracker.filer import assign_review_file, file_drops
-    from tracker.scaffold import SHARED_DIR_NAME
+    from tests.conftest import sort
+    from tracker.filer import assign_review_file
     from tracker.scanner import ACCEPTED_NOTE
 
-    text_pdf(engagement / SHARED_DIR_NAME / "statement.pdf",
+    text_pdf(inbox_of(engagement) / "statement.pdf",
              "Annual account statement 2025 interest paid")
-    parked = file_drops(engagement, today=DAY1).review[0]
+    parked = sort(engagement, today=DAY1).review[0]
     assign_review_file(engagement, parked.pbc_location, "A01", today=DAY1)
     first = scan_engagement(engagement, today=DAY1)
     assert ACCEPTED_NOTE.format(n=1) in first.updates["A01"].validation_notes

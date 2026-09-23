@@ -868,3 +868,24 @@ body {
   color: var(--text);
 }
 #setup-note { padding: 0 18px 14px; }
+
+/* ── The household, and the folders left alone (decision 125) ────────── */
+/* No colour of its own: the card's tokens are the page's, and the words
+   are the API's.  The household is the client folder a return lives in -
+   its members as the firm typed them, its contact, its inbox link, the
+   year's returns and the one queue a person works across it. */
+
+.household-body { padding: 0 18px 14px; }
+.household-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 0 0 10px;
+  font-size: 13.5px;
+}
+.household-facts dt { color: var(--subtle); }
+.household-facts dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.household-returns { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+#misfits-card { margin: 0 0 14px; }
+#misfits-card #misfits-note { padding: 0; }
+#misfits-list .r-name { color: var(--subtle); overflow-wrap: anywhere; }

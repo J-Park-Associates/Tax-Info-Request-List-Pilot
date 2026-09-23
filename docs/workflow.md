@@ -6,18 +6,39 @@ people side.
 
 ## Roles
 
-- **Engagement lead** — owns the engagement's request list: picks the return
+- **Engagement lead** — owns each return's request list: picks the return
   type or rolls last year's list forward, trims and extends it, and fills in
   the client, share link and due date in the wizard (they land in the
-  record as the engagement's details; nothing else needs registering). Starts the
+  record as the engagement's details; nothing else needs registering). Owns
+  the household too — its members, its contact and its inbox link, saved in
+  the app's household card. Starts the
   morning on `tracker.runner.STATUS_PAGE_FILENAME` — the whole practice on one
   page, written into the clients folder by every pass and opened by the app's
   **Open Status** button: what each engagement still owes, what is waiting for
-  a person across all of them, and what failed overnight.
+  a person across all of them, what failed overnight, and which folders the
+  tracker left alone because they do not fit the layout.
 - **Preparer / staff** — works the `Prepared/` tree, files anything in
   `00 - Needs Review` with the app's *File it* action, sets `Manual Override`
   when their judgment beats the rules, and sends the drafted reminders.
-- **Client** — drops everything into one shared folder. Nothing else.
+- **Client** — a household, with one folder to drop everything into. Nothing
+  else.
+
+## The folders
+
+A client folder is a **household** (decision 125), with one folder per tax
+year inside it and one folder per **return** inside that. Two trees sit under
+the clients root:
+
+- `Clients/<Household>/` — the only tree a client is ever shared. It holds
+  `Drop files here`, the household's one permanent inbox, and one folder per
+  year holding the originals a pass has moved out of that inbox.
+- `J Park & Associates/<Household>/` — never shared. It holds the household's
+  own record, and under each year one folder per return, named form first
+  (`1040 - John & Maria Park`). That return folder is what the rest of this
+  page, and the software, calls the **engagement**.
+
+One inbox feeds every return of the household's open year, so a pass runs a
+whole household at a time.
 
 ## Starting an engagement
 
@@ -36,7 +57,7 @@ editor shows it.
   document name so a custom request can still auto-file.
 
 Either way the result is the request list in the record plus the
-scaffolded `Shared/` and `Prepared/` trees, and a `_README.txt` for the
+scaffolded household inbox and `Prepared/` tree, and a `_README.txt` for the
 client.
 
 ## Lifecycle of a request
@@ -69,7 +90,8 @@ person types.
   because they carry real names and share links.
   Client documents live in the synced engagement folders, never here.
 - **Originals are never altered.** Work from the `Prepared/` copies; the
-  `PBC/` originals are the record and the Status Report says where each one went.
+  originals in the client's folder for the year are the record, and the
+  Status Report says where each one went.
 - **Nothing is guessed.** If a file is in `00 - Needs Review`, a person
   decides — in the app, by picking the request and clicking *File it*. The
   filer does the move, the rename, the index row and the re-scan.

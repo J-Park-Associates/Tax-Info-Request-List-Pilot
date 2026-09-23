@@ -2,7 +2,10 @@
 // the Python API so the UI can never disagree with the real scanner.
 
 let paths = null;          // paths of the active engagement
-let engagements = [];      // [{name, path}]
+let engagements = [];      // [{name, path, household, year, return_name}]
+let households = [];       // [{name, path, returns, open_years, ...}]
+let misfits = [];          // [{path, sentence}] - the folders left alone
+let chosenHousehold = null;  // the wizard's household: a path, or null for a new one
 let active = null;         // path of the active engagement
 let forms = [];            // tax form catalog [{id, label, who, blurb}]
 let templatesByForm = {};  // form id -> tailored request template items
@@ -14,6 +17,7 @@ let customItems = [];      // custom rows added in the wizard (plain objects key
 let editorRows = [];       // the request-list editor's rows (plain objects keyed by column)
 let priors = [];           // engagements a new year can roll forward from
 let selectedPrior = null;  // path of the prior engagement chosen on page 0
+let lastState = null;      // the state the household card was drawn from
 
 const $ = (id) => document.getElementById(id);
 
@@ -47,8 +51,14 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+// Flattened, because half the callers build their list as "one fixed node,
+// then a mapped array" and replaceChildren() turns an array it is handed
+// into the text "[object HTMLOptionElement],..." rather than into its
+// elements. That is how the wizard's list of existing households, and the
+// rollover's list of form templates, came out holding one option and a
+// line of noise.
 function show(id, nodes) {
-  $(id).replaceChildren(...nodes);
+  $(id).replaceChildren(...nodes.flat(Infinity).filter((n) => n !== null && n !== undefined && n !== false));
 }
 
 // How a row's override is said to a person: a set-aside row carries the
@@ -109,6 +119,7 @@ function ruleTooltip(item) {
 
 function render(state) {
   paths = state.paths;
+  lastState = state;
 
   show("rows", state.items.map((item) =>
     el("tr", { title: ruleTooltip(item) },
@@ -154,6 +165,7 @@ function render(state) {
   chipEl.className = `eng-form view-${viewState}`;
   chipEl.classList.toggle("hidden", !viewState);
 
+  renderHousehold(state);
   renderMoved(state);
   renderReview(state);
   renderUnfileList(state);
@@ -846,9 +858,112 @@ async function unfileDocument(li) {
   }
 }
 
+// The picker is grouped by household (decision 125): a return is named by
+// its household, its year and its own name, and two households may each
+// hold a return of the same name. The names are the API's; the page
+// only groups them.
 function renderEngagements() {
-  show("eng-select", engagements.map((e) =>
-    el("option", { value: e.path, selected: e.path === active }, e.name)));
+  const byHousehold = new Map(households.map((h) => [h.path, []]));
+  for (const e of engagements) {
+    if (!byHousehold.has(e.household)) byHousehold.set(e.household, []);
+    byHousehold.get(e.household).push(e);
+  }
+  const named = new Map(households.map((h) => [h.path, h.name]));
+  show("eng-select", [...byHousehold]
+    .filter(([, list]) => list.length)
+    .map(([path, list]) =>
+      el("optgroup", { label: named.get(path) || path },
+        list.map((e) => el("option", { value: e.path, selected: e.path === active }, e.name)))));
+}
+
+// Every folder the walk left alone, with the one sentence saying why. The
+// card is there only when there is one; nothing in a misfit is ever read,
+// moved or renamed, and the app says so in the API's own words.
+function renderMisfits() {
+  const words = vocab.household;
+  $("misfits-card").classList.toggle("hidden", misfits.length === 0);
+  $("misfits-heading").textContent = `${words.misfits_heading} (${misfits.length})`;
+  $("misfits-note").textContent = words.misfits_note;
+  show("misfits-list", misfits.map((m) =>
+    el("li", { className: "r-item" },
+      el("div", { className: "r-name" }, relativeToRoot(m.path)),
+      el("div", { className: "r-why" }, m.sentence))));
+}
+
+function relativeToRoot(path) {
+  if (!clientsRoot || !path.startsWith(clientsRoot)) return path;
+  return path.slice(clientsRoot.length).replace(/^[\\/]+/, "");
+}
+
+// The household this return belongs to: what the firm typed about it, the
+// year's returns as buttons that switch the picker, and the one queue a
+// person works across it. Every word is the API's.
+function renderHousehold(state) {
+  const words = vocab.household;
+  const hh = state.household;
+  $("household-card").classList.toggle("hidden", !hh);
+  if (!hh) return;
+  $("household-heading").textContent = words.heading;
+  $("household-name").textContent = hh.name;
+  $("household-members-label").textContent = words.members_label;
+  $("household-members-label").title = words.members_help;
+  $("household-members").textContent = hh.members.length ? hh.members.join(", ") : "—";
+  $("household-contact-label").textContent = words.contact_label;
+  $("household-contact-label").title = words.contact_help;
+  $("household-contact").textContent = hh.contact || "—";
+  $("household-link-label").textContent = words.link_label;
+  $("household-link-label").title = words.link_help;
+  $("household-link").textContent = hh.link || "—";
+  const twoYears = hh.open_years.length > 1;
+  $("household-two-years").classList.toggle("hidden", !twoYears);
+  $("household-two-years").textContent = twoYears
+    ? fill(words.two_open_years, { years: hh.open_years.join(", ") }) : "";
+  $("household-returns-head").textContent = words.returns_heading;
+  const open = hh.open_years.length === 1 ? hh.open_years[0] : null;
+  show("household-returns", hh.returns
+    .filter((r) => open === null || r.year === open)
+    .map((r) => el("button", {
+      className: `btn btn-small${r.path === active ? " btn-primary" : ""}`,
+      dataset: { path: r.path },
+    }, r.label)));
+  $("household-queue").textContent = fill(words.queue_line, { n: hh.queue });
+  $("btn-edit-household").textContent = words.edit;
+}
+
+// The household's own three fields, saved as one recorded event.
+function openHouseholdEditor() {
+  const words = vocab.household;
+  const hh = lastState && lastState.household;
+  if (!hh) return;
+  $("hh-edit-title").textContent = words.edit;
+  $("hh-edit-members-label").textContent = words.members_label;
+  $("hh-edit-contact-label").textContent = words.contact_label;
+  $("hh-edit-link-label").textContent = words.link_label;
+  $("hh-edit-note").textContent = words.members_help;
+  $("hh-edit-members").value = hh.members.join("\n");
+  $("hh-edit-contact").value = hh.contact || "";
+  $("hh-edit-link").value = hh.link || "";
+  $("household-modal").classList.remove("hidden");
+}
+
+async function saveHousehold() {
+  const btn = $("hh-edit-save");
+  btn.disabled = true;
+  try {
+    const result = await call(withEng("edit-household"), {
+      members: $("hh-edit-members").value.split("\n").map((one) => one.trim()).filter(Boolean),
+      contact: $("hh-edit-contact").value.trim(),
+      link: $("hh-edit-link").value.trim(),
+    });
+    $("household-modal").classList.add("hidden");
+    render(result.state);
+    const moved = result.saved.household;
+    banner(moved.length ? `${vocab.household.heading}: ${moved.join(", ")}` : vocab.editor.nothing_changed, "ok");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function banner(text, cls) {
@@ -901,6 +1016,25 @@ function applyVocabulary() {
   document.title = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;
   $("brand-product").textContent = vocab.product;
   $("scan-label").textContent = SCAN_LABEL;
+  // The household's one inbox and its folder in the tree a client is
+  // shared (decision 125): the labels are the API's, the paths are too.
+  $("inbox-label").textContent = vocab.household.open_inbox;
+  $("client-folder-label").textContent = vocab.household.open_client_folder;
+  $("household-title").textContent = vocab.household.heading;
+  $("hh-existing-head").textContent = vocab.household.existing;
+  $("hh-existing-label").textContent = vocab.household.name_label;
+  $("hh-new-head").textContent = vocab.household.new;
+  $("hh-name-label").textContent = vocab.household.name_label;
+  $("hh-contact-label").textContent = vocab.household.contact_label;
+  $("hh-contact").title = vocab.household.contact_help;
+  $("hh-members-label").textContent = vocab.household.members_label;
+  $("hh-members").title = vocab.household.members_help;
+  $("hh-link-label").textContent = vocab.household.link_label;
+  $("hh-link").title = vocab.household.link_help;
+  $("ne-name-label").textContent = vocab.household.return_name_label;
+  $("ne-name").title = vocab.household.return_name_help;
+  $("ro-name-label").textContent = vocab.household.return_name_label;
+  $("ro-name").title = vocab.household.return_name_help;
   $("view-label").textContent = vocab.view.open;
   $("edit-label").textContent = vocab.editor.open;
   // The two renderings of the review queue are named by the API too
@@ -953,6 +1087,8 @@ async function loadEngagements(preferPath) {
   vocab = listed.vocab;
   applyVocabulary();
   engagements = listed.engagements;
+  households = listed.households || [];
+  misfits = listed.misfits || [];
   clientsRoot = listed.root || "";
   $("setup-card").classList.toggle("hidden", !listed.needs_root);
   if (listed.needs_root) {
@@ -970,6 +1106,7 @@ async function loadEngagements(preferPath) {
     (active && engagements.find((e) => e.path === active)?.path) ||
     engagements[0].path;
   renderEngagements();
+  renderMisfits();
   return true;
 }
 
@@ -1080,16 +1217,63 @@ async function openWizard() {
   selectedForm = null;
   const open = priors.filter((p) => !p.superseded_by);
   selectedPrior = open.length ? open[open.length - 1].path : priors.length ? priors[priors.length - 1].path : null;
+  renderHouseholdStep();
   renderPriorPage();
   renderFormGrid();
-  showStep("prior");
+  showStep("household");
   $("modal").classList.remove("hidden");
 }
 
 function showStep(step) {
+  $("wiz-household").classList.toggle("hidden", step !== "household");
   $("wiz-prior").classList.toggle("hidden", step !== "prior");
   $("wiz-form").classList.toggle("hidden", step !== "form");
   $("wiz-items").classList.toggle("hidden", step !== "items");
+}
+
+// ── page 0: whose household ─────────────────────────────────────────────
+// A return is made inside a household (decision 125): an existing one, by
+// its folder, or a new one this call makes from the four fields.
+
+function renderHouseholdStep() {
+  show("hh-existing", [
+    el("option", { value: "" }, vocab.household.new),
+    households.map((h) => el("option", { value: h.path }, h.name)),
+  ]);
+  $("hh-existing").value = chosenHousehold || "";
+  $("hh-name").value = "";
+  $("hh-contact").value = "";
+  $("hh-members").value = "";
+  $("hh-link").value = "";
+  syncHouseholdStep();
+}
+
+function syncHouseholdStep() {
+  chosenHousehold = $("hh-existing").value || null;
+  for (const id of ["hh-name", "hh-contact", "hh-members", "hh-link"]) {
+    $(id).disabled = Boolean(chosenHousehold);
+  }
+  $("hh-existing-head").classList.toggle("hidden", households.length === 0);
+  $("hh-existing").classList.toggle("hidden", households.length === 0);
+}
+
+// What every create and rollover sends about the household: the folder of
+// the one that exists, or the four fields of the one being made.
+function householdSpec() {
+  if (chosenHousehold) return { household_path: chosenHousehold };
+  return {
+    household: $("hh-name").value.trim(),
+    contact: $("hh-contact").value.trim(),
+    members: $("hh-members").value.split("\n").map((one) => one.trim()).filter(Boolean),
+    link: $("hh-link").value.trim(),
+  };
+}
+
+// The household's own contact is the greeting a new return starts with.
+function householdContact() {
+  if (!chosenHousehold) return $("hh-contact").value.trim();
+  const found = households.find((h) => h.path === chosenHousehold);
+  return found ? found.contact : "";
 }
 
 // ── page 0: returning client ────────────────────────────────────────────
@@ -1104,11 +1288,16 @@ function priorMeta(p) {
 }
 
 function renderPriorPage() {
-  show("prior-list", priors.map((p) =>
+  // Grouped by household, because a return keeps its name every year and
+  // two households may each hold one called the same (decision 125).
+  const named = new Map(households.map((h) => [h.path, h.name]));
+  const shown = chosenHousehold ? priors.filter((p) => p.household === chosenHousehold) : priors;
+  show("prior-list", shown.map((p) =>
     el("label", { className: "prior-item" },
       el("input", { type: "radio", name: "prior", value: p.path, checked: p.path === selectedPrior }),
-      el("span", { className: "prior-name" }, p.name),
-      el("span", { className: "prior-meta" }, priorMeta(p)),
+      el("span", { className: "prior-name" }, p.label || p.name),
+      el("span", { className: "prior-meta" },
+        [named.get(p.household) || p.household_name, priorMeta(p)].filter(Boolean).join(" · ")),
     )));
   $("prior-list").classList.toggle("hidden", priors.length === 0);
   $("prior-empty").classList.toggle("hidden", priors.length > 0);
@@ -1127,11 +1316,10 @@ function syncPriorDefaults() {
   $("ro-year").value = year;
   $("ro-name").value = "";
   $("ro-client").value = prior ? prior.client || "" : "";
-  $("ro-link").value = "";
   $("ro-due").value = "";
-  $("ro-name").placeholder = prior
-    ? fill(vocab.rollover_name_pattern, { prior: prior.name, year: year || vocab.unknown_year_label })
-    : "defaults to last year's name and the new year";
+  // A return keeps its name every year, under the same household: the box
+  // is there to rename it, and blank means the prior's own name.
+  $("ro-name").placeholder = prior ? prior.return_name : "";
 }
 
 async function rollForward() {
@@ -1144,12 +1332,11 @@ async function rollForward() {
   try {
     const result = await call(["rollover"], {
       prior: selectedPrior,
-      name: $("ro-name").value.trim(),
+      return_name: $("ro-name").value.trim(),
       form: $("ro-form").value,
       year: Number($("ro-year").value) || null,
       include_new: $("ro-include-new").checked,
       client: $("ro-client").value.trim(),
-      link: $("ro-link").value.trim(),
       due: $("ro-due").value,
     });
     $("modal").classList.add("hidden");
@@ -1199,9 +1386,8 @@ function chooseForm(formId) {
   $("ne-name").value = "";
   nameIsAuto = true;
   $("ne-year").value = defaultYear || "";
-  $("ne-name").placeholder = fill(vocab.name_pattern, { client: vocab.new_client_placeholder, year: $("ne-year").value, form: form.label });
-  $("ne-client").value = "";
-  $("ne-link").value = "";
+  $("ne-client").value = householdContact();
+  syncNameDefault();
   $("ne-due").value = "";
   renderTemplateList();
   renderCustomRows();
@@ -1209,15 +1395,14 @@ function chooseForm(formId) {
   $("ne-client").focus();
 }
 
-// The engagement name is what the client, the year and the form already
-// say. It follows the client field until the user types a name of their own.
+// The return's name is the form and the client, form first (decision 125):
+// the same name every year, so the return line can be followed. It follows
+// the client field until the user types a name of their own.
 function syncNameDefault() {
   if (!nameIsAuto) return;
   const client = $("ne-client").value.trim();
-  const form = forms.find((f) => f.id === selectedForm);
-  const year = Number($("ne-year").value) || defaultYear;
   $("ne-name").value = client
-    ? fill(vocab.name_pattern, { client, year, form: form ? form.label : "" }).replace(/\s+/g, " ").trim()
+    ? fill(vocab.layout.return_name_pattern, { form: selectedForm || "", client }).trim()
     : "";
 }
 
@@ -1422,11 +1607,11 @@ async function createEngagement() {
   btn.disabled = true;
   try {
     const result = await call(["create"], {
-      name: $("ne-name").value.trim(),
+      ...householdSpec(),
+      return_name: $("ne-name").value.trim(),
       form: selectedForm,
       items,
       client: $("ne-client").value.trim(),
-      link: $("ne-link").value.trim(),
       due: $("ne-due").value,
       year: Number($("ne-year").value) || null,
     });
@@ -1690,7 +1875,17 @@ async function saveEditor() {
 
 $("btn-scan").addEventListener("click", runScan);
 $("btn-new").addEventListener("click", openWizard);
-$("btn-shared").addEventListener("click", () => paths && window.tracker.open(paths.shared));
+$("btn-inbox").addEventListener("click", () => paths && window.tracker.open(paths.inbox));
+$("btn-client-folder").addEventListener("click", () => paths && window.tracker.open(paths.client_folder));
+$("btn-edit-household").addEventListener("click", openHouseholdEditor);
+$("hh-edit-cancel").addEventListener("click", () => $("household-modal").classList.add("hidden"));
+$("hh-edit-save").addEventListener("click", saveHousehold);
+$("household-returns").addEventListener("click", (e) => {
+  const button = e.target.closest("button[data-path]");
+  if (!button) return;
+  active = button.dataset.path;
+  refresh(active);
+});
 $("btn-edit").addEventListener("click", openEditor);
 $("btn-view").addEventListener("click", () => paths && window.tracker.open(paths.view));
 $("btn-status").addEventListener("click", () => paths && window.tracker.open(paths.status));
@@ -1713,6 +1908,15 @@ $("form-grid").addEventListener("click", (e) => {
 });
 $("wi-back").addEventListener("click", () => showStep("form"));
 $("wf-back").addEventListener("click", () => showStep("prior"));
+$("wh-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
+$("wh-next").addEventListener("click", () => {
+  renderPriorPage();
+  showStep("prior");
+});
+$("hh-existing").addEventListener("change", () => {
+  syncHouseholdStep();
+  renderPriorPage();
+});
 $("wf-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
 $("wp-cancel").addEventListener("click", () => $("modal").classList.add("hidden"));
 $("wp-new-client").addEventListener("click", () => showStep("form"));

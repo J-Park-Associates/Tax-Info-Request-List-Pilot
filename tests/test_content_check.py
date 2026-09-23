@@ -175,7 +175,8 @@ def counting_extractor(monkeypatch):
 
 def an_engagement(tmp_path, *rules):
     """An engagement the store holds, whose request list is ``rules``."""
-    return make_engagement(tmp_path / "Clients" / "Smith 2025", list(rules), scaffold=False)
+    return make_engagement(tmp_path / "Clients", list(rules), household="Smith Family",
+                           scaffold=False)
 
 
 def cache_rows(engagement):

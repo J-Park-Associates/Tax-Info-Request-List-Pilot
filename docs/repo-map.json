@@ -3,11 +3,11 @@
   "generated": "2026-09-22",
   "generator": "tools/repo_map.py",
   "generator_sha256": "e0b876ff3a9acde0",
-  "module_table_sha256": "8951de7025cc3452",
+  "module_table_sha256": "a14428e4e8c990bc",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
-    "client drops into Shared/",
+    "client drops into the household inbox",
     "tracker.filer",
     "tracker.scanner",
     "tracker.reminder (on DRAFT_WEEKDAY)",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 113,
-    "edges": 600,
-    "reused": 89
+    "nodes": 118,
+    "edges": 661,
+    "reused": 96
   },
   "node_types": [
     "artifact",
@@ -102,14 +102,14 @@
       "id": "rule:originals-are-never-altered",
       "type": "concept",
       "layer": "constraint",
-      "role": "Originals are never altered. Files are moved byte for byte under their own names into Shared/PBC/; all work happens on copies, and every move is recorded in the record."
+      "role": "Originals are never altered. Files are moved byte for byte under their own names out of Drop files here into the client's folder for the year; all work happens on copies, and every move is recorded in the record."
     },
     {
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "cfd5422ba94f6acc",
-      "lines": 61,
+      "sha256": "0a527e3bee09796f",
+      "lines": 63,
       "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
       "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). Its module list names the manifest as the request list - its schema, validation, and its reading from and writing to the record - and the scanner as an orchestrator that records rather than writes back (decision 104). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one. Standing rule 1 still says 'deterministic rules in the manifest': the manifest is the request list, and its home changed with decision 104, not the word."
     },
@@ -117,14 +117,16 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c9ac3ea7fcde519a",
-      "lines": 1763,
+      "sha256": "2a36012e9478bed3",
+      "lines": 2174,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_LABEL",
         "CARD_MODE_LABEL",
         "CARD_POSITION",
         "COMMANDS",
+        "CONTACT_HELP",
+        "CONTACT_LABEL",
         "DISMISSED_HEADING",
         "DISMISS_LABEL",
         "DISMISS_NOTE_HINT",
@@ -139,44 +141,74 @@
         "EDITOR_SAVE_LABEL",
         "EDITOR_TITLE",
         "EDITOR_WARNINGS_HEADING",
+        "EDIT_HOUSEHOLD_LABEL",
         "ENGAGEMENT_FLAG",
+        "EXISTING_HOUSEHOLD_LABEL",
         "FILED_HEADING",
         "FILE_ANYWAY_LABEL",
         "FILE_LABEL",
         "FIRM_PHONE_HELP",
         "FIRM_PHONE_LABEL",
+        "HOUSEHOLD_HEADING",
+        "HOUSEHOLD_NAME_LABEL",
+        "HOUSEHOLD_QUEUE_LINE",
+        "HOUSEHOLD_RETURNS_HEADING",
+        "INBOX_LINK_HELP",
+        "INBOX_LINK_LABEL",
         "KEEP_LABEL",
         "LEARNED_NOTE",
         "LIST_MODE_LABEL",
+        "MEMBERS_HELP",
+        "MEMBERS_LABEL",
+        "MISFITS_HEADING",
+        "MISFITS_NOTE",
         "MOVED_HEADING",
         "MOVED_NOWHERE",
         "MOVED_SUMMARY",
-        "NAME_PATTERN",
-        "NEW_CLIENT_PLACEHOLDER",
+        "NEW_HOUSEHOLD_LABEL",
         "NOTHING_CHANGED",
         "NOT_APPLICABLE_CARRIED",
         "NO_SEQ",
+        "OPEN_CLIENT_FOLDER_LABEL",
+        "OPEN_INBOX_LABEL",
         "OPEN_IN_LIST_LABEL",
         "OTHER_REQUESTS_HEADING",
         "REPO_ROOT",
         "RESTORE_LABEL",
-        "ROLLOVER_NAME_PATTERN",
         "RULES_SAVED",
         "SEND_TO_REVIEW_LABEL",
         "SKIP_LABEL",
         "SUGGESTED_HEADING",
+        "TWO_OPEN_YEARS_NOTE",
         "UNFILE_LABEL",
         "UNFILE_NOTE_HINT",
         "UNLEARNED_NOTE",
         "UNLEARN_LABEL",
-        "default_engagement_name",
+        "default_return_name",
         "form_label",
         "main",
         "standing_rules"
       ],
       "constants": {
         "ENGAGEMENT_FLAG": "'--engagement'",
-        "NEW_CLIENT_PLACEHOLDER": "'New'",
+        "HOUSEHOLD_HEADING": "'Household'",
+        "HOUSEHOLD_NAME_LABEL": "'Household'",
+        "MEMBERS_LABEL": "'Shared with (as typed by the firm)'",
+        "MEMBERS_HELP": "\"who this household's folder is meant to be shared with - the tracker cannot read Drive's sharing, so this is the firm's own note\"",
+        "CONTACT_LABEL": "'Contact'",
+        "CONTACT_HELP": "\"the greeting name in every return's letter, filled into each return when it is made\"",
+        "INBOX_LINK_LABEL": "'Inbox link'",
+        "INBOX_LINK_HELP": "\"pasted into every return's letter; paste it once the inbox is shared\"",
+        "OPEN_CLIENT_FOLDER_LABEL": "'Open Client Folder'",
+        "OPEN_INBOX_LABEL": "'Open Inbox'",
+        "EDIT_HOUSEHOLD_LABEL": "'Edit household'",
+        "NEW_HOUSEHOLD_LABEL": "'New household'",
+        "EXISTING_HOUSEHOLD_LABEL": "'Add a return to an existing household'",
+        "HOUSEHOLD_RETURNS_HEADING": "'Returns this year'",
+        "HOUSEHOLD_QUEUE_LINE": "'{n} document(s) waiting for a person across this household'",
+        "MISFITS_HEADING": "'Folders the tracker leaves alone'",
+        "MISFITS_NOTE": "'Each is listed with the one reason it does not fit the layout; nothing in it is ever read, moved or renamed.'",
+        "TWO_OPEN_YEARS_NOTE": "'Two years are open in this household ({years}); nothing is sorted from its inbox until one is retired in the editor'",
         "DISMISS_LABEL": "'Not requested'",
         "DISMISS_NOTE_HINT": "'why nothing asks for it (optional)'",
         "DISMISSED_HEADING": "'Not requested ({n})'",
@@ -218,7 +250,6 @@
         "NOT_APPLICABLE_CARRIED": "'{n} request(s) not applicable last year - review them in the editor'",
         "FIRM_PHONE_LABEL": "'Firm phone'",
         "FIRM_PHONE_HELP": "'named in the final-notice reminder; blank drops that sentence'",
-        "ROLLOVER_NAME_PATTERN": "'{prior} - {year}'",
         "DRAFT_MOVED": "'the draft changed since it was shown; look again'"
       },
       "role": "The JSON command layer the desktop app talks to; COMMANDS is the list, and the module docstring is pinned to it. Since decision 104 it owns the request-list editor's words (EDITOR_* labels, RULES_SAVED, NOTHING_CHANGED, LEARNED_NOTE) and the edit command that saves the list and the engagement's details as one recorded event. Decision 113 added the unlearn command and the editor's two words for taking a taught keyword back (UNLEARN_LABEL, UNLEARNED_NOTE).",
@@ -271,18 +302,19 @@
         "MULTI_FORM_FAMILIES": "2"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, optional OCR) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache keeps the verdicts - in the store, per engagement, since decision 107.",
-      "notes": "The cache stores verdicts only - pass/fail, the reason, and the Evidence behind them, all of it the firm's own words. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION, carried on every row; a row at another version is ignored and dropped), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. DECISION 107 - THE CACHE LEFT THE SYNCED FOLDER: ContentCache(engagement_dir) loads the engagement's memos and verdicts from the store's two tables (store.cached_verdicts()) once, works in memory as it always did, and save() writes what it learned and forgot through store.remember_verdicts() - one immediate transaction of the store's own, under the engagement lock, never store.record(), because a verdict is a derivation of the bytes and the rules and not an event; a pass killed mid-save leaves the previous rows. ContentCache() with no engagement is memory only (the CLI's, a test's) and its save() touches nothing. The engagement must already be in the store or the constructor refuses by name. The JSON cache file that used to sit in the engagement folder is never read; RETIRED_CACHE_FILENAME survives only for the filer's tidy-up, which removes it. THE STEP-0 RE-RUN'S FINDING: decision 105 had kept a two-form split's second verdict in the cache alone, so a rebuilt store read the second copy the ordinary way and failed it - the cache was carrying a decision, not a derivation. own_forms(text) is now the one reading of which forms a page counts as its own (the set of self-named forms when MULTI_FORM_FAMILIES or more families print their own name, else None; the constant moved here from the router, which re-exports it for one release); _check_uncached() reads through it, so the scan's miss verdict is the router's kept verdict for every page, split included, and a delete-and-rebuild leaves every status byte-identical. _evidence_from_json() takes a tuple as well as a list, so a verdict read back in the pass that kept it carries its evidence. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again. Decision 73: says() weighs where a plain keyword is said, not only that it is there - an occurrence that is a menu line's title (_menu_tails: a form number and the title a dash or a comma sets off from it are one reference) or what an ask-word asked for (_asked_for: attach, provide, send, see and their kin, governing the rest of their own sentence and the line a request wraps on to) is the page talking about a document rather than being one, and one occurrence that is neither is enough. A dash-set-off form that heads its line with a year beside it, where the title window holds no second such line and no ask precedes it, names itself (_titles_its_own_line), so a payer's substitute form is not read as a checklist. A form number after a comma continues a list (_LIST_CONTINUES), and enclosed/enclosure/enclosures/re: join _REFERENCE_BEFORE, which now reads a colon between the word and the form. any_keyword_matched() answers the router's question 'did this row's keywords match, apart from the year?'. CACHE_VERSION 6. Decision 82: a verdict keeps the evidence behind it. Evidence(rule, term, where, page) is the one shape - EVIDENCE_RULES (required, any, date, filename, refused) and EVIDENCE_PLACES (title, first_page, footer, deep) are the named values, imported by the router, the index and the app's vocabulary and retyped nowhere. The Evidence record, those two lists and the cell format that format_evidence() writes and parse_evidence() reads now live in tracker/records.py (decision 100) and are re-exported here for one release; what stays here is the reading of a document that produces them. says() became a thin wrapper over _says_where(), which reaches the same verdict by the same reading and also says where the word was found (_where_said(): the title window first, then a page's last _FOOTER_LINES non-blank lines, then the rest of page 1, then deep), so no placement moved. evaluate_rules() puts an Evidence per matched rule on ContentResult.evidence, on a failing verdict too, and the reason sentence is untouched; the date rule records the row's Period, not the regex it derives and not a word of the document. format_evidence()/parse_evidence() are the one owner of the index cell's compact form (term@where:page rule, candidates joined by '; '), and the page is left off when it is 0. CACHE_VERSION 7, because a version-6 verdict read back would claim a verdict with no reason behind it. Decision 85: a form heading its own line with its printed title after its number and its year after the title names itself, at the weight a bare number-then-year mention carries - _names_itself() is the one predicate, and it holds both shapes a printed title wears (a dash between number and title, decision 69/73's; or nothing between them, _SELF_TITLED). The IRS's 2024 and 2025 W-2 revisions print one copy to the page, so Copy B's only \"W-2\" is the foot's \"W-2 Wage and Tax Statement 2025 Department of the Treasury\" and the form said nothing about itself before this. The year must be a year and not a date's tail (\"Form 941 04/30/2025\" on a CP 575 is a filing deadline), and a page heading two such lines is a menu, as it is for the dashed shape - _lists_forms() counts both. CACHE_VERSION 8, because a cached verdict from before it would say a one-copy W-2 is nobody's form. Decision 90: a keyword may name alternatives and join the phrases one of them wants together, read through manifest.keyword_alternatives() - says() takes the first alternative whose every phrase is said and places the evidence at its leading phrase, contains_keyword() reads a file name the same way, and a keyword holding neither character is one phrase exactly as before. CACHE_VERSION 9, because a verdict cached before it read the '|' and the '+' as words to look for. Decision 109: ContentCache.digest_of() is now the one memo for every hash of a file under Prepared/ - the filer's sweep and its proof of each copy it makes, a person's filing as the scan reads it, and the scan's own de-duplication - so a second and a third pass over an unchanged tree cost stats rather than reads. Nothing under Shared/ is ever memo'd: decision 68 reads every preserved original each pass by design, and that is the one reading the measure allows. The scan's prune() now keeps every file under Prepared/, so a parked copy's memo and a stray's survive the pass that learned them."
+      "notes": "The cache stores verdicts only - pass/fail, the reason, and the Evidence behind them, all of it the firm's own words. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION, carried on every row; a row at another version is ignored and dropped), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. DECISION 107 - THE CACHE LEFT THE SYNCED FOLDER: ContentCache(engagement_dir) loads the engagement's memos and verdicts from the store's two tables (store.cached_verdicts()) once, works in memory as it always did, and save() writes what it learned and forgot through store.remember_verdicts() - one immediate transaction of the store's own, under the engagement lock, never store.record(), because a verdict is a derivation of the bytes and the rules and not an event; a pass killed mid-save leaves the previous rows. ContentCache() with no engagement is memory only (the CLI's, a test's) and its save() touches nothing. The engagement must already be in the store or the constructor refuses by name. The JSON cache file that used to sit in the engagement folder is never read; RETIRED_CACHE_FILENAME survives only for the filer's tidy-up, which removes it. THE STEP-0 RE-RUN'S FINDING: decision 105 had kept a two-form split's second verdict in the cache alone, so a rebuilt store read the second copy the ordinary way and failed it - the cache was carrying a decision, not a derivation. own_forms(text) is now the one reading of which forms a page counts as its own (the set of self-named forms when MULTI_FORM_FAMILIES or more families print their own name, else None; the constant moved here from the router, which re-exports it for one release); _check_uncached() reads through it, so the scan's miss verdict is the router's kept verdict for every page, split included, and a delete-and-rebuild leaves every status byte-identical. _evidence_from_json() takes a tuple as well as a list, so a verdict read back in the pass that kept it carries its evidence. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again. Decision 73: says() weighs where a plain keyword is said, not only that it is there - an occurrence that is a menu line's title (_menu_tails: a form number and the title a dash or a comma sets off from it are one reference) or what an ask-word asked for (_asked_for: attach, provide, send, see and their kin, governing the rest of their own sentence and the line a request wraps on to) is the page talking about a document rather than being one, and one occurrence that is neither is enough. A dash-set-off form that heads its line with a year beside it, where the title window holds no second such line and no ask precedes it, names itself (_titles_its_own_line), so a payer's substitute form is not read as a checklist. A form number after a comma continues a list (_LIST_CONTINUES), and enclosed/enclosure/enclosures/re: join _REFERENCE_BEFORE, which now reads a colon between the word and the form. any_keyword_matched() answers the router's question 'did this row's keywords match, apart from the year?'. CACHE_VERSION 6. Decision 82: a verdict keeps the evidence behind it. Evidence(rule, term, where, page) is the one shape - EVIDENCE_RULES (required, any, date, filename, refused) and EVIDENCE_PLACES (title, first_page, footer, deep) are the named values, imported by the router, the index and the app's vocabulary and retyped nowhere. The Evidence record, those two lists and the cell format that format_evidence() writes and parse_evidence() reads now live in tracker/records.py (decision 100) and are re-exported here for one release; what stays here is the reading of a document that produces them. says() became a thin wrapper over _says_where(), which reaches the same verdict by the same reading and also says where the word was found (_where_said(): the title window first, then a page's last _FOOTER_LINES non-blank lines, then the rest of page 1, then deep), so no placement moved. evaluate_rules() puts an Evidence per matched rule on ContentResult.evidence, on a failing verdict too, and the reason sentence is untouched; the date rule records the row's Period, not the regex it derives and not a word of the document. format_evidence()/parse_evidence() are the one owner of the index cell's compact form (term@where:page rule, candidates joined by '; '), and the page is left off when it is 0. CACHE_VERSION 7, because a version-6 verdict read back would claim a verdict with no reason behind it. Decision 85: a form heading its own line with its printed title after its number and its year after the title names itself, at the weight a bare number-then-year mention carries - _names_itself() is the one predicate, and it holds both shapes a printed title wears (a dash between number and title, decision 69/73's; or nothing between them, _SELF_TITLED). The IRS's 2024 and 2025 W-2 revisions print one copy to the page, so Copy B's only \"W-2\" is the foot's \"W-2 Wage and Tax Statement 2025 Department of the Treasury\" and the form said nothing about itself before this. The year must be a year and not a date's tail (\"Form 941 04/30/2025\" on a CP 575 is a filing deadline), and a page heading two such lines is a menu, as it is for the dashed shape - _lists_forms() counts both. CACHE_VERSION 8, because a cached verdict from before it would say a one-copy W-2 is nobody's form. Decision 90: a keyword may name alternatives and join the phrases one of them wants together, read through manifest.keyword_alternatives() - says() takes the first alternative whose every phrase is said and places the evidence at its leading phrase, contains_keyword() reads a file name the same way, and a keyword holding neither character is one phrase exactly as before. CACHE_VERSION 9, because a verdict cached before it read the '|' and the '+' as words to look for. Decision 109: ContentCache.digest_of() is now the one memo for every hash of a file under Prepared/ - the filer's sweep and its proof of each copy it makes, a person's filing as the scan reads it, and the scan's own de-duplication - so a second and a third pass over an unchanged tree cost stats rather than reads. Nothing under the tree a client is shared is ever memo'd: decision 68 reads every preserved original each pass by design, and that is the one reading the measure allows. The scan's prune() now keeps every file under Prepared/, so a parked copy's memo and a stray's survive the pass that learned them."
     },
     {
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ac02a3da2a6dc87e",
-      "lines": 3340,
+      "sha256": "59123aff6a2706b9",
+      "lines": 3532,
       "cli": "python -m tracker.filer",
       "exports": [
         "ASSIGNED_BY_PERSON",
         "AssignResult",
+        "CONTESTED_BETWEEN_RETURNS",
         "COPY_MISMATCH",
         "CopyMismatchError",
         "DISMISSED_BY_PERSON",
@@ -302,7 +334,6 @@
         "INTERRUPTED_MOVE_LOST_DETAIL",
         "INTERRUPTED_ORIGINAL_GONE",
         "INTERRUPTED_ORIGINAL_HELD",
-        "INTERRUPTED_PRESERVE",
         "INTERRUPTED_SYNCING",
         "LEFT_FILED",
         "MISSING_IN_PBC",
@@ -319,7 +350,6 @@
         "PUT_BACK_ALREADY",
         "PUT_BACK_FROM_ORIGINAL",
         "PUT_BACK_REFUSED",
-        "RECORD_PRESERVE_INTENTS",
         "REPLACED_IN_PBC",
         "RESCAN_REFUSED",
         "RESENT_AFTER_SET_ASIDE",
@@ -336,7 +366,7 @@
         "clients_root_of",
         "dismiss_review_file",
         "ensure",
-        "file_drops",
+        "file_household_drops",
         "find_filed",
         "find_moved",
         "find_parked",
@@ -376,7 +406,6 @@
         "STALE_ROW": "'{name} is not as you saw it: the record now says {decision} - {reason}; look again before acting'",
         "OVERRODE_SHORTLIST": "'overrode the shortlist ({listed})'",
         "COPY_MISMATCH": "\"{source} was copied to {target} and the copy does not hold the original's bytes ({expected} in, {found} out); the copy was removed\"",
-        "RECORD_PRESERVE_INTENTS": "True",
         "OPEN_INTENT_REFUSAL": "'a run was interrupted here; the next pass finishes it first (or press Run now)'",
         "REPLACED_IN_PBC": "'{location} no longer holds the bytes recorded on {received}; its working copy {prepared} was made from the earlier file - a person should look'",
         "RETIRED_CACHE_REMOVED": "'removed from the engagement folder: the verdict cache lives in the store since decision 107 and nothing reads the file'",
@@ -393,7 +422,7 @@
         "INTERRUPTED_ORIGINAL_HELD": "'is still there'",
         "INTERRUPTED_ORIGINAL_GONE": "'is not there either'",
         "INTERRUPTED_SYNCING": "'an interrupted step was moving {name} and {location} is still syncing; nothing was touched and the next pass finishes it'",
-        "INTERRUPTED_PRESERVE": "'an interrupted step was moving {name} into {pbc} as {location}, which now holds another file or none; it is sorted as it sits'",
+        "CONTESTED_BETWEEN_RETURNS": "'accepted by requests in more than one return ({listed}); a person should choose'",
         "LEFT_FILED": "'the working copy {location} no longer holds the bytes this row recorded (annotated, or re-saved) and was left there; {parked} went back to review from the original'",
         "RESCAN_REFUSED": "'the status was not put back now ({why}); the next pass does it'",
         "PUT_BACK": "'put back at {home} on {date} from {now}'",
@@ -402,8 +431,8 @@
         "PUT_BACK_REFUSED": "\"put back refused on {date}: {home} holds a different file, which was left; this document's copy went to review as {parked}\"",
         "SEVERAL_COPIES_REFUSAL": "'{name} has copies under several requests; put it back, then unfile it'"
       },
-      "role": "Sorts the client's drop folder: moves each original into Shared/PBC/ untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and records every move in the engagement's own record - the journal and the store together, in one transaction per decision. Owns read_index(), which answers from the store, and ensure(), which brings the store up to the journal and says whether it is current.",
-      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (the request list, the index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's verdicts in the store (content_check.ContentCache over store.remember_verdicts(), keyed by content; decision 107), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. The tidy-up at the end of a real pass also removes the retired JSON cache file and any temp file beside it (_remove_the_retired_cache(), by RETIRED_CACHE_FILENAME) - nothing reads it, and the removal is said once on FileReport.attention (RETIRED_CACHE_REMOVED) - on the console, in the app's warnings and counted on the practice page - for that pass only. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is recorded as Needs Review with the error, and the record is written in a finally block so nothing moved into PBC/ is ever unrecorded. Runs under the engagement lock - its own when it is called alone, the pass's when runner.run_engagement() is holding one - taken before the request list, the record or the drop folder is read. Files the client drops straight into the visible PBC/ are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in the editor keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_drops(): moves the parked copy under the canonical name (or copies from PBC/ if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, records the keyword a person typed in the same call, all under the engagement lock. The IndexEntry record and INDEX_LAYOUT live in tracker/records.py (decision 100). HISTORY, kept as history: until decision 102 the index was a workbook rewritten whole on every pass, and decisions 54, 56, 58, 59, 61, 65, 66, 67, 68, 69 and 72 are thirteen readings of what that cost - a snapshot sidecar that outlived its workbook, a deferred write, a stale workbook, a header row a sort had moved, a renamed tab, a column inserted at A; what survives of them here is the reading of bytes (replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; every move is a rename in _move_whole(), because shutil.move copied a held-open drop truncated into PBC; what lies behind a junction is not a drop; a name Windows cannot open is reported every pass; a row recorded without its bytes is tied to them only while its working copy and its original agree, UNTIED_IN_PBC; a recorded original that has left PBC/ is said every pass, MISSING_IN_PBC, and where a stray carries its bytes the row follows the file, MOVED_IN_PBC; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's; assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so). Decision 76: dismiss_review_file() rewrites a parked row NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing; _find_parked() takes a dismissed row too, so filing it is the undo. Decision 111: a re-send is judged by the earlier row's decision - the content hash says which row holds those bytes and that row's decision says what this drop is. A filed row with its copy in place, a row parked for a person, and a row whose copy is not where the record put it all make it a Duplicate, and the sentence names which (DUPLICATE_OF_FILED, DUPLICATE_OF_PARKED, DUPLICATE_OF_MOVED, and DUPLICATE_OF_UNCOPIED of a row with no working copy to name: saying 'already filed as' of a parked copy told the Index a document still waiting was done); a filed row whose copy is gone is decision 24's re-file; a row a person set aside is routed like any other drop - Not requested is a decision about one document on one day, not a standing rule - and files where exactly one request now accepts it, else parks with a FRESH copy of its own (never _existing_copy, or filing one row would carry the other row's file away), the reason quoting the earlier decision whole (RESENT_AFTER_SET_ASIDE) so the row is triaged, counted by reminder.count_needs_review() and read by a person. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself); a working copy that is no longer the row's bytes is left and said out loud (LEFT_FILED). Decision 82: IndexEntry.evidence is the last column, written through records.format_evidence() and read back through records.parse_evidence(); a person's decision leaves it alone. Decision 87: every decision is appended to the record through tracker/ledger.py by one rule, _rows_changed(), read off the rows themselves. DECISION 102 - THE INDEX MOVED INTO THE RECORD: read_index() takes the engagement folder and reads the store's documents table, in the index's own order, after store.follow_the_journal(); _record() is the one write, every event a decision produces in a single store.record() call, and the rollback that puts a moved file back asks _the_record_holds(). The migration that read a legacy folder's index workbook into the journal once, and the request-list import of decision 103 that read the sheet once a pass and journalled its differences, both LEFT WITH DECISION 104 and are set aside outside the tree in Retired - Excel manifest: ensure() is now the store's top-up and the three words that say whether it describes the engagement, it writes nothing in the folder, and every caller drops the flag that used to keep a dry run from migrating. clients_root_of() is store.root_for() under its old name. _storable() keeps only the refusal of a name UTF-8 cannot hold (the journal is UTF-8 JSON); a control character in a POSIX name files again, because the refusal of one existed only because a workbook is XML. A person's filing records its keyword in the SAME store.record() call as the row (_record()'s also), because the filing and what it taught are one decision. THE DELIBERATE CYCLE: _rescan() imports tracker/scanner.py at call time so a person's filing is scanned the moment it lands, and the scanner imports this module's index reader at call time; neither runs at load. DECISION 112 - A PERSON'S ACTION IS JUDGED AGAINST THE RECORD IT WAS MADE ON: assign_review_file(), dismiss_review_file() and unfile_document() each take seq=, the row's sequence number as the person saw it, and _refuse_if_stale() compares it with store.document_seqs() immediately after the row is found - inside the lock, before a byte is read or a file is touched - raising StaleRowError (a FilingError, so the API's one except turns it into the app's sentence) with STALE_ROW, which names what the record now says. seq=None is a caller with no view (a script, a test) and skips the check; the by-name refusal is asked first and is a different question. assign_review_file() also takes shortlist=, the identifiers the evidence pointed at, computed by the caller that drew the card: a pick off a non-empty shortlist writes OVERRODE_SHORTLIST into the row's reason after the ASSIGNED_BY_PERSON prefix (the scanner's acceptance still keys on startswith) and comes back on AssignResult.overrode_shortlist; an empty shortlist is never an override. This module does not import tracker/review.py - that would be a second call-time cycle beside the deliberate one - which is why the shortlist is handed in. find_parked() and find_filed() are public for the same reason (the underscored names kept for one release), so the API finds exactly the row this module will act on. DECISION 109 - EVERY WORKING COPY IS PROVED AGAINST THE RECORD EACH PASS: _prove_working_copies() is one walk of Prepared/ per pass, under the pass's lock, between the PBC sweep and the known-bytes map, and it has four outcomes and only these. A copy where the record put it holding the row's digest is proved and nothing is written. A copy that is absent or holds other bytes, whose bytes turn up at a path no row names, makes its row FILE_MOVED - a decision on the document, never a Status (the owner's rule, 2026-09-19) - with home kept in prepared_location and where the bytes are now in a sentence (MOVED_SENTENCE, MOVED_GONE_SENTENCE), read back by moved_to() through records.as_pattern(); the scanner reads that row and writes the request's note. Where more than one file no row names holds those bytes, the row keeps the wanderer it already names (_spend_a_stray()'s preferred): the copy that sorts first is not the copy a person moved, and decision 110's put-it-back follows the sentence. A FILE_MOVED row whose every claimed location holds its bytes again is FILED once more (NEEDS_REVIEW where the row names no request - which of the two parked decisions it was is not guessable), MOVED_BACK_SENTENCE. A file under a request folder or the review folder that no row names and no row's bytes match is UNRECORDED_COPY on FileReport.attention, every pass, counted where it sits. THE RECORD DECIDES AND NOTHING MOVES: the fingerprint identifies, a person acts (decision 110's buttons), and a quiet pass appends nothing - one ledger.COPY_MOVED event per move, in either direction, named through _LEDGER_EVENT_FOR and _record()'s decided. A row without its bytes is never swept (decision 65) but still names its copy, so that copy is not called unrecorded; a placeholder is never read; a Duplicate row is not followed. _copy_whole() now proves its target against the digest it was made from and raises CopyMismatchError - decision 17's could-not-be-filed row - rather than leaving a copy nobody checked; every caller passes what it knows, and the pass's callers pass the ContentCache too, so the memo the proof leaves is the scan's hit. DECISION 110 - RECOVERY IS THE PERSON'S: restore_working_copy() is the answer to a FILE_MOVED row that needs no other place for the file to go - the bytes return to where the record put them, by moving the wanderer moved_to() names when it still holds them and by copying from the client's original when nothing under the firm's folder does - and the row goes back to what it was before it wandered, FILED where it names a request and NEEDS_REVIEW where it does not. It never overwrites (a file already at home that is not this document stays exactly where it is; this document's copy goes to review under the client's own name and the row parks naming both, PUT_BACK_REFUSED), never deletes (a home that already holds these bytes leaves the wanderer where it is for a person to remove, PUT_BACK_ALREADY) and never guesses (the row's sequence number first, every byte it is about to move second, the move third, and a refused record puts back exactly what moved). Every location the row claims is put back, not the Prepared Location column alone: the sweep names the first location that failed, and a page decision 94 filed under several requests has a copy in each, each remade from the one just put back. One event whatever the click found, ledger.RESTORED_BY_PERSON, because the row it carries says which. The other two answers are the actions that already existed: keep-it-here is assign_review_file() on a moved row, where the copy that moves is the wanderer and the request may be the folder's own or another the person picks; send-it-to-review is unfile_document(), where the wanderer is the copy that goes back and a row whose bytes are nowhere is copied from the original. Both refuse a row with copies under several requests by name (SEVERAL_COPIES_REFUSAL) and point at put-it-back. find_parked() and find_filed() take accepting=, the decisions the action will have beyond the ones they were written for, so those two reach a FILE_MOVED row and dismiss_review_file() still refuses one by name (decision 76); find_moved() is their shape over FILE_MOVED itself. DECISION 119 - AN INTERRUPTED MOVE IS FINISHED FROM THE RECORD, NEVER GUESSED: before the first file operation of any decision - a pass's copy, a person's filing, unfiling or put-back - _intend() appends ledger.MOVING under the lock, keyed by the row's own ledger key, carrying the operations in order with the digest each end should hold, the row the decision will record, the event that will complete it, who decided and (for a drop's own move, which has no row yet) the day the run began; _do_op() is the one place a plan is carried out, by the decision and by the recovery alike, so a move a recovery makes is the move the decision would have made. _finish_interrupted_moves() runs at the start of every pass, under the lock, after the index is read and before the digests of rows recorded without them are filled in, before the client's folder is read for strays and before the sweep - so a person's half-made filing is finished and recorded as theirs rather than swept up as a copy somebody dragged. Each operation is checked by bytes and finished where reality matches; the intent's row is then recorded as the intent said, with the events that travelled with it, dated the day the person decided. Where a destination holds other bytes nothing there is touched and the row parks with reasons.INTERRUPTED_MOVE naming it (interrupted_at() and interrupted_note() read the sentence back for the scanner, as moved_to() does 109's); where neither end holds the bytes the row parks with INTERRUPTED_MOVE_LOST; either way the copy a person acts on is the one waiting in review if there is one, else a fresh one from the client's original. _refuse_if_a_move_is_open() refuses all four person actions while an intent is open here, before 112's freshness check, because the next pass - or Run now - finishes it. A refused record rolls back as it always did and appends ledger.MOVE_ABANDONED so the next pass does not finish forward a move the record would not take. RECORD_PRESERVE_INTENTS is the one switch: the pass's own move into the client's folder is already finished by decision 23, and its intent buys only the received date. _plan_working_copy() took over from the filer's old one-step copy helper: deciding where a working copy goes and making it are two steps now, because what will happen has to be written down before it does."
+      "role": "Sorts the household's one inbox across every return of its open year (decision 125): moves each original out of it into the client's folder for the year, untouched, copies a renamed working file into Prepared/... or 00 - Needs Review, and records every move in the engagement's own record - the journal and the store together, in one transaction per decision. Owns read_index(), which answers from the store, and ensure(), which brings the store up to the journal and says whether it is current.",
+      "notes": "Content-hash de-duplication makes re-runs no-ops. _sort_one() decides one preserved original's fate against a _SortContext built once per run (the request list, the index so far, folders, claimed names, the run's caches). The verdicts the router reaches while sorting are written to the engagement's verdicts in the store (content_check.ContentCache over store.remember_verdicts(), keyed by content; decision 107), so the scan that follows finds them under the working copy's name and never reads the document twice; a dry run saves nothing. The tidy-up at the end of a real pass also removes the retired JSON cache file and any temp file beside it (_remove_the_retired_cache(), by RETIRED_CACHE_FILENAME) - nothing reads it, and the removal is said once on FileReport.attention (RETIRED_CACHE_REMOVED) - on the console, in the app's warnings and counted on the practice page - for that pass only. Originals are moved byte for byte under their own names and never altered. Each drop is handled on its own: a drop that cannot be moved is left in place for the next run, a drop that fails after it was preserved is recorded as Needs Review with the error, and the record is written in a finally block so nothing moved into the year's folder is ever unrecorded. Runs under the engagement lock - its own when it is called alone, the pass's when runner.run_engagement() is holding one - taken before the request list, the record or the drop folder is read. Files the client drops straight into the visible year folder are filed and indexed in place; a re-sent document whose working copy vanished from Prepared/ is re-filed rather than called a duplicate; a Document renamed in the editor keeps filing into the folder that already holds its files (assign_folders, not folder_name_for); empty client folders are cleared after sorting. assign_review_file() is the person's counterpart to file_household_drops(): moves the parked copy under the canonical name (or copies from the client's folder for the year if it is gone), rewrites the index row as Filed with the ASSIGNED_BY_PERSON reason, records the keyword a person typed in the same call, all under the engagement lock. The IndexEntry record and INDEX_LAYOUT live in tracker/records.py (decision 100). HISTORY, kept as history: until decision 102 the index was a workbook rewritten whole on every pass, and decisions 54, 56, 58, 59, 61, 65, 66, 67, 68, 69 and 72 are thirteen readings of what that cost - a snapshot sidecar that outlived its workbook, a deferred write, a stale workbook, a header row a sort had moved, a renamed tab, a column inserted at A; what survives of them here is the reading of bytes (replaced_in_pbc() decides by bytes alone; _copy_whole() leaves no half-written copy; every move is a rename in _move_whole(), because shutil.move copied a held-open drop truncated into the year's folder; what lies behind a junction is not a drop; a name Windows cannot open is reported every pass; a row recorded without its bytes is tied to them only while its working copy and its original agree, UNTIED_IN_PBC; a recorded original that has left the year's folder is said every pass, MISSING_IN_PBC, and where a stray carries its bytes the row follows the file, MOVED_IN_PBC; REPLACED_IN_PBC and UNTIED_IN_PBC are FileReport.attention, not errors; a parked path a later row records is the later row's; assign reuses an earlier attempt's copy first and leaves an annotated parked copy, saying so). Decision 76: dismiss_review_file() rewrites a parked row NOT_REQUESTED with the DISMISSED_BY_PERSON reason and moves nothing; _find_parked() takes a dismissed row too, so filing it is the undo. Decision 111: a re-send is judged by the earlier row's decision - the content hash says which row holds those bytes and that row's decision says what this drop is. A filed row with its copy in place, a row parked for a person, and a row whose copy is not where the record put it all make it a Duplicate, and the sentence names which (DUPLICATE_OF_FILED, DUPLICATE_OF_PARKED, DUPLICATE_OF_MOVED, and DUPLICATE_OF_UNCOPIED of a row with no working copy to name: saying 'already filed as' of a parked copy told the Index a document still waiting was done); a filed row whose copy is gone is decision 24's re-file; a row a person set aside is routed like any other drop - Not requested is a decision about one document on one day, not a standing rule - and files where exactly one request now accepts it, else parks with a FRESH copy of its own (never _existing_copy, or filing one row would carry the other row's file away), the reason quoting the earlier decision whole (RESENT_AFTER_SET_ASIDE) so the row is triaged, counted by reminder.count_needs_review() and read by a person. Decision 77: unfile_document() is the way back - the working copy returns to 00 - Needs Review under the client's own name, the row is rewritten NEEDS_REVIEW with the UNFILED_BY_PERSON reason, and the engagement is re-scanned (outside the lock, which the scan takes for itself); a working copy that is no longer the row's bytes is left and said out loud (LEFT_FILED). Decision 82: IndexEntry.evidence is the last column, written through records.format_evidence() and read back through records.parse_evidence(); a person's decision leaves it alone. Decision 87: every decision is appended to the record through tracker/ledger.py by one rule, _rows_changed(), read off the rows themselves. DECISION 102 - THE INDEX MOVED INTO THE RECORD: read_index() takes the engagement folder and reads the store's documents table, in the index's own order, after store.follow_the_journal(); _record() is the one write, every event a decision produces in a single store.record() call, and the rollback that puts a moved file back asks _the_record_holds(). The migration that read a legacy folder's index workbook into the journal once, and the request-list import of decision 103 that read the sheet once a pass and journalled its differences, both LEFT WITH DECISION 104 and are set aside outside the tree in Retired - Excel manifest: ensure() is now the store's top-up and the three words that say whether it describes the engagement, it writes nothing in the folder, and every caller drops the flag that used to keep a dry run from migrating. clients_root_of() is store.root_for() under its old name. _storable() keeps only the refusal of a name UTF-8 cannot hold (the journal is UTF-8 JSON); a control character in a POSIX name files again, because the refusal of one existed only because a workbook is XML. A person's filing records its keyword in the SAME store.record() call as the row (_record()'s also), because the filing and what it taught are one decision. THE DELIBERATE CYCLE: _rescan() imports tracker/scanner.py at call time so a person's filing is scanned the moment it lands, and the scanner imports this module's index reader at call time; neither runs at load. DECISION 112 - A PERSON'S ACTION IS JUDGED AGAINST THE RECORD IT WAS MADE ON: assign_review_file(), dismiss_review_file() and unfile_document() each take seq=, the row's sequence number as the person saw it, and _refuse_if_stale() compares it with store.document_seqs() immediately after the row is found - inside the lock, before a byte is read or a file is touched - raising StaleRowError (a FilingError, so the API's one except turns it into the app's sentence) with STALE_ROW, which names what the record now says. seq=None is a caller with no view (a script, a test) and skips the check; the by-name refusal is asked first and is a different question. assign_review_file() also takes shortlist=, the identifiers the evidence pointed at, computed by the caller that drew the card: a pick off a non-empty shortlist writes OVERRODE_SHORTLIST into the row's reason after the ASSIGNED_BY_PERSON prefix (the scanner's acceptance still keys on startswith) and comes back on AssignResult.overrode_shortlist; an empty shortlist is never an override. This module does not import tracker/review.py - that would be a second call-time cycle beside the deliberate one - which is why the shortlist is handed in. find_parked() and find_filed() are public for the same reason (the underscored names kept for one release), so the API finds exactly the row this module will act on. DECISION 109 - EVERY WORKING COPY IS PROVED AGAINST THE RECORD EACH PASS: _prove_working_copies() is one walk of Prepared/ per pass, under the pass's lock, between the PBC sweep and the known-bytes map, and it has four outcomes and only these. A copy where the record put it holding the row's digest is proved and nothing is written. A copy that is absent or holds other bytes, whose bytes turn up at a path no row names, makes its row FILE_MOVED - a decision on the document, never a Status (the owner's rule, 2026-09-19) - with home kept in prepared_location and where the bytes are now in a sentence (MOVED_SENTENCE, MOVED_GONE_SENTENCE), read back by moved_to() through records.as_pattern(); the scanner reads that row and writes the request's note. Where more than one file no row names holds those bytes, the row keeps the wanderer it already names (_spend_a_stray()'s preferred): the copy that sorts first is not the copy a person moved, and decision 110's put-it-back follows the sentence. A FILE_MOVED row whose every claimed location holds its bytes again is FILED once more (NEEDS_REVIEW where the row names no request - which of the two parked decisions it was is not guessable), MOVED_BACK_SENTENCE. A file under a request folder or the review folder that no row names and no row's bytes match is UNRECORDED_COPY on FileReport.attention, every pass, counted where it sits. THE RECORD DECIDES AND NOTHING MOVES: the fingerprint identifies, a person acts (decision 110's buttons), and a quiet pass appends nothing - one ledger.COPY_MOVED event per move, in either direction, named through _LEDGER_EVENT_FOR and _record()'s decided. A row without its bytes is never swept (decision 65) but still names its copy, so that copy is not called unrecorded; a placeholder is never read; a Duplicate row is not followed. _copy_whole() now proves its target against the digest it was made from and raises CopyMismatchError - decision 17's could-not-be-filed row - rather than leaving a copy nobody checked; every caller passes what it knows, and the pass's callers pass the ContentCache too, so the memo the proof leaves is the scan's hit. DECISION 110 - RECOVERY IS THE PERSON'S: restore_working_copy() is the answer to a FILE_MOVED row that needs no other place for the file to go - the bytes return to where the record put them, by moving the wanderer moved_to() names when it still holds them and by copying from the client's original when nothing under the firm's folder does - and the row goes back to what it was before it wandered, FILED where it names a request and NEEDS_REVIEW where it does not. It never overwrites (a file already at home that is not this document stays exactly where it is; this document's copy goes to review under the client's own name and the row parks naming both, PUT_BACK_REFUSED), never deletes (a home that already holds these bytes leaves the wanderer where it is for a person to remove, PUT_BACK_ALREADY) and never guesses (the row's sequence number first, every byte it is about to move second, the move third, and a refused record puts back exactly what moved). Every location the row claims is put back, not the Prepared Location column alone: the sweep names the first location that failed, and a page decision 94 filed under several requests has a copy in each, each remade from the one just put back. One event whatever the click found, ledger.RESTORED_BY_PERSON, because the row it carries says which. The other two answers are the actions that already existed: keep-it-here is assign_review_file() on a moved row, where the copy that moves is the wanderer and the request may be the folder's own or another the person picks; send-it-to-review is unfile_document(), where the wanderer is the copy that goes back and a row whose bytes are nowhere is copied from the original. Both refuse a row with copies under several requests by name (SEVERAL_COPIES_REFUSAL) and point at put-it-back. find_parked() and find_filed() take accepting=, the decisions the action will have beyond the ones they were written for, so those two reach a FILE_MOVED row and dismiss_review_file() still refuses one by name (decision 76); find_moved() is their shape over FILE_MOVED itself. DECISION 119 - AN INTERRUPTED MOVE IS FINISHED FROM THE RECORD, NEVER GUESSED: before the first file operation of any decision - a pass's copy, a person's filing, unfiling or put-back - _intend() appends ledger.MOVING under the lock, keyed by the row's own ledger key, carrying the operations in order with the digest each end should hold, the row the decision will record, the event that will complete it, who decided and (for a drop's own move, which has no row yet) the day the run began; _do_op() is the one place a plan is carried out, by the decision and by the recovery alike, so a move a recovery makes is the move the decision would have made. _finish_interrupted_moves() runs at the start of every pass, under the lock, after the index is read and before the digests of rows recorded without them are filled in, before the client's folder is read for strays and before the sweep - so a person's half-made filing is finished and recorded as theirs rather than swept up as a copy somebody dragged. Each operation is checked by bytes and finished where reality matches; the intent's row is then recorded as the intent said, with the events that travelled with it, dated the day the person decided. Where a destination holds other bytes nothing there is touched and the row parks with reasons.INTERRUPTED_MOVE naming it (interrupted_at() and interrupted_note() read the sentence back for the scanner, as moved_to() does 109's); where neither end holds the bytes the row parks with INTERRUPTED_MOVE_LOST; either way the copy a person acts on is the one waiting in review if there is one, else a fresh one from the client's original. _refuse_if_a_move_is_open() refuses all four person actions while an intent is open here, before 112's freshness check, because the next pass - or Run now - finishes it. A refused record rolls back as it always did and appends ledger.MOVE_ABANDONED so the next pass does not finish forward a move the record would not take. RECORD_PRESERVE_INTENTS is the one switch: the pass's own move into the client's folder is already finished by decision 23, and its intent buys only the received date. _plan_working_copy() took over from the filer's old one-step copy helper: deciding where a working copy goes and making it are two steps now, because what will happen has to be written down before it does."
     },
     {
       "id": "tracker/fsio.py",
@@ -425,11 +454,78 @@
       "notes": "Decision 120, and no behaviour change: the five names moved here verbatim from tracker/manifest.py, where they had lived because the manifest was once the workbook they were written for. Layer 0, importing nothing of the package, because every layer writes a file of its own and the one that is lowest must be able to reach the write - which is how there comes to be only one. It holds NO POLICY: nothing here knows what a file is for, which folder it belongs in, whether it may be written or who may write it; the module that owns the file owns every other question about it. The manifest does not re-export them - asking it for one raises at the import (tests/test_manifest.py) - and tracker/settings.py, which borrowed the write and nothing else, came down to layer 0 with them. What did NOT move: tracker/reminder.py's draft is still a plain write, by design - a draft is a person's file and the fingerprint header is its integrity check, not a temp file."
     },
     {
+      "id": "tracker/households.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "b6c377c79eb72ae5",
+      "lines": 206,
+      "exports": [
+        "HouseholdSaved",
+        "create_household",
+        "household_returns",
+        "load_household_info",
+        "open_years",
+        "save_household"
+      ],
+      "role": "The household's own record (decision 125): create_household(), load_household_info(), save_household() (one household_changed event carrying only the fields that moved, or none), household_returns() (the returns under a household, positionally, by year then folder name without case - the order the pass takes the locks in) and open_years() (the years its active, unsuperseded returns are for; two of them is what the household pass refuses to sort on).",
+      "notes": "Layer 1, beside the record's other readers: a household is a folder with a _ledger.jsonl like any other, folded by the same ledger and held in the same store table with kind = household - which is why decision 125 dropped the plan's idea of a differently named file. It holds no documents, no requests and no statuses, and no client text ever enters its events: the members are the firm's own note of who the folder is meant to be shared with."
+    },
+    {
+      "id": "tracker/layout.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "1df6511589176b24",
+      "lines": 248,
+      "exports": [
+        "CLIENTS_TREE",
+        "ENGAGEMENT_LABEL_PATTERN",
+        "INBOX_DIR_NAME",
+        "MAX_PATH_LENGTH",
+        "PATH_TOO_LONG",
+        "PREPARED_DIR_NAME",
+        "PRIVATE_TREE",
+        "README_NAME",
+        "RETURN_NAME_PATTERN",
+        "REVIEW_DIR_NAME",
+        "client_household_dir",
+        "deepest_path_length",
+        "household_name_of",
+        "household_of",
+        "inbox_dir_for",
+        "inbox_of",
+        "is_year_folder",
+        "label_for",
+        "locate",
+        "location_of",
+        "originals_dir_for",
+        "originals_of",
+        "private_household_dir",
+        "return_dir_for",
+        "root_of",
+        "year_folder_name",
+        "year_of"
+      ],
+      "constants": {
+        "CLIENTS_TREE": "'Clients'",
+        "PRIVATE_TREE": "'J Park & Associates'",
+        "INBOX_DIR_NAME": "'Drop files here'",
+        "PREPARED_DIR_NAME": "'Prepared'",
+        "REVIEW_DIR_NAME": "'00 - Needs Review'",
+        "README_NAME": "'_README.txt'",
+        "RETURN_NAME_PATTERN": "'{form} - {client}'",
+        "ENGAGEMENT_LABEL_PATTERN": "'{household} {year} {return_name}'",
+        "MAX_PATH_LENGTH": "260",
+        "PATH_TOO_LONG": "'the deepest file the tracker would write under {folder} would be {length} characters, past the {limit} Windows allows; shorten the household or the return name'"
+      },
+      "role": "The shape of the clients root, named once (decision 125): the two trees CLIENTS_TREE and PRIVATE_TREE, the household's one inbox INBOX_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME, README_NAME, RETURN_NAME_PATTERN and ENGAGEMENT_LABEL_PATTERN, MAX_PATH_LENGTH and PATH_TOO_LONG. Builders (client_household_dir, inbox_dir_for, originals_dir_for, private_household_dir, return_dir_for) and readers that answer positionally off a return folder (root_of, household_of, household_name_of, year_of, inbox_of, originals_of). And the one convention for every path the record holds: location_of() writes it relative to the return folder in POSIX, with .. where it crosses into the client tree, and locate() reads it back.",
+      "notes": "Layer 0, importing nothing of the package, because every layer above needs the same answer about where a folder is and there must be exactly one. It touches no disk: every function here is arithmetic on names, which is why tests/test_layout.py opens no file. locate() normalises LEXICALLY (os.path.normpath, never resolve()): the filer's link check exists to refuse what lies behind a junction, and a resolved path would come back naming the target instead. deepest_path_length() is the measurement creation refuses on - the deepest working copy a return would hold, against the 260 characters Windows will open - and it is measured absolutely, from the return folder, because that is what Windows counts."
+    },
+    {
       "id": "tracker/ledger.py",
       "type": "module",
       "layer": "core",
-      "sha256": "eeed2ea439d8a074",
-      "lines": 772,
+      "sha256": "138fa70e93262180",
+      "lines": 801,
       "cli": "python -m tracker.ledger",
       "exports": [
         "ALSO_KEY",
@@ -440,7 +536,6 @@
         "BY_PASS",
         "BY_PERSON",
         "COPY_MOVED",
-        "DAY_KEY",
         "DECIDED_BY_KEY",
         "DIGEST_KEY",
         "DISMISSED_BY_PERSON",
@@ -457,6 +552,8 @@
         "FROM_KEY",
         "Folded",
         "HELD_KEY",
+        "HOUSEHOLD_CHANGED",
+        "HOUSEHOLD_KEY",
         "IDENTIFIER_KEY",
         "IMPORTED",
         "INFO_KEY",
@@ -522,7 +619,6 @@
         "EVENT_KEY_AFTER": "'then'",
         "DECIDED_BY_KEY": "'by'",
         "ALSO_KEY": "'also'",
-        "DAY_KEY": "'day'",
         "OP_MOVE": "'move'",
         "OP_COPY": "'copy'",
         "OP_REMOVE": "'remove'",
@@ -531,6 +627,7 @@
         "RULES_KEY": "'rules'",
         "REMOVED_KEY": "'removed'",
         "INFO_KEY": "'info'",
+        "HOUSEHOLD_KEY": "'household'",
         "PRESERVED": "'preserved'",
         "FILED": "'filed'",
         "PARKED": "'parked'",
@@ -545,6 +642,7 @@
         "KEYWORD_LEARNED": "'keyword_learned'",
         "KEYWORD_UNLEARNED": "'keyword_unlearned'",
         "RULES_CHANGED": "'rules_changed'",
+        "HOUSEHOLD_CHANGED": "'household_changed'",
         "RULES_IMPORTED": "'rules_imported'",
         "DRAFTED": "'drafted'",
         "ASKED_KEY": "'asked'",
@@ -565,8 +663,8 @@
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "32f35969e0ae486e",
-      "lines": 348,
+      "sha256": "0e27924f2c40cc84",
+      "lines": 349,
       "exports": [
         "EngagementLock",
         "EngagementLockedError",
@@ -804,8 +902,8 @@
       "id": "tracker/records.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e3335e42d4553522",
-      "lines": 693,
+      "sha256": "385128bbe4735a04",
+      "lines": 801,
       "exports": [
         "BEHIND",
         "CANDIDATE_SEP",
@@ -818,9 +916,14 @@
         "EVIDENCE_CONTENT",
         "EngagementInfo",
         "Evidence",
+        "HOUSEHOLD_FIELDS",
+        "HOUSEHOLD_LABELS",
+        "HouseholdInfo",
         "INDEX_COLUMNS",
         "IndexEntry",
         "NO",
+        "RETURN_NAME_HELP",
+        "RETURN_NAME_LABEL",
         "RULE_ANY",
         "RULE_DATE",
         "RULE_FILENAME",
@@ -840,6 +943,8 @@
         "entry_from_json",
         "entry_to_json",
         "format_evidence",
+        "household_from_json",
+        "household_to_json",
         "identifier_key",
         "info_from_json",
         "info_to_json",
@@ -868,7 +973,9 @@
         "CANDIDATE_SEP": "', '",
         "EVIDENCE_CONTENT": "'content'",
         "YES": "'yes'",
-        "NO": "'no'"
+        "NO": "'no'",
+        "RETURN_NAME_LABEL": "'Return'",
+        "RETURN_NAME_HELP": "\"the return's folder name, form first; the same name every year\""
       },
       "role": "The record types every layer above names, and each one's own serialisation: IndexEntry with INDEX_LAYOUT (the index's columns, header and width per field), Evidence with the one cell format format_evidence() writes and parse_evidence() reads back, Routing (where one dropped file belongs and why), EngagementInfo with ENGAGEMENT_FIELDS / LABELS / HELP / NOTES, ENGAGEMENT_EDITABLE (the details a person may change in the app's editor) and DATE_FIELDS (which of them are dates), StatusUpdate, the rule row's RULE_FIELDS with rule_to_json() / rule_from_json(), entry_to_json() / entry_from_json() for a row as it is stored, ledger_key() for the identity a row is recorded under, and THE_RECORD - the phrase standing rule 2 is worded in.",
       "notes": "Decision 100, the structural review's D4: each record lived in whichever module wrote it first, so a module that only wanted to NAME a row had to import the one that walks folders and takes the engagement lock to produce it. Nothing here reads a file, takes a lock or knows where an engagement folder is - values in, values out - which is why it imports nothing of the package at all and every layer above can name a record without loading its writer. tracker/manifest.py imports it, an in-layer edge and the only one that way round; tests/test_layers.py pins both halves. What did NOT move: RequestItem stays in the manifest because it is the schema of the list a person edits, made out of plain values with that module's defaults and validation, and means nothing away from it; FileError, FileReport and ContentResult stay where they are because they are one run's report of what it did, never stored. COL_IDENTIFIER is here rather than beside the manifest's other column headers because the request list and the index are joined by that header. The names a module still reads are re-exported from it (tests/test_records.py pins each as this module's own object); the manifest's copies of the details' field table and the yes/no words went with decision 104, because nothing read them from there. The store of decision 101 reads and writes these records from here, never from tracker/filer.py. Decision 102: THE_RECORD is here because standing rule 2 says a move is recorded in the record and the record is the journal and the store together. Decision 103: the rule half of a request row travels in the journal, so RULE_FIELDS and its two serialisers are here - the serialisation is a fact about the record, the parsing a fact about the list. Decision 104: ENGAGEMENT_EDITABLE names the details the editor may change (not the name - the folder is the name; not Rolled From - the rollover writes it; not the form - recorded once), and info_from_json() and the store's row reader hand the yes/no fields back as booleans, which the gate found they had not been while a workbook was the reader's source. Decision 109: as_pattern() is here - a note's template turned into the pattern that reads its own sentence back, every word escaped and every {name} the pattern given for it. It came from the scanner, which has read the regression sentence back this way since decision 108, because how a sentence the machine wrote is read is a fact about the shape it was stored in; the filer derives moved_to()'s pattern from the same function, so two readers share one derivation and neither retypes a word. It is why this module imports re, and it still reaches for nothing in the package. Decision 117: DATE_FIELDS is the one answer to which details are dates - the record's own serialisers, the API's reading of a wizard or editor spec and the editor's choice of box all read it instead of naming due, so the Filing Deadline added beside the Due Date cost one line in each. The deadline is the year's and the rollover clears it; the firm's phone is NOT a detail at all, because it belongs to the firm and not to an engagement."
@@ -877,39 +984,57 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1e74eec3df7db279",
-      "lines": 362,
+      "sha256": "112457a1242dfc28",
+      "lines": 658,
       "cli": "python -m tracker.registry",
       "exports": [
         "Engagement",
+        "Household",
         "LEGACY_FOLDER",
         "LEGACY_MANIFEST_FILENAME",
         "MAX_DEPTH",
+        "MISFIT_NOT_A_TREE",
+        "MISFIT_NOT_A_YEAR",
+        "MISFIT_NO_HOUSEHOLD_RECORD",
+        "MISFIT_NO_RETURN",
+        "MISFIT_RECORD_MISPLACED",
+        "Misfit",
+        "NAME_DISAGREES",
         "ROLLED_FROM_UNMATCHED",
         "Registry",
         "RegistryError",
         "SKIP_ROLLED_FORWARD",
+        "UNLISTED",
         "discover_engagements",
         "engagement_dirs",
         "engagement_from",
-        "mark_superseded"
+        "household_from",
+        "mark_superseded",
+        "record_dirs"
       ],
       "constants": {
         "LEGACY_MANIFEST_FILENAME": "'_manifest.xlsx'",
         "LEGACY_FOLDER": "'holds a request list in a workbook the tracker no longer reads ({name}) and no record; set the engagement up again in the app'",
         "SKIP_ROLLED_FORWARD": "'rolled forward into {successor}'",
         "ROLLED_FROM_UNMATCHED": "'Rolled From names {rolled_from!r}, which matches no engagement the run can read under this root; whichever engagement that was is not retired'",
-        "MAX_DEPTH": "4"
+        "MAX_DEPTH": "4",
+        "MISFIT_NOT_A_TREE": "'is not one of the two trees the tracker reads ({clients} and {private}); left alone'",
+        "MISFIT_RECORD_MISPLACED": "'holds a record in the layout before decision 125; set the household up again in the app and drop the originals into its inbox'",
+        "MISFIT_NO_HOUSEHOLD_RECORD": "'sits where a household would but holds no household record the tracker can read; set the household up in the app'",
+        "MISFIT_NOT_A_YEAR": "'sits where a year folder would but is not named as a four-digit year; left alone'",
+        "MISFIT_NO_RETURN": "'holds no return the tracker can read'",
+        "UNLISTED": "'could not be listed ({error})'",
+        "NAME_DISAGREES": "'the folder is named {folder} but its record says {recorded}; the record wins and nothing is renamed'"
       },
       "role": "Finds every engagement under the clients root: any folder holding the engagement's record (ledger.LEDGER_FILENAME), without descending into one. Reads each record's details for client, link, due, sender, firm, reminders and active. A folder holding only the workbook the tracker no longer reads (LEGACY_MANIFEST_FILENAME) and no record is terminal too and is listed as a legacy folder (LEGACY_FOLDER), never as an engagement. There is no registry file.",
-      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, a record the readers refuse is listed with its problem rather than dropped, and a root with no engagement at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's details are the record. Engagement wraps EngagementInfo and delegates its fields rather than copying them. Decision 66: _same_folder() matches Rolled From by the client and engagement folder names when the absolute path no longer resolves. Decision 67: _prior_of() never compares an engagement with itself and matches the engagement sharing the most trailing names only when it is the only one; _walk_engagements() lists a folder it could not read as a problem row, never a silence. Decision 68: a Rolled From that matches nothing is a warning the engagement carries (ROLLED_FROM_UNMATCHED); a problem row is never the prior. Decision 104: discovery is by the journal, not by a workbook; engagement_from() reads the details and the rules through the store, catching ManifestError, LedgerError and StoreError - and, named by type, any other exception one synced record raises - into the problem, so one folder cannot end the pass inside discovery; a folder whose record carries no rules beside the legacy workbook is listed the same way as one with no record (an engagement created before decision 103 whose rules never reached the journal). Nothing imports such a folder, by the owner's word: it is set up again in the app. This is the one reader of LEGACY_MANIFEST_FILENAME in the package. It imports store and ledger (L1) from L3, which the layers allow."
+      "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, depth is capped at MAX_DEPTH, a record the readers refuse is listed with its problem rather than dropped, and a root with no engagement at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's details are the record. Engagement wraps EngagementInfo and delegates its fields rather than copying them. Decision 66: _same_folder() matches Rolled From by the client and engagement folder names when the absolute path no longer resolves. Decision 67: _prior_of() never compares an engagement with itself and matches the engagement sharing the most trailing names only when it is the only one; the walk lists a folder it could not read as a problem row, never a silence (decision 125 turned it into the positional _walk_root()/_walk_private()/_walk_household()/_walk_year(), and a folder it cannot list is the UNLISTED misfit). Decision 68: a Rolled From that matches nothing is a warning the engagement carries (ROLLED_FROM_UNMATCHED); a problem row is never the prior. Decision 104: discovery is by the journal, not by a workbook; engagement_from() reads the details and the rules through the store, catching ManifestError, LedgerError and StoreError - and, named by type, any other exception one synced record raises - into the problem, so one folder cannot end the pass inside discovery; a folder whose record carries no rules beside the legacy workbook is listed the same way as one with no record (an engagement created before decision 103 whose rules never reached the journal). Nothing imports such a folder, by the owner's word: it is set up again in the app. This is the one reader of LEGACY_MANIFEST_FILENAME in the package. It imports store and ledger (L1) from L3, which the layers allow."
     },
     {
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "77b3f23802114c4d",
-      "lines": 1778,
+      "sha256": "dac5bcd0e962d873",
+      "lines": 1786,
       "cli": "python -m tracker.reminder",
       "exports": [
         "AMBIGUOUS_HOLD",
@@ -1135,8 +1260,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f30faeb287bf8ae6",
-      "lines": 454,
+      "sha256": "0e68b1126f7ed2ac",
+      "lines": 480,
       "cli": "python -m tracker.rollover",
       "exports": [
         "NOT_APPLICABLE_NOTE",
@@ -1200,8 +1325,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c3679062c4fa1272",
-      "lines": 1054,
+      "sha256": "f4d5bc8680117c56",
+      "lines": 1222,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -1210,6 +1335,7 @@
         "EngagementRun",
         "LOG_FILENAME",
         "LOG_FLAG",
+        "MISFIT_COLUMNS",
         "NOTHING_OUTSTANDING",
         "ParkedFile",
         "RECORD_UNREADABLE",
@@ -1227,12 +1353,15 @@
         "STATUS_GENERATED",
         "STATUS_HELD",
         "STATUS_INDEX_UNREADABLE",
+        "STATUS_MISFITS_HEADING",
         "STATUS_NOTHING_PARKED",
         "STATUS_NOT_PASSED",
+        "STATUS_NO_MISFITS",
         "STATUS_NO_PROBLEMS",
         "STATUS_PAGE_FILENAME",
         "STATUS_PROBLEMS_HEADING",
         "STATUS_REVIEW_HEADING",
+        "TWO_OPEN_YEARS",
         "VIEW_NOT_REGENERATED",
         "WEEKDAY_NAMES",
         "append_log",
@@ -1243,6 +1372,7 @@
         "last_drafted",
         "main",
         "run_engagement",
+        "run_household",
         "run_registry",
         "should_draft",
         "skipped_because",
@@ -1264,12 +1394,16 @@
         "STAGE_NOTE": "'stage {n}'",
         "RECORD_UNREADABLE": "'the record could not be read: {problem}'",
         "VIEW_NOT_REGENERATED": "'status report open (not regenerated)'",
+        "TWO_OPEN_YEARS": "'two years are open in this household ({years}); nothing is sorted from its inbox until one is retired in the editor'",
         "STATUS_GENERATED": "'Generated {stamp}'",
         "STATUS_ENGAGEMENTS_HEADING": "'Engagements'",
         "STATUS_REVIEW_HEADING": "'Waiting for a person'",
         "STATUS_PROBLEMS_HEADING": "'Problems'",
         "STATUS_NOTHING_PARKED": "'Nothing is waiting for a person.'",
         "STATUS_NO_PROBLEMS": "'Nothing failed.'",
+        "STATUS_MISFITS_HEADING": "'Folders the tracker leaves alone'",
+        "STATUS_NO_MISFITS": "'Every folder fits the layout.'",
+        "MISFIT_COLUMNS": "('Folder', 'Why it is left alone')",
         "STATUS_NOT_PASSED": "'not this pass'",
         "STATUS_HELD": "'held ({n})'",
         "STATUS_INDEX_UNREADABLE": "'{label}: the index could not be read ({error})'",
@@ -1282,40 +1416,32 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0e392814605e2192",
-      "lines": 292,
+      "sha256": "e07d0c47a2ccf3b3",
+      "lines": 443,
       "cli": "python -m tracker.scaffold",
       "exports": [
-        "PBC_DIR_NAME",
-        "PREPARED_DIR_NAME",
+        "HouseholdScaffold",
         "README_HEADING",
-        "README_NAME",
-        "REVIEW_DIR_NAME",
-        "SHARED_DIR_NAME",
         "ScaffoldResult",
         "assign_folders",
         "folder_name_for",
         "matches_identifier",
         "sanitize_component",
-        "scaffold_engagement"
+        "scaffold_engagement",
+        "scaffold_household"
       ],
       "constants": {
-        "SHARED_DIR_NAME": "'Shared'",
-        "README_NAME": "'_README.txt'",
-        "README_HEADING": "'WHAT WE STILL NEED'",
-        "PBC_DIR_NAME": "'PBC'",
-        "PREPARED_DIR_NAME": "'Prepared'",
-        "REVIEW_DIR_NAME": "'00 - Needs Review'"
+        "README_HEADING": "'WHAT WE STILL NEED'"
       },
-      "role": "Turns an engagement's request list, read from the record, into folders: Shared/ (the client's one drop folder) + Shared/PBC/, and Prepared/<folder_name_for(item)>/ plus 00 - Needs Review. Writes the client's _README.txt.",
-      "notes": "Also the home of the folder-name constants every other module imports: SHARED_DIR_NAME, PBC_DIR_NAME, PREPARED_DIR_NAME, REVIEW_DIR_NAME (the request list's own file name left with decision 104; there is no such file). Runs on every scheduled pass now, so a row added in the app has its folder by the next run; the README is rewritten only when its text changed. The README contact comes from the engagement's details in the record (firm, else sender) unless given. Decision 61: the README is written whole and a failure to refresh it is a log line, never the end of a pass. Decision 89: the view's own file name lives in tracker/view.py with the module that writes it, as the record's does in tracker/ledger.py - one owner, the writer. Decision 104: it reads through manifest.load_manifest() and manifest.load_engagement_info(), which follow the journal into the store, so it is a reader of tracker.db like every other."
+      "role": "Turns a return's request list, read from the record, into folders. DECISION 125 - THE HOUSEHOLD'S CLIENT SIDE AND THE RETURN'S FIRM SIDE: scaffold_household() makes the household's folder in the client tree, its one permanent inbox and one folder per open tax year of originals, and writes the client's _README.txt in that inbox, listing what each return of the open year still needs under its own sub-heading; with two open years it writes nothing new, because the pass sorts nothing from an inbox that cannot say which year a document is for. scaffold_engagement() makes the return's Prepared/<folder_name_for(item)>/ plus 00 - Needs Review, and lays out its household too, so a return made on its own still has its inbox and its year folder.",
+      "notes": "The folder-name constants it used to own moved to tracker/layout.py with decision 125 - PREPARED_DIR_NAME, REVIEW_DIR_NAME, README_NAME, the two trees and the inbox - and SHARED_DIR_NAME and PBC_DIR_NAME went with the shape they named; this module imports them like everyone else and owns only what it builds (the request list's own file name left with decision 104; there is no such file). Runs on every scheduled pass now, so a row added in the app has its folder by the next run; the README is rewritten only when its text changed. The README contact comes from the engagement's details in the record (firm, else sender) unless given. Decision 61: the README is written whole and a failure to refresh it is a log line, never the end of a pass. Decision 89: the view's own file name lives in tracker/view.py with the module that writes it, as the record's does in tracker/ledger.py - one owner, the writer. Decision 104: it reads through manifest.load_manifest() and manifest.load_engagement_info(), which follow the journal into the store, so it is a reader of tracker.db like every other."
     },
     {
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "239dadcd4e255c13",
-      "lines": 728,
+      "sha256": "a53323b0d0b19a86",
+      "lines": 729,
       "cli": "python -m tracker.scanner",
       "exports": [
         "ACCEPTED_NOTE",
@@ -1345,7 +1471,7 @@
         "REGRESSION_FILES_CHANGED": "'files changed'"
       },
       "role": "The orchestrator: walks Prepared/, runs the three validation tiers, resolves each row's status (override- and revert-aware), and RECORDS the result - one scanned event through store.record(), under the pass's lock, only for what changed. It never writes the request list (decision 103).",
-      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the request list only once it has it, so a sort that finished in between is never invisible to the scan. Never touches Shared/ at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). Reads each document through content_check.extract(), the same reading the router made of it as a drop, and usually finds the router's verdict already among the engagement's verdicts in the store; one PdfVerdictCache per scan. _resolve_status() is the status rule and _received_date() the Received-Date rule, named so _scan_item() reads as the three tiers and then the two decisions. A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED - decided on the pass the row leaves Received, when the record's count is still the Received one, and carried from the last note by _regression_why() on every pass after, because the regressed count would call every lost file a raised count (decision 108); a note with no regression sentence reads as REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them. Decision 54's claim now rests on the record: the Received Date the last scan stamped is carried, not re-stamped, and a regression is measured from the status the record holds, because that is where a status is. Decision 103: _record_the_statuses() is the one write - one call, one transaction, and nothing at all when the pass found the engagement as it left it (ScanReport.recorded says how many). The scan calls filer.ensure() first, inside its own lock, so the store holds the engagement it is about to record to and the rules it works from are the ones the record holds (decision 104: the ones the app's editor last saved). Nothing but the record is written by a pass. Decision 58: a working copy the index says a person filed (ASSIGNED_BY_PERSON) is counted without the content rules (ACCEPTED_NOTE); the scan reads the index for that, and writes only the record and the engagement's verdicts in the store. Decision 60: a person's acceptance is the newest row for the location and its recorded bytes. Decision 62: a person's filing waives tier 2 too. Imports the filer's index reader at call time; the filer imports this module at call time inside _rescan() - the deliberate cycle, stated on the filer's node. Decision 109: the scan reads the index once (_the_index()) and acts on what the filer's sweep decided under the same lock - it writes no row of its own. _wandered() is the paths FILE_MOVED rows name as their copies' whereabouts, and _scan_item() drops those from a request's files before the tiers, because a mislaid copy is not the request's whatever its bytes say; _claimed_paths() is every working copy the record names, newest row per location, and a claimed path holding other bytes is _a_stranger_at(), written as reasons.COPY_CHANGED on the row and by _changed_copy_warnings() on ScanReport.warnings (decision 3 extended: the status is still what the files earn). A FILE_MOVED row whose home is under one of this request's folders writes reasons.FILE_MOVED. Both facts go in after FOLDERS_NOTE and before the failures, so the note's cut can never take a firm-side marker off the end, and neither is a failure - a moved copy leaves the request Missing, not Failed Validation. _filed_by_a_person() and the de-duplication hash through ContentCache.digest_of() now, so this module holds no sha256_of at all, and prune() keeps every file under Prepared/ rather than only what a request claims - a memo dropped for a parked copy or a stray was a file read again every pass. the pattern helper moved down to tracker/records.py as as_pattern(), where both readers of a written sentence share it; the regression read-back of decision 108 is unchanged. Decision 119: _interrupted() is the second thing the scan keeps out of a request's count - where a step that died half way was putting a working copy, and the sentence the row it parked carries. The wreck of a copy the power cut in half is nobody's document, so it is not counted and the row's own firm-side sentence goes on the request instead, which is what makes the request read Missing rather than Failed Validation for a document the client sent perfectly well."
+      "notes": "Holds the per-engagement lock through engagement_lock() - the same context manager the filer uses - and reads the request list only once it has it, so a sort that finished in between is never invisible to the scan. Never touches the household's inbox at all. The lock itself lives in tracker.locking (ScanLockedError is an alias of EngagementLockedError). Reads each document through content_check.extract(), the same reading the router made of it as a drop, and usually finds the router's verdict already among the engagement's verdicts in the store; one PdfVerdictCache per scan. _resolve_status() is the status rule and _received_date() the Received-Date rule, named so _scan_item() reads as the three tiers and then the two decisions. A Received row whose Expected Count was raised says so instead of REGRESSION_FILES_CHANGED - decided on the pass the row leaves Received, when the record's count is still the Received one, and carried from the last note by _regression_why() on every pass after, because the regressed count would call every lost file a raised count (decision 108); a note with no regression sentence reads as REGRESSION_FILES_CHANGED. An Accepted row is written Received with a date (decision 33); ScanReport.summary is the one count. No Unfiled sheet: the index records parked files; ScanReport.warnings names loose files and unrecognised folders in Prepared/, and ScanReport.summary is summarize() over the rows as the scan leaves them. Decision 54's claim now rests on the record: the Received Date the last scan stamped is carried, not re-stamped, and a regression is measured from the status the record holds, because that is where a status is. Decision 103: _record_the_statuses() is the one write - one call, one transaction, and nothing at all when the pass found the engagement as it left it (ScanReport.recorded says how many). The scan calls filer.ensure() first, inside its own lock, so the store holds the engagement it is about to record to and the rules it works from are the ones the record holds (decision 104: the ones the app's editor last saved). Nothing but the record is written by a pass. Decision 58: a working copy the index says a person filed (ASSIGNED_BY_PERSON) is counted without the content rules (ACCEPTED_NOTE); the scan reads the index for that, and writes only the record and the engagement's verdicts in the store. Decision 60: a person's acceptance is the newest row for the location and its recorded bytes. Decision 62: a person's filing waives tier 2 too. Imports the filer's index reader at call time; the filer imports this module at call time inside _rescan() - the deliberate cycle, stated on the filer's node. Decision 109: the scan reads the index once (_the_index()) and acts on what the filer's sweep decided under the same lock - it writes no row of its own. _wandered() is the paths FILE_MOVED rows name as their copies' whereabouts, and _scan_item() drops those from a request's files before the tiers, because a mislaid copy is not the request's whatever its bytes say; _claimed_paths() is every working copy the record names, newest row per location, and a claimed path holding other bytes is _a_stranger_at(), written as reasons.COPY_CHANGED on the row and by _changed_copy_warnings() on ScanReport.warnings (decision 3 extended: the status is still what the files earn). A FILE_MOVED row whose home is under one of this request's folders writes reasons.FILE_MOVED. Both facts go in after FOLDERS_NOTE and before the failures, so the note's cut can never take a firm-side marker off the end, and neither is a failure - a moved copy leaves the request Missing, not Failed Validation. _filed_by_a_person() and the de-duplication hash through ContentCache.digest_of() now, so this module holds no sha256_of at all, and prune() keeps every file under Prepared/ rather than only what a request claims - a memo dropped for a parked copy or a stray was a file read again every pass. the pattern helper moved down to tracker/records.py as as_pattern(), where both readers of a written sentence share it; the regression read-back of decision 108 is unchanged. Decision 119: _interrupted() is the second thing the scan keeps out of a request's count - where a step that died half way was putting a working copy, and the sentence the row it parked carries. The wreck of a copy the power cut in half is nobody's document, so it is not counted and the row's own firm-side sentence goes on the request instead, which is what makes the request read Missing rather than Failed Validation for a document the client sent perfectly well."
     },
     {
       "id": "tracker/scheduling.py",
@@ -1409,7 +1535,7 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "aa5f12d6131dc9e9",
+      "sha256": "941a0127f98c81d4",
       "lines": 233,
       "cli": "python -m tracker.settings",
       "exports": [
@@ -1448,7 +1574,7 @@
         "KEY_FIRM": "'firm'",
         "KEY_FIRM_PHONE": "'firm_phone'",
         "SET_ROOT_HINT": "'python -m tracker.settings <folder>'",
-        "EXAMPLE_ROOT": "'D:\\\\OneDrive\\\\Clients'",
+        "EXAMPLE_ROOT": "'G:\\\\Shared drives\\\\Clients'",
         "ENV_SETTINGS_DIR": "'TRACKER_SETTINGS_DIR'",
         "ENV_PRODUCT_NAME": "'TRACKER_PRODUCT_NAME'",
         "ENV_REAL_CORPUS": "'TRACKER_REAL_CORPUS'",
@@ -1466,8 +1592,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "738713a57be20ce8",
-      "lines": 1865,
+      "sha256": "f896c36a67cd9572",
+      "lines": 2056,
       "cli": "python -m tracker.store",
       "exports": [
         "BUSY_TIMEOUT_MS",
@@ -1478,6 +1604,10 @@
         "ENV_STORE",
         "FILE_MEMOS_TABLE",
         "FORMULA_LEADS",
+        "HOUSEHOLD_COLUMNS",
+        "HOUSEHOLD_PREFIX",
+        "KIND_HOUSEHOLD",
+        "KIND_RETURN",
         "MALFORMED_LINE",
         "REQUESTS_CSV",
         "SCHEMA_VERSION",
@@ -1499,7 +1629,9 @@
         "follow_the_journal",
         "forget",
         "has_rules_event",
+        "household_info",
         "key_root",
+        "kind",
         "last_event",
         "learned_keywords",
         "open",
@@ -1519,10 +1651,13 @@
       "constants": {
         "STORE_FILENAME": "'tracker.db'",
         "ENV_STORE": "'TRACKER_STORE'",
-        "SCHEMA_VERSION": "6",
+        "SCHEMA_VERSION": "7",
+        "KIND_RETURN": "'return'",
+        "KIND_HOUSEHOLD": "'household'",
         "VERDICTS_TABLE": "'verdicts'",
         "FILE_MEMOS_TABLE": "'file_memos'",
         "BUSY_TIMEOUT_MS": "5000",
+        "HOUSEHOLD_PREFIX": "'household_'",
         "FORMULA_LEADS": "('=', '+', '-', '@', '\\t', '\\r')",
         "MALFORMED_LINE": "'{where}: line {seq} ({event}) {problem}; the journal is not applied past it'",
         "DOCUMENTS_CSV": "'documents.csv'",
@@ -1618,8 +1753,8 @@
       "id": "tracker/view.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fd8856c332de241c",
-      "lines": 695,
+      "sha256": "53dbc8550d98c46c",
+      "lines": 719,
       "cli": "python -m tracker.view",
       "exports": [
         "BADGE_CLASS",
@@ -1645,6 +1780,7 @@
         "ViewError",
         "ViewResult",
         "index_row",
+        "label_of",
         "path_for",
         "read_stamp",
         "render_page",
@@ -1709,8 +1845,8 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "438fc9f646f70ca3",
-      "lines": 1800,
+      "sha256": "323fd8f7951afae0",
+      "lines": 2004,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results, and (decision 104) the request-list editor - the only place a rule is entered. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the wizard's custom-request section (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook. Decision 112: both row builders put the row's sequence number on the <li> (dataset.seq, from state.index[].seq and state.review[].seq) and assignParked(), dismissParked() and unfileDocument() send it back as seq; assignParked's banner shows the API's overrode_shortlist sentence as a warn note beside left_in_review. A refusal goes through refused(): the API's sentence is toasted, the button re-enabled and refresh() re-reads the state, so the card shows the row as the record now holds it. The renderer types no sentence of its own here either. Decision 113: the learned cell is a list rather than a line - learnedCell() draws the API's learned_note and then one span.ed-learned-word per taught keyword, each with its own button.ed-unlearn carrying the identifier and the word - and a click calls the unlearn command, then re-draws only the learned column from the state that comes back (renderLearnedCells), because unlearning is its own event and lands at once while the rows may hold edits the person has not saved. The note area says the API's unlearned_note, and its scan_note under it when the re-scan could not run; the renderer types no word of it. Decision 110: renderMoved() draws #moved-card above the review card from state.moved - one row per moved working copy, its home and where its bytes are now, with restoreMoved (the restore command), keepMoved (assign, with the request the picker was left on and the keyword typed) and reviewMoved (unfile) behind the three buttons, delegated on #moved-list. The picker and the keyword box are shown only where the API said which request's folder holds the copy, and the picker starts on it; every word is vocab.review_labels', including the word for a copy that is nowhere. Decision 114: renderReview() draws the same queue twice - the list in #review-list and, in #review-deck, one card at a time. renderDeck() builds the deck from state.review in the API's order with the rows a person sent to the back after it (skipped, pbc_locations, dropped as soon as a row leaves the queue), shows the first card, and is called again from every render, so a row filed or set aside anywhere else simply leaves the deck and the total is always the queue's. The card shows the row's reason, the top suggestion's sentence under the list's own 'suggested' heading (or the vocabulary's nothing_suggested), the set-aside sentences, a keyword box and the position line; acceptCard() files to the suggestion the card carries, openCardInList() switches to the list and outlines the row, skipCard() reorders and sends nothing. fileRow() is the one place the assign call is made - assignParked(), acceptCard() and keepMoved() all reach it, and a guard in tests/test_single_source.py keeps it the only one, so Accept and File it cannot drift apart. reviewMode is the person's choice of rendering, read and written in localStorage under REVIEW_MODE_STORAGE_KEY inside try/catch (a blocked store leaves the app on the list); it is a key and not a word, and nothing about the deck is recorded (decision 83). Decision 118: renderReminder()/loadReminder()/drawReminder() are the Reminder card - the record's last word on the draft, the four stages as a toggle coloured from the API's palette, the letter drawn from its own shape with el() (never from the clipboard's markup, which would be an HTML string), Copy for Outlook putting text/html and text/plain on the clipboard with the same words, Approve sending back the fingerprint of the text on screen, and Open the draft file on the path state.paths names. The stage a person picked is the only thing the page holds of its own and is dropped when the engagement changes. It types no colour: every hex it draws with is looked up in vocab.reminder.palette by the key a stage carries, and a guard reads the file for one."
     },
@@ -1718,8 +1854,8 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "649727bd3aea016a",
-      "lines": 372,
+      "sha256": "984001c5d408e6bc",
+      "lines": 476,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files. Since decision 104 it holds the request-list editor's modal (#editor), every label of which the renderer fills, and the Edit Request List button (#btn-edit) that opens it; the min of a number input is never typed here."
     },
     {
@@ -1733,16 +1869,16 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "9a2d7549d785c675",
-      "lines": 870,
+      "sha256": "6cb3e6af2adb2100",
+      "lines": 891,
       "role": "Desktop app styling."
     },
     {
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d24c25c9770fdeb6",
-      "lines": 266,
+      "sha256": "6ed3f33d5fa412c0",
+      "lines": 276,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -1750,16 +1886,16 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6058307339c9af6a",
-      "lines": 436,
+      "sha256": "593de506056cbb82",
+      "lines": 458,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "63882d41e5b90a23",
-      "lines": 365,
+      "sha256": "008c12614a82d2b0",
+      "lines": 374,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -1776,8 +1912,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "89c1786fcc1e5d78",
-      "lines": 759,
+      "sha256": "76af1c8b9bff1ba2",
+      "lines": 787,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -1785,8 +1921,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "53e6ea471d747438",
-      "lines": 638,
+      "sha256": "6dfca39c3a39075f",
+      "lines": 720,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -1794,8 +1930,8 @@
       "id": "docs/storage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d417693f1790c46d",
-      "lines": 462,
+      "sha256": "b42c3eb0ab51f388",
+      "lines": 491,
       "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, what each of the four stages took away, and (decision 107) why the verdict cache is in the store and not in the record.",
       "notes": "Written with decision 101 and finished with 104. It is the page to read before touching storage. The migrations of decisions 102 and 103, which it described step by step, are gone from the tree and from this page; the History section says they existed and where their reading copy is."
     },
@@ -1820,8 +1956,8 @@
       "id": "docs/workflow.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9b2fc2980c2c77de",
-      "lines": 208,
+      "sha256": "1726b881006a84de",
+      "lines": 230,
       "role": "How the day-to-day workflow runs."
     },
     {
@@ -1935,12 +2071,6 @@
       "role": "The firm-side working set: renamed copies sorted per request, plus 00 - Needs Review for anything that could not be identified. The client never sees this."
     },
     {
-      "id": "artifact:Shared/",
-      "type": "artifact",
-      "layer": "runtime",
-      "role": "The client's one drop folder \u2014 the only thing they see and the only thing they touch. Their originals end up in Shared/PBC/, still visible to them, untouched."
-    },
-    {
       "id": "artifact:Status Report.html",
       "type": "artifact",
       "layer": "runtime",
@@ -1973,6 +2103,18 @@
       "write_only": true
     },
     {
+      "id": "artifact:the client's folder for the year",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Clients/<Household>/<YYYY>/ - where an original rests after the pass moves it out of the inbox, in the tree the client is shared (decision 125). Flat: one folder per year per household, not sorted by return or by request, because the original's resting place is the record's identity for the document and an original moves exactly once."
+    },
+    {
+      "id": "artifact:the household inbox",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The household's one permanent drop folder, in the tree a client is shared (decision 125) \u2014 the only thing they touch. One per household however many returns it has. Their originals end up in the household's folder for the tax year, beside it, still visible to them and untouched; nothing under that tree is ever a record, a lock, a working copy, a draft or a page."
+    },
+    {
       "id": "artifact:tracker.db",
       "type": "artifact",
       "layer": "runtime",
@@ -1982,29 +2124,41 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b2657c9565c8de70",
-      "lines": 246,
+      "sha256": "a96c5848bf4659ce",
+      "lines": 361,
       "exports": [
+        "TEST_HOUSEHOLD",
+        "TEST_RETURN",
+        "TEST_YEAR",
         "a_store_of_its_own",
         "make_engagement",
         "seed_index",
         "seed_statuses",
+        "short_root",
+        "sort",
+        "sort_all",
         "the_store_agrees_with_the_record",
         "the_view_agrees_with_the_readers"
-      ]
+      ],
+      "constants": {
+        "TEST_HOUSEHOLD": "'Test Household'",
+        "TEST_RETURN": "'1040 - Test Client'",
+        "TEST_YEAR": "2025"
+      }
     },
     {
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "33509cbb2e2cfbec",
-      "lines": 343,
+      "sha256": "970d4c35cd33a8dc",
+      "lines": 356,
       "exports": [
         "DEMO_ITEMS",
         "PRIOR_YEAR",
         "SCRATCH_CLIENT",
-        "SCRATCH_ENGAGEMENT",
         "SCRATCH_FIRM",
+        "SCRATCH_HOUSEHOLD",
+        "SCRATCH_RETURN",
         "YEAR",
         "brokerage_cover_lines",
         "build_samples",
@@ -2023,7 +2177,9 @@
       ],
       "constants": {
         "SCRATCH_CLIENT": "'John A. Smith'",
-        "SCRATCH_FIRM": "'Example CPA'"
+        "SCRATCH_FIRM": "'Example CPA'",
+        "SCRATCH_HOUSEHOLD": "'Smith Family'",
+        "SCRATCH_RETURN": "'1040 - John A. Smith'"
       },
       "role": "The pile of client documents the suite starts from, built from nothing: text_pdf() prints lines to a real one-page PDF, sheet_xlsx() writes rows to a real workbook, and build_samples() assembles the drop folder a client would leave (a duplicate, last year's form, a Word file, a Google Sheets shortcut, a photo, a half-uploaded temp file).",
       "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift. It records the engagement through manifest.create_engagement() directly rather than through the suite's helper, because the build workflow imports this module without conftest (decision 104). openpyxl is imported here to WRITE a client's spreadsheet for the suite to read, which is the one use of it the tree keeps."
@@ -2032,9 +2188,10 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f0457742936af957",
-      "lines": 2258,
+      "sha256": "ed6a0470430d5d30",
+      "lines": 2633,
       "exports": [
+        "HOUSEHOLD",
         "WANDERED",
         "a_moved_row",
         "chased_engagement",
@@ -2045,12 +2202,12 @@
         "sample_engagement",
         "teach",
         "test_a_bad_due_date_is_a_sentence",
+        "test_a_client_of_only_illegal_characters_still_makes_one_folder_name",
         "test_a_count_typed_as_infinity_is_refused_with_the_row_and_column_named",
         "test_a_date_pattern_of_star_survives_an_unchanged_resave",
         "test_a_detail_with_a_line_break_inside_it_is_recorded_on_one_line",
         "test_a_failed_create_leaves_no_folder_and_no_store_row",
         "test_a_held_reminder_shows_no_letter_and_offers_no_action",
-        "test_a_name_of_only_illegal_characters_falls_back",
         "test_a_name_whose_folder_was_deleted_by_hand_can_be_created_again",
         "test_a_new_client_engagement_is_named_from_client_year_and_form",
         "test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing",
@@ -2070,12 +2227,16 @@
         "test_assign_records_the_override_against_the_shortlist_the_api_computed",
         "test_assign_refuses_a_bad_request_with_a_sentence",
         "test_assigning_a_shortlisted_request_files_it_and_the_queue_drops_it",
+        "test_create_adds_a_return_to_an_existing_household_and_leaves_its_record_alone",
         "test_create_builds_the_record_and_folders",
         "test_create_defaults_both_dates_from_the_form_and_the_year_and_leaves_them_editable",
+        "test_create_makes_a_household_and_its_first_return_and_undoes_both_on_failure",
         "test_create_records_the_catalog_the_wizard_chose_and_state_carries_it",
         "test_create_records_the_engagement_details_the_scheduled_run_reads",
         "test_create_refuses_a_duplicate_identifier",
+        "test_create_refuses_a_household_or_return_name_that_is_not_a_folder_name",
         "test_create_refuses_a_non_numeric_count_with_a_sentence",
+        "test_create_refuses_a_return_whose_deepest_path_would_pass_the_limit_and_says_the_length",
         "test_create_refuses_an_identifier_that_cannot_name_a_folder",
         "test_create_shifts_the_checklist_to_the_engagements_year",
         "test_create_then_scan_plays_a_whole_engagement_end_to_end",
@@ -2084,6 +2245,7 @@
         "test_dismiss_records_that_nothing_asks_for_a_parked_document",
         "test_dismiss_refuses_a_file_the_index_does_not_know",
         "test_dismissing_a_file_takes_it_out_of_the_review_queue",
+        "test_edit_household_saves_members_contact_and_link_as_one_event",
         "test_edit_saves_the_list_and_the_details_as_one_event_and_says_what_moved",
         "test_every_chip_class_the_vocabulary_implies_exists_in_the_stylesheet",
         "test_install_schedule_defaults_come_from_scheduling",
@@ -2098,9 +2260,10 @@
         "test_rollover_clears_the_filing_deadline_and_redefaults_it_for_the_new_year",
         "test_rollover_refuses_a_missing_prior",
         "test_rollover_retires_the_prior_in_the_priors_list",
-        "test_rule_two_is_rendered_in_the_record_and_names_no_file",
+        "test_rule_two_names_the_inbox_and_the_years_folder_and_is_quoted_everywhere",
         "test_set_root_records_the_folder_the_job_will_walk",
         "test_state_carries_the_held_rows_and_every_word_is_the_vocabularys",
+        "test_state_carries_the_household_its_open_years_its_returns_and_the_queue_count",
         "test_state_carries_the_path_of_the_practices_status_page",
         "test_state_carries_the_warnings_the_pass_reports",
         "test_state_ships_each_rows_year_for_the_label",
@@ -2108,6 +2271,7 @@
         "test_state_shows_the_status_the_record_holds",
         "test_templates_carries_the_calendars_default_year",
         "test_templates_lists_every_form_with_its_checklist",
+        "test_the_app_lists_misfits_and_households_from_the_same_walk_the_pass_uses",
         "test_the_apps_pass_appends_the_line_the_scheduled_run_appends",
         "test_the_apps_pass_is_the_runners_pass",
         "test_the_apps_pass_regenerates_the_practices_status_page",
@@ -2125,6 +2289,8 @@
         "test_the_renderer_gets_its_vocabulary_from_the_api",
         "test_the_renderer_types_no_unlearn_word",
         "test_the_renderer_types_none_of_the_moved_cards_words",
+        "test_the_returns_details_carry_household_year_and_return_name_and_the_editor_cannot_change_them",
+        "test_the_scan_command_runs_the_household_pass_and_answers_for_the_return_it_was_asked_about",
         "test_the_settings_carry_the_firm_phone_and_the_vocabulary_names_its_box",
         "test_the_state_carries_a_file_moved_row_in_the_index_and_in_no_list",
         "test_the_state_carries_each_rows_evidence_as_data_not_as_a_string",
@@ -2140,15 +2306,19 @@
         "test_unlearn_records_one_event_re_scans_and_the_state_no_longer_lists_the_keyword",
         "test_unlearn_refuses_a_blank_or_unknown_pair_by_name",
         "test_without_a_root_the_app_is_told_to_set_one",
-        "triage_engagement"
-      ]
+        "triage_engagement",
+        "where"
+      ],
+      "constants": {
+        "HOUSEHOLD": "'Test Household'"
+      }
     },
     {
       "id": "tests/test_api_entry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "84175ac3feb22d5e",
-      "lines": 59,
+      "sha256": "88a802308df2d85b",
+      "lines": 60,
       "exports": [
         "REPO",
         "run_entry",
@@ -2208,8 +2378,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "78b92b3a1ba85a6b",
-      "lines": 173,
+      "sha256": "363060c83acae5b3",
+      "lines": 174,
       "exports": [
         "BUILD_SCRIPT",
         "BUILD_WORKFLOW",
@@ -2257,8 +2427,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fd67a3cdcafcb76c",
-      "lines": 833,
+      "sha256": "3fd394bade8ba519",
+      "lines": 834,
       "exports": [
         "TWO_PAGE_W2",
         "an_engagement",
@@ -2318,9 +2488,10 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "69fd0df0cf8b1eae",
-      "lines": 4078,
+      "sha256": "e6bf137876a15275",
+      "lines": 4349,
       "exports": [
+        "BUSINESS",
         "CRASH_POINTS",
         "DAY1",
         "DAY2",
@@ -2344,13 +2515,14 @@
         "honoured_by_the_scan",
         "kept_files",
         "killed_after_ops",
+        "killed_after_the_move",
         "killed_at_the_intent",
         "killed_at_the_record",
-        "location_of",
         "moved_again",
         "moves_made",
         "open_intents",
-        "pbc",
+        "original_at",
+        "originals",
         "prepared",
         "review_dir",
         "seq_of",
@@ -2365,8 +2537,12 @@
         "test_a_destination_holding_other_bytes_is_never_touched_and_the_row_parks_naming_it",
         "test_a_dismiss_and_an_unfile_with_a_stale_seq_refuse_likewise",
         "test_a_document_renamed_in_the_editor_keeps_filing_into_its_existing_folder",
+        "test_a_drop_accepted_by_two_returns_parks_in_the_first_accepting_return_naming_both",
         "test_a_drop_for_a_not_applicable_row_parks_and_nothing_under_the_engagement_is_deleted_or_moved_by_the_override",
+        "test_a_drop_moved_by_a_killed_run_is_sorted_as_a_stray_dated_today",
+        "test_a_drop_no_return_accepts_parks_in_the_first_return_by_name",
         "test_a_drop_still_held_open_is_left_for_the_next_run",
+        "test_a_dry_run_of_the_household_pass_moves_nothing_and_takes_no_lock",
         "test_a_duplicate_rows_own_original_is_watched_like_every_other",
         "test_a_duplicates_reason_of_a_row_with_no_working_copy_says_so",
         "test_a_duplicates_reason_says_filed_only_of_a_filed_row",
@@ -2374,7 +2550,7 @@
         "test_a_failed_record_puts_the_filed_copy_back_where_the_record_says",
         "test_a_failed_record_puts_the_unfiled_copy_back_where_the_record_says",
         "test_a_failure_after_the_move_is_recorded_and_the_rest_still_filed",
-        "test_a_file_dropped_straight_into_pbc_is_filed_and_indexed",
+        "test_a_file_dropped_straight_into_the_years_folder_is_filed_and_indexed",
         "test_a_file_named_like_a_formula_is_recorded_as_its_name",
         "test_a_file_still_being_written_is_reported_as_waiting_not_passed_over",
         "test_a_file_under_a_request_folder_matching_no_row_is_said_every_pass_and_never_moved",
@@ -2394,17 +2570,18 @@
         "test_a_parked_copy_dragged_into_a_request_folder_is_file_moved_and_comes_back_as_needs_review",
         "test_a_parked_path_a_later_row_claims_means_the_earlier_copy_is_gone",
         "test_a_pass_killed_between_the_copy_and_the_record_finishes_without_a_second_copy",
-        "test_a_pass_killed_between_the_move_and_the_copy_is_finished_with_the_day_it_started",
         "test_a_pass_that_changed_nothing_records_nothing",
         "test_a_pass_writes_nothing_under_the_clients_root_but_the_record_and_the_page",
         "test_a_person_action_refuses_while_an_intent_is_open_and_the_next_pass_clears_it",
         "test_a_person_filing_dismissing_or_unfiling_is_one_call_each",
         "test_a_persons_filing_moves_the_parked_copy_only_while_it_holds_the_rows_bytes",
         "test_a_persons_filing_of_an_original_recorded_without_its_bytes_records_them",
+        "test_a_persons_filing_unfiling_and_restore_still_work_with_originals_across_the_trees",
         "test_a_persons_keyword_is_recorded_in_the_same_call_as_the_filing",
         "test_a_pick_off_a_non_empty_shortlist_is_recorded_as_an_override_and_a_pick_on_it_is_not",
         "test_a_power_loss_mid_copy_leaves_a_truncated_file_that_is_named_and_the_row_parks",
         "test_a_quiet_pass_appends_no_intent",
+        "test_a_re_send_is_judged_by_whichever_returns_record_holds_the_bytes",
         "test_a_refused_action_leaves_the_file_count_and_every_byte_unchanged",
         "test_a_refused_record_rolls_the_put_back_move_back",
         "test_a_refused_record_still_rolls_the_copy_back_and_leaves_no_intent_open",
@@ -2425,6 +2602,7 @@
         "test_a_second_and_a_third_pass_over_an_unchanged_tree_hash_only_the_pbc_originals",
         "test_a_second_copy_of_a_moved_rows_bytes_does_not_re_point_the_row",
         "test_a_split_rows_second_copy_dragged_away_is_said_on_the_request_that_lost_it",
+        "test_a_stray_no_record_names_is_sorted_like_a_drop_across_the_household",
         "test_a_third_send_of_set_aside_bytes_is_a_duplicate_of_the_parked_row",
         "test_a_working_copy_somebody_re_saved_is_left_where_it_is_and_said_so",
         "test_after_unfiling_the_request_is_not_received_and_the_note_says_why",
@@ -2474,6 +2652,7 @@
         "test_keep_it_here_may_pick_another_request_and_the_wanderer_moves_there",
         "test_name_collision_in_pbc_never_overwrites",
         "test_no_pass_leaves_a_workbook_behind",
+        "test_one_inbox_feeds_every_return_of_the_open_year_and_a_drop_files_where_exactly_one_accepts",
         "test_only_a_name_the_journal_cannot_hold_is_refused",
         "test_pbc_contents_are_never_re_sorted",
         "test_placeholders_are_left_where_they_are",
@@ -2489,6 +2668,7 @@
         "test_put_it_back_restores_every_copy_of_such_a_row",
         "test_put_it_back_with_the_same_bytes_already_home_restores_the_row_and_leaves_the_wanderer_for_a_person",
         "test_read_index_keeps_the_place_of_a_row_that_changed_identity",
+        "test_recovery_of_a_file_intent_locates_an_original_across_the_trees",
         "test_recovery_runs_before_the_sweep_so_an_interrupted_action_is_never_called_a_hand_move",
         "test_rerunning_changes_nothing",
         "test_review_copies_keep_the_clients_own_name",
@@ -2499,8 +2679,10 @@
         "test_the_conservation_helper_holds_across_every_injected_crash_point",
         "test_the_filer_holds_the_engagement_lock",
         "test_the_filer_reads_nothing_before_it_holds_the_lock",
+        "test_the_household_pass_refuses_to_sort_a_return_whose_lock_it_does_not_hold",
         "test_the_moved_sentence_is_read_back_from_any_path",
         "test_the_next_pass_leaves_an_unfiled_original_where_the_row_says",
+        "test_the_originals_folder_is_shared_and_another_returns_original_is_never_a_stray",
         "test_the_routers_candidates_travel_as_data_in_the_index",
         "test_the_same_document_sent_again_after_a_dismissal_parks_again_and_names_the_earlier_decision",
         "test_the_scan_after_a_two_form_split_accepts_the_copy_under_each_request",
@@ -2510,10 +2692,11 @@
         "test_unfiling_something_that_is_not_filed_says_what_it_is",
         "test_unfiling_still_unlearns_nothing",
         "test_unroutable_file_is_preserved_and_parked",
-        "test_what_lies_behind_a_junction_is_not_a_drop"
+        "test_what_lies_behind_a_junction_is_not_a_drop",
+        "two_returns"
       ],
       "constants": {
-        "CRASH_POINTS": "('the intent before the move', 'after the move', 'the intent before the copy', 'after the copy', 'the record of the rows', \"after a person's move\")"
+        "CRASH_POINTS": "('after the move out of the inbox', 'the intent before the copy', 'after the copy', 'the record of the rows', \"after a person's move\")"
       }
     },
     {
@@ -2527,6 +2710,28 @@
         "test_a_failed_save_reports_its_own_error_not_a_locked_temp_file",
         "test_fsio_imports_nothing_of_the_package",
         "test_two_writers_never_share_a_temp_name_and_the_walk_ignores_it"
+      ]
+    },
+    {
+      "id": "tests/test_households.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "9e5b8c618162c560",
+      "lines": 205,
+      "exports": [
+        "ITEMS",
+        "SMITHS",
+        "household",
+        "test_a_folder_with_no_household_record_is_refused_by_name",
+        "test_a_household_journal_folds_the_same_in_the_ledger_and_the_store",
+        "test_a_household_line_of_the_wrong_shape_is_one_folders_problem",
+        "test_a_household_record_is_one_event_and_reads_back",
+        "test_a_household_that_already_has_a_record_is_never_written_over",
+        "test_a_members_list_written_by_hand_as_one_name_is_read_as_one_member",
+        "test_a_return_and_its_household_are_two_rows_of_one_table",
+        "test_household_returns_are_the_returns_under_it_by_year_then_name",
+        "test_open_years_are_the_active_returns_years",
+        "test_saving_a_household_records_only_the_fields_that_moved_or_nothing"
       ]
     },
     {
@@ -2546,8 +2751,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "98d31b98c9d95b8f",
-      "lines": 272,
+      "sha256": "ac54e6d95f710ff7",
+      "lines": 283,
       "exports": [
         "PACKAGE",
         "REPO",
@@ -2567,11 +2772,33 @@
       ]
     },
     {
+      "id": "tests/test_layout.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "1c0b7f677621be1a",
+      "lines": 169,
+      "exports": [
+        "HOUSEHOLD",
+        "RETURN",
+        "ROOT",
+        "test_a_location_is_read_back_lexically_so_a_junction_stays_a_junction",
+        "test_a_location_is_relative_to_the_return_and_posix_on_every_platform",
+        "test_the_deepest_path_is_measured_from_the_return_folder",
+        "test_the_suites_own_short_root_leaves_room_for_the_whole_1040_core_list",
+        "test_the_two_trees_the_inbox_and_the_return_folder_are_named_once",
+        "test_the_whole_1040_core_list_fits_under_the_firms_own_root"
+      ],
+      "constants": {
+        "HOUSEHOLD": "'Park Family'",
+        "RETURN": "'1040 - John & Maria Park'"
+      }
+    },
+    {
       "id": "tests/test_learned_keywords.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f2e0617070db7750",
-      "lines": 295,
+      "sha256": "e8d731253aa2959d",
+      "lines": 337,
       "exports": [
         "CARRIED",
         "REPO",
@@ -2579,6 +2806,7 @@
         "SAID_BY_NOTHING",
         "engagement",
         "line_for",
+        "recorded_root",
         "taught",
         "test_a_keyword_on_a_row_no_catalog_knows_is_a_custom_row",
         "test_a_keyword_the_catalog_already_carries_on_that_row_is_not_learned",
@@ -2607,9 +2835,10 @@
       "id": "tests/test_ledger.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1d0e99cc31408457",
-      "lines": 597,
+      "sha256": "af6853c384a6c9a8",
+      "lines": 601,
       "exports": [
+        "A_ROW_ORIGINAL",
         "DAY1",
         "DAY2",
         "ITEMS",
@@ -2651,7 +2880,10 @@
         "test_the_rollover_reads_last_years_statuses_from_the_record",
         "test_the_statuses_are_built_up_across_the_passes_that_changed_something",
         "test_two_appends_are_two_lines_in_the_order_they_happened"
-      ]
+      ],
+      "constants": {
+        "A_ROW_ORIGINAL": "'../../../../Clients/Smith Family/2025/w2.pdf'"
+      }
     },
     {
       "id": "tests/test_locking.py",
@@ -2680,14 +2912,15 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c3efebfaf49c5be5",
-      "lines": 880,
+      "sha256": "f7e03f0f3dfe1179",
+      "lines": 898,
       "exports": [
         "K1_WORDS",
         "SAMPLE_ITEMS",
         "any_keywords",
         "engagement",
         "k1_rows",
+        "placed",
         "rules_events",
         "taught",
         "test_a_blank_allowed_extensions_means_the_safe_default_not_anything",
@@ -2808,7 +3041,7 @@
       "id": "tests/test_records.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f9dcdb5783ef2d5c",
+      "sha256": "094b73b6d231a260",
       "lines": 244,
       "exports": [
         "A_ROW",
@@ -2832,39 +3065,46 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "58c323f810ffc405",
-      "lines": 252,
+      "sha256": "d53a1cdb3a0a860b",
+      "lines": 441,
       "exports": [
         "ITEMS",
         "make",
-        "test_a_client_folder_the_walk_cannot_list_is_a_problem_row_not_a_silence",
-        "test_a_folder_with_only_a_legacy_workbook_is_not_an_engagement_and_is_named_as_such",
+        "misfits",
+        "root",
+        "test_a_folder_whose_name_disagrees_with_its_record_is_processed_as_the_record_says_and_warned",
+        "test_a_folder_with_only_a_legacy_workbook_is_a_misfit_and_is_never_imported",
+        "test_a_household_folder_the_walk_cannot_list_is_a_misfit_not_a_silence",
+        "test_a_household_with_no_return_anywhere_is_said_and_is_still_a_household",
+        "test_a_rolled_forward_prior_is_retired_across_two_households_with_the_same_return_name",
         "test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves",
         "test_a_rolled_from_that_matches_nothing_is_a_warning_not_a_silence",
         "test_a_root_that_is_not_a_folder_is_an_error",
-        "test_a_root_with_no_engagement_is_an_error_not_a_quiet_no_op",
-        "test_a_year_level_above_the_client_never_retires_the_new_engagement_itself",
+        "test_a_root_with_nothing_under_it_is_an_error_not_a_quiet_no_op",
+        "test_an_engagement_built_without_its_household_reads_it_off_its_own_path",
         "test_an_engagement_is_its_details",
-        "test_an_engagements_own_subfolders_are_never_engagements",
         "test_an_unreadable_record_is_listed_with_its_problem_not_dropped",
-        "test_discovery_is_depth_limited",
-        "test_every_folder_with_a_record_is_an_engagement",
+        "test_discovery_is_positional_and_finds_a_return_only_at_the_fourth_level",
+        "test_every_misfit_is_listed_once_with_its_sentence_and_walked_no_further",
         "test_find_matches_label_or_path",
         "test_hidden_and_underscore_folders_are_skipped",
-        "test_label_falls_back_to_the_folder_name",
-        "test_the_engagement_details_drive_the_run"
+        "test_the_client_tree_is_never_walked",
+        "test_the_engagement_details_drive_the_run",
+        "test_the_label_is_the_household_the_year_and_the_return",
+        "test_the_registry_command_line_prints_households_returns_and_misfits"
       ]
     },
     {
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e1a37d5fd35e1e1f",
-      "lines": 1295,
+      "sha256": "6a20182d4af8271a",
+      "lines": 1301,
       "exports": [
         "DEADLINE",
         "DROPPED",
         "DUE",
+        "LABEL",
         "PHONE",
         "SCANNED",
         "SENDABLE",
@@ -2901,7 +3141,6 @@
         "test_draft_greets_signs_and_counts",
         "test_draft_with_nothing_outstanding_says_so",
         "test_each_stage_writes_its_own_intro_deadline_and_close",
-        "test_engagement_name_defaults_to_the_folder_and_can_be_overridden",
         "test_failures_translate_to_a_plain_instruction",
         "test_internal_vocabulary_never_reaches_the_client",
         "test_multi_file_requests_say_how_many_are_expected",
@@ -2928,6 +3167,7 @@
         "test_the_held_refusal_names_every_held_row_and_writes_nothing",
         "test_the_html_body_says_exactly_what_the_text_body_says",
         "test_the_html_carries_the_stages_colour_inline_and_no_style_block_no_class_and_fetches_nothing",
+        "test_the_letter_names_the_household_the_year_and_the_return_and_can_be_overridden",
         "test_the_letter_structure_flattens_to_the_text_body",
         "test_the_manual_draft_refuses_past_the_gate_with_exit_two",
         "test_the_palette_mirrors_the_design_systems_tokens",
@@ -2943,7 +3183,8 @@
         "the_firm_has_no_phone_unless_a_test_says_so"
       ],
       "constants": {
-        "PHONE": "'(555) 010-2020'"
+        "PHONE": "'(555) 010-2020'",
+        "LABEL": "'Test Household 2025 Smith TY2025'"
       }
     },
     {
@@ -3033,8 +3274,8 @@
       "id": "tests/test_review.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "41126fbb3361ecd9",
-      "lines": 401,
+      "sha256": "56cfc80c8d982b7b",
+      "lines": 397,
       "exports": [
         "DAY1",
         "ITEMS",
@@ -3069,14 +3310,15 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6e60c69e7d2ddc89",
-      "lines": 706,
+      "sha256": "dc85ed10f94753a9",
+      "lines": 849,
       "exports": [
         "PRIOR",
         "TEMPLATE",
         "next_year",
         "prior",
         "rolled_by_id",
+        "rolled_into",
         "run_the_command_line",
         "test_a_derived_year_check_is_not_carried_as_text",
         "test_a_keyword_the_prior_year_was_taught_is_carried_as_an_ordinary_one",
@@ -3095,6 +3337,8 @@
         "test_prior_engagement_is_never_written_to",
         "test_prior_year_beats_the_template",
         "test_relative_periods_roll_too",
+        "test_rollover_refills_the_greeting_and_the_link_from_the_household_where_blank",
+        "test_rollover_rolls_a_return_into_the_next_years_folder_of_the_same_household_under_the_same_name",
         "test_rollover_without_a_template_still_works",
         "test_shift_years_leaves_digits_inside_longer_numbers_alone",
         "test_shift_years_leaves_form_numbers_alone",
@@ -3193,14 +3437,18 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "927daa25d28514cf",
-      "lines": 1109,
+      "sha256": "65d95a2dbb661547",
+      "lines": 1337,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
         "SATURDAY",
         "SUNDAY",
+        "a_household",
+        "a_pass",
+        "api_state",
         "approve_the_standing_draft",
+        "as_engagement",
         "build_chased_engagement",
         "build_engagement",
         "drafted_events",
@@ -3219,6 +3467,7 @@
         "test_a_file_named_like_markup_is_shown_as_a_name_not_rendered",
         "test_a_held_engagement_does_not_stop_the_next_engagements_draft",
         "test_a_held_engagement_writes_no_draft_retires_its_own_stale_draft_and_leaves_an_edited_one",
+        "test_a_lock_held_on_one_return_skips_the_whole_household_and_touches_nothing",
         "test_a_manual_run_drafts_on_a_weekday",
         "test_a_missing_folder_is_recorded_not_raised",
         "test_a_pass_after_a_missed_saturday_writes_the_weeks_draft",
@@ -3229,6 +3478,7 @@
         "test_a_statuses_entry_of_the_wrong_shape_is_one_folders_problem_and_the_pass_goes_on",
         "test_a_weekday_report_says_why_there_are_no_drafts",
         "test_a_weekday_run_files_and_scans_but_writes_no_draft",
+        "test_after_any_pass_nothing_under_the_client_tree_is_a_record_a_copy_a_draft_a_lock_or_a_page",
         "test_always_mode_drafts_on_any_day",
         "test_an_approved_draft_is_not_overwritten_by_the_days_repeat_and_is_superseded_next_week",
         "test_an_approved_draft_survives_a_hold_like_an_edited_one",
@@ -3255,6 +3505,7 @@
         "test_the_draft_day_can_be_moved",
         "test_the_draft_step_hands_the_pass_day_to_the_drafter_and_records_the_stage",
         "test_the_drafted_event_is_written_under_the_pass_lock_and_only_when_something_changed",
+        "test_the_household_pass_takes_every_open_returns_lock_in_name_order_and_releases_them",
         "test_the_log_appends_rather_than_replaces",
         "test_the_log_takes_a_name_utf8_cannot_hold",
         "test_the_page_is_written_even_when_an_engagements_pass_failed",
@@ -3268,15 +3519,16 @@
         "test_the_runner_has_a_main_the_frozen_entry_can_call",
         "test_the_runners_console_guard_is_the_pages",
         "test_the_saturday_run_writes_a_draft",
-        "test_two_ambiguities_one_resolved_still_holds_and_both_resolved_drafts_on_the_next_pass"
+        "test_two_ambiguities_one_resolved_still_holds_and_both_resolved_drafts_on_the_next_pass",
+        "test_two_open_years_sort_nothing_and_say_so_on_every_return"
       ]
     },
     {
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b4f9188c25c542c7",
-      "lines": 227,
+      "sha256": "e6442dde907649a2",
+      "lines": 240,
       "exports": [
         "ITEMS",
         "engagement",
@@ -3284,7 +3536,6 @@
         "test_a_readme_the_client_side_holds_does_not_stop_the_scaffold",
         "test_assign_folders_longest_identifier_wins",
         "test_client_rename_with_prefix_not_duplicated",
-        "test_creates_folders_and_readme",
         "test_each_issuer_gets_its_own_client_folder",
         "test_existing_client_files_never_touched",
         "test_folder_names_are_windows_safe",
@@ -3295,15 +3546,17 @@
         "test_recreates_deleted_folder",
         "test_sanitize_component",
         "test_the_readme_contact_comes_from_the_engagement_details",
-        "test_the_review_folder_is_never_assigned_to_an_identifier"
+        "test_the_readme_names_the_open_year_and_the_household_contact",
+        "test_the_review_folder_is_never_assigned_to_an_identifier",
+        "test_the_scaffold_makes_both_trees_and_writes_the_readme_in_the_inbox_grouped_by_return"
       ]
     },
     {
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "42330758ff66a29a",
-      "lines": 796,
+      "sha256": "4f44f9a788992290",
+      "lines": 795,
       "exports": [
         "DAY1",
         "DAY2",
@@ -3411,8 +3664,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7fcc3ead9534b3cf",
-      "lines": 967,
+      "sha256": "c7aa8ac54ff935f6",
+      "lines": 1012,
       "exports": [
         "CONSOLE_EXEMPT",
         "CONSOLE_GUARDED",
@@ -3426,7 +3679,7 @@
         "test_documents_give_the_settings_hint_the_api_gives",
         "test_documents_name_buttons_by_their_labels",
         "test_documents_name_only_runtime_files_the_code_owns",
-        "test_documents_name_the_engagement_folders_as_the_scaffold_does",
+        "test_documents_name_the_engagement_folders_as_the_layout_does",
         "test_documents_quote_the_any_value_only_as_the_constants_say_it",
         "test_documents_spell_manifest_headers_exactly",
         "test_documents_state_the_naming_pattern_with_the_one_separator",
@@ -3456,6 +3709,7 @@
         "test_the_renderer_names_no_catalog_of_its_own",
         "test_the_renderer_types_no_colour",
         "test_the_renderer_types_no_vocabulary_of_its_own",
+        "test_the_renderers_one_list_writer_flattens_what_it_is_handed",
         "test_the_retired_override_word_survives_only_in_the_decision_logs_history",
         "test_the_review_mode_key_is_a_key_and_not_a_word",
         "test_the_roadmap_names_every_status_in_bold",
@@ -3485,12 +3739,14 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "644baf19ab46976e",
-      "lines": 1108,
+      "sha256": "7edec674757c6a64",
+      "lines": 1198,
       "exports": [
+        "A_ROW_ORIGINAL",
         "DAY1",
         "DAY2",
         "ITEMS",
+        "KEY",
         "REPO",
         "a_pass",
         "a_row",
@@ -3502,7 +3758,9 @@
         "drop",
         "edit_rules",
         "engagement",
+        "id_of",
         "learned",
+        "original_at",
         "recorded_root",
         "root",
         "rows",
@@ -3512,7 +3770,7 @@
         "test_a_folder_nested_under_the_clients_root_is_never_another_engagement",
         "test_a_malformed_unlearn_line_is_refused_by_name",
         "test_a_pass_and_the_command_line_key_one_engagement_the_same_way",
-        "test_a_pass_run_on_one_clients_folder_keys_under_the_recorded_root",
+        "test_a_pass_keys_one_return_the_same_way_whichever_root_is_named",
         "test_a_reader_finding_no_rows_at_all_builds_them_from_the_journal_alone",
         "test_a_rebuild_forgets_the_engagements_verdicts_and_the_next_pass_reads_again",
         "test_a_rebuild_from_the_journal_alone_equals_the_store",
@@ -3522,7 +3780,7 @@
         "test_a_status_the_record_holds_is_in_the_store_and_answers_load_manifest",
         "test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name",
         "test_a_torn_last_line_is_not_replayed_until_it_is_whole",
-        "test_a_version_two_store_is_refused_by_name",
+        "test_a_version_six_store_is_refused_and_rebuilt",
         "test_an_engagement_the_store_has_never_seen_is_said_so_rather_than_passed",
         "test_an_unlearn_deletes_the_row_and_a_rebuild_from_the_journal_agrees",
         "test_check_reports_a_learned_keyword_in_the_store_and_not_in_the_record_and_the_other_way_round",
@@ -3537,6 +3795,7 @@
         "test_remembering_verdicts_refuses_outside_the_lock_and_for_an_unknown_engagement",
         "test_the_check_names_a_move_the_two_sides_do_not_agree_is_open",
         "test_the_check_names_the_engagement_the_row_and_the_field",
+        "test_the_command_line_builds_and_checks_the_household_records_too",
         "test_the_command_line_builds_every_engagement_under_a_root",
         "test_the_command_line_says_a_refused_store_in_one_sentence",
         "test_the_command_line_takes_the_app_folder_the_settings_file_or_the_store_and_refuses_a_typo",
@@ -3554,7 +3813,11 @@
         "test_the_verdict_tables_are_not_in_the_check_and_not_in_the_export",
         "tmp_store",
         "unlearned"
-      ]
+      ],
+      "constants": {
+        "KEY": "'J Park & Associates/Smith Family/2025/1040 - Test Client'",
+        "A_ROW_ORIGINAL": "'../../../../Clients/Smith Family/2025/w2.pdf'"
+      }
     },
     {
       "id": "tests/test_templates.py",
@@ -3615,8 +3878,8 @@
       "id": "tests/test_view.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "619f7e42f89237e3",
-      "lines": 640,
+      "sha256": "e5b2d10989dfacae",
+      "lines": 644,
       "exports": [
         "DAY1",
         "ITEMS",
@@ -3763,8 +4026,8 @@
       "id": "tools/learned_keywords.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "754df9374c591d71",
-      "lines": 444,
+      "sha256": "e3495fc937907b3c",
+      "lines": 451,
       "cli": "python -m tools.learned_keywords",
       "exports": [
         "CARRIED_BY",
@@ -4116,6 +4379,18 @@
     },
     {
       "from": "tests/conftest.py",
+      "to": "tracker/households.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
       "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
@@ -4170,7 +4445,25 @@
     },
     {
       "from": "tests/samples.py",
+      "to": "tracker/households.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
       "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
+      "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -4207,6 +4500,18 @@
     {
       "from": "tests/test_api.py",
       "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tracker/households.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -4590,6 +4895,12 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tracker/content_check.py",
       "type": "exercises",
       "source": "derived"
@@ -4597,6 +4908,12 @@
     {
       "from": "tests/test_filer.py",
       "to": "tracker/fsio.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
+      "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -4715,6 +5032,66 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_households.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
+      "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
+      "to": "tracker/households.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_irs_forms.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -4739,8 +5116,50 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_layout.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_layout.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_layout.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_layout.py",
+      "to": "tracker/layout.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_learned_keywords.py",
       "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/households.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -4759,6 +5178,12 @@
     {
       "from": "tests/test_learned_keywords.py",
       "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_learned_keywords.py",
+      "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -4819,6 +5244,12 @@
     {
       "from": "tests/test_ledger.py",
       "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ledger.py",
+      "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -5076,6 +5507,18 @@
     },
     {
       "from": "tests/test_registry.py",
+      "to": "tracker/households.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_registry.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_registry.py",
       "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
@@ -5088,7 +5531,7 @@
     },
     {
       "from": "tests/test_registry.py",
-      "to": "tracker/runner.py",
+      "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -5137,6 +5580,12 @@
     {
       "from": "tests/test_reminder.py",
       "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
+      "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -5256,6 +5705,12 @@
     },
     {
       "from": "tests/test_review.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
       "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
@@ -5275,12 +5730,6 @@
     {
       "from": "tests/test_review.py",
       "to": "tracker/router.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_review.py",
-      "to": "tracker/scaffold.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -5329,6 +5778,12 @@
     {
       "from": "tests/test_rollover.py",
       "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_rollover.py",
+      "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -5478,7 +5933,19 @@
     },
     {
       "from": "tests/test_runner.py",
+      "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
       "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
+      "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -5538,6 +6005,12 @@
     },
     {
       "from": "tests/test_runner.py",
+      "to": "tracker/view.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
       "to": "tests/conftest.py",
       "type": "imports",
       "source": "derived"
@@ -5558,6 +6031,12 @@
       "from": "tests/test_scaffold.py",
       "to": "pkg:pytest",
       "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scaffold.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
       "source": "derived"
     },
     {
@@ -5605,6 +6084,12 @@
     {
       "from": "tests/test_scanner.py",
       "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scanner.py",
+      "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -5736,6 +6221,12 @@
     },
     {
       "from": "tests/test_single_source.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_single_source.py",
       "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
@@ -5856,6 +6347,12 @@
     },
     {
       "from": "tests/test_store.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_store.py",
       "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
@@ -5881,12 +6378,6 @@
     {
       "from": "tests/test_store.py",
       "to": "tracker/runner.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_store.py",
-      "to": "tracker/scaffold.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -6012,6 +6503,12 @@
     },
     {
       "from": "tests/test_view.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
       "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
@@ -6055,12 +6552,6 @@
     {
       "from": "tests/test_view.py",
       "to": "tracker/runner.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_view.py",
-      "to": "tracker/scaffold.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -6277,6 +6768,18 @@
     {
       "from": "tracker/api.py",
       "to": "tracker/fsio.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "tracker/households.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/api.py",
+      "to": "tracker/layout.py",
       "type": "imports",
       "source": "derived"
     },
@@ -6522,6 +7025,12 @@
     },
     {
       "from": "tracker/filer.py",
+      "to": "tracker/layout.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/filer.py",
       "to": "tracker/ledger.py",
       "type": "imports",
       "source": "derived"
@@ -6576,6 +7085,12 @@
     },
     {
       "from": "tracker/filer.py",
+      "to": "tracker/households.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/filer.py",
       "to": "tracker/page.py",
       "type": "imports_at_call",
       "source": "derived"
@@ -6594,13 +7109,19 @@
     },
     {
       "from": "tracker/filer.py",
-      "to": "artifact:Shared/",
+      "to": "artifact:_ledger.jsonl",
       "type": "reads",
       "source": "curated"
     },
     {
       "from": "tracker/filer.py",
-      "to": "artifact:_ledger.jsonl",
+      "to": "artifact:the client's folder for the year",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/filer.py",
+      "to": "artifact:the household inbox",
       "type": "reads",
       "source": "curated"
     },
@@ -6624,9 +7145,57 @@
     },
     {
       "from": "tracker/filer.py",
+      "to": "artifact:the client's folder for the year",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/filer.py",
       "to": "artifact:tracker.db",
       "type": "writes",
       "source": "curated"
+    },
+    {
+      "from": "tracker/households.py",
+      "to": "tracker/layout.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/households.py",
+      "to": "tracker/records.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/households.py",
+      "to": "tracker/__init__.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/households.py",
+      "to": "tracker/ledger.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/households.py",
+      "to": "tracker/locking.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/households.py",
+      "to": "tracker/manifest.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/households.py",
+      "to": "tracker/store.py",
+      "type": "imports_at_call",
+      "source": "derived"
     },
     {
       "from": "tracker/ledger.py",
@@ -6702,6 +7271,18 @@
     },
     {
       "from": "tracker/registry.py",
+      "to": "tracker/households.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/registry.py",
+      "to": "tracker/layout.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/registry.py",
       "to": "tracker/ledger.py",
       "type": "imports",
       "source": "derived"
@@ -6715,12 +7296,6 @@
     {
       "from": "tracker/registry.py",
       "to": "tracker/records.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/registry.py",
-      "to": "tracker/scaffold.py",
       "type": "imports",
       "source": "derived"
     },
@@ -6763,6 +7338,12 @@
     {
       "from": "tracker/reminder.py",
       "to": "tracker/__init__.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/reminder.py",
+      "to": "tracker/layout.py",
       "type": "imports",
       "source": "derived"
     },
@@ -6948,6 +7529,12 @@
     },
     {
       "from": "tracker/rollover.py",
+      "to": "tracker/layout.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/rollover.py",
       "to": "tracker/page.py",
       "type": "imports_at_call",
       "source": "derived"
@@ -7033,6 +7620,18 @@
     {
       "from": "tracker/runner.py",
       "to": "tracker/fsio.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "tracker/households.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/runner.py",
+      "to": "tracker/layout.py",
       "type": "imports",
       "source": "derived"
     },
@@ -7146,6 +7745,12 @@
     },
     {
       "from": "tracker/scaffold.py",
+      "to": "tracker/layout.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scaffold.py",
       "to": "tracker/manifest.py",
       "type": "imports",
       "source": "derived"
@@ -7160,6 +7765,12 @@
       "from": "tracker/scaffold.py",
       "to": "tracker/validators.py",
       "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scaffold.py",
+      "to": "tracker/households.py",
+      "type": "imports_at_call",
       "source": "derived"
     },
     {
@@ -7188,7 +7799,13 @@
     },
     {
       "from": "tracker/scaffold.py",
-      "to": "artifact:Shared/",
+      "to": "artifact:the client's folder for the year",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "tracker/scaffold.py",
+      "to": "artifact:the household inbox",
       "type": "writes",
       "source": "curated"
     },
@@ -7201,6 +7818,12 @@
     {
       "from": "tracker/scanner.py",
       "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/scanner.py",
+      "to": "tracker/layout.py",
       "type": "imports",
       "source": "derived"
     },
@@ -7459,6 +8082,12 @@
     {
       "from": "tracker/view.py",
       "to": "tracker/fsio.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/view.py",
+      "to": "tracker/layout.py",
       "type": "imports",
       "source": "derived"
     },

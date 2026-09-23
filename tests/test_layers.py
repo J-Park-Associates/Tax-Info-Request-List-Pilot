@@ -54,6 +54,17 @@ is allowed to close.
 record types moved out of the modules that write them, ``records`` imports
 nothing of the package at all, and the manifest names the shapes it loads.
 
+``layout`` joins L0 with decision 125: the shape of the clients root -
+the two trees, the household, the year, the return - and the one way a
+stored path is written and read back. It imports nothing of the package
+and reads no file, so every layer above may ask where a thing belongs
+without reaching for the module that puts it there. ``households`` joins
+L1 beside ``manifest``, which it is the counterpart of - the manifest owns
+a return's list and details, this owns the household's - and it reaches
+``store``, ``ledger`` and ``locking`` at call time for exactly the reason
+the manifest does. ``records`` and ``ledger`` do not import ``layout``:
+they hold no path arithmetic.
+
 ``store`` joins L1 with decision 101 and is deliberately narrower than its
 layer allows: it imports ``records``, ``ledger`` and ``locking`` and
 nothing else of the package, not even the in-layer ``manifest``.
@@ -73,9 +84,9 @@ PACKAGE = REPO / "tracker"
 
 #: Layer -> the modules in it. Every file in tracker/ is in exactly one.
 LAYERS: dict[int, frozenset[str]] = {
-    0: frozenset({"__init__", "reasons", "locking", "page", "fsio", "settings"}),
-    1: frozenset({"ledger", "manifest", "records", "scaffold", "store", "templates",
-                  "validators"}),
+    0: frozenset({"__init__", "reasons", "locking", "page", "fsio", "settings", "layout"}),
+    1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
+                  "templates", "validators"}),
     2: frozenset({"content_check", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     4: frozenset({"runner", "scheduling"}),

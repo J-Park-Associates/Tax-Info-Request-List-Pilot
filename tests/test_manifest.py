@@ -7,7 +7,7 @@ from dataclasses import replace
 
 import pytest
 
-from tests.conftest import make_engagement
+from tests.conftest import TEST_HOUSEHOLD, TEST_RETURN, TEST_YEAR, make_engagement
 from tracker import ledger, store
 from tracker.manifest import (
     COL_DATE_PATTERN,
@@ -79,6 +79,19 @@ SAMPLE_ITEMS = [
 ]
 
 
+def placed(info: EngagementInfo) -> EngagementInfo:
+    """The details as the record holds them once the return exists.
+
+    Creation writes where the return is into its own details - the
+    household, the tax year and the return name (decision 125) - so a
+    record read back carries three fields nobody typed. They are not
+    editable, and ``tests/test_api.py`` is where that is claimed; here they
+    are simply what a round trip has to allow for.
+    """
+    return replace(info, household=TEST_HOUSEHOLD, tax_year=TEST_YEAR,
+                   return_name=TEST_RETURN)
+
+
 @pytest.fixture
 def engagement(tmp_path):
     return make_engagement(tmp_path / "Smith 2025", SAMPLE_ITEMS, scaffold=False)
@@ -135,8 +148,8 @@ def test_an_engagement_is_created_from_a_template_and_read_back_from_the_record_
     [event] = rules_events(folder)
     assert [row["identifier"] for row in event[ledger.RULES_KEY]] == [i.identifier for i in items]
     assert event[ledger.REMOVED_KEY] == []
-    assert event[ledger.INFO_KEY] == info_to_json(EngagementInfo(client="John", form="1040"))
-    assert load_engagement_info(folder) == EngagementInfo(client="John", form="1040")
+    assert event[ledger.INFO_KEY] == info_to_json(placed(EngagementInfo(client="John", form="1040")))
+    assert load_engagement_info(folder) == placed(EngagementInfo(client="John", form="1040"))
 
 
 def test_a_folder_with_no_record_is_not_an_engagement(tmp_path):
@@ -456,10 +469,11 @@ def test_the_engagement_details_round_trip_through_the_record(tmp_path):
                           due=dt.date(2026, 4, 15), sender="Jason Park", firm="J Park",
                           reminders=False, active=True)
     folder = make_engagement(tmp_path / "Smith 2025", SAMPLE_ITEMS, info, scaffold=False)
-    assert load_engagement_info(folder) == info
+    assert load_engagement_info(folder) == placed(info)
     assert [i.identifier for i in load_manifest(folder)] == ["A01", "A02", "B01"]  # the list untouched
 
-    saved = save_rules(folder, load_manifest(folder), replace(info, due=None, client="Jane", active=False))
+    saved = save_rules(folder, load_manifest(folder),
+                       replace(placed(info), due=None, client="Jane", active=False))
     assert saved.recorded and saved.changed == () and set(saved.info_fields) == {"client", "active", "due"}
     loaded = load_engagement_info(folder)
     assert loaded.client == "Jane" and loaded.active is False and loaded.reminders is False
@@ -467,7 +481,11 @@ def test_the_engagement_details_round_trip_through_the_record(tmp_path):
 
 
 def test_a_details_only_edit_is_recorded_as_one(engagement):
-    saved = save_rules(engagement, load_manifest(engagement), EngagementInfo(client="Jane"))
+    # The details the editor sends are the recorded ones with the one box a
+    # person changed: where the return is (decision 125) is not editable, so
+    # it travels back untouched and is not part of what moved.
+    edited = replace(load_engagement_info(engagement), client="Jane")
+    saved = save_rules(engagement, load_manifest(engagement), edited)
     assert saved.recorded and saved.changed == () and saved.removed == ()
     assert saved.info_fields == ("client",)
     assert rules_events(engagement)[-1][ledger.INFO_KEY] == {"client": "Jane"}
@@ -503,7 +521,7 @@ def test_create_records_the_catalog_the_request_list_was_cut_from(tmp_path):
 def test_the_form_a_caller_gives_never_clears_the_one_the_details_carry(tmp_path):
     info = EngagementInfo(client="John Smith", form="1065")
     folder = make_engagement(tmp_path / "S", SAMPLE_ITEMS, info, scaffold=False)
-    assert load_engagement_info(folder) == info          # no form= given; the info's stands
+    assert load_engagement_info(folder) == placed(info)  # no form= given; the info's stands
 
 
 def test_an_engagement_that_never_recorded_a_form_reads_as_unknown(tmp_path):

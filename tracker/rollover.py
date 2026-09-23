@@ -132,13 +132,18 @@ def next_tax_year(prior_year: int) -> int:
     return prior_year + 1
 
 
-def carry_engagement_info(prior: EngagementInfo, *, rolled_from: str) -> EngagementInfo:
+def carry_engagement_info(
+    prior: EngagementInfo, *, rolled_from: str, tax_year: int | None = None
+) -> EngagementInfo:
     """Last year's details as this year's starting point.
 
     The client, the sender, the firm and the reminders decision are about
     the client and carry forward. So does the catalog the list was cut from:
     a returning client files the same return next year, and the rolled list
-    is last year's list. The share link, the due date and the filing
+    is last year's list. So do the household and the return's own name
+    (decision 125): a return keeps its name every year, under the same
+    household, which is what lets one return line be followed and named.
+    The share link, the due date and the filing
     deadline are this year's to set - a statutory date is the year's, and
     one carried forward would put a date twelve months gone into a client's
     reminder (decision 117). The name is never written (the folder is the
@@ -149,10 +154,12 @@ def carry_engagement_info(prior: EngagementInfo, *, rolled_from: str) -> Engagem
     guesses which catalog an older engagement was built from.
 
     The two dates are cleared here and refilled for the target year by
-    :func:`with_default_dates`, whichever way the rollover is run.
+    :func:`with_default_dates`, whichever way the rollover is run. The tax
+    year is the target's, and the caller passes it: it is the year folder
+    the new return is made under.
     """
     return replace(prior, name="", link="", due=None, filing_deadline=None,
-                   active=True, rolled_from=rolled_from)
+                   active=True, rolled_from=rolled_from, tax_year=tax_year)
 
 
 def with_default_dates(info: EngagementInfo, form: str, year: int | None) -> EngagementInfo:
@@ -369,7 +376,6 @@ if __name__ == "__main__":
         description="Build next year's request list from a returning client's prior engagement"
     )
     parser.add_argument("prior_engagement_dir", help="last year's folder (read only)")
-    parser.add_argument("new_engagement_dir", help="folder to create for the new year")
     parser.add_argument("--year", type=int, default=None, help="target tax year")
     parser.add_argument("--form", default="", help="form template used to fill blanks (e.g. 1040)")
     parser.add_argument(
@@ -394,16 +400,36 @@ if __name__ == "__main__":
         include_new=ns.include_new,
     )
 
-    target = Path(ns.new_engagement_dir)
-    target.mkdir(parents=True, exist_ok=True)
+    from tracker.layout import household_name_of, return_dir_for, root_of
     from tracker.manifest import create_engagement, load_engagement_info
 
     # Next year's list, in the record, where the editor shows it: the rows
     # this rollover built and last year's details carried by the one rule.
+    # Resolved before any of the layout's arithmetic: the command line may
+    # be given a relative folder, and where a return sits is read off its
+    # own path (the root is four levels up).
+    prior_dir = result.prior_dir.resolve()
+    prior_info = load_engagement_info(prior_dir)
     carried = carry_engagement_info(
-        load_engagement_info(result.prior_dir),
-        rolled_from=str(result.prior_dir.resolve()),   # the runner's cwd is not this one
+        prior_info,
+        rolled_from=str(prior_dir),                    # the runner's cwd is not this one
+        tax_year=result.target_year,
     )
+    # **The target is computed, never typed** (decision 125). A return
+    # keeps its name every year, under the same household, so the folder
+    # the new year goes in is the layout's answer and not a person's: the
+    # household's folder, the target year, the prior's own return name.
+    if result.target_year is None:
+        parser.error("the prior year could not be read off the list; give --year")
+    target = return_dir_for(
+        root_of(prior_dir),
+        carried.household or household_name_of(prior_dir),
+        result.target_year,
+        carried.return_name or prior_dir.name,
+    )
+    if target.exists():
+        parser.error(f"{target} already exists")
+    target.mkdir(parents=True, exist_ok=True)
     # Last year's dates did not carry, and the new year's are the form's:
     # the catalog the prior recorded, or the one asked for here. The
     # command line defaults them exactly as the app's rollover does, so an
