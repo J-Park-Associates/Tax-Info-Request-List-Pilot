@@ -158,6 +158,247 @@ def test_ocr_text_used_when_available(tmp_path, monkeypatch):
     assert check_content(scan, item(required_keywords=("Chase",))).ok
 
 
+# --------------------------------------- photos, and the page upright ----
+#
+# Decision 127. Every image below is drawn here with Pillow and thrown
+# away with tmp_path: no binary is committed and no client's photo is
+# anywhere near the suite. The engine itself is not needed - what is
+# claimed is which pixels the reading is handed, so the reader and the
+# orientation detector are fakes.
+
+
+def photo(path, words: str = "Form W-2 Wage and Tax Statement", size=(900, 200)):
+    """A photo of a document, in a form's own words."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", size, "white")
+    ImageDraw.Draw(image).text(
+        (20, 60), words, font=ImageFont.load_default(size=40), fill="black",
+    )
+    image.save(path)
+    return path
+
+
+def catching_the_reading(monkeypatch, reading: str = ""):
+    """Hold on to the image ``image_to_string`` is actually handed."""
+    import pytesseract
+
+    seen = {}
+
+    def reader(image, *args, **kwargs):
+        seen["image"] = image
+        return reading
+
+    monkeypatch.setattr(pytesseract, "image_to_string", reader)
+    return seen
+
+
+def test_a_photo_is_read_by_ocr_like_a_scanned_pdf_and_never_has_a_text_layer(tmp_path, monkeypatch):
+    """An image has no text layer to be disappointed by, so it takes the
+    path a scanned PDF takes: unrouted when OCR is withheld, read by OCR
+    when it is not, and the reading is OCR's - which is what keeps
+    decision 50's stricter rule over it."""
+    from tracker.content_check import extract, extract_text
+
+    picture = photo(tmp_path / "w-2.png")
+    assert extract_text(picture) is None                   # never a text layer
+
+    withheld = extract(picture, ocr=False)
+    assert withheld.needs_ocr and withheld.text is None    # a scan, with no words yet
+
+    monkeypatch.setattr("tracker.content_check._ocr_image", lambda p: "Chase Bank December 2025")
+    reading = extract(picture)
+    assert reading.from_ocr and not reading.needs_ocr
+    assert "Chase" in reading.text
+    assert check_content(picture, item(required_keywords=("Chase",))).ok
+
+    # And the machine's two answers are the machine's, for a photo as for a scan.
+    monkeypatch.setattr("tracker.content_check._ocr_image", lambda p: None)
+    no_engine = check_content(picture, item(required_keywords=("Chase",)))
+    assert no_engine.transient and reasons.NO_TEXT_LAYER.matches(no_engine.reason)
+    monkeypatch.setattr("tracker.content_check._ocr_image", lambda p: "   ")
+    assert reasons.NO_TEXT_AFTER_OCR.matches(
+        check_content(picture, item(required_keywords=("Chase",))).reason)
+
+
+def test_exif_rotation_is_undone_before_reading(tmp_path, monkeypatch):
+    """A phone records which way it was held rather than turning the pixels,
+    so the commonest sideways photo there is comes upright for free. It is
+    undone first, before anything else looks at the image."""
+    from PIL import Image, ImageDraw
+
+    from tracker.content_check import _ocr_image
+
+    marked = Image.new("L", (200, 100), 255)
+    ImageDraw.Draw(marked).rectangle([0, 0, 19, 19], fill=0)   # a dark corner, top-left
+    tag = Image.Exif()
+    tag[0x0112] = 6                                            # "turn me a quarter clockwise"
+    picture = tmp_path / "held sideways.png"
+    marked.save(picture, exif=tag)
+
+    seen = catching_the_reading(monkeypatch)
+    monkeypatch.setattr("tracker.content_check._upright", lambda image: image)
+    _ocr_image(picture)
+
+    handed = seen["image"]
+    assert handed.size == (100, 200)                           # turned, not merely flagged
+    assert handed.getpixel((handed.width - 1, 0)) == 0         # the corner came round
+    assert handed.getpixel((0, 0)) == 255
+    assert handed.mode == "L"                                  # greyscaled once, for both readings
+    assert Image.open(picture).size == (200, 100)              # the file on disk is untouched
+
+
+def test_a_sideways_page_is_turned_upright_by_osd_before_reading(tmp_path, monkeypatch):
+    """Tesseract reads a sideways page as nonsense, and its own orientation
+    detector can say which way round it is. When it is sure, that is the
+    turn - applied in memory, never to the file."""
+    import pytesseract
+
+    from tracker.content_check import _ocr_image
+
+    picture = photo(tmp_path / "landscape.png", size=(400, 200))
+    monkeypatch.setattr(pytesseract, "image_to_osd",
+                        lambda image, **kw: {"rotate": 90, "orientation_conf": 5.0})
+    seen = catching_the_reading(monkeypatch, "Form W-2")
+
+    assert _ocr_image(picture) == "Form W-2"
+    assert seen["image"].size == (200, 400)                    # a quarter turn, expanded
+    from PIL import Image
+    assert Image.open(picture).size == (400, 200)              # and nothing written
+
+    # Under the floor the detector is a guess, and a guess decides nothing.
+    monkeypatch.setattr(pytesseract, "image_to_osd",
+                        lambda image, **kw: {"rotate": 90, "orientation_conf": 0.4})
+    monkeypatch.setattr("tracker.content_check._four_way", lambda image: image)
+    _ocr_image(picture)
+    assert seen["image"].size == (400, 200)                    # left as it came
+
+
+def test_when_osd_cannot_say_the_four_way_score_decides_and_a_tie_keeps_the_page_as_it_is(
+    tmp_path, monkeypatch,
+):
+    """With the ``osd`` data missing, or too little text for the detector to
+    speak, the reading itself decides: the page is read four ways and the
+    reading that scored best wins. A tie, and a page nothing can be scored
+    on at all, leave it exactly as it came - a turn the reading did not
+    earn would be a guess."""
+    import pytesseract
+    from PIL import Image
+
+    from tracker.content_check import FOUR_WAY_MIN_WORDS, _upright
+
+    def osd_cannot_say(image, **kw):
+        raise pytesseract.TesseractError(1, "Too few characters. Skipping this page")
+
+    monkeypatch.setattr(pytesseract, "image_to_osd", osd_cannot_say)
+    page = Image.new("L", (400, 200), 255)
+
+    scores = iter([10.0, 90.0, 20.0, 30.0])                    # the second turn reads best
+    def by_turn(image, **kw):
+        confidence = next(scores)
+        return {"text": ["Wage", "and", "Statement"], "conf": [confidence] * 3}
+
+    monkeypatch.setattr(pytesseract, "image_to_data", by_turn)
+    assert _upright(page).size == (200, 400)                   # turned by what it read
+
+    tied = {"text": ["Wage", "and", "Statement"], "conf": [50.0] * 3}
+    monkeypatch.setattr(pytesseract, "image_to_data", lambda image, **kw: tied)
+    assert _upright(page) is page                              # a tie keeps 0
+
+    too_few = {"text": ["W"] * 9, "conf": [99.0] * 9}          # one letter each: not words
+    monkeypatch.setattr(pytesseract, "image_to_data", lambda image, **kw: too_few)
+    assert _upright(page) is page
+    assert FOUR_WAY_MIN_WORDS == 3
+
+    nothing = {"text": ["Wage", "and"], "conf": [99.0, -1.0]}  # -1: no word was made of it
+    monkeypatch.setattr(pytesseract, "image_to_data", lambda image, **kw: nothing)
+    assert _upright(page) is page
+
+
+def test_a_rotated_scanned_pdf_page_goes_through_the_same_upright_step(tmp_path, monkeypatch):
+    """One orientation step, used by both readings: a scanned PDF's page is
+    turned the same way a photo is, which is the half of decision 127 the
+    harness of 2026-09-19 asked for."""
+    import pytesseract
+    from pypdf import PdfWriter
+
+    from tracker.content_check import _ocr_pdf
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=792, height=612)               # landscape, as a sideways scan is
+    scan = tmp_path / "scan.pdf"
+    with scan.open("wb") as fh:
+        writer.write(fh)
+
+    monkeypatch.setattr(pytesseract, "image_to_osd",
+                        lambda image, **kw: {"rotate": 90, "orientation_conf": 5.0})
+    seen = catching_the_reading(monkeypatch, "Form 1099-R")
+
+    assert _ocr_pdf(scan).strip() == "Form 1099-R"
+    handed = seen["image"]
+    assert handed.height > handed.width                        # a portrait page, turned in memory
+    assert handed.mode == "L"
+    assert scan.read_bytes()[:5] == b"%PDF-"                   # the file itself, untouched
+
+
+def test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again(tmp_path):
+    """A verdict reached at version 9 may have been reached on nonsense: the
+    page it was read from was never turned upright. The cache is
+    disposable, so the version moves and the first pass after this
+    decision re-reads those scans once."""
+    assert CACHE_VERSION == 10
+
+    rule = item(required_keywords=("Chase",))
+    engagement = an_engagement(tmp_path, rule)
+    fingerprint = rules_fingerprint(rule)
+    conn = store.connect()
+    engagement_id = store._engagement_row(conn, engagement)["id"]
+    conn.execute(
+        f"INSERT INTO {store.VERDICTS_TABLE} (engagement_id, digest, fingerprint, version, verdict) "
+        "VALUES (?, ?, ?, ?, ?)", (engagement_id, "sideways", fingerprint, 9, '{"ok": true}'))
+
+    assert ContentCache(engagement).get_by_digest("sideways", fingerprint) is None
+
+
+def test_a_slow_reading_is_said_and_never_cut_short(tmp_path, monkeypatch):
+    """The number the reader benchmark and the owner's speed ceiling are
+    measured in. Nothing acts on it: a reading that takes its time is
+    finished, its words are the words the row is decided on, and the run's
+    own line says which document took them."""
+    import time as clock
+
+    from tracker.content_check import extract
+    from tracker.runner import SLOW_READING_NOTE, SLOW_READING_SECONDS
+
+    def a_slow_reader(path):
+        clock.sleep(0.05)
+        return "Chase Bank December 2025, every word of it"
+
+    monkeypatch.setattr("tracker.content_check._ocr_image", a_slow_reader)
+    monkeypatch.setattr("tracker.runner.SLOW_READING_SECONDS", 0.01)
+
+    reading = extract(photo(tmp_path / "slow.png"))
+    assert reading.seconds >= 0.05                             # timed
+    assert reading.text.endswith("every word of it")           # and read to the end
+
+    run = an_engagement_run(slowest=[("slow.png", reading.seconds)])
+    assert SLOW_READING_NOTE.format(name="slow.png", seconds=reading.seconds) in run.summary()
+    assert SLOW_READING_SECONDS == 20.0                        # the shipped threshold
+
+    quiet = an_engagement_run(slowest=[("quick.pdf", 0.001)])
+    assert "slow reading" not in quiet.summary()
+
+
+def an_engagement_run(**kwargs):
+    """One run row, enough of one to read its summary line."""
+    from pathlib import Path
+
+    from tracker.registry import Engagement
+    from tracker.runner import EngagementRun
+
+    return EngagementRun(engagement=Engagement(path=Path("Smith 2025")), **kwargs)
+
+
 # ------------------------------------------------------------------- cache ----
 
 
@@ -238,9 +479,12 @@ def test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save(t
     # year names itself, so a version-7 verdict would say a one-copy W-2
     # is nobody's form. Version 8 was read before decision 90 let a
     # keyword name alternatives, so a version-8 verdict read the "|" and
-    # the "+" in one as words to look for and found neither. The version
-    # is carried per row now (decision 107), and it still means all that.
-    assert CACHE_VERSION == 9
+    # the "+" in one as words to look for and found neither. Version 9 was
+    # read before decision 127 turned a page upright, so a verdict on a
+    # scan that came through it may have been reached on nonsense. The
+    # version is carried per row now (decision 107), and it still means
+    # all that.
+    assert CACHE_VERSION == 10
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")

@@ -133,6 +133,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 from tracker import reasons
@@ -461,8 +462,32 @@ def route_file(
     if stub := google_stub_reason(path):
         return Routing(path=path, identifier=None, reason=stub)
 
-    pdf_cache = pdf_cache or PdfVerdictCache()
     reading = read_once(path) if reading is None else reading
+    # How long the reading took rides back with the decision (decision
+    # 127), so the pass can name its slowest documents. It changes no
+    # decision and cuts no reading short.
+    return replace(
+        _decide(path, items, reading, digest=digest, cache=cache,
+                pdf_cache=pdf_cache or PdfVerdictCache()),
+        seconds=reading.seconds,
+    )
+
+
+def _decide(
+    path: Path,
+    items: list[RequestItem],
+    reading: Extraction,
+    *,
+    digest: str | None,
+    cache: ContentCache | None,
+    pdf_cache: PdfVerdictCache,
+) -> Routing:
+    """Which request a document belongs to, once it has been read.
+
+    :func:`route_file`'s whole decision; split off it only so that every
+    way out of the decision carries the reading's seconds without each
+    ``return`` having to remember to.
+    """
     # A text layer below _MIN_TEXT_CHARS (a scanned form's page breaks, a
     # "Page 1 of 2" stamp) is no reading at all, and neither is a scan OCR
     # could not rescue: with no words there is no candidate, and the file

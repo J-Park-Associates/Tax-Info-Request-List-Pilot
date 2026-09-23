@@ -35,6 +35,10 @@ from backtest import (  # noqa: E402
     OCR_FLAG,
     OUT_FLAG,
     PARKS,
+    READING_IMAGE,
+    READING_KINDS,
+    READING_OCR,
+    READING_TEXT,
     SLOWEST_COUNT,
     BacktestError,
     Outcome,
@@ -163,6 +167,44 @@ def test_the_slowest_documents_are_named_by_row_number_and_nothing_else():
         assert set(entry) == {"row", "seconds"}
 
 
+def test_the_backtest_report_counts_readings_by_kind():
+    """Decision 127. A photo takes the OCR path a scanned PDF takes, and
+    the two cost different amounts of time, so the report splits them:
+    the reader benchmark has to be able to say what a photo costs without
+    a folder of text-layer PDFs flattening the number. Counts only - the
+    split names no document, like everything else here."""
+    outcomes = [
+        Outcome(row=1, catalog="1040", expected="A01", got="A01", no_text=False,
+                seconds=0.1, kind=READING_TEXT),
+        Outcome(row=2, catalog="1040", expected="A01", got="A01", no_text=False,
+                seconds=1.4, kind=READING_OCR),
+        Outcome(row=3, catalog="1040", expected="C01", got="C01", no_text=False,
+                seconds=2.2, kind=READING_IMAGE),
+        Outcome(row=4, catalog="1040", expected=None, got=None, no_text=True,
+                seconds=1.9, kind=READING_IMAGE),
+    ]
+    by_kind = score(outcomes, 5.6)["timing"]["readings_by_kind"]
+    assert by_kind == {READING_TEXT: 1, READING_OCR: 1, READING_IMAGE: 2}
+    assert set(by_kind) == set(READING_KINDS)          # every kind counted, always
+    assert sum(by_kind.values()) == len(outcomes)
+
+
+def test_a_photo_is_read_as_a_photo_and_needs_the_ocr_flag_like_any_scan(tmp_path):
+    """``route_one`` names the reading each document got. An image is its
+    own kind even before anything reads it - it never has a text layer -
+    and without ``--ocr`` it is unrouted, exactly as a scan is."""
+    from PIL import Image
+
+    from tracker.templates import template_items
+
+    photo = tmp_path / "receipt.jpg"
+    Image.new("RGB", (400, 200), "white").save(photo)
+    rows = list(template_items("1040", year=YEAR))
+
+    got, no_text, kind = backtest.route_one(photo, rows, ocr=False)
+    assert got is None and no_text and kind == READING_IMAGE
+
+
 def test_a_disagreement_is_reported_as_the_pair_it_is():
     outcomes = [
         Outcome(row=1, catalog="1040", expected="A01", got="A02", no_text=False, seconds=0.1),
@@ -203,11 +245,11 @@ def test_collect_refuses_to_overwrite_an_expectations_file(tmp_path):
 
 
 def test_collect_writes_only_documents_a_catalog_would_look_at(tmp_path):
-    """A photo is no catalog's business, and the sheet of answers beside
-    the corpus is not a client document however many catalogs take a
-    spreadsheet."""
+    """A file type no catalog row accepts is no catalog's business, and the
+    sheet of answers beside the corpus is not a client document however
+    many catalogs take a spreadsheet."""
     folder = two_documents(tmp_path)
-    (folder / CLIENT_FOLDER / "vacation photo.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"J" * 900)
+    (folder / CLIENT_FOLDER / "vacation photo.bmp").write_bytes(b"BM" + b"J" * 900)
     assert (folder / EXPECTATIONS_FILENAME).is_file()
     assert write_skeleton(folder, folder / "skeleton.csv", "1040", YEAR) == 2
 

@@ -2,11 +2,14 @@
 
 from pathlib import Path
 
+import pytest
 from pypdf import PdfWriter
 
 from tracker import reasons
 from tracker.manifest import RequestItem
 from tracker.validators import (
+    IMAGE_EXTENSIONS,
+    _extension_allowed,
     check_file,
     check_folder,
     is_cloud_placeholder,
@@ -141,6 +144,89 @@ def test_password_protected_pdf_fails(tmp_path):
     locked = write_pdf(tmp_path / "locked.pdf", password="secret123")
     result = check_file(locked, PDF_ITEM)
     assert not result.ok and reasons.PASSWORD_PROTECTED.matches(result.reason)
+
+
+# ------------------------------------------------- photos are documents ----
+#
+# Decision 127. Every image here is made by the test, out of a form's own
+# words: no binary is committed, and no client's photo is anywhere near
+# the suite.
+
+
+def write_photo(path: Path, words: str = "Form W-2 Wage and Tax Statement") -> Path:
+    """A small, readable photo of a document, made here and thrown away."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (900, 200), "white")
+    ImageDraw.Draw(image).text(
+        (20, 60), words, font=ImageFont.load_default(size=40), fill="black",
+    )
+    image.save(path)
+    return path
+
+
+def test_an_image_is_accepted_by_every_request_that_accepts_a_pdf_and_by_none_that_does_not(tmp_path):
+    """A photo is a scan of a document, so the row that takes the scan takes
+    the photo - and no row has to be edited for it, which is the point: a
+    request list recorded before this decision admits photos the day it
+    lands. A row that wants a spreadsheet still refuses one, with the
+    sentence it always refused it with."""
+    photo = write_photo(tmp_path / "w-2.jpg")
+
+    assert check_file(photo, PDF_ITEM).ok            # the row that names pdf
+    assert check_file(photo, ANY_ITEM).ok            # the row that names nothing
+
+    refused = check_file(photo, SIZED_ITEM)          # the row that names xlsx
+    assert not refused.ok
+    assert reasons.EXTENSION_NOT_ALLOWED.format(extension="jpg", allowed="xlsx") in refused.reason
+
+    # A row that names an image type itself is taken at its word, PDF or no PDF.
+    named = RequestItem(identifier="D01", document="Receipts",
+                        allowed_extensions=("jpg",), min_size_kb=0)
+    assert check_file(photo, named).ok
+    assert not check_file(write_pdf(tmp_path / "ok.pdf"), named).ok
+
+    for extension in IMAGE_EXTENSIONS:               # the whole list, one rule
+        assert _extension_allowed(extension, ("pdf",)), extension
+        assert not _extension_allowed(extension, ("xlsx", "csv")), extension
+    assert not _extension_allowed("bmp", ("pdf",))   # not every image is on the list
+
+
+def test_a_file_pillow_cannot_open_is_refused_as_an_unreadable_image(tmp_path):
+    """The photo tier does what the PDF tier does: open it, and say so when
+    it will not open. A half-transferred photo is the client's to send
+    again, so the sentence is theirs to act on."""
+    not_a_photo = tmp_path / "holiday.jpg"
+    not_a_photo.write_bytes(b"this is not a photo at all" * 10)
+
+    result = check_file(not_a_photo, PDF_ITEM)
+    assert not result.ok and reasons.UNREADABLE_IMAGE.matches(result.reason)
+    assert reasons.find(result.reason) is reasons.UNREADABLE_IMAGE
+    assert reasons.UNREADABLE_IMAGE not in reasons.FIRM_SIDE      # the client can fix it
+
+
+def test_a_heic_photo_is_refused_by_name_when_the_reader_is_absent_and_read_when_it_is_present(
+    tmp_path, monkeypatch,
+):
+    """An iPhone sends HEIC. Pillow cannot open one on its own, so a machine
+    without the decoder says which reader is missing - ours to install,
+    never the client's to work around: they sent an ordinary photo."""
+    monkeypatch.setattr("tracker.validators.HEIC_READABLE", False)
+    absent = tmp_path / "receipt.heic"
+    absent.write_bytes(b"\x00" * 4096)
+    result = check_file(absent, PDF_ITEM)
+    assert not result.ok and reasons.HEIC_NOT_SUPPORTED.matches(result.reason)
+    assert reasons.HEIC_NOT_SUPPORTED in reasons.FIRM_SIDE
+    assert reasons.HEIC_NOT_SUPPORTED.client_ask == reasons.GENERIC_ASK   # never asked
+
+    monkeypatch.undo()
+    pillow_heif = pytest.importorskip("pillow_heif", reason="the HEIC reader is not on this machine")
+    pillow_heif.register_heif_opener()
+    from PIL import Image
+
+    photo = tmp_path / "w-2.heic"
+    Image.new("RGB", (400, 200), "white").save(photo)
+    assert check_file(photo, PDF_ITEM).ok
 
 
 def test_placeholder_skipped_not_read(tmp_path, monkeypatch):

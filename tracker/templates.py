@@ -607,7 +607,8 @@ def ask_by_for(deadline: dt.date) -> dt.date:
 
 #: What the wizard says about the year field and the two blank-able rules.
 YEAR_NOTE = "Defaults to the most recently ended year; the checklist's periods follow it"
-EXTENSION_DEFAULT_NOTE = "blank means " + ", ".join(DEFAULT_EXTENSIONS)
+EXTENSION_DEFAULT_NOTE = ("blank means " + ", ".join(DEFAULT_EXTENSIONS)
+                          + "; a photo or an image counts as a PDF")
 KEYWORD_DEFAULT_NOTE = "defaults to the document name"
 
 

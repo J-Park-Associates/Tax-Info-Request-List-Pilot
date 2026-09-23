@@ -98,7 +98,7 @@ from tracker.manifest import RequestItem  # noqa: E402
 from tracker.router import route_file  # noqa: E402
 from tracker.settings import COLUMN_EXPECTED, EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME  # noqa: E402
 from tracker.templates import FORM_TYPES, template_items  # noqa: E402
-from tracker.validators import extension_of, is_ignored  # noqa: E402
+from tracker.validators import IMAGE_EXTENSIONS, extension_of, is_ignored  # noqa: E402
 
 #: The one number this tool commits: the agreement the firm's own
 #: documents scored the last time a person ran the backtest at the office.
@@ -118,6 +118,13 @@ NEUTRAL_STEM = "document"
 PARKS = "parks"
 #: How many of the slowest documents the report names, by row number.
 SLOWEST_COUNT = 10
+#: The three ways a document is read (decision 127), counted separately in
+#: the report's timing so the reader benchmark can say what a photo costs
+#: without a folder of text-layer PDFs flattening the number.
+READING_TEXT = "text"       # a text layer, read by pdfplumber/openpyxl
+READING_OCR = "ocr"         # a scanned PDF: no usable text layer, so OCR
+READING_IMAGE = "image"     # a photo: never a text layer, always OCR
+READING_KINDS = (READING_TEXT, READING_OCR, READING_IMAGE)
 #: The extra column ``collect`` writes for the person filling the file in:
 #: the request folder the firm already filed the document into, which is
 #: almost always the answer.
@@ -174,6 +181,11 @@ class Outcome:
     got: str | None           # None: the router parked it, or never read it
     no_text: bool             # no text layer, and OCR was not allowed
     seconds: float
+    #: Which reading this document got, for the timing split (decision
+    #: 127): one of :data:`READING_KINDS`. A photo is its own kind even
+    #: though it takes the same OCR path a scanned PDF takes, because the
+    #: reader benchmark has to be able to time the two apart.
+    kind: str = READING_TEXT
 
 
 # ------------------------------------------------------------- the corpus ----
@@ -226,8 +238,9 @@ def _linked_under_a_neutral_name(source: Path, scratch: Path, row: int) -> Path:
     return target
 
 
-def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | None, bool]:
-    """Where the router files ``path``, and whether it had no text layer at all.
+def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | None, bool, str]:
+    """Where the router files ``path``, whether it had no text layer at all,
+    and which of :data:`READING_KINDS` the reading was.
 
     The text is read once, without OCR, and handed to the router; that is
     the reading the scanner makes of the same bytes later, so the two can
@@ -238,11 +251,16 @@ def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | 
     OCR's words.
     """
     reading = extract(path, ocr=False)
+    kind = (
+        READING_IMAGE if extension_of(path) in IMAGE_EXTENSIONS
+        else READING_OCR if reading.needs_ocr
+        else READING_TEXT
+    )
     if reading.needs_ocr:
         if not ocr:
-            return None, True
-        return route_file(path, rows).identifier, False
-    return route_file(path, rows, reading=reading).identifier, False
+            return None, True, kind
+        return route_file(path, rows).identifier, False, kind
+    return route_file(path, rows, reading=reading).identifier, False, kind
 
 
 def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tuple[list[Outcome], float]:
@@ -268,10 +286,10 @@ def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tupl
             items = catalog_rows(workspace, catalog, year, built)
             link = _linked_under_a_neutral_name(_document_path(folder, name, row), scratch, row)
             began = time.perf_counter()
-            got, no_text = route_one(link, items, ocr=ocr)
+            got, no_text, kind = route_one(link, items, ocr=ocr)
             outcomes.append(Outcome(
                 row=row, catalog=catalog, expected=expected, got=got,
-                no_text=no_text, seconds=time.perf_counter() - began,
+                no_text=no_text, seconds=time.perf_counter() - began, kind=kind,
             ))
     return outcomes, time.perf_counter() - started
 
@@ -369,6 +387,12 @@ def score(outcomes: list[Outcome], seconds: float) -> dict:
             "seconds": round(seconds, 3),
             "seconds_per_document": round(seconds / documents, 3) if documents else None,
             "slowest": [{"row": o.row, "seconds": round(o.seconds, 3)} for o in slowest],
+            # How the corpus splits between the three readings (decision
+            # 127). A count, like everything else here: it names no
+            # document, only how many of each kind there were.
+            "readings_by_kind": {
+                kind: sum(1 for o in outcomes if o.kind == kind) for kind in READING_KINDS
+            },
         },
     }
 

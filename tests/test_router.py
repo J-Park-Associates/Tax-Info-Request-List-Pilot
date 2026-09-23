@@ -166,6 +166,40 @@ def test_ocr_text_alone_never_routes_on_any_keywords(tmp_path, monkeypatch):
     assert routing.reason.startswith(OCR_ONLY) and routing.candidates == ("A02",)
 
 
+def test_a_photo_files_on_required_keywords_and_parks_as_ocr_only_on_looser_ones(
+    tmp_path, monkeypatch,
+):
+    """Decision 50's rule, reached through a photo (decision 127).
+
+    An image is a scan: its words are a reader's words, so they file on a
+    row's required keywords and go no further than a lead on a row's
+    looser ones. Nothing about the router changed - the photo arrives on
+    the same path the scanned PDF arrives on, which is the whole design.
+    """
+    from PIL import Image
+
+    def photo(name: str) -> object:
+        path = tmp_path / name
+        Image.new("RGB", (400, 200), "white").save(path)
+        return path
+
+    reading = ["Form 1098 Mortgage Interest Statement 2025"]
+    monkeypatch.setattr("tracker.content_check._ocr_image", lambda p: reading[0])
+
+    routing = route_file(photo("IMG_4471.jpg"), ITEMS)
+    assert routing.identifier == "C01" and routing.evidence == EVIDENCE_CONTENT
+
+    reading[0] = "Consolidated 1099 dividend summary 2025"
+    routing = route_file(photo("IMG_4472.png"), ITEMS)
+    assert routing.identifier is None
+    assert routing.reason.startswith(OCR_ONLY) and routing.candidates == ("A02",)
+
+    # And with no engine on the machine the photo parks exactly as a scan does.
+    monkeypatch.setattr("tracker.content_check._ocr_image", lambda p: None)
+    parked = route_file(photo("IMG_4473.heic"), ITEMS)
+    assert parked.identifier is None and parked.reason == UNREADABLE
+
+
 def test_a_scan_whose_name_lies_is_read_by_ocr_and_the_content_decides(tmp_path, monkeypatch):
     """The OCR path is untouched, and it now runs on named scans too.
 

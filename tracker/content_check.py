@@ -80,7 +80,8 @@ import hashlib
 import json
 import logging
 import re
-from dataclasses import MISSING, asdict, dataclass, fields
+import time
+from dataclasses import MISSING, asdict, dataclass, fields, replace
 from pathlib import Path
 
 from tracker import reasons, store
@@ -108,7 +109,7 @@ from tracker.records import (
     format_evidence,  # noqa: F401
     parse_evidence,  # noqa: F401
 )
-from tracker.validators import PDF_EXTENSION, extension_of, sha256_of
+from tracker.validators import IMAGE_EXTENSIONS, PDF_EXTENSION, extension_of, sha256_of
 
 log = logging.getLogger("tracker.content_check")
 
@@ -134,7 +135,9 @@ RETIRED_CACHE_FILENAME = "_content_cache.json"
 #: 9: a keyword may name alternatives ("|") and join the phrases one of
 #:    them wants together ("+"), so a row can accept either of two
 #:    documents; a verdict cached before that read the characters as words.
-CACHE_VERSION = 9
+#: 10 (decision 127): the reading turns a page or a photo upright before
+#:    OCR, so a verdict on a scan read at 9 may have been read sideways.
+CACHE_VERSION = 10
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -158,6 +161,24 @@ MAX_PAGES = 10
 XLSX_EXTENSIONS = ("xlsx", "xlsm")
 TEXT_EXTENSIONS = ("csv", "tsv", "txt")
 _MAX_OCR_PAGES = MAX_PAGES
+
+#: Tesseract's own confidence in the turn it says a page has. Its scale is
+#: not a percentage: on a form it comes back in the tens, and anything
+#: under about 1 is the detector saying it could not tell. Below this the
+#: four-way scorer decides instead of a number nobody should trust.
+#: Measured against Tesseract 5.4.0 with the `osd` data installed.
+OSD_MIN_CONFIDENCE = 1.0
+#: The turns the four-way scorer tries, in the order it tries them: 0
+#: first, so a tie leaves the page exactly as it came.
+_TURNS = (0, 90, 180, 270)
+#: How many scored words a rotation needs before its mean says anything.
+#: Below this at every turn - a photo of a receipt's corner, a blank page -
+#: the image is handed back as it is: there is nothing to score, and
+#: turning a page on two words would be guessing.
+FOUR_WAY_MIN_WORDS = 3
+#: How many letters a word needs before its confidence is scored. One
+#: letter is noise in any orientation.
+_SCORED_WORD_LETTERS = 2
 
 
 # ---------------------------------------------------------------- evidence ----
@@ -222,6 +243,12 @@ class Extraction:
     extractable: bool = True     # False: no extractor, no OCR, or extraction failed
     error: str = ""              # the exception, when extraction raised
     transient: bool = False      # the machine's doing (no OCR, OCR failed), not the file's
+    #: How long this reading took, in seconds (decision 127). Recorded on
+    #: every reading, failed ones included, and never acted on: a slow
+    #: reading is said in the run's summary and finished, never cut short.
+    #: It is the number the reader benchmark and the owner's speed ceiling
+    #: are measured in.
+    seconds: float = 0.0
 
 
 # ------------------------------------------------------------------ rules ----
@@ -1163,7 +1190,13 @@ def _extract_textfile(path: Path) -> str:
 
 
 def extract_text(path: Path) -> str | None:
-    """Extract the text layer from a supported file; None if no extractor exists."""
+    """Extract the text layer from a supported file; None if no extractor exists.
+
+    A photo comes back None **on purpose** (decision 127): an image has no
+    text layer to extract, ever, and :func:`extract` reads that None as
+    "this is a scan" rather than "no extractor for this type" - the one
+    place the two answers have to be told apart.
+    """
     extension = extension_of(path)
     if extension == PDF_EXTENSION:
         return _extract_pdf(path)
@@ -1174,12 +1207,97 @@ def extract_text(path: Path) -> str | None:
     return None
 
 
+def _score_of(image) -> float | None:
+    """How well Tesseract reads this image, or None when there is too little.
+
+    The mean confidence of the words it found that carry
+    ``_SCORED_WORD_LETTERS`` letters or more, counting only confidences
+    above zero - Tesseract reports -1 for a box it made no word of. A page
+    read the right way up scores far above the same page read sideways,
+    which is the whole of the four-way decision.
+    """
+    import pytesseract
+    from pytesseract import Output
+
+    data = pytesseract.image_to_data(image, output_type=Output.DICT)
+    # strict: the words and their confidences are two columns of one table,
+    # and a reading whose columns do not line up is a broken reading. It
+    # raises here, becomes OcrError, and the file is tried again next pass -
+    # which is the right answer to a reader that has stopped making sense.
+    scored = [
+        value
+        for word, confidence in zip(data["text"], data["conf"], strict=True)
+        if (value := float(confidence)) > 0
+        and sum(character.isalpha() for character in str(word)) >= _SCORED_WORD_LETTERS
+    ]
+    if len(scored) < FOUR_WAY_MIN_WORDS:
+        return None
+    return sum(scored) / len(scored)
+
+
+def _four_way(image):
+    """Read the page at each of the four turns and keep the best reading.
+
+    Where the orientation detector cannot say - too little text on the
+    page, or the ``osd`` data missing - the reading itself decides: four
+    readings cost four times one, and this runs only when OSD declined,
+    which is rare on a form and common on a photo of a receipt. A tie
+    keeps the page as it came, and a page nothing could be scored at any
+    turn is handed back untouched: a turn the reading did not earn is a
+    guess, and nothing here guesses.
+    """
+    best_turn, best_score = 0, None
+    for turn in _TURNS:
+        score = _score_of(image if turn == 0 else image.rotate(-turn, expand=True))
+        if score is not None and (best_score is None or score > best_score):
+            best_turn, best_score = turn, score
+    if best_score is None or best_turn == 0:
+        return image
+    return image.rotate(-best_turn, expand=True)
+
+
+def _upright(image):
+    """The page or photo the right way up, in memory (decision 127).
+
+    Tesseract reads a sideways page as nonsense - the harness of
+    2026-09-19 caught two corpus scans coming back as
+    ``eoynleg enuendy jeweyuj`` - and until this decision nothing turned
+    anything. The orientation detector (``osd`` data, which the installer
+    ships by default) says the turn and how sure it is; below
+    :data:`OSD_MIN_CONFIDENCE`, or where it raises at all, the four-way
+    scorer decides by reading.
+
+    ``Image.rotate`` returns a new image: **the file on disk is never
+    touched**, here or anywhere else in the reading. Originals are never
+    altered, and a photo is an original.
+    """
+    import pytesseract
+    from pytesseract import Output
+
+    try:
+        said = pytesseract.image_to_osd(image, output_type=Output.DICT)
+        turn = int(said.get("rotate", 0) or 0)
+        confidence = float(said.get("orientation_conf", 0) or 0)
+    except pytesseract.TesseractNotFoundError:
+        raise
+    except Exception:
+        # No `osd` data, or too little text for the detector to speak.
+        return _four_way(image)
+    if confidence < OSD_MIN_CONFIDENCE:
+        return _four_way(image)
+    return image if turn % 360 == 0 else image.rotate(-turn, expand=True)
+
+
 def _ocr_pdf(path: Path) -> str | None:
     """OCR the first pages of a PDF. None if the OCR stack is unavailable.
 
     Requires pytesseract + pypdfium2 + Pillow (pip) AND the Tesseract
-    engine (Windows installer). All optional — absence is a normal,
-    reported condition, never an error.
+    engine (Windows installer). The packages are pinned and bundled; the
+    engine's absence is a normal, reported condition, never an error.
+
+    Each page is greyscaled and turned upright before it is read
+    (:func:`_upright`), so the detector and the reading see the same
+    pixels and a page scanned sideways comes back as words.
     """
     try:
         import pypdfium2 as pdfium
@@ -1193,10 +1311,39 @@ def _ocr_pdf(path: Path) -> str | None:
         try:
             for index in range(min(len(doc), _MAX_OCR_PAGES)):
                 bitmap = doc[index].render(scale=2.0)
-                parts.append(pytesseract.image_to_string(bitmap.to_pil()))
+                page = _upright(bitmap.to_pil().convert("L"))
+                parts.append(pytesseract.image_to_string(page))
         finally:
             doc.close()
         return "\n".join(parts)
+    except pytesseract.TesseractNotFoundError:
+        return None  # pip packages present but the Tesseract engine is not
+    except Exception as exc:
+        log.warning("OCR failed on %s: %s", path.name, exc)
+        raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
+
+
+def _ocr_image(path: Path) -> str | None:
+    """OCR one photo. None if the OCR stack is unavailable.
+
+    One photo is one page. The phone's own rotation flag is undone first
+    (``exif_transpose``) - a photo held upright and recorded sideways is
+    the commonest case there is, and EXIF alone settles it - then the
+    image is greyscaled once, so the orientation detector and the reading
+    work on the same pixels, then turned upright and read.
+
+    Nothing is written: the photo on disk is the client's original.
+    """
+    try:
+        import pytesseract
+        from PIL import Image, ImageOps
+    except ImportError:
+        return None
+
+    try:
+        with Image.open(path) as opened:
+            image = ImageOps.exif_transpose(opened).convert("L")
+        return pytesseract.image_to_string(_upright(image))
     except pytesseract.TesseractNotFoundError:
         return None  # pip packages present but the Tesseract engine is not
     except Exception as exc:
@@ -1211,12 +1358,30 @@ class OcrError(RuntimeError):
 def extract(path: Path, *, ocr: bool = True) -> Extraction:
     """What ``path`` says - the one reading both the router and the scanner use.
 
-    With ``ocr=False`` a scan (a PDF with no text layer) comes back with
-    ``needs_ocr`` set and whatever little text there was, so the caller can
-    decide - the router first tries the file's name - and then call
-    :func:`extract_by_ocr` if it still needs the words.
+    With ``ocr=False`` a scan (a PDF with no text layer, or a photo, which
+    never has one) comes back with ``needs_ocr`` set and whatever little
+    text there was, so the caller can decide - the router first tries the
+    file's name - and then call :func:`extract_by_ocr` if it still needs
+    the words.
+
+    Every reading is timed and the seconds ride back on the
+    :class:`Extraction` (decision 127). Nothing acts on the number: no
+    reading is cut short, capped or abandoned for being slow - a pass says
+    its slowest reading and finishes it.
     """
+    started = time.perf_counter()
+    reading = _extract(path, ocr=ocr)
+    return replace(reading, seconds=time.perf_counter() - started)
+
+
+def _extract(path: Path, *, ocr: bool) -> Extraction:
+    """:func:`extract`'s reading, untimed."""
     extension = extension_of(path)
+    if extension in IMAGE_EXTENSIONS:
+        # A photo is a scan with no text layer to be disappointed by: it
+        # goes the way a scanned PDF goes, and with ocr=False it is
+        # unrouted for the same reason a scan is - there are no words yet.
+        return Extraction(None, needs_ocr=True) if not ocr else extract_by_ocr(path)
     try:
         text = extract_text(path)
     except Exception as exc:  # a corrupt file is a reason, not a crash
@@ -1238,9 +1403,11 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
 
 
 def extract_by_ocr(path: Path) -> Extraction:
-    """Read a scan by OCR; says why when it cannot (no OCR installed, or no words)."""
+    """Read a scan or a photo by OCR; says why when it cannot (no OCR
+    installed, or no words)."""
+    reader = _ocr_image if extension_of(path) in IMAGE_EXTENSIONS else _ocr_pdf
     try:
-        ocr_text = _ocr_pdf(path)
+        ocr_text = reader(path)
     except OcrError as exc:
         # Ours to retry, not the client's to resend: the file may be fine.
         return Extraction(

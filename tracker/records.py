@@ -439,6 +439,11 @@ class Routing:
     #: the first request either way, so a reader that knows only about it
     #: reads a real request and a real filing, never half a sentence.
     also: tuple[str, ...] = ()
+    #: How long reading the document took, in seconds (decision 127), so
+    #: the pass can name its slowest readings. It decides nothing: no
+    #: reading is cut short for being slow, and a routing is what it is
+    #: whether the reading took a tenth of a second or a minute.
+    seconds: float = 0.0
 
     @property
     def routed(self) -> bool:

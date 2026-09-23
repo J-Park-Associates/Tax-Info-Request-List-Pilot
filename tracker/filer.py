@@ -243,6 +243,10 @@ log = logging.getLogger("tracker.filer")
 #: (:mod:`tracker.view`).
 INDEX_HEADING = "Index"
 _MAX_STEM = 110
+#: How many of a run's slowest readings the report keeps (decision 127).
+#: Five, because the number is read to answer "is the pass getting slow?",
+#: which one outlier cannot answer and a whole list nobody reads.
+SLOWEST_READINGS = 5
 
 
 def numbered(stem: str, counter: int, suffix: str) -> str:
@@ -391,11 +395,24 @@ class FileReport:
     #: Said every pass for a person, but nothing was left unsorted, so the
     #: pass is not a failure.
     attention: list[FileError] = field(default_factory=list)
+    #: The run's slowest readings, longest first, at most
+    #: :data:`SLOWEST_READINGS` of them: (the document's own name, seconds).
+    #: Decision 127 - a reading is timed and said, never cut short, and the
+    #: run's summary names one of these when it passed the run's threshold.
+    slowest: list[tuple[str, float]] = field(default_factory=list)
     dry_run: bool = False
 
     @property
     def handled(self) -> int:
         return len(self.filed) + len(self.review) + len(self.duplicates)
+
+    def timed(self, name: str, seconds: float) -> None:
+        """Record how long one document's reading took, keeping the slowest."""
+        if seconds <= 0:
+            return
+        self.slowest.append((name, seconds))
+        self.slowest.sort(key=lambda reading: -reading[1])
+        del self.slowest[SLOWEST_READINGS:]
 
 
 # ------------------------------------------------------------------ names ----
@@ -2643,6 +2660,13 @@ def _decide_across(
     # judges the drop where it lies, as it always has.
     judged = drop if runs[0].context.dry_run else original
     reading = read_once(judged)
+    # What the reading cost, kept for the run's summary (decision 127). One
+    # reading serves every return that judges it (decision 128), so it is
+    # recorded once, against the pass's first own return - the run that
+    # already speaks for this household's inbox. It is recorded after the
+    # fact and changes nothing: a slow document is read to the end, and
+    # then said.
+    runs[0].report.timed(drop.name, reading.seconds)
     routed = [(run, route_file(judged, run.items, reading=reading,
                                digest=digest, cache=run.cache, pdf_cache=run.context.pdf_cache))
               for run in runs]
@@ -3009,6 +3033,8 @@ def _sort_one(
 
     judged = drop if context.dry_run else original
     reading = read_once(judged)
+    # What the reading cost, for the run's summary (decision 127).
+    run.report.timed(drop.name, reading.seconds)
     routing = route_file(
         judged, context.items, reading=reading,
         digest=digest, cache=context.cache, pdf_cache=context.pdf_cache,

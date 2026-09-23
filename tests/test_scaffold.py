@@ -9,6 +9,7 @@ from tracker.scaffold import (
     PREPARED_DIR_NAME,
     README_HEADING,
     README_NAME,
+    README_PHOTO_LINE,
     REVIEW_DIR_NAME,
     assign_folders,
     folder_name_for,
@@ -121,6 +122,24 @@ def test_the_readme_names_the_open_year_and_the_household_contact(tmp_path):
     readme = result.readme.read_text(encoding="utf-8")
     assert f"2. Each file moves into your {TEST_YEAR} folder on the next scheduled pass." in readme
     assert "Questions? Contact Maria Park." in readme
+
+
+def test_the_readme_says_a_clear_photo_is_fine_in_the_owners_words(tmp_path):
+    """Decision 127, the owner's sign-off item. Until it landed the README
+    told the client "scans and photos are fine as long as they are
+    readable" while every request refused an image, so the one sentence
+    the client actually read was the one thing the software would not do.
+    The step is a constant because a promise made to a client belongs
+    where a test can hold the code to it - and the promise is now true."""
+    engagement = make_engagement(tmp_path, ITEMS, contact="Maria Park", scaffold=False)
+    result = scaffold_engagement(engagement)
+    readme = result.readme.read_text(encoding="utf-8")
+
+    assert README_PHOTO_LINE in readme
+    assert "A clear photo from your" in README_PHOTO_LINE
+    assert "one document per photo" in README_PHOTO_LINE
+    assert "as long as they are readable" not in readme      # the old promise is gone
+    assert README_PHOTO_LINE.startswith("4. ")               # still step 4
 
 
 def test_idempotent_rerun_creates_nothing(engagement):

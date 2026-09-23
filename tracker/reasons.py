@@ -103,6 +103,22 @@ PASSWORD_PROTECTED = Reason(
 )
 NO_PAGES = Reason("no-pages", "PDF contains no pages", "contains no pages")
 UNREADABLE_PDF = Reason("unreadable-pdf", "not a readable PDF ({error})", "not a readable PDF")
+#: A photo Pillow will not open (decision 127). The client's to fix, like a
+#: corrupt PDF: a half-transferred photo is a photo they still have.
+UNREADABLE_IMAGE = Reason(
+    "unreadable-image", "not a readable image ({error})", "not a readable image",
+    "the photo that arrived could not be opened; please send it again",
+)
+#: An iPhone's HEIC photo on a machine whose HEIC decoder is missing
+#: (decision 127). Ours, and only ours: the client sent an ordinary photo,
+#: and the package that reads it is pinned and bundled, so this means a
+#: checkout that was never installed. Transient by the same rule OCR is -
+#: installing the reader must be able to change the answer.
+HEIC_NOT_SUPPORTED = Reason(
+    "heic-reader",
+    "a HEIC photo needs the HEIC reader installed on this machine; review manually",
+    "HEIC reader installed", firm_side=True,
+)
 GOOGLE_STUB = Reason(
     "google-stub",
     ".{extension} is a Google Docs shortcut, not the document itself; "
@@ -113,7 +129,7 @@ GOOGLE_STUB = Reason(
 )
 EXTENSION_NOT_ALLOWED = Reason(
     "extension", "extension .{extension} not allowed (expected: {allowed})", "not allowed",
-    "we cannot open that file type; please send it as a PDF or an Excel file",
+    "we cannot open that file type; please send it as a PDF, a photo or an Excel file",
 )
 TOO_SMALL = Reason(
     "too-small",
@@ -156,11 +172,15 @@ UNCHECKABLE_TYPE = Reason(
 )
 NO_TEXT_LAYER = Reason(
     "no-text-layer",
-    "PDF appears to be a scan with no text layer and OCR is not installed; review manually",
+    "PDF or photo appears to be a scan with no text layer and OCR is not installed; "
+    "review manually",
     "no text layer", firm_side=True,
 )
+#: A scan or a photo the reader got nothing out of. It said "in PDF" until
+#: decision 127, when a photo started reaching this sentence too; the
+#: marker is unchanged, so nothing that recognises it had to move.
 NO_TEXT_AFTER_OCR = Reason(
-    "no-text-after-ocr", "no readable text found in PDF, even after OCR; review manually",
+    "no-text-after-ocr", "no readable text found, even after OCR; review manually",
     "no readable text", firm_side=True,
 )
 OCR_FAILED = Reason(
@@ -337,7 +357,7 @@ NO_REQUEST_FOLDER = Reason(
 ALL: tuple[Reason, ...] = (
     PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, EXTENSION_NOT_ALLOWED,
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
-    NO_PAGES, UNREADABLE_PDF, EXTRACTION_FAILED,
+    NO_PAGES, UNREADABLE_PDF, UNREADABLE_IMAGE, HEIC_NOT_SUPPORTED, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
     ISSUER_NOT_NAMED,
     NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE,

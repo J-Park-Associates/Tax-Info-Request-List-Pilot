@@ -11,7 +11,13 @@ File Explorer and Excel alone.
   which real files does a request folder contain (junk like the names in ``_IGNORED_NAMES``,
   ``OFFICE_LOCK_PREFIX`` locks excluded)?
 - Tier 2 (integrity): :func:`check_file` — extension whitelist, minimum
-  size, and a ``pypdf`` open test for PDFs.
+  size, a ``pypdf`` open test for PDFs and a Pillow open test for photos.
+
+A photo is a scan of a document (decision 127), so ``IMAGE_EXTENSIONS`` is
+accepted by every request that accepts a PDF and opened the way a PDF is
+opened: nothing is typed on a row for it, no stored rule changes, and a
+file Pillow cannot open is refused with a sentence of its own rather than
+reaching the reader as a document.
 
 Nothing here moves, renames, deletes, or writes client files. Cloud-only
 placeholders are never read (reading would force the sync client to download
@@ -39,12 +45,30 @@ from tracker.manifest import RequestItem
 # every failure as a FileResult.reason, so keep the console clean.
 logging.getLogger("pypdf").setLevel(logging.ERROR)
 
+#: Whether an iPhone's HEIC/HEIF photo can be opened on this machine.
+#: ``pillow_heif`` teaches Pillow the format, once, at import - Pillow has
+#: no HEIC decoder of its own - and the package is pinned and bundled, so
+#: False means somebody is running from a checkout without it. Then a HEIC
+#: photo is refused as the firm's problem (``reasons.HEIC_NOT_SUPPORTED``),
+#: never the client's: they sent a perfectly ordinary photo.
+try:  # pragma: no cover - the absent branch needs the package uninstalled
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+    HEIC_READABLE = True
+except Exception:  # not installed, or installed and unusable on this machine
+    HEIC_READABLE = False
+
 # Junk that never counts as a client document.
 _IGNORED_NAMES = {"desktop.ini", "thumbs.db", ".ds_store"}
 #: Office lock files.
 OFFICE_LOCK_PREFIX = "~$"
 #: The one file type whose integrity (and text) can be checked in depth.
 PDF_EXTENSION = "pdf"
+#: An image is a scan of a document: it is accepted by every request that
+#: accepts a PDF (decision 127), so a person types nothing new on a row and
+#: a list recorded before this decision admits photos the day it lands.
+IMAGE_EXTENSIONS = ("jpg", "jpeg", "png", "heic", "heif", "tif", "tiff")
 #: Google Drive stages in-flight transfers inside hidden ".tmp.drive*"
 #: folders (.tmp.driveupload / .tmp.drivedownload); anything under one is a
 #: partial transfer, not a delivered document, and the folder itself is
@@ -248,6 +272,46 @@ def _pdf_error_uncached(path: Path) -> str:
     return ""
 
 
+def _image_error(path: Path) -> str | None:
+    """None if the photo opens cleanly, else the reason it was refused.
+
+    What a PDF gets from ``_pdf_error``, a photo gets here: the file is
+    opened and ``verify()``-ed and nothing else - no pixels are decoded, no
+    reader is called, and the file on disk is not touched. A HEIC photo an
+    iPhone sent needs the local decoder, and a machine without it says so
+    as the firm's problem rather than asking the client to re-shoot a
+    perfectly good photo.
+
+    No ``PdfVerdictCache``-style memo: ``verify()`` reads a header, which
+    is cheap enough to do once per manifest row.
+    """
+    if extension_of(path) in ("heic", "heif") and not HEIC_READABLE:
+        return reasons.HEIC_NOT_SUPPORTED.format()
+    try:
+        from PIL import Image  # deferred: the reader is only needed for photos
+
+        with Image.open(path) as image:
+            image.verify()
+    except Exception as exc:  # Pillow raises many types on a file that is not one
+        return reasons.UNREADABLE_IMAGE.format(error=f"{exc.__class__.__name__}: {exc}")
+    return None
+
+
+def _extension_allowed(extension: str, allowed: tuple[str, ...]) -> bool:
+    """Whether a row's whitelist takes this file (decision 127).
+
+    An image is a scan, so a row that accepts a PDF accepts a photo of the
+    same document - which is what lets a request list recorded before this
+    decision admit photos the day it lands, with no row edited. A row that
+    names an image type itself is taken at its word, and a row listing
+    ``xlsx, csv`` alone still refuses a photo with the sentence it always
+    refused it with.
+    """
+    if extension in allowed:
+        return True
+    return extension in IMAGE_EXTENSIONS and PDF_EXTENSION in allowed
+
+
 def check_file(
     path: Path, item: RequestItem, *, pdf_cache: PdfVerdictCache | None = None
 ) -> FileResult:
@@ -267,7 +331,7 @@ def check_file(
     extension = extension_of(path)
     if stub := google_stub_reason(path):
         return FileResult(path=path, ok=False, reason=stub)
-    if item.allowed_extensions and extension not in item.allowed_extensions:
+    if item.allowed_extensions and not _extension_allowed(extension, item.allowed_extensions):
         return FileResult(
             path=path,
             ok=False,
@@ -299,6 +363,11 @@ def check_file(
         error = _pdf_error(path, pdf_cache)
         if error:
             return FileResult(path=path, ok=False, reason=error)
+    elif extension in IMAGE_EXTENSIONS:
+        # The same tier, one file type along: a photo that will not open is
+        # refused here rather than reaching the reader as a document.
+        if photo_error := _image_error(path):
+            return FileResult(path=path, ok=False, reason=photo_error)
 
     return FileResult(path=path, ok=True)
 

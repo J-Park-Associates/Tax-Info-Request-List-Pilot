@@ -301,7 +301,7 @@ def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root,
     assert statuses["C01"] == Status.RECEIVED   # the 1098
     reviewed = {e["original_name"] for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW}
     assert f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf" in reviewed   # wrong year, never guessed
-    assert "vacation photo.jpg" in reviewed
+    assert "vacation photo.bmp" in reviewed
     assert payload["state"]["summary"]["outstanding"] == run_result["outstanding"]
     assert f"{Status.RECEIVED}: 4" in payload["state"]["summary"]["line"]   # A01, B01, C01, D01
     # What the scanner recorded is what the state command reads back.
@@ -313,7 +313,7 @@ def test_the_apps_pass_appends_the_line_the_scheduled_run_appends(capsys, demo_r
     """A pass made from the app used to leave no trace at all: the log is the
     command line's, and the button makes the same pass, so it writes the same
     line - appended, never replacing what earlier passes wrote."""
-    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
 
     assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
     first = (demo_root / LOG_FILENAME).read_text(encoding="utf-8")
@@ -329,7 +329,7 @@ def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, 
     """The page is about the practice, not about the engagement the button was
     pressed on: an engagement nobody scanned is on it too, read rather than run."""
     page = demo_root / STATUS_PAGE_FILENAME
-    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     assert run(capsys, "create", stdin={"household": HOUSEHOLD, "return_name": "Jones Family 2025", "form": "1040",
                                         "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]})[0] == 0
     assert not page.exists()
@@ -338,7 +338,7 @@ def test_the_apps_pass_regenerates_the_practices_status_page(capsys, demo_root, 
 
     text = page.read_text(encoding="utf-8")
     assert engagement.name in text and "Jones Family 2025" in text
-    assert "vacation photo.jpg" in text          # the review queue, across the practice
+    assert "vacation photo.bmp" in text          # the review queue, across the practice
 
 
 def test_state_carries_the_path_of_the_practices_status_page(capsys, demo_root):
@@ -725,21 +725,23 @@ def test_the_state_triages_each_parked_file_best_first_with_the_reason_behind_ea
 def test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing(
     capsys, demo_root, tmp_path,
 ):
-    # A photo: no request accepts a .jpg, so the record names no candidate
-    # and the queue says so rather than nominating the nearest row.
-    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    # A bitmap: no request accepts a .bmp, so the record names no candidate
+    # and the queue says so rather than nominating the nearest row. A .jpg
+    # was the file here until decision 127 made a photo a document; the
+    # claim is about a file type nobody takes, and this is one.
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, payload
 
     [triaged] = payload["state"]["review"]
-    assert triaged["original_name"] == "vacation photo.jpg"
+    assert triaged["original_name"] == "vacation photo.bmp"
     assert triaged["shortlist"] == [], "no evidence, no suggestion — the person reads it"
 
 
 def test_dismissing_a_file_takes_it_out_of_the_review_queue(capsys, demo_root, tmp_path):
     from tracker.filer import NOT_REQUESTED
 
-    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     [parked] = payload["state"]["index"]
     assert [t["pbc_location"] for t in payload["state"]["review"]] == [parked["pbc_location"]]
@@ -766,7 +768,7 @@ def test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside
     """
     from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE
 
-    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.jpg")
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, payload
     [parked] = payload["state"]["index"]
@@ -2593,7 +2595,7 @@ def test_state_carries_the_household_its_open_years_its_returns_and_the_queue_co
 
     samples = tmp_path / "samples"
     build_samples(samples)
-    for name in ("vacation photo.jpg", "Mortgage Notes.docx"):
+    for name in ("vacation photo.bmp", "Mortgage Notes.docx"):
         (inbox_of(personal) / name).write_bytes((samples / name).read_bytes())
     assert run(capsys, "scan", api.ENGAGEMENT_FLAG, str(business))[0] == 0
 
