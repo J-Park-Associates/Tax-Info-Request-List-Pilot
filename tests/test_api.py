@@ -1586,6 +1586,9 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "open_in_list": api.OPEN_IN_LIST_LABEL,
         "card_mode": api.CARD_MODE_LABEL, "list_mode": api.LIST_MODE_LABEL,
         "card_position": api.CARD_POSITION,
+        "hand_over": api.HAND_OVER_LABEL,
+        "hand_over_return": api.HAND_OVER_RETURN_LABEL,
+        "hand_over_request": api.HAND_OVER_REQUEST_LABEL,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
@@ -2959,3 +2962,177 @@ def test_the_household_card_shows_every_returns_reminder_state(capsys, demo_root
     words = run(capsys, "list")[1]["vocab"]["reminder"]
     assert words["never_drafted_line"] == reminder.NEVER_DRAFTED_LINE
     assert words["held_line"] == reminder.HELD_SUMMARY
+
+
+# ============ the household routes: the feed list (decision 129) ===========
+
+
+def two_households(capsys, root):
+    """Park Family with a 1040, Park & Lee LLC with an 1120S, and Park
+    Family's drop folder feeding the LLC's return line - made the way the
+    app makes them, and extended the way a person extends it."""
+    assert run(capsys, "create", stdin={
+        "household": "Park Family", "contact": "John", "return_name": "1040 - John Park",
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household": "Park & Lee LLC", "contact": "John & Sam",
+        "return_name": "1120S - Park & Lee LLC",
+        "items": [{"identifier": "B01", "document": "Trial Balance"}]})[0] == 0
+    father = where(root, "1040 - John Park", household="Park Family")
+    llc = where(root, "1120S - Park & Lee LLC", household="Park & Lee LLC")
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(father),
+                        stdin={"feeds": [{"household": "Park & Lee LLC",
+                                          "return_name": "1120S - Park & Lee LLC"}]})
+    assert code == 0, payload
+    return father, llc
+
+
+def test_edit_household_saves_feeds_and_the_state_carries_feeds_and_fed_by_with_the_two_warnings_words(
+        capsys, demo_root):
+    """The feed list is a household field like the members: saved as one
+    recorded event of exactly what moved, resolved for the card into the
+    return it names this year, and shown from the other side on the
+    household whose return is fed. Both warnings a person reads before
+    extending either are the API's words."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+    from tracker.records import Feed
+
+    father, llc = two_households(capsys, demo_root)
+    household_dir = private_household_dir(demo_root, "Park Family")
+    assert load_household_info(household_dir).feeds == (
+        Feed("Park & Lee LLC", "1120S - Park & Lee LLC"),)
+
+    _code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
+    [feed] = payload["household"]["feeds"]
+    assert feed["household"] == "Park & Lee LLC"
+    assert feed["return_name"] == "1120S - Park & Lee LLC"
+    assert feed["path"] == str(llc) and feed["warning"] == ""
+    assert "1120S - Park & Lee LLC" in feed["label"]
+
+    # And from the other side: the household whose return is fed is told
+    # whose drop folder feeds it, by household and never by member.
+    _code, other = run(capsys, "state", api.ENGAGEMENT_FLAG, str(llc))
+    assert [one["name"] for one in other["household"]["fed_by"]] == ["Park Family"]
+    assert other["household"]["feeds"] == []
+
+    words = api._vocab()["household"]
+    assert words["feed_warning"] == api.FEED_WARNING
+    assert words["return_warning"] == api.RETURN_WARNING
+    assert "{members}" in words["feed_warning"]
+
+    # A feed the other household has no active return for this year is
+    # said rather than resolved to nothing in silence.
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(father),
+               stdin={"feeds": [{"household": "Park & Lee LLC",
+                                 "return_name": "1065 - nobody"}]})[0] == 0
+    _code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(father))
+    [gone] = payload["household"]["feeds"]
+    assert gone["path"] == "" and "no active return" in gone["warning"]
+
+
+def test_assign_with_a_target_refuses_an_unfed_return_and_hands_over_to_a_fed_one(
+        capsys, demo_root, tmp_path):
+    """Nothing routes outside the feed list: a target this drop folder does
+    not feed is refused by name, and a target it does feed takes the
+    document - the original moving under the household that return lives
+    in, and the row here closing as handed over."""
+    from tracker.filer import HANDED_OVER
+    from tracker.layout import originals_of
+    father, llc = two_households(capsys, demo_root)
+    parked, seq = a_parked_document(capsys, father)
+
+    # A return nobody extended this drop folder to: refused before a byte
+    # is read, and the outsider's record is untouched.
+    outsider = where(demo_root, "1040 - Sofia Park", household="Sofia Park")
+    assert run(capsys, "create", stdin={
+        "household": "Sofia Park", "contact": "Sofia", "return_name": "1040 - Sofia Park",
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
+                        stdin={"original": parked, "identifier": "A01", "seq": seq,
+                               "target": str(outsider)})
+    assert code == 1 and payload["error"] == api.NOT_FED.format(label=outsider.name)
+    assert read_index(outsider) == []
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(father),
+                        stdin={"original": parked, "identifier": "B01", "seq": seq,
+                               "target": str(llc)})
+    assert code == 0, payload
+    assert payload["handed_over"]["moved_original"] is True
+    assert payload["handed_over"]["identifier"] == "B01"
+    assert [e.decision for e in read_index(father)] == [HANDED_OVER]
+    [taken] = read_index(llc)
+    assert taken.decision == FILED and taken.identifier == "B01"
+    assert (originals_of(llc) / "notice.pdf").is_file()
+
+
+def test_run_now_sorts_against_the_feed_list_like_the_scheduled_pass(capsys, demo_root):
+    """There is one definition of a pass, and *Run now* is it.
+
+    The button walks the practice and hands it down exactly as the
+    scheduled job does, so the same trial balance dropped in the father's
+    inbox files under the co-owned LLC either way. Without the walk the
+    feed list resolves to nothing and the document parks at home, which
+    would make the button and the schedule disagree about what the
+    household's inbox is for. The pass also says what it filed into a
+    return it feeds, on the return that was asked for.
+    """
+    from tests.samples import text_pdf
+    from tracker.filer import DROPPED_ELSEWHERE
+    from tracker.runner import FILED_INTO_FED
+
+    father, llc = two_households(capsys, demo_root)
+    text_pdf(inbox_of(father) / "tb.pdf",
+             ["Trial balance as of December 31 2025", TEST_CLIENT])
+
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
+
+    assert code == 0, payload
+    assert read_index(father) == []                 # nothing parked at home
+    [row] = read_index(llc)
+    assert row.decision == FILED and row.identifier == "B01"
+    assert row.reason.endswith("; " + DROPPED_ELSEWHERE.format(household="Park Family"))
+    assert payload["run"]["filed"] == 0             # the row is the LLC's...
+    assert FILED_INTO_FED.format(n=1, label="Park & Lee LLC 2025 1120S - Park & Lee LLC") \
+        in payload["run"]["warnings"]               # ...and the pass says so
+
+
+def a_parked_document(capsys, engagement):
+    """One document nothing asks for, dropped in the household's inbox and
+    left waiting for a person by a pass - the row a hand-over acts on, with
+    the record version the card would have carried out (decision 112)."""
+    from tests.samples import text_pdf
+
+    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
+    _code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    [row] = [e for e in payload["state"]["index"]
+             if e["decision"] == NEEDS_REVIEW]
+    return row["pbc_location"], row["seq"]
+
+
+def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
+    """Every word the feed list shows is the API's - what a drop folder
+    also feeds, who feeds it, the word that adds one, the two warnings and
+    the answer that files a document under another return - so the app
+    cannot disagree with the tracker about any of them."""
+    here = Path(__file__).resolve().parents[1]
+    js = (here / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    html = (here / "app" / "renderer" / "index.html").read_text(encoding="utf-8")
+    for word in (api.FEEDS_LABEL, api.FEEDS_HELP, api.FEEDS_LINE, api.FED_BY_LINE,
+                 api.ADD_FEED_LABEL, api.FEED_WARNING, api.RETURN_WARNING,
+                 api.HAND_OVER_LABEL, api.HAND_OVER_RETURN_LABEL, api.HAND_OVER_REQUEST_LABEL,
+                 api.NOBODY_TYPED, api.NOT_FED):
+        assert f'"{word}"' not in js and f"'{word}'" not in js, word
+        assert word not in html, word
+    words = api._vocab()
+    assert words["household"]["feeds_line"] == api.FEEDS_LINE
+    assert words["household"]["fed_by_line"] == api.FED_BY_LINE
+    assert words["household"]["add_feed"] == api.ADD_FEED_LABEL
+    assert words["household"]["nobody_typed"] == api.NOBODY_TYPED
+    assert words["review_labels"]["hand_over"] == api.HAND_OVER_LABEL
+    # The two boxes of the hand-over have their own words since Fable's
+    # review of decision 129: the page borrowed the household heading and
+    # the editor's title, which read nearly right and would have drifted
+    # the moment either was reworded for its own screen.
+    assert words["review_labels"]["hand_over_return"] == api.HAND_OVER_RETURN_LABEL
+    assert words["review_labels"]["hand_over_request"] == api.HAND_OVER_REQUEST_LABEL

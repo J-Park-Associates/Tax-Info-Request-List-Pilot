@@ -16,7 +16,16 @@ own, a journal in its folder in the private tree
 - the **contact** every return's letter greets, and the **inbox link** every
   letter pastes. Both are copied into a return's own details when it is
   made and when it is rolled forward, so the reminder reads the five
-  details it has always read and knows nothing about households.
+  details it has always read and knows nothing about households;
+- its **feeds** (decision 129): the return *lines* in other households this
+  household's drop folder also feeds. A client with a co-owned business
+  keeps one drop folder and the business lives in a household shared to
+  its co-owners, so one inbox must be able to feed a return that lives
+  somewhere else. A feed is ``Feed(household, return_name)``, resolved
+  each pass to that household's open-year return of that name
+  (:func:`resolve_feeds`), so the rollover carries nothing and a retired
+  line is said. **Nothing infers one**: a household is assembled by a
+  person and so is a feed.
 
 **One journal machinery, two kinds of folder.** The household's record is a
 journal under :data:`tracker.ledger.LEDGER_FILENAME`, beside a lock of the
@@ -53,7 +62,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from tracker.layout import is_year_folder
+from tracker.layout import is_year_folder, return_dir_for
 from tracker.records import HouseholdInfo, household_to_json
 
 
@@ -222,6 +231,84 @@ def household_returns(household_dir: Path | str) -> list[Path]:
             continue
         found.extend(child for child in children if ledger.path_for(child).is_file())
     return found
+
+
+#: What a feed nothing answers is said with, on every return of the
+#: household whose drop folder carries it. Said rather than silently
+#: dropped (decision 129): a feed is a return *line*, so a year the other
+#: household has not opened yet, a line it retired, and a name somebody
+#: mistyped all look the same from here and all deserve a sentence a
+#: person can act on.
+FEED_UNRESOLVED = ("this drop folder is set to feed {household} / {return_name}, which has no "
+                   "active return for {year}")
+
+
+def resolve_feeds(
+    household_dir: Path | str, feeds: Iterable[object], year: int, registry: object
+) -> tuple[list[object], list[str]]:
+    """The returns this household's drop folder also feeds this year, and
+    what could not be resolved.
+
+    **A feed is a return line** (decision 129): ``Feed(household,
+    return_name)`` names the line a return keeps every year, and this is
+    where it becomes a return - the active, unsuperseded return at
+    ``<private tree>/<household>/<year>/<return name>``. So the rollover
+    carries nothing about feeds and a line the other household retired is
+    said (:data:`FEED_UNRESOLVED`) rather than quietly feeding nothing.
+
+    A feed naming **this** household resolves to nothing and is not
+    warned about: a household's own returns are fed already, and the API
+    refuses one being added.
+
+    A fed household with **two open years** leaves its feed unresolved for
+    this pass, for the reason its own inbox sorts nothing (decision 125):
+    a household nobody can say the year of is not one a document may be
+    filed into. The rest of the feed list proceeds.
+
+    ``registry`` is duck-typed on ``engagements``, for the reason
+    :func:`open_years` is duck-typed on its returns: :mod:`tracker.registry`
+    sits above this module and the three facts read here - where a return
+    is, whether it is still open, and which household it is under - are
+    the record's own.
+    """
+    folder = Path(household_dir)
+    # The clients root, positionally: a household is
+    # ``<root>/<private tree>/<household>`` and nothing else is one.
+    root = folder.parents[1]
+    every = list(getattr(registry, "engagements", []))
+    wanted: list[object] = []
+    said: list[str] = []
+    for feed in feeds:
+        if feed.household.casefold() == folder.name.casefold():
+            continue
+        fed_dir = return_dir_for(root, feed.household, year, feed.return_name)
+        theirs = [one for one in every if one.household_path == fed_dir.parent.parent]
+        found = next((one for one in theirs
+                      if one.active and one.tax_year == year and one.path == fed_dir), None)
+        if found is None or len(open_years(theirs)) != 1:
+            said.append(FEED_UNRESOLVED.format(household=feed.household,
+                                               return_name=feed.return_name, year=year))
+        else:
+            wanted.append(found)
+    return wanted, said
+
+
+def fed_by(registry: object, household_dir: Path | str) -> list[object]:
+    """The households whose drop folders feed a return of this one.
+
+    What the **destination's** card says (``tracker.api.FED_BY_LINE``):
+    anyone who can drop into one of these folders can drop for a return
+    that lives here, so the household whose documents rest here is told
+    who else may send them. The evidence and the record name a return by
+    its label and never a household's members; who is shared on a
+    household is on that household's own card.
+
+    ``registry`` is duck-typed on ``households``, as
+    :func:`resolve_feeds` is on its engagements.
+    """
+    name = Path(household_dir).name.casefold()
+    return [one for one in getattr(registry, "households", [])
+            if any(feed.household.casefold() == name for feed in one.info.feeds)]
 
 
 def open_years(returns: Iterable[object]) -> list[int]:

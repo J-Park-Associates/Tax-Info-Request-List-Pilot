@@ -193,6 +193,25 @@ def originals_of(return_dir: Path | str) -> Path:
     return originals_dir_for(root_of(return_dir), household_name_of(return_dir), year)
 
 
+def lock_order_key(return_dir: Path | str) -> tuple[str, str]:
+    """Where one return stands in the **one global lock order** (decision
+    129): its household's folder name, then its own, without case.
+
+    Every pass that touches more than one household takes every lock it
+    needs in this order before anything is read. A household's drop folder
+    may feed a return line in another household, so two passes running at
+    once can want the same two returns - and two processes taking their
+    locks in the same order cannot deadlock, whichever household each
+    started from. Without case, because Windows folder names differ by it
+    and two spellings of one order are not an order.
+
+    It is also what "the first return by order" means wherever the sort
+    says it, so the return a contested drop parks in is the return whose
+    lock was taken first.
+    """
+    return (household_name_of(return_dir).casefold(), Path(return_dir).name.casefold())
+
+
 def label_for(household: str, year: object, return_name: str) -> str:
     """How one return is named wherever a person reads a list of them.
 

@@ -38,7 +38,12 @@ the clients root:
   page, and the software, calls the **engagement**.
 
 One inbox feeds every return of the household's open year, so a pass runs a
-whole household at a time.
+whole household at a time — and a person may extend it further (decision
+129): a household's drop folder can be set to feed named **return lines** in
+other households, which is how a client with a co-owned business keeps one
+folder while the business lives in a household shared to its co-owners. A
+document filed to one of those moves into *that* household's year folder,
+because an original rests under the folder its return lives in.
 
 ## Starting an engagement
 
@@ -119,6 +124,16 @@ person types.
   is never a keyword and a keyword is never a name; and what the record
   keeps is the firm's own spelling that matched, never a word of the
   document and no part of anybody's tax identification number.
+- **Nothing routes outside the feed list** (decision 129). A drop folder
+  feeds its own household's returns unless a person extends it, by name, to
+  return lines in other households; nothing is ever inferred into that list,
+  and a document nobody may file waits for a person in the household it was
+  dropped in. A parked document can be filed under a request of any return
+  the folder feeds — one decision that moves the original where it must
+  rest, makes the working copy there, and closes the row here as *Handed
+  Over*. Every feed added, and every return added to a household, is warned
+  about in the same breath: whoever is on that folder will see what is
+  filed under it.
 - **Catalog changes affect every future engagement.** Edit
   `tracker/templates.py` and commit it; the test suite checks every row can
   recognise its own document. The keywords staff have taught one engagement

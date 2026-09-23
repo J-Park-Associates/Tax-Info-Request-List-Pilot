@@ -103,14 +103,17 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 7` (decision 104 dropped the workbook's
+One file, `PRAGMA user_version = 9` (decision 104 dropped the workbook's
 digest column; decision 107 added the verdict cache's two tables; decision
 116 added the `override_reason` column to `requests`; decision 117 added
 the Filing Deadline to the engagement's details, and a detail is a column
 of `engagements`; decision 119 added the `intents` table; decision 125 put
 the household, the tax year and the return name into the engagement's
 details, gave `engagements` the household record's own columns and a `kind`
-saying which of the two a row holds; a file at an
+saying which of the two a row holds; decision 128 put the return's people
+into its details and the `named` mark into `requests`; decision 129 put the
+household's feed list — the return lines in other households its drop
+folder also feeds — into the household's own columns; a file at an
 earlier version is refused by name, and is deleted and rebuilt — nothing
 is lost, the journals are what it is made
 of). A file at any other version is refused by name rather than opened
@@ -118,13 +121,13 @@ hopefully.
 
 | table | what it holds |
 |---|---|
-| `engagements` | one row per folder that has a journal — a return, or a household (decision 125); `kind` says which. Keyed by its path relative to the clients root with forward slashes — the root the settings file names whenever the folder is under it, whatever root a caller typed, so one folder is one key for the app, the scheduled pass and the command line alike (decision 106); a caller's own root, or the folder's parent, only on a machine with no settings file. For a return: its own details, which since decision 125 carry the household, the tax year and the return name. For a household: the `household_` columns — its name, the members a person typed, the contact and the inbox link. And for both: the journal's head as it was when the rows were built, how many lines have been applied, and when |
+| `engagements` | one row per folder that has a journal — a return, or a household (decision 125); `kind` says which. Keyed by its path relative to the clients root with forward slashes — the root the settings file names whenever the folder is under it, whatever root a caller typed, so one folder is one key for the app, the scheduled pass and the command line alike (decision 106); a caller's own root, or the folder's parent, only on a machine with no settings file. For a return: its own details, which since decision 125 carry the household, the tax year and the return name. For a household: the `household_` columns — its name, the members a person typed, the contact, the inbox link and the feed list a person built (decision 129), each feed a household and a return line, as JSON text. And for both: the journal's head as it was when the rows were built, how many lines have been applied, and when |
 | `requests` | the person's rules, one row per identifier — everything the request list's own record holds that is not a status, in the order the person gave the rows. Tuples (keywords, extensions) are JSON text |
 | `statuses` | what the last scan said about one identifier: status, received date, file count, validation notes, and the sequence number that set them |
 | `documents` | the index: one row per preserved original, every column the index row has, plus the identity it is keyed under, the place it holds in the index's own order, and the sequence number that last wrote it - read back by `document_seqs()`, and the app carries it |
 | `learned_keywords` | a keyword a person's filing taught one request, and has not taken back: a `keyword_learned` event inserts the row with the journal line's sequence number and a `keyword_unlearned` deletes it (decision 113), so the words come back in the order they were taught and one taught again comes back last |
 | `events` | every journal line, in order, with the whole line kept as JSON text |
-| `intents` | the moves begun and not finished (decision 119): one row per index row's identity, holding the whole `moving` line — the operations, the row the decision will record and the event that completes it. Empty after any pass that was not interrupted |
+| `intents` | the moves begun and not finished (decision 119): one row per index row's identity, holding the whole `moving` line — the operations, the row the decision will record, the identity that row is leaving where it moves, the event that completes it, and the events the decision writes into **another return's** record (`also_in`, decision 129). Empty after any pass that was not interrupted |
 | `verdicts` | the tier-3 verdict cache (decision 107): one row per content digest and rules fingerprint, the verdict as JSON text - pass/fail, reason, the firm's own evidence terms, never client text - and the `CACHE_VERSION` it was written under. **Not the record's**: see below |
 | `file_memos` | the cache's memo: one row per working copy or drop the pass has hashed, its size, mtime and digest, so an unchanged file is not read again. **Not the record's** either |
 
@@ -134,8 +137,13 @@ statuses by status.
 The events that carry a whole index row are `tracker.ledger.ROW_EVENTS`,
 and their fold **is** the index: `preserved`, `filed`, `parked`,
 `duplicate`, `assigned_by_person`, `dismissed_by_person`,
-`unfiled_by_person`, `restored_by_person`, `bytes_recorded`, `copy_moved`
-and the `imported` line a seeded row carries. `copy_moved` is decision
+`unfiled_by_person`, `handed_over_by_person`, `restored_by_person`,
+`bytes_recorded`, `copy_moved`
+and the `imported` line a seeded row carries. `handed_over_by_person` is
+decision 129's: a person filed a parked document under a request of another
+return this drop folder feeds, so the row here closes — terminal, like a
+duplicate — while the row the decision writes in that return is its own
+`assigned_by_person`, carried in the intent until both are written. `copy_moved` is decision
 109's: the pass found a row's working copy somewhere other than where
 the record last said — away from its request folder, away again, or back
 where it belongs — and the row the line carries says which. One name in

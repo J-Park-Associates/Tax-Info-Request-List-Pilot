@@ -887,6 +887,23 @@ body {
 .household-facts dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
 .household-returns { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
 
+/* ── The feed list (decision 129) ─────────────────────────────────────── */
+/* What this drop folder also feeds, edited as a list a person built from
+   the returns that already exist. No colour of its own: a feed is a route
+   somebody chose, not a status. */
+
+.household-feeds { list-style: none; margin: 4px 0; padding: 0; }
+.household-feeds li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.feed-add { display: flex; gap: 6px; align-items: center; }
+.feed-add select { flex: 1; min-width: 0; }
+
 /* ── The sharing checklist (decision 126) ────────────────────────────── */
 /* The two grants a person makes in Drive, once, and the firm's dated word
    that they were made. No colour of its own: the tracker cannot see

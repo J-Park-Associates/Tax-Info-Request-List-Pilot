@@ -155,6 +155,15 @@ FILES_KEY = "files"
 #: person's filing is still recorded as theirs. ``ALSO_KEY`` carries the
 #: events that travel with the row - today the one keyword a person's
 #: filing teaches - whole, as they would have been written.
+#: ``ALSO_IN_KEY`` carries the events one decision writes into **another
+#: return's** record (decision 129): ``{<that return's location, relative
+#: to this one>: [<the events, whole>]}``. A hand-over to a return this
+#: drop folder feeds is one decision that touches two records - the row it
+#: closes here and the row it opens there - and the second record's half
+#: is written down here, in the intent, so a kill between the two is
+#: finished from the record and the person's decision lands once, dated
+#: their day. Both folds pass over it: it is the intent's baggage, not a
+#: fact about this record, and the recovery is the only reader.
 OPS_KEY = "ops"
 OP_KEY = "op"
 FROM_KEY = "from"
@@ -163,6 +172,7 @@ DIGEST_KEY = "digest"
 EVENT_KEY_AFTER = "then"
 DECIDED_BY_KEY = "by"
 ALSO_KEY = "also"
+ALSO_IN_KEY = "also_in"
 #: The three operations an intent can carry.
 OP_MOVE = "move"
 OP_COPY = "copy"
@@ -210,6 +220,16 @@ ASSIGNED_BY_PERSON = "assigned_by_person"
 DISMISSED_BY_PERSON = "dismissed_by_person"
 #: A person sent a filed document back for review.
 UNFILED_BY_PERSON = "unfiled_by_person"
+#: A person handed a parked document to a return this drop folder feeds
+#: (decision 129). Terminal for the return it leaves, like a duplicate: the
+#: document is the other return's now, its row there is the person's own
+#: ``assigned_by_person``, and nothing hands it back automatically. The row
+#: this event carries says where the original came to rest - under the
+#: household the destination's return lives in, where the plan says it must
+#: rest - and which return took it. Named ``_EVENT`` because the sentence
+#: the row reads is ``tracker.filer.HANDED_OVER_BY_PERSON``, and one name
+#: for the two would be two facts under one word.
+HANDED_OVER_BY_PERSON_EVENT = "handed_over_by_person"
 #: A person put a working copy the record had lost track of back where the
 #: record put it (decision 110). One name for the whole of that answer,
 #: whatever the click found: the bytes moved home, or were copied home from
@@ -340,7 +360,8 @@ MIGRATED = "migrated"
 #: The events that carry a whole index row. Their fold is the index.
 ROW_EVENTS = frozenset({
     PRESERVED, FILED, PARKED, DUPLICATE, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
-    UNFILED_BY_PERSON, RESTORED_BY_PERSON, BYTES_RECORDED, COPY_MOVED, IMPORTED,
+    UNFILED_BY_PERSON, HANDED_OVER_BY_PERSON_EVENT, RESTORED_BY_PERSON, BYTES_RECORDED,
+    COPY_MOVED, IMPORTED,
 })
 #: Every event name this version reads.
 EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, KEYWORD_UNLEARNED, DRAFTED,

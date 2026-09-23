@@ -47,6 +47,7 @@ from tracker.records import (
     WHERE_FIRST_PAGE,
     Evidence,
     Person,
+    ledger_key,
     rule_from_json,
     rule_to_json,
 )
@@ -4667,3 +4668,437 @@ def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
         [again] = report.review
         assert again.decision == NEEDS_REVIEW
         assert reasons.NAME_NOT_ON_PAGE.matches(again.reason)
+
+
+# ============ the household routes: the feed list (decision 129) ===========
+#
+# A client with a co-owned business keeps one drop folder, and the business
+# lives in a household shared to its co-owners. So a household's drop folder
+# feeds its own returns unless a person extends it to named return lines in
+# other households - and a document filed to one of those rests under the
+# folder that return lives in, seen by exactly that folder's sharing.
+
+FATHER = (Person("taxpayer", "John Park", propose_spellings("John Park", "taxpayer")),)
+LLC_PEOPLE = (Person("entity", "Park & Lee LLC",
+                     propose_spellings("Park & Lee LLC", "entity")),)
+
+
+def feeding(tmp_path, feeds):
+    """Park Family's drop folder, extended to these return lines by a
+    person - one ``household_changed`` event, exactly as the editor
+    records it."""
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    folder = private_household_dir(tmp_path, "Park Family")
+    save_household(folder, replace(load_household_info(folder), feeds=tuple(feeds)))
+    return folder
+
+
+@pytest.fixture
+def fed(tmp_path):
+    """The plan's example: a father's household with his own 1040, the
+    co-owned LLC in a household of its own, and the father's drop folder
+    feeding the LLC's return line."""
+    from tracker.records import Feed
+
+    father = make_engagement(tmp_path, ITEMS, household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    llc = make_engagement(tmp_path, BUSINESS, household="Park & Lee LLC",
+                          return_name="1120S - Park & Lee LLC", people=LLC_PEOPLE)
+    feeding(tmp_path, [Feed("Park & Lee LLC", "1120S - Park & Lee LLC")])
+    return father, llc
+
+
+def test_a_drop_in_the_fathers_inbox_files_to_the_co_owned_llc_and_the_original_rests_under_the_llcs_folder(
+        fed):
+    """The plan's headline case. One drop folder, two households: the trial
+    balance is judged against the LLC's request list as well as the
+    father's, files where exactly one accepts it, and its original moves a
+    second time - into the LLC's own folder for the year, which is the
+    folder its sharing covers. The destination's row says where it was
+    dropped, and names no person."""
+    from tracker.filer import DROPPED_ELSEWHERE
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+
+    done = sort_all([father, llc], home=[father], today=DAY1)
+
+    assert done[father].handled == 0 and read_index(father) == []
+    [row] = read_index(llc)
+    assert row.decision == FILED and row.identifier == "B01"
+    assert row.pbc_location == original_at(llc, "tb.pdf")
+    assert row.reason.endswith("; " + DROPPED_ELSEWHERE.format(household="Park Family"))
+    # The original rests under the household the return lives in, and the
+    # folder it was dropped in keeps nothing of it.
+    assert [p.name for p in originals(llc).iterdir()] == ["tb.pdf"]
+    assert not any(originals(father).iterdir())
+    assert [p.name for p in inbox_of(father).iterdir()] == [README_NAME]
+    assert (llc / row.prepared_location).is_file()
+
+
+def test_a_drop_that_fails_the_name_check_parks_in_the_dropping_household_naming_the_fed_return(fed):
+    """A W-2 the father's list plainly wants, with the LLC's name on the
+    page: the name tier vetoes it, and it parks where it was dropped - in
+    the dropping household, with the fed return named by its label."""
+    father, llc = fed
+    drop(father, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="Park & Lee LLC")
+
+    done = sort_all([father, llc], home=[father], today=DAY1)
+
+    assert read_index(llc) == []
+    [parked] = done[father].review
+    assert parked.decision == NEEDS_REVIEW
+    assert reasons.NAMES_ANOTHER_RETURN.matches(parked.reason)
+    assert "Park & Lee LLC 2025 1120S - Park & Lee LLC" in parked.reason
+    assert parked.pbc_location == original_at(father, "w2.pdf")     # it rests where it was dropped
+    assert (father / parked.prepared_location).is_file()
+
+
+def test_nothing_ever_routes_to_a_return_outside_the_feed_list(fed):
+    """A document only an unfed return would accept parks. The feed list is
+    a person's assembly and the only thing the sort reads: a return nobody
+    extended the drop folder to is not judged, not filed into and not
+    named."""
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+
+    first = sort(father, returns=[father], today=DAY1)
+
+    [parked] = first.review
+    assert parked.original_name == "tb.pdf"
+    assert read_index(llc) == []
+    assert [p.name for p in originals(father).iterdir()] == ["tb.pdf"]
+    assert not originals(llc).exists() or not any(originals(llc).iterdir())
+
+
+def test_a_re_drop_of_a_document_filed_to_a_fed_return_is_that_returns_duplicate(fed):
+    """The bytes say which record already holds the document, and that
+    record decides - wherever it lives. A second copy of the LLC's trial
+    balance is the LLC's duplicate row, not a second arrival for the
+    household that dropped it."""
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    sort_all([father, llc], home=[father], today=DAY1)
+
+    drop(father, "tb again.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    done = sort_all([father, llc], home=[father], today=DAY2)
+
+    assert done[father].handled == 0 and read_index(father) == []
+    [duplicate] = done[llc].duplicates
+    assert duplicate.reason.startswith("identical to tb.pdf")
+    assert [r.decision for r in read_index(llc)] == [FILED, DUPLICATE]
+
+
+@pytest.mark.parametrize("passed_by", ("the dropping household", "the return's own household"))
+def test_a_cross_household_filing_killed_between_the_move_and_the_copy_is_finished_by_either_households_pass(
+        fed, monkeypatch, passed_by):
+    """The filing intent lives in the destination's record and both
+    households' passes hold that return's lock - the one it lives in
+    because it is its own, the one that dropped it because it feeds it - so
+    either of them finishes the half-made move from the record."""
+    from tracker.validators import sha256_of
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    before_father, before_llc = digests_under(father), digests_under(llc)
+    document = sha256_of(inbox_of(father) / "tb.pdf")
+    moves = moves_made(monkeypatch)
+    killed_after_ops(monkeypatch, after=1)          # the move made, the copy not
+    with pytest.raises(KeyboardInterrupt):
+        sort_all([father, llc], home=[father], today=DAY1)
+    monkeypatch.undo()
+    assert open_intents(llc) and not open_intents(father)
+
+    if passed_by == "the dropping household":
+        sort_all([father, llc], home=[father], today=DAY2)
+    else:
+        sort_all([llc], today=DAY2)
+
+    [row] = read_index(llc)
+    assert row.decision == FILED and row.pbc_location == original_at(llc, "tb.pdf")
+    assert read_index(father) == []
+    conserved(father, before_father, moves, gone=[document])
+    conserved(llc, before_llc, moves, added=[document, document])
+
+
+def test_a_cross_household_original_mid_recovery_is_never_a_stray_of_the_dropping_household(
+        fed, monkeypatch):
+    """Between the intent and the move, the original is in the folder it was
+    dropped in while the row that names it belongs to another household's
+    record. It is not a stray: it is spoken for, by a decision the record
+    already holds, and a pass that cannot finish the move leaves it alone
+    rather than sorting it a second time."""
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    killed_at_the_intent(monkeypatch, ledger.OP_MOVE)
+    with pytest.raises(KeyboardInterrupt):
+        sort_all([father, llc], home=[father], today=DAY1)
+    monkeypatch.undo()
+    assert open_intents(llc)
+    assert [p.name for p in originals(father).iterdir()] == ["tb.pdf"]
+
+    # A dry run finishes nothing, so the intent is still open and the file
+    # is still in the dropping household's folder: it must not be sorted.
+    preview = sort_all([father, llc], home=[father], today=DAY2, dry_run=True)
+    assert all(report.handled == 0 for report in preview.values())
+
+    sort_all([father, llc], home=[father], today=DAY3)
+
+    [row] = read_index(llc)
+    assert row.decision == FILED and row.pbc_location == original_at(llc, "tb.pdf")
+    assert read_index(father) == [] and not any(originals(father).iterdir())
+
+
+# ---------------- File under another return (decision 129) ----------------
+
+
+def parked_notice(father):
+    """One document nothing asks for, waiting for a person in the father's
+    own return - the row a hand-over acts on."""
+    drop(father, "notice.pdf", "an agency notice nothing asks for")
+    return sort(father, returns=[father], today=DAY1).review[0]
+
+
+def test_a_hand_over_moves_the_original_copies_the_working_copy_removes_the_parked_copy_and_records_both_rows(
+        fed):
+    """One decision, two records: the original moves where it must rest,
+    the working copy is made in the taking return's request folder, the
+    parked copy here goes, this row closes as handed over and the taking
+    return's row is the person's own filing."""
+    from tracker.filer import HANDED_OVER, HANDED_OVER_BY_PERSON, hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+
+    done = hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+
+    assert done.moved_original is True
+    assert done.label == "Park & Lee LLC 2025 1120S - Park & Lee LLC"
+    [home] = read_index(father)
+    assert home.decision == HANDED_OVER and home.identifier == ""
+    assert home.prepared_location == ""
+    assert home.reason.startswith(HANDED_OVER_BY_PERSON.format(label=done.label, identifier="B01"))
+    assert home.pbc_location == location_of(father, originals(llc) / "notice.pdf")
+    [taken] = read_index(llc)
+    assert taken.decision == FILED and taken.identifier == "B01"
+    assert taken.pbc_location == original_at(llc, "notice.pdf")
+    assert taken.reason.startswith("assigned by a person on 2026-07-09")
+    # The bytes: one original, under the household the taking return lives
+    # in, one working copy in its request folder, and nothing left here.
+    assert [p.name for p in originals(llc).iterdir()] == ["notice.pdf"]
+    assert not any(originals(father).iterdir())
+    assert (llc / taken.prepared_location).is_file()
+    assert not (father / parked.prepared_location).exists()
+
+
+def test_a_hand_over_within_one_household_moves_no_original(two_returns):
+    """An original moves once, out of the inbox into the year's folder the
+    client can see, and never again (decision 125) - which holds for every
+    filing inside one household, hand-over included. Only across households
+    does it move a second time, because there it must rest somewhere else."""
+    from tracker.filer import HANDED_OVER, hand_over
+
+    personal, business = two_returns
+    drop(personal, "notice.pdf", "an agency notice nothing asks for")
+    parked = sort(personal, returns=two_returns, today=DAY1).review[0]
+    where = parked.pbc_location
+
+    done = hand_over(personal, where, business, "B01", today=DAY2)
+
+    assert done.moved_original is False
+    [home] = read_index(personal)
+    assert home.decision == HANDED_OVER and home.pbc_location == where
+    [taken] = read_index(business)
+    assert taken.pbc_location == original_at(business, "notice.pdf")
+    assert locate(business, taken.pbc_location) == locate(personal, where)
+    assert [p.name for p in originals(personal).iterdir()] == ["notice.pdf"]
+
+
+def test_a_handed_over_row_is_terminal_and_never_in_the_queue(fed):
+    """The document is the other return's now. The row this return keeps is
+    terminal, like a duplicate: it is not offered in the queue, not counted
+    in it, and no second decision can be made on it here."""
+    from tracker import review
+    from tracker.filer import HANDED_OVER, FilingError, assign_review_file, hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+
+    entries = read_index(father)
+    assert [e.decision for e in entries] == [HANDED_OVER]
+    assert review.triage(father, entries, items=load_manifest(father)) == []
+    assert [e for e in entries if e.decision == NEEDS_REVIEW] == []
+    with pytest.raises(FilingError):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY3)
+    with pytest.raises(FilingError):
+        assign_review_file(father, parked.pbc_location, "A01", today=DAY3)
+
+
+def test_a_re_drop_of_a_handed_over_document_is_the_taking_returns_duplicate(fed):
+    """A handed-over row keeps the document's bytes but not the document.
+    The client sending it again is the **taking** return's arrival - the
+    record that has it decides, in its own record, as decision 111 says -
+    so the row here is untouched and the sentence names the working copy
+    the other return really holds."""
+    from tracker.filer import DUPLICATE_OF_FILED, hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    home_before = read_index(father)
+    [taken] = read_index(llc)
+
+    drop(father, "notice again.pdf", "an agency notice nothing asks for")
+    done = sort_all([father, llc], home=[father], today=DAY3)
+
+    assert done[father].handled == 0 and read_index(father) == home_before
+    [duplicate] = done[llc].duplicates
+    assert duplicate.reason == DUPLICATE_OF_FILED.format(name="notice.pdf",
+                                                         copy=taken.filed_as)
+    assert [r.decision for r in read_index(llc)] == [FILED, DUPLICATE]
+
+
+def test_a_re_drop_of_a_handed_over_document_says_so_once_the_feed_is_trimmed(fed, tmp_path):
+    """With the feed trimmed, the return that has the document is out of
+    this pass's reach and the handed-over row is the only record of the
+    bytes left. It decides, then - and says where the document went,
+    rather than reporting a working copy that was never missing."""
+    from tracker.filer import DUPLICATE_OF_HANDED_OVER, HANDED_OVER, HANDED_OVER_BY_PERSON, hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    done = hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    taken_before = read_index(llc)
+    feeding(tmp_path, [])                       # a person trims the feed
+
+    drop(father, "notice again.pdf", "an agency notice nothing asks for")
+    first = sort(father, returns=[father], today=DAY3)
+
+    [duplicate] = first.duplicates
+    assert duplicate.reason == DUPLICATE_OF_HANDED_OVER.format(
+        name="notice.pdf",
+        handed=HANDED_OVER_BY_PERSON.format(label=done.label, identifier="B01"))
+    assert [r.decision for r in read_index(father)] == [HANDED_OVER, DUPLICATE]
+    # Nothing files and nothing is copied: the document is the other
+    # return's, and that record is not this pass's to write in.
+    assert not first.filed and read_index(llc) == taken_before
+    assert not any((father / PREPARED_DIR_NAME).rglob("notice*"))
+
+
+def test_a_hand_over_into_a_name_a_vanished_original_left_behind_still_writes_the_taking_returns_row(
+        fed):
+    """A key is a location, and a location comes free again. An original
+    filed into the LLC and then removed by hand leaves its row behind,
+    pointed at nothing (decision 109); the next document of that name is
+    handed the same place and so the same key. The hand-over must still
+    write the taking return's row - it is that row's next version - or the
+    home row would close as handed over while the other record kept the
+    stale row and a working copy no row named."""
+    from tracker.filer import ASSIGNED_BY_PERSON, HANDED_OVER, hand_over
+
+    father, llc = fed
+    drop(father, "notice.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    sort_all([father, llc], home=[father], today=DAY1)
+    [stale] = read_index(llc)
+    (originals(llc) / "notice.pdf").unlink()    # the client removed it by hand
+    parked = parked_notice(father)
+
+    done = hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+
+    assert done.moved_original is True
+    [taken] = read_index(llc)
+    assert ledger_key(taken) == ledger_key(stale)       # the same place, a new row
+    assert taken.decision == FILED and taken.identifier == "B01"
+    assert taken.reason.startswith(ASSIGNED_BY_PERSON)
+    assert taken.pbc_location == original_at(llc, "notice.pdf")
+    [home] = read_index(father)
+    assert home.decision == HANDED_OVER
+    # One original under the household the taking return lives in, and one
+    # working copy made by this decision, in the request the person chose
+    # and named by the row. The earlier filing's copy is still beside it
+    # with no row naming it any more, which is decision 109's sweep to say
+    # on the next pass - exactly as it is for any name the pass reuses.
+    assert [p.name for p in originals(llc).iterdir()] == ["notice.pdf"]
+    copies = sorted(p.name for p in prepared(llc, "B01").iterdir())
+    assert Path(taken.filed_as).name in copies and len(copies) == 2
+
+
+#: Where a hand-over is killed, for the conservation claim: the intent, each
+#: of its three file steps, and each of the two records it writes.
+HAND_OVER_CRASH_POINTS = (
+    "the intent before the move",
+    "after the move",
+    "after the copy",
+    "after the parked copy went",
+    "before the taking return's row",
+    "after the taking return's row",
+)
+
+
+def killed_at_the_nth_record(monkeypatch, n=1):
+    """The machine dies as the n-th record of *rows* is written - the
+    intent's own line is not one - so a decision that writes two records
+    can be cut between them."""
+    real = store.record
+    state = {"seen": 0, "died": False}
+
+    def killing(conn, engagement_dir, *events):
+        if events[0][ledger.EVENT_KEY] != ledger.MOVING:
+            state["seen"] += 1
+            if state["seen"] >= n and not state["died"]:
+                state["died"] = True
+                raise KeyboardInterrupt
+        return real(conn, engagement_dir, *events)
+
+    monkeypatch.setattr(store, "record", killing)
+    return state
+
+
+@pytest.mark.parametrize("point", HAND_OVER_CRASH_POINTS)
+def test_a_hand_over_killed_at_every_point_is_finished_from_the_record_as_the_persons_and_the_target_row_is_written_once(
+        fed, monkeypatch, point):
+    """Whichever of the six steps the machine dies on, the next pass that
+    holds both locks finishes the person's decision from the record: the
+    original ends where it must rest, one working copy is made, the parked
+    copy is gone, both rows are written exactly once and dated the day the
+    person decided - and nothing is overwritten, deleted or moved twice."""
+    from tracker.filer import HANDED_OVER, hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    document = parked.digest
+    before_father, before_llc = digests_under(father), digests_under(llc)
+    moves = moves_made(monkeypatch)
+    if point == "the intent before the move":
+        killed_at_the_intent(monkeypatch, ledger.OP_MOVE)
+    elif point == "after the move":
+        killed_after_ops(monkeypatch, after=1)
+    elif point == "after the copy":
+        killed_after_ops(monkeypatch, after=2)
+    elif point == "after the parked copy went":
+        killed_after_ops(monkeypatch, after=3)
+    elif point == "before the taking return's row":
+        killed_at_the_nth_record(monkeypatch, 1)
+    else:
+        killed_at_the_nth_record(monkeypatch, 2)
+    with pytest.raises(KeyboardInterrupt):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    monkeypatch.undo()
+
+    sort_all([father, llc], home=[father], today=DAY3)
+
+    [home] = read_index(father)
+    assert home.decision == HANDED_OVER
+    assert home.pbc_location == location_of(father, originals(llc) / "notice.pdf")
+    [taken] = read_index(llc)
+    assert taken.decision == FILED and taken.identifier == "B01"
+    assert taken.received == parked.received          # the day the client sent it
+    assert "on 2026-07-09" in taken.reason            # dated the day the person decided
+    assert (llc / taken.prepared_location).is_file()
+    # The parked copy and the original leave this household; the original
+    # and one working copy arrive in the other. Nothing twice.
+    conserved(father, before_father, moves, gone=[document, document])
+    conserved(llc, before_llc, moves, added=[document, document])

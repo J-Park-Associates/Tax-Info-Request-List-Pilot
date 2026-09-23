@@ -208,7 +208,13 @@ ENV_STORE = "TRACKER_STORE"
 #: and the ``named`` mark to ``requests``: a version-7 file has neither, so
 #: it is refused, deleted and rebuilt from the journals like every version
 #: before it, and both travel in the ``rules_changed`` lines.
-SCHEMA_VERSION = 8
+#: Version 9 (decision 129) added the household's feed list - the return
+#: lines in other households its drop folder also feeds - which is one
+#: column of ``engagements`` holding the list as JSON text: a version-8
+#: file has no column for it, so it is refused, deleted and rebuilt from
+#: the journals like every version before it, and the feeds travel in the
+#: ``household_changed`` lines.
+SCHEMA_VERSION = 9
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -258,11 +264,17 @@ _AFFINITY: dict[str, str] = {
     # drop while the lock is already held, and nothing else joins on a
     # person.
     "tuple[Person, ...]": "TEXT",
+    # The household's feed list (decision 129), for the same reason: a
+    # list of two-field objects in one text column, read back by the
+    # record's own reader (``records.feeds_from_json``). A table of its
+    # own would be a join to answer a question the pass asks once, while
+    # it already holds the household's lock.
+    "tuple[Feed, ...]": "TEXT",
 }
 #: The record fields held as a JSON array in a text column, by name. Named
 #: because SQLite cannot tell one from a string on the way back, exactly as
 #: ``records.RULE_LIST_FIELDS`` says it for a rule row.
-_LIST_COLUMNS: frozenset[str] = frozenset({"members"})
+_LIST_COLUMNS: frozenset[str] = frozenset({"members", "feeds"})
 
 
 def _column_types(record: type, *, prefix: str = "") -> dict[str, str]:
@@ -1146,10 +1158,11 @@ def _write_household_info(conn: sqlite3.Connection, engagement_id: int, info: di
 def _household_cell(name: str, info: dict) -> object:
     """One household field as its column holds it.
 
-    The one field that is a list of words is stored as a JSON array, and a
-    line that wrote one name as a string is read as one member on both
-    sides (``records.household_from_json``) - so the column holds a list
-    either way and :func:`check` compares like with like.
+    The two fields that are lists - the members and the feeds (decision
+    129) - are stored as JSON arrays, and a line that wrote one name as a
+    string is read as one member on both sides
+    (``records.household_from_json``) - so the column holds a list either
+    way and :func:`check` compares like with like.
     """
     value = info[name]
     if name not in _LIST_COLUMNS:
@@ -1244,9 +1257,28 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         row = event.get(ledger.ROW_KEY)
         if row is not None and not isinstance(row, dict):
             refuse(f"carries {ledger.ROW_KEY!r} that is not a row")
+        leaving = event.get(ledger.WAS_KEY)
+        if leaving is not None and not isinstance(leaving, str):
+            refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
         also = event.get(ledger.ALSO_KEY)
         if also is not None and not isinstance(also, list):
             refuse(f"carries {ledger.ALSO_KEY!r} that is not a list")
+        # The half of the decision that belongs in another return's record
+        # (decision 129): a mapping of that return's location to the
+        # events, whole. The recovery writes them into a second folder, so
+        # a shape it could not read would be found with a file already
+        # moved and one record ahead of the other.
+        also_in = event.get(ledger.ALSO_IN_KEY)
+        if also_in is not None and not isinstance(also_in, dict):
+            refuse(f"carries {ledger.ALSO_IN_KEY!r} that is not a mapping")
+        for location, events in (also_in or {}).items():
+            if not isinstance(location, str) or not location:
+                refuse(f"names a record to write in that is not a location: {location!r:.60}")
+            if not isinstance(events, list):
+                refuse(f"carries events for {location!r:.60} that are not a list")
+            for one in events:
+                if not isinstance(one, dict) or not one.get(ledger.EVENT_KEY):
+                    refuse(f"carries something for {location!r:.60} that is not an event")
     elif name in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
         for key in (ledger.IDENTIFIER_KEY, ledger.KEYWORD_KEY):
             value = event.get(key)
@@ -1271,6 +1303,15 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         for member in members if isinstance(members, list) else []:
             if not isinstance(member, str):
                 refuse(f"names a member that is not text: {member!r:.60}")
+        # The feed list (decision 129). A feed naming no household or no
+        # return line points at nothing a pass could resolve, so it is
+        # refused here by the record's own reader rather than written into
+        # a column the sort would later read as a route.
+        if isinstance(household, dict) and "feeds" in household:
+            try:
+                records.feeds_from_json(household["feeds"])
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                refuse(f"carries feeds this version cannot read ({exc})")
     elif name == ledger.SHARING_CONFIRMED:
         # The firm's word, dated, and nothing else (decision 126): the
         # stamp is the whole of it. A line carrying a payload is either a

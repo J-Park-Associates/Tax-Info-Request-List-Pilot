@@ -62,6 +62,7 @@ from tracker.filer import (
     dismiss_review_file,
     ensure,
     find_parked,
+    hand_over,
     moved_to,
     read_index,
     refuse_a_path_past_the_limit,
@@ -71,9 +72,11 @@ from tracker.filer import (
 from tracker.fsio import write_text_atomically
 from tracker.households import (
     create_household,
+    fed_by,
     household_returns,
     load_household_info,
     open_years,
+    resolve_feeds,
     save_household,
     shared_on,
 )
@@ -134,6 +137,7 @@ from tracker.records import (
     ENGAGEMENT_LABELS,
     EVIDENCE_PLACES,
     EVIDENCE_RULES,
+    FEED_REFUSED,
     HOUSEHOLD_EDITABLE,
     NO,
     PEOPLE_HELP,
@@ -145,6 +149,7 @@ from tracker.records import (
     THE_RECORD,
     YES,
     EngagementInfo,
+    Feed,
     HouseholdInfo,
     IndexEntry,
     Person,
@@ -155,6 +160,7 @@ from tracker.records import (
 )
 from tracker.registry import (
     Engagement,
+    Registry,
     RegistryError,
     discover_engagements,
     engagement_from,
@@ -284,6 +290,36 @@ NEW_HOUSEHOLD_LABEL = "New household"
 EXISTING_HOUSEHOLD_LABEL = "Add a return to an existing household"
 HOUSEHOLD_RETURNS_HEADING = "Returns this year"
 HOUSEHOLD_QUEUE_LINE = "{n} document(s) waiting for a person across this household"
+#: The feed list (decision 129): what a drop folder feeds beyond its own
+#: household's returns, what a household is fed by, and the two warnings a
+#: person reads before they extend either. Every one of them is the API's
+#: word and the page types none of them.
+FEEDS_LABEL = "Also feeds"
+FEEDS_HELP = ("returns in other households this drop folder feeds, by return line; most "
+              "households feed only their own")
+FEEDS_LINE = "This drop folder also feeds: {listed}"
+FED_BY_LINE = "Also fed by the drop folder of: {listed}"
+ADD_FEED_LABEL = "Add a return this drop folder feeds"
+FEED_WARNING = ("Anyone with access to this drop folder may drop for this return. Its documents "
+                "will rest under the folder it lives in, shared with: {members}.")
+RETURN_WARNING = ("Everyone with access to this folder will see this return's documents. Add it "
+                  "here only if every member may.")
+HAND_OVER_LABEL = "File under another return"
+#: The two boxes that answer come with their own words rather than borrowing
+#: the household heading and the editor's title, which happened to read
+#: nearly right and would have drifted the moment either was reworded. What
+#: is being picked is a return and then one of that return's requests.
+HAND_OVER_RETURN_LABEL = "The return that takes it"
+HAND_OVER_REQUEST_LABEL = "Under which request"
+#: What stands in for the members of a household nobody has typed any for.
+#: The warning must still say who will see the documents, and "nobody typed
+#: yet" is the honest answer - the tracker cannot see Drive's sharing.
+NOBODY_TYPED = "nobody typed yet"
+#: What a hand-over to a return this drop folder does not feed is refused
+#: with. Nothing routes outside the feed list, and a person extends it
+#: deliberately or not at all.
+NOT_FED = "{label} is not a return this drop folder feeds; add it to the household's feeds first"
+
 MISFITS_HEADING = "Folders the tracker leaves alone"
 MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; nothing in it "
                 "is ever read, moved or renamed.")
@@ -612,7 +648,15 @@ def _vocab() -> dict:
                           "accept": ACCEPT_LABEL, "skip": SKIP_LABEL,
                           "open_in_list": OPEN_IN_LIST_LABEL,
                           "card_mode": CARD_MODE_LABEL, "list_mode": LIST_MODE_LABEL,
-                          "card_position": CARD_POSITION},
+                          "card_position": CARD_POSITION,
+                          # Decision 129's answer, beside the other three:
+                          # a parked document handed to a return this drop
+                          # folder feeds, own or fed, and the two boxes
+                          # that answer it - which return, and which of
+                          # that return's requests.
+                          "hand_over": HAND_OVER_LABEL,
+                          "hand_over_return": HAND_OVER_RETURN_LABEL,
+                          "hand_over_request": HAND_OVER_REQUEST_LABEL},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason
@@ -705,6 +749,18 @@ def _vocab() -> dict:
             # And the one line the returning-client page needs of its own:
             # what unticking a return does to it.
             "rollover_unticked": ROLLOVER_UNTICKED_NOTE,
+            # The feed list (decision 129): what this drop folder also
+            # feeds, who feeds it, the word that adds one, and the two
+            # warnings a person reads before extending either. The page
+            # shows them and types none of them.
+            "feeds_label": FEEDS_LABEL,
+            "feeds_help": FEEDS_HELP,
+            "feeds_line": FEEDS_LINE,
+            "fed_by_line": FED_BY_LINE,
+            "add_feed": ADD_FEED_LABEL,
+            "feed_warning": FEED_WARNING,
+            "return_warning": RETURN_WARNING,
+            "nobody_typed": NOBODY_TYPED,
         },
         "year_min": YEAR_MIN,
         "year_max": YEAR_MAX,
@@ -1104,6 +1160,70 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
     }
 
 
+def _the_practice() -> Registry | None:
+    """One walk of the clients root, or ``None`` where it cannot be walked
+    (decision 129).
+
+    The feed list is resolved against the practice: a feed names a return
+    line in another household, and only a walk can say which return that
+    is this year. Every caller here wants the same thing and the same
+    forgiveness - a root that is unset, gone or unreadable answers with
+    nothing rather than failing the card or the pass - so the walk is
+    asked for in one place and both the card (:func:`_feed_payload`) and
+    *Run now* (:func:`_cmd_scan`) ask it the same way.
+    """
+    root = clients_root()
+    try:
+        return discover_engagements(root) if root and root.is_dir() else None
+    except RegistryError:
+        return None
+
+
+def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], list[dict]]:
+    """What this drop folder also feeds, and whose drop folders feed it
+    (decision 129).
+
+    Each feed is the household and the return line as a person recorded
+    them - so the editor sends back exactly what it was shown - with the
+    return it resolves to this year, or the sentence saying it resolves to
+    nothing. ``fed_by`` is the other direction, for the destination's own
+    card: who else may drop for a return that lives here.
+
+    One walk of the practice, and only for a household that has a feed or
+    might be fed - which is the question itself, so the walk is made
+    whenever the root can be walked at all. A root that cannot be walked
+    answers with nothing rather than failing the card.
+    """
+    try:
+        info = load_household_info(household_dir)
+    except ManifestError:
+        info = HouseholdInfo()
+    registry = _the_practice()
+    if registry is None:
+        return ([{"household": one.household, "return_name": one.return_name,
+                  "label": "", "path": "", "warning": ""} for one in info.feeds], [])
+    year = years[0] if len(years) == 1 else None
+    found, said = ((resolve_feeds(household_dir, info.feeds, year, registry))
+                   if year is not None else ([], []))
+    by_line = {(one.info.household or one.household_path.name, one.info.return_name or one.path.name):
+               one for one in found}
+    unresolved = iter(said)
+    feeds = []
+    for one in info.feeds:
+        match = next((found_one for key, found_one in by_line.items()
+                      if key[0].casefold() == one.household.casefold()
+                      and key[1].casefold() == one.return_name.casefold()), None)
+        feeds.append({
+            "household": one.household, "return_name": one.return_name,
+            "label": match.label if match else "",
+            "path": str(match.path) if match else "",
+            "warning": "" if match else next(unresolved, ""),
+        })
+    fed = [{"name": one.name, "path": str(one.path), "members": list(one.info.members)}
+           for one in fed_by(registry, household_dir)]
+    return feeds, fed
+
+
 def _household_payload(engagement: Path) -> dict:
     """The household this return belongs to, as the app's card shows it.
 
@@ -1112,6 +1232,11 @@ def _household_payload(engagement: Path) -> dict:
     and how many documents are waiting for a person across the open year's
     returns - one number for the household, because the queue a person
     works is the household's and not one return's.
+
+    And the feed list both ways (decision 129): the return lines in other
+    households this drop folder also feeds, each resolved to this year's
+    return or said to resolve to nothing, and the households whose drop
+    folders feed a return here.
 
     Each open-year return also carries its reminder's state
     (:func:`_return_reminder`, decision 128), so the letters stand side by
@@ -1138,12 +1263,15 @@ def _household_payload(engagement: Path) -> dict:
         sum(1 for entry in read_index(one.path) if entry.decision == NEEDS_REVIEW)
         for one in returns if one.active and one.tax_year in years
     )
+    feeds, fed = _feed_payload(household_dir, years)
     return {
         "name": household_dir.name,
         "path": str(household_dir),
         "members": list(info.members),
         "contact": info.contact,
         "link": info.link,
+        "feeds": feeds,
+        "fed_by": fed,
         "open_years": years,
         "returns": [
             {"label": one.label, "path": str(one.path),
@@ -1357,13 +1485,21 @@ def _cmd_scan(argv: list[str]) -> dict:
     return of the household, so Run now on one return sorts all of it;
     sorting a share of a pile nobody sorted is not a thing the tracker can
     honestly do. The reply is about the return that was asked for.
+
+    **And the whole feed list with it** (decision 129). The practice is
+    walked and handed down, so the returns this drop folder feeds in other
+    households are judged, locked and filed into here exactly as the
+    scheduled pass does it: without the walk the same trial balance would
+    file under the co-owned LLC on the schedule and park at home on Run
+    now, which is two definitions of a pass and one of them wrong.
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
     returns = mark_superseded([engagement_from(folder)
                                for folder in household_returns(household_dir)]) \
         or [engagement_from(engagement)]
-    runs = run_household(household_dir, returns, reminders=REMINDERS_NEVER)
+    runs = run_household(household_dir, returns, reminders=REMINDERS_NEVER,
+                         registry=_the_practice())
     run = next((one for one in runs if one.engagement.path == engagement),
                EngagementRun(engagement=engagement_from(engagement)))
     _record_pass(runs)
@@ -1690,13 +1826,49 @@ def _undo_create(engagement: Path) -> None:
         pass
 
 
+def _feeds_from_spec(sent: object, household_dir: Path) -> tuple[Feed, ...]:
+    """The feed list a person built in the editor, refused where it is not
+    one (decision 129).
+
+    A household cannot feed itself - its own returns are fed already - and
+    a blank household or return line names nothing a pass could resolve.
+    A line the list already holds is refused rather than folded away, so a
+    person sees that the one they picked was already there instead of
+    wondering which of two rows is the real one.
+    """
+    if not isinstance(sent, (list, tuple)):
+        raise ManifestError(f"{FEEDS_LABEL} is a list of returns this drop folder feeds")
+    wanted: list[Feed] = []
+    for one in sent:
+        raw = one if isinstance(one, dict) else {}
+        household = " ".join(str(raw.get("household", "") or "").split())
+        return_name = " ".join(str(raw.get("return_name", "") or "").split())
+        refusal = FEED_REFUSED.format(household=household or "(blank)",
+                                      return_name=return_name or "(blank)")
+        if not household or not return_name:
+            raise ManifestError(refusal)
+        if household.casefold() == household_dir.name.casefold():
+            raise ManifestError(refusal)
+        if any(held.household.casefold() == household.casefold()
+               and held.return_name.casefold() == return_name.casefold() for held in wanted):
+            raise ManifestError(refusal)
+        wanted.append(Feed(household=household, return_name=return_name))
+    return tuple(wanted)
+
+
 def _cmd_edit_household(argv: list[str]) -> dict:
     """Save the household's own details from the app's small modal.
 
     ``--engagement`` names any return of the household; the household is
-    the folder above its year. JSON on stdin: the three fields a person
-    may change, and a blank clears one. One ``household_changed`` event,
+    the folder above its year. JSON on stdin: the fields a person may
+    change, and a blank clears one. One ``household_changed`` event,
     carrying exactly what moved (decision 125).
+
+    ``feeds`` is the list of return lines in other households this drop
+    folder also feeds (decision 129), as ``[{"household", "return_name"}]``
+    - a list a person built from what is already there, never inferred. A
+    feed naming this household, a blank half, or one the list already
+    holds is refused by name.
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
@@ -1717,6 +1889,7 @@ def _cmd_edit_household(argv: list[str]) -> dict:
         members=members,
         contact=" ".join(str(spec.get("contact", held.contact) or "").split()),
         link=" ".join(str(spec.get("link", held.link) or "").split()),
+        feeds=_feeds_from_spec(spec["feeds"], household_dir) if "feeds" in spec else held.feeds,
     )
     saved = save_household(household_dir, info)
     return {"saved": {"household": list(saved.fields)}, "state": _state(engagement)}
@@ -2005,13 +2178,85 @@ def _shortlist_now(engagement: Path, original: str) -> list[str]:
     return [s.identifier for s in review.shortlist_for(entry, load_manifest(engagement))]
 
 
+def _fed_returns(engagement: Path) -> dict[Path, str]:
+    """Every return this return's drop folder feeds, by folder, with its
+    label (decision 129).
+
+    Its household's own open-year returns and the return lines a person
+    extended it to. The one list that says what a hand-over may name, and
+    the one the app's picker is drawn from, so a person can only send a
+    document where the feed list already goes.
+    """
+    household_dir = household_of(engagement)
+    payload = _household_payload(engagement)
+    years = payload["open_years"]
+    fed = {Path(one["path"]): one["label"] for one in payload["returns"]
+           if one["active"] and one["year"] in years}
+    fed.update({Path(one["path"]): one["label"] for one in payload["feeds"] if one["path"]})
+    fed.pop(engagement, None)
+    log.debug("%s feeds %d return(s)", household_dir.name, len(fed))
+    return fed
+
+
+def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *,
+               seq: int | None, keyword: str, spelling: Spelling | None) -> dict:
+    """Hand one parked document to a return this drop folder feeds.
+
+    The target is checked against the feed list before a byte is read:
+    nothing routes outside it, and a person extends it in the household's
+    editor rather than by naming a folder here. The re-scan afterwards is
+    the **target's** - it is the return that gained a document - and this
+    return's own row is terminal, so nothing about it changed that a scan
+    would see.
+    """
+    fed = _fed_returns(engagement)
+    label = fed.get(target)
+    if label is None:
+        raise ManifestError(NOT_FED.format(label=target.name))
+    result = hand_over(engagement, original, target, identifier,
+                       seq=seq, keyword=keyword, spelling=spelling)
+    scan_note = ""
+    try:
+        scan_engagement(target)
+    except ScanLockedError as exc:
+        scan_note = f"not re-scanned: {exc}"
+    return {
+        "handed_over": {
+            "original_name": result.entry.original_name,
+            "identifier": result.target_entry.identifier,
+            "filed_as": result.target_entry.filed_as,
+            "prepared_location": result.target_entry.prepared_location,
+            "target": str(result.target),
+            "label": result.label,
+            "moved_original": result.moved_original,
+            "keyword": result.keyword,
+            "keyword_note": result.keyword_note,
+            "spelling": result.spelling,
+            "spelling_note": result.spelling_note,
+            "left_in_review": result.left_in_review,
+            "scan_note": scan_note,
+        },
+        "state": _state(engagement),
+    }
+
+
 def _cmd_assign(argv: list[str]) -> dict:
     """File one parked document under a request, by a person's decision.
 
     JSON spec on stdin: {"original": "<PBC location or original name>",
                          "identifier": "A01", "keyword": "optional",
                          "spelling": {"person": "...", "spelling": "..."},
+                         "target": "<a return this drop folder feeds, or absent>",
                          "seq": <the row's record version, as shown>}
+
+    With ``target`` the document is **handed over** (decision 129): the
+    identifier names a request of that return, the original moves where it
+    must rest - under the household the return lives in - the working copy
+    is made there, the parked copy here goes, and this return's row is
+    closed as handed over. The target must be a return this drop folder
+    feeds, own or fed (:data:`NOT_FED`); nothing routes outside the feed
+    list. Without it, everything below is as it has always been.
+
     The working copy is filed under the canonical name, the index row is
     rewritten as Filed (attributed to a person), the keyword - if given - is
     added to the request so the next such file routes itself, the spelling
@@ -2043,6 +2288,10 @@ def _cmd_assign(argv: list[str]) -> dict:
         person=str(taught.get("person", "") or "").strip(),
         spelling=str(taught.get("spelling", "") or "").strip(),
     ) if taught else None
+    target = str(spec.get("target", "") or "").strip()
+    if target:
+        return _hand_over(engagement, original, Path(target), identifier,
+                          seq=seq, keyword=str(spec.get("keyword", "") or ""), spelling=spelling)
     result = assign_review_file(
         engagement, original, identifier, keyword=str(spec.get("keyword", "") or ""),
         spelling=spelling, seq=seq, shortlist=_shortlist_now(engagement, original),

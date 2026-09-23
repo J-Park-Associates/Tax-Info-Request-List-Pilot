@@ -439,3 +439,37 @@ def test_the_registry_command_line_prints_households_returns_and_misfits(root, c
     assert f"{TEST_HOUSEHOLD} 2025 1040 - Smith" in printed
     assert "Folders the tracker leaves alone (1)" in printed
     assert MISFIT_NOT_A_TREE.format(clients=CLIENTS_TREE, private=PRIVATE_TREE) in printed
+
+
+def test_fed_by_lists_the_households_whose_feeds_name_this_one(tmp_path):
+    """The other direction of the feed list (decision 129): a household
+    whose return another drop folder feeds is told whose, by household
+    name - because anyone with access to that folder may drop for a return
+    that lives here. Who is shared on *that* household is on its own card,
+    never on this one."""
+    from dataclasses import replace
+
+    from tracker.households import fed_by, load_household_info, save_household
+    from tracker.layout import private_household_dir
+    from tracker.records import Feed
+
+    make_engagement(tmp_path, ITEMS, household="Park Family",
+                    return_name="1040 - John Park", scaffold=False)
+    make_engagement(tmp_path, ITEMS, household="Lee Family",
+                    return_name="1040 - Sam Lee", scaffold=False)
+    make_engagement(tmp_path, ITEMS, household="Park & Lee LLC",
+                    return_name="1120S - Park & Lee LLC", scaffold=False)
+    llc = private_household_dir(tmp_path, "Park & Lee LLC")
+    for name in ("Park Family", "Lee Family"):
+        folder = private_household_dir(tmp_path, name)
+        save_household(folder, replace(
+            load_household_info(folder),
+            feeds=(Feed("Park & Lee LLC", "1120S - Park & Lee LLC"),)))
+
+    registry = discover_engagements(tmp_path)
+
+    assert [one.name for one in fed_by(registry, llc)] == ["Lee Family", "Park Family"]
+    assert fed_by(registry, private_household_dir(tmp_path, "Park Family")) == []
+    # The households come back whole, so the card that shows them can name
+    # the folder and nothing about anybody's family.
+    assert all(one.info.feeds for one in fed_by(registry, llc))
