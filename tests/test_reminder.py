@@ -1393,6 +1393,42 @@ def test_the_readme_and_sync_junk_do_not_hold_the_reminder(tmp_path):
     assert draft.unsorted == 0 and not draft.is_held
 
 
+def test_a_readme_write_left_behind_by_a_crash_does_not_hold_the_reminder(tmp_path):
+    """The review of decision 133: the README's atomic write leaves
+    ``_README.txt.<pid>.<hex>.tmp`` beside it when it is killed. That is
+    the firm's leftover, not a transfer the client started - while a
+    client's own ``.tmp`` still holds."""
+    from tracker.layout import README_NAME
+
+    folder = engagement(tmp_path, SENDABLE)
+    inbox = waiting_in(folder)
+    (inbox / README_NAME).write_text("the list", encoding="utf-8")
+    (inbox / f"{README_NAME}.4242.9f1c.tmp").write_text("half a list", encoding="utf-8")
+
+    assert draft_reminder(folder).unsorted == 0
+
+    (inbox / "W-2 scan.pdf.tmp").write_bytes(b"still arriving")
+
+    assert draft_reminder(folder).unsorted == 1
+
+
+def test_a_folder_the_pass_cannot_list_holds_the_reminder(tmp_path, monkeypatch):
+    """What the client put in a folder the pass cannot list is not sorted,
+    so the letter could ask for it: one count per such folder."""
+    from tracker import filer
+
+    folder = engagement(tmp_path, SENDABLE)
+    inbox = waiting_in(folder)
+    locked = inbox / "From my accountant"
+    locked.mkdir()
+    monkeypatch.setattr(filer, "unlistable_folders",
+                        lambda path: [locked] if path == inbox else [])
+
+    draft = draft_reminder(folder)
+
+    assert draft.unsorted == 1 and draft.is_held
+
+
 def test_a_held_draft_by_the_inbox_writes_nothing_and_says_why(tmp_path):
     from tracker.reminder import INBOX_HOLD
 

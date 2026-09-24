@@ -148,7 +148,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, page, reasons, store
-from tracker.layout import household_name_of, inbox_of, label_for, locate, year_of
+from tracker.fsio import TEMP_SUFFIX
+from tracker.layout import README_NAME, household_name_of, inbox_of, label_for, locate, year_of
 from tracker.manifest import (
     ISO_DATE_HINT,
     ManifestError,
@@ -1108,11 +1109,28 @@ def unsorted_in_inbox(engagement_dir: Path | str) -> int:
     the pass, the command line and the app all hold alike - and the
     household card asks it too, for the same answer. The filer is imported
     here, at call time, as the rest of this module reaches it.
+
+    **Two corrections from the review.** A temporary file the README's own
+    atomic write left behind when it was killed (``README_NAME`` followed by
+    ``.<pid>.<hex>`` and ``TEMP_SUFFIX``) is the firm's leftover, not a transfer the client started, and never
+    holds a letter. A folder the pass cannot list (``unlistable_folders``)
+    does, one count per folder: whatever the client put in it cannot be
+    sorted, so the letter could ask for it.
     """
-    from tracker.filer import iter_drops, unfinished_drops, unreachable_drops
+    from tracker.filer import iter_drops, unfinished_drops, unlistable_folders, unreachable_drops
 
     inbox = inbox_of(Path(engagement_dir))
-    return len({*iter_drops(inbox), *unfinished_drops(inbox), *unreachable_drops(inbox)})
+    waiting = {*iter_drops(inbox), *unfinished_drops(inbox), *unreachable_drops(inbox),
+               *unlistable_folders(inbox)}
+    return sum(1 for path in waiting if not _readme_leftover(path, inbox))
+
+
+def _readme_leftover(path: Path, inbox: Path) -> bool:
+    """Whether ``path`` is a temporary file the README's own write left in
+    the inbox: beside the README, named after it, ending in the temporary
+    suffix. The client's own ``.tmp`` files are not this."""
+    return (path.parent == inbox and path.name.startswith(README_NAME + ".")
+            and path.name.lower().endswith(TEMP_SUFFIX))
 
 
 def draft_reminder(
