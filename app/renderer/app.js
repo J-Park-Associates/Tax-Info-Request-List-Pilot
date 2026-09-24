@@ -2024,6 +2024,9 @@ function cellInput(row, column, onChange) {
     value: row[key] === undefined || row[key] === null ? "" : String(row[key]),
     "aria-label": column.label,
     title: column.help,
+    // A blank Short name is derived (decision 144): the box shows the name
+    // the API derived for the row it opened on, never one typed here.
+    placeholder: key === "short_title" ? editorRowShortName(row) : undefined,
   });
   if (minimum !== undefined) input.min = minimum;
   input.addEventListener("input", () => { row[key] = input.value; onChange(); });
@@ -2218,6 +2221,9 @@ function editorRow(rule) {
     // named=no row into yes (decision 142 fixed it with the Asked mark).
     named: rule.named === false ? vocab.editor.no : vocab.editor.yes,
     asked: rule.asked === false ? vocab.editor.no : vocab.editor.yes,
+    // The short name the working folder and copies go by (decision 144);
+    // blank is derived, and the box shows the derived one as its placeholder.
+    short_title: rule.short_title || "",
   };
 }
 
@@ -2231,6 +2237,14 @@ function blankEditorRow() {
 function editorRowYear(row) {
   const known = ((editorState && editorState.items) || []).find((i) => i.identifier === row.identifier);
   return known ? known.year : null;
+}
+
+// The short name the API gave the row the editor opened on
+// (state.items[].short_name, decision 144): the placeholder of a blank
+// Short name box. A row typed since has none until it is saved.
+function editorRowShortName(row) {
+  const known = ((editorState && editorState.items) || []).find((i) => i.identifier === row.identifier);
+  return known ? known.short_name : undefined;
 }
 
 // The key the rows nobody asked for fold under (decision 142): not a

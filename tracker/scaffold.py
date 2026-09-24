@@ -179,8 +179,18 @@ def sanitize_component(text: str) -> str:
 
 
 def folder_name_for(item: RequestItem) -> str:
-    """Canonical folder name for a request item: identifier and document, joined."""
-    name = label_for(sanitize_component(item.identifier), sanitize_component(item.document))
+    """Canonical folder name for a request item: its identifier and its
+    short name, joined (``A01 - W-2``).
+
+    The short name, not the document title (decision 144): the full title
+    was in every path twice, once here and once in each working copy's
+    name, and under the firm's real clients root that alone refused a
+    business with a household name of 26 characters. The client never sees
+    this folder; the README keeps the full title. An existing folder is
+    found by its identifier (``assign_folders``), so one made under a long
+    name keeps it.
+    """
+    name = label_for(sanitize_component(item.identifier), sanitize_component(item.short_name))
     return name[:_MAX_FOLDER_NAME].rstrip(". ")
 
 

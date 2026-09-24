@@ -1463,7 +1463,11 @@ def _state(engagement: Path) -> dict:
                          # a row nobody asked for folds away in the request
                          # table only while no document at all is in it; the
                          # editor regroups a row live from ``has_document``.
-                         "has_document": has_a_document(i), "not_asked_idle": is_idle_unasked(i)}
+                         "has_document": has_a_document(i), "not_asked_idle": is_idle_unasked(i),
+                         # The short name the row's folder and copies go by
+                         # (decision 144): its own, or the one its document
+                         # derives - the editor's placeholder for a blank.
+                         "short_name": i.short_name}
             for i in items
         ],
         # The person's rows as stored - read the way every reader reads

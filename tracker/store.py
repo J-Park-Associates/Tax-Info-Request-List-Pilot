@@ -244,7 +244,13 @@ ENV_STORE = "TRACKER_STORE"
 #: column, so it is refused, deleted and rebuilt from the journals like
 #: every version before it - the field travels in the row events, and a
 #: row written before it existed reads as having come on its own.
-SCHEMA_VERSION = 14
+#: Version 15 (decision 144) added ``short_title`` to ``requests``: the
+#: short name the working folder and copies are named by. A version-14
+#: file has no column for it, so it is refused, deleted and rebuilt from
+#: the journals like every version before it - the field travels in the
+#: ``rules_changed`` lines, and a line written before it existed reads as
+#: blank, which derives the short name from the document title.
+SCHEMA_VERSION = 15
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -360,6 +366,7 @@ _RULE_AFFINITIES: dict[str, str] = {
     "override_reason": "TEXT",
     "named": "INTEGER",
     "asked": "INTEGER",
+    "short_title": "TEXT",
 }
 RULE_COLUMNS: dict[str, str] = {name: _RULE_AFFINITIES[name] for name in RULE_FIELDS}
 

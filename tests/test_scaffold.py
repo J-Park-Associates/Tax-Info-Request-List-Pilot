@@ -108,12 +108,14 @@ def test_the_scaffold_makes_both_trees_and_the_readme_in_the_inbox_is_grouped_by
     assert inbox.parent == originals.parent
     assert result.inbox == inbox and result.originals_dir == originals
     assert not any(p.is_dir() for p in inbox.iterdir())
-    # Firm side: one folder per request, plus somewhere for the unclear.
+    # Firm side: one folder per request, plus somewhere for the unclear,
+    # each named by the request's short name (decision 144): here derived,
+    # the first twenty characters of the title cut at a whole word.
     assert (prepared / REVIEW_DIR_NAME).is_dir()
     assert [p.name for p in result.created] == [
-        "A01 - Dec 2025 Bank Statement",
-        "A02 - Monthly Bank Statements FY2025",
-        "B01 - Q4- A-R -Aging- -Final--",
+        "A01 - Dec 2025 Bank",
+        "A02 - Monthly Bank",
+        "B01 - Q4- A-R -Aging-",
     ]
     assert result.not_applicable == ["C01"]
     assert not (prepared / "C01 - Fixed Asset Register").exists()
@@ -207,15 +209,15 @@ def test_idempotent_rerun_creates_nothing(engagement):
 
 def test_recreates_deleted_folder(engagement):
     scaffold_engagement(engagement)
-    (engagement / PREPARED_DIR_NAME / "A01 - Dec 2025 Bank Statement").rmdir()
+    (engagement / PREPARED_DIR_NAME / "A01 - Dec 2025 Bank").rmdir()
     result = scaffold_engagement(engagement)
-    assert [p.name for p in result.created] == ["A01 - Dec 2025 Bank Statement"]
+    assert [p.name for p in result.created] == ["A01 - Dec 2025 Bank"]
 
 
 def test_client_rename_with_prefix_not_duplicated(engagement):
     scaffold_engagement(engagement)
     prepared = engagement / PREPARED_DIR_NAME
-    (prepared / "A01 - Dec 2025 Bank Statement").rename(prepared / "A01 - bank stuff")
+    (prepared / "A01 - Dec 2025 Bank").rename(prepared / "A01 - bank stuff")
 
     result = scaffold_engagement(engagement)
     assert result.created == []
@@ -225,7 +227,7 @@ def test_client_rename_with_prefix_not_duplicated(engagement):
 
 def test_existing_client_files_never_touched(engagement):
     scaffold_engagement(engagement)
-    folder = engagement / PREPARED_DIR_NAME / "A01 - Dec 2025 Bank Statement"
+    folder = engagement / PREPARED_DIR_NAME / "A01 - Dec 2025 Bank"
     client_file = folder / "chase_dec_2025.pdf"
     client_file.write_bytes(b"%PDF-1.7 fake")
 
@@ -304,8 +306,11 @@ def test_a_readme_the_client_side_holds_does_not_stop_the_scaffold(engagement, m
 
 
 def test_each_issuer_gets_its_own_client_folder(tmp_path):
-    """An issuer row is an ordinary row, so the client sees one folder per
-    issuing entity and the filed copy carries the entity's name (decision 93)."""
+    """An issuer row is an ordinary row, so there is one folder per issuing
+    entity (decision 93). Since decision 144 the folder is named by the
+    row's short name, ``K-1`` and the issuer cut to twenty characters at a
+    whole word (the owner's Q-B), while the Document the client reads keeps
+    the entity's whole name."""
     from tracker.templates import issuer_row, item_from_spec
 
     rows = [item_from_spec(issuer_row("F02", "Ashford Holdings, L.P.")),
@@ -313,8 +318,9 @@ def test_each_issuer_gets_its_own_client_folder(tmp_path):
     eng = make_engagement(tmp_path, rows)
 
     names = {f.name for f in (eng / PREPARED_DIR_NAME).iterdir() if f.is_dir()}
-    assert "F02 - Schedule K-1 - Ashford Holdings LP" in names
-    assert "F03 - Schedule K-1 - Birch Lane Partners" in names
+    assert {"F02 - K-1 Ashford Holdings", "F03 - K-1 Birch Lane"} <= names
+    assert [row.document for row in rows] == ["Schedule K-1 - Ashford Holdings LP",
+                                              "Schedule K-1 - Birch Lane Partners"]
 
 
 # ================== what we have received (decision 130) ==================
@@ -945,3 +951,18 @@ def test_the_scaffold_makes_no_folder_for_a_not_asked_row(tmp_path):
     (prepared / folder_name_for(unasked)).mkdir()
     again = scaffold_engagement(engagement)
     assert "D01" in again.existing and again.not_asked == []
+
+
+def test_the_client_readme_keeps_the_full_title(short_root):
+    """Decision 144, claim 7: the short name is the firm's. The request's
+    folder on the firm's side is named ``A01 - W-2``, and the README the
+    client reads in their inbox still asks for the "W-2 Wage Statements -
+    All Employers" by its full title, and never by the short one alone."""
+    from tracker.templates import template_items
+
+    w2 = template_items("1040", year=TEST_YEAR)[0]
+    engagement = make_engagement(short_root, [w2])
+    assert (engagement / PREPARED_DIR_NAME / "A01 - W-2").is_dir()
+    readme = (inbox_of(engagement) / README_NAME).read_text(encoding="utf-8")
+    assert "A01 - W-2 Wage Statements - All Employers" in readme
+    assert "A01 - W-2 (" not in readme and "A01 - W-2\n" not in readme

@@ -125,11 +125,14 @@ def test_the_deepest_path_is_measured_from_the_return_folder():
     assert deepest_path_length(engagement, [copy]) == 164
     assert deepest_path_length(engagement, [copy]) <= MAX_PATH_LENGTH
 
-    # The same return with a hundred-character request document is past it.
+    # The same return with a request named by a hundred characters is past
+    # it. Since decision 144 the name in the path is the row's short name,
+    # which a person cannot type past twenty; the measure is held to a
+    # hundred all the same.
     long_row = template_items("1040", core_only=True)[0]
     from dataclasses import replace
 
-    long_row = replace(long_row, document="x" * 100)
+    long_row = replace(long_row, document="x" * 100, short_title="x" * 100)
     deepest = (f"{PREPARED_DIR_NAME}/{folder_name_for(long_row)}/"
                f"{prepared_name_for(long_row, 'xlsx', set())}")
     assert deepest_path_length(engagement, [deepest]) > MAX_PATH_LENGTH
@@ -160,12 +163,14 @@ def test_the_suites_own_short_root_leaves_room_for_the_whole_1040_core_list(shor
 
 def test_the_whole_1040_core_list_fits_under_the_firms_own_root():
     """The measurement that matters at the office: every row of the
-    catalog a real client is cut from fits inside what Windows will open."""
+    catalog a real client is cut from fits inside what Windows will open -
+    163 characters with the short names (decision 144), where the full
+    titles took 223."""
     engagement = return_dir_for(ROOT, HOUSEHOLD, 2026, RETURN)
     subpaths = [f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/"
                 f"{prepared_name_for(item, 'xlsx', set())}"
                 for item in template_items("1040", core_only=True)]
-    assert deepest_path_length(engagement, subpaths) == 223
+    assert deepest_path_length(engagement, subpaths) == 163
     assert deepest_path_length(engagement, subpaths) <= MAX_PATH_LENGTH
 
 

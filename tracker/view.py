@@ -113,6 +113,7 @@ from tracker.manifest import (
     COL_PERIOD,
     COL_RECEIVED_DATE,
     COL_REQUIRED_KEYWORDS,
+    COL_SHORT_TITLE,
     COL_STATUS,
     COL_VALIDATION_NOTES,
     HEADERS,
@@ -327,7 +328,7 @@ def _text(value: object) -> str:
     return str(value)
 
 
-#: What the page shows about a request: the thirteen columns a person edits
+#: What the page shows about a request: the fourteen columns a person edits
 #: (``manifest.HEADERS``) and the four the record holds. A person wants to
 #: read them side by side, and this is the page that shows them. The
 #: status columns come last, as they always did.
@@ -366,6 +367,12 @@ def request_row(item: RequestItem) -> dict[str, str]:
         # two words; and a row nobody asked for, with nothing in, is said
         # to be not asked rather than Missing - nobody owes it.
         COL_ASKED: YES if item.asked else NO,
+        # The name the firm's working folder and copies go by (decision
+        # 144): the row's own short title, or the one its document title
+        # derives - the name a new folder and every new copy take, as the
+        # Date Pattern cell shows the check a blank derives. A folder made
+        # before decision 144 keeps its own name.
+        COL_SHORT_TITLE: _text(item.short_name),
         COL_STATUS: NOT_ASKED_LABEL if status_label(item) == NOT_ASKED_LABEL else _text(item.status),
         COL_RECEIVED_DATE: _text(item.received_date),
         COL_FILE_COUNT: _text(item.file_count),

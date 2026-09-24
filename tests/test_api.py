@@ -888,7 +888,7 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     assert vocab["origin_not_applicable"] == ORIGIN_NOT_APPLICABLE
     assert vocab["not_applicable_carried"] == api.NOT_APPLICABLE_CARRIED
     assert [c["key"] for c in vocab["columns"]][-4:] == [
-        "manual_override", "override_reason", "named", "asked"]
+        "override_reason", "named", "asked", "short_title"]
     renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
         encoding="utf-8"
     )
@@ -2569,7 +2569,7 @@ def test_create_refuses_a_return_whose_deepest_path_would_pass_the_limit_and_say
     from tracker.layout import MAX_PATH_LENGTH
 
     code, payload = run(capsys, "create", stdin={
-        "household": "Park Family", "return_name": "1040 - " + "x" * 80, "form": "1040",
+        "household": "Park Family", "return_name": "1040 - " + "x" * 170, "form": "1040",
         "items": [{"identifier": "A01", "document": "y" * 90}]})
 
     assert code == 1
@@ -3316,16 +3316,38 @@ def test_unfiling_moves_it_back_to_under_review_at_once(capsys, demo_root, tmp_p
 # ------------------------------------ decision 131: the room a return has ----
 
 
-def _a_long_row_return(root, return_name="1040 - Long", household=HOUSEHOLD):
+#: How far past the limit ``_a_long_row_return``'s second row's canonical
+#: copy is: less than the thirty-six characters a two-character document
+#: gives back, so shortening the other row's label is a save that fits.
+LONG_ROW_OVER = 10
+
+
+def _a_long_row_return(root, household=HOUSEHOLD):
     """A return made the way a test makes one - past creation's refusal - whose
     second row's canonical copy no longer fits under ``root``: the state a
-    root that grew leaves behind."""
+    root that grew leaves behind.
+
+    Its return name is padded so the return folder leaves the second row's
+    canonical copy exactly ``LONG_ROW_OVER`` past the limit: since decision
+    144 a row's name in the path is its short name - twenty characters at
+    most - so the depth is the folder's, as it is when a root grows, not a
+    hundred-character label's."""
+    from tests.conftest import TEST_YEAR
+    from tracker.layout import MAX_PATH_LENGTH
     from tracker.manifest import RequestItem
 
-    return make_engagement(root, [
+    below = len("/Prepared/B01 - " + "y" * 20 + "/B01 - " + "y" * 20 + ".pdf")
+    above = len(str(return_dir_for(Path(root), household, TEST_YEAR, "")))
+    pad = MAX_PATH_LENGTH + LONG_ROW_OVER - below - above - len("/1040 - Long ")
+    if pad < 1:
+        pytest.skip(f"{root} is too long to make the long-row return under it")
+    return_name = "1040 - Long " + "g" * pad
+    engagement = make_engagement(root, [
         RequestItem(identifier="A01", document="W-2", allowed_extensions=("pdf",)),
         RequestItem(identifier="B01", document="y" * 100, allowed_extensions=("pdf",)),
     ], household=household, return_name=return_name)
+    assert len(str(engagement)) + below == MAX_PATH_LENGTH + LONG_ROW_OVER
+    return engagement
 
 
 def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
@@ -3352,7 +3374,7 @@ def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
     assert code == 0, payload
     assert clients_root() == root.resolve()
     [entry] = payload["short_of_room"]
-    assert entry["engagement"] == f"{HOUSEHOLD} {TEST_YEAR} 1040 - Long"
+    assert entry["engagement"] == f"{HOUSEHOLD} {TEST_YEAR} {short.name}"
     assert entry["short"] == room.short and entry["parks"] == room.parks
     assert entry["sentences"][0] == ROOM_SHORT.format(short=room.short)
 
@@ -3391,9 +3413,11 @@ def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and
     capsys, demo_root,
 ):
     """The editor's save keeps creation's standard for the rows it changes:
-    a hundred-character label typed into one row is refused with creation's
-    sentence and nothing is recorded; a row already past the limit that the
-    person did not touch never traps a save that shortens another."""
+    a hundred-character label typed into one row - named in the path by its
+    twenty-character short name since decision 144 - is refused with
+    creation's sentence and nothing is recorded; a row already past the
+    limit that the person did not touch never traps a save that shortens
+    another."""
     from tracker.layout import PATH_TOO_LONG
 
     engagement = _a_long_row_return(demo_root)
@@ -3737,21 +3761,24 @@ def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeyp
     catalog's longest label must not refuse a return the preparer never
     asked it of. The same row asked is refused, as ever. A document for the
     unasked row is measured where it is written - cut to fit, or parked
-    with decision 131's sentence."""
+    with decision 131's sentence. Since decision 144 a label in the path is
+    a short name of twenty characters at most, so the room is the return
+    folder's: 205 characters here."""
     from tests.conftest import named_page, root_for_a_return_of, sort
     from tests.test_scanner import text_pdf
-    from tracker.filer import PATH_NO_ROOM
     from tracker.layout import PATH_TOO_LONG
+    from tracker.scaffold import PREPARED_DIR_NAME
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    root = root_for_a_return_of(tmp_path, 150, return_name="Tight")
+    root = root_for_a_return_of(tmp_path, 205, return_name="Tight")
     root.mkdir(parents=True)
     set_clients_root(root)
-    w2 = {"identifier": "A01", "document": "W-2 Wage Statements", "period": "TY2025",
+    w2 = {"identifier": "A01", "document": "W-2", "period": "TY2025",
           "extensions": "pdf", "required_keywords": "W-2", "min_size_kb": 0}
     long_row = {"identifier": "Z99", "document": "Zebra Ledger " + "x" * 90, "period": "TY2025",
-                "extensions": "pdf", "required_keywords": "zebra ledger", "min_size_kb": 0}
+                "short_title": "Zebra Ledger Details", "extensions": "pdf",
+                "required_keywords": "zebra ledger", "min_size_kb": 0}
 
     code, payload = run(capsys, "create", stdin={"return_name": "Tight", "year": 2025,
                                                  "items": [w2, {**long_row, "asked": True}]})
@@ -3761,16 +3788,16 @@ def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeyp
                                                  "items": [w2, {**long_row, "asked": False}]})
     assert code == 0, payload
     engagement = where(root, "Tight", year=2025)
+    assert len(str(engagement)) == 205
 
     text_pdf(inbox_of(engagement) / "zebra.pdf", named_page("Zebra ledger for 2025"))
     report = sort(engagement)
-    # Here even the shortest name under the row's own folder is past the
-    # limit, so it parks with 131's sentence; a shorter label is cut to fit
-    # (test_filer's decision-131 claims), as on any row.
-    assert report.filed == []
-    [parked] = report.review
-    assert parked.reason.startswith(PATH_NO_ROOM.split("{")[0])
-    assert parked.candidates == "Z99"
+    # The row's own folder leaves eighteen characters for the name: the
+    # short name is cut away whole and the copy keeps its identifier, its
+    # period and its extension (test_filer's decision-131 claims).
+    [filed] = report.filed
+    assert filed.prepared_location == f"{PREPARED_DIR_NAME}/Z99 - Zebra Ledger Details/Z99 - TY2025.pdf"
+    assert len(str(engagement)) + 1 + len(filed.prepared_location) <= 260
 
 
 def test_the_editor_round_trips_asked_and_named(capsys, demo_root):
@@ -3906,3 +3933,112 @@ def test_the_returning_client_page_picks_the_returns_recorded_form_by_default(ca
     js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
     assert "selected: f.id === p.form" in js
     assert "selected: !forms.some((f) => f.id === p.form)" in js
+
+
+# ------------------------------------------------ decision 144: short names ----
+
+
+def _editor_rows_by_the_app(rules, vocab, tmp_path):
+    """``editorRow`` exactly as ``app.js`` spells it, run by node over
+    ``rules``; where node is not on PATH, the line that carries the short
+    name is held by its source instead, and the rows are built key for key
+    as the function builds them."""
+    import re
+    import shutil
+    import subprocess
+
+    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    start = js.index("function editorRow(rule) {")
+    depth, end = 0, None
+    for at in range(js.index("{", start), len(js)):
+        depth += {"{": 1, "}": -1}.get(js[at], 0)
+        if depth == 0:
+            end = at + 1
+            break
+    source = js[start:end]
+    assert re.search(r'^\s+short_title: rule\.short_title \|\| "",$', source, flags=re.MULTILINE)
+    node = shutil.which("node")
+    if node is None:
+        editor = vocab["editor"]
+        return [{**{k: rule[k] for k in ("identifier", "document", "period", "expected_count",
+                                         "min_size_kb", "manual_override")},
+                 "allowed_extensions": ", ".join(rule["allowed_extensions"]) or editor["any_extension"],
+                 "required_keywords": ", ".join(rule["required_keywords"]),
+                 "any_keywords": ", ".join(rule["any_keywords"]),
+                 "date_pattern": "" if rule["date_pattern_derived"] else (
+                     rule["date_pattern"] or editor["no_date_check"]),
+                 "override_reason": rule["override_reason"] or "",
+                 "named": editor["no"] if rule["named"] is False else editor["yes"],
+                 "asked": editor["no"] if rule["asked"] is False else editor["yes"],
+                 "short_title": rule["short_title"] or ""} for rule in rules]
+    script = tmp_path / "editor_row.js"
+    script.write_text("const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+                      "const vocab = input.vocab;\n" + source + "\n"
+                      "process.stdout.write(JSON.stringify(input.rules.map(editorRow)));\n",
+                      encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(script)], input=json.dumps({"vocab": vocab, "rules": rules}),
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def test_the_short_title_round_trips_through_the_editor_and_the_rollover(capsys, demo_root, tmp_path):
+    """Decision 144, claim 5 - the lesson of 142's ``named`` defects, where
+    the editor and the rollover each rebuilt a row by hand and dropped a
+    column. The short name comes back from ``state``, goes through the
+    app's real ``editorRow`` and a save untouched with nothing recorded, is
+    changed by one edit of one row, and is carried by the rollover: a typed
+    one as typed, a blank one on a catalog row filled from the catalog, a
+    blank one on a row a person renamed left blank, to derive its own."""
+    from tracker.rollover import roll_forward
+    from tracker.templates import FORM_TEMPLATES, template_items
+
+    catalog_w2 = {**FORM_TEMPLATES["1040"][0], "asked": True}
+    spec = {"household": HOUSEHOLD, "return_name": "Short Names", "year": 2025, "items": [
+        catalog_w2,
+        {"identifier": "D01", "document": "Donation receipts", "any_keywords": "donation receipt",
+         "short_title": "Donations", "period": "TY2025"},
+        {"identifier": "E01", "document": "My own brokerage statements", "any_keywords": "brokerage",
+         "period": "TY2025"},
+        {"identifier": "X01", "document": "Schedule K-1 - ABC Partners LLC", "any_keywords": "abc partners",
+         "period": "TY2025"},
+    ]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+    engagement = where(demo_root, "Short Names", year=2025)
+    state = payload_of_state(capsys, engagement)
+    assert {r["identifier"]: r["short_title"] for r in state["rules"]} == {
+        "A01": "W-2", "D01": "Donations", "E01": "", "X01": ""}
+    assert {i["identifier"]: i["short_name"] for i in state["items"]} == {
+        "A01": "W-2", "D01": "Donations", "E01": "My own brokerage", "X01": "K-1 ABC Partners LLC"}
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert {"key": "short_title", "label": "Short name"}.items() <= next(
+        c for c in vocab["columns"] if c["key"] == "short_title").items()
+
+    rows = _editor_rows_by_the_app(state["rules"], vocab, tmp_path)
+    before = ledger.path_for(engagement).read_bytes()
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {}})
+    assert code == 0 and payload["saved"]["recorded"] is False, payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    # One row's short name changed, and the catalog row's cleared: one event.
+    changed = [{**row, "short_title": {"D01": "Gifts", "A01": ""}.get(row["identifier"], row["short_title"])}
+               for row in rows]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": changed, "engagement": {}})
+    assert code == 0 and sorted(payload["saved"]["changed"]) == ["A01", "D01"], payload
+    assert {r["identifier"]: r["short_title"] for r in payload["state"]["rules"]} == {
+        "A01": "", "D01": "Gifts", "E01": "", "X01": ""}
+    # A name no folder can have is refused with the column named.
+    bad = [{**row, "short_title": "x" * 21} if row["identifier"] == "D01" else row for row in changed]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": bad, "engagement": {}})
+    assert code == 1 and "Short name may have at most 20 characters" in payload["error"]
+
+    rolled = {r.item.identifier: r.item for r in roll_forward(
+        engagement, template=template_items("1040", year=2025)).rolled}
+    assert rolled["A01"].short_title == "W-2"            # a blank, filled from the catalog's own row
+    assert rolled["D01"].short_title == "Gifts"          # typed, carried
+    assert rolled["E01"].short_title == ""               # renamed by a person: derives its own
+    assert rolled["X01"].short_title == ""

@@ -1053,6 +1053,10 @@ def household_from_json(raw: dict) -> HouseholdInfo:
 #: person ticked, so it reads as asked and no existing list changes meaning.
 #: A row that is not asked is on the return, accepts what arrives for it
 #: and files it, but is never listed as needed and never chased.
+#: ``short_title`` (decision 144) is last, and its default is **blank**:
+#: a row stored before it existed derives its short name from its document
+#: title, and an existing request folder is found by its identifier, so
+#: nothing already on disk is renamed.
 RULE_FIELDS: tuple[str, ...] = (
     "identifier",
     "document",
@@ -1069,6 +1073,7 @@ RULE_FIELDS: tuple[str, ...] = (
     "override_reason",
     "named",
     "asked",
+    "short_title",
 )
 
 
