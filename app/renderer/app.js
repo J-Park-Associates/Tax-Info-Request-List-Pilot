@@ -236,7 +236,11 @@ async function loadReminder() {
 function drawReminder(card) {
   reminderCard = card;
   const words = vocab.reminder;
-  const held = (card.held || []).length > 0;
+  const rows = (card.held || []).length;
+  const unsorted = card.unsorted || 0;
+  // Held by a row (decision 115), or by files still waiting in the
+  // household's inbox (decision 133): the same card either way.
+  const held = rows > 0 || unsorted > 0;
   const quiet = !held && (card.asked || []).length === 0;
   $("reminder-card").classList.remove("hidden");
   // Held, the card is the hold, the rows holding it and the toggle, and
@@ -249,8 +253,7 @@ function drawReminder(card) {
   const hold = $("reminder-hold");
   hold.classList.toggle("hidden", !held);
   hold.style.setProperty("--stage-ink", words.palette[words.hold_colour]);
-  $("reminder-held").textContent =
-    held ? fill(vocab.reminder.held_line, { n: card.held.length }) : "";
+  $("reminder-held").textContent = holdLine(rows, unsorted);
   show("reminder-held-rows", (card.held || []).map((row) =>
     el("li", {},
       el("span", { className: "rem-hold-id" }, row.identifier),
@@ -301,6 +304,14 @@ function drawReminder(card) {
   // like something to send. There is no file to open either.
   $("reminder-actions").classList.toggle("hidden", held);
   $("btn-open-draft").disabled = !card.file.exists;
+}
+
+// The hold, in the API's words: the rows' line, the inbox's line, or both.
+function holdLine(rows, unsorted) {
+  return [
+    rows ? fill(vocab.reminder.held_line, { n: rows }) : "",
+    unsorted ? fill(vocab.reminder.inbox_held_line, { n: unsorted }) : "",
+  ].filter(Boolean).join(" · ");
 }
 
 function reminderStatus(card) {
@@ -1102,7 +1113,8 @@ function returnReminderLine(state) {
     : state.last
       ? fill(words.last_drafted_line, { date: state.last.date, n: state.last.stage })
       : words.never_drafted_line;
-  return state.held ? `${said} · ${fill(words.held_line, { n: state.held })}` : said;
+  const hold = holdLine(state.held || 0, state.unsorted || 0);
+  return hold ? `${said} · ${hold}` : said;
 }
 
 // Whether the firm has said it shared this household, and the checklist

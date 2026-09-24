@@ -1301,6 +1301,88 @@ def test_two_open_years_sort_nothing_and_say_so_on_every_return(tmp_path, sample
     assert sum(run.filed for run in runs) == 1
 
 
+# Decision 133: the reminder waits for the sort. A pass drafts after it
+# sorts, but when the sort does not take what the client sent, the letter
+# could ask for a document sitting in the client's own drop folder.
+
+
+def test_a_household_with_two_open_years_and_a_waiting_file_drafts_no_reminder_and_says_why(
+        tmp_path, samples, stamped_on, monkeypatch):
+    from tracker.reminder import INBOX_HOLD
+    from tracker.runner import TWO_OPEN_YEARS
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    set_clients_root(tmp_path)
+    personal, business = a_household(tmp_path, samples,
+                                     drops=(f"W-2 John Smith {YEAR}.pdf",))
+    household = household_of(personal.path)
+    next_year = make_engagement(tmp_path, DEMO_ITEMS,
+                                EngagementInfo(client="John Park", firm="J Park"),
+                                household="Park Family", year=2026,
+                                return_name="1040 - John Park", scaffold=False)
+    every = [personal, business, engagement_from(next_year)]
+
+    stamped_on(SATURDAY)
+    runs = run_household(household, every, today=SATURDAY,
+                         registry=discover_engagements(tmp_path))
+
+    # The inbox was not read, so the W-2 still waits in it - and no return
+    # of the household is asked for anything while it does.
+    assert (inbox_of(personal.path) / f"W-2 John Smith {YEAR}.pdf").is_file()
+    said = INBOX_HOLD.format(n=1)
+    for run in runs:
+        assert run.ok and run.drafted is None and run.held == 1
+        assert run.draft_note == said
+        assert TWO_OPEN_YEARS.format(years="2025, 2026") in run.warnings
+        assert list(run.engagement.path.glob("reminder-draft*")) == []
+        assert drafted_events(run.engagement.path) == [{ledger.HELD_KEY: []}]
+    # Said where a person looks: the run log, and the practice page's cell.
+    logged = append_log(tmp_path / LOG_FILENAME,
+                        RunReport(today=SATURDAY, runs=runs)).read_text(encoding="utf-8")
+    assert logged.count(said) == len(runs)
+    page = html.unescape(write_status_page(tmp_path, RunReport(today=SATURDAY, runs=runs))
+                         .read_text(encoding="utf-8"))
+    assert f"<td>{STATUS_HELD.format(n=1)}</td>" in page
+
+
+def test_the_pass_that_sorts_the_inbox_drafts_the_held_reminder_the_same_day(
+        tmp_path, samples, stamped_on, monkeypatch):
+    import tracker.filer as filer_module
+    from tracker.layout import README_NAME
+    from tracker.reminder import INBOX_HOLD
+
+    engagement = build_engagement(tmp_path, samples)
+    inbox = inbox_of(engagement.path)
+    real = filer_module._move_whole
+
+    def refused_once(source, target):
+        if Path(source).parent == inbox:
+            raise PermissionError("held open by the sync client")
+        return real(source, target)
+
+    # The draft day's first pass: the drop cannot be moved, so it fails to
+    # sort and stays in the inbox - and the reminder waits for it.
+    monkeypatch.setattr(filer_module, "_move_whole", refused_once)
+    held = pass_on(stamped_on, engagement, SATURDAY)
+    monkeypatch.undo()
+    assert held.file_errors and held.drafted is None
+    assert held.held == 1 and held.draft_note == INBOX_HOLD.format(n=1)
+    assert (inbox / f"W-2 John Smith {YEAR}.pdf").is_file()
+    assert not (engagement.path / DRAFT_FILENAME).exists()
+
+    # The next pass that same day sorts it, and drafts: a hold is not a
+    # draft, so the week's draft is still owed.
+    run = pass_on(stamped_on, engagement, SATURDAY)
+    assert run.ok and run.filed == 1 and run.held == 0
+    assert run.drafted == engagement.path / DRAFT_FILENAME
+    assert [one.name for one in inbox.iterdir() if one.name != README_NAME] == []
+    events = drafted_events(engagement.path)
+    assert [ledger.HELD_KEY in e for e in events] == [True, False]
+    assert last_drafted(engagement.path) == SATURDAY
+
+
 def api_state(engagement):
     """The state the app reads for one return."""
     import tracker.api as api_module

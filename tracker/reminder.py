@@ -52,6 +52,21 @@ What holds the whole reminder back for a person (decision 115):
   parked row that points at no request holds nothing - there is nothing to
   name - and a row whose reason is ours (a scan with no text layer) holds
   nothing either.
+- **A file still waiting in the household's inbox** (decision 133). A
+  pass drafts after it sorts, but the sort does not always take what the
+  client sent: a household with two open years does not read its inbox, a
+  drop can fail to sort, a transfer can still be in flight, a name can be
+  one the machine cannot handle, a file can land after the sort - and a
+  person can press *Draft* in the app hours after the last pass. Each time
+  the letter could ask for a document sitting in the client's own drop
+  folder. So while the return's own household's ``Drop files here`` holds
+  any file the sort has not taken (:func:`unsorted_in_inbox`), the whole
+  draft is held: the letter cannot know which request such a file answers.
+  The count is made here and nowhere else, so the pass, the command line
+  and the app hold alike, and it heals itself: a hold writes no draft, so
+  the next pass that sorts the inbox drafts that same day. An inbox in
+  another household that also feeds this return is not read - it is
+  another client's folder - and that is a known limit, not a gap.
 
 What the client is deliberately *not* asked for:
 
@@ -133,7 +148,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, page, reasons, store
-from tracker.layout import household_name_of, label_for, locate, year_of
+from tracker.layout import household_name_of, inbox_of, label_for, locate, year_of
 from tracker.manifest import (
     ISO_DATE_HINT,
     ManifestError,
@@ -223,6 +238,18 @@ HELD_REFUSAL = (
 )
 #: The one line the app shows for a held reminder (through the API's vocabulary).
 HELD_SUMMARY = "Reminder held: {n} request(s) need a decision"
+#: Why a reminder waits for the sort (decision 133): the household's own
+#: ``Drop files here`` still holds files the sort has not taken - one that
+#: failed to sort, a transfer still in flight, a name the machine cannot
+#: handle, one that landed after the sort, or a household with two open
+#: years whose inbox is not read at all. The letter cannot know which
+#: request such a file answers, so the whole draft waits, as decision
+#: 115's does. What the run log, the practice page's note and the CLI say
+#: (through :func:`held_refusal`), and what :func:`write_draft` refuses with.
+INBOX_HOLD = ("held - {n} file(s) the client sent are still waiting in Drop files here "
+              "and have not been sorted yet")
+#: The app's line for a reminder the inbox holds (through the API's vocabulary).
+INBOX_HELD_SUMMARY = "Reminder held: {n} file(s) still waiting to be sorted"
 #: The what-changed block a regenerated draft opens with, above the line a
 #: person pastes: the earlier draft's day, then each request now asked that
 #: was not, and each no longer asked that was.
@@ -467,7 +494,8 @@ class DraftsEditedError(ReminderError):
 
 
 class ReminderHeldError(ReminderError):
-    """An ambiguous row holds the draft; nothing was written (decision 115)."""
+    """An ambiguous row (decision 115) or a file waiting in the household's
+    inbox (decision 133) holds the draft; nothing was written."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -593,6 +621,10 @@ class ReminderDraft:
     scaffold_gaps: list[FirmSideFlag] = field(default_factory=list)
     #: The ambiguous rows (decision 115). One of these holds the whole draft.
     held: list[FirmSideFlag] = field(default_factory=list)
+    #: How many files the household's own ``Drop files here`` holds that
+    #: the sort has not taken (decision 133). Any at all holds the whole
+    #: draft, as one ambiguous row does; ``held`` stays the rows alone.
+    unsorted: int = 0
     needs_review_files: int = 0
     total_requests: int = 0
     received_requests: int = 0
@@ -610,8 +642,10 @@ class ReminderDraft:
 
     @property
     def is_held(self) -> bool:
-        """An ambiguous row holds this draft: nothing may be written from it."""
-        return bool(self.held)
+        """An ambiguous row (decision 115), or a file still waiting in the
+        household's inbox (decision 133), holds this draft: nothing may be
+        written from it."""
+        return bool(self.held) or self.unsorted > 0
 
     @property
     def asked(self) -> list[str]:
@@ -1057,6 +1091,30 @@ def _parked_index_rows(engagement_dir: Path) -> list:
         return []
 
 
+def unsorted_in_inbox(engagement_dir: Path | str) -> int:
+    """How many files this return's own household inbox holds that the sort
+    has not taken (decision 133): every distinct path the filer's three
+    walks name - a drop waiting to be sorted (``iter_drops``), a transfer
+    still in progress (``unfinished_drops``) and a name the machine cannot
+    handle (``unreachable_drops``). The README the firm writes there and a
+    sync client's junk are none of them. 0 when there is no inbox.
+
+    **Only the return's own household's inbox** (decision 133's ruling 4).
+    A drop folder in another household that also feeds this return
+    (decision 132) is not read: that is another client's folder, and its
+    arrivals are not this household's letter to decide.
+
+    The one place the count is made - :func:`draft_reminder` asks it, so
+    the pass, the command line and the app all hold alike - and the
+    household card asks it too, for the same answer. The filer is imported
+    here, at call time, as the rest of this module reaches it.
+    """
+    from tracker.filer import iter_drops, unfinished_drops, unreachable_drops
+
+    inbox = inbox_of(Path(engagement_dir))
+    return len({*iter_drops(inbox), *unfinished_drops(inbox), *unreachable_drops(inbox)})
+
+
 def draft_reminder(
     engagement_dir: Path | str,
     *,
@@ -1165,6 +1223,7 @@ def draft_reminder(
         needs_attention=attention,
         scaffold_gaps=gaps,
         held=held,
+        unsorted=unsorted_in_inbox(engagement_dir),
         needs_review_files=count_needs_review(engagement_dir),
         total_requests=total,
         received_requests=received,
@@ -1512,10 +1571,17 @@ def stage_line(draft: ReminderDraft) -> str:
 
 
 def held_refusal(draft: ReminderDraft) -> str:
-    """The one sentence a held draft is refused with, naming every held row."""
-    return HELD_REFUSAL.format(
-        n=len(draft.held), listed=", ".join(flag.item.label for flag in draft.held),
-    )
+    """The one sentence a held draft is refused with: the inbox's (decision
+    133) when files wait to be sorted, the held rows' (decision 115) when a
+    row holds it, and both, joined, when both do."""
+    said = []
+    if draft.unsorted:
+        said.append(INBOX_HOLD.format(n=draft.unsorted))
+    if draft.held:
+        said.append(HELD_REFUSAL.format(
+            n=len(draft.held), listed=", ".join(flag.item.label for flag in draft.held),
+        ))
+    return "; ".join(said)
 
 
 def _changed_block(draft: ReminderDraft, changed_from: dict | None) -> list[str]:

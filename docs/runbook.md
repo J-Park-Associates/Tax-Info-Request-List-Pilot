@@ -418,6 +418,11 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    shortcut rather than a document: the note tells the client how to send
    an exported copy (`tracker.reasons.GOOGLE_EXPORT_HINT`), and that ask is
    already in the draft.
+5. **A file still waiting in a drop folder.** A file the sort could not take
+   — it failed, it is still arriving, its name cannot be handled, or the
+   household has two open years — is named on the run every pass, and from
+   decision 133 it also holds the household's reminders (§3, *the reminder
+   waits for the sort*). Deal with it before Saturday and nothing waits.
 
 ## 3. Every Saturday
 
@@ -521,6 +526,28 @@ file's own problem named. Work it in the app: file it, mark it not
 requested, or ask the client for a copy we can open. A parked file that
 looks like nothing holds nothing, and one nobody here could read is ours to
 fix, not the client's to resend.
+
+**And the reminder waits for the sort** (decision 133). The pass drafts after
+it sorts the household's `Drop files here`, but the sort does not always take
+everything: a household with two open years does not read its inbox at all,
+a file can fail to sort, a transfer can still be arriving, a name can be one
+the machine cannot handle, and a file can land after the sort. While the
+household's own inbox holds any such file, every return of that household is
+held the same whole way, because the letter cannot know which request the
+file answers. The practice page's Drafted column says `held (N)`, `runs.log`
+says *"held - N file(s) the client sent are still waiting in Drop files here
+and have not been sorted yet"*, and the app's card says **"Reminder held: N
+file(s) still waiting to be sorted"**. On a Saturday that means: press **Sort &
+Scan** — Run now — (or wait for the next pass — the schedule runs every two hours, and the
+pass that sorts the inbox drafts the reminder that same day), or deal with the
+file the run log names — retire a year in the editor, rename a name the
+machine cannot handle, or remove a transfer that never finished. A file that
+can never be sorted keeps the letter held, and says so every pass, until you
+deal with it: that is on purpose, because the alternative is a letter asking
+the client for what they sent. The README the firm writes into the inbox and
+sync junk never hold anything. Only the household's own inbox counts: a drop
+folder in another household that also feeds a return (§1, *Households that
+feed each other*) does not hold that return's letter.
 
 One warning before you send: if the app or the command line says files the
 client has already sent are still sitting in review, identify those first.

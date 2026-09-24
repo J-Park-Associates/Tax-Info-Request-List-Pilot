@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 122,
-    "edges": 710,
-    "reused": 96
+    "nodes": 124,
+    "edges": 712,
+    "reused": 95
   },
   "node_types": [
     "artifact",
@@ -117,8 +117,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "66b66472bf7469b4",
-      "lines": 2802,
+      "sha256": "a90a188b572466a5",
+      "lines": 2812,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_LABEL",
@@ -1207,8 +1207,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fbff7285d820a81a",
-      "lines": 1798,
+      "sha256": "9119d62609e2e3a0",
+      "lines": 1864,
       "cli": "python -m tracker.reminder",
       "exports": [
         "AMBIGUOUS_HOLD",
@@ -1242,6 +1242,8 @@
         "HELD_REFUSAL",
         "HELD_SUMMARY",
         "HOLD_COLOUR",
+        "INBOX_HELD_SUMMARY",
+        "INBOX_HOLD",
         "LAST_DRAFTED_LINE",
         "LETTER_INK",
         "Letter",
@@ -1319,6 +1321,7 @@
         "stage_line",
         "stage_named",
         "triage",
+        "unsorted_in_inbox",
         "write_draft"
       ],
       "constants": {
@@ -1342,6 +1345,8 @@
         "PARKED_HOLD": "'held - a file the client sent for this could not be used ({ask}); a person decides whether the client resends it or we file what came'",
         "HELD_REFUSAL": "'the reminder is held: {n} request(s) need a person to decide whether the client resends or we fix it here - {listed}; nothing was written'",
         "HELD_SUMMARY": "'Reminder held: {n} request(s) need a decision'",
+        "INBOX_HOLD": "'held - {n} file(s) the client sent are still waiting in Drop files here and have not been sorted yet'",
+        "INBOX_HELD_SUMMARY": "'Reminder held: {n} file(s) still waiting to be sorted'",
         "CHANGED_HEADING": "'Changed since the draft of {date}:'",
         "CHANGED_ADDED": "'  + {label}   (now asked)'",
         "CHANGED_REMOVED": "'  - {label}   (no longer asked)'",
@@ -1385,7 +1390,7 @@
         "SIGN_OFF": "'Thank you,'"
       },
       "role": "Drafts the client chase email from a scanned engagement's record, or holds it for a person. Since decision 117 the letter has four stages (STAGES, stage_for(), stage_named()) chosen by how far today is from the Due Date, and the words of all four are here and nowhere else. Draft only - there is no SMTP anywhere in this module, and tests/test_layers.py pins that no module under the package imports a mail or network one.",
-      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Reads the engagement's details from the record for client, link, due, sender and firm (manifest.load_engagement_info(); a folder with no record is a ReminderError naming the journal's file); keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing. Decision 62: EXTENSION_ASK names the row's own file types; --write preserves edits. Decision 76: count_needs_review() is still the folder's count less the working copies whose newest index row is filer.NOT_REQUESTED. An index it cannot read leaves every file counted. Decision 103: the draft is built from the record alone; a status only the record holds is what it counts. Decision 115: triage() returns a fourth list, held - a Failed row with no firm-side marker, or a Partial whose shortfall is a refused file, is ambiguous (AMBIGUOUS_HOLD) and one such row holds the whole draft: write_draft() raises ReminderHeldError (HELD_REFUSAL, naming every held row) before touching a file, the CLI prints HELD lines and --write exits 2, and SECTION_FAILED left SECTION_ORDER (unreachable from a pass; client_ask()'s Failed branch kept for an action a person may one day record). A firm-side marker on any outstanding status, Missing included, is the firm's (109's rule stated once). The draft is on the record: drafted_event() builds the ledger.DRAFTED event (asked identifiers, file and fingerprint; or held identifiers), draft_changed() says whether it differs from the last one (or is a new draft week's, when the caller passes the week), record_draft() writes it through store.record() under the caller's lock, last_draft_event() reads the newest (or the newest carrying a key). write_draft(changed_from=...) opens the header with CHANGED_HEADING / CHANGED_ADDED / CHANGED_REMOVED against the last event that carried asked, above the separator. HELD_SUMMARY is the one line the app shows, through api._vocab(). Decision 117: the draft escalates in four stages against the Due Date (STAGE_2_DAYS, STAGE_3_DAYS - constants, the owner's), each with its own subject, intro, deadline paragraph and close; the stage changes the words only - triage() still decides the recipients and the gate holds at every stage - and the sentences name the Due Date and the Filing Deadline and never the arithmetic between two dates a person may have moved. The stage rides in the header above the fingerprint line (STAGE_LINE, so an edit is still never overwritten) and in the DRAFTED event (STAGE_KEY), which draft_changed() compares as a fifth key, so a client who crossed a threshold gets this week's draft even when the asked set did not move; --stage and --today write another stage's or another day's letter. The final notice's phone sentence comes from settings.firm_phone() - the firm's, not the engagement's - and is dropped when that is blank. And the hold of decision 115 gained a second cause: a parked index row whose reason reasons.find() calls client-side, and whose shortlist in tracker/review.py names a request still asked for, holds that request (PARKED_HOLD, _parked_holds(), a call-time import of review), because a drop the rules refused at tier 2 never reaches a status and the draft would ask for a document the client knows they sent; draft_reminder() reads the rows itself and the API hands in the ones it has already read. It reads the SHORTLIST and not the row's Candidates cell: candidates are the requests that accepted the file, and a file refused before a word of it could be read - the locked PDF, the headline case - has none, so the draft and the review card now answer 'what does this parked file point at?' the same way. Decision 118: the letter is a structure before it is words. _compose_letter() builds a Letter (greeting, progress, intro, sections, drop lines and link, the deadline paragraph as runs, close, sign-off) and Letter.text() is the body the file carries, so the plain text, render_html()'s inline-styled body for the clipboard and the shape the app draws its preview from are three renderings of one thing and cannot say different things. The deadline paragraph is cut into runs by formatting the stage's own sentence with sentinels round the target, the filing deadline and the consequences sentence - never by searching the finished sentence for a date, which an engagement name could also contain. STAGE_COLOURS, HOLD_COLOUR, LETTER_INK name keys of page.PALETTE and STAGE_EMPHASIS says where each stage spends its colour and its weight; render_html() reads that table and the API ships it, so the letter, the clipboard and the card apply one ladder. render_html() is rendered on demand and never written to disk - the .txt stays what the pass writes. approved_event()/last_approved_event()/is_approved_this_week()/is_protected() are the approval a person makes in the app: until the next draft day the pass treats the approved file exactly as it treats one somebody edited (write_draft(approved_since=...) puts the regenerated draft in the .NEW file instead), and set_aside_other_draft() renames any draft standing beside it by SET_ASIDE_DRAFT_PATTERN rather than deleting it. Imports tracker.page at load time for esc() and the palette, which is L3 -> L0. An approval holds against every writer, not only the pass: is_approved_this_week(since=None) asks only whether this is the approved file, so the command line - a layer below the runner, and unable to learn the draft week - lands its --write draft beside an approved one rather than over it, and the pass, which knows the week, is the one caller that spends the approval. pasted_text() gives the letter between the header's rule and FOOTER_RULE: the staff-side footer write_draft() may add is the machine's note to the person, as the header is, and firm-side sentences must not be one paste from a client."
+      "notes": "Validation notes are translated into plain client instructions, never quoted. Rows we have not read yet, and rows with no request folder, are held back for a person instead of being asked for. Each draft carries a fingerprint of its own text so an edited draft is never overwritten. A Partial row whose shortfall is a file we have not read is held back too. Reads the engagement's details from the record for client, link, due, sender and firm (manifest.load_engagement_info(); a folder with no record is a ReminderError naming the journal's file); keyword arguments are one-off overrides for the CLI. Decision 57: write_draft() raises DraftsEditedError rather than overwrite an edited NEW draft; the runner reports BOTH_DRAFTS_EDITED and writes nothing. Decision 62: EXTENSION_ASK names the row's own file types; --write preserves edits. Decision 76: count_needs_review() is still the folder's count less the working copies whose newest index row is filer.NOT_REQUESTED. An index it cannot read leaves every file counted. Decision 103: the draft is built from the record alone; a status only the record holds is what it counts. Decision 115: triage() returns a fourth list, held - a Failed row with no firm-side marker, or a Partial whose shortfall is a refused file, is ambiguous (AMBIGUOUS_HOLD) and one such row holds the whole draft: write_draft() raises ReminderHeldError (HELD_REFUSAL, naming every held row) before touching a file, the CLI prints HELD lines and --write exits 2, and SECTION_FAILED left SECTION_ORDER (unreachable from a pass; client_ask()'s Failed branch kept for an action a person may one day record). A firm-side marker on any outstanding status, Missing included, is the firm's (109's rule stated once). The draft is on the record: drafted_event() builds the ledger.DRAFTED event (asked identifiers, file and fingerprint; or held identifiers), draft_changed() says whether it differs from the last one (or is a new draft week's, when the caller passes the week), record_draft() writes it through store.record() under the caller's lock, last_draft_event() reads the newest (or the newest carrying a key). write_draft(changed_from=...) opens the header with CHANGED_HEADING / CHANGED_ADDED / CHANGED_REMOVED against the last event that carried asked, above the separator. HELD_SUMMARY is the one line the app shows, through api._vocab(). Decision 117: the draft escalates in four stages against the Due Date (STAGE_2_DAYS, STAGE_3_DAYS - constants, the owner's), each with its own subject, intro, deadline paragraph and close; the stage changes the words only - triage() still decides the recipients and the gate holds at every stage - and the sentences name the Due Date and the Filing Deadline and never the arithmetic between two dates a person may have moved. The stage rides in the header above the fingerprint line (STAGE_LINE, so an edit is still never overwritten) and in the DRAFTED event (STAGE_KEY), which draft_changed() compares as a fifth key, so a client who crossed a threshold gets this week's draft even when the asked set did not move; --stage and --today write another stage's or another day's letter. The final notice's phone sentence comes from settings.firm_phone() - the firm's, not the engagement's - and is dropped when that is blank. And the hold of decision 115 gained a second cause: a parked index row whose reason reasons.find() calls client-side, and whose shortlist in tracker/review.py names a request still asked for, holds that request (PARKED_HOLD, _parked_holds(), a call-time import of review), because a drop the rules refused at tier 2 never reaches a status and the draft would ask for a document the client knows they sent; draft_reminder() reads the rows itself and the API hands in the ones it has already read. It reads the SHORTLIST and not the row's Candidates cell: candidates are the requests that accepted the file, and a file refused before a word of it could be read - the locked PDF, the headline case - has none, so the draft and the review card now answer 'what does this parked file point at?' the same way. Decision 118: the letter is a structure before it is words. _compose_letter() builds a Letter (greeting, progress, intro, sections, drop lines and link, the deadline paragraph as runs, close, sign-off) and Letter.text() is the body the file carries, so the plain text, render_html()'s inline-styled body for the clipboard and the shape the app draws its preview from are three renderings of one thing and cannot say different things. The deadline paragraph is cut into runs by formatting the stage's own sentence with sentinels round the target, the filing deadline and the consequences sentence - never by searching the finished sentence for a date, which an engagement name could also contain. STAGE_COLOURS, HOLD_COLOUR, LETTER_INK name keys of page.PALETTE and STAGE_EMPHASIS says where each stage spends its colour and its weight; render_html() reads that table and the API ships it, so the letter, the clipboard and the card apply one ladder. render_html() is rendered on demand and never written to disk - the .txt stays what the pass writes. approved_event()/last_approved_event()/is_approved_this_week()/is_protected() are the approval a person makes in the app: until the next draft day the pass treats the approved file exactly as it treats one somebody edited (write_draft(approved_since=...) puts the regenerated draft in the .NEW file instead), and set_aside_other_draft() renames any draft standing beside it by SET_ASIDE_DRAFT_PATTERN rather than deleting it. Imports tracker.page at load time for esc() and the palette, which is L3 -> L0. An approval holds against every writer, not only the pass: is_approved_this_week(since=None) asks only whether this is the approved file, so the command line - a layer below the runner, and unable to learn the draft week - lands its --write draft beside an approved one rather than over it, and the pass, which knows the week, is the one caller that spends the approval. pasted_text() gives the letter between the header's rule and FOOTER_RULE: the staff-side footer write_draft() may add is the machine's note to the person, as the header is, and firm-side sentences must not be one paste from a client. DECISION 133 - THE REMINDER WAITS FOR THE SORT: unsorted_in_inbox() counts the distinct paths the filer's iter_drops, unfinished_drops and unreachable_drops (imported at call time, as the rest of this module reaches the filer) return for layout.inbox_of() of the return - its OWN household's inbox only; an inbox in another household that also feeds it (decision 132) is not read, a known limit. draft_reminder() stores it as ReminderDraft.unsorted, and is_held is now bool(held) or unsorted > 0, so the pass, the command line and the app hold alike and write_draft() refuses before touching a file; held stays the rows. held_refusal() says INBOX_HOLD when files wait, HELD_REFUSAL when rows hold, both joined by '; '; INBOX_HELD_SUMMARY is the app's line (api vocab inbox_held_line). A hold records a drafted event with held and no file, so the next pass that sorts the inbox drafts the same day."
     },
     {
       "id": "tracker/review.py",
@@ -1525,8 +1530,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2fc08ae7f444fb97",
-      "lines": 1368,
+      "sha256": "4b25bca645c16d5c",
+      "lines": 1380,
       "cli": "python -m tracker.runner",
       "exports": [
         "DATE_FLAG",
@@ -2080,8 +2085,8 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "7ae33ff3148255c0",
-      "lines": 2535,
+      "sha256": "c55fdd9bce82e178",
+      "lines": 2547,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results, and (decision 104) the request-list editor - the only place a rule is entered. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the wizard's custom-request section (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook. Decision 112: both row builders put the row's sequence number on the <li> (dataset.seq, from state.index[].seq and state.review[].seq) and assignParked(), dismissParked() and unfileDocument() send it back as seq; assignParked's banner shows the API's overrode_shortlist sentence as a warn note beside left_in_review. A refusal goes through refused(): the API's sentence is toasted, the button re-enabled and refresh() re-reads the state, so the card shows the row as the record now holds it. The renderer types no sentence of its own here either. Decision 113: the learned cell is a list rather than a line - learnedCell() draws the API's learned_note and then one span.ed-learned-word per taught keyword, each with its own button.ed-unlearn carrying the identifier and the word - and a click calls the unlearn command, then re-draws only the learned column from the state that comes back (renderLearnedCells), because unlearning is its own event and lands at once while the rows may hold edits the person has not saved. The note area says the API's unlearned_note, and its scan_note under it when the re-scan could not run; the renderer types no word of it. Decision 110: renderMoved() draws #moved-card above the review card from state.moved - one row per moved working copy, its home and where its bytes are now, with restoreMoved (the restore command), keepMoved (assign, with the request the picker was left on and the keyword typed) and reviewMoved (unfile) behind the three buttons, delegated on #moved-list. The picker and the keyword box are shown only where the API said which request's folder holds the copy, and the picker starts on it; every word is vocab.review_labels', including the word for a copy that is nowhere. Decision 114: renderReview() draws the same queue twice - the list in #review-list and, in #review-deck, one card at a time. renderDeck() builds the deck from state.review in the API's order with the rows a person sent to the back after it (skipped, pbc_locations, dropped as soon as a row leaves the queue), shows the first card, and is called again from every render, so a row filed or set aside anywhere else simply leaves the deck and the total is always the queue's. The card shows the row's reason, the top suggestion's sentence under the list's own 'suggested' heading (or the vocabulary's nothing_suggested), the set-aside sentences, a keyword box and the position line; acceptCard() files to the suggestion the card carries, openCardInList() switches to the list and outlines the row, skipCard() reorders and sends nothing. fileRow() is the one place the assign call is made - assignParked(), acceptCard() and keepMoved() all reach it, and a guard in tests/test_single_source.py keeps it the only one, so Accept and File it cannot drift apart. reviewMode is the person's choice of rendering, read and written in localStorage under REVIEW_MODE_STORAGE_KEY inside try/catch (a blocked store leaves the app on the list); it is a key and not a word, and nothing about the deck is recorded (decision 83). Decision 118: renderReminder()/loadReminder()/drawReminder() are the Reminder card - the record's last word on the draft, the four stages as a toggle coloured from the API's palette, the letter drawn from its own shape with el() (never from the clipboard's markup, which would be an HTML string), Copy for Outlook putting text/html and text/plain on the clipboard with the same words, Approve sending back the fingerprint of the text on screen, and Open the draft file on the path state.paths names. The stage a person picked is the only thing the page holds of its own and is dropped when the engagement changes. It types no colour: every hex it draws with is looked up in vocab.reminder.palette by the key a stage carries, and a guard reads the file for one. Decision 129 added the household card's two feed lines, the editor's feed list with its picker and its warning, and File under another return on both renderings of the queue - every word of it from the API's vocabulary, as always."
     },
@@ -2129,8 +2134,22 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d3b22ad70a36d60e",
-      "lines": 382,
+      "sha256": "adf8ccb12123270e",
+      "lines": 383
+    },
+    {
+      "id": "docs/ROADMAP.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "adf8ccb12123270e",
+      "lines": 383
+    },
+    {
+      "id": "docs/ROADMAP.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "adf8ccb12123270e",
+      "lines": 383,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -2147,7 +2166,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "37bd78523cf4d9e4",
+      "sha256": "dc6c2c34c57383ff",
       "lines": 791,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2156,8 +2175,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2b3bb7bb10ff050d",
-      "lines": 911,
+      "sha256": "756a156542147388",
+      "lines": 938,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -2442,8 +2461,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "12fce44a2e835134",
-      "lines": 3232,
+      "sha256": "3743e40d79cf48f1",
+      "lines": 3267,
       "exports": [
         "HOUSEHOLD",
         "PEOPLE",
@@ -2545,6 +2564,7 @@
         "test_the_apps_pass_appends_the_line_the_scheduled_run_appends",
         "test_the_apps_pass_is_the_runners_pass",
         "test_the_apps_pass_regenerates_the_practices_status_page",
+        "test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve",
         "test_the_editor_clears_a_detail_it_sends_blank_and_keeps_one_it_leaves_out",
         "test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_label",
         "test_the_editor_saves_and_clears_the_filing_deadline",
@@ -3465,8 +3485,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6a20182d4af8271a",
-      "lines": 1301,
+      "sha256": "7faf9bca6453e6b1",
+      "lines": 1465,
       "exports": [
         "DEADLINE",
         "DROPPED",
@@ -3488,23 +3508,29 @@
         "test_a_failed_row_with_a_firm_side_reason_does_not_hold",
         "test_a_failed_row_with_no_recognised_reason_is_held_not_asked_generically",
         "test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft",
+        "test_a_file_waiting_in_the_drop_folder_holds_the_whole_reminder",
         "test_a_folder_with_no_record_fails_loudly",
+        "test_a_held_draft_by_the_inbox_writes_nothing_and_says_why",
         "test_a_locked_pdf_named_for_a_request_parks_with_that_request_on_its_shortlist_and_holds_the_draft",
         "test_a_locked_pdf_whose_name_says_nothing_holds_nothing",
         "test_a_missing_request_folder_is_our_problem_not_the_clients",
         "test_a_missing_row_with_a_file_moved_note_is_the_firms_and_the_draft_never_asks",
         "test_a_missing_row_with_a_firm_side_marker_is_held_back_not_asked",
+        "test_a_name_the_machine_cannot_handle_holds_the_reminder_until_a_person_deals_with_it",
         "test_a_parked_file_with_a_firm_side_reason_holds_nothing",
         "test_a_parked_locked_file_whose_shortlist_is_partial_holds_it_too",
         "test_a_partial_row_we_have_not_finished_reading_is_ours_not_the_clients",
         "test_a_partial_whose_shortfall_is_a_refused_file_holds_and_a_plain_partial_is_asked",
         "test_a_resend_after_a_dismissal_counts_in_the_files_waiting_warning",
         "test_a_set_aside_row_never_holds",
+        "test_a_transfer_still_in_progress_holds_the_reminder",
         "test_an_approval_names_a_text_and_not_a_filename",
         "test_an_approved_draft_is_protected_for_the_week_and_the_approval_is_spent_next_week",
+        "test_an_inbox_of_another_household_that_feeds_this_return_does_not_hold_it",
         "test_an_ocr_failure_is_the_firms_to_retry_not_the_clients_to_resend",
         "test_an_unscanned_manifest_will_not_be_drafted_from",
         "test_approve_sets_the_other_draft_aside_by_name_and_never_deletes_anything",
+        "test_both_holds_are_said_together",
         "test_draft_greets_signs_and_counts",
         "test_draft_with_nothing_outstanding_says_so",
         "test_each_stage_writes_its_own_intro_deadline_and_close",
@@ -3539,6 +3565,7 @@
         "test_the_manual_draft_refuses_past_the_gate_with_exit_two",
         "test_the_palette_mirrors_the_design_systems_tokens",
         "test_the_practice_page_says_approved_in_one_word",
+        "test_the_readme_and_sync_junk_do_not_hold_the_reminder",
         "test_the_recipient_set_is_identical_at_every_stage_and_a_firm_side_row_is_in_none",
         "test_the_stage_follows_the_due_date_at_the_thresholds",
         "test_the_stage_is_in_the_header_above_the_fingerprint_and_not_in_the_fingerprinted_body",
@@ -3547,7 +3574,8 @@
         "test_write_draft_marks_it_as_a_draft",
         "test_write_draft_needs_somewhere_to_write",
         "test_written_draft_appends_firm_side_notes_below_the_email",
-        "the_firm_has_no_phone_unless_a_test_says_so"
+        "the_firm_has_no_phone_unless_a_test_says_so",
+        "waiting_in"
       ],
       "constants": {
         "PHONE": "'(555) 010-2020'",
@@ -3820,8 +3848,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5e63c68b6e011b85",
-      "lines": 1683,
+      "sha256": "adb7813d8e69f569",
+      "lines": 1765,
       "exports": [
         "DRAFT_DAY",
         "FRIDAY",
@@ -3857,6 +3885,7 @@
         "test_a_file_named_like_markup_is_shown_as_a_name_not_rendered",
         "test_a_held_engagement_does_not_stop_the_next_engagements_draft",
         "test_a_held_engagement_writes_no_draft_retires_its_own_stale_draft_and_leaves_an_edited_one",
+        "test_a_household_with_two_open_years_and_a_waiting_file_drafts_no_reminder_and_says_why",
         "test_a_lock_held_on_one_return_skips_the_whole_household_and_touches_nothing",
         "test_a_manual_run_drafts_on_a_weekday",
         "test_a_missing_folder_is_recorded_not_raised",
@@ -3906,6 +3935,7 @@
         "test_the_page_still_has_a_heading_where_nothing_can_say_what_the_product_is_called",
         "test_the_pass_holds_one_lock_from_the_sort_through_the_scan",
         "test_the_pass_takes_every_lock_it_needs_in_one_global_order_across_households",
+        "test_the_pass_that_sorts_the_inbox_drafts_the_held_reminder_the_same_day",
         "test_the_practice_page_says_approved_where_it_would_say_the_stage",
         "test_the_practice_page_says_held_with_the_count",
         "test_the_report_says_what_day_it_is_and_never_claims_a_send",
@@ -6145,6 +6175,12 @@
     },
     {
       "from": "tests/test_reminder.py",
+      "to": "tracker/households.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
       "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
@@ -6176,6 +6212,12 @@
     {
       "from": "tests/test_reminder.py",
       "to": "tracker/reasons.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
+      "to": "tracker/records.py",
       "type": "exercises",
       "source": "derived"
     },

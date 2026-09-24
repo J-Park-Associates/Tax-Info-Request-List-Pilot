@@ -792,6 +792,7 @@ def _vocab() -> dict:
         # takes. A hex never reaches the renderer or the stylesheet.
         "reminder": {
             "held_line": reminder.HELD_SUMMARY,
+            "inbox_held_line": reminder.INBOX_HELD_SUMMARY,
             "heading": reminder.REMINDER_HEADING,
             "stage_group": reminder.STAGE_GROUP_LABEL,
             "subject_prefix": reminder.SUBJECT_PREFIX,
@@ -1136,10 +1137,12 @@ def _sharing_checklist(root: Path, household: str) -> dict:
 
 def _return_reminder(path: Path, today: dt.date) -> dict:
     """One return's reminder state for the household card (decision 128):
-    when it was last drafted, whether this week's draft is approved, and
-    how many requests are holding it.
+    when it was last drafted, whether this week's draft is approved, how
+    many requests are holding it, and how many files wait unsorted in the
+    household's inbox (decision 133, counted by the reminder's own
+    :func:`tracker.reminder.unsorted_in_inbox`).
 
-    Three numbers and two dates - never a word of the letter. The card
+    Four numbers and two dates - never a word of the letter. The card
     puts them into the sentences the Reminder card already uses
     (``vocab.reminder``'s ``last_drafted_line``, ``approved_line``,
     ``never_drafted_line`` and ``held_line``), so the returns of a
@@ -1147,7 +1150,7 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
     page types nothing new. A return whose record this read cannot open
     says nothing rather than breaking the card.
     """
-    blank = {"last": None, "approved": None, "held": 0}
+    blank = {"last": None, "approved": None, "held": 0, "unsorted": 0}
     try:
         items = load_manifest(path)
         entries = read_index(path)
@@ -1157,6 +1160,7 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
         in_force = reminder.is_approved_this_week(
             path, path / reminder.DRAFT_FILENAME,
             since=last_draft_day(today, DRAFT_WEEKDAY))
+        unsorted = reminder.unsorted_in_inbox(path)
     except Exception:                        # said elsewhere; the card still draws
         return blank
     return {
@@ -1166,6 +1170,7 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
                       "stage": approved.get(reminder.STAGE_KEY) or 0}
                      if approved and in_force else None),
         "held": len(held),
+        "unsorted": unsorted,
     }
 
 
@@ -1428,6 +1433,7 @@ def _reminder_payload(engagement: Path, items, entries) -> dict:
     drafted = last_drafted(engagement)
     return {
         "held": _held_rows(held),
+        "unsorted": reminder.unsorted_in_inbox(engagement),
         "last_drafted": drafted.isoformat() if drafted else None,
     }
 
@@ -2544,7 +2550,10 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     and the card is something a person can copy from. So the subject, the
     text, the body and the letter are all empty while it is held, the
     toggle stands at the stage the day gives, and a stage asked for is
-    ignored - there is nothing to re-stage.
+    ignored - there is nothing to re-stage. A reminder held only by files
+    still waiting in the household's inbox (decision 133) is held the same
+    way: ``held`` is the rows (none), ``unsorted`` is the count, and the
+    card's hold line comes from ``vocab.reminder.inbox_held_line``.
     """
     try:
         info = load_engagement_info(engagement)
@@ -2561,7 +2570,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     in_force = reminder.is_approved_this_week(engagement, path,
                                               since=last_draft_day(today, DRAFT_WEEKDAY))
 
-    if draft.held:
+    if draft.is_held:
         stage = day_stage
     else:
         recorded = last.get(reminder.STAGE_KEY) if last else None
@@ -2572,7 +2581,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
             except reminder.ReminderError as exc:
                 raise ManifestError(str(exc)) from None
 
-    if draft.held:
+    if draft.is_held:
         subject, text, html, letter = "", "", "", None
     elif edited:
         # What a person edited is what they approve and what they copy:
@@ -2591,7 +2600,8 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "draft": draft,
         "stage": stage,
         "held": _held_rows(draft.held),
-        "refusal": reminder.held_refusal(draft) if draft.held else "",
+        "unsorted": draft.unsorted,
+        "refusal": reminder.held_refusal(draft) if draft.is_held else "",
         "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
                   "stage": last.get(reminder.STAGE_KEY) or 0,
                   "asked": list(last.get(ledger.ASKED_KEY) or []),
@@ -2608,7 +2618,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "fingerprint": reminder.draft_fingerprint(shown),
         "asked": draft.asked,
         "stages": _stages(),
-        "editable": not draft.held and not edited and draft.has_outstanding,
+        "editable": not draft.is_held and not edited and draft.has_outstanding,
     }
 
 
@@ -2661,7 +2671,7 @@ def _cmd_approve(argv: list[str]) -> dict:
     today = dt.date.today()
     with engagement_lock(engagement):
         state = _reminder_now(engagement, requested, today)
-        if state["held"]:
+        if state["draft"].is_held:
             raise ManifestError(state["refusal"])
         if shown != state["fingerprint"]:
             raise ManifestError(DRAFT_MOVED)

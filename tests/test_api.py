@@ -1642,6 +1642,7 @@ def _the_reminder_card_words_are_all_pythons(words):
 
     assert words == {
         "held_line": reminder.HELD_SUMMARY,
+        "inbox_held_line": reminder.INBOX_HELD_SUMMARY,
         "heading": reminder.REMINDER_HEADING,
         "stage_group": reminder.STAGE_GROUP_LABEL,
         "subject_prefix": reminder.SUBJECT_PREFIX,
@@ -2200,6 +2201,40 @@ def test_a_held_reminder_shows_no_letter_and_offers_no_action(capsys, demo_root)
                         stdin={"stage": card["stage"], "fingerprint": card["fingerprint"]})
     assert code == 1 and "the reminder is held" in payload["error"]
     assert list(folder.glob("reminder-draft*")) == []
+
+
+def test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve(capsys, demo_root):
+    """Decision 133 on this surface: a file still waiting in the household's
+    inbox holds the card as a held row does (118 §9) - the hold line, no
+    rows, a dead toggle, no letter and no approval - and every word of it is
+    the API's; the renderer types none."""
+    from tracker.reminder import INBOX_HELD_SUMMARY, INBOX_HOLD
+
+    folder = chased_engagement(capsys, demo_root, name="Waiting")
+    (inbox_of(folder) / "W-2 from the client.pdf").write_bytes(b"%PDF-1.4 not sorted yet")
+
+    card = reminder_card(capsys, folder)
+    assert card["held"] == [] and card["unsorted"] == 1
+    assert (card["subject"], card["text"], card["html"], card["letter"]) == ("", "", "", {})
+    assert card["editable"] is False
+
+    code, payload = run(capsys, "approve", api.ENGAGEMENT_FLAG, str(folder),
+                        stdin={"stage": card["stage"], "fingerprint": card["fingerprint"]})
+    assert code == 1 and payload["error"] == INBOX_HOLD.format(n=1)
+    assert list(folder.glob("reminder-draft*")) == []
+
+    # The household card says the same hold beside the return.
+    [one] = api._state(folder)["household"]["returns"]
+    assert one["reminder"]["unsorted"] == 1
+
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["reminder"]["inbox_held_line"] == INBOX_HELD_SUMMARY
+    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8")
+    for word in (INBOX_HELD_SUMMARY, INBOX_HELD_SUMMARY.split("{")[0].strip(),
+                 INBOX_HOLD.split("{")[0].strip()):
+        assert word not in renderer, word
+    assert "vocab.reminder.inbox_held_line" in renderer
 
 
 def test_approve_writes_the_shown_text_records_the_event_and_sets_the_other_draft_aside(
@@ -2960,7 +2995,7 @@ def test_the_household_card_shows_every_returns_reminder_state(capsys, demo_root
     assert [one["return_name"] for one in returns] == [
         "1040 - John Park", "1120S - Park Landscaping"]
     for one in returns:
-        assert one["reminder"] == {"last": None, "approved": None, "held": 0}
+        assert one["reminder"] == {"last": None, "approved": None, "held": 0, "unsorted": 0}
     # The words the card fills those numbers into are the reminder's own.
     words = run(capsys, "list")[1]["vocab"]["reminder"]
     assert words["never_drafted_line"] == reminder.NEVER_DRAFTED_LINE

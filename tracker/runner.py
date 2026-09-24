@@ -44,6 +44,14 @@ file it wrote is one ``ledger.DRAFTED`` event under the pass's lock, only
 when that moved; the day of the last draft is read from it, and the first
 pass after a hold clears drafts the client by the catch-up rule.
 
+**And the reminder waits for the sort** (decision 133). While the
+household's own ``Drop files here`` holds a file the sort has not taken -
+two open years, a drop that failed, a transfer in flight, a name the
+machine cannot handle - the draft is held the same way, whole, and the
+note says how many files wait. ``tracker.reminder`` counts them, so this
+module only reports the hold; the next pass that sorts the inbox drafts
+that same day, because a hold is not a draft.
+
 **Every real pass leaves the practice on one page.** ``STATUS_PAGE_FILENAME``
 is written into the clients root at the end of the pass: every engagement
 with what it owes, every file parked for a person across the whole
@@ -240,8 +248,9 @@ class EngagementRun:
     #: app (decision 118). The pass leaves it exactly as it leaves an
     #: edited one, and the practice page says so instead of a stage.
     approved: bool = False
-    #: How many ambiguous rows hold this engagement's reminder (decision 115);
-    #: ``draft_note`` names them.
+    #: How many things hold this engagement's reminder: its ambiguous rows
+    #: (decision 115) and the files still waiting in its household's inbox
+    #: (decision 133); ``draft_note`` names them.
     held: int = 0
     #: This engagement's slowest readings, longest first (decision 127):
     #: (the document's own name, seconds). Carried from the filing report
@@ -829,7 +838,10 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
         # one is theirs (decision 15). Said in the note, counted on the
         # page, and on the record. The same path serves --reminders
         # always: the mode forces the attempt, and the attempt is held.
-        run.held = len(draft.held)
+        # What holds it: the rows (decision 115) and the files still
+        # waiting in the household's inbox (decision 133), counted
+        # together, and the sentence names both.
+        run.held = len(draft.held) + draft.unsorted
         run.draft_note = held_refusal(draft)
         _retire_unedited_drafts(engagement.path, approved_since=week)
         _record(engagement.path, previous, drafted_event(draft, None))
