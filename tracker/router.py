@@ -101,8 +101,9 @@ the title, or as the form dominating the first page - parks with
 offers it and the reminder holds rather than asking the client for what
 they sent. A real W-2 whose OCR reading lost one of the row's three
 required phrases is the case. Where the page shows no row's form number,
-the file's name is the last hint, as it is for a scan nothing could read.
-The rows are never candidates: the required phrases were not loosened,
+the file's name is the last hint, as it is for a scan nothing could read,
+said in a sentence of its own (``reasons.NAME_POINTS_AT``) that holds the
+same way. The rows are never candidates: the required phrases were not loosened,
 because every looser rule tried filed the W-3 family and the W-2c as
 W-2s, and a suggestion is not evidence to file on.
 
@@ -223,6 +224,8 @@ SEVERAL_FORMS_UNSORTED = reasons.SEVERAL_FORMS_UNSORTED
 #: A read document that matched no request but shows a row's own form
 #: number (decision 140). Worded once, in :mod:`tracker.reasons`.
 SHOWS_ITS_FORM_NUMBER = reasons.SHOWS_ITS_FORM_NUMBER
+#: The same near miss where only the file's name points at a row.
+NAME_POINTS_AT = reasons.NAME_POINTS_AT
 #: Where a form number has to have been said for the page to *show* it:
 #: named in the title zone, or dominating the first page. A form number
 #: counts at all only where the title names it or it is the page's
@@ -332,10 +335,17 @@ def _near_miss(
     them (``reasons.SHOWS_ITS_FORM_NUMBER`` holds, decision 117's hold);
     ``candidates`` stays empty. None when nothing points anywhere, and the
     file parks as plain "matched no request", as it always did.
+
+    The two paths are said apart: ``reasons.SHOWS_ITS_FORM_NUMBER`` when
+    the page showed the number, ``reasons.NAME_POINTS_AT`` when only the
+    name did, because a reason must not claim the page said what only the
+    client's name for the file said. Both hold the letter the same way.
     """
+    because = SHOWS_ITS_FORM_NUMBER
     shown = [item.identifier for item in allowed
              if _shows_its_form_number(record.get(item.identifier, ()))]
     if not shown:
+        because = NAME_POINTS_AT
         for item in allowed:
             if said_by_the_name := _filename_evidence(path, item):
                 record[item.identifier] = record.get(item.identifier, ()) + said_by_the_name
@@ -345,7 +355,7 @@ def _near_miss(
     return Routing(
         path=path,
         identifier=None,
-        reason=SHOWS_ITS_FORM_NUMBER.format(listed=", ".join(shown)) + hint,
+        reason=because.format(listed=", ".join(shown)) + hint,
         evidence_record=_recorded_for(record, shown),
     )
 

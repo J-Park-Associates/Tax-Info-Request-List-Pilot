@@ -961,7 +961,7 @@ def test_a_garbled_w2_named_w2_gets_its_file_name_as_the_hint(tmp_path):
     routing = _read_by_ocr(tmp_path, "Employer W2.pdf", GARBLED, items)
 
     assert routing.identifier is None and routing.candidates == ()
-    assert reasons.find(routing.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+    assert reasons.find(routing.reason) is reasons.NAME_POINTS_AT
     assert [e.rule for e in routing.evidence_record["A01"]] == [RULE_FILENAME]
     [suggestion] = _shortlist(routing, items, "Employer W2.pdf")
     assert suggestion.identifier == "A01" and "the file name says W-2" in suggestion.reason
@@ -989,7 +989,18 @@ def test_a_near_miss_is_never_filed(tmp_path, name, text):
     routing = _read_by_ocr(tmp_path, name, text, only_a01)
     assert routing.identifier is None and routing.also == ()
     assert routing.candidates == ()
-    assert reasons.find(routing.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+    assert reasons.find(routing.reason) in (reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT)
+
+
+def test_a_near_miss_on_the_file_name_says_the_file_name_not_the_page(tmp_path):
+    """Decision 140, the designer's ruling on the build. The fact sheet's
+    7/2014 case points at A01 only through its name, and its reason says
+    so: "file name", never that the page shows a form number it did not."""
+    routing = _read_by_ocr(tmp_path, "Employer W2.pdf", GARBLED, _catalog_1040())
+    assert "file name" in routing.reason
+    assert not reasons.SHOWS_ITS_FORM_NUMBER.matches(routing.reason)
+    assert routing.reason.startswith(UNMATCHED)
+    assert routing.reason == reasons.NAME_POINTS_AT.format(listed="A01")
 
 
 def test_a_form_number_said_only_deep_is_not_shown(tmp_path):

@@ -1090,9 +1090,10 @@ HELD_BEFORE_140 = {
 def test_every_existing_reason_holds_exactly_as_before(reason):
     """Decision 140, claim 5. ``Reason.holds`` replaced "not firm-side" as
     the hold's test, so every reason that held still holds, in the same
-    words, every one that did not still does not - and the one new reason
-    is the one firm-side reason that holds. Asked of the hold itself, with
-    a parked row carrying the reason's own sentence and evidence for A01."""
+    words, every one that did not still does not - and the two new reasons,
+    the page's and the file name's, are the firm-side reasons that hold.
+    Asked of the hold itself, with a parked row carrying the reason's own
+    sentence and evidence for A01."""
     from tests.test_review import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _ask_for, _parked_holds
@@ -1100,7 +1101,7 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
     row = parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
                      reason="scan.pdf: " + _sample(reason))
     holds = _parked_holds(DROPPED, [row])
-    if reason is reasons.SHOWS_ITS_FORM_NUMBER:
+    if reason in (reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT):
         assert reason.firm_side and reason.holds
         assert holds == {"A01": CONFIRM_HOLD.format(note=reason.firm_side_note)}
         return

@@ -258,8 +258,7 @@ ISSUER_NOT_NAMED = Reason(
 
 #: A document that was read, matched no request, and shows the **form
 #: number** of one or more rows on its page - in the title, or as the form
-#: that dominates the first page - or, where the page shows none, carries a
-#: row's keyword in its file name (decision 140). The commonest cause is an
+#: that dominates the first page (decision 140). The commonest cause is an
 #: OCR reading that lost one of a row's required phrases: a real W-2 whose
 #: "employee's social security number" label the scan cut at the box rule.
 #: The rows are the shortlist a person is handed, never candidates: a
@@ -275,6 +274,20 @@ SHOWS_ITS_FORM_NUMBER = Reason(
     "matched no request, but it shows the form number of {listed}; a person should confirm",
     "but it shows the form number of", firm_side=True, holds=True,
     firm_note="it matched no request but shows this request's form number; "
+              "a person here confirms it - never the client",
+)
+#: The same near miss where the page shows no row's form number and only
+#: the file's **name** carries a row's keyword (decision 140, the designer's
+#: ruling on the build): decision 92's hint for a file nothing could read,
+#: now also given to a read file that matched nothing. Its own sentence,
+#: because the page did not show anything - the client's name for the file
+#: did - and a reason must not claim the page said what only the name said.
+#: Firm-side and holding, exactly as :data:`SHOWS_ITS_FORM_NUMBER`.
+NAME_POINTS_AT = Reason(
+    "name-points-at",
+    "matched no request, but its file name points at {listed}; a person should confirm",
+    "but its file name points at", firm_side=True, holds=True,
+    firm_note="it matched no request but its file name points at this request; "
               "a person here confirms it - never the client",
 )
 
@@ -445,7 +458,7 @@ ALL: tuple[Reason, ...] = (
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
     NO_PAGES, UNREADABLE_PDF, UNREADABLE_IMAGE, HEIC_NOT_SUPPORTED, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
-    ISSUER_NOT_NAMED, SHOWS_ITS_FORM_NUMBER,
+    ISSUER_NOT_NAMED, SHOWS_ITS_FORM_NUMBER, NAME_POINTS_AT,
     NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE, UNNAMED_ACROSS_HOUSEHOLDS,
     FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST, READING_STOPPED,
     PENDING_SYNC, VANISHED,
