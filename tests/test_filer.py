@@ -404,9 +404,14 @@ def test_a_pass_writes_nothing_under_the_clients_root_but_the_record_and_the_pag
     # What the pass did put there: the client's own files, moved and copied,
     # and the record. The page is the runner's, so a bare sort and scan
     # leave none - and nothing else either.
+    # The working copy's name is fitted to the room the path leaves
+    # (decision 131), so under a long temporary folder it is cut: it is
+    # known by its request, not spelled out whole.
     new = names - before
-    assert new <= {"w2.pdf", "scan0012.pdf", "A01 - W-2 Wage Statements - TY2025.pdf",
-                   LEDGER_FILENAME, VIEW_FILENAME}, new
+    copies = {name for name in new if name.startswith("A01 - W-2 Wage Statement")
+              and name.endswith(".pdf")}
+    assert len(copies) == 1, new
+    assert new - copies <= {"w2.pdf", "scan0012.pdf", LEDGER_FILENAME, VIEW_FILENAME}, new
 
 
 # --------------------------------------------------------------------- index ----
