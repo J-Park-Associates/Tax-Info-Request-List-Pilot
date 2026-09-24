@@ -1739,6 +1739,19 @@ def abandoned(seconds: float) -> Extraction:
 # answering - pdfium or Tesseract crashing, memory running out - is a
 # reading that failed, kept the same way: the file waits for a person, and
 # the pass goes on to the next one.
+#
+# And the child never outlives its pass (the designer's ruling on the
+# build). Task Scheduler's stop, or anything else that kills the pass
+# outright, runs no code of the pass's: two things end the child anyway.
+# It holds a second pipe from the pass - its lifeline - that the pass never
+# writes to, and a thread in the child waits on it; the pass's end closes
+# when the pass does, however it ended, and the child ends itself (on
+# POSIX with the process group it leads, so what it started goes too). A
+# lifeline needs that thread to run, and a reader stuck in native code may
+# not let it, so on Windows the child is also put in a job object that
+# kills everything in it when its last handle closes - and the pass holds
+# the only handle. A process the child starts, Tesseract, is in the job
+# with it.
 
 #: Whether :func:`extract_bounded` reads in a child process (decision 150).
 #: Always, in the tracker. The suite turns it off for every test but the
@@ -1753,6 +1766,8 @@ _CHILD_READER = extract
 #: How long an ended child is waited for, and how long one that has
 #: answered is given to exit on its own, before the pass goes on.
 _CHILD_EXIT_SECONDS = 30.0
+#: The exit code of a child that ended itself because its pass was gone.
+ORPHANED_EXIT_CODE = 86
 
 
 def reading_stop_seconds(path: Path) -> float:
@@ -1797,16 +1812,23 @@ def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
     stop = reading_stop_seconds(path)
     context = multiprocessing.get_context("spawn")      # Windows has no fork
     answers, sender = context.Pipe(duplex=False)
-    child = context.Process(target=_the_child, args=(sender, _CHILD_READER, str(path), ocr),
+    # The lifeline: the child holds the reading end and the pass the only
+    # writing end, which closes with the pass however the pass ends.
+    lifeline, held = context.Pipe(duplex=False)
+    child = context.Process(target=_the_child,
+                            args=(sender, lifeline, _CHILD_READER, str(path), ocr),
                             name="tracker-reading", daemon=True)
     started = time.monotonic()
     try:
         child.start()
     except BaseException:
         answers.close()
+        held.close()
         raise
     finally:
         sender.close()          # the child holds its own end: end-of-file means it is gone
+        lifeline.close()
+    job = _kill_on_close_job(child.pid)
     kind, answer = "died", ()
     try:
         if not answers.poll(stop):
@@ -1820,6 +1842,8 @@ def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
     finally:
         answers.close()
         exit_code = _wait_for(child)
+        held.close()
+        _close_job(job)
     seconds = time.monotonic() - started
     if kind == "read":
         return answer[0]
@@ -1832,23 +1856,151 @@ def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
     return reading_failed(seconds, error)
 
 
-def _the_child(sender, reader, path: str, ocr: bool) -> None:
+def _the_child(sender, lifeline, reader, path: str, ocr: bool) -> None:
     """The child's whole life: read one file, hand back the reading, exit.
 
     On POSIX it leads a process group of its own first, so ending it ends
-    whatever it started. Anything the reading raises is handed back as
-    words, never left to end the process in silence."""
+    whatever it started. It watches its lifeline from a thread of its own
+    and ends itself when the pass is gone (:func:`_watch_the_pass`), and an
+    answer the pass is no longer there to take ends it the same way.
+    Anything the reading raises is handed back as words, never left to end
+    the process in silence."""
+    import threading
+
     if hasattr(os, "setsid"):
         os.setsid()
+    threading.Thread(target=_watch_the_pass, args=(lifeline,), name="tracker-lifeline",
+                     daemon=True).start()
     try:
         try:
             reading = reader(Path(path), ocr=ocr)
         except BaseException as exc:
-            sender.send(("failed", f"{exc.__class__.__name__}: {exc}", traceback.format_exc()))
+            _answer(sender, ("failed", f"{exc.__class__.__name__}: {exc}", traceback.format_exc()))
         else:
-            sender.send(("read", reading))
+            _answer(sender, ("read", reading))
     finally:
         sender.close()
+
+
+def _answer(sender, message) -> None:
+    """Hand the pass the reading - or, when the pass is gone and the pipe
+    broken, end: there is nobody left to read it for."""
+    try:
+        sender.send(message)
+    except OSError:
+        _orphaned()
+
+
+def _watch_the_pass(lifeline) -> None:
+    """The child's lifeline thread. The pass never writes to it, so the
+    wait ends only when the pass's end closes - the pass finished with the
+    child, or the pass is gone. Either way the child has nothing left to do."""
+    try:
+        lifeline.recv()
+    except (EOFError, OSError):
+        pass
+    _orphaned()
+
+
+def _orphaned() -> None:
+    """End this child now, and on POSIX the process group it leads, so
+    whatever it started ends with it (on Windows its job does that)."""
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(os.getpgrp(), signal.SIGKILL)
+        except OSError:
+            pass
+    os._exit(ORPHANED_EXIT_CODE)
+
+
+def _kill_on_close_job(pid: int):
+    """On Windows, a job object holding the child ``pid`` that kills every
+    process in it when its last handle closes - the handle returned here,
+    which only the pass holds (it is not inheritable). None elsewhere, or
+    where Windows refuses; the lifeline still stands then, and it is said.
+
+    The standard library's ``ctypes`` and nothing else: ``kernel32``'s
+    CreateJobObject, SetInformationJobObject with
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, and AssignProcessToJobObject."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class BasicLimits(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
+                    ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD),
+                    ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t),
+                    ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_uint64) for name in (
+            "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+            "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+    class ExtendedLimits(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", BasicLimits),
+                    ("IoInfo", IoCounters),
+                    ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
+    kernel32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                                 wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        log.warning("No job object for the reading (Windows error %d); its lifeline stands",
+                    ctypes.get_last_error())
+        return None
+    limits = ExtendedLimits()
+    limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    process = kernel32.OpenProcess(_PROCESS_SET_QUOTA | _PROCESS_TERMINATE, False, pid)
+    placed = bool(process) and bool(
+        kernel32.SetInformationJobObject(job, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                                         ctypes.byref(limits), ctypes.sizeof(limits))
+        and kernel32.AssignProcessToJobObject(job, process))
+    error = ctypes.get_last_error()
+    if process:
+        kernel32.CloseHandle(process)
+    if not placed:
+        kernel32.CloseHandle(job)
+        log.warning("The reading could not be put in a job object (Windows error %d); "
+                    "its lifeline stands", error)
+        return None
+    return job
+
+
+#: kernel32's numbers for :func:`_kill_on_close_job`.
+_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+_PROCESS_SET_QUOTA = 0x0100
+_PROCESS_TERMINATE = 0x0001
+
+
+def _close_job(job) -> None:
+    """Close the pass's handle on a reading's job: anything still in it ends."""
+    if job is None:
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle(job)
 
 
 def _end(child) -> None:

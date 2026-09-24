@@ -1703,3 +1703,85 @@ def test_the_readers_child_puts_its_temporary_files_where_the_pass_said(tmp_path
         reading = content_check.extract_bounded(page)
     assert reading.text is not None
     assert Path(reading.text).resolve() == scratch.resolve()
+
+
+#: A pass, as a process of its own, that reads one document in a child
+#: with a stand-in reader that starts a helper (Tesseract's stand-in) and
+#: never finishes. ``lifeline`` as the second argument takes the job object
+#: away, so the lifeline alone is what is proved.
+A_PASS_READING = """
+import sys
+from pathlib import Path
+sys.path[:0] = [sys.argv[3]]
+from tests import child_readers
+from tracker import content_check
+content_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own
+if sys.argv[2] == "lifeline":
+    content_check._kill_on_close_job = lambda pid: None
+content_check.extract_bounded(Path(sys.argv[1]))
+"""
+
+
+@pytest.mark.parametrize("protection", ["job and lifeline", "lifeline"])
+def test_a_reading_child_dies_with_its_pass(tmp_path, protection):
+    """The designer's ruling on the build: the reading's child never
+    outlives its pass. Task Scheduler's stop kills the pass outright - no
+    code of the pass's runs - and the child must go with it, within a few
+    seconds, not whenever its own reading ends. Here the pass is a real
+    process, killed the way the scheduler kills it, mid-read.
+
+    Two things do it. The lifeline: the child ends itself when the pass's
+    end of a pipe closes, which the pass's death closes. And on Windows a
+    job object that kills everything in it - the child and what it started
+    - when the pass's handle on it closes. Each is proved: all of it, and
+    the lifeline alone."""
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    from tests import child_readers
+
+    if protection == "job and lifeline" and sys.platform != "win32":
+        pytest.skip("the job object is Windows'")
+    repo = str(Path(__file__).resolve().parents[1])
+    pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
+    the_pass = subprocess.Popen([sys.executable, "-c", A_PASS_READING, str(pdf),
+                                 "lifeline" if protection == "lifeline" else "all", repo])
+    waiting, helper = child_readers.reached(pdf, "waiting"), child_readers.reached(pdf, "helper")
+    try:
+        assert eventually(waiting.is_file, within=60), "the child never started reading"
+        child = int(waiting.read_text(encoding="utf-8"))
+        started = int(helper.read_text(encoding="utf-8"))
+        assert running(child) and running(started)                 # mid-read
+
+        the_pass.kill()                                            # the scheduler's stop: no code runs
+        the_pass.wait(30)
+        killed = time.monotonic()
+
+        assert eventually(lambda: not running(child), within=10), "the child outlived its pass"
+        assert time.monotonic() - killed < 10
+        if protection == "job and lifeline":
+            assert eventually(lambda: not running(started), within=10), "what it started outlived it"
+    finally:
+        if the_pass.poll() is None:
+            the_pass.kill()
+        for mark in (waiting, helper):
+            if mark.is_file():
+                _stop_if_running(int(mark.read_text(encoding="utf-8")))
+
+
+def _stop_if_running(pid: int) -> None:
+    """Leave nothing behind, whatever the test found (the lifeline alone
+    ends the child, and on Windows not what it started)."""
+    import os
+    import signal
+    import subprocess
+    import sys
+
+    if not running(pid):
+        return
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, check=False)
+    else:
+        os.kill(pid, signal.SIGKILL)
