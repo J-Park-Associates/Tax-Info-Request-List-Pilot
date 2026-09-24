@@ -61,7 +61,8 @@ the clients root, and the difference between them is the whole point:
   the client can see — and never again.
 - The inbox holds one file of ours, `_README.txt`, which the tracker writes
   and nobody edits. Step 2 of it reads *"We will examine and place all
-  documents into the current year's folder."*; step 4 begins *"Original
+  documents into the current year's folder."*; step 3 reads *"Please keep
+  sending the documents listed under REQUESTED, NOT YET RECEIVED."*; step 4 begins *"Original
   PDFs or Excel files are preferred. A clear photo from your phone is fine
   too, just get the whole page in the frame."* After **REQUESTED, NOT YET RECEIVED**
   (only the active requests nothing has been received for yet; a return

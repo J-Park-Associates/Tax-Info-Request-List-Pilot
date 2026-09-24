@@ -426,12 +426,14 @@ class ReceivedLine:
     stamp, or ``None`` where the stamp does not read as a date.
     ``identifier`` is the request's, which takes it off that list; empty
     for a line said as "Other document", whose request is not on it.
+    Required, so no caller can build a line that shows a request as
+    Received while leaving it on the first list.
     """
 
     return_path: Path
     label: str
     day: dt.date | None
-    identifier: str = ""
+    identifier: str
 
 
 @dataclass(frozen=True, slots=True)

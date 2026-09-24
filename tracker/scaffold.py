@@ -100,6 +100,15 @@ README_STEP_2 = (
     "2. We will examine and place all documents into the current year's\n"
     "   folder."
 )
+#: Step 3, in the owner's words (decision 130, 2026-09-23): it keeps asking
+#: for what is outstanding, and names the list that holds it - the old "until
+#: the lists below are covered" stopped reading right once the first list
+#: began to shrink as documents arrive. A constant, so a test holds it.
+README_STEP_3 = (
+    "3. Please keep sending the documents listed under REQUESTED,\n"
+    "   NOT YET RECEIVED. Send them as you find them; there's no\n"
+    "   need to wait and send everything at once."
+)
 #: Step 4 of the client README, first part, in the owner's own words
 #: (decision 127, his sign-off item; reworded by decision 130, D-c, which
 #: dropped "one document per photo", "straight on" and "in good light" -
@@ -430,8 +439,8 @@ def write_readme(
     writes** ``README_NAME`` (decision 130) - and return where it is.
 
     It reads the household's returns as the scaffold does, decides the
-    open year by the same rule, and renders the steps, *WHAT WE STILL
-    NEED* and, when anything has arrived, *WHAT WE HAVE RECEIVED* from
+    open year by the same rule, and renders the steps, *REQUESTED, NOT
+    YET RECEIVED* and, when anything has arrived, *WHAT WE HAVE RECEIVED* from
     ``received``: plain data, read out of the index one layer up
     (``tracker.filer.received_for``). Nothing here reads the index.
 
@@ -579,8 +588,7 @@ def _readme_text(
         "",
         "1. Drag your documents anywhere in this folder.",
         *README_STEP_2.split("\n"),
-        "3. Keep going until the lists below are covered. Send them as you",
-        "   find them; there's no need to wait and send everything at once.",
+        *README_STEP_3.split("\n"),
         *README_PHOTO_LINE.split("\n"),
         # Decision 128, Jason's sign-off: a named request files only where
         # the name is on the page, and a report sent as its middle pages

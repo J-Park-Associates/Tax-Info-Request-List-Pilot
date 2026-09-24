@@ -152,6 +152,21 @@ def test_step_2_reads_jasons_sentence_and_the_old_wording_is_gone(tmp_path):
     assert lines[step_2 + 2].startswith("3. ")                 # nothing more in step 2
 
 
+def test_step_3_keeps_asking_for_what_is_outstanding_in_jasons_words(tmp_path):
+    """Decision 130, the owner's wording of 2026-09-23: step 3 points at
+    the list that holds what is outstanding."""
+    from tracker.scaffold import README_STEP_3
+
+    readme = readme_of(make_engagement(tmp_path, ITEMS, contact="Maria Park"))
+
+    assert README_STEP_3 == ("3. Please keep sending the documents listed under REQUESTED,\n"
+                             "   NOT YET RECEIVED. Send them as you find them; there's no\n"
+                             "   need to wait and send everything at once.")
+    assert README_STEP_3 in readme
+    assert "lists below are covered" not in readme
+    assert README_HEADING in README_STEP_3.replace("\n   ", " ")
+
+
 def test_step_4_reads_jasons_sentence_and_the_three_dropped_phrases_are_gone(tmp_path):
     """Decision 130, D-c: the three photo phrases are dropped; decision
     128's two lines on the name stay, and stay in step 4."""
@@ -470,14 +485,62 @@ def test_a_request_with_a_received_document_leaves_the_not_yet_received_list(tmp
 
 
 def test_a_document_under_review_does_not_take_its_request_off_the_list(tmp_path):
+    import dataclasses
+
     from tests.conftest import seed_index
     from tracker.filer import NEEDS_REVIEW
 
     engagement = make_engagement(tmp_path, ITEMS)
     before = section_of(readme_of(engagement), README_HEADING)
-    seed_index(engagement, [arrived("", NEEDS_REVIEW, original="parked.pdf")])
+    # A parked row that names a request (a failed name check, an unfiled
+    # row) must still not take that request off: nothing is confirmed yet.
+    parked = dataclasses.replace(arrived("", NEEDS_REVIEW, original="parked.pdf"),
+                                 identifier="A02")
+    seed_index(engagement, [parked])
 
     assert section_of(readme_of(engagement), README_HEADING) == before
+
+
+def test_receiving_a_request_in_one_return_leaves_the_same_request_on_another(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+
+    alice = make_engagement(tmp_path, ITEMS, return_name="1040 - Alice")
+    make_engagement(tmp_path, ITEMS, return_name="1040 - Bob")
+    seed_index(alice, [arrived("A01", FILED, original="bank.pdf")])
+    first = section_of(readme_of(alice), README_HEADING)
+
+    bob = first.index("1040 - Bob")
+    assert any(line.strip().startswith("A01 - ") for line in first[bob:])
+    assert "1040 - Alice" in first            # Alice still has A02 and B01 left
+
+
+def test_an_also_filed_copy_takes_its_request_off_the_list(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+    from tracker.scaffold import RECEIVED_HEADING
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    seed_index(engagement, [arrived("A01", FILED, original="two forms.pdf",
+                                    also=f"{PREPARED_DIR_NAME}/B01 - Aging/two forms.pdf")])
+    readme = readme_of(engagement)
+
+    assert not _mentions(section_of(readme, README_HEADING), "B01")
+    assert _mentions(section_of(readme, RECEIVED_HEADING), "B01")
+
+
+def test_an_other_document_line_takes_nothing_off_the_list(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import FILED, OTHER_DOCUMENT
+    from tracker.scaffold import RECEIVED_HEADING
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    before = section_of(readme_of(engagement), README_HEADING)
+    seed_index(engagement, [arrived("ZZ9", FILED, original="old request.pdf")])
+    readme = readme_of(engagement)
+
+    assert section_of(readme, README_HEADING) == before
+    assert any(OTHER_DOCUMENT in line for line in section_of(readme, RECEIVED_HEADING))
 
 
 def _all_received(tmp_path):
@@ -608,7 +671,7 @@ def test_the_received_heading_is_written_only_over_a_line_under_it(tmp_path):
     day = dt.date(2026, 9, 23)
     nothing_renders = Received(
         lines=(ReceivedLine(return_path=tmp_path / "not a return of this README",
-                            label="A01 - W-2", day=day),),
+                            label="A01 - W-2", day=day, identifier="A01"),),
         under_review=(UnderReview(day=day, count=0),),
     )
 
