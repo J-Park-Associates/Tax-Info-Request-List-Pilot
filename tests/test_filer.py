@@ -5118,12 +5118,12 @@ def test_a_hand_over_killed_at_every_point_is_finished_from_the_record_as_the_pe
     - After the release intent alone the person's click is the whole cost:
       the row is released and the original, named by no row, is sorted
       again where it lies.
-    - After the filing intent, a pass holding the taking return finishes
-      the filing; the release waits for the dropping household's own pass.
-      The one window that needs a person: the feed trimmed and the
-      dropping household's pass first - the original is sorted again at
-      home, and the taking return parks its intent with 119's sentence.
-    - From the move on, the decision lands whichever pass runs first.
+    - From the filing intent on, the decision lands whichever pass runs
+      first, feed or no feed: a pass holding the taking return finishes the
+      filing, the release waits for the dropping household's own pass, and
+      a dropping pass that runs first leaves the original alone - another
+      record's open intent names it (the lead's ruling R-1). There is no
+      window that needs a person.
     """
     from tracker.filer import hand_over
 
@@ -5161,8 +5161,7 @@ def test_a_hand_over_killed_at_every_point_is_finished_from_the_record_as_the_pe
         sort_all([llc], today=DAY3)
         sort_all([father, llc], home=[father], today=DAY3)
 
-    window = point == "after the filing intent" and next_pass == "home without the feed"
-    if point == "after the release intent" or window:
+    if point == "after the release intent":
         # The click is to make again: the document is the father's
         # arrival once more, parked where it lies, dated the day it was
         # sorted again.
@@ -5170,14 +5169,8 @@ def test_a_hand_over_killed_at_every_point_is_finished_from_the_record_as_the_pe
         assert again.decision == NEEDS_REVIEW and again.digest == document
         assert again.pbc_location == parked.pbc_location and again.received == DAY3.isoformat()
         conserved(father, before_father, moves)          # one parked copy out, one in
-        if window:
-            [held] = read_index(llc)
-            assert held.decision == NEEDS_REVIEW
-            assert reasons.INTERRUPTED_MOVE_LOST.matches(held.reason)
-            conserved(llc, before_llc, moves)
-        else:
-            assert read_index(llc) == []
-            conserved(llc, before_llc, moves)
+        assert read_index(llc) == []
+        conserved(llc, before_llc, moves)
     else:
         assert read_index(father) == []
         [taken] = read_index(llc)
@@ -5228,3 +5221,124 @@ def test_no_record_ever_holds_a_row_for_an_original_resting_under_another_househ
     sort(father, returns=[father], today=DAY3)
     rows_rest_at_home(father, llc)
     assert [row.original_name for row in read_index(llc)] == ["tb.pdf", "tb2.pdf", "w2.pdf"]
+
+
+def killed_between_the_two_intents(monkeypatch):
+    """A hand-over dies with both intents written and nothing else done:
+    the release open in the dropping record, the filing open in the taking
+    one, every file where it was."""
+    killed_after_the_nth_write(monkeypatch, 2)
+
+
+@pytest.mark.parametrize("order", ("the taking pass during the dropping pass",
+                                   "the taking pass after the dropping pass"))
+def test_a_stray_named_by_another_records_open_intent_is_left_alone_by_the_pass(
+        fed, monkeypatch, tmp_path, order):
+    """The lead's ruling R-1 (decision 132). With the feed trimmed, the
+    dropping household's own pass releases its row, and the original -
+    still in its year folder, named by no row of its own - would be a
+    stray. It is not: the taking return's open filing intent names that
+    path with those bytes as the source of its move. So the pass never
+    re-sorts, parks or records it, whether the taking return's pass runs
+    in the middle of it (another process, its own lock) or after it; the
+    document ends claimed by exactly one row, in the return that took it."""
+    import tracker.filer as filer_module
+    from tracker.filer import hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    killed_between_the_two_intents(monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    monkeypatch.undo()
+    feeding(tmp_path, [])                       # a person trims the feed
+
+    if order == "the taking pass during the dropping pass":
+        real_record = filer_module._record
+        ran = {"llc": False}
+
+        def interleaved(engagement_dir, *args, **kwargs):
+            if not ran["llc"] and engagement_dir == father:
+                ran["llc"] = True
+                sort_all([llc], today=DAY3)      # the other process's pass
+            return real_record(engagement_dir, *args, **kwargs)
+
+        monkeypatch.setattr(filer_module, "_record", interleaved)
+        first = sort(father, returns=[father], today=DAY3)
+        monkeypatch.undo()
+        assert ran["llc"]
+    else:
+        first = sort(father, returns=[father], today=DAY3)
+        assert (originals(father) / "notice.pdf").is_file()     # left where it lies
+        sort_all([llc], today=DAY3)
+
+    assert first.handled == 0 and first.review == []
+    assert read_index(father) == []
+    claimed = [row for row in read_index(father) + read_index(llc) if row.digest == parked.digest]
+    assert len(claimed) == 1 and claimed[0].decision == FILED
+    rows_rest_at_home(father, llc)
+
+
+def test_the_taking_returns_recovery_finishes_the_move_after_the_dropping_pass_has_run(
+        fed, monkeypatch, tmp_path):
+    """Killed after the filing intent, the feed trimmed, the dropping
+    household's pass first and then the taking return's (decision 132,
+    ruling R-1): what §3.4 once called the one window that needs a person
+    needs nobody. The taking return's recovery finishes the move and the
+    copy, and the document is one row, Filed, in the return that took it,
+    its original under that return's household."""
+    from tracker.filer import hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    before_father, before_llc = digests_under(father), digests_under(llc)
+    killed_between_the_two_intents(monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    monkeypatch.undo()
+    moves = moves_made(monkeypatch)
+    feeding(tmp_path, [])
+
+    sort(father, returns=[father], today=DAY3)
+    sort_all([llc], today=DAY3)
+
+    assert read_index(father) == []
+    [taken] = read_index(llc)
+    assert taken.decision == FILED and taken.identifier == "B01"
+    assert "on 2026-07-09" in taken.reason
+    assert taken.pbc_location == original_at(llc, "notice.pdf")
+    assert [p.name for p in originals(llc).iterdir()] == ["notice.pdf"]
+    assert not any(originals(father).iterdir())
+    conserved(father, before_father, moves, gone=[parked.digest, parked.digest])
+    conserved(llc, before_llc, moves, added=[parked.digest, parked.digest])
+    rows_rest_at_home(father, llc)
+
+
+def test_a_rebuilt_store_still_lets_the_taking_returns_recovery_finish_the_filing(
+        fed, monkeypatch, tmp_path):
+    """The reviewer's finding 3, as a regression claim (decision 132). Killed
+    after the filing intent with the feed in place, and then the store is
+    rebuilt - a new machine, a version bump - and the taking return's pass
+    runs first, before anything has read the dropping household's record
+    into the new store. Its recovery finishes the filing from its own
+    record, and the dropping household's pass then finishes the release."""
+    from tracker.filer import hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    killed_between_the_two_intents(monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    monkeypatch.undo()
+    store.close()
+    monkeypatch.setenv(store.ENV_STORE, str(tmp_path / "app2" / store.STORE_FILENAME))
+
+    sort_all([llc], today=DAY3)
+    [taken] = read_index(llc)
+    assert taken.decision == FILED and taken.identifier == "B01", taken.reason
+    assert taken.pbc_location == original_at(llc, "notice.pdf")
+
+    sort_all([father, llc], home=[father], today=DAY3)
+    assert read_index(father) == []
+    assert [row.decision for row in read_index(llc)] == [FILED]
+    rows_rest_at_home(father, llc)

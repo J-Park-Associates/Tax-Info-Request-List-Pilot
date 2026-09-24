@@ -161,9 +161,9 @@ from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
 from tracker.fsio import TEMP_SUFFIX
 from tracker.households import household_returns
 from tracker.layout import (
-    CLIENTS_TREE,
     MAX_PATH_LENGTH,
     PATH_TOO_LONG,
+    PRIVATE_TREE,
     deepest_path_length,
     household_name_of,
     household_of,
@@ -172,7 +172,6 @@ from tracker.layout import (
     location_of,
     lock_order_key,
     originals_of,
-    private_household_dir,
     root_of,
     year_of,
 )
@@ -1769,52 +1768,8 @@ def _finish_the_ops(
             return _TAKEN, op
         if not source.is_file() or (digest and _the_bytes(source) != digest):
             return _LOST, op
-        if kind == ledger.OP_MOVE and _claimed_where_it_lies(engagement_dir, source):
-            return _LOST, op
         _do_op(engagement_dir, op, cache=cache)
     return _FINISHED, None
-
-
-def _claimed_where_it_lies(engagement_dir: Path, source: Path) -> bool:
-    """Whether an original this return's recovery would move out of
-    **another household's** year folder is recorded there now (decision
-    132). Returns False for a source in this return's own household.
-
-    A person's hand-over is two intents in two records, and one window
-    between them needs a person: the taking return's filing is written
-    down, the machine dies, a person trims the feed, and the dropping
-    household's own pass runs first. It releases its row, and the
-    original - still in its folder, named by no row - is sorted again
-    there, under a new row of that household's own. The bytes are where
-    the filing intent said they would be, but they are no longer that
-    decision's to move: another record has decided on them since. So they
-    count as gone to this intent, which is parked for a person with
-    decision 119's own sentence, and the document stays where its own
-    household's record says it is. A read and nothing else: no lock of the
-    other household is taken and nothing is written there.
-    """
-    root = root_of(engagement_dir)
-    try:
-        household = Path(os.path.relpath(source, root / CLIENTS_TREE)).parts[0]
-    except (ValueError, IndexError):
-        return False
-    if household in ("..", household_name_of(engagement_dir)):
-        return False
-    conn = store.connect()
-    for folder in household_returns(private_household_dir(root, household)):
-        try:
-            # A row whose release is still open is going, not staying: its
-            # own pass finishes the release, and it claims nothing.
-            going = {str(intent.get(ledger.KEY_KEY)) for intent in store.open_intents(conn, folder)
-                     if intent.get(ledger.EVENT_KEY_AFTER) == ledger.RELEASED}
-            if any(one.pbc_location and ledger_key(one) not in going
-                   and locate(folder, one.pbc_location) == source
-                   for one in read_index(folder)):
-                return True
-        except Exception as exc:      # a record this pass cannot read claims nothing it can prove
-            log.warning("Could not read %s to see whether it holds %s: %s",
-                        folder.name, source.name, exc)
-    return False
 
 
 def _a_copy_to_act_on(
@@ -2123,6 +2078,9 @@ def file_household_drops(
               if originals_dir.is_dir() else [])
     spoken_for = _spoken_for_by_an_open_intent(runs)
     strays = [path for path in strays if path not in spoken_for]
+    if strays:
+        strays = [path for path in strays
+                  if not _named_by_another_records_intent(path, runs)]
     for run in runs:
         strays = _follow_and_say(run, strays, originals_dir, stamp)
 
@@ -2197,6 +2155,63 @@ def _spoken_for_by_an_open_intent(runs: list[_ReturnRun]) -> set[Path]:
                     if location:
                         held.add(locate(run.engagement_dir, str(location)))
     return held
+
+
+def _named_by_another_records_intent(path: Path, runs: list[_ReturnRun]) -> bool:
+    """Whether an open intent in **any other** record of the practice
+    names this file, with these bytes, as the source of a step it has not
+    finished (decision 132, the lead's ruling R-1).
+
+    A person's hand-over is two intents in two records: the dropping
+    household's release, then the taking return's filing, whose first step
+    moves the original out of this household's year folder. A kill between
+    them, a feed trimmed and this household's own pass run first leaves
+    exactly that: the release finished here, the row gone, and the original
+    still where it was dropped - named by no row of this household, and
+    by the other record's open intent. It is not a stray. It is spoken for
+    by a decision another record already holds, and the pass leaves it
+    alone - never re-sorts, parks or records it - so the taking return's
+    own pass always finishes the move. That is why each half of a
+    hand-over can be finished by its own household's pass.
+
+    **The whole practice, read only when there is a stray** (which is
+    rare): every return under the clients root this return sits under, the
+    same positional walk discovery makes, each brought up to its journal
+    before its open intents are read, so a store rebuilt on another machine
+    answers as the journals do. No lock is taken and nothing is written.
+    Monotone under a running pass: a filing intent is written before its
+    move and closed only after it, and a hand-over holds this household's
+    lock while it writes both intents, so no new one can appear while this
+    pass holds it.
+    """
+    own = {run.engagement_dir for run in runs}
+    root = root_of(runs[0].engagement_dir)
+    conn = store.connect()
+    digest = None
+    for household in sorted((root / PRIVATE_TREE).iterdir()) if (root / PRIVATE_TREE).is_dir() else []:
+        if not household.is_dir():
+            continue
+        for folder in household_returns(household):
+            if folder in own:
+                continue
+            try:
+                store.follow_the_journal(conn, clients_root_of(folder), folder)
+                intents = store.open_intents(conn, folder)
+            except Exception as exc:      # a record nobody can read names nothing it can prove
+                log.warning("Could not read %s's open intents: %s", folder.name, exc)
+                continue
+            for intent in intents:
+                for op in intent.get(ledger.OPS_KEY) or []:
+                    if op.get(ledger.OP_KEY) == ledger.OP_REMOVE:
+                        continue
+                    if locate(folder, str(op.get(ledger.FROM_KEY) or "")) != path:
+                        continue
+                    expected = str(op.get(ledger.DIGEST_KEY) or "")
+                    if digest is None:
+                        digest = _the_bytes(path) or ""
+                    if not expected or expected == digest:
+                        return True
+    return False
 
 
 def _prepare_return(engagement_dir: Path, stamp: str, *, dry_run: bool) -> _ReturnRun:
