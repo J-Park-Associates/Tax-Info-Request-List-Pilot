@@ -21,8 +21,10 @@ from tracker.manifest import (
     StatusUpdate,
     create_engagement,
     load_manifest,
+    summarize,
 )
 from tracker.rollover import (
+    NEW_NOT_ASKED_NOTE,
     NOT_APPLICABLE_NOTE,
     ORIGIN_NEW,
     ORIGIN_NOT_APPLICABLE,
@@ -256,23 +258,18 @@ def test_unreceived_rows_are_carried_with_a_flag(prior):
 # -------------------------------------------------------------- new requests ----
 
 
-def test_unknown_template_rows_are_offered_not_added(prior):
-    """The standard checklist does not get to pad a returning client's list."""
+def test_unknown_template_rows_are_added_as_not_asked(prior):
+    """Decision 142 rewords decision 9: a catalog row the client never had
+    is on the return, but nobody asks for it - it pads nothing the client
+    sees, and a document that arrives for it files there."""
     report = roll_forward(prior, template=TEMPLATE)
 
-    assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01"]
-    (offer,) = report.offered
-    assert offer.item.identifier == "E01"
-    assert offer.origin == ORIGIN_NEW
-    assert "confirm it applies" in offer.note
-    assert offer.item.period == "TY2026"
-
-
-def test_include_new_adds_the_offers(prior):
-    report = roll_forward(prior, template=TEMPLATE, include_new=True)
     assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01", "E01"]
-    assert report.offered == []
-    assert rolled_by_id(report)["E01"].origin == ORIGIN_NEW
+    new = rolled_by_id(report)["E01"]
+    assert new.origin == ORIGIN_NEW and new.note == NEW_NOT_ASKED_NOTE
+    assert new.item.asked is False and new.item.period == "TY2026"
+    assert all(r.item.asked for r in report.rolled if r.item.identifier != "E01")
+    assert not hasattr(report, "offered")
 
 
 def test_a_template_row_differing_from_a_priors_only_in_case_is_the_same_row(prior, tmp_path):
@@ -281,22 +278,21 @@ def test_a_template_row_differing_from_a_priors_only_in_case_is_the_same_row(pri
     from dataclasses import replace
 
     lowered = [replace(spec, identifier=spec.identifier.lower()) if spec.identifier == "A01" else spec for spec in TEMPLATE]
-    report = roll_forward(prior, template=lowered, include_new=True)
+    report = roll_forward(prior, template=lowered)
     assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01", "E01"]
     out = next_year(tmp_path, report)
     assert [i.identifier for i in load_manifest(out)] == ["A01", "B01", "C01", "D01", "E01"]
 
 
-def test_offers_are_reported_without_becoming_requests(prior, tmp_path):
-    """A person sees what was withheld in the reply and the command line,
-    once; the created list holds none of it, and an offer they want is
-    added in the editor."""
+def test_rows_added_as_not_asked_are_on_the_list_and_never_asked_for(prior, tmp_path):
+    """The created list holds the new row, not asked: a person sets Asked in
+    the editor to ask for it."""
     report = roll_forward(prior, template=TEMPLATE)
     out = next_year(tmp_path, report)
 
-    assert "E01" not in {i.identifier for i in load_manifest(out)}
-    assert [o.item.identifier for o in report.offered] == ["E01"]
-    assert report.offered[0].origin == ORIGIN_NEW
+    items = {i.identifier: i for i in load_manifest(out)}
+    assert items["E01"].asked is False
+    assert summarize(items.values()).total == 3              # A01, B01, C01; D01 is set aside
 
 
 def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
@@ -364,7 +360,7 @@ def test_the_created_engagement_loads_back_from_the_record_and_the_report_explai
     # Fresh year: no scanner state carried over.
     assert items["A01"].status == "" and items["A01"].received_date is None
 
-    origins = {r.item.identifier: r.origin for r in [*report.rolled, *report.offered]}
+    origins = {r.item.identifier: r.origin for r in report.rolled}
     assert origins["A01"] == ORIGIN_PRIOR
     assert origins["D01"] == ORIGIN_NOT_APPLICABLE
     assert origins["E01"] == ORIGIN_NEW
@@ -613,7 +609,7 @@ def test_the_rollover_command_line_prints_previous_year_not_applicable_after_car
     console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
     target = rolled_into(prior, 2026)
     code = run_the_command_line(
-        monkeypatch, [str(prior), "--year", "2026", "--form", "1040", "--include-new"], console,
+        monkeypatch, [str(prior), "--year", "2026", "--form", "1040"], console,
     )
     console.flush()
     shown = console.buffer.getvalue().decode("utf-8")
@@ -1068,3 +1064,45 @@ def test_the_command_line_rolls_a_household_and_prints_rolled_not_rolled_and_ret
     # Sofia was not named, so she is retired for the year and told so.
     assert load_engagement_info(sofia).active is False
     assert "it was not rolled into 2027" in shown
+
+
+# --------------------------------------------- decision 142: accepted, not asked ----
+
+
+def test_the_rollover_carries_asked_and_named_and_asks_what_arrived(tmp_path, monkeypatch):
+    """A ``named=no`` row stays no (the carry dropped it until decision 142);
+    a not-asked row that received a document is asked next year; one that
+    received nothing stays not asked; and a catalog row the client never
+    had is added as not asked."""
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    # The settings beside the root, not inside it: a root that holds the
+    # app's settings is refused (decision 137).
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    settings.mkdir(exist_ok=True)
+    set_clients_root(tmp_path)
+    rows = [
+        RequestItem(identifier="A01", document="W-2", period="TY2025", required_keywords=("W-2",)),
+        RequestItem(identifier="D01", document="Donation receipts", period="TY2025",
+                    any_keywords=("donation receipt",), named=False),
+        RequestItem(identifier="E01", document="1099-R", period="TY2025",
+                    any_keywords=("1099-r",), asked=False),
+        RequestItem(identifier="F01", document="K-1", period="TY2025",
+                    any_keywords=("partner's share of income",), asked=False),
+    ]
+    eng = make_engagement(tmp_path, rows, household="Smith Family", scaffold=False)
+    seed_statuses(eng, {
+        "E01": StatusUpdate(status=Status.RECEIVED, file_count=1, received_date=dt.date(2026, 3, 1)),
+        "F01": StatusUpdate(status=Status.MISSING, file_count=0),
+    })
+    template = [*rows, RequestItem(identifier="G01", document="Property tax", period="TY2025",
+                                   any_keywords=("property tax statement",))]
+
+    rolled = rolled_by_id(roll_forward(eng, template=template))
+
+    assert rolled["D01"].item.named is False
+    assert rolled["E01"].item.asked is True and "asked for this year" in rolled["E01"].note
+    assert rolled["F01"].item.asked is False
+    assert rolled["G01"].item.asked is False and rolled["G01"].origin == ORIGIN_NEW
+    assert rolled["A01"].item.asked is True and rolled["A01"].item.named is True

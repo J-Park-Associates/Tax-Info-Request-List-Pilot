@@ -58,11 +58,23 @@ editor shows it.
   On the command line it is `python -m tracker.rollover <the household's
   folder> --year 2027 --all`, or `<last year's return> --form 1040` for one
   return on its own. Last year's rows win on every field; the form
-  template only fills blanks and *offers* rows the client has never had.
+  template only fills blanks and adds the rows the client has never had
+  as *not asked* (decision 142).
 - **New client:** pick the return type (`tracker.templates.FORM_TYPES`),
-  tick what applies, add anything unusual. Every request needs a
+  tick the rows to **ask the client** for, add anything unusual. Every
+  catalog row goes on the return either way. Every request needs a
   keyword the document itself contains; the wizard defaults it to the
   document name so a custom request can still auto-file.
+
+Every row is in one of three states (decisions 116 and 142):
+
+- **Asked** — listed in the client's README as needed, counted in "N of M
+  are in", and chased by the reminder until it is in.
+- **Not asked** — on the return, but never listed as needed and never
+  chased. A document that arrives for it files there, and the client sees
+  it only under what has been received. Set Asked in the editor to ask.
+- **Not Applicable** — does not apply this year: out of every count, and a
+  document that arrives for it parks for a person.
 
 Either way the result is the request list in the record plus the
 scaffolded household inbox and `Prepared/` tree, and a `_README.txt` for the

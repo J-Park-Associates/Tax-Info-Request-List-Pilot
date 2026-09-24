@@ -353,7 +353,7 @@ def test_draft_greets_signs_and_counts(tmp_path):
     )
     assert draft.body.startswith("Hi Dana Smith,")
     # A06 is Accepted: signed off, so it is in (the one count, decision 38).
-    assert "2 of 6 items are in" in draft.body
+    assert "Of the 6 items we asked for, 2 are in." in draft.body
     assert "https://drive.example/abc" in draft.body
     assert "March 15, 2026" in draft.body
     assert draft.body.rstrip().endswith("J Park & Associates, CPA")
@@ -1648,3 +1648,62 @@ def test_a_reminder_link_is_only_http_or_https_refused_on_save_and_dropped_from_
     written = write_draft(draft, engagement_dir=folder).read_text(encoding="utf-8")
     assert draft.link_dropped in written
     assert old not in written.split(draft.link_dropped)[0]           # never in the letter itself
+
+
+# --------------------------------------------- decision 142: accepted, not asked ----
+
+
+def test_the_reminder_never_chases_or_reports_a_not_asked_row(tmp_path):
+    """A row nobody asked for is skipped before anything else: no line, no
+    scaffold gap for the folder it lacks on purpose, no hold for a failed
+    file under it, and the "N of M" figure counts asked rows only."""
+    rows = [
+        *SENDABLE,
+        item("B01", "Social Security Benefit Statement", Status.MISSING, asked=False),
+        item("B02", "1099-C", Status.MISSING, asked=False,
+             validation_notes=reasons.NO_REQUEST_FOLDER.format()),
+        item("B03", "W-2G", Status.FAILED, asked=False,
+             validation_notes="w2g.pdf: " + reasons.PASSWORD_PROTECTED.format()),
+        item("B04", "1098-E", Status.RECEIVED, asked=False, file_count=1,
+             received_date=dt.date(2026, 2, 1)),
+    ]
+    lines, attention, gaps, held = triage(rows)
+    unasked = {"B01", "B02", "B03", "B04"}
+    for flagged in (lines, attention, gaps, held):
+        assert not unasked & {one.item.identifier for one in flagged}
+
+    draft = draft_reminder(
+        engagement(tmp_path, items=rows), client_name="Dana Smith",
+        share_link="https://drive.example/abc", due_date=DUE,
+        today=DUE - dt.timedelta(days=15), sender="Jason Park", firm="J Park & Associates, CPA",
+    )
+    assert "Of the 5 items we asked for, 2 are in." in draft.body
+    # B04 is a not-asked row that received a document: thanked apart.
+    assert "We have also received 1 other document from you." in draft.body
+    assert draft.total_requests == 5 and draft.received_requests == 2
+    for word in ("Social Security", "1099-C", "W-2G", "1098-E"):
+        assert word not in draft.body, word
+
+
+@pytest.mark.parametrize("received, total, also, said", [
+    (1, 5, 0, "Of the 5 items we asked for, 1 is in."),
+    (2, 5, 0, "Of the 5 items we asked for, 2 are in."),
+    (1, 1, 0, "Of the 1 item we asked for, 1 is in."),
+    (1, 5, 2, "Of the 5 items we asked for, 1 is in. We have also received 2 other documents from you."),
+    (3, 5, 1, "Of the 5 items we asked for, 3 are in. We have also received 1 other document from you."),
+    (0, 5, 2, "We have received 2 documents from you, thank you. The 5 items we asked for are still needed."),
+    (0, 1, 1, "We have received 1 document from you, thank you. The 1 item we asked for is still needed."),
+    (0, 1, 3, "We have received 3 documents from you, thank you. The 1 item we asked for is still needed."),
+    (0, 4, 1, "We have received 1 document from you, thank you. The 4 items we asked for are still needed."),
+    (0, 5, 0, ""),
+])
+def test_the_letters_count_is_jasons_sentence_in_the_singular_and_the_plural(received, total, also, said):
+    """Decision 142, Jason's wording of 2026-09-24: the count is of what we
+    asked for, and the documents that arrived for rows nobody asked for are
+    thanked in a second sentence, said only when there are any; when none
+    of what we asked for is in but others are, his softer pair thanks the
+    client first and says what is still needed. Every noun and verb agrees
+    with its number: this is a sentence a client reads."""
+    from tracker.reminder import progress_line
+
+    assert progress_line(received, total, also) == said

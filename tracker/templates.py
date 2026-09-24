@@ -281,8 +281,11 @@ def _shared(identifier: str, key: str, *, core: bool, named: bool) -> dict:
     return _row(identifier, core=core, named=named, **SHARED[key])
 
 
-# Per-form request templates shown on the wizard's second page. "core" items
-# are pre-checked.
+# Per-form request templates shown on the wizard's second page. Every row goes
+# on the return (decision 142); "core" rows are pre-ticked under "Ask the
+# client", and a tick is whether the client is asked for the row and chased
+# for it. An unticked row is on the return as not asked: never listed as
+# needed, never chased, but a document that arrives for it files there.
 FORM_TEMPLATES = {
     "1040": [
         _row("A01", "W-2 Wage Statements - All Employers", core=True, named=True, required_keywords="W-2, wage and tax statement, employee's social security number", expected_count=2),

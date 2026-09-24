@@ -384,8 +384,11 @@ def test_priors_then_rollover_is_the_desktop_returning_client_path(capsys, demo_
     assert payload["rollover"]["prior_year"] == BASE_YEAR
     assert payload["rollover"]["target_year"] == 2026
     carried = {r["identifier"] for r in payload["rollover"]["carried"]}
-    offered = {r["identifier"] for r in payload["rollover"]["offered"]}
-    assert "A01" in carried and "E01" in offered and not carried & offered
+    # Decision 142: the catalog rows the client never had are added as not
+    # asked, not offered.
+    added = {r["identifier"] for r in payload["rollover"]["carried"] if not r["asked"]}
+    assert "A01" in carried and "E01" in added and "A01" not in added
+    assert "offered" not in payload["rollover"]
     periods = {i["identifier"]: i["period"] for i in payload["state"]["items"]}
     assert periods["A01"] == "TY2026"          # shifted with the year
     engagement = where(demo_root, "Smith Family 2025", year=2026)
@@ -884,8 +887,8 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     assert vocab["triage"]["set_aside_note"] == SET_ASIDE_NOTE
     assert vocab["origin_not_applicable"] == ORIGIN_NOT_APPLICABLE
     assert vocab["not_applicable_carried"] == api.NOT_APPLICABLE_CARRIED
-    assert [c["key"] for c in vocab["columns"]][-3:] == [
-        "manual_override", "override_reason", "named"]
+    assert [c["key"] for c in vocab["columns"]][-4:] == [
+        "manual_override", "override_reason", "named", "asked"]
     renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
         encoding="utf-8"
     )
@@ -894,6 +897,29 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
         assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
     for word in (*Override.ALL, OVERRIDE_REASON_OTHER, "Not Applicable in"):
         assert word not in renderer, word
+    # Decision 142 (its review, R1): the words it adds reach the page only
+    # through this vocabulary, and the renderer types none of them.
+    from tracker.manifest import NOT_ASKED_LABEL
+    from tracker.rollover import ORIGIN_NEW
+
+    assert vocab["not_asked_label"] == NOT_ASKED_LABEL
+    assert vocab["not_asked_key"] == api._slug(NOT_ASKED_LABEL)
+    assert vocab["ask_the_client"] == api.ASK_THE_CLIENT
+    assert vocab["ask_the_client_note"] == api.ASK_THE_CLIENT_NOTE
+    assert vocab["not_asked_table_label"] == api.NOT_ASKED_TABLE_LABEL
+    assert vocab["roll_template_label"] == api.ROLL_TEMPLATE_LABEL
+    assert vocab["nothing_asked"] == api.NOTHING_ASKED
+    assert vocab["origin_new"] == ORIGIN_NEW
+    assert vocab["new_not_asked_carried"] == api.NEW_NOT_ASKED_CARRIED
+    assert vocab["editor"]["not_asked_heading"] == view.NOT_ASKED_SECTION
+    assert vocab["editor"]["yes_no_fields"] == ["named", "asked"]
+    html = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "index.html").read_text(
+        encoding="utf-8")
+    for word in (NOT_ASKED_LABEL, api.ASK_THE_CLIENT, api.ASK_THE_CLIENT_NOTE,
+                 api.NOT_ASKED_TABLE_LABEL, api.ROLL_TEMPLATE_LABEL, api.NOTHING_ASKED,
+                 api.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
+                 view.NOT_ASKED_SECTION.split("{")[0].strip() + " ("):
+        assert word not in renderer and word not in html, word
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
@@ -3675,3 +3701,208 @@ def test_the_reminder_card_says_why_a_link_was_left_out(capsys, demo_root):
     js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
         encoding="utf-8")
     assert "card.link_dropped" in js
+
+
+# --------------------------------------------- decision 142: accepted, not asked ----
+
+
+def test_the_wizard_sends_every_catalog_row_and_the_tick_is_asked(capsys, demo_root):
+    """The wizard sends the whole catalog, each row carrying its tick as
+    ``asked``, and the custom rows asked; a list with no asked row is
+    refused and nothing is made."""
+    catalog = [{**t, "asked": bool(t["core"])} for t in api.FORM_TEMPLATES["1040"]]
+    ticked = {t["identifier"] for t in catalog if t["asked"]}
+    assert len(ticked) == 5
+    custom = {"identifier": "X01", "document": "Home office log", "required_keywords": "home office"}
+    spec = {"household": HOUSEHOLD, "return_name": "Everything", "form": "1040",
+            "items": [*catalog, custom]}
+    code, payload = run(capsys, "create", stdin=spec)
+    assert code == 0, payload
+
+    rules = {row["identifier"]: row for row in payload["state"]["rules"]}
+    assert set(rules) == {t["identifier"] for t in catalog} | {"X01"}
+    assert {i for i, row in rules.items() if row["asked"]} == ticked | {"X01"}
+    assert payload["state"]["summary"]["total"] == 6
+    assert payload["state"]["summary"]["not_asked"] == len(catalog) - 5
+
+    nothing = {"household": HOUSEHOLD, "return_name": "Nothing Asked", "form": "1040",
+               "items": [{**t, "asked": False} for t in api.FORM_TEMPLATES["1040"]]}
+    code, payload = run(capsys, "create", stdin=nothing)
+    assert code == 1 and payload["error"] == "Select at least one request item"
+    assert not where(demo_root, "Nothing Asked").exists()
+
+
+def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeypatch):
+    """A return whose longest *unasked* label would not fit is created: the
+    catalog's longest label must not refuse a return the preparer never
+    asked it of. The same row asked is refused, as ever. A document for the
+    unasked row is measured where it is written - cut to fit, or parked
+    with decision 131's sentence."""
+    from tests.conftest import named_page, root_for_a_return_of, sort
+    from tests.test_scanner import text_pdf
+    from tracker.filer import PATH_NO_ROOM
+    from tracker.layout import PATH_TOO_LONG
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    root = root_for_a_return_of(tmp_path, 150, return_name="Tight")
+    root.mkdir(parents=True)
+    set_clients_root(root)
+    w2 = {"identifier": "A01", "document": "W-2 Wage Statements", "period": "TY2025",
+          "extensions": "pdf", "required_keywords": "W-2", "min_size_kb": 0}
+    long_row = {"identifier": "Z99", "document": "Zebra Ledger " + "x" * 90, "period": "TY2025",
+                "extensions": "pdf", "required_keywords": "zebra ledger", "min_size_kb": 0}
+
+    code, payload = run(capsys, "create", stdin={"return_name": "Tight", "year": 2025,
+                                                 "items": [w2, {**long_row, "asked": True}]})
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0])
+
+    code, payload = run(capsys, "create", stdin={"return_name": "Tight", "year": 2025,
+                                                 "items": [w2, {**long_row, "asked": False}]})
+    assert code == 0, payload
+    engagement = where(root, "Tight", year=2025)
+
+    text_pdf(inbox_of(engagement) / "zebra.pdf", named_page("Zebra ledger for 2025"))
+    report = sort(engagement)
+    # Here even the shortest name under the row's own folder is past the
+    # limit, so it parks with 131's sentence; a shorter label is cut to fit
+    # (test_filer's decision-131 claims), as on any row.
+    assert report.filed == []
+    [parked] = report.review
+    assert parked.reason.startswith(PATH_NO_ROOM.split("{")[0])
+    assert parked.candidates == "Z99"
+
+
+def test_the_editor_round_trips_asked_and_named(capsys, demo_root):
+    """The rows the renderer's ``editorRow`` builds from ``state.rules``,
+    saved untouched, change nothing and record nothing - a ``named=no`` row
+    and a not-asked row included (the editor dropped ``named`` until
+    decision 142, so every save turned it to yes)."""
+    spec = {"household": HOUSEHOLD, "return_name": "Round Trip", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+        {"identifier": "D01", "document": "Donation receipts", "any_keywords": "donation receipt",
+         "named": "no"},
+        {"identifier": "E01", "document": "1099-R", "any_keywords": "1099-r", "asked": False},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Round Trip")
+    state = payload_of_state(capsys, engagement)
+    vocab = run(capsys, "list")[1]["vocab"]
+    editor = vocab["editor"]
+    assert editor["yes_no_fields"] == ["named", "asked"]
+
+    def editor_row(rule):          # app.js editorRow, key for key
+        return {
+            "identifier": rule["identifier"], "document": rule["document"], "period": rule["period"],
+            "expected_count": rule["expected_count"],
+            "allowed_extensions": ", ".join(rule["allowed_extensions"]) or editor["any_extension"],
+            "min_size_kb": rule["min_size_kb"],
+            "required_keywords": ", ".join(rule["required_keywords"]),
+            "any_keywords": ", ".join(rule["any_keywords"]),
+            "date_pattern": "" if rule["date_pattern_derived"] else (
+                rule["date_pattern"] or editor["no_date_check"]),
+            "manual_override": rule["manual_override"],
+            "override_reason": rule["override_reason"] or "",
+            "named": editor["no"] if rule["named"] is False else editor["yes"],
+            "asked": editor["no"] if rule["asked"] is False else editor["yes"],
+        }
+
+    before = ledger.path_for(engagement).read_bytes()
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [editor_row(r) for r in state["rules"]], "engagement": {}})
+    assert code == 0 and payload["saved"]["recorded"] is False, payload
+    assert ledger.path_for(engagement).read_bytes() == before
+    rules = {r["identifier"]: r for r in payload["state"]["rules"]}
+    assert rules["D01"]["named"] is False and rules["E01"]["asked"] is False
+
+    # Asking for it is flipping the pick and saving: one rules_changed.
+    flipped = [{**editor_row(r), "asked": editor["yes"]} if r["identifier"] == "E01" else editor_row(r)
+               for r in state["rules"]]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": flipped, "engagement": {}})
+    assert code == 0 and payload["saved"]["changed"] == ["E01"]
+
+    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    assert 'named: rule.named === false ? vocab.editor.no : vocab.editor.yes' in js
+    assert 'asked: rule.asked === false ? vocab.editor.no : vocab.editor.yes' in js
+    assert "vocab.editor.yes_no_fields.includes(key)" in js
+
+
+def test_the_apps_request_table_folds_not_asked_rows_with_no_document_into_a_closed_group(capsys, demo_root):
+    """The designer's ruling on the 142 build, the app's half: every state
+    item says whether a document is in it and whether it folds, by the one
+    rule the Status Report uses - only a row nobody asked for with no
+    document at all folds - and the request table draws those rows in a
+    closed "Not asked (N)" group headed in the API's words; the editor
+    regroups a row live on the same fact."""
+    from tests.conftest import seed_statuses
+    from tracker.manifest import Status, StatusUpdate
+
+    spec = {"household": HOUSEHOLD, "return_name": "Folded", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+        {"identifier": "B01", "document": "SSA-1099", "required_keywords": "ssa-1099", "asked": False},
+        {"identifier": "B02", "document": "W-2G", "required_keywords": "w-2g", "asked": False},
+        {"identifier": "B03", "document": "1099-C", "required_keywords": "1099-c", "asked": False},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Folded")
+    seed_statuses(engagement, {
+        "B01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+        "B02": StatusUpdate(status=Status.FAILED, file_count=0, validation_notes="w2g.pdf: refused"),
+        "B03": StatusUpdate(status=Status.MISSING, file_count=0),
+    })
+    items = {i["identifier"]: i for i in payload_of_state(capsys, engagement)["items"]}
+
+    assert {i: (one["has_document"], one["not_asked_idle"]) for i, one in items.items()} == {
+        "A01": (False, False), "B01": (True, False), "B02": (True, False), "B03": (False, True)}
+
+    here = Path(__file__).resolve().parent.parent / "app" / "renderer"
+    js = (here / "app.js").read_text(encoding="utf-8")
+    html = (here / "index.html").read_text(encoding="utf-8")
+    assert 'show("rows", state.items.filter((item) => !item.not_asked_idle).map(requestTableRow));' in js
+    assert 'show("rows-not-asked", idle.map(requestTableRow));' in js
+    assert "fill(vocab.editor.not_asked_heading, { n: idle.length })" in js
+    assert "known && known.has_document" in js
+    group = html[html.index('<details id="rows-not-asked-group"'):]
+    group = group[:group.index(">") + 1]
+    assert " open" not in group                                  # closed until a person opens it
+
+
+
+def test_the_editor_refuses_a_list_nobody_is_asked_for_in_creations_words(capsys, demo_root):
+    """Decision 142's review, R6: a return always asks for at least one
+    thing. The editor's save of a list with no asked row is refused with
+    creation's own sentence, and nothing is recorded."""
+    spec = {"household": HOUSEHOLD, "return_name": "Asks Something", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+        {"identifier": "B01", "document": "1099-R", "required_keywords": "1099-r", "asked": False},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Asks Something")
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [{**row, "asked": False} for row in rows], "engagement": {}})
+    assert code == 1 and payload["error"] == api.NOTHING_ASKED
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    code, payload = run(capsys, "create", stdin={**spec, "return_name": "Asks Nothing", "items": [
+        {**one, "asked": False} for one in spec["items"]]})
+    assert code == 1 and payload["error"] == api.NOTHING_ASKED
+
+
+def test_the_returning_client_page_picks_the_returns_recorded_form_by_default(capsys, demo_root):
+    """Decision 142's review, R2: each prior carries the catalog it was cut
+    from, and the page's template pick defaults to it, so the catalog rows
+    the return never had arrive as not asked without anybody choosing; a
+    return that recorded no form defaults to no template."""
+    spec = {"household": HOUSEHOLD, "return_name": "Recorded", "form": "1040",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    [prior] = run(capsys, "priors")[1]["priors"]
+    assert prior["form"] == "1040"
+
+    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    assert "selected: f.id === p.form" in js
+    assert "selected: !forms.some((f) => f.id === p.form)" in js

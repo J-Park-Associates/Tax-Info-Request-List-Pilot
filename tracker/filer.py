@@ -635,7 +635,12 @@ def room_for(engagement_dir: Path, items: Sequence[RequestItem]) -> Room:
     the app's banner, the reply to setting the root and the editor's save
     all ask the same question and get the same answer, and a folder that
     does not exist yet is measured as readily as one that does. A row set
-    Not Applicable is not measured, as creation does not measure it.
+    Not Applicable is not measured, as creation does not measure it, and
+    neither is a row nobody asked for (decision 142): the whole catalog's
+    longest label must not refuse a return the preparer never asked that
+    label of. Such a row is measured where its write happens - its name is
+    cut to fit at filing time, or the document parks with this decision's
+    room sentence.
     """
     engagement_dir = Path(engagement_dir)
     prepared = engagement_dir / PREPARED_DIR_NAME
@@ -644,6 +649,8 @@ def room_for(engagement_dir: Path, items: Sequence[RequestItem]) -> Room:
     longest_of_all = ""
     for item in items:
         if getattr(item, "manual_override", "") == Override.NOT_APPLICABLE:
+            continue
+        if not getattr(item, "asked", True):
             continue
         extensions = _extensions_of(item)
         longest = max(extensions, key=len)

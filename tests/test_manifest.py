@@ -188,15 +188,18 @@ def test_create_refuses_a_bad_list_before_a_line_is_written(tmp_path):
     assert store.rules(store.connect(), folder) is None      # nothing in the store either
 
 
-def test_the_list_is_the_twelve_columns_a_person_edits():
+def test_the_list_is_the_thirteen_columns_a_person_edits():
     """Decision 103 took the four scanner columns out of the schema; 104
     keeps the ten, keyed by the record's own field names, each with the
     sentence the editor shows under its heading; 116 adds the eleventh,
     the reason an override was made; 128 the twelfth, whether the document
-    this request asks for carries a name."""
+    this request asks for carries a name; 142 the thirteenth, whether the
+    client is asked for it."""
+    from tracker.manifest import COL_ASKED
+
     assert HEADERS == tuple(header for header, _ in COLUMNS)
-    assert len(HEADERS) == 12
-    assert HEADERS[-2:] == (COL_OVERRIDE_REASON, COL_NAMED)
+    assert len(HEADERS) == 13
+    assert HEADERS[-3:] == (COL_OVERRIDE_REASON, COL_NAMED, COL_ASKED)
     assert tuple(field for _, field in COLUMNS) == tuple(
         f for f in RULE_FIELDS if f not in ("row", "date_pattern_derived"))
     assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
@@ -944,3 +947,62 @@ def test_the_named_mark_is_read_as_the_editors_two_words_and_anything_else_is_re
     assert item_from_fields({**base, "named": False}, where="Row 1").named is False
     with pytest.raises(ManifestError, match=f"Row 1: {COL_NAMED} must be"):
         item_from_fields({**base, "named": "maybe"}, where="Row 1")
+
+
+# --------------------------------------------- decision 142: accepted, not asked ----
+
+
+def test_summarize_counts_asked_rows_and_also_received_counts_the_rest():
+    """``total``, ``outstanding``, ``received`` and ``unscanned`` are about
+    asked rows; a not-asked row that received a document is
+    ``also_received``, so "N of M are in" never reads 7 of 5; and the word
+    for a request nobody has scanned is never said of a row nobody asked
+    for."""
+    from tracker.manifest import ALSO_RECEIVED_LABEL, NOT_ASKED_LABEL, status_label, summarize
+
+    rows = [
+        RequestItem(identifier="A01", document="W-2", status=Status.RECEIVED),
+        RequestItem(identifier="A02", document="1099", status=Status.MISSING),
+        RequestItem(identifier="A03", document="1098"),                          # asked, unscanned
+        RequestItem(identifier="B01", document="SSA-1099", asked=False, status=Status.RECEIVED),
+        RequestItem(identifier="B02", document="1099-K", asked=False, status=Status.PARTIAL),
+        RequestItem(identifier="B03", document="W-2G", asked=False, status=Status.MISSING),
+        RequestItem(identifier="B04", document="1099-C", asked=False),
+        RequestItem(identifier="C01", document="1095-A", asked=False,
+                    manual_override=Override.NOT_APPLICABLE),
+    ]
+    summary = summarize(rows)
+
+    assert (summary.total, summary.received, summary.outstanding, summary.unscanned) == (3, 1, 1, 1)
+    assert summary.also_received == 2 and summary.not_asked == 2 and summary.not_applicable == 1
+    assert summary.counts == {Status.RECEIVED: 1, Status.MISSING: 1}
+    assert f"{ALSO_RECEIVED_LABEL}: 2" in summary.line and f"{NOT_ASKED_LABEL}: 2" in summary.line
+    assert f"{UNSCANNED_LABEL}: 1" in summary.line
+
+    labels = {row.identifier: status_label(row) for row in rows}
+    assert labels["A03"] == UNSCANNED_LABEL
+    assert labels["B03"] == labels["B04"] == NOT_ASKED_LABEL
+    assert labels["B01"] == Status.RECEIVED and labels["B02"] == Status.PARTIAL
+    assert UNSCANNED_LABEL not in {labels[i] for i in ("B01", "B02", "B03", "B04")}
+
+
+def test_warnings_skip_not_asked_rows():
+    """The preparer did not choose a row nobody asked for, so the rules
+    warnings say nothing about it; the same row asked is warned about."""
+    from tracker.manifest import check_rules
+
+    bare = RequestItem(identifier="A01", document="Anything", row=1)
+    assert check_rules([bare])
+    assert check_rules([replace(bare, asked=False)]) == []
+
+
+def test_the_asked_mark_is_read_as_the_named_mark_is():
+    """Blank is yes; the two words and a boolean are read; anything else is
+    refused with the column named."""
+    from tracker.manifest import COL_ASKED, item_from_fields
+
+    assert item_from_fields({"identifier": "A01", "document": "W-2"}, where="Row 1").asked is True
+    assert item_from_fields({"identifier": "A01", "document": "W-2", "asked": "no"}, where="Row 1").asked is False
+    assert item_from_fields({"identifier": "A01", "document": "W-2", "asked": False}, where="Row 1").asked is False
+    with pytest.raises(ManifestError, match=f"Row 1: {COL_ASKED} must be"):
+        item_from_fields({"identifier": "A01", "document": "W-2", "asked": "maybe"}, where="Row 1")

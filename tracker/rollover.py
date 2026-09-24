@@ -31,15 +31,24 @@ Precedence, precisely:
   them. That is the one moment a taught keyword becomes something typed;
   a learned row would be invisible in the editor.
 
-A template row the client has never had is **not** added. For a returning
-client the list is last year's list; a generic checklist does not get to pad
-it with nine requests they have never once needed. Those rows are reported as
-*offers* instead — in the CLI output and in the API's reply, once, at
-rollover time — so a genuinely new requirement still surfaces for a person
-to accept; an offer a person wants is added later in the editor.
-``include_new=True`` adds them outright. (Until decision 104 the offers and
-last year's unfiled files were also written to a Carried Forward sheet of
-next year's workbook; there is no workbook, and that sheet is not written.)
+- **Whether a row is asked carries** (decision 142), and so does whether
+  its document is named (decision 128, which this line used to drop, so a
+  ``named=no`` row came back ``named=yes``). **A row nobody asked for
+  that received a document this year is asked next year**: the client
+  sent one, so asking is the likelier need, and a person unticks it in
+  the editor if not - the count-learning above reads Received the same
+  way.
+
+A template row the client has never had is **added as not asked**
+(decision 142, rewording decision 9, which offered those rows and added
+none). Every catalog row is on every return: a row nobody asked for is
+never listed as needed and never chased, so it pads nothing the client
+sees, and a document that arrives for it files there instead of parking.
+A person asks for one by setting Asked in the editor. (Until decision 142
+those rows were *offers*, reported once and added only with
+``include_new``; until decision 104 the offers and last year's unfiled
+files were also written to a Carried Forward sheet of next year's
+workbook. Neither exists now.)
 
 Nothing here writes to the prior year's engagement — it is read-only history.
 
@@ -76,6 +85,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     check_tax_year,
     create_engagement,
     detect_year,
+    has_arrived,
     item_from_record,
     load_engagement_info,
     load_manifest,
@@ -91,6 +101,13 @@ from tracker.templates import ask_by_for, filing_deadline_for, template_items
 ORIGIN_PRIOR = "carried from last year"
 ORIGIN_NOT_APPLICABLE = "not applicable last year"
 ORIGIN_NEW = "new this year"
+#: The note on a catalog row the client never had, added as not asked
+#: (decision 142).
+NEW_NOT_ASKED_NOTE = "not on last year's list: added as not asked; set Asked in the editor to ask for it"
+#: The notes on a row nobody asked for last year: still not asked, or
+#: asked now because a document arrived for it (decision 142).
+NOT_ASKED_NOTE = "not asked last year; still not asked"
+NOW_ASKED_NOTE = "not asked last year, but received ({n} file(s)); asked for this year"
 #: The note on a row carried as not applicable: last year's call, named
 #: with its year, and the two things a person may do about it.
 NOT_APPLICABLE_NOTE = (
@@ -146,7 +163,6 @@ class RolloverReport:
     prior_year: int | None = None
     target_year: int | None = None
     rolled: list[RolledItem] = field(default_factory=list)
-    offered: list[RolledItem] = field(default_factory=list)   # template rows not added
     unfiled_last_year: list[str] = field(default_factory=list)
     #: :data:`LINK_NOT_CARRIED` when the prior's link was left behind
     #: because it is not a web address (decision 137, L5), else ``""``.
@@ -176,16 +192,15 @@ class ReturnPlan:
     """One return a household rollover was asked to roll.
 
     ``prior`` is the return folder the new year is built from; ``form`` is
-    the catalog template consulted to fill blanks (blank: last year's list
-    as it stands); ``include_new`` adds the rows that template only
-    offers; ``return_name`` renames the return, and blank keeps the name
+    the catalog template consulted to fill blanks and to add, as not asked,
+    the rows the client never had (blank: last year's list as it stands);
+    ``return_name`` renames the return, and blank keeps the name
     it has had every year, which is the ordinary case - the app's
     checklist sends no name at all.
     """
 
     prior: Path
     form: str = ""
-    include_new: bool = False
     return_name: str = ""
 
 
@@ -340,10 +355,19 @@ def _carry(
         override_reason=(
             prior.override_reason if prior.manual_override == Override.NOT_APPLICABLE else ""
         ),
+        # Both marks carry (decision 142; ``named`` was dropped here until
+        # then). A row nobody asked for that a document arrived for is
+        # asked next year: the client sent one.
+        named=prior.named,
+        asked=prior.asked or has_arrived(prior),
     )
 
     if prior.manual_override == Override.NOT_APPLICABLE:
         return item, ORIGIN_NOT_APPLICABLE, NOT_APPLICABLE_NOTE.format(label=override_label(prior))
+    if not prior.asked:
+        if item.asked:
+            return item, ORIGIN_PRIOR, NOW_ASKED_NOTE.format(n=prior.file_count or 0)
+        return item, ORIGIN_PRIOR, NOT_ASKED_NOTE
     if prior.status == Status.RECEIVED:
         note = f"received last year ({prior.file_count or 0} file(s))"
         if expected > prior.expected_count:
@@ -366,14 +390,12 @@ def roll_forward(
     *,
     target_year: int | None = None,
     template: Sequence[RequestItem] = (),
-    include_new: bool = False,
 ) -> RolloverReport:
     """Build next year's request list from ``prior_engagement_dir``.
 
-    ``template`` is the form's standard checklist. It is consulted only to
-    fill blanks on carried rows; it never overrides prior-year data. Rows the
-    client has never had are collected in ``report.offered`` rather than
-    added, unless ``include_new`` is set.
+    ``template`` is the form's standard checklist. It fills blanks on
+    carried rows and never overrides prior-year data; the rows the client
+    has never had are added as not asked (decision 142).
     """
     prior_dir = Path(prior_engagement_dir)
     # A year is bounded wherever it is typed (decision 68 bounded the
@@ -429,12 +451,11 @@ def roll_forward(
     for spec in template:
         if spec.identifier.upper() in seen:
             continue
-        offer = RolledItem(
-            item=shift_item(spec, tmpl_delta),
+        report.rolled.append(RolledItem(
+            item=replace(shift_item(spec, tmpl_delta), asked=False),
             origin=ORIGIN_NEW,
-            note="not on last year's list — confirm it applies",
-        )
-        (report.rolled if include_new else report.offered).append(offer)
+            note=NEW_NOT_ASKED_NOTE,
+        ))
 
     report.unfiled_last_year = _unfiled_last_year(prior_dir)
     return report
@@ -625,8 +646,7 @@ def _roll_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
     target: Path | None = None
     try:
         report = roll_forward(prior, target_year=target_year,
-                              template=template_items(plan.form) if plan.form else [],
-                              include_new=plan.include_new)
+                              template=template_items(plan.form) if plan.form else [])
         household = prior_info.household or household_name
         return_name = plan.return_name or prior_info.return_name or prior.name
         target = return_dir_for(root_of(prior), household, target_year, return_name)
@@ -713,10 +733,6 @@ if __name__ == "__main__":
     parser.add_argument("--only", action="append", default=[], metavar="RETURN",
                         help="household: roll this return by name (repeat for several); "
                              "every return left out is retired")
-    parser.add_argument(
-        "--include-new", action="store_true",
-        help="also add checklist rows this client has never had (default: just offer them)",
-    )
     parser.add_argument("--scaffold", action="store_true",
                         help="one return: also build the folders (a household always does)")
     ns = parser.parse_args()
@@ -756,8 +772,7 @@ if __name__ == "__main__":
         day = dt.date.today()
         done = roll_household(given, target_year=ns.year, today=day, plans=[
             ReturnPlan(prior=one.path,
-                       form=forms[n] if len(forms) > 1 else (forms[0] if forms else ""),
-                       include_new=ns.include_new)
+                       form=forms[n] if len(forms) > 1 else (forms[0] if forms else ""))
             for n, one in enumerate(chosen)
         ])
 
@@ -767,8 +782,8 @@ if __name__ == "__main__":
         print(f"  {ROLLED_HEADING}")
         for was, created, one_report in done.rolled:
             print(f"    {was.name} → {created}")
-            print(f"      {len(one_report.carried)} carried, {len(one_report.added)} new, "
-                  f"{len(one_report.offered)} offered, "
+            print(f"      {len(one_report.carried)} carried, "
+                  f"{len(one_report.added)} new (not asked), "
                   f"{len(one_report.unfiled_last_year)} never filed last year")
         if done.skipped:
             print(f"\n  {NOT_ROLLED_HEADING}")
@@ -789,7 +804,6 @@ if __name__ == "__main__":
         given,
         target_year=ns.year,
         template=template,
-        include_new=ns.include_new,
     )
 
     from tracker.layout import household_name_of
@@ -857,12 +871,6 @@ if __name__ == "__main__":
         for rolled in result.not_applicable:
             print(f"    ~ {override_label(rolled.item)}  {rolled.item.label}")
             print(f"          {rolled.note}")
-    if result.offered:
-        print(f"\n  Not added — the standard {ns.form or 'checklist'} also has "
-              f"{len(result.offered)} request(s) this client has never had.")
-        print("  Add any that now apply with --include-new, or in the app's editor:")
-        for offer in result.offered:
-            print(f"    + {offer.item.label}")
     if result.unfiled_last_year:
         print(f"\n  {UNFILED_HEADING}")
         for line in result.unfiled_last_year:

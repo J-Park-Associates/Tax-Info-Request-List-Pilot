@@ -213,8 +213,18 @@ DROP_ANYWHERE = "Everything goes in the same place - just drop it into the share
 #: What is said before the stage's own opening, at every stage, whenever
 #: anything at all has arrived. It is true at every stage, and a client who
 #: has sent half of it should never read a final notice that talks as
-#: though they sent nothing.
-THANK_YOU = "Thank you for what you have sent so far - {received} of {total} items are in."
+#: though they sent nothing. In Jason's words (decision 142, 2026-09-24):
+#: the count is of what we **asked** for, and a document that arrived for a
+#: row nobody asked for is thanked in a second sentence, said only when
+#: there is one - so the figure never reads "7 of 5". Worded in the
+#: singular and the plural by :func:`progress_line`.
+PROGRESS_ASKED = "Of the {m} {items} we asked for, {n} {verb} in."
+PROGRESS_ALSO = "We have also received {k} other {documents} from you."
+#: Jason's softer words for the one case the count would read "0 are in"
+#: while other documents have arrived (2026-09-24): thank the client for
+#: what came first, then say what is still needed.
+PROGRESS_NONE_ASKED = ("We have received {k} {documents} from you, thank you. "
+                       "The {m} {items} we asked for {verb} still needed.")
 #: The footer headings for what the draft deliberately did not ask for.
 HELD_BACK_HEADING = "NOT ASKED FOR"
 HELD_BACK_LINE = "NOT ASKED"
@@ -891,8 +901,9 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     firm-side work (``attention``), scaffold gaps (``gaps``) and the
     ambiguous rows that hold the whole draft (``held``, decisions 115 and 117).
 
-    Overridden rows and anything already in are dropped here and never reach
-    the draft. For the rest, in this order: a row with no request folder is
+    A row nobody asked for (decision 142) is dropped first, whatever its
+    status or notes. Overridden rows and anything already in are dropped
+    here too and never reach the draft. For the rest, in this order: a row with no request folder is
     a scaffold gap; a row carrying any firm-side marker, on any outstanding
     status, is the firm's (decisions 20, 21, 58, and 109's rule for a
     Missing row); a Failed row, or a Partial whose shortfall is a refused
@@ -912,6 +923,11 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     held: list[FirmSideFlag] = []
 
     for item in items:
+        # Decision 142: a row nobody asked for is never chased, and is
+        # skipped before anything else - it has no folder on purpose, so
+        # the scaffold-gap check below would report it every week.
+        if not item.asked:
+            continue
         if item.manual_override or item.status not in OUTSTANDING:
             continue
 
@@ -1061,6 +1077,32 @@ def _deadline_runs(stage: Stage, *, engagement: str, due_date: dt.date,
     return _cut_runs(marked)
 
 
+def progress_line(received: int, total: int, also_received: int = 0) -> str:
+    """The letter's count, in Jason's words (decision 142), or nothing when
+    nothing has arrived at all.
+
+    ``Of the 5 items we asked for, 1 is in.`` - the asked rows only - and,
+    only when a document arrived for a row nobody asked for, ``We have also
+    received 2 other documents from you.`` When nothing asked for is in
+    but other documents are, Jason's softer pair instead:
+    ``We have received 2 documents from you, thank you. The 5 items we
+    asked for are still needed.`` Each noun and verb agrees with its
+    number, because this is a sentence a client reads.
+    """
+    if not received and not also_received:
+        return ""
+    if not received:
+        return PROGRESS_NONE_ASKED.format(
+            k=also_received, documents="document" if also_received == 1 else "documents",
+            m=total, items="item" if total == 1 else "items", verb="is" if total == 1 else "are")
+    said = PROGRESS_ASKED.format(m=total, items="item" if total == 1 else "items",
+                                 n=received, verb="is" if received == 1 else "are")
+    if also_received:
+        said += " " + PROGRESS_ALSO.format(
+            k=also_received, documents="document" if also_received == 1 else "documents")
+    return said
+
+
 def _compose_letter(
     lines: Sequence[ReminderLine],
     *,
@@ -1075,6 +1117,7 @@ def _compose_letter(
     stage: Stage | None,
     filing_deadline: dt.date | None = None,
     phone: str = "",
+    also_received: int = 0,
 ) -> Letter:
     """The letter as a shape: the greeting, the stage's own three sentences
     around the list, and the sign-off.
@@ -1105,7 +1148,7 @@ def _compose_letter(
     )
     return Letter(
         greeting=greeting,
-        progress=THANK_YOU.format(received=received, total=total) if received else "",
+        progress=progress_line(received, total, also_received),
         intro=stage.intro.format(**words),
         sections=sections,
         drop=(DROP_ANYWHERE, DROP_WITH_LINK if share_link else DROP_NO_LINK),
@@ -1271,6 +1314,7 @@ def draft_reminder(
         firm=firm,
         received=received,
         total=total,
+        also_received=summary.also_received,
         stage=rung,
         filing_deadline=filing_deadline,
         phone=phone,

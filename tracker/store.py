@@ -233,7 +233,12 @@ ENV_STORE = "TRACKER_STORE"
 #: no such column, so it is refused, deleted and rebuilt from the journals
 #: like every version before it, and the rebuild computes the chain as it
 #: replays.
-SCHEMA_VERSION = 12
+#: Version 13 (decision 142) added the ``asked`` mark to ``requests``: a
+#: version-12 file has no column for it, so it is refused, deleted and
+#: rebuilt from the journals like every version before it - the mark
+#: travels in the ``rules_changed`` lines, and a line written before it
+#: existed reads as asked.
+SCHEMA_VERSION = 13
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -348,6 +353,7 @@ _RULE_AFFINITIES: dict[str, str] = {
     "row": "INTEGER",
     "override_reason": "TEXT",
     "named": "INTEGER",
+    "asked": "INTEGER",
 }
 RULE_COLUMNS: dict[str, str] = {name: _RULE_AFFINITIES[name] for name in RULE_FIELDS}
 

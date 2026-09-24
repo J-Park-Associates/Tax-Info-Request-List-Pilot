@@ -91,12 +91,15 @@ the clients root, and the difference between them is the whole point:
   sending the documents listed under REQUESTED, NOT YET RECEIVED."*; step 4 begins *"Original
   PDFs or Excel files are preferred. A clear photo from your phone is fine
   too, just get the whole page in the frame."* After **REQUESTED, NOT YET RECEIVED**
-  (only the active requests nothing has been received for yet; a return
+  (only the active requests the client is **asked** for that nothing has
+  been received for yet - a row nobody asked for is never listed there,
+  decision 142; a return
   with nothing left has no heading there, and an empty list reads
   *Nothing at the moment.*) comes **WHAT WE HAVE RECEIVED**,
   once something has arrived (decision 130): each document confirmed into
   a request, by that request's name, under its return, with the day it
-  came in; and under **Under Review**, how many documents a person is
+  came in - a request nobody asked for included, which is the only place
+  the client ever sees one; and under **Under Review**, how many documents a person is
   looking at, counted by the day they arrived and never named. It never
   says whether a request is complete or where anything was filed, and
   never shows the client's own file names. It is rewritten at the end of
@@ -924,8 +927,11 @@ partnership checklists too; a register of what was bought and sold, which
 never says depreciation, still belongs to the fixed-asset row beside it.
 
 And the rows the owner added after the first run on the firm's own mail
-(decision 141), every one of them unticked in the wizard. A 1040 now asks
-for the Social Security or railroad benefit statement (SSA-1099 /
+(decision 141), every one of them unticked in the wizard. Since decision
+142 every catalog row is on every return and the tick is **Ask the
+client**: an unticked row is never listed as needed and never chased, but a
+document that arrives for it files there instead of parking. So a 1040 now
+accepts the Social Security or railroad benefit statement (SSA-1099 /
 RRB-1099), the 1099-C, the W-2G, the 1098-E, the 1099-Q, the 1042-S and a
 client's own Schedule C income and expense sheet. The 1120, 1120-S and
 partnership checklists each ask for the K-1s the business itself received,

@@ -119,13 +119,19 @@ COL_OVERRIDE_REASON = "Override Reason"
 #: it was added last, and yes by default everywhere: strict is the rule the
 #: owner asked for.
 COL_NAMED = "Named"
+#: Whether the client is asked for this request (decision 142). Every
+#: catalog row is on every return; the ticked ones are asked for and
+#: chased, the rest accept and file what arrives and are never chased. Yes
+#: by default everywhere, so a row written before the mark reads as the
+#: request a person ticked.
+COL_ASKED = "Asked"
 COL_STATUS = "Status"
 COL_RECEIVED_DATE = "Received Date"
 COL_FILE_COUNT = "File Count"
 COL_VALIDATION_NOTES = "Validation Notes"
 
 #: Each column's key in the record and the API, beside its header: the
-#: twelve columns a person edits, in the order the editor shows them. The
+#: thirteen columns a person edits, in the order the editor shows them. The
 #: keys are ``records.RULE_FIELDS`` less the two the person never types
 #: (``row`` is the position, ``date_pattern_derived`` is what
 #: ``validated()`` decided), and the assertion below holds the two lists
@@ -143,6 +149,7 @@ COLUMNS: tuple[tuple[str, str], ...] = (
     (COL_MANUAL_OVERRIDE, "manual_override"),
     (COL_OVERRIDE_REASON, "override_reason"),
     (COL_NAMED, "named"),
+    (COL_ASKED, "asked"),
 )
 #: The headers, in order. The roadmap's schema table lists exactly
 #: these (``tests/test_single_source.py`` holds it to that), the Status
@@ -188,6 +195,10 @@ COLUMN_HELP: dict[str, str] = {
         "yes: the document carries the taxpayer's or the entity's name and files only where "
         "that name is on the page; no: a receipt, a log or a headerless export, filed by its "
         "keywords alone when the name is absent"
+    ),
+    "asked": (
+        "Yes: the client is asked for it and reminded. No: nobody asks, but a document that "
+        "arrives for it is filed here"
     ),
 }
 assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
@@ -276,6 +287,25 @@ class Status:
 #: has been requested and nothing has been looked at. Not a Status, because
 #: the scanner never writes it.
 UNSCANNED_LABEL = "Requested"
+#: What a row nobody asked for is called while nothing has arrived for it
+#: (decision 142): never "Requested", because it was not, and never
+#: "Missing", because nobody is owed it. Once a document arrives the row
+#: shows its real status, as any row does.
+NOT_ASKED_LABEL = "Not asked"
+#: How the count of not-asked rows that did receive a document is said
+#: beside the asked rows' figures, so a letter never reads "7 of 5".
+ALSO_RECEIVED_LABEL = "Also received"
+#: The statuses that mean a document has arrived for a row, as far as a
+#: row nobody asked for is concerned (decision 142): it is counted in
+#: ``also_received`` and is asked for next year.
+ARRIVED = (Status.RECEIVED, Status.PARTIAL)
+#: The statuses that mean *any* document is in a row's folder - one that
+#: passed, one of several, one the rules refused, or one still syncing
+#: down. A row nobody asked for with any of these is work for the
+#: preparer and sits in the active table, in the Status Report and in the
+#: app; only one with no document at all folds away (the designer's
+#: ruling on the 142 build).
+HAS_A_DOCUMENT = (Status.RECEIVED, Status.PARTIAL, Status.FAILED, Status.PENDING_SYNC)
 #: How ``Summary.line`` joins its counts, and what it says with no rows.
 SUMMARY_SEPARATOR = " · "
 SUMMARY_EMPTY = "no requests"
@@ -377,6 +407,13 @@ class RequestItem:
     #: the page. False is a receipt, a log or a headerless export - filed
     #: on its keywords alone when no name is there to find.
     named: bool = True
+    #: Whether the client is asked for this request (decision 142). True
+    #: by default and everywhere a row is read without one: every row
+    #: written before the mark was one a person ticked. False is a catalog
+    #: row the preparer did not tick: it is on the return, the router
+    #: considers it and a document for it files there, but it is never
+    #: listed as needed, never counted as owed and never chased.
+    asked: bool = True
 
     @property
     def label(self) -> str:
@@ -808,14 +845,15 @@ def _override_reason(value: object, override: str, where: str) -> str:
     return text
 
 
-def _named(value: object, where: str) -> bool:
-    """A Named mark as the editor sends it, as the catalog writes it, or as
+def _yes_no(value: object, column: str, where: str) -> bool:
+    """A yes/no mark as the editor sends it, as the catalog writes it, or as
     the store hands it back: the two yes/no words, a boolean, or blank.
 
-    **Blank is yes.** A row nobody has marked is strict (decision 128): a
-    list pasted from a spreadsheet without the column, a row typed in the
-    wizard, and a rule stored before the mark existed all need the name on
-    the page. Anything else is refused with the column named, exactly as a
+    **Blank is yes**, for both marks that read this way. A row nobody has
+    marked Named is strict (decision 128); a row nobody has marked Asked is
+    asked (decision 142): a list pasted from a spreadsheet without the
+    column, a row typed in the wizard, and a rule stored before the mark
+    existed. Anything else is refused with the column named, exactly as a
     Manual Override nobody recognises is.
     """
     if value is None or value == "":
@@ -827,7 +865,17 @@ def _named(value: object, where: str) -> bool:
         return True
     if text == NO:
         return False
-    raise ManifestError(f"{where}: {COL_NAMED} must be {YES} or {NO} (or blank), got {value!r}")
+    raise ManifestError(f"{where}: {column} must be {YES} or {NO} (or blank), got {value!r}")
+
+
+def _named(value: object, where: str) -> bool:
+    """A Named mark (decision 128); blank is yes (:func:`_yes_no`)."""
+    return _yes_no(value, COL_NAMED, where)
+
+
+def _asked(value: object, where: str) -> bool:
+    """An Asked mark (decision 142); blank is yes (:func:`_yes_no`)."""
+    return _yes_no(value, COL_ASKED, where)
 
 
 def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem:
@@ -876,6 +924,7 @@ def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem
         manual_override=_override(fields.get("manual_override"), where),
         override_reason=text("override_reason"),
         named=_named(fields.get("named"), where),
+        asked=_asked(fields.get("asked"), where),
     )
 
 
@@ -1360,12 +1409,18 @@ class Summary:
     scan writes it.
     """
 
-    counts: dict[str, int]   # status -> rows with it (Not Applicable rows excluded)
-    total: int               # rows anybody is waiting on (Not Applicable excluded)
+    counts: dict[str, int]   # status -> asked rows with it (Not Applicable excluded)
+    total: int               # asked rows anybody is waiting on (Not Applicable excluded)
     received: int
-    outstanding: int         # Missing + Partial + Failed Validation
+    outstanding: int         # Missing + Partial + Failed Validation, asked rows only
     not_applicable: int
-    unscanned: int           # rows with no status yet
+    unscanned: int           # asked rows with no status yet
+    #: Rows nobody asked for that did receive a document (decision 142):
+    #: counted apart, so "N of M are in" is a figure about what was asked.
+    also_received: int = 0
+    #: Rows nobody asked for with no document at all: on nobody's list,
+    #: and the N of every "Not asked (N)" fold.
+    not_asked: int = 0
 
     @property
     def line(self) -> str:
@@ -1375,23 +1430,79 @@ class Summary:
         parts = [f"{status}: {n}" for status, n in sorted(self.counts.items())]
         if self.unscanned:
             parts.append(f"{UNSCANNED_LABEL}: {self.unscanned}")
+        if self.also_received:
+            parts.append(f"{ALSO_RECEIVED_LABEL}: {self.also_received}")
+        if self.not_asked:
+            parts.append(f"{NOT_ASKED_LABEL}: {self.not_asked}")
         if self.not_applicable:
             parts.append(f"{Override.NOT_APPLICABLE}: {self.not_applicable}")
         return SUMMARY_SEPARATOR.join(parts) or SUMMARY_EMPTY
 
 
+def effective_status(item: RequestItem) -> str:
+    """The row's status as every count reads it: an Accepted row is
+    Received whatever its status cell says."""
+    return Status.RECEIVED if item.manual_override == Override.ACCEPTED else item.status
+
+
+def has_arrived(item: RequestItem) -> bool:
+    """Has a document arrived for this row (:data:`ARRIVED`)? What decides
+    where a row nobody asked for is shown and whether it is asked next year."""
+    return effective_status(item) in ARRIVED
+
+
+def has_a_document(item: RequestItem) -> bool:
+    """Is any document in this row's folder (:data:`HAS_A_DOCUMENT`)? An
+    Accepted row counts as one, as it counts as Received everywhere."""
+    return effective_status(item) in HAS_A_DOCUMENT
+
+
+def is_idle_unasked(item: RequestItem) -> bool:
+    """A row nobody asked for, not Not Applicable, with no document at all:
+    on neither of the client's lists, folded away under "Not asked (N)" in
+    the Status Report, the app's request table and its editor, and called
+    :data:`NOT_ASKED_LABEL` (decision 142). A document of any status -
+    even one the rules refused - brings the row back into the active
+    table, because it is work for the preparer."""
+    return (not item.asked and item.manual_override != Override.NOT_APPLICABLE
+            and not has_a_document(item))
+
+
+def status_label(item: RequestItem) -> str:
+    """The word a person sees for a row's status: the status itself;
+    :data:`UNSCANNED_LABEL` for an asked row with none yet; and
+    :data:`NOT_ASKED_LABEL` for a row nobody asked for while nothing is in
+    its folder (blank or Missing) - a document there shows its real
+    status, as on any row."""
+    if (not item.asked and item.status in ("", Status.MISSING)
+            and item.manual_override != Override.ACCEPTED):
+        return NOT_ASKED_LABEL
+    return effective_status(item) or UNSCANNED_LABEL
+
+
 def summarize(items: Iterable[RequestItem]) -> Summary:
-    """Count ``items`` the one agreed way (see :class:`Summary`)."""
+    """Count ``items`` the one agreed way (see :class:`Summary`).
+
+    Every figure but ``not_applicable``, ``also_received`` and
+    ``not_asked`` is about **asked** rows (decision 142): a row nobody
+    asked for is never owed, so it is never outstanding, never
+    "Requested", and never part of the total a letter reads "N of M" from.
+    """
     counts: dict[str, int] = {}
     total = received = outstanding = not_applicable = unscanned = 0
+    also_received = not_asked = 0
     for item in items:
         if item.manual_override == Override.NOT_APPLICABLE:
             not_applicable += 1
             continue
+        if not item.asked:
+            if has_arrived(item):
+                also_received += 1
+            elif is_idle_unasked(item):
+                not_asked += 1
+            continue
         total += 1
-        status = item.status
-        if item.manual_override == Override.ACCEPTED:
-            status = Status.RECEIVED
+        status = effective_status(item)
         if not status:
             unscanned += 1
             continue
@@ -1401,7 +1512,8 @@ def summarize(items: Iterable[RequestItem]) -> Summary:
         elif status in Status.OUTSTANDING:
             outstanding += 1
     return Summary(counts=counts, total=total, received=received,
-                   outstanding=outstanding, not_applicable=not_applicable, unscanned=unscanned)
+                   outstanding=outstanding, not_applicable=not_applicable, unscanned=unscanned,
+                   also_received=also_received, not_asked=not_asked)
 
 
 
@@ -1433,11 +1545,12 @@ def check_rules(items: Iterable[RequestItem]) -> list[str]:
     accepting any file type (an .exe would count), a keyword with no
     letter or digit in it, and a bare family number that matches none of
     the family's forms. A Not Applicable row is nobody's to act on and is
-    skipped.
+    skipped, and so is a row nobody asked for (decision 142): the preparer
+    did not choose it, and the catalog's rows all carry keywords.
     """
     warnings: list[str] = []
     for item in items:
-        if item.manual_override == Override.NOT_APPLICABLE:
+        if item.manual_override == Override.NOT_APPLICABLE or not item.asked:
             continue
         if not has_routing_rules(item):
             warnings.append(

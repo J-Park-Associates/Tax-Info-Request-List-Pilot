@@ -567,13 +567,16 @@ def test_nothing_outstanding_reads_nothing_at_the_moment(tmp_path):
 
 
 def test_every_request_is_on_exactly_one_list_or_under_review_never_lost(tmp_path):
-    """No request is ever on neither list, and none is on both: a request
-    that leaves the first list is a Received line below it."""
+    """No *asked* request is ever on neither list, and none is on both: a
+    request that leaves the first list is a Received line below it
+    (decision 130's invariant, reworded by decision 142 - a row nobody
+    asked for with nothing received is on neither, by the owner's rule)."""
     from tests.conftest import seed_index
     from tracker.filer import FILED, NEEDS_REVIEW
     from tracker.scaffold import RECEIVED_HEADING
 
-    engagement = make_engagement(tmp_path, ITEMS)
+    engagement = make_engagement(tmp_path, [*ITEMS, RequestItem(
+        identifier="D01", document="Brokerage Statements", asked=False)])
     seed_index(engagement, [arrived("A01", FILED, original="bank.pdf"),
                             arrived("", NEEDS_REVIEW, original="parked.pdf")])
     readme = readme_of(engagement)
@@ -583,6 +586,7 @@ def test_every_request_is_on_exactly_one_list_or_under_review_never_lost(tmp_pat
     for identifier in ACTIVE_IDS:
         assert _mentions(first, identifier) != _mentions(received, identifier), identifier
     assert not _mentions(first, "C01") and not _mentions(received, "C01")
+    assert not _mentions(first, "D01") and not _mentions(received, "D01")
 
 
 def test_the_readme_is_not_rewritten_when_nothing_changed(tmp_path):
@@ -896,3 +900,48 @@ def test_superscript_ports_and_the_console_devices_are_reserved_too():
     assert "device" in identifier_problem("CONIN$")
     for name in ("COM\u00b9\u00b2", "CONINS", "LPT4x"):
         assert not is_reserved_name(name), name
+
+
+# --------------------------------------------- decision 142: accepted, not asked ----
+
+
+def test_the_readme_asks_only_for_asked_rows_and_lists_what_arrived_under_any(tmp_path):
+    """A row nobody asked for is never on *REQUESTED, NOT YET RECEIVED*. With
+    nothing received it is on neither list; a document filed under it is a
+    Received line under the row's own title, exactly as under an asked one."""
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+    from tracker.scaffold import RECEIVED_HEADING
+
+    unasked = RequestItem(identifier="D01", document="Social Security Benefit Statement",
+                          period="TY2025", asked=False)
+    engagement = make_engagement(tmp_path, [*ITEMS, unasked])
+    readme = readme_of(engagement)
+    assert not _mentions(section_of(readme, README_HEADING), "D01")
+    assert RECEIVED_HEADING not in readme and "Social Security" not in readme
+
+    seed_index(engagement, [arrived("D01", FILED, original="ssa.pdf")])
+    readme = readme_of(engagement)
+    assert not _mentions(section_of(readme, README_HEADING), "D01")
+    received = section_of(readme, RECEIVED_HEADING)
+    assert any(line.strip().startswith(unasked.label) for line in received)
+    for identifier in ACTIVE_IDS:                           # every asked request still on its list
+        assert _mentions(section_of(readme, README_HEADING), identifier), identifier
+
+
+def test_the_scaffold_makes_no_folder_for_a_not_asked_row(tmp_path):
+    """No folder up front for a row nobody asked for (decision 142): a 1040
+    would otherwise carry a dozen empty folders. A folder a filing made for
+    it stays, as any existing folder does."""
+    unasked = RequestItem(identifier="D01", document="Social Security Benefit Statement",
+                          asked=False)
+    engagement = make_engagement(tmp_path, [*ITEMS, unasked], scaffold=False)
+
+    result = scaffold_engagement(engagement)
+    prepared = engagement / PREPARED_DIR_NAME
+    assert result.not_asked == ["D01"]
+    assert not assign_folders(prepared, ["D01"])["D01"]
+
+    (prepared / folder_name_for(unasked)).mkdir()
+    again = scaffold_engagement(engagement)
+    assert "D01" in again.existing and again.not_asked == []

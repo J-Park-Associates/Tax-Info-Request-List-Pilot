@@ -220,12 +220,14 @@ def test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet():
 
 
 def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
+    """Every status, the word for a row not yet scanned, and (decision 142)
+    the word for a row nobody asked for with nothing in."""
     from tracker.api import _slug
-    from tracker.manifest import UNSCANNED_LABEL, Status
+    from tracker.manifest import NOT_ASKED_LABEL, UNSCANNED_LABEL, Status
 
     css = read("app/renderer/style.css")
     chips = set(re.findall(r"\.chip-([a-z-]+)\s*\{", css))
-    assert chips == {_slug(s) for s in Status.ALL} | {_slug(UNSCANNED_LABEL)}
+    assert chips == {_slug(s) for s in Status.ALL} | {_slug(UNSCANNED_LABEL), _slug(NOT_ASKED_LABEL)}
 
 
 def test_the_stylesheet_has_a_class_for_every_view_state():
@@ -317,6 +319,28 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
             continue
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
         assert f">{literal}<" not in html, literal
+    # Decision 142 (its review, R1): every word it adds is the API's - the
+    # status of a row nobody asked for, the count beside it, the wizard's
+    # heading and note, the folded table's name and heading, the rollover's
+    # label and line, the one refusal, the column's help and the rollover's
+    # notes. None is typed in the renderer or the page, quoted or not.
+    from tracker import rollover
+    from tracker.manifest import ALSO_RECEIVED_LABEL, COLUMN_HELP, NOT_ASKED_LABEL
+
+    added = (NOT_ASKED_LABEL, ALSO_RECEIVED_LABEL, api_module.ASK_THE_CLIENT,
+             api_module.ASK_THE_CLIENT_NOTE, api_module.NOT_ASKED_TABLE_LABEL,
+             api_module.ROLL_TEMPLATE_LABEL, api_module.NOTHING_ASKED, COLUMN_HELP["asked"],
+             api_module.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
+             rollover.NEW_NOT_ASKED_NOTE, rollover.NOT_ASKED_NOTE,
+             rollover.NOW_ASKED_NOTE.split("{")[0].strip(), '"' + _slug(NOT_ASKED_LABEL) + '"',
+             api_module.NOT_ASKED_SECTION.split("{")[0].strip() + " (")
+    for literal in added:
+        assert literal and literal not in js and literal not in html, literal
+    for key in ("not_asked_label", "not_asked_key", "ask_the_client", "ask_the_client_note",
+                "not_asked_table_label", "roll_template_label", "nothing_asked",
+                "new_not_asked_carried", "origin_new"):
+        assert f"vocab.{key}" in js, key
+    assert "vocab.editor.not_asked_heading" in js and "vocab.editor.yes_no_fields" in js
     # Decision 131: the room's heading and its two sentences are the API's.
     # The renderer fills neither pattern: the set-root reply carries each
     # return's sentences already filled.

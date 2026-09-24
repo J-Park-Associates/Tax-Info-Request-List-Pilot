@@ -187,6 +187,14 @@
           </thead>
           <tbody id="rows"></tbody>
         </table>
+        <!-- Decision 142: the rows nobody asked for with no document at all,
+             folded closed under the table; the heading is the API's. -->
+        <details id="rows-not-asked-group" class="rows-not-asked hidden">
+          <summary id="rows-not-asked-summary"></summary>
+          <table class="requests" id="rows-not-asked-table">
+            <tbody id="rows-not-asked"></tbody>
+          </table>
+        </details>
       </section>
 
       <!-- The week's reminder (decision 118): what the record says about it,
@@ -485,7 +493,11 @@
           <button type="button" id="wp-add" class="btn btn-small"></button>
         </div>
 
-        <div class="tmpl-head" id="tmpl-head-label">Standard request list — tick what applies</div>
+        <!-- The tick is the API's ask-the-client word (decision 142): each row goes on
+             the return, and only the ticked ones are asked for and chased.
+             The heading's last words and the note are the API's. -->
+        <div class="tmpl-head" id="tmpl-head-label"></div>
+        <p id="tmpl-note" class="wiz-note"></p>
         <div id="tmpl-list" class="tmpl-list"></div>
 
         <div class="tmpl-head">Add a custom request</div>
