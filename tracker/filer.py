@@ -209,6 +209,9 @@ from tracker.records import (
     Evidence,
     IndexEntry,
     Person,
+    Received,
+    ReceivedLine,
+    UnderReview,
     as_pattern,
     entry_from_json,
     entry_to_json,
@@ -221,12 +224,16 @@ from tracker.records import (
 )
 from tracker.router import read_once, route_file
 from tracker.scaffold import (
+    OTHER_DOCUMENT,
     PREPARED_DIR_NAME,
     README_NAME,
     REVIEW_DIR_NAME,
     assign_folders,
     folder_name_for,
+    matches_identifier,
+    readme_returns,
     sanitize_component,
+    write_readme,
 )
 from tracker.validators import (
     UNFINISHED_SUFFIXES,
@@ -650,6 +657,115 @@ def read_index(engagement: Path | str) -> list[IndexEntry]:
     conn = store.connect()
     store.follow_the_journal(conn, clients_root_of(folder), folder)
     return [entry_from_json(row) for row in store.documents(conn, folder)]
+
+
+# ------------------------------------------------- what the client is told ----
+# Decision 130. The client README acknowledges what has arrived. The index
+# is the one source of it: nothing new is stored, no counter and no copy,
+# so the README is a rendering of the record and cannot drift from it.
+
+
+#: The decisions a client is told a document was **Received** under: it was
+#: confirmed into its request. A working copy moving afterwards
+#: (``FILE_MOVED``) is the firm's business, not the client's.
+_RECEIVED_DECISIONS = (FILED, FILE_MOVED)
+
+
+def _day_of(stamp: str) -> dt.date | None:
+    """The date part of a row's received stamp, or ``None`` where the stamp
+    does not read as one - never a guessed day."""
+    try:
+        return dt.date.fromisoformat(str(stamp)[:10])
+    except ValueError:
+        return None
+
+
+def _requests_of(entry: IndexEntry, identifiers: Sequence[str]) -> list[str]:
+    """Every request a filed row satisfied: its identifier, then one per
+    ``also_filed`` copy (decision 94).
+
+    ``also_filed`` holds the copies' locations, not their requests, so each
+    is read back from the request folder the copy sits in by the scaffold's
+    own prefix rule - the longest identifier the folder name starts with.
+    A folder no request of today's list claims answers ``""``, which the
+    README says as :data:`OTHER_DOCUMENT`.
+    """
+    found = [entry.identifier]
+    for location in entry.filed_locations[1:]:
+        parts = location.split("/")
+        folder = parts[-2] if len(parts) >= 2 else ""
+        best = ""
+        for identifier in identifiers:
+            if matches_identifier(folder, identifier) and len(identifier) > len(best):
+                best = identifier
+        found.append(best)
+    return found
+
+
+def received_for(returns: Sequence[Path | str]) -> Received:
+    """What has arrived for these returns, as the client README says it
+    (decision 130): one index read and one request-list read per return,
+    plain data out.
+
+    - ``Filed`` and ``File Moved`` are **Received**, once per request the
+      document satisfied, under the request's own label - the words the
+      client already reads under *WHAT WE STILL NEED* - and never the
+      client's file name or the firm's working name. A request no longer on
+      the list reads :data:`OTHER_DOCUMENT`.
+    - ``Needs Review`` is **Under Review**, counted by the day it arrived and
+      never named: its only name is the client's own.
+    - ``Duplicate``, ``Not Requested`` and anything else is not shown.
+
+    A document this household's inbox fed into another household's return
+    is in that return's index and so on that household's list, never on
+    this one (decision 132's F-4 ruling).
+    """
+    lines: list[ReceivedLine] = []
+    waiting: dict[dt.date | None, int] = {}
+    for folder in returns:
+        folder = Path(folder)
+        entries = read_index(folder)
+        if not entries:
+            continue
+        items = load_manifest(folder)
+        labels = {item.identifier: item.label for item in items}
+        identifiers = [item.identifier for item in items]
+        for entry in entries:
+            day = _day_of(entry.received)
+            if entry.decision in _RECEIVED_DECISIONS:
+                lines.extend(ReceivedLine(return_path=folder,
+                                          label=labels.get(identifier, OTHER_DOCUMENT),
+                                          day=day)
+                             for identifier in _requests_of(entry, identifiers))
+            elif entry.decision == NEEDS_REVIEW:
+                waiting[day] = waiting.get(day, 0) + 1
+    return Received(
+        lines=tuple(lines),
+        under_review=tuple(UnderReview(day=day, count=n) for day, n in waiting.items()),
+    )
+
+
+def refresh_household_readme(household_dir: Path | str) -> Path | None:
+    """Rewrite one household's client README from the record - **the one
+    call every caller makes** (decision 130): the household pass once after
+    its sort, the rollover after it rolls a household, and the app after
+    every action that creates or edits a return or changes a document's row.
+
+    The README speaks for the active returns of the household's one open
+    year, and what has arrived for them is read here and rendered by
+    :func:`tracker.scaffold.write_readme`, which writes only when the text
+    changed. With two open years it is left as it is.
+
+    **Never raises.** The README is client-visible and cosmetic; a failure
+    is a log line and the caller goes on.
+    """
+    try:
+        folders = readme_returns(household_dir)
+        return write_readme(household_dir, received_for(folders) if folders else Received())
+    except Exception as exc:
+        log.warning("Could not refresh the README of %s (%s: %s); carrying on",
+                    Path(household_dir).name, exc.__class__.__name__, exc)
+        return None
 
 
 # ----------------------------------------------------------------- ensure ----

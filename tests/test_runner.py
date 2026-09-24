@@ -1607,3 +1607,77 @@ def test_in_a_household_a_slow_reading_is_said_once_on_the_first_own_returns_lin
     assert "seconds" not in event and "seconds" not in event[ledger.ROW_KEY]
     assert all("seconds" not in stored for stored in store.documents(store.connect(),
                                                                      business.path))
+
+
+# ============== what we have received, live (decision 130) ================
+#
+# The README is refreshed once by the household pass, after the sort and
+# after every return's scan and draft, still inside the locks: what the
+# client reads is current as of the pass, never one pass behind (D-d).
+
+
+def test_a_document_sorted_this_pass_is_on_the_readme_when_the_pass_ends(tmp_path, samples):
+    from tracker.filer import FILED
+    from tracker.manifest import load_manifest
+    from tracker.scaffold import README_NAME, RECEIVED_HEADING, day_text
+
+    engagement = build_engagement(tmp_path, samples)
+    readme = inbox_of(engagement.path) / README_NAME
+    assert not readme.exists() or RECEIVED_HEADING not in readme.read_text(encoding="utf-8")
+
+    run = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER)
+
+    assert run.ok and run.filed == 1
+    [row] = read_index(engagement.path)
+    assert row.decision == FILED
+    label = next(i.label for i in load_manifest(engagement.path) if i.identifier == row.identifier)
+    text = readme.read_text(encoding="utf-8")
+    assert RECEIVED_HEADING in text
+    assert f"  {label}  Received {day_text(FRIDAY)}" in text
+    assert row.original_name not in text
+
+
+def test_a_document_dropped_here_and_filed_into_another_households_return_is_on_neither_list_of_this_readme_and_on_that_households(
+        tmp_path, samples):
+    """132's F-4 ruling, carried into the received list: the document is in
+    the other household's index, so it is on that household's list - at
+    once, by the pass that filed it - and on no list of the README in the
+    folder it was dropped in, which never names the other household or its
+    return. A document parked at home is this household's, counted under
+    review."""
+    from tests.samples import SCRATCH_CLIENT, text_pdf
+    from tracker.filer import FILED
+    from tracker.manifest import load_manifest
+    from tracker.scaffold import (
+        README_NAME,
+        RECEIVED_HEADING,
+        UNDER_REVIEW_HEADING,
+        day_text,
+    )
+
+    personal, [fed] = a_fed_household(tmp_path, samples)
+    text_pdf(inbox_of(personal.path) / "trial balance.pdf",
+             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT])
+    text_pdf(inbox_of(personal.path) / "unnamed w2.pdf",
+             [f"Form W-2 Wage and Tax Statement {YEAR}"])
+    household = household_of(personal.path)
+
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=discover_engagements(tmp_path))
+
+    assert run.ok
+    [filed] = read_index(fed.path)
+    assert filed.decision == FILED and filed.identifier == "B01"
+    [b01] = [i for i in load_manifest(fed.path) if i.identifier == "B01"]
+
+    here = (inbox_of(personal.path) / README_NAME).read_text(encoding="utf-8")
+    received_here = here[here.index(RECEIVED_HEADING):]
+    assert b01.label not in here and "Trial Balance" not in here
+    assert "Aaa Holdings" not in here and "trial balance.pdf" not in here
+    assert received_here.splitlines()[2:4] == [UNDER_REVIEW_HEADING,
+                                               f"  1 document received {day_text(FRIDAY)}"]
+    assert "unnamed w2" not in here
+
+    there = (inbox_of(fed.path) / README_NAME).read_text(encoding="utf-8")
+    assert f"  {b01.label}  Received {day_text(FRIDAY)}" in there
+    assert "trial balance.pdf" not in there and "Park Family" not in there

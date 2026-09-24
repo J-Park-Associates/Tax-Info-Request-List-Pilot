@@ -5377,3 +5377,41 @@ def test_an_original_left_for_another_returns_filing_is_said_on_every_pass(
     report = sort(father, returns=[father], today=DAY3)
     assert all(e.error != sentence for e in report.attention)
     rows_rest_at_home(father, llc)
+
+
+# ============== what we have received (decision 130) ======================
+
+
+def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
+    """The README's received list is a rendering of the index and nothing
+    else (S-2): one index read and one request-list read per return, and
+    no second copy anywhere."""
+    import tracker.filer as filer_module
+    from tests.conftest import seed_index
+    from tracker.filer import received_for
+    from tracker.records import IndexEntry
+
+    items = [RequestItem(identifier="A01", document="W-2")]
+    first = make_engagement(tmp_path, items, return_name="1040 - First")
+    second = make_engagement(tmp_path, items, return_name="1040 - Second")
+    for folder in (first, second):
+        seed_index(folder, [IndexEntry(
+            received="2026-09-23", original_name="w2.pdf", size_kb=1.0, digest=f"d-{folder.name}",
+            identifier="A01", prepared_location="PBC/A01 - W-2/A01 - W-2.pdf",
+            pbc_location=f"../x/{folder.name}/w2.pdf", decision=FILED, reason="")])
+
+    read = []
+    lists = []
+    real_read, real_list = filer_module.read_index, filer_module.load_manifest
+    monkeypatch.setattr(filer_module, "read_index",
+                        lambda folder: read.append(Path(folder)) or real_read(folder))
+    monkeypatch.setattr(filer_module, "load_manifest",
+                        lambda folder: lists.append(Path(folder)) or real_list(folder))
+
+    received = received_for([first, second])
+
+    assert read == [first, second]
+    assert lists == [first, second]
+    assert [(line.return_path, line.label) for line in received.lines] == [
+        (first, "A01 - W-2"), (second, "A01 - W-2")]
+    assert received.under_review == ()

@@ -66,7 +66,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from tracker.households import household_returns, load_household_info, open_years
-from tracker.layout import return_dir_for, root_of
+from tracker.layout import household_of, return_dir_for, root_of
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
     ManifestError,
     Override,
@@ -533,6 +533,7 @@ def roll_household(
     is rewritten once at the end, so the client sees the new year's lists
     in the same folder they have always used.
     """
+    from tracker.filer import refresh_household_readme
     from tracker.scaffold import scaffold_household
 
     household_dir = Path(household_dir)
@@ -578,8 +579,10 @@ def roll_household(
         result.retired.append(one.path)
 
     # The client's side, once, at the end: the year folders the rolls made
-    # are already there, and the README now lists the new year's returns.
+    # are already there, and the README - its one composer, decision 130 -
+    # now lists the new year's returns.
     scaffold_household(household_dir)
+    refresh_household_readme(household_dir)
     return result
 
 
@@ -799,9 +802,12 @@ if __name__ == "__main__":
     # record, so that folder could not be tried again (decision 108).
     scaffolded = None
     if ns.scaffold:
+        from tracker.filer import refresh_household_readme
         from tracker.scaffold import scaffold_engagement as scaffold_one
 
         scaffolded = scaffold_one(target)
+        # Folders only since decision 130; the README is its one composer's.
+        refresh_household_readme(household_of(target))
 
     span = f"{result.prior_year} → {result.target_year}" if result.prior_year else UNKNOWN_YEAR_LABEL
     print(f"Rolled {result.prior_dir.name} forward ({span})\n")

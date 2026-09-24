@@ -3169,3 +3169,64 @@ def test_a_pass_cannot_be_run_without_the_practice(capsys, demo_root, monkeypatc
     assert payload["run"]["filed"] == 0
     assert (inbox_of(father) / "tb.pdf").is_file()      # nothing was sorted
     assert read_index(father) == []
+
+
+# ============== what we have received, at once (decision 130) =============
+#
+# A person's action in the app changes the index between passes, so the
+# action refreshes the client README itself: the list is never behind the
+# record once an action has run.
+
+
+def client_readme(engagement) -> str:
+    from tracker.scaffold import README_NAME
+
+    return (inbox_of(engagement) / README_NAME).read_text(encoding="utf-8")
+
+
+def test_filing_a_parked_card_moves_it_from_under_review_to_received_at_once(
+        capsys, demo_root, tmp_path):
+    from tracker.scaffold import RECEIVED_HEADING, UNDER_REVIEW_HEADING
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    before = client_readme(engagement)
+    assert UNDER_REVIEW_HEADING in before and "  1 document received " in before
+    d01 = next(i for i in payload["state"]["items"] if i["identifier"] == "D01")
+    d01_label = next(item.label for item in load_manifest(engagement) if item.identifier == "D01")
+    assert f"  {d01_label}  Received" not in before
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "identifier": d01["identifier"],
+                               "seq": parked["seq"]})
+    assert code == 0, payload
+
+    after = client_readme(engagement)
+    assert RECEIVED_HEADING in after
+    assert f"  {d01_label}  Received" in after
+    assert UNDER_REVIEW_HEADING not in after
+    assert "Mortgage Notes" not in after
+
+
+def test_unfiling_moves_it_back_to_under_review_at_once(capsys, demo_root, tmp_path):
+    from tracker.scaffold import UNDER_REVIEW_HEADING
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    label = next(item.label for item in load_manifest(engagement)
+                 if item.identifier == filed["identifier"])
+    before = client_readme(engagement)
+    assert f"  {label}  Received" in before and UNDER_REVIEW_HEADING not in before
+
+    code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "seq": filed["seq"]})
+    assert code == 0, payload
+
+    after = client_readme(engagement)
+    assert f"  {label}  Received" not in after
+    assert UNDER_REVIEW_HEADING in after and "  1 document received " in after
+    assert filed["original_name"] not in after

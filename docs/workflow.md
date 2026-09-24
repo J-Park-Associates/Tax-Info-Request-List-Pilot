@@ -66,7 +66,8 @@ editor shows it.
 
 Either way the result is the request list in the record plus the
 scaffolded household inbox and `Prepared/` tree, and a `_README.txt` for the
-client.
+client, written by the app straight after the return is made (decision 130:
+the scaffold lays out folders only).
 
 A household is shared **once**, by the checklist the app shows when its
 first return is made: the household folder as Viewer, `Drop files here` as

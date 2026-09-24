@@ -78,7 +78,7 @@ from pathlib import Path
 import pytest
 
 from tracker import ledger, store, view
-from tracker.filer import ensure, file_household_drops
+from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
     inbox_of,
@@ -214,7 +214,8 @@ def make_engagement(root, items, info: EngagementInfo | None = None, *,
     one ``household_changed`` event carrying the whole household, one
     ``rules_changed`` event carrying the whole list and the details,
     validated on the way in. The scaffold is the folders the filer and the
-    scanner need; a test that wants only the record says ``scaffold=False``.
+    scanner need, and the README the app writes after them (decision 130);
+    a test that wants only the record says ``scaffold=False``.
 
     A test that wants two returns in one household calls this twice with
     the same ``household`` - the second finds the household's record
@@ -239,7 +240,10 @@ def make_engagement(root, items, info: EngagementInfo | None = None, *,
                               return_name=return_name, people=tuple(people)),
                       form=form)
     if scaffold:
+        # What the app's create does: the folders, then the README from its
+        # one composer (decision 130).
         scaffold_engagement(folder)
+        refresh_household_readme(household_dir)
     return folder
 
 

@@ -95,8 +95,9 @@ decides. `docs/runbook.md` §4 is what each answer means in plain words.
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
 3. `python -m tracker.scaffold <return_dir>` — builds the household's
-   inbox and the year's folder, and this return's `Prepared/`, and writes
-   the client's README
+   inbox and the year's folder, and this return's `Prepared/` (folders
+   only: the client's README is written by the pass and by the app,
+   decision 130)
 4. Share the household's folder with the client as Viewer and its inbox as
    Contributor, paste the inbox's link into the household and mark it
    shared — the app asks for all three, once, and `docs/runbook.md` §1
@@ -253,7 +254,8 @@ schedule. The app's **Install Schedule** button does exactly this for the
 folder it is showing - from source with the Python it runs under, and in
 the packaged app with its own executable, which runs the job when given
 `--run` first (there is no Python on that machine). Every pass also re-scaffolds each engagement, so a
-row added in the app has its folder and its README line by the next run, and
+row added in the app has its folder by the next run, and rewrites the
+household's README once, after the sort (decision 130), and
 an engagement that has been rolled forward is retired by its successor
 without anyone opening last year's engagement.
 

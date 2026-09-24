@@ -59,6 +59,21 @@ the clients root, and the difference between them is the whole point:
   exactly one request accepts it.
 - An original moves **once** — out of `Drop files here` into the year's folder
   the client can see — and never again.
+- The inbox holds one file of ours, `_README.txt`, which the tracker writes
+  and nobody edits. Step 2 of it reads *"We will examine and place all
+  documents into the current year's folder."*; step 4 begins *"Original
+  PDFs or Excel files are preferred. A clear photo from your phone is fine
+  too, just get the whole page in the frame."* After **WHAT WE STILL NEED**
+  (every active request, received or not) comes **WHAT WE HAVE RECEIVED**,
+  once something has arrived (decision 130): each document confirmed into
+  a request, by that request's name, under its return, with the day it
+  came in; and under **Under Review**, how many documents a person is
+  looking at, counted by the day they arrived and never named. It never
+  says whether a request is complete or where anything was filed, and
+  never shows the client's own file names. It is rewritten at the end of
+  every pass and straight after each click in the app that files, unfiles,
+  sets aside, hands over or puts back a document, or creates or edits a
+  return - and only when its words changed.
 - Type the root with the quotes: the firm's own name has an ampersand in it,
   and `G:\Shared drives\JPA Clients\J Park & Associates` without quotes is two
   commands to a Windows shell. `"G:\Shared drives\JPA Clients"` is safe.

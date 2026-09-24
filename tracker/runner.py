@@ -106,10 +106,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, store
-from tracker.filer import NEEDS_REVIEW, ensure, file_household_drops, read_index
+from tracker.filer import (
+    NEEDS_REVIEW,
+    ensure,
+    file_household_drops,
+    read_index,
+    refresh_household_readme,
+)
 from tracker.fsio import write_text_atomically
 from tracker.households import load_household_info, open_years, resolve_feeds
-from tracker.layout import inbox_of, lock_order_key, originals_dir_for, root_of
+from tracker.layout import household_of, inbox_of, lock_order_key, originals_dir_for, root_of
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -524,12 +530,11 @@ def run_household(
                                       *(one.path for one in fed)],
                                      key=lock_order_key):
                     locks.enter_context(engagement_lock(folder))
-            # The household's own side - the inbox, the year's folder and
-            # the README that lists every return of the open year - is laid
-            # out once for the lot, before the inbox is read. The fed
-            # returns are not in it: a fed return's own household lays out
-            # its own folders, and its request list is not this client's
-            # to read.
+            # The household's own side - the inbox and the year's folder -
+            # is laid out once for the lot, before the inbox is read. The
+            # fed returns are not in it: a fed return's own household lays
+            # out its own folders, and its request list is not this
+            # client's to read.
             if not dry_run:
                 scaffold_household(household, returns=[run.engagement.path for run in working])
             if sorting:
@@ -538,6 +543,16 @@ def run_household(
                 run_engagement(run.engagement, root=root, today=today, dry_run=dry_run,
                                reminders=reminders, weekday=weekday, lock_held=not dry_run,
                                run=run)
+            # The README, once, after the sort and after every return's
+            # scan and draft, still inside the locks (decision 130): what
+            # the client reads is current as of this pass, never one pass
+            # behind. A household this inbox fed a document into is told
+            # too - the document is in its index now, so it is on its list
+            # (132's F-4 ruling), and it should not wait for its own pass.
+            # Each writes only when its text changed.
+            if not dry_run:
+                for one in dict.fromkeys([household, *(household_of(f.path) for f in fed)]):
+                    refresh_household_readme(one)
     except ScanLockedError as exc:
         for run in working:
             run.skipped = f"another run is still going ({exc})"
@@ -669,9 +684,10 @@ def run_engagement(
             # last pass is already in the journal (decision 104).
             ensure(engagement.path, root)
             # A row added, or made applicable again, in the app gets its
-            # folder and its README line here, on the next pass, rather
-            # than when somebody remembers to re-run scaffold. Idempotent:
-            # nothing existing is touched.
+            # folder here, on the next pass, rather than when somebody
+            # remembers to re-run scaffold. Idempotent: nothing existing is
+            # touched. It writes no README (decision 130): the household
+            # pass refreshes that once, after every return has run.
             if not dry_run:
                 scaffold_engagement(engagement.path)   # contact from the household
             scanned = scan_engagement(engagement.path, root=root, today=today, dry_run=dry_run,

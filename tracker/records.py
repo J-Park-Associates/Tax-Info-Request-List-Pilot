@@ -406,6 +406,52 @@ def ledger_key(entry: IndexEntry) -> str:
     return entry.pbc_location or f"{entry.received}|{entry.original_name}|{entry.digest}"
 
 
+# ------------------------------------------------------- what has arrived ----
+# Decision 130. The client README acknowledges what has arrived, and these
+# are the shapes it is told in: plain data read out of the index by
+# ``tracker.filer.received_for`` (layer 3) and rendered by
+# ``tracker.scaffold.write_readme`` (layer 1), which never reads the index
+# itself. They live here because both of those may import this module, and
+# because nothing about them is stored: the README is a rendering of the
+# index, with no counter and no copy that could drift from it.
+
+
+@dataclass(frozen=True, slots=True)
+class ReceivedLine:
+    """One document confirmed into one request, as the client is told it.
+
+    ``label`` is the request's own label - the words the client already
+    reads under *WHAT WE STILL NEED* - and never the client's file name nor
+    the firm's working name. ``day`` is the date part of the row's received
+    stamp, or ``None`` where the stamp does not read as a date.
+    """
+
+    return_path: Path
+    label: str
+    day: dt.date | None
+
+
+@dataclass(frozen=True, slots=True)
+class UnderReview:
+    """How many documents that arrived on one day a person is looking at.
+    Counted, never named: a parked document's only name is the client's own."""
+
+    day: dt.date | None
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class Received:
+    """Everything the README's *WHAT WE HAVE RECEIVED* section says. Both
+    lists empty means the section is not there at all (decision 130, D-f)."""
+
+    lines: tuple[ReceivedLine, ...] = ()
+    under_review: tuple[UnderReview, ...] = ()
+
+    def __bool__(self) -> bool:
+        return bool(self.lines or self.under_review)
+
+
 # --------------------------------------------------------------- routing ----
 
 #: What a routing decision rested on. There is one: the document's own

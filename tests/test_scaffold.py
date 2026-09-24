@@ -3,13 +3,15 @@
 import pytest
 
 from tests.conftest import TEST_HOUSEHOLD, TEST_RETURN, TEST_YEAR, make_engagement
-from tracker.layout import inbox_of, originals_of
+from tracker.filer import refresh_household_readme
+from tracker.layout import household_of, inbox_of, originals_of
 from tracker.manifest import EXPECTED_PATTERN, ManifestError, Override, RequestItem
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
     README_HEADING,
     README_NAME,
     README_PHOTO_LINE,
+    README_STEP_2,
     REVIEW_DIR_NAME,
     assign_folders,
     folder_name_for,
@@ -41,6 +43,14 @@ ITEMS = [
 @pytest.fixture
 def engagement(tmp_path):
     return make_engagement(tmp_path, ITEMS, scaffold=False)
+
+
+def readme_of(engagement) -> str:
+    """The household's README as its one composer writes it (decision 130):
+    what the pass and every app action call after a change."""
+    written = refresh_household_readme(household_of(engagement))
+    assert written is not None
+    return written.read_text(encoding="utf-8")
 
 
 # ------------------------------------------------------------ name rules ----
@@ -83,8 +93,10 @@ def test_assign_folders_longest_identifier_wins(tmp_path):
 # -------------------------------------------------------------- scaffold ----
 
 
-def test_the_scaffold_makes_both_trees_and_writes_the_readme_in_the_inbox_grouped_by_return(engagement):
-    result = scaffold_engagement(engagement, contact="J Park & Associates")
+def test_the_scaffold_makes_both_trees_and_the_readme_in_the_inbox_is_grouped_by_return(engagement):
+    from tracker.scaffold import write_readme
+
+    result = scaffold_engagement(engagement)
     inbox = inbox_of(engagement)
     originals = originals_of(engagement)
     prepared = engagement / PREPARED_DIR_NAME
@@ -106,7 +118,8 @@ def test_the_scaffold_makes_both_trees_and_writes_the_readme_in_the_inbox_groupe
     assert result.not_applicable == ["C01"]
     assert not (prepared / "C01 - Fixed Asset Register").exists()
 
-    readme = (inbox / README_NAME).read_text(encoding="utf-8")
+    readme = write_readme(household_of(engagement), contact="J Park & Associates"
+                          ).read_text(encoding="utf-8")
     assert f"Household: {TEST_HOUSEHOLD}" in readme
     assert TEST_RETURN in readme                  # one sub-heading per return
     assert "  A01 - Dec 2025 Bank Statement" in readme     # its rows, indented under it
@@ -116,12 +129,42 @@ def test_the_scaffold_makes_both_trees_and_writes_the_readme_in_the_inbox_groupe
     assert "Google Docs" in readme                # export-first guidance
 
 
-def test_the_readme_names_the_open_year_and_the_household_contact(tmp_path):
-    engagement = make_engagement(tmp_path, ITEMS, contact="Maria Park", scaffold=False)
-    result = scaffold_engagement(engagement)
-    readme = result.readme.read_text(encoding="utf-8")
-    assert f"2. Each file moves into your {TEST_YEAR} folder on the next scheduled pass." in readme
+def test_the_readme_names_the_household_contact(tmp_path):
+    engagement = make_engagement(tmp_path, ITEMS, contact="Maria Park")
+    readme = readme_of(engagement)
+    assert README_STEP_2 in readme
     assert "Questions? Contact Maria Park." in readme
+
+
+def test_step_2_reads_jasons_sentence_and_the_old_wording_is_gone(tmp_path):
+    """Decision 130, D-b: step 2 is exactly the owner's sentence - no
+    timing clause, and none of the two lines that used to follow it."""
+    readme = readme_of(make_engagement(tmp_path, ITEMS, contact="Maria Park"))
+
+    assert README_STEP_2 in readme
+    assert README_STEP_2 == ("2. We will examine and place all documents into the current year's\n"
+                             "   folder.")
+    assert "next scheduled pass" not in readme
+    assert "That is us filing it" not in readme
+    assert "renamed or deleted" not in readme
+    lines = readme.splitlines()
+    step_2 = lines.index(README_STEP_2.split("\n")[0])
+    assert lines[step_2 + 2].startswith("3. ")                 # nothing more in step 2
+
+
+def test_step_4_reads_jasons_sentence_and_the_three_dropped_phrases_are_gone(tmp_path):
+    """Decision 130, D-c: the three photo phrases are dropped; decision
+    128's two lines on the name stay, and stay in step 4."""
+    readme = readme_of(make_engagement(tmp_path, ITEMS, contact="Maria Park"))
+
+    assert README_PHOTO_LINE == (
+        "4. Original PDFs or Excel files are preferred. A clear photo from your\n"
+        "   phone is fine too, just get the whole page in the frame.")
+    for dropped in ("one document per photo", "straight on", "in good light"):
+        assert dropped not in readme
+    name_lines = ("   Statements and reports should show the name they were issued\n"
+                  "   to - please send the whole page, with its header.")
+    assert README_PHOTO_LINE + "\n" + name_lines + "\n5. " in readme
 
 
 def test_the_readme_says_a_clear_photo_is_fine_in_the_owners_words(tmp_path):
@@ -131,13 +174,11 @@ def test_the_readme_says_a_clear_photo_is_fine_in_the_owners_words(tmp_path):
     the client actually read was the one thing the software would not do.
     The step is a constant because a promise made to a client belongs
     where a test can hold the code to it - and the promise is now true."""
-    engagement = make_engagement(tmp_path, ITEMS, contact="Maria Park", scaffold=False)
-    result = scaffold_engagement(engagement)
-    readme = result.readme.read_text(encoding="utf-8")
+    readme = readme_of(make_engagement(tmp_path, ITEMS, contact="Maria Park"))
 
     assert README_PHOTO_LINE in readme
     assert "A clear photo from your" in README_PHOTO_LINE
-    assert "one document per photo" in README_PHOTO_LINE
+    assert "the whole page in the" in README_PHOTO_LINE
     assert "as long as they are readable" not in readme      # the old promise is gone
     assert README_PHOTO_LINE.startswith("4. ")               # still step 4
 
@@ -194,11 +235,11 @@ def test_readme_refreshed_on_rerun(engagement):
     """A rerun rewrites the README over whatever is there - and decision 124:
     the heading stays, so this assertion is also the pin on that choice."""
     scaffold_engagement(engagement)
+    readme_of(engagement)
     readme = inbox_of(engagement) / README_NAME
     readme.write_text("client scribbled over this", encoding="utf-8")
 
-    scaffold_engagement(engagement)
-    assert README_HEADING in readme.read_text(encoding="utf-8")
+    assert README_HEADING in readme_of(engagement)
 
 
 def test_a_folder_with_no_record_raises(tmp_path):
@@ -217,13 +258,13 @@ def test_the_review_folder_is_never_assigned_to_an_identifier(tmp_path):
 
 def test_the_readme_contact_comes_from_the_engagement_details(tmp_path):
     from tracker.manifest import EngagementInfo, RequestItem
+    from tracker.scaffold import write_readme
 
     folder = make_engagement(tmp_path, [RequestItem(identifier="A01", document="W-2")],
-                             EngagementInfo(firm="J Park & Associates, CPA"), scaffold=False)
-    result = scaffold_engagement(folder)
-    assert "Questions? Contact J Park & Associates, CPA." in result.readme.read_text(encoding="utf-8")
-    result = scaffold_engagement(folder, contact="Someone Else")
-    assert "Contact Someone Else." in result.readme.read_text(encoding="utf-8")
+                             EngagementInfo(firm="J Park & Associates, CPA"))
+    assert "Questions? Contact J Park & Associates, CPA." in readme_of(folder)
+    written = write_readme(household_of(folder), contact="Someone Else")
+    assert "Contact Someone Else." in written.read_text(encoding="utf-8")
 
 
 def test_a_readme_the_client_side_holds_does_not_stop_the_scaffold(engagement, monkeypatch):
@@ -234,6 +275,7 @@ def test_a_readme_the_client_side_holds_does_not_stop_the_scaffold(engagement, m
     from tracker.scaffold import README_NAME, scaffold_engagement
 
     scaffold_engagement(engagement)
+    readme_of(engagement)
     readme = inbox_of(engagement) / README_NAME
     readme.unlink()
     readme.mkdir()                                     # a folder under the README's name
@@ -242,6 +284,7 @@ def test_a_readme_the_client_side_holds_does_not_stop_the_scaffold(engagement, m
         raise PermissionError("[WinError 32] being uploaded")
     monkeypatch.setattr(scaffold_module, "write_text_atomically", refused)
     result = scaffold_engagement(engagement)
+    assert refresh_household_readme(household_of(engagement)) is None
     assert result.prepared_dir is not None and readme.is_dir()
 
 
@@ -257,3 +300,229 @@ def test_each_issuer_gets_its_own_client_folder(tmp_path):
     names = {f.name for f in (eng / PREPARED_DIR_NAME).iterdir() if f.is_dir()}
     assert "F02 - Schedule K-1 - Ashford Holdings LP" in names
     assert "F03 - Schedule K-1 - Birch Lane Partners" in names
+
+
+# ================== what we have received (decision 130) ==================
+#
+# The README acknowledges what has arrived: a document confirmed into its
+# request is Received, under the request's own label and its return; one a
+# person is looking at is Under Review, counted by the day it arrived and
+# never named. The index is the only source; the scaffold renders what the
+# filer reads out of it and never reads it itself.
+
+
+def arrived(identifier: str, decision: str, *, original: str = "client scan.pdf",
+            received: str = "2026-09-23", also: str = ""):
+    """One index row as a pass would leave it. ``original`` is the client's
+    own file name - the one thing the README may never say."""
+    from tracker.filer import NEEDS_REVIEW
+    from tracker.records import IndexEntry
+
+    folder = REVIEW_DIR_NAME if decision == NEEDS_REVIEW else f"{identifier} - folder"
+    return IndexEntry(
+        received=received, original_name=original, size_kb=12.0, digest=f"d-{original}",
+        identifier="" if decision == NEEDS_REVIEW else identifier,
+        prepared_location=f"{PREPARED_DIR_NAME}/{folder}/{original}",
+        pbc_location=f"../../Clients/{TEST_HOUSEHOLD}/{TEST_YEAR}/{original}",
+        decision=decision, reason="a reason", also_filed=also,
+    )
+
+
+def section_of(readme: str, heading: str) -> list[str]:
+    """The lines under ``heading`` up to the blank line that ends them."""
+    lines = readme.splitlines()
+    start = lines.index(heading)
+    end = lines.index("", start)
+    return lines[start:end]
+
+
+def test_the_received_section_is_absent_until_something_has_arrived(tmp_path):
+    from tracker.scaffold import RECEIVED_HEADING, UNDER_REVIEW_HEADING
+
+    readme = readme_of(make_engagement(tmp_path, ITEMS))
+
+    assert RECEIVED_HEADING not in readme
+    assert UNDER_REVIEW_HEADING not in readme
+    assert "Received" not in readme
+
+
+def test_a_filed_document_is_listed_as_received_under_its_return_by_its_request_label(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import FILE_MOVED, FILED
+    from tracker.scaffold import RECEIVED_HEADING
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    seed_index(engagement, [arrived("A01", FILED, original="bank.pdf", received="2026-09-24"),
+                            arrived("A02", FILE_MOVED, original="moved.pdf")])
+
+    section = section_of(readme_of(engagement), RECEIVED_HEADING)
+
+    assert section == [
+        RECEIVED_HEADING,
+        "-" * 45,
+        TEST_RETURN,
+        "  A02 - Monthly Bank Statements FY2025 (FY2025)  Received 23 Sep 2026",
+        "  A01 - Dec 2025 Bank Statement (Dec 2025)  Received 24 Sep 2026",
+    ]
+
+
+def test_a_document_filed_to_two_requests_is_listed_once_per_request(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+    from tracker.scaffold import RECEIVED_HEADING, folder_name_for
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    also = f"{PREPARED_DIR_NAME}/{folder_name_for(ITEMS[2])}/two forms.pdf"
+    seed_index(engagement, [arrived("A01", FILED, original="two forms.pdf", also=also)])
+
+    section = section_of(readme_of(engagement), RECEIVED_HEADING)
+
+    assert section[3:] == [
+        "  A01 - Dec 2025 Bank Statement (Dec 2025)  Received 23 Sep 2026",
+        f"  {ITEMS[2].label}  Received 23 Sep 2026",
+    ]
+
+
+def test_a_parked_document_is_counted_under_review_by_day_and_never_named(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW
+    from tracker.scaffold import RECEIVED_HEADING, UNDER_REVIEW_HEADING
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    seed_index(engagement, [
+        arrived("", NEEDS_REVIEW, original="Grandmas shoebox scan 7731.pdf"),
+        arrived("", NEEDS_REVIEW, original="another.pdf"),
+        arrived("", NEEDS_REVIEW, original="later.pdf", received="2026-09-24"),
+    ])
+
+    readme = readme_of(engagement)
+
+    assert section_of(readme, RECEIVED_HEADING) == [
+        RECEIVED_HEADING,
+        "-" * 45,
+        UNDER_REVIEW_HEADING,
+        "  2 documents received 23 Sep 2026",
+        "  1 document received 24 Sep 2026",
+    ]
+    for name in ("Grandmas shoebox scan 7731", "another", "later.pdf"):
+        assert name not in readme
+
+
+def test_duplicates_and_not_requested_rows_are_not_listed(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import DUPLICATE, NOT_REQUESTED
+    from tracker.scaffold import RECEIVED_HEADING
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    seed_index(engagement, [arrived("A01", DUPLICATE, original="again.pdf"),
+                            arrived("", NOT_REQUESTED, original="irs notice.pdf"),
+                            arrived("A02", "Handed Over", original="handed.pdf")])
+
+    readme = readme_of(engagement)
+
+    assert RECEIVED_HEADING not in readme
+    assert "Received" not in readme and "Under Review" not in readme
+
+
+def test_the_client_file_name_never_reaches_the_readme(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    seed_index(engagement, [arrived("A01", FILED, original="ZQX-private-name-4417.pdf")])
+
+    readme = readme_of(engagement)
+
+    assert "ZQX-private-name-4417" not in readme
+    assert "Received 23 Sep 2026" in readme
+
+
+def test_what_we_still_need_is_unchanged_by_the_new_section(tmp_path):
+    """Decision 124's guarantee, narrowed by 130 and kept: the list of what
+    is still needed is every active request, received or not, byte for byte
+    what it was before anything arrived."""
+    from tests.conftest import seed_index
+    from tracker.filer import FILED, NEEDS_REVIEW
+    from tracker.scaffold import RECEIVED_HEADING
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    before = readme_of(engagement)
+    seed_index(engagement, [arrived("A01", FILED, original="bank.pdf"),
+                            arrived("", NEEDS_REVIEW, original="parked.pdf")])
+    after = readme_of(engagement)
+
+    assert RECEIVED_HEADING in after
+    assert section_of(after, README_HEADING) == section_of(before, README_HEADING)
+    assert "  A01 - Dec 2025 Bank Statement (Dec 2025)" in section_of(after, README_HEADING)
+
+
+def test_the_readme_is_not_rewritten_when_nothing_changed(tmp_path):
+    import os
+
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    seed_index(engagement, [arrived("A01", FILED, original="bank.pdf")])
+    readme = refresh_household_readme(household_of(engagement))
+    long_ago = 1_000_000_000
+    os.utime(readme, ns=(long_ago * 10**9, long_ago * 10**9))
+
+    assert refresh_household_readme(household_of(engagement)) == readme
+    assert refresh_household_readme(household_of(engagement)) == readme
+    assert readme.stat().st_mtime_ns == long_ago * 10**9
+
+
+def test_a_household_with_two_open_years_is_left_alone(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+    from tracker.scaffold import write_readme
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    readme = inbox_of(engagement) / README_NAME
+    before = readme.read_bytes()
+    make_engagement(tmp_path, ITEMS, year=TEST_YEAR + 1,     # a second open year
+                    return_name="1040 - Next Year")
+    seed_index(engagement, [arrived("A01", FILED, original="bank.pdf")])
+
+    assert refresh_household_readme(household_of(engagement)) is None
+    assert write_readme(household_of(engagement)) is None
+    assert readme.read_bytes() == before
+
+
+def test_a_write_failure_is_a_log_line_and_the_caller_goes_on(engagement, monkeypatch, caplog):
+    import logging
+
+    import tracker.filer as filer_module
+    import tracker.scaffold as scaffold_module
+
+    scaffold_engagement(engagement)
+
+    def refused(*args, **kwargs):
+        raise PermissionError("[WinError 32] being uploaded")
+    monkeypatch.setattr(scaffold_module, "write_text_atomically", refused)
+    with caplog.at_level(logging.WARNING):
+        assert refresh_household_readme(household_of(engagement)) is None
+    assert "being uploaded" in caplog.text
+
+    # And anything else that goes wrong reading the record is a log line too.
+    def broken(returns):
+        raise RuntimeError("the store is away")
+    monkeypatch.setattr(filer_module, "received_for", broken)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        assert refresh_household_readme(household_of(engagement)) is None
+    assert "the store is away" in caplog.text
+
+
+def test_scaffolding_a_return_writes_no_readme(engagement):
+    """The one-composer rule (decision 130): laying out folders never writes
+    the README; only ``write_readme``, reached through the refresh, does."""
+    from tracker.scaffold import scaffold_household
+
+    result = scaffold_engagement(engagement)
+    scaffold_household(household_of(engagement))
+
+    assert result.inbox.is_dir()
+    assert not (result.inbox / README_NAME).exists()
+    assert result.readme == result.inbox / README_NAME

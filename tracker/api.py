@@ -65,6 +65,7 @@ from tracker.filer import (
     hand_over,
     moved_to,
     read_index,
+    refresh_household_readme,
     refuse_a_path_past_the_limit,
     restore_working_copy,
     unfile_document,
@@ -1442,6 +1443,18 @@ def _held_rows(held) -> list[dict]:
              "label": flag.item.label, "reason": flag.reason} for flag in held]
 
 
+def _refresh_readmes(*engagements: Path) -> None:
+    """Rewrite the client README of each household these returns are in,
+    once each (decision 130): after an action that creates or edits a
+    return or changes a document's row, what the client reads is current
+    at once rather than at the next pass. A hand-over across households
+    names both. Never raises - :func:`filer.refresh_household_readme` is a
+    log line on failure - and is reached only after the action succeeded,
+    so a refused action refreshes nothing."""
+    for household_dir in dict.fromkeys(household_of(Path(one)) for one in engagements):
+        refresh_household_readme(household_dir)
+
+
 def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
@@ -1596,6 +1609,7 @@ def _cmd_edit(argv: list[str]) -> dict:
             raise ManifestError(f"'{key}' is not edited here")
     info = _info_from_spec(details, carry=load_engagement_info(engagement), blank_clears=True)
     saved = save_rules(engagement, items, info)
+    _refresh_readmes(engagement)
     state = _state(engagement)
     return {
         "saved": {"changed": list(saved.changed), "removed": list(saved.removed),
@@ -1807,6 +1821,7 @@ def _cmd_create(argv: list[str]) -> dict:
         if made_household is not None:
             _undo_create(made_household)
         raise
+    _refresh_readmes(engagement)
     reply = {"created": Engagement(path=engagement, info=info,
                                    household_path=household_dir).label,
              "state": _state(engagement)}
@@ -2024,6 +2039,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
     except Exception:
         _undo_create(engagement)
         raise
+    _refresh_readmes(engagement)
 
     return {
         "created": Engagement(path=engagement, info=info,
@@ -2233,6 +2249,7 @@ def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *
         scan_engagement(target)
     except ScanLockedError as exc:
         scan_note = f"not re-scanned: {exc}"
+    _refresh_readmes(engagement, target)
     return {
         "handed_over": {
             "original_name": result.entry.original_name,
@@ -2318,6 +2335,7 @@ def _cmd_assign(argv: list[str]) -> dict:
         scan_engagement(engagement)
     except ScanLockedError as exc:
         scan_note = f"not re-scanned: {exc}"
+    _refresh_readmes(engagement)
     return {
         "assigned": {
             "original_name": result.entry.original_name,
@@ -2362,6 +2380,7 @@ def _cmd_dismiss(argv: list[str]) -> dict:
         raise ManifestError("Pick the file no request asks for")
     result = dismiss_review_file(engagement, original, str(spec.get("note", "") or ""),
                                  seq=_seq_of(spec))
+    _refresh_readmes(engagement)
     return {
         "dismissed": {
             "original_name": result.entry.original_name,
@@ -2397,6 +2416,7 @@ def _cmd_unfile(argv: list[str]) -> dict:
         raise ManifestError("Pick the document to send back for review")
     result = unfile_document(engagement, original, str(spec.get("note", "") or ""),
                              seq=_seq_of(spec))
+    _refresh_readmes(engagement)
     return {
         "unfiled": {
             "original_name": result.entry.original_name,
@@ -2435,6 +2455,7 @@ def _cmd_restore(argv: list[str]) -> dict:
     if not original:
         raise ManifestError("Pick the working copy to put back")
     result = restore_working_copy(engagement, original, seq=_seq_of(spec))
+    _refresh_readmes(engagement)
     return {
         "restored": {
             "original_name": result.entry.original_name,
