@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 130,
     "edges": 791,
-    "reused": 96
+    "reused": 104
   },
   "node_types": [
     "artifact",
@@ -4367,8 +4367,8 @@
       "id": "tests/test_row_columns.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bb6d0b4646ee05e6",
-      "lines": 612,
+      "sha256": "6e186835531e411f",
+      "lines": 617,
       "exports": [
         "APP_JS",
         "BASE",

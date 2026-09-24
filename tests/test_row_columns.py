@@ -68,6 +68,7 @@ from tracker.manifest import (
     derived_date_pattern,
     entity_keyword,
     has_arrived,
+    issuer_short_title,
     item_from_fields,
     item_from_record,
     load_engagement_info,
@@ -274,6 +275,7 @@ _ROW_ARGUMENTS: dict[str, tuple[str, Callable[[object], object]]] = {
     "required_keywords": ("required_keywords", ", ".join),
     "any_keywords": ("any_keywords", ", ".join),
     "expected_count": ("expected_count", int),
+    "short_title": ("short", str),
 }
 
 
@@ -441,6 +443,9 @@ PATHS: tuple[RowPath, ...] = (
                             lambda v, s, out: out == templates.ISSUER_DOCUMENT.format(entity=entity_keyword(ISSUER))),
         "required_keywords": Rewrite("the issuer's name is the row's Required Keyword (decision 128's issuer rows)",
                                      lambda v, s, out: out == (entity_keyword(ISSUER),)),
+        "short_title": Rewrite("K-1 and the issuer, so the firm's folder says whose K-1 it is, by the one "
+                               "function a typed K-1 row derives it through too (decision 144)",
+                               lambda v, s, out: out == issuer_short_title(entity_keyword(ISSUER))),
     }, variants=(BASE,)),
     RowPath("rollover._carry", _rollover, {
         "row": _POSITION_IS_VALIDATEDS,
