@@ -31,7 +31,9 @@ Like the repository map, the report is derived and committed, and
 catalog, the matcher, the loader, the corpus, the case list and the
 harnesses that carry their placements, each by its SHA-256, so the check
 costs nothing and a change to any of them turns it red until ``build``
-runs again.
+runs again. Each is hashed as Git commits it (``git_text_auto_eol_lf``,
+the map's rule, decision 151), so a CRLF working copy on the machine that
+built the report does not make it stale on a CI checkout.
 
 The committed report never reads a client document: the corpus is the
 IRS's own blank forms (public domain) and the text the suite typed. When
@@ -70,6 +72,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))   # run as a script: the package and the suite must import
 
+from tools.repo_map import git_text_auto_eol_lf  # noqa: E402
 from tracker.content_check import dominant_forms, extract_text, says  # noqa: E402
 from tracker.manifest import RequestItem, validated  # noqa: E402
 from tracker.settings import ENV_REAL_CORPUS, EXPECTATIONS_FILENAME, EXPECTED_SEP  # noqa: E402
@@ -117,11 +120,11 @@ class Document:
 
 
 def input_hashes(root: Path | None = None) -> dict[str, str]:
-    """SHA-256 of every input, by repo-relative path, the corpus forms included."""
+    """SHA-256 of every input as Git commits it, by repo-relative path, the corpus forms included."""
     root = root or ROOT
     paths = [root / p for p in INPUT_PATHS] + sorted((root / "tests" / "irs").glob("*.pdf"))
     return {
-        p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+        p.relative_to(root).as_posix(): hashlib.sha256(git_text_auto_eol_lf(p.read_bytes())).hexdigest()
         for p in paths
     }
 

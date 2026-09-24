@@ -175,6 +175,24 @@ def test_the_corpus_forms_are_inputs_too():
     assert "tests/irs/fw2.pdf" in hashes and all(len(h) == 64 for h in hashes.values())
 
 
+def test_the_vocab_report_hashes_what_git_commits(tmp_path):
+    """The map's CRLF exposure was the report's too: it hashed working-copy bytes (decision 151)."""
+    for rel in vocab_report.INPUT_PATHS:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes(b"line one\nline two\n")
+    irs = tmp_path / "tests" / "irs"
+    irs.mkdir(parents=True, exist_ok=True)
+    (irs / "f.pdf").write_bytes(b"%PDF-1.7\r\n\x00\x01stream\r\n")
+    lf = vocab_report.input_hashes(tmp_path)
+
+    for rel in vocab_report.INPUT_PATHS:
+        (tmp_path / rel).write_bytes(b"line one\r\nline two\r\n")
+    assert vocab_report.input_hashes(tmp_path) == lf, "a CRLF working copy is the LF file Git commits"
+    (irs / "f.pdf").write_bytes(b"%PDF-1.7\n\x00\x01stream\n")
+    assert vocab_report.input_hashes(tmp_path)["tests/irs/f.pdf"] != lf["tests/irs/f.pdf"], (
+        "a binary file is hashed as it is: its CR bytes count")
+
+
 def test_the_committed_report_is_current(capsys):
     """Like the map: a stale report is worse than none, and the next round would trust it."""
     data = vocab_report.load_report()

@@ -2,7 +2,7 @@
   "schema": 2,
   "generated": "2026-09-24",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "e0b876ff3a9acde0",
+  "generator_sha256": "54d924057e3b3de9",
   "module_table_sha256": "feb2d151820d4495",
   "pipeline": [
     "tracker.api / create",
@@ -16,7 +16,7 @@
   ],
   "counts": {
     "nodes": 125,
-    "edges": 753,
+    "edges": 754,
     "reused": 101
   },
   "node_types": [
@@ -2288,8 +2288,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "045cf74f2bfcba81",
-      "lines": 276,
+      "sha256": "56a73f3a742e02ee",
+      "lines": 279,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -2312,8 +2312,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fba708aa6c6ebf77",
-      "lines": 397,
+      "sha256": "6690afc21f0873aa",
+      "lines": 398,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -2330,7 +2330,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "be6ac0be011b8828",
+      "sha256": "b83f1b88812b7eb4",
       "lines": 791,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2357,7 +2357,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "a0f872691ff2af13",
+      "sha256": "03bdc09ed1b1b2f0",
       "lines": 9299,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -3910,8 +3910,8 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5682640df41195cb",
-      "lines": 783,
+      "sha256": "a58802713aad066b",
+      "lines": 878,
       "exports": [
         "ENFORCERS",
         "ROOT",
@@ -3922,6 +3922,7 @@
         "real_map",
         "repo",
         "test_a_bare_import_of_a_repo_file_is_not_an_external_package",
+        "test_a_crlf_working_copy_hashes_as_the_lf_file_git_commits",
         "test_a_curated_annotation_for_a_file_that_is_not_tracked_is_refused",
         "test_a_curated_edge_may_not_claim_a_derived_type",
         "test_a_curated_edge_to_a_nonexistent_node_fails_loudly",
@@ -3953,6 +3954,7 @@
         "test_an_unknown_edge_type_and_a_self_edge_are_refused",
         "test_any_other_test_importing_a_module_only_exercises_it",
         "test_changing_the_generator_invalidates_every_cached_edge",
+        "test_check_names_a_crlf_working_copy_and_still_passes",
         "test_ci_config_is_mapped",
         "test_curated_descriptions_are_merged_onto_derived_nodes",
         "test_curated_nodes_that_are_not_files_are_added",
@@ -3983,8 +3985,10 @@
         "test_the_pipeline_ends_with_the_view_every_pass_writes",
         "test_the_set_of_modules_enforcing_each_standing_rule_is_pinned",
         "test_the_test_file_that_owns_a_module_by_name_gets_a_tests_edge",
+        "test_the_text_rule_matches_gitattributes",
         "test_third_party_imports_become_dependency_nodes",
-        "test_type_comes_from_the_suffix_and_layer_from_the_directory"
+        "test_type_comes_from_the_suffix_and_layer_from_the_directory",
+        "test_update_refuses_while_a_file_is_unmerged"
       ],
       "role": "Guards the map's trust contract: derived facts come from source, curated judgment survives regeneration, drift is detected, and the committed map matches the tree.",
       "notes": "test_the_committed_map_is_current fails the suite if someone changed code without running `repo_map.py update`."
@@ -4787,8 +4791,8 @@
       "id": "tests/test_vocab_report.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0162fcb5c314dd06",
-      "lines": 190,
+      "sha256": "e3e83097f10279c4",
+      "lines": 208,
       "exports": [
         "one",
         "row",
@@ -4807,6 +4811,7 @@
         "test_the_corpus_forms_are_inputs_too",
         "test_the_counts_add_up_across_catalogs",
         "test_the_markdown_leads_with_the_generated_note_and_names_every_list",
+        "test_the_vocab_report_hashes_what_git_commits",
         "test_the_workbook_cases_are_in_the_report_too"
       ],
       "role": "Guards the coverage report: reach is says(), not a substring; the four headline lists are computed as claimed on small catalogs; the committed report matches its inputs by hash.",
@@ -4940,8 +4945,8 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "e0b876ff3a9acde0",
-      "lines": 1130,
+      "sha256": "54d924057e3b3de9",
+      "lines": 1225,
       "cli": "python -m tools.repo_map",
       "exports": [
         "CURATED_EDGE_TYPES",
@@ -4968,11 +4973,14 @@
         "SCHEMA_VERSION",
         "SOURCE_SUFFIXES",
         "TESTED_BY",
+        "UNMERGED_ADVICE",
         "build",
         "classify",
+        "crlf_working_copies",
         "dedicated_test_for",
         "derive_node",
         "generator_fingerprint",
+        "git_text_auto_eol_lf",
         "hash_file",
         "load_curated",
         "load_map",
@@ -4988,6 +4996,7 @@
         "stale_files",
         "test_edge_kind",
         "tracked_files",
+        "unmerged_files",
         "untracked_sources",
         "validate_curated",
         "write_outputs"
@@ -4999,18 +5008,19 @@
         "EXERCISED_BY": "'exercised by'",
         "NO_TEST_FILE": "'no dedicated test file'",
         "IMPORTS_AT_CALL": "'imports at call time'",
+        "UNMERGED_ADVICE": "'Resolve these and `git add` them first'",
         "REQUIREMENTS_FILES": "('requirements.txt', 'requirements-build.txt')",
         "NODE_PREFIXES": "('artifact:', 'rule:')"
       },
       "role": "Builds and incrementally updates this map. Derives imports, exports, CLIs, test coverage and hashes from source; merges the curated layer on top.",
-      "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed, and a change to this file forces a full rebuild \u2014 new derivation rules must not leave edges typed by the old ones. Test edges are three-way on purpose: `tests` (the test file owning the module by name) is coverage, `exercises` (any other test importing it) is not, and a test importing another test is a plain `imports`."
+      "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed, and a change to this file forces a full rebuild \u2014 new derivation rules must not leave edges typed by the old ones. Test edges are three-way on purpose: `tests` (the test file owning the module by name) is coverage, `exercises` (any other test importing it) is not, and a test importing another test is a plain `imports`. Decision 151: the hash is of the bytes Git commits - git_text_auto_eol_lf() copies the `text=auto eol=lf` rule in .gitattributes, so a CRLF working copy hashes as the LF file CI checks out and `check` only warns about it - and `build`, `update` and `check` refuse while a merge is half-resolved (unmerged_files()), because git ls-files lists an unmerged path once per stage. That refusal is why the resolved files are `git add`-ed before `update`. tools/vocab_report.py hashes its inputs with the same function."
     },
     {
       "id": "tools/vocab_report.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "0a1e8dbf69491e1d",
-      "lines": 515,
+      "sha256": "a95778b12abfcd41",
+      "lines": 518,
       "cli": "python -m tools.vocab_report",
       "exports": [
         "Document",
@@ -7998,6 +8008,12 @@
       "to": "docs/repo-map.curated.json",
       "type": "reads",
       "source": "curated"
+    },
+    {
+      "from": "tools/vocab_report.py",
+      "to": "tools/repo_map.py",
+      "type": "imports",
+      "source": "derived"
     },
     {
       "from": "tools/vocab_report.py",
