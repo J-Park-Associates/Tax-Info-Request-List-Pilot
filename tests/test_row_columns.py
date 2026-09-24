@@ -60,6 +60,7 @@ import tracker.api as api
 from tests.conftest import make_engagement
 from tracker import ledger, records, store, templates, view
 from tracker.manifest import (
+    ANY_EXTENSION,
     COLUMNS,
     Override,
     RequestItem,
@@ -317,7 +318,10 @@ def _new_return(ctx, items) -> Path:
     return make_engagement(ctx.root, items, return_name=f"Row Columns {next(ctx.made)}", scaffold=False)
 
 
-COMPANION = RequestItem(identifier="A01", document="W-2", allowed_extensions=("pdf",), required_keywords=("W-2",))
+#: The asked row every list beside the full row needs (a list nobody is
+#: asked for is refused). Its file types are left at the default, any, so
+#: the API path carries an any-file-type row too.
+COMPANION = RequestItem(identifier="A01", document="W-2", required_keywords=("W-2",))
 
 
 def _through_the_record(values, status, ctx):
@@ -388,10 +392,9 @@ def _editor_names(values, status, ctx):
     return {column: (values[column] if column in keys else MISSING) for column in records.RULE_FIELDS}
 
 
-def _editor_row(values, status, ctx):
-    """The editor's round trip: the rule as the API hands it, through the
-    real ``editorRow`` (run by node), back through ``item_from_fields`` as
-    the save reads it."""
+def _run_editor_rows(rules: list[dict], ctx) -> list[dict]:
+    """The real ``editorRow`` over ``rules``, run by node with the API's own
+    vocabulary; skipped where node is not on PATH."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not on PATH (CI installs it); the editor's source is still held by name")
@@ -400,12 +403,20 @@ def _editor_row(values, status, ctx):
         "const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
         "const vocab = input.vocab;\n"
         f"{_editor_row_source()}\n"
-        "process.stdout.write(JSON.stringify(editorRow(input.rule)));\n",
+        "process.stdout.write(JSON.stringify(input.rules.map(editorRow)));\n",
         encoding="utf-8", newline="\n")
-    done = subprocess.run([node, str(script)], input=json.dumps({"vocab": api._vocab(), "rule": _as_json(values)}),
+    done = subprocess.run([node, str(script)], input=json.dumps({"vocab": api._vocab(), "rules": rules}),
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     assert done.returncode == 0, done.stderr
-    return _columns_of(item_from_fields(json.loads(done.stdout), where="Row 1"))
+    return json.loads(done.stdout)
+
+
+def _editor_row(values, status, ctx):
+    """The editor's round trip: the rule as the API hands it, through the
+    real ``editorRow`` (run by node), back through ``item_from_fields`` as
+    the save reads it."""
+    [row] = _run_editor_rows([_as_json(values)], ctx)
+    return _columns_of(item_from_fields(row, where="Row 1"))
 
 
 _VALIDATED = {
@@ -560,3 +571,42 @@ def test_the_deliberate_rewrites_are_the_ones_the_decisions_name(path, ctx):
     assert changed == set(path.rewrites), f"{path.name} lists a rewrite that never changes: " \
                                           f"{sorted(set(path.rewrites) - changed)}"
 
+
+
+def test_the_api_hands_out_rules_it_reads_back_unchanged(ctx):
+    """``state`` hands every rule out in the form ``edit`` reads back as the
+    same rule, so the rules sent back unchanged record nothing - for every
+    column of ``RULE_FIELDS`` at its default as well as away from it.
+
+    One row per column: the full row with that one column set back to its
+    default. An any-file-type row (``allowed_extensions`` at its default,
+    ``()``) was handed out as ``[]``, which ``edit`` reads as blank - the
+    default types - so the save recorded a change nobody made (decision
+    145). The one column whose default alone is not a legal row is the
+    override: a reason with no override is refused (decision 116), so its
+    row clears the reason with it.
+    """
+    rows = [COMPANION, RequestItem(identifier="B01", document="Every column at its default")]
+    for n, column in enumerate(records.RULE_FIELDS, start=1):
+        values = {**full_row(), column: _other(column)}
+        if column == "manual_override":
+            values["override_reason"] = _default("override_reason")
+        values["identifier"] = f"C{n:02}"
+        rows.append(_item(values))
+    folder = _new_return(ctx, rows)
+    sent = _api(ctx, "state", api.ENGAGEMENT_FLAG, str(folder))["rules"]
+    saved = _api(ctx, "edit", api.ENGAGEMENT_FLAG, str(folder), stdin={"items": sent, "engagement": {}})
+    assert saved["saved"]["changed"] == [] and saved["saved"]["recorded"] is False, saved["saved"]
+    assert saved["state"]["rules"] == sent
+    stored = {i.identifier: records.rule_to_json(i) for i in load_manifest(folder)}
+    for rule in sent:
+        assert item_from_fields(rule, where=rule["identifier"]).allowed_extensions ==             tuple(stored[rule["identifier"]]["allowed_extensions"]), rule["identifier"]
+
+    # And the app reads the same rules the same way: the real editorRow
+    # opens on them (an any-file-type row shows the star, as before) and
+    # its rows, saved untouched, record nothing either.
+    if shutil.which("node") is not None:
+        opened = _run_editor_rows(sent, ctx)
+        assert {row["identifier"]: row["allowed_extensions"] for row in opened}["B01"] == ANY_EXTENSION
+        saved = _api(ctx, "edit", api.ENGAGEMENT_FLAG, str(folder), stdin={"items": opened, "engagement": {}})
+        assert saved["saved"]["recorded"] is False, saved["saved"]
