@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 122,
     "edges": 722,
-    "reused": 99
+    "reused": 98
   },
   "node_types": [
     "artifact",
@@ -2164,8 +2164,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4af24614e39eff17",
-      "lines": 387,
+      "sha256": "966433b63161d478",
+      "lines": 388,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -2191,8 +2191,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "20edb2b3599fb188",
-      "lines": 1003,
+      "sha256": "f091d09b85e2a178",
+      "lines": 1012,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },

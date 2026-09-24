@@ -9,8 +9,8 @@ this page does not repeat it. Why anything is the way it is, is
 
 | | |
 |---|---|
-| Designated machine | ______________________ (machine name) |
-| Who sits at it | ______________________ |
+| Designated machine | JPPC (the office PC) |
+| Who sits at it | Jason Park |
 | Clients root | the folder Google Drive for desktop syncs down to that machine — a folder on the firm's **Shared Drive**, e.g. `"G:\Shared drives\JPA Clients"` |
 
 Clients drop their own documents into a shared Google Drive folder. Google
@@ -198,10 +198,14 @@ as the logged-on person, not as a background service, so the designated
 machine has to stay signed in. A Windows Update reboot in March that leaves
 the machine at the sign-in screen stops every pass until someone logs in;
 the task is set to start when it can, so the missed pass runs as soon as
-they do. Whether that machine signs itself in again after a reboot is the
-owner's call — nothing in the tool decides it. A draft day the machine
-spent switched off is not lost either: drafting is weekly, not only on the
-day, so the next pass drafts instead of skipping the week.
+they do. The owner's call (2026-09-23, decision 139): the machine does not
+sign itself in. Nobody at the keyboard should find a machine already signed
+in to every client's files, so whoever arrives signs in. Windows Update's
+active hours are set to cover office hours so an update does not restart
+it mid-day. Both are set on the machine; nothing in the tool decides them.
+A draft day the machine spent switched off is not lost either: drafting is
+weekly, not only on the day, so the next pass drafts instead of skipping
+the week.
 
 A pass still going at `tracker.locking.RUN_TIME_LIMIT_SECONDS` is stopped
 by Task Scheduler — the task carries that as
@@ -783,15 +787,20 @@ with *a run was interrupted here; the next pass finishes it first* - press
 1. Install Google Drive for desktop on the new machine, sign in with the
    firm account, and wait for the clients folder to finish syncing. Do not
    start until it has.
-2. Put the app on it: copy the packaged app folder from the backup, or
-   rebuild it from this repository. Running from source needs Python and
+2. Put the app on it: rebuild it from this repository (`Build App.bat`),
+   or download the package from a `build.yml` run (the Actions tab, *Run
+   workflow*). There is no separate backup of the app, and none is needed.
+   The client files are on the Shared Drive, `settings.json` holds only the
+   clients folder, the firm's name and its telephone number, all three typed
+   again at step 3, and `tracker.db` rebuilds itself from the journals. Running from source needs Python and
    Node; the packaged build needs neither. Keep the folder's path short — a
    few levels deep at most, like the `C:\Tools\tax-tracker` the README's
    scheduling example uses: past the classic Windows path limit the packaged
    program silently loses its command line and answers every call with a
    usage error.
 3. Start the app. It asks where the clients live on first launch — give it
-   the same folder, the synced one. This is the one place the root is set;
+   the same folder, the synced one — with the firm's name and telephone
+   number beside it. This is the one place the root is set;
    if the new machine mounts it at a longer path, the reply lists every
    return that leaves short of room (§1, *If the clients root moves*).
 4. Press **Install Schedule** - once. Since decision 131 the job names the
