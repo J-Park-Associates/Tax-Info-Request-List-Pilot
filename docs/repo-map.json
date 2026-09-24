@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 123,
     "edges": 739,
-    "reused": 100
+    "reused": 97
   },
   "node_types": [
     "artifact",
@@ -1058,7 +1058,7 @@
       "id": "tracker/reasons.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c9e7af4bb7cca41d",
+      "sha256": "d8da63a482dd1e5a",
       "lines": 480,
       "exports": [
         "COPY_CHANGED",
@@ -2253,7 +2253,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b4bc07d48bfdf3e5",
+      "sha256": "b9704b4a30367d5a",
       "lines": 394,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2271,7 +2271,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "b8f0595075eac58a",
+      "sha256": "d11ea21b1c8e575d",
       "lines": 791,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -3671,7 +3671,7 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2ce927578584d423",
+      "sha256": "7efa387673583c99",
       "lines": 1650,
       "exports": [
         "DEADLINE",
