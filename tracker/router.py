@@ -160,6 +160,7 @@ from tracker import reasons
 # resolves to the same object.
 from tracker.content_check import (
     MULTI_FORM_FAMILIES,  # noqa: F401
+    OPEN_TEST_FINGERPRINT,
     ContentCache,
     ContentResult,
     Extraction,
@@ -574,12 +575,14 @@ def route_file(
 
     reading = read_once(path) if reading is None else reading
     # A picture too large even for Pillow to decode, a reading the safety
-    # stop abandoned (decision 137, B1) and a reading whose process ended
-    # without an answer (decision 150) park on their one sentence, as a
-    # file past the ceiling does.
+    # stop abandoned (decision 137, B1), a reading whose process ended
+    # without an answer and one whose reader could not start at all
+    # (decision 150) park on their one sentence, as a file past the ceiling
+    # does. The open test was made in the same child, so it stopped with it.
     if reading.text is None and (reasons.TOO_LARGE.matches(reading.reason)
                                  or reasons.READING_STOPPED.matches(reading.reason)
-                                 or reasons.READING_CRASHED.matches(reading.reason)):
+                                 or reasons.READING_CRASHED.matches(reading.reason)
+                                 or reasons.READER_UNAVAILABLE.matches(reading.reason)):
         return Routing(path=path, identifier=None, reason=reading.reason, seconds=reading.seconds)
     # How long the reading took rides back with the decision (decision
     # 127), so the pass can name its slowest documents. It changes no
@@ -627,6 +630,21 @@ def _decide(
         if remember and digest:
             cache.put_by_digest(digest, rules_fingerprint(item), verdict)
 
+    # Tier 2's open test was made in the reading's child (decision 150):
+    # its verdict is what every row's tier 2 is told, and it is kept by the
+    # file's fingerprint so the scan of the working copy does not open the
+    # file either. A reading handed in without one - a tool's - is opened
+    # here, as before. The HEIC decoder's absence is the machine's, not kept.
+    open_test = None
+    if reading.opened is not None:
+        opened = reading.opened
+        open_test = lambda _path: opened  # noqa: E731
+        if cache is not None and not reasons.HEIC_NOT_SUPPORTED.matches(opened):
+            open_digest = digest or cache.digest_of(path)
+            if open_digest:
+                cache.put_by_digest(open_digest, OPEN_TEST_FINGERPRINT,
+                                    ContentResult(ok=not opened, reason=opened))
+
     # Which forms the page counts as its own is content_check's one reading,
     # own_forms() (decision 107): the ordinary reading here, the split below
     # and the scanner's miss path all read through it, so a page that prints
@@ -671,7 +689,7 @@ def _decide(
     for item in items:
         if not _considers(item):
             continue
-        tier2 = check_file(path, item, pdf_cache=pdf_cache)
+        tier2 = check_file(path, item, pdf_cache=pdf_cache, open_test=open_test)
         if not tier2.ok:
             refusals.append(tier2.reason)
             refused = _refusal_evidence(tier2.reason)

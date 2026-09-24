@@ -13,6 +13,15 @@ File Explorer and Excel alone.
 - Tier 2 (integrity): :func:`check_file` — extension whitelist, minimum
   size, a ``pypdf`` open test for PDFs and a Pillow open test for photos.
 
+**Where the open test runs** (decision 150). Opening a file is parsing it,
+and a client's file can make a parse run for ever - a page tree of forty
+levels, each naming its child twice, is a few kilobytes that ``pypdf``
+counts to a trillion pages. So in a pass the open test is not made here:
+:func:`open_test` is run in the reading's own child process, beside the
+reading, where the pass can stop it, and its verdict is handed to
+:func:`check_file` as ``open_test``. With none handed in - the CLI below,
+a tool - the file is opened here, as before.
+
 A photo is a scan of a document (decision 127), so ``IMAGE_EXTENSIONS`` is
 accepted by every request that accepts a PDF and opened the way a PDF is
 opened: nothing is typed on a row for it, no stored rule changes, and a
@@ -32,6 +41,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -346,6 +356,25 @@ def _image_error(path: Path) -> str | None:
     return None
 
 
+def open_test(path: Path) -> str:
+    """Tier 2's open test of ``path`` on its own, for any row: ``""`` when
+    it opens cleanly (or is not a type that is opened), the refusal
+    otherwise. What the reading's child runs beside the reading (decision
+    150), so the pass never parses a client's file itself.
+
+    A file past the size ceiling is not opened here either (decision 137,
+    M5): the reading says "Too large to read", and that is its verdict.
+    """
+    extension = extension_of(path)
+    if too_large_reason(path):
+        return ""
+    if extension == PDF_EXTENSION:
+        return _pdf_error_uncached(path)
+    if extension in IMAGE_EXTENSIONS:
+        return _image_error(path) or ""
+    return ""
+
+
 def _extension_allowed(extension: str, allowed: tuple[str, ...]) -> bool:
     """Whether a row's whitelist takes this file (decision 127).
 
@@ -362,12 +391,16 @@ def _extension_allowed(extension: str, allowed: tuple[str, ...]) -> bool:
 
 
 def check_file(
-    path: Path, item: RequestItem, *, pdf_cache: PdfVerdictCache | None = None
+    path: Path, item: RequestItem, *, pdf_cache: PdfVerdictCache | None = None,
+    open_test: Callable[[Path], str] | None = None,
 ) -> FileResult:
     """Tier-2 validation of a single file against one manifest row.
 
     ``pdf_cache`` is the run's :class:`PdfVerdictCache`; without one every
-    call parses the PDF afresh.
+    call parses the PDF afresh. ``open_test`` answers the open test instead
+    of opening the file here (decision 150): the pass hands in the verdict
+    its reading's child reached, and it is asked only once the cheaper
+    rules above it have let the file through.
     """
     if is_cloud_placeholder(path):
         return FileResult(
@@ -408,7 +441,10 @@ def check_file(
             reason=reasons.TOO_SMALL.format(size_kb=size / 1024, minimum=item.min_size_kb),
         )
 
-    if extension == PDF_EXTENSION:
+    if open_test is not None and extension in (PDF_EXTENSION, *IMAGE_EXTENSIONS):
+        if error := open_test(path):
+            return FileResult(path=path, ok=False, reason=error)
+    elif extension == PDF_EXTENSION:
         error = _pdf_error(path, pdf_cache)
         if error:
             return FileResult(path=path, ok=False, reason=error)
@@ -422,11 +458,14 @@ def check_file(
 
 
 def check_folder(
-    folder: Path, item: RequestItem, *, pdf_cache: PdfVerdictCache | None = None
+    folder: Path, item: RequestItem, *, pdf_cache: PdfVerdictCache | None = None,
+    open_test: Callable[[Path], str] | None = None,
 ) -> FolderResult:
-    """Tier 1 + 2 for one request folder. Read-only; policy-free."""
+    """Tier 1 + 2 for one request folder. Read-only; policy-free.
+    ``open_test`` is :func:`check_file`'s."""
     exists = folder.is_dir()
-    files = [check_file(p, item, pdf_cache=pdf_cache) for p in iter_candidate_files(folder)]
+    files = [check_file(p, item, pdf_cache=pdf_cache, open_test=open_test)
+             for p in iter_candidate_files(folder)]
     return FolderResult(folder=folder, exists=exists, files=files)
 
 

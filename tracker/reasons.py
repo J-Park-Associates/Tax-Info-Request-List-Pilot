@@ -442,6 +442,18 @@ READING_CRASHED = Reason(
     firm_note="the reader stopped unexpectedly on it; a person here reads it",
 )
 
+#: A reader that could not start at all (decision 150): its child process
+#: was never created, or ended - or said nothing - before it touched the
+#: file. The machine's doing, not the file's, so it is never kept: the
+#: document parks for this pass, the scan asks again next pass, and the
+#: pass warns once. Ours.
+READER_UNAVAILABLE = Reason(
+    "reader-unavailable",
+    "The reader could not start on this machine, so this file was not read. A person looks at it.",
+    "The reader could not start on this machine", firm_side=True,
+    firm_note="the reader could not start on this machine; a person here looks at the machine",
+)
+
 #: A document the household's drop folder feeds to a return in **another**
 #: household, whose page names nobody (decision 137, B2; the owner's Q-2 of
 #: 2026-09-24: "never; a person decides"). Within one household an unnamed
@@ -473,7 +485,7 @@ ALL: tuple[Reason, ...] = (
     ISSUER_NOT_NAMED, SHOWS_ITS_FORM_NUMBER, NAME_POINTS_AT,
     NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE, UNNAMED_ACROSS_HOUSEHOLDS,
     FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST, READING_STOPPED,
-    READING_CRASHED, PENDING_SYNC, VANISHED,
+    READING_CRASHED, READER_UNAVAILABLE, PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )
 

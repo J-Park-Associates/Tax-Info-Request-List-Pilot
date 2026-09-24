@@ -65,7 +65,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, reasons, store
-from tracker.content_check import ContentCache, check_content
+from tracker.content_check import ContentCache, check_content, open_verdict
 from tracker.layout import locate
 from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
@@ -338,8 +338,15 @@ def _scan_item(
 
     claimed = claimed or {}
     interrupted = interrupted or {}
+    # Tier 2's open test is never made in this process (decision 150): it
+    # is the file's kept verdict, or made in a reading's child beside the
+    # reading the content check below will then use.
+    def open_test(path: Path) -> str:
+        return open_verdict(path, cache)
+
     results = [
-        fr for folder in folders for fr in check_folder(folder, item, pdf_cache=pdf_cache).files
+        fr for folder in folders
+        for fr in check_folder(folder, item, pdf_cache=pdf_cache, open_test=open_test).files
     ]
     if excluded or interrupted:
         results = [f for f in results
