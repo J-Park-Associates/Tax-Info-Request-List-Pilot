@@ -5243,7 +5243,7 @@ def test_a_stray_named_by_another_records_open_intent_is_left_alone_by_the_pass(
     in the middle of it (another process, its own lock) or after it; the
     document ends claimed by exactly one row, in the return that took it."""
     import tracker.filer as filer_module
-    from tracker.filer import hand_over
+    from tracker.filer import LEFT_FOR_ANOTHER_RETURN, hand_over
 
     father, llc = fed
     parked = parked_notice(father)
@@ -5273,6 +5273,8 @@ def test_a_stray_named_by_another_records_open_intent_is_left_alone_by_the_pass(
         sort_all([llc], today=DAY3)
 
     assert first.handled == 0 and first.review == []
+    said = [e.error for e in first.attention if e.name == "notice.pdf"]
+    assert said == [LEFT_FOR_ANOTHER_RETURN.format(name="notice.pdf")]
     assert read_index(father) == []
     claimed = [row for row in read_index(father) + read_index(llc) if row.digest == parked.digest]
     assert len(claimed) == 1 and claimed[0].decision == FILED
@@ -5341,4 +5343,37 @@ def test_a_rebuilt_store_still_lets_the_taking_returns_recovery_finish_the_filin
     sort_all([father, llc], home=[father], today=DAY3)
     assert read_index(father) == []
     assert [row.decision for row in read_index(llc)] == [FILED]
+    rows_rest_at_home(father, llc)
+
+
+def test_an_original_left_for_another_returns_filing_is_said_on_every_pass(
+        fed, monkeypatch, tmp_path):
+    """The lead's ruling R-3 (decision 132): an original a pass leaves alone
+    because another return's unfinished filing names it is said, on the
+    dropping household's first own return, on every pass it happens - by
+    its name in the year folder, never a full path. An intent that never
+    finishes (its return retired, unreadable, its pass never run) must not
+    leave an original unrecorded in silence. Once the filing finishes, the
+    sentence stops."""
+    from tracker.filer import LEFT_FOR_ANOTHER_RETURN, hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    killed_between_the_two_intents(monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    monkeypatch.undo()
+    feeding(tmp_path, [])
+    sentence = LEFT_FOR_ANOTHER_RETURN.format(name="notice.pdf")
+
+    for day in (DAY2, DAY3):                     # the other return's pass never runs
+        report = sort(father, returns=[father], today=day)
+        assert [e.error for e in report.attention if e.name == "notice.pdf"] == [sentence]
+        assert report.handled == 0 and read_index(father) == []
+        assert (originals(father) / "notice.pdf").is_file()
+    assert str(originals(father)) not in sentence
+
+    sort_all([llc], today=DAY3)                  # the filing finishes
+    report = sort(father, returns=[father], today=DAY3)
+    assert all(e.error != sentence for e in report.attention)
     rows_rest_at_home(father, llc)

@@ -1285,6 +1285,14 @@ def _follow_moved_originals(
 #: is not the filer's to guess: the copy may have been annotated, or its
 #: name taken by a later drop called the same; the original may have been
 #: replaced. Said every pass until a person has looked.
+#: What a pass says of an original in the household's year folder that no
+#: row of its own names and that another return's unfinished filing names
+#: as the source of its move (decision 132, rulings R-1 and R-3). The file
+#: is left where it is - never re-sorted, parked or recorded here - and
+#: said on the first own return's warnings every pass it happens, so an
+#: intent that never finishes is never an original nobody mentions.
+LEFT_FOR_ANOTHER_RETURN = ("{name} is left where it is: another return's unfinished filing "
+                           "names it, and that return's next pass finishes it")
 UNTIED_IN_PBC = (
     "{location} was recorded without its bytes on {received} and its working copy "
     "{prepared} no longer matches it - a person should look"
@@ -2079,8 +2087,16 @@ def file_household_drops(
     spoken_for = _spoken_for_by_an_open_intent(runs)
     strays = [path for path in strays if path not in spoken_for]
     if strays:
-        strays = [path for path in strays
-                  if not _named_by_another_records_intent(path, runs)]
+        left = [path for path in strays if _named_by_another_records_intent(path, runs)]
+        strays = [path for path in strays if path not in left]
+        # Left alone, and said - every pass it happens (the lead's ruling
+        # R-3): an intent that never finishes must not leave an original
+        # unrecorded in silence. On the first own return, where the inbox's
+        # own notes ride.
+        for path in left:
+            name = Path(os.path.relpath(path, originals_dir)).as_posix()
+            first.report.attention.append(FileError(
+                name, LEFT_FOR_ANOTHER_RETURN.format(name=name), True))
     for run in runs:
         strays = _follow_and_say(run, strays, originals_dir, stamp)
 
