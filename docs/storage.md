@@ -279,7 +279,8 @@ Three functions, and the one a caller wants depends on what it can afford:
   costs one digest of the journal file when nothing has happened — so no
   reader in the package has to know whether anything prepared the
   engagement first.
-- **`filer.ensure()`** is the pass's and the app's: the same top-up, and
+- **`filer.ensure()`** is the pass's and the app's: the same top-up by
+  count rather than by head (`store.catch_up()`, decision 135), and
   then the three words — current, behind or unknown — that say whether the
   store describes the engagement. It writes nothing in the engagement
   folder, so a dry run, the practice's Status Report and the app showing an
@@ -290,6 +291,31 @@ Three functions, and the one a caller wants depends on what it can afford:
   and what a person runs to prove a store they doubt (`python -m
   tracker.store <store> rebuild <root>`). It writes nothing to the journal:
   a rebuild is a reading of the record, not an event in it.
+
+**A read never outruns a write** (decision 135). The readers take no lock,
+and the app's process and the pass's share one store, so a reader can be
+waiting for the pass's transaction to finish at the very moment it catches
+up. Everything that applies journal lines — `sync()`, the top-up's slow
+path, `record()`'s apply and the rebuild — therefore reads the
+engagement's row, the journal's lines and the journal's head *inside* its
+own `BEGIN IMMEDIATE`, and takes the lines and the head from one read of
+the file (`ledger.read_with_head()`). Read before the transaction, a
+reader could re-apply a slice the pass had already overtaken and then save
+the head of the whole file: the store said an old decision, called itself
+current, and refused every later pass for that return until somebody
+rebuilt it. Now a stored head always names exactly the lines applied.
+`record()` applies what the journal holds past the store when its
+transaction begins, not the batch it was handed, so a reader that caught
+part of the batch up in between has none of it applied twice. The
+readers keep the fast path — a head that has not moved is one digest and
+no parse — and the pass catches up **by count** at `ensure()`, so a store
+an earlier version left bent that way is repaired by the next pass, with
+no rebuild and no new store version. A catch-up that finds nothing to
+apply takes no lock at all: it reads the row and the journal first,
+outside any transaction, and only a decision to write takes the store's
+lock and reads both again inside. `ensure()` runs after nearly every
+action in the app and for every engagement in the Status Report, so this
+is what keeps them from holding the lock a pass's `record()` waits on.
 
 A fourth thing is kept in step, and it is a person rather than a reader:
 **the row's own sequence number is the freshness handle** (decision 112).

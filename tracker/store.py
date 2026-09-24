@@ -1540,6 +1540,10 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     when it is behind the journal - a batch numbered from a stale seq would
     collide with lines already there. :func:`rebuild_engagement` and
     :func:`sync` are the two answers to that.
+
+    The apply reads the journal again inside its transaction and applies
+    from the store's applied seq as it is then (decision 135), so a reader
+    that caught up part of this batch meanwhile has none of it re-applied.
     """
     engagement_dir = Path(engagement_dir)
     for event in events:
@@ -1560,13 +1564,12 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
         return row["applied_seq"]
     for event in events:
         ledger.append(engagement_dir, event)
+    # What the journal holds past the store, not what this call was handed
+    # (decision 135): the two are the same lines unless a reader caught up
+    # some of them between the appends and this transaction, and a start
+    # read before the appends would then apply those lines a second time.
     with _transaction(conn):
-        seq = _apply(conn, row["id"], list(events), start=row["applied_seq"] + 1)
-        conn.execute(
-            "UPDATE engagements SET applied_seq = ?, ledger_head = ? WHERE id = ?",
-            (seq, ledger.head(engagement_dir), row["id"]),
-        )
-    return seq
+        return _catch_up(conn, None, engagement_dir, build=False)
 
 
 def sync(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
@@ -1582,27 +1585,115 @@ def sync(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str)
     to patch up: the journal has been truncated or replaced under it, and
     what the store says about the lines that are gone cannot be checked
     against anything. It is refused by name, and a rebuild is the answer.
+
+    **By count, not by head.** It compares the number of lines the store
+    has applied with the number the journal holds, whatever the stored head
+    says - which is what repairs a store an earlier version left with a
+    head that names a line it never applied (decision 135). A look that
+    finds nothing to apply takes no lock; everything it writes from, it
+    reads again inside its own transaction (:func:`_look_then_catch_up`).
+    """
+    return _look_then_catch_up(conn, root, engagement_dir, build=False)
+
+
+def catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
+    """:func:`sync` for an engagement the store holds, a first build for
+    one it does not. Returns the applied seq.
+
+    The full catch-up the filer's ``ensure()`` runs at the start of
+    every pass (decision 135): it parses the journal and compares by count,
+    so a store whose head matches while its applied seq is short is
+    repaired by the next pass rather than refusing it for the rest of the
+    season. A pass parses the journal anyway, so this costs it one parse -
+    and, when there is nothing to apply, no lock (:func:`_look_then_catch_up`).
+    """
+    return _look_then_catch_up(conn, root, engagement_dir, build=True)
+
+
+def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str,
+                        *, build: bool) -> int:
+    """:func:`_catch_up` behind a look that takes no lock.
+
+    ``filer.ensure()`` runs :func:`catch_up` after nearly every action in
+    the app, for every engagement in the Status Report and for every dry
+    run, and the pass's ``record()`` waits on the same immediate lock. So
+    the row and the journal are read first **outside** any transaction,
+    and when the store holds the engagement and has applied exactly as many
+    lines as the journal holds, the answer is returned with no ``BEGIN
+    IMMEDIATE`` at all (decision 135, review fix 2). A decision *not* to
+    write, made on a look another process has since overtaken, writes
+    nothing, and the line it missed is caught by the next call. Only a
+    decision *to* write takes the lock, and it reads the row and the
+    journal again inside (:func:`_catch_up`) - the look's lines are reused
+    there only when the file still digests to the look's head, so the
+    bytes are the same and the journal is parsed once. Healing by count is
+    unchanged: a store whose head matches while its applied seq is short
+    fails the look and is caught up.
+    """
+    row = _engagement_row(conn, engagement_dir, root)
+    look = ledger.read_with_head(engagement_dir)
+    if row is not None and len(look[0]) == row["applied_seq"]:
+        return row["applied_seq"]
+    with _transaction(conn):
+        return _catch_up(conn, root, engagement_dir, build=build, known=look)
+
+
+def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir: Path | str,
+              *, build: bool, known: tuple[list[dict], str] | None = None) -> int:
+    """Apply what the journal holds past the store. The caller holds the transaction.
+
+    **One read, inside the transaction** (decision 135). The row, the
+    journal's lines and the journal's head are all read here, after the
+    caller's ``BEGIN IMMEDIATE``, and the lines and the head come from the
+    same bytes (:func:`tracker.ledger.read_with_head`). Readers take no
+    lock, and the app and the pass share this store: a row or a slice of
+    lines read before waiting on another process's transaction is a
+    picture of before that transaction, and applying it afterwards re-files
+    a row under a line the journal has already overtaken, then saves a
+    head that says nothing is missing. Read inside, nothing can land
+    between the look and the write - every writer of the store is behind
+    the same immediate lock - and a line appended to the journal after the
+    read is simply not applied yet, with a head that says so.
+
+    ``build`` is what an engagement the store does not hold gets: a first
+    build from the lines (a reader's top-up, :func:`catch_up`) or the
+    refusal :func:`sync` and :func:`record` give. A refusal raised here
+    rolls the caller's transaction back, and nothing was written.
+
+    ``known`` is the look :func:`_look_then_catch_up` made outside; it
+    saves a second parse of the same bytes and nothing else - the file is
+    read here all the same (:func:`tracker.ledger.read_with_head`).
     """
     engagement_dir = Path(engagement_dir)
-    rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
     row = _engagement_row(conn, engagement_dir, root)
+    events, head = ledger.read_with_head(engagement_dir, known=known)
     if row is None:
-        raise StoreError(f"{rel}: the store does not hold this engagement; rebuild it")
-    events = ledger.read_events(engagement_dir)
+        rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
+        if not build:
+            raise StoreError(f"{rel}: the store does not hold this engagement; rebuild it")
+        defaults = _new_engagement_defaults()
+        cursor = conn.execute(
+            f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
+            f"VALUES ({_marks(len(defaults) + 4)})",
+            (rel, *defaults, head, len(events), ledger.stamp()),
+        )
+        if events:
+            _apply(conn, cursor.lastrowid, events, start=1)
+        return len(events)
     applied = row["applied_seq"]
     if len(events) < applied:
+        rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
         raise StoreError(
             f"{rel}: the store has applied {applied} line(s) and the journal holds {len(events)}; "
             f"the journal was truncated or replaced - rebuild the engagement"
         )
     if len(events) == applied:
         return applied
-    with _transaction(conn):
-        seq = _apply(conn, row["id"], events[applied:], start=applied + 1)
-        conn.execute(
-            "UPDATE engagements SET applied_seq = ?, ledger_head = ? WHERE id = ?",
-            (seq, ledger.head(engagement_dir), row["id"]),
-        )
+    seq = _apply(conn, row["id"], events[applied:], start=applied + 1)
+    conn.execute(
+        "UPDATE engagements SET applied_seq = ?, ledger_head = ? WHERE id = ?",
+        (seq, head, row["id"]),
+    )
     return seq
 
 
@@ -1618,28 +1709,22 @@ def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_di
     somebody ensured the engagement first. The journal is the whole of it:
     the rows, the statuses, the person's rules and the engagement's
     details all come out of the lines.
+
+    **By head, and only the fast path outside a transaction** (decision
+    135). The digest check only reads, and a matching head is proof
+    because no writer saves a head that is ahead of its lines. Anything
+    else is :func:`catch_up`: a look with no lock, and - only when there
+    is something to apply - the row and the journal read again inside its
+    own transaction, since another process may have built or advanced the
+    rows while this one waited for the lock.
     """
-    engagement_dir = Path(engagement_dir)
-    rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
     row = _engagement_row(conn, engagement_dir, root)
-    if row is not None:
-        # The journal's digest first, and the lines only if it moved: this
-        # runs before every read, and parsing a season of events to learn
-        # that nothing has happened is the cost the store exists to remove.
-        if row["ledger_head"] == ledger.head(engagement_dir):
-            return row["applied_seq"]
-        return sync(conn, root, engagement_dir)
-    events = ledger.read_events(engagement_dir)
-    defaults = _new_engagement_defaults()
-    with _transaction(conn):
-        cursor = conn.execute(
-            f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
-            f"VALUES ({_marks(len(defaults) + 4)})",
-            (rel, *defaults, ledger.head(engagement_dir), len(events), ledger.stamp()),
-        )
-        if events:
-            _apply(conn, cursor.lastrowid, events, start=1)
-    return len(events)
+    # The journal's digest first, and the lines only if it moved: this
+    # runs before every read, and parsing a season of events to learn
+    # that nothing has happened is the cost the store exists to remove.
+    if row is not None and row["ledger_head"] == ledger.head(engagement_dir):
+        return row["applied_seq"]
+    return catch_up(conn, root, engagement_dir)
 
 
 # --------------------------------------------------------- the verdict cache ----
@@ -1782,10 +1867,12 @@ def rebuild_engagement(
     """
     engagement_dir = Path(engagement_dir)
     rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
-    events = ledger.read_events(engagement_dir)
-    head = ledger.head(engagement_dir)
     built_at = ledger.stamp()
     with _transaction(conn):
+        # The lines and their head from one read, inside the transaction
+        # (decision 135): a line a writer records while this waits for the
+        # lock is in the rows, not only in the head.
+        events, head = ledger.read_with_head(engagement_dir)
         # The children go with it: every table references the engagement
         # with ON DELETE CASCADE and foreign keys are on, so one delete is
         # the whole of "forget what you knew about this folder".

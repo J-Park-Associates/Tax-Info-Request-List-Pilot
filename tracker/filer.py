@@ -1097,18 +1097,29 @@ def ensure(engagement_dir: Path | str, root: Path | None = None) -> str:
     engagement, before anything reads the index or the request list: an
     engagement the store has never seen is built from its record, and one
     the store is behind on has the lines it has not applied replayed
-    (:func:`tracker.store.follow_the_journal`). Nothing is written in the
+    (:func:`tracker.store.catch_up`). Nothing is written in the
     engagement folder - the store is the machine's own derivation and
     building it moves nothing of the client's - so a dry run, the Status
     Report and the app showing an engagement another run is holding all
     call it as freely as a pass does. Until decision 104 this is also
     where a folder that still kept facts in a workbook was migrated and
     where the request list was imported; both left with the workbook.
+
+    **By count, not by head** (decision 135). The readers trust a stored
+    head that matches the journal's and parse nothing; this compares the
+    number of lines applied with the number the journal holds, every
+    time. So a store an earlier version left with a head naming a line it
+    never applied - current by its head, refusing every writer by its
+    count - is repaired by the next pass, with no rebuild. A pass parses
+    the journal anyway, so the cost is one parse per engagement per pass,
+    and a store with nothing to apply is answered without the store's
+    write lock, so the app's views and the Status Report never queue a
+    pass's ``record()`` behind them.
     """
     folder = Path(engagement_dir)
     root = Path(root) if root is not None else clients_root_of(folder)
     conn = store.connect()
-    store.follow_the_journal(conn, root, folder)
+    store.catch_up(conn, root, folder)
     return store.state(conn, folder, ledger_head_now=ledger.head(folder))
 
 

@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import hashlib
 import json
 import os
 import sqlite3
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -27,7 +29,7 @@ import pytest
 from tests.conftest import make_engagement, named_page, seed_statuses, sort
 from tests.test_scanner import text_pdf
 from tracker import ledger, store
-from tracker.filer import read_index
+from tracker.filer import ensure, read_index
 from tracker.layout import inbox_of, location_of, originals_of
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -1451,3 +1453,318 @@ def test_a_released_line_takes_the_row_out_and_closes_its_intent_in_both_folds(
         with pytest.raises(store.StoreError, match="carries no row"):
             store.record(conn, by_hand, ledger.new(ledger.RELEASED, **{
                 ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.ROW_KEY: a_row()}))
+
+
+# ------------------------------------------- a read never outruns a write ----
+#
+# Decision 135. Readers take no lock, and the app's process and the pass's
+# share one store: every function that applies journal lines reads the row,
+# the lines and the head inside its own immediate transaction, the lines and
+# the head from one read of the file. The races below are staged in one
+# process with two connections to one store file - the second one is the
+# other process - and the other process acts at the one moment the old code
+# was exposed: after the first look at the row, before the transaction.
+
+
+def the_other_process_first(monkeypatch, on, then):
+    """Run ``then()`` once, the moment connection ``on`` is about to begin a
+    transaction - after anything it read outside one, before anything it
+    reads inside. Nothing holds the lock yet, so the other process's own
+    ``BEGIN IMMEDIATE`` cannot wait on this one."""
+    real = store._transaction
+    fired = []
+
+    @contextmanager
+    def interleaved(connection):
+        if connection is on and not fired:
+            fired.append(True)
+            then()
+        with real(connection):
+            yield
+
+    monkeypatch.setattr(store, "_transaction", interleaved)
+    return fired
+
+
+def the_store_is_the_journal(conn, root, engagement):
+    """The four things a store that kept up says: every line applied, the
+    head of exactly those lines, nothing the check can name."""
+    stored = store._engagement_row(conn, engagement)
+    assert stored["applied_seq"] == len(ledger.read_events(engagement))
+    assert stored["ledger_head"] == ledger.head(engagement)
+    assert store.check(conn, root, engagement) == []
+    assert store.state(conn, engagement, ledger_head_now=ledger.head(engagement)) == store.CURRENT
+
+
+def test_a_reader_that_syncs_while_a_writer_records_leaves_the_store_at_the_journals_last_line(
+        conn, root, by_hand, tmp_path, monkeypatch):
+    """The probe of 2026-09-23. The pass has appended line 2 (a filing) and
+    not yet applied it; the app's reader looks at the row and the journal;
+    before the reader's transaction the pass applies line 2 and records
+    line 3, which parks the same row. Read outside, the reader re-applied
+    its stale slice and saved the head of all three lines: the store said
+    'Filed' against a journal saying 'Needs Review', called itself current
+    and refused every later pass for that return."""
+    build(conn, root, by_hand)
+    writer = store.open(tmp_path / "app" / store.STORE_FILENAME)
+    try:
+        with engagement_lock(by_hand):
+            ledger.append(by_hand, ledger.new(
+                ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+
+            def the_pass_finishes_and_parks_it():
+                store.sync(writer, root, by_hand)
+                store.record(writer, by_hand, ledger.new(
+                    ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row(decision="Needs Review")))
+
+            fired = the_other_process_first(monkeypatch, conn, the_pass_finishes_and_parks_it)
+            store.follow_the_journal(conn, root, by_hand)
+            assert fired
+            monkeypatch.undo()
+
+            the_store_is_the_journal(conn, root, by_hand)
+            assert [row["decision"] for row in store.documents(conn, by_hand)] == ["Needs Review"]
+            store.record(conn, by_hand, learned("A01", "lender"))     # and the next write is taken
+    finally:
+        writer.close()
+
+
+def test_a_reader_building_an_engagement_while_a_writer_records_misses_no_line(
+        root, by_hand, tmp_path, monkeypatch):
+    """The first-build branch. A reader that finds no row reads the journal,
+    and the pass builds the row and records a line before the reader's
+    transaction: the reader finds the row inside and catches it up rather
+    than building a second one from lines the journal has overtaken."""
+    path = tmp_path / "fresh" / store.STORE_FILENAME
+    reader, writer = store.open(path), store.open(path)
+    try:
+        def the_pass_builds_and_records():
+            store.follow_the_journal(writer, root, by_hand)
+            with engagement_lock(by_hand):
+                store.record(writer, by_hand, ledger.new(
+                    ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+
+        fired = the_other_process_first(monkeypatch, reader, the_pass_builds_and_records)
+        assert store.follow_the_journal(reader, root, by_hand) == 2
+        assert fired
+        monkeypatch.undo()
+
+        the_store_is_the_journal(reader, root, by_hand)
+        assert [row["decision"] for row in store.documents(reader, by_hand)] == ["Filed"]
+    finally:
+        reader.close()
+        writer.close()
+
+
+def test_a_rebuild_racing_a_writer_saves_the_head_of_the_lines_it_applied(
+        conn, root, by_hand, tmp_path, monkeypatch):
+    """A rebuild waiting on the pass's transaction reads the journal after
+    it, so the line the pass recorded meanwhile is in the rows the rebuild
+    writes and not only in the head it saves beside them."""
+    build(conn, root, by_hand)
+    writer = store.open(tmp_path / "app" / store.STORE_FILENAME)
+    try:
+        def the_pass_records():
+            with engagement_lock(by_hand):
+                store.record(writer, by_hand, ledger.new(
+                    ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+
+        fired = the_other_process_first(monkeypatch, conn, the_pass_records)
+        store.rebuild_engagement(conn, root, by_hand)
+        assert fired
+        monkeypatch.undo()
+
+        the_store_is_the_journal(conn, root, by_hand)
+        assert [row["decision"] for row in store.documents(conn, by_hand)] == ["Filed"]
+    finally:
+        writer.close()
+
+
+def test_a_writer_whose_lines_a_reader_already_applied_applies_none_of_them_twice(
+        conn, root, by_hand, tmp_path, monkeypatch):
+    """``record()`` applies what the journal holds past the store when its
+    transaction begins, not the batch it was handed from where the store
+    stood before its appends. A reader that caught the whole batch up in
+    between - the move begun and the filing that ends it - leaves the
+    writer nothing to apply: the intent the move opened stays closed and
+    every line is in the events table once, at its own number."""
+    build(conn, root, by_hand)
+    reader = store.open(tmp_path / "app" / store.STORE_FILENAME)
+    moving = ledger.new(ledger.MOVING, **{
+        ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.DECIDED_BY_KEY: ledger.BY_PASS,
+        ledger.OPS_KEY: [], ledger.ROW_KEY: a_row(decision="Filed", identifier="A01"),
+        ledger.EVENT_KEY_AFTER: ledger.FILED})
+    filed = ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01"))
+    try:
+        applied_by_the_reader = []
+
+        def the_reader_catches_up():
+            applied_by_the_reader.append(store.follow_the_journal(reader, root, by_hand))
+
+        fired = the_other_process_first(monkeypatch, conn, the_reader_catches_up)
+        with engagement_lock(by_hand):
+            assert store.record(conn, by_hand, moving, filed) == 3
+        assert fired and applied_by_the_reader == [3]
+        monkeypatch.undo()
+
+        the_store_is_the_journal(conn, root, by_hand)
+        assert store.open_intents(conn, by_hand) == []
+        mine = (id_of(conn, by_hand),)
+        assert [row["seq"] for row in conn.execute(
+            "SELECT seq FROM events WHERE engagement_id = ? ORDER BY seq", mine)] == [1, 2, 3]
+    finally:
+        reader.close()
+
+
+def test_a_pass_heals_a_store_whose_head_names_a_line_it_never_applied(root, by_hand):
+    """What a build before decision 135 could leave: the head of the whole
+    journal saved beside one line fewer applied. The readers trust the head
+    and call it current; every writer counts and refuses. The pass's own
+    ensure() compares by count, so the next pass repairs it with no rebuild
+    and records after it."""
+    conn = store.connect()
+    store.rebuild_engagement(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        ledger.append(by_hand, ledger.new(
+            ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+    conn.execute("UPDATE engagements SET ledger_head = ? WHERE id = ?",
+                 (ledger.head(by_hand), id_of(conn, by_hand)))
+    parked = ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row(decision="Needs Review"))
+    assert store.follow_the_journal(conn, root, by_hand) == 1          # the reader is fooled
+    with engagement_lock(by_hand), pytest.raises(store.StoreError, match="applied 1 of"):
+        store.record(conn, by_hand, parked)                             # the writer is not
+
+    assert ensure(by_hand, root) == store.CURRENT
+
+    the_store_is_the_journal(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        assert store.record(conn, by_hand, parked) == 3
+    the_store_is_the_journal(conn, root, by_hand)
+    assert [row["decision"] for row in store.documents(conn, by_hand)] == ["Needs Review"]
+
+
+def test_a_reader_keeps_the_fast_path_and_parses_nothing_when_the_head_has_not_moved(
+        conn, root, by_hand, monkeypatch):
+    """The cost ``follow_the_journal`` exists to keep off every read: a head
+    that has not moved is a digest of the file and nothing else - not one
+    line parsed. The moment it moves, the lines are parsed once."""
+    build(conn, root, by_hand)
+    parses = []
+    real = ledger._parse
+
+    def counted(data, name):
+        parses.append(name)
+        return real(data, name)
+
+    monkeypatch.setattr(ledger, "_parse", counted)
+    assert store.follow_the_journal(conn, root, by_hand) == 1
+    assert store.follow_the_journal(conn, root, by_hand) == 1
+    assert parses == []
+
+    with engagement_lock(by_hand):
+        ledger.append(by_hand, ledger.new(
+            ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+    assert store.follow_the_journal(conn, root, by_hand) == 2
+    assert len(parses) == 1
+
+
+def the_pass_appends_during_the_read(monkeypatch, conn, engagement, event):
+    """Append ``event`` to the journal, under the engagement lock, the first
+    time ``conn``'s side reads the journal's bytes inside a transaction -
+    after that read has its bytes, before anything else is read. That is
+    the pass: it appends under its own lock *before* its own transaction,
+    so a reader holding the store's lock cannot keep a line out of the file."""
+    real = ledger._bytes_of
+    fired = []
+
+    def and_then_a_line(path):
+        data = real(path)
+        if conn.in_transaction and not fired:
+            fired.append(True)
+            with engagement_lock(engagement):
+                ledger.append(engagement, event)
+        return data
+
+    monkeypatch.setattr(ledger, "_bytes_of", and_then_a_line)
+    return fired
+
+
+def the_head_of_the_first(engagement, lines):
+    """The head of the journal as it was when it held its first ``lines`` lines."""
+    data = ledger.path_for(engagement).read_bytes()
+    return hashlib.sha256(b"".join(data.splitlines(keepends=True)[:lines])).hexdigest()
+
+
+def test_a_line_appended_between_a_readers_lines_and_its_head_is_left_for_the_next_read(
+        conn, root, by_hand, monkeypatch):
+    """The one read of decision 135, pinned (review fix 1). The pass appends
+    a line while the reader holds the store's lock and reads the journal:
+    the head the reader saves is the head of exactly the lines it applied,
+    so the store says it is behind rather than calling itself current, and
+    the next read applies the line. Read as two calls - the lines, then the
+    head - the head would name the line nobody applied: the stuck return."""
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        ledger.append(by_hand, ledger.new(
+            ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+    parked = ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row(decision="Needs Review"))
+
+    fired = the_pass_appends_during_the_read(monkeypatch, conn, by_hand, parked)
+    assert store.follow_the_journal(conn, root, by_hand) == 2
+    assert fired
+    monkeypatch.undo()
+
+    assert len(ledger.read_events(by_hand)) == 3
+    assert store._engagement_row(conn, by_hand)["ledger_head"] == the_head_of_the_first(by_hand, 2)
+    assert store.state(conn, by_hand, ledger_head_now=ledger.head(by_hand)) == store.BEHIND
+    assert store.follow_the_journal(conn, root, by_hand) == 3
+    the_store_is_the_journal(conn, root, by_hand)
+    assert [row["decision"] for row in store.documents(conn, by_hand)] == ["Needs Review"]
+
+
+def test_a_line_appended_while_a_rebuild_reads_the_journal_is_left_for_the_next_read(
+        conn, root, by_hand, monkeypatch):
+    """The same one read in the rebuild: a line the pass appends while the
+    rebuild reads the journal is neither in its rows nor in the head it
+    saves beside them, and the next read applies it."""
+    build(conn, root, by_hand)
+    filed = ledger.new(ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01"))
+
+    fired = the_pass_appends_during_the_read(monkeypatch, conn, by_hand, filed)
+    store.rebuild_engagement(conn, root, by_hand)
+    assert fired
+    monkeypatch.undo()
+
+    assert len(ledger.read_events(by_hand)) == 2
+    rebuilt = store._engagement_row(conn, by_hand)
+    assert rebuilt["applied_seq"] == 1
+    assert rebuilt["ledger_head"] == the_head_of_the_first(by_hand, 1)
+    assert store.state(conn, by_hand, ledger_head_now=ledger.head(by_hand)) == store.BEHIND
+    assert store.follow_the_journal(conn, root, by_hand) == 2
+    the_store_is_the_journal(conn, root, by_hand)
+    assert [row["decision"] for row in store.documents(conn, by_hand)] == ["Filed"]
+
+
+def test_a_catch_up_with_nothing_to_apply_takes_no_lock(root, by_hand, tmp_path):
+    """Review fix 2. ``ensure()`` runs after nearly every action in the app
+    and for every engagement in the Status Report, and a pass's ``record()``
+    waits on the same immediate lock. A store that has applied every line
+    is answered from a look that takes no lock: with another connection
+    holding ``BEGIN IMMEDIATE`` - and no patience at all for waiting on it -
+    the caught-up store's catch-up, sync and top-up all still answer."""
+    path = tmp_path / "shared" / store.STORE_FILENAME
+    looker, the_pass = store.open(path), store.open(path)
+    try:
+        assert store.catch_up(looker, root, by_hand) == 1
+        looker.execute("PRAGMA busy_timeout = 0")
+        the_pass.execute("BEGIN IMMEDIATE")
+        try:
+            assert store.catch_up(looker, root, by_hand) == 1
+            assert store.sync(looker, root, by_hand) == 1
+            assert store.follow_the_journal(looker, root, by_hand) == 1
+            assert not looker.in_transaction
+        finally:
+            the_pass.execute("ROLLBACK")
+    finally:
+        looker.close()
+        the_pass.close()

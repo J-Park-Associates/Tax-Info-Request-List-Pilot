@@ -508,6 +508,50 @@ def _truncate_torn_tail(path: Path) -> None:
 # ------------------------------------------------------------------ read ----
 
 
+def _bytes_of(path: Path) -> bytes | None:
+    """The record's bytes as they are this moment, or None where there is
+    no record. The one read every reader below is made of."""
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise LedgerError(f"could not read {path.name}: {exc}") from exc
+
+
+def _parse(data: bytes, name: str) -> list[dict]:
+    """The events ``data`` holds, oldest first: the one parser of a record.
+
+    A torn last line - bytes a killed run left with no newline after them -
+    is ignored. Anything else that does not read as one JSON object per line
+    is corruption in the middle of the file and is refused loudly: this is
+    the record, and nothing is guessed past it.
+    """
+    if not data:
+        return []
+    lines = data.split(_NEWLINE)
+    if lines[-1]:
+        log.warning("%s ends mid-line; the torn last line is ignored", name)
+    lines.pop()                       # the tail after the last newline: empty, or torn
+    events = []
+    for number, raw in enumerate(lines, start=1):
+        if not raw.strip():
+            continue
+        try:
+            event = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise LedgerError(f"{name} line {number} does not read as an event: {exc}") from exc
+        if not isinstance(event, dict) or event.get(EVENT_KEY) is None:
+            raise LedgerError(f"{name} line {number} is not an event")
+        events.append(event)
+    return events
+
+
+def _digest(data: bytes | None) -> str:
+    """The head of ``data``: its SHA-256, or empty where there is no record."""
+    return "" if data is None else hashlib.sha256(data).hexdigest()
+
+
 def read_events(engagement_dir: Path | str) -> list[dict]:
     """Every event in the engagement's record, oldest first; [] if there is none.
 
@@ -517,30 +561,39 @@ def read_events(engagement_dir: Path | str) -> list[dict]:
     the record, and nothing is guessed past it.
     """
     path = path_for(engagement_dir)
-    try:
-        data = path.read_bytes()
-    except FileNotFoundError:
-        return []
-    except OSError as exc:
-        raise LedgerError(f"could not read {path.name}: {exc}") from exc
-    if not data:
-        return []
-    lines = data.split(_NEWLINE)
-    if lines[-1]:
-        log.warning("%s ends mid-line; the torn last line is ignored", path.name)
-    lines.pop()                       # the tail after the last newline: empty, or torn
-    events = []
-    for number, raw in enumerate(lines, start=1):
-        if not raw.strip():
-            continue
-        try:
-            event = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise LedgerError(f"{path.name} line {number} does not read as an event: {exc}") from exc
-        if not isinstance(event, dict) or event.get(EVENT_KEY) is None:
-            raise LedgerError(f"{path.name} line {number} is not an event")
-        events.append(event)
-    return events
+    data = _bytes_of(path)
+    return [] if data is None else _parse(data, path.name)
+
+
+def read_with_head(
+    engagement_dir: Path | str,
+    *,
+    known: tuple[list[dict], str] | None = None,
+) -> tuple[list[dict], str]:
+    """The record's events and its head, both from **one** read of the file.
+
+    What the store applies and the head it saves beside them (decision
+    135). Read as two calls - :func:`read_events`, then :func:`head` - the
+    two are two moments, and a line appended between them leaves a head
+    that names a line nobody applied: the store then calls itself current
+    while it is behind, and refuses every later writer. One read cannot
+    disagree with itself. Parsed exactly as :func:`read_events` parses (a
+    torn tail is not a line, corruption is refused) and digested exactly as
+    :func:`head` digests, torn tail included, so the pair equals the two
+    calls on a file nobody is writing.
+
+    ``known`` is a pair this function returned earlier. When the bytes read
+    now still digest to its head they are the bytes its events came from,
+    and those events are returned without parsing the file a second time:
+    the store's look outside its transaction and its read inside are then
+    one parse, and still one read of the file each.
+    """
+    path = path_for(engagement_dir)
+    data = _bytes_of(path)
+    now = _digest(data)
+    if known is not None and known[1] == now:
+        return known[0], now
+    return ([] if data is None else _parse(data, path.name)), now
 
 
 def fold(events: list[dict]) -> dict[str, dict]:
@@ -815,15 +868,9 @@ def replay(events: list[dict]) -> Folded:
 def head(engagement_dir: Path | str) -> str:
     """A digest of the record's bytes: the same for two folders holding the
     same history, different the moment either is appended to. Empty where
-    there is no record yet."""
-    path = path_for(engagement_dir)
-    try:
-        data = path.read_bytes()
-    except FileNotFoundError:
-        return ""
-    except OSError as exc:
-        raise LedgerError(f"could not read {path.name}: {exc}") from exc
-    return hashlib.sha256(data).hexdigest()
+    there is no record yet. Whoever saves a head beside lines it applied
+    takes both from :func:`read_with_head` instead (decision 135)."""
+    return _digest(_bytes_of(path_for(engagement_dir)))
 
 
 # ------------------------------------------------------------------- CLI ----

@@ -13,6 +13,7 @@ index, the statuses and the person's rules are the record's alone.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import subprocess
 import sys
 from dataclasses import asdict
@@ -349,6 +350,27 @@ def test_the_head_changes_with_every_append_and_not_otherwise(bare):
         assert first and ledger.head(bare) == first    # looking changes nothing
         ledger.append(bare, a_keyword(2))
         assert ledger.head(bare) != first
+
+
+def test_the_lines_and_the_head_come_from_one_read(bare):
+    """Decision 135: the store saves a head beside the lines it applied, so
+    the two are one read of the file, parsed as ``read_events`` parses it and
+    digested as ``head`` digests it. A torn tail is not a line and is part of
+    the bytes; on a file nobody is writing the pair is the two calls."""
+    assert ledger.read_with_head(bare) == ([], "") == (ledger.read_events(bare), ledger.head(bare))
+    with engagement_lock(bare):
+        ledger.append(bare, a_keyword(1))
+        ledger.append(bare, a_keyword(2))
+    assert ledger.read_with_head(bare) == (ledger.read_events(bare), ledger.head(bare))
+
+    path = ledger.path_for(bare)
+    whole = path.read_bytes()
+    path.write_bytes(whole + b'{"event": "keyword_lear')
+    events, head = ledger.read_with_head(bare)
+    assert [e["identifier"] for e in events] == ["A01", "A02"]       # the torn tail is not a line
+    assert head == hashlib.sha256(path.read_bytes()).hexdigest()      # and it is in the head
+    assert head != hashlib.sha256(whole).hexdigest()
+    assert (events, head) == (ledger.read_events(bare), ledger.head(bare))
 
 
 # -------------------------------------------------------------- the writers ----
