@@ -103,7 +103,7 @@ the rollback that puts a moved file back asks exactly that question.
 
 ## The schema
 
-One file, `PRAGMA user_version = 10` (decision 104 dropped the workbook's
+One file, `PRAGMA user_version = 11` (decision 104 dropped the workbook's
 digest column; decision 107 added the verdict cache's two tables; decision
 116 added the `override_reason` column to `requests`; decision 117 added
 the Filing Deadline to the engagement's details, and a detail is a column
@@ -115,7 +115,8 @@ into its details and the `named` mark into `requests`; decision 129 put the
 household's feed list — the return lines in other households its drop
 folder also feeds — into the household's own columns; decision 132 changed
 no column and changed the fold, so that a `released` line takes a row out
-of the index; a file at an
+of the index; decision 134 changed no column and changed the key, so that
+two years of one return are never one row; a file at an
 earlier version is refused by name, and is deleted and rebuilt — nothing
 is lost, the journals are what it is made
 of). A file at any other version is refused by name rather than opened
@@ -123,7 +124,7 @@ hopefully.
 
 | table | what it holds |
 |---|---|
-| `engagements` | one row per folder that has a journal — a return, or a household (decision 125); `kind` says which. Keyed by its path relative to the clients root with forward slashes — the root the settings file names whenever the folder is under it, whatever root a caller typed, so one folder is one key for the app, the scheduled pass and the command line alike (decision 106); a caller's own root, or the folder's parent, only on a machine with no settings file. For a return: its own details, which since decision 125 carry the household, the tax year and the return name. For a household: the `household_` columns — its name, the members a person typed, the contact, the inbox link and the feed list a person built (decision 129), each feed a household and a return line, as JSON text. And for both: the journal's head as it was when the rows were built, how many lines have been applied, and when |
+| `engagements` | one row per folder that has a journal — a return, or a household (decision 125); `kind` says which. Keyed by its path relative to the clients root with forward slashes — the root the settings file names whenever the folder is under it, whatever root a caller typed, so one folder is one key for the app, the scheduled pass and the command line alike (decision 106); else a caller's own root; else, for a return in the layout of decision 125, the root its position names - four levels up, when its parent is a year folder and its household sits in the private tree - so the key always carries household, year and return and two years of one return are two rows (decision 134); the folder's parent only for a folder outside that layout. For a return: its own details, which since decision 125 carry the household, the tax year and the return name. For a household: the `household_` columns — its name, the members a person typed, the contact, the inbox link and the feed list a person built (decision 129), each feed a household and a return line, as JSON text. And for both: the journal's head as it was when the rows were built, how many lines have been applied, and when |
 | `requests` | the person's rules, one row per identifier — everything the request list's own record holds that is not a status, in the order the person gave the rows. Tuples (keywords, extensions) are JSON text |
 | `statuses` | what the last scan said about one identifier: status, received date, file count, validation notes, and the sequence number that set them |
 | `documents` | the index: one row per preserved original, every column the index row has, plus the identity it is keyed under, the place it holds in the index's own order, and the sequence number that last wrote it - read back by `document_seqs()`, and the app carries it |

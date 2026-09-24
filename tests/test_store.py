@@ -173,7 +173,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 10
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 11
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -1128,6 +1128,190 @@ def test_a_pass_keys_one_return_the_same_way_whichever_root_is_named(recorded_ro
     assert [e.original_name for e in read_index(engagement)] == ["w2.pdf"]
     # Two rows: this return, and the household record above it.
     assert conn.execute("SELECT COUNT(*) FROM engagements").fetchone()[0] == 2
+
+
+# ------------------------------------------------- the key by position (d134) ----
+
+
+def _one_filed_row(period: str):
+    """One index row a pass could have written, for a return of ``period``."""
+    from tracker.filer import FILED
+    from tracker.records import IndexEntry
+
+    return IndexEntry(received="2026-09-23 10:00:00", original_name="x.pdf", size_kb=5.0,
+                      digest="abc", identifier="A01",
+                      prepared_location="Prepared/A01 - W-2 Wages/A01 - W-2.pdf",
+                      pbc_location="x.pdf", decision=FILED, reason=f"filed for {period}")
+
+
+def _one_request(year: int) -> list[RequestItem]:
+    return [RequestItem(identifier="A01", document="W-2 Wages", period=str(year),
+                        allowed_extensions=("pdf",))]
+
+
+def test_two_years_of_one_return_are_two_rows_when_the_settings_name_no_root(root, caplog):
+    """Decision 134, the review of decision 130's reproduction. Rollover
+    keeps a return's name every year, so ``Smith/2025/1040 - Smith`` and
+    ``Smith/2026/1040 - Smith`` are the normal case. With no settings file
+    and no root in hand - every reader - the key used to fall back to the
+    folder's parent, which since decision 125 is the year: both were keyed
+    ``1040 - Smith``, one row, and the earlier year's reads refused its own
+    journal ("the store has applied 2 line(s) and the journal holds 1").
+    The second symptom was the household's README: its reader could not
+    read the earlier return and dropped it with a warning. Keyed by where
+    it sits, each carries household, year and return, and the README reads
+    both."""
+    import logging
+
+    from tests.conftest import seed_index
+
+    caplog.set_level(logging.WARNING, logger="tracker.scaffold")
+    earlier = make_engagement(root, _one_request(2025), household="Smith", year=2025,
+                              return_name="1040 - Smith")
+    seed_index(earlier, [_one_filed_row("2025")])
+    later = make_engagement(root, _one_request(2026), household="Smith", year=2026,
+                            return_name="1040 - Smith")
+
+    assert [e.reason for e in read_index(earlier)] == ["filed for 2025"]
+    assert read_index(later) == []
+    assert [i.period for i in load_manifest(earlier)] == ["2025"]
+    assert [i.period for i in load_manifest(later)] == ["2026"]
+    assert [e.reason for e in read_index(earlier)] == ["filed for 2025"]      # and again
+    conn = store.connect()
+    assert [r["path"] for r in conn.execute(
+        "SELECT path FROM engagements WHERE kind = ? ORDER BY path", (store.KIND_RETURN,))] == [
+        "J Park & Associates/Smith/2025/1040 - Smith", "J Park & Associates/Smith/2026/1040 - Smith",
+    ]
+    assert store.check(conn, root, earlier) == [] and store.check(conn, root, later) == []
+    assert store.key_root(earlier) == root and store.key_root(later) == root
+    assert [r.getMessage() for r in caplog.records
+            if r.name == "tracker.scaffold" and r.levelno >= logging.WARNING] == []
+
+
+def _two_years_rebuilt_without_a_root(conn, earlier, later):
+    """Both years of one return built into ``conn`` the way a reader meets
+    them - no root in hand - and the return paths the store then holds."""
+    store.rebuild_engagement(conn, None, earlier)
+    store.rebuild_engagement(conn, None, later)
+    return [r["path"] for r in conn.execute(
+        "SELECT path FROM engagements WHERE kind = ? ORDER BY path", (store.KIND_RETURN,))]
+
+
+def test_a_return_typed_relative_to_its_household_is_keyed_by_where_it_sits(root, tmp_path, monkeypatch):
+    """The review of decision 134. A folder typed from inside the household
+    (``2025/1040 - Smith``) has no private tree above it as written, so
+    asked as given it fell back to the year folder and two years of one
+    return were one row again. It is resolved before the layout is asked."""
+    earlier = make_engagement(root, _one_request(2025), household="Smith", year=2025,
+                              return_name="1040 - Smith")
+    make_engagement(root, _one_request(2026), household="Smith", year=2026, return_name="1040 - Smith")
+    monkeypatch.chdir(earlier.parent.parent)
+    typed_earlier, typed_later = Path("2025/1040 - Smith"), Path("2026/1040 - Smith")
+
+    assert store.key_root(typed_earlier) == root.resolve() == store.key_root(typed_later)
+    conn = store.open(tmp_path / "fresh" / store.STORE_FILENAME)
+    try:
+        assert _two_years_rebuilt_without_a_root(conn, typed_earlier, typed_later) == [
+            "J Park & Associates/Smith/2025/1040 - Smith", "J Park & Associates/Smith/2026/1040 - Smith",
+        ]
+        assert store._engagement_row(conn, typed_earlier)["path"].endswith("/2025/1040 - Smith")
+        assert store._engagement_row(conn, typed_later)["path"].endswith("/2026/1040 - Smith")
+    finally:
+        conn.close()
+
+
+def test_a_private_tree_typed_in_another_case_is_keyed_by_where_it_sits(root, tmp_path):
+    """The review of decision 134. On a filesystem that does not tell
+    ``j park & associates`` from the layout's own name, the folder is the
+    same return whichever way it was typed, and it is keyed by where it
+    sits rather than by its year folder. Asked where the filesystem tells
+    the two apart, or does not give back a folder's own spelling, there is
+    nothing to ask."""
+    from tracker.layout import PRIVATE_TREE
+
+    earlier = make_engagement(root, _one_request(2025), household="Smith", year=2025,
+                              return_name="1040 - Smith")
+    make_engagement(root, _one_request(2026), household="Smith", year=2026, return_name="1040 - Smith")
+    typed = [root / PRIVATE_TREE.lower() / "Smith" / str(year) / "1040 - Smith" for year in (2025, 2026)]
+    if not typed[0].is_dir() or typed[0].resolve() != earlier.resolve() \
+            or typed[0].resolve().parts[-4] != PRIVATE_TREE:
+        pytest.skip("this filesystem tells the two spellings apart, or does not give back a folder's own")
+
+    assert store.key_root(typed[0]) == root.resolve() == store.key_root(typed[1])
+    conn = store.open(tmp_path / "fresh" / store.STORE_FILENAME)
+    try:
+        assert _two_years_rebuilt_without_a_root(conn, *typed) == [
+            "J Park & Associates/Smith/2025/1040 - Smith", "J Park & Associates/Smith/2026/1040 - Smith",
+        ]
+    finally:
+        conn.close()
+
+
+def test_the_settings_root_still_wins_over_the_position(root, engagement, tmp_path, monkeypatch):
+    """Decision 106 unchanged: the root the settings file names is the key
+    whenever the folder is under it - here a wider folder than the one the
+    layout reads - and it wins over a root a caller has in hand too."""
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    set_clients_root(tmp_path)
+
+    assert store.key_root(engagement) == tmp_path
+    assert store.key_root(engagement, root) == tmp_path
+    assert store.engagement_path(store.key_root(engagement), engagement) == f"Clients/{KEY}"
+
+
+def test_a_caller_root_still_wins_over_the_position(root, engagement, tmp_path):
+    """With no settings file, a caller's root is the key, as it was: the
+    position is asked only when nobody has a root in hand."""
+    assert store.key_root(engagement, tmp_path) == tmp_path
+    assert store.key_root(engagement, root) == root
+    assert store.key_root(engagement) == root
+
+
+def test_a_folder_outside_the_layout_still_keys_by_its_parent(root, tmp_path):
+    """The parent fallback remains for a folder the layout does not read: a
+    test tree, a folder named by hand. Both names are asked - the private
+    tree four levels up and a year above - and a folder missing either is
+    keyed by its parent."""
+    by_hand = tmp_path / "Smith 2025"
+    not_a_year = root / "J Park & Associates" / "Smith" / "Drafts" / "1040 - Smith"
+    not_the_tree = root / "Clients" / "Smith" / "2025" / "1040 - Smith"
+    for folder in (by_hand, not_a_year, not_the_tree):
+        folder.mkdir(parents=True)
+        assert store.key_root(folder) == folder.parent, folder
+
+
+def test_a_store_of_the_previous_version_is_refused_and_rebuilt(root, engagement, tmp_path):
+    """Decision 134 changed the key, not a column: a store of the version
+    before it may hold two years of one return as one row, keyed by the
+    return's name alone. So it is refused by the sentence every older store
+    is, and the rebuild from the journals keys each return where it sits -
+    even with no root in hand, the way a reader meets a folder: the next
+    year of the same return is a row of its own, not the same row twice."""
+    next_year = make_engagement(root, _one_request(2026), household="Smith Family", year=2026,
+                                return_name=engagement.name)
+    path = tmp_path / "older" / store.STORE_FILENAME        # not this process's own store
+    store.open(path).close()
+    written_earlier = sqlite3.connect(path)
+    written_earlier.execute(f"PRAGMA user_version = {store.SCHEMA_VERSION - 1}")
+    written_earlier.close()
+
+    with pytest.raises(store.StoreError, match=f"user_version {store.SCHEMA_VERSION - 1}") as raised:
+        store.open(path)
+    assert "delete it and rebuild" in str(raised.value)
+
+    path.unlink()
+    conn = store.open(path)
+    try:
+        assert _two_years_rebuilt_without_a_root(conn, engagement, next_year) == [
+            KEY, KEY.replace("/2025/", "/2026/"),
+        ]
+        assert store._engagement_row(conn, engagement)["path"] == KEY     # the exact key, no tail
+        assert store.check(conn, root, engagement) == [] and store.check(conn, root, next_year) == []
+    finally:
+        conn.close()
 
 
 # ------------------------------------------------ the freshness handle (d112) ----
