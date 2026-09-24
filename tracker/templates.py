@@ -28,12 +28,12 @@ this request asks for is addressed to somebody. A W-2, a 1099, a K-1, a
 mortgage statement, a bank statement and a return are named - the payer,
 the lender, the agency or the return itself writes a name on the page - and
 a receipt, a log, a trial balance, a schedule or a spreadsheet export is
-not. Forty of the eighty-four rows here are named. Financial statements and
-bank statements are named because a statement without the entity's name on
-it is not one, which is why the client README asks for reports with their
-headers on. The mark decides what the household pass does when a document
-names nobody on the return: a named request parks it for a person, an
-unnamed one files it on its keywords alone.
+not. Sixty-one of the hundred and seven rows here are named. Financial
+statements and bank statements are named because a statement without the
+entity's name on it is not one, which is why the client README asks for
+reports with their headers on. The mark decides what the household pass
+does when a document names nobody on the return: a named request parks it
+for a person, an unnamed one files it on its keywords alone.
 """
 
 from __future__ import annotations
@@ -224,6 +224,45 @@ SHARED = {
     "officer_comp": dict(document="Officer Compensation Detail",
                          any_keywords="officer compensation detail, officer compensation schedule",
                          extensions="xlsx, pdf"),
+    # Decision 141, the owner's rows. A K-1 a *business* receives, by the
+    # title every federal K-1 prints on its face and the California LLC
+    # K-1's (568) - required, so the row outranks the return's own rows on
+    # a K-1 and a K-1 never contests the prior-year return. The S
+    # corporation's `shareholder's share of income` is left out on purpose:
+    # a corporation or a partnership cannot hold S corporation stock, the
+    # 1120-S return and California's 100S print that title on their own
+    # K-1 pages, and the row would have contested every S-corp return.
+    "k1_received": dict(document="Schedule K-1s Received by the Business",
+                        required_keywords="partner's share of income | beneficiary's share of income "
+                                          "| member's share of income"),
+    # By the forms' numbers, as the 1040's A03 and A05 are known. Neither
+    # title can be a keyword: `nonemployee compensation` is on the IRS
+    # "Attention" page ahead of every information return (decision 90),
+    # and `payment card` is said by papers that only mention a 1099-K.
+    "payment_forms_received": dict(document="1099-K / 1099-NEC Received by the Business",
+                                   required_keywords="1099-k | 1099-nec", extensions="pdf, csv"),
+    # The 1042-S by its printed title. Its number cannot be the keyword:
+    # 1042 is no form family the matcher knows, so `1042-s` is a phrase,
+    # and the Form 1065, 1120, 1120-F, 1040-NR and W-2G say it in their
+    # withholding lines. One entry, because the owner put the same row on
+    # the 1040 and on every business catalog.
+    "foreign_source_income": dict(document="1042-S - Foreign Person's U.S. Source Income",
+                                  required_keywords="foreign person's u.s. source income"),
+    # The notice's own header, never `notice` or `letter` alone. The IRS's
+    # current notice prints its CP number beside "Tax year" (or "Tax
+    # period") and "Notice date" on every page; the CP number cannot be a
+    # keyword (it varies, and a keyword is a whole phrase), so the header's
+    # two fields stand for it, with the agency by either of its names - a
+    # scan of a notice's later pages carries "IRS" and not the heading.
+    # No blank form says "notice date", and an EIN letter (CP 575) prints
+    # no tax year, so it stays the 1041's A02. A notice laid out any other
+    # way - a state's, an IRS letter - parks for a person, which is safe;
+    # the row is narrow on purpose (SPEC-141 §2.5).
+    "notices": dict(document="IRS & State Tax Notices and Letters",
+                    required_keywords=f" {KEYWORD_ANY_OF} ".join(
+                        f"notice date {KEYWORD_ALL_OF} {field} {KEYWORD_ALL_OF} {agency}"
+                        for field in ("tax year", "tax period")
+                        for agency in ("irs", "internal revenue service"))),
 }
 
 
@@ -257,6 +296,23 @@ FORM_TEMPLATES = {
         # would not: it begins mid-title, past where the menu rule reads.
         _row("A05", "1099-K - Payment Card & Third-Party Network Transactions", core=False, named=True, extensions="pdf, csv", any_keywords="1099-k, payment card"),
         _row("A06", "1099-G - Certain Government Payments", core=False, named=True, extensions="pdf, csv", any_keywords="1099-g"),
+        # Decision 141, the owner's. The SSA-1099 heads itself "Social
+        # Security Benefit Statement" and the RRB-1099 "Payments by the
+        # Railroad Retirement Board"; required, so the statement outranks
+        # E02 - the SSA prints its revision code "Form SSA-1099-R-OP1" at
+        # the top of the page, and E02's `1099-r` is said there. The
+        # RRB-1099-R, the railroad pension ("Annuities or Pensions by the
+        # Railroad Retirement Board"), says neither and stays with E02.
+        _row("A07", "SSA-1099 / RRB-1099 - Social Security & Railroad Retirement Benefits", core=False, named=True,
+             required_keywords="social security benefit statement | payments by the railroad retirement board"),
+        # These three, L02 and L03 by their numbers, required: no other form
+        # in either corpus says them where a form names itself, and each
+        # number's variants keep it off its siblings (1099-C is not 1099-CAP,
+        # W-2G is not W-2). The printed titles cannot serve: Schedule 1 says
+        # "cancellation of debt" and "student loan interest", the 1040-ES
+        # booklet "gambling winnings".
+        _row("A08", "1099-C - Cancellation of Debt", core=False, named=True, required_keywords="1099-c"),
+        _row("A09", "W-2G - Gambling Winnings", core=False, named=True, required_keywords="w-2g"),
         _row("B01", "Prior-Year Federal & State Tax Returns", core=True, named=True, period=TY_PRIOR,
              required_keywords=_prior_return("individual income tax return", "filing status", JURAT,
                                              state=("resident income tax return",))),
@@ -303,6 +359,23 @@ FORM_TEMPLATES = {
         _row("J01", "Childcare Provider Statements - Name, EIN, Amounts", core=False, named=False, extensions="pdf, xlsx", any_keywords="child care statement, day care statement, child care provider statement, day care provider statement, dependent care provider statement, child care receipt, day care receipt, child care tax statement, statement of child care expenses, statement of day care expenses, year-end child care, year-end day care"),
         _row("K01", "IRA / HSA Contribution Statements - Form 5498", core=False, named=True, any_keywords="5498, 5498-sa, 5498-esa, ira contribution information, medicare advantage msa information"),
         _row("L01", "Tuition Statements - Form 1098-T", core=False, named=True, any_keywords="1098-t, qualified tuition and related expenses"),
+        _row("L02", "1098-E - Student Loan Interest", core=False, named=True, extensions="pdf, csv", required_keywords="1098-e"),
+        _row("L03", "1099-Q - 529 / Coverdell Education Savings Distributions", core=False, named=True, required_keywords="1099-q"),
+        # The client's own sheet, so no form title exists; any keyword, so a
+        # return that prints the same words outranks it. `schedule c` alone
+        # is what every 1099's instructions say ("report on Schedule C"),
+        # and `cost of goods sold`, `gross sales`, `total expense` and `net
+        # income` are every business return's lines. `business mileage` is
+        # the sheet's own line (an organizer worksheet asks for it beside
+        # the expenses), said by no form, bank statement, ledger or
+        # trial balance in either corpus; the others are the headings a
+        # client's summary carries, the owner's title among them.
+        _row("M01", "Schedule C - Business Income & Expense Summary", core=False, named=False,
+             extensions="xlsx, pdf, csv",
+             any_keywords="business mileage, business income and expense summary, "
+                          "business income & expense summary, schedule c worksheet, schedule c summary"),
+        _shared("N01", "foreign_source_income", core=False, named=True),
+        _shared("Z01", "notices", core=False, named=True),
     ],
     "1120": [
         # No state corporate return is in the corpus the suite defends, so
@@ -323,6 +396,10 @@ FORM_TEMPLATES = {
         _row("G01", "Shareholder List & Ownership Changes", core=False, named=False, extensions="xlsx, pdf", any_keywords="shareholder list, stock ledger, cap table, capitalization table"),
         _shared("H01", "apportionment", core=False, named=False),
         _row("I01", "Book-Tax Difference Support - Schedule M-1 Items", core=False, named=False, extensions="xlsx, pdf", any_keywords="book-tax difference, m-1 adjustment, m-1 support, book to tax reconciliation"),
+        _shared("J01", "k1_received", core=False, named=True),
+        _shared("J02", "payment_forms_received", core=False, named=True),
+        _shared("J03", "foreign_source_income", core=False, named=True),
+        _shared("Z01", "notices", core=False, named=True),
     ],
     "1120S": [
         # California heads Form 100S "California S Corporation / Franchise
@@ -348,6 +425,10 @@ FORM_TEMPLATES = {
         # statement print, which the shared loans row has always had.
         _row("G01", "Loan Agreements & Shareholder Loan Activity", core=False, named=True, extensions="pdf, xlsx", any_keywords="loan agreement, promissory note, loan statement, amortization schedule, principal balance"),
         _shared("H01", "apportionment", core=False, named=False),
+        _shared("I01", "k1_received", core=False, named=True),
+        _shared("I02", "payment_forms_received", core=False, named=True),
+        _shared("I03", "foreign_source_income", core=False, named=True),
+        _shared("Z01", "notices", core=False, named=True),
     ],
     "1065": [
         # California heads Form 568 "Limited Liability Company / Return of
@@ -355,10 +436,14 @@ FORM_TEMPLATES = {
         # second lines are the state form's own. `partnership return` is
         # said by the blank Form 1065 as well, which is this same row's
         # federal document, so it takes nothing the row must not have
-        # (decision 90).
+        # (decision 90). The 568's second line wants its first beside it
+        # (decision 141): a preparer's cover letter names the "Return of
+        # Income" a K-1 came from, and a bare `return of income` made the
+        # K-1 a partnership received a prior-year return.
         _row("A01", "Prior-Year Federal & State Partnership Returns", core=True, named=True, period=TY_PRIOR,
              required_keywords=_prior_return("return of partnership income", JURAT,
-                                             state=("return of income", "partnership return"))),
+                                             state=(f"return of income {KEYWORD_ALL_OF} limited liability company",
+                                                    "partnership return"))),
         _row("A02", "Partnership Agreement & Amendments", core=True, named=True, period="Current", any_keywords="partnership agreement, operating agreement"),
         _shared("A03", "trial_balance", core=True, named=False),
         _shared("A04", "general_ledger", core=False, named=False),
@@ -371,17 +456,18 @@ FORM_TEMPLATES = {
         _shared("D01", "fixed_assets", core=False, named=False),
         _shared("D02", "depreciation", core=False, named=False),
         _shared("E01", "loans", core=False, named=True),
-        # Decision 85's F1 is still open here, and decision 93 does not
-        # close it: a CA Schedule K-1 (568) prints "Enter member's
-        # percentage (without regard to special allocations)", so it files
-        # on this row in a 1065 engagement. The 1065 catalog has no
-        # K-1s-received row - a partnership *issues* K-1s - and the owner's
-        # decision keeps one K-1 row, the 1040's, so there is nowhere else
-        # for it to go and nothing to route it away with: `special
-        # allocation` is this row's only plain-English word, and dropping
-        # it to fix one corpus document would leave the row blind.
+        # Decision 85's F1: a CA Schedule K-1 (568) prints "Enter member's
+        # percentage (without regard to special allocations)", so it
+        # reaches this row in a 1065 engagement. Decision 141 gave the
+        # partnership a row for the K-1s it *receives* (H01), which the
+        # K-1 reaches on its required title, so it files there; `special
+        # allocation` stays this row's only plain-English word.
         _row("F01", "Special Allocation Support - Section 704(b)", core=False, named=False, extensions="xlsx, pdf", any_keywords="special allocation, section 704(b)"),
         _shared("G01", "apportionment", core=False, named=False),
+        _shared("H01", "k1_received", core=False, named=True),
+        _shared("H02", "payment_forms_received", core=False, named=True),
+        _shared("H03", "foreign_source_income", core=False, named=True),
+        _shared("Z01", "notices", core=False, named=True),
     ],
     "1041": [
         # A bare `trust agreement` is what a custodian heads an IRA's
@@ -411,6 +497,9 @@ FORM_TEMPLATES = {
         # value, and the blank form would have filed here.
         _row("E01", "Cost Basis for Assets Sold During the Year", core=False, named=False, extensions="xlsx, pdf", any_keywords="cost basis schedule, basis of assets sold, date acquired and date sold, purchase price and sale price, stepped-up basis"),
         _row("F01", "Rental / Business Income & Expense Detail", core=False, named=False, extensions="xlsx, pdf", any_keywords="rental income and expenses, rent roll, schedule e detail, schedule c detail"),
+        # The owner's (decision 141): the 1040's estimated-tax row, as it is.
+        _shared("G01", "estimated_tax", core=False, named=False),
+        _shared("Z01", "notices", core=False, named=True),
     ],
     "990": [
         _row("A01", "Prior-Year Form 990 & State Filings", core=True, named=True, period=TY_PRIOR,
@@ -438,6 +527,7 @@ FORM_TEMPLATES = {
         _row("F01", "Fundraising Event Revenue & Expense Detail", core=False, named=False, extensions="xlsx, pdf", any_keywords="fundraising event detail, special event revenue, event revenue and expense"),
         _shared("G01", "payroll_returns", core=False, named=True),
         _row("H01", "Unrelated Business Income Detail", core=False, named=False, extensions="xlsx, pdf", any_keywords="form 990-t, unrelated business income detail, ubti schedule"),
+        _shared("Z01", "notices", core=False, named=True),
     ],
 }
 

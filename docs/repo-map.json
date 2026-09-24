@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 123,
-    "edges": 729,
-    "reused": 89
+    "edges": 731,
+    "reused": 92
   },
   "node_types": [
     "artifact",
@@ -2004,8 +2004,8 @@
       "id": "tracker/templates.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3ace38e1e28f6042",
-      "lines": 648,
+      "sha256": "fb300697b24ceb72",
+      "lines": 738,
       "exports": [
         "AS_OF_YEAR_END",
         "BASE_YEAR",
@@ -2048,7 +2048,7 @@
         "KEYWORD_DEFAULT_NOTE": "'defaults to the document name'"
       },
       "role": "The per-form request catalog (FORM_TYPES, FORM_TEMPLATES): what each return type asks for and the keyword rules that recognise each document. The ONLY source of truth for the checklists; the wizard and the rollover read it directly. Since decision 117 it also holds the dates a form implies: FILING_DEADLINES with filing_deadline_for() (the statutory day in the year after the tax year, weekends shifted forward) and ask_by_for() (TARGET_DAYS_BEFORE_DEADLINE before it, moved back off the weekend).",
-      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check. Decision 60: a catalog keyword is the form's own title or a phrase only it carries, never a word other forms print about it (a 1040 says W-2; a 1095-C says Marketplace). Decision 62: every catalog row keys on the document's own title phrase; tests/test_catalog.py routes reconstructions of the real forms against every catalog. Decision 63: the prior-year return rows require their form number and title, so a return wins over its schedules' lines. Decision 64: the return rows require their title phrase, not their number; the K-1 row keys on the K-1's title; tests/irs/ (the IRS's own forms) and tests/test_irs_forms.py route them all. Decision 65: every prior-year return row requires the jurat; schedule rows key on their titles, not on account names. Decision 66: no row keys on a line every return prints (dividends and distributions, ownership percentage, donation) or the organizer asks (child care provider); the receipt, list and childcare rows key on those documents' own titles. Decision 67: the receipt row does not key on contribution statement (an IRA's, a 529's); the childcare row knows the provider's statement; the estimated tax row keys on a voucher's own lines (its numbered heading, the amount line), not the booklet's prose. Decision 68: the receipt row keys on receipt wording only (a pledge, a thank-you and the firm's letter are not receipts); the estimated tax row knows the state voucher; the childcare row does not take an FSA administrator's statement. Decision 69: the receipt row keys on words only a charity prints; no form 540-es; L01 has no tuition statement (a checklist's line, a university's bill). Decision 72: item_from_spec() reads a spec's lists through manifest.csv_tuple(), the one parser, rather than a copy of it. Decision 73: the shared estimated-tax row is two rows, because an individual's 1040-ES voucher is not a corporation's record (business_estimated_tax keys on corporation estimated tax, estimated tax voucher, estimated payments made); the December bank row does not key on statement of account (a credit-card issuer's and a broker's heading) and takes a workbook, as the reconciliation it asks for arrives; the property tax row keys on the bill's own titles, not on assessor, parcel number or property tax bill (an assessor's notice and a servicer's escrow analysis print those); D01 drops thank you for your donation (every fundraiser's salutation); I01 drops advance payment of premium tax credit (a marketplace notice's sentence); J01 keys on child care/day care spellings with the run-together copies deleted, since the matcher reads the space as optional; 1041 A01 names the kind of trust (an IRA custodian's paperwork is a Trust Agreement too), B02 drops year-end account statement (a bank's heading), C01 drops distribution schedule (a mutual fund's), E01 knows stepped-up basis; 990 C02 keys on the schedule's own title rather than compensation of officers (Part VII's line and the Statement of Functional Expenses', which is now a financial statement's title), D02 on grants made rather than a bare grantee (a letter the charity received) or grants paid (the 990-PF's line 25), E01 without program description (a grant proposal's); the xlsx-only rows and the loans row take the format a client really sends, and officer_comp drops form 1125-e with it (the blank IRS form parks). Decision 85: 1040 E01 knows the wording a broker actually exports - realized gain/loss and the run-together realized gain loss beside the firm's own realized gain and loss - and takes a workbook, since that export arrives as an .xlsx as often as a CSV; 1041 B01 takes the same two, because the trust's realized gain/loss export is its 1099-B by another name. No IRS form in tests/irs/ says either word, and decision 68's consolidated 1099 never prints them, so the composite's placements are untouched. Decision 90, the owner's catalog: _prior_return() writes every prior-year return row's required keyword, with JURAT as the one owner of the line decision 65 added, and a state return's own printed title as an alternative inside that keyword - a standalone CA 540 or NY IT-201 files 1040 B01 on 'resident income tax return', a CA 568 or NY IT-204 files 1065 A01 on 'return of income' or 'partnership return', a CA 100S files 1120S A01 on 'franchise or income tax return', and another state is one more phrase, not a rule. The alternative lives inside the required keyword rather than in Any Keywords so the row's required set stays required: the prior-year return still outranks a row that matched on any keyword and one that fails another rule is still contested. The 1040 catalog gains A03-A06, one row per 1099 a person receives, keyed on the form's number - 'nonemployee compensation' is said by the IRS Attention page ahead of every information return and 'certain government payments' by the 1040-ES package, so neither is a keyword; 'miscellaneous information' and 'payment card' are, the second because the 1099-K's title never lands on one line and 'payment card' begins it, where a checklist's menu rule can see it. 'depreciation' joins SHARED - the 1120's C02 unchanged, 1120S F02 and 1065 D02 new - so the schedule behind Form 4562 has one set of words; a fixed-asset register that never says depreciation stays on fixed_assets, which all three catalogs already carry. Decision 93: the catalog keeps ONE K-1 row (1040 F01, K1_CATALOG/K1_IDENTIFIER) and it asks for the state K-1 too - California heads Schedule K-1 (568) \"Member's Share of Income\" - because which partnerships a client is in is a fact about that client, not about the 1040. issuer_row() cuts a row per issuing entity from k1_row(): same Any Keywords, same period and extensions, the normalised entity name in Required Keywords and in the Document. The 1065's F01 is Special Allocation Support and decision 85's F1 stays open there. Decision 117, the owner's table: each form's statutory filing date lives here because it is a fact about the return type, like the checklist itself, and a form the table does not name gets no default date at all - a guessed deadline would be read out to a client in the firm's name. The weekend shift is the IRS's own rule; a holiday is a person's edit, because the federal and state calendars differ and move. Every catalog row carries a name mark since decision 128 - 40 of the 84 are named - and an issuer row is named because the K-1 row it is cut from is."
+      "notes": "item_from_spec() gives a rule-less request its own document name as the required keyword, because a request with no rule can never auto-file, and the safe extension default. default_tax_year() is the calendar's most recently ended year; template_items(form, year=...) shifts the catalog's base year to it, relative periods included. No date_pattern in the catalog: each row's Period implies its year check. Decision 60: a catalog keyword is the form's own title or a phrase only it carries, never a word other forms print about it (a 1040 says W-2; a 1095-C says Marketplace). Decision 62: every catalog row keys on the document's own title phrase; tests/test_catalog.py routes reconstructions of the real forms against every catalog. Decision 63: the prior-year return rows require their form number and title, so a return wins over its schedules' lines. Decision 64: the return rows require their title phrase, not their number; the K-1 row keys on the K-1's title; tests/irs/ (the IRS's own forms) and tests/test_irs_forms.py route them all. Decision 65: every prior-year return row requires the jurat; schedule rows key on their titles, not on account names. Decision 66: no row keys on a line every return prints (dividends and distributions, ownership percentage, donation) or the organizer asks (child care provider); the receipt, list and childcare rows key on those documents' own titles. Decision 67: the receipt row does not key on contribution statement (an IRA's, a 529's); the childcare row knows the provider's statement; the estimated tax row keys on a voucher's own lines (its numbered heading, the amount line), not the booklet's prose. Decision 68: the receipt row keys on receipt wording only (a pledge, a thank-you and the firm's letter are not receipts); the estimated tax row knows the state voucher; the childcare row does not take an FSA administrator's statement. Decision 69: the receipt row keys on words only a charity prints; no form 540-es; L01 has no tuition statement (a checklist's line, a university's bill). Decision 72: item_from_spec() reads a spec's lists through manifest.csv_tuple(), the one parser, rather than a copy of it. Decision 73: the shared estimated-tax row is two rows, because an individual's 1040-ES voucher is not a corporation's record (business_estimated_tax keys on corporation estimated tax, estimated tax voucher, estimated payments made); the December bank row does not key on statement of account (a credit-card issuer's and a broker's heading) and takes a workbook, as the reconciliation it asks for arrives; the property tax row keys on the bill's own titles, not on assessor, parcel number or property tax bill (an assessor's notice and a servicer's escrow analysis print those); D01 drops thank you for your donation (every fundraiser's salutation); I01 drops advance payment of premium tax credit (a marketplace notice's sentence); J01 keys on child care/day care spellings with the run-together copies deleted, since the matcher reads the space as optional; 1041 A01 names the kind of trust (an IRA custodian's paperwork is a Trust Agreement too), B02 drops year-end account statement (a bank's heading), C01 drops distribution schedule (a mutual fund's), E01 knows stepped-up basis; 990 C02 keys on the schedule's own title rather than compensation of officers (Part VII's line and the Statement of Functional Expenses', which is now a financial statement's title), D02 on grants made rather than a bare grantee (a letter the charity received) or grants paid (the 990-PF's line 25), E01 without program description (a grant proposal's); the xlsx-only rows and the loans row take the format a client really sends, and officer_comp drops form 1125-e with it (the blank IRS form parks). Decision 85: 1040 E01 knows the wording a broker actually exports - realized gain/loss and the run-together realized gain loss beside the firm's own realized gain and loss - and takes a workbook, since that export arrives as an .xlsx as often as a CSV; 1041 B01 takes the same two, because the trust's realized gain/loss export is its 1099-B by another name. No IRS form in tests/irs/ says either word, and decision 68's consolidated 1099 never prints them, so the composite's placements are untouched. Decision 90, the owner's catalog: _prior_return() writes every prior-year return row's required keyword, with JURAT as the one owner of the line decision 65 added, and a state return's own printed title as an alternative inside that keyword - a standalone CA 540 or NY IT-201 files 1040 B01 on 'resident income tax return', a CA 568 or NY IT-204 files 1065 A01 on 'return of income + limited liability company' (both 568 heading lines, since decision 141) or 'partnership return', a CA 100S files 1120S A01 on 'franchise or income tax return', and another state is one more phrase, not a rule. The alternative lives inside the required keyword rather than in Any Keywords so the row's required set stays required: the prior-year return still outranks a row that matched on any keyword and one that fails another rule is still contested. The 1040 catalog gains A03-A06, one row per 1099 a person receives, keyed on the form's number - 'nonemployee compensation' is said by the IRS Attention page ahead of every information return and 'certain government payments' by the 1040-ES package, so neither is a keyword; 'miscellaneous information' and 'payment card' are, the second because the 1099-K's title never lands on one line and 'payment card' begins it, where a checklist's menu rule can see it. 'depreciation' joins SHARED - the 1120's C02 unchanged, 1120S F02 and 1065 D02 new - so the schedule behind Form 4562 has one set of words; a fixed-asset register that never says depreciation stays on fixed_assets, which all three catalogs already carry. Decision 93: the catalog keeps ONE K-1 row (1040 F01, K1_CATALOG/K1_IDENTIFIER) and it asks for the state K-1 too - California heads Schedule K-1 (568) \"Member's Share of Income\" - because which partnerships a client is in is a fact about that client, not about the 1040. issuer_row() cuts a row per issuing entity from k1_row(): same Any Keywords, same period and extensions, the normalised entity name in Required Keywords and in the Document. The 1065's F01 is Special Allocation Support; decision 141's H01 closes decision 85's F1 there. Decision 117, the owner's table: each form's statutory filing date lives here because it is a fact about the return type, like the checklist itself, and a form the table does not name gets no default date at all - a guessed deadline would be read out to a client in the firm's name. The weekend shift is the IRS's own rule; a holiday is a person's edit, because the federal and state calendars differ and move. Every catalog row carries a name mark since decision 128 - 61 of the 107 are named - and an issuer row is named because the K-1 row it is cut from is. Decision 141, the owner's rows: 1040 A07 (SSA-1099 / RRB-1099, required on the statements' own headings so it outranks E02, whose 1099-r the SSA's revision code 'SSA-1099-R-OP1' says), A08, A09, L02, L03 (required on the form number), M01 (the client's Schedule C sheet, any keywords on its own vocabulary) and N01; the business catalogs' K-1s received (required on the partner's, beneficiary's and member's K-1 titles, never the S corporation's, which no business can hold and whose title the S-corp return prints), 1099-K / 1099-NEC received and 1042-S rows; the 1041's G01 is the 1040's estimated_tax row; and Z01, the notices row, last on every catalog, keyed on the current IRS notice header (notice date with tax year or tax period, with the agency) and narrow on purpose. The 1042-S, K-1-received, business 1099 and notices rows are SHARED entries."
     },
     {
       "id": "tracker/validators.py",
@@ -2243,8 +2243,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e875021e2bb1eb48",
-      "lines": 392,
+      "sha256": "0e13419e4abd3902",
+      "lines": 393,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -2261,7 +2261,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "90f50c513de47bef",
+      "sha256": "1eb2fde1cb444c3d",
       "lines": 791,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2270,8 +2270,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e6190fae98c87dbc",
-      "lines": 1065,
+      "sha256": "686e3c4612410740",
+      "lines": 1082,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -2288,16 +2288,16 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "c5c0d7a97811e6fc",
-      "lines": 7697,
+      "sha256": "d1d20541f84752e2",
+      "lines": 8919,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
     {
       "id": "docs/vocab-coverage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ac4c249cd2ca6b0a",
-      "lines": 710,
+      "sha256": "ace55079f3ba4619",
+      "lines": 819,
       "role": "The vocabulary coverage report as people read it: the unreached keywords, the keywords reached only by documents that file elsewhere, the rows nothing files into, then every catalog row by row. Generated by tools/vocab_report.py; never edited by hand.",
       "notes": "Rebuilt with `python tools/vocab_report.py build` in the same commit as a catalog, matcher or case change."
     },
@@ -2827,15 +2827,20 @@
       "id": "tests/test_catalog.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "72e7b5e6656c6c9e",
-      "lines": 1678,
+      "sha256": "2052754e007343c8",
+      "lines": 1915,
       "exports": [
         "CASES",
         "NL",
         "XLSX_CASES",
+        "cp_notice_lines",
+        "k1_received_lines",
         "shipped_rows",
+        "ssa_1099_lines",
+        "test_a_k1_the_business_received_files_its_k1_row_this_year_and_next",
         "test_every_shipped_catalog_files_real_forms_where_they_belong",
-        "test_every_shipped_catalog_files_the_workbooks_clients_send"
+        "test_every_shipped_catalog_files_the_workbooks_clients_send",
+        "test_the_schedule_c_sheet_files_m01_and_no_ledger_or_trial_balance_does"
       ]
     },
     {
@@ -3253,13 +3258,16 @@
       "id": "tests/test_irs_forms.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b3844ac06785d53b",
-      "lines": 161,
+      "sha256": "df07d93a64134782",
+      "lines": 235,
       "exports": [
         "EXPECT",
         "IRS",
         "catalogs",
-        "test_the_irs_forms_file_where_they_belong_or_park"
+        "test_a_1099_r_still_files_e02",
+        "test_a_notice_files_z01_and_no_return_or_form_does",
+        "test_an_ssa_1099_files_a07_and_never_e02",
+        "test_the_irs_blank_corpus_keeps_every_placement_and_every_park"
       ]
     },
     {
@@ -4496,9 +4504,10 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e6c1f8d5d10b8b36",
-      "lines": 269,
+      "sha256": "dad5ad64ff291e40",
+      "lines": 320,
       "exports": [
+        "OWNERS_ROWS_141",
         "test_a_request_with_no_rule_defaults_to_its_own_name",
         "test_an_issuer_row_is_named_because_the_k1_row_it_is_cut_from_is",
         "test_an_issuer_row_is_the_k_1_row_named_for_an_entity",
@@ -4506,6 +4515,7 @@
         "test_catalog_rows_shift_to_the_engagements_year",
         "test_each_checklist_is_a_valid_manifest",
         "test_every_form_type_has_a_checklist",
+        "test_every_new_row_is_in_its_catalog_with_the_owners_exact_title",
         "test_every_shipped_row_carries_a_named_mark_and_the_counts_are_fable_s",
         "test_no_shipped_catalog_row_narrows_another",
         "test_no_shipped_catalog_row_requires_a_subset_of_anothers_words",
@@ -5907,6 +5917,18 @@
       "from": "tests/test_irs_forms.py",
       "to": "tracker/templates.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_irs_forms.py",
+      "to": "tests/test_catalog.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_irs_forms.py",
+      "to": "tests/test_scanner.py",
+      "type": "imports",
       "source": "derived"
     },
     {

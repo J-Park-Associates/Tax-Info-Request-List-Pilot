@@ -37,7 +37,7 @@ from tests.test_real_corpus import filed_to
 from tests.test_scanner import text_pdf
 from tracker.manifest import validated
 from tracker.router import route_file
-from tracker.templates import template_items
+from tracker.templates import FORM_TEMPLATES, SHARED, template_items
 
 NL = chr(10)
 
@@ -90,7 +90,7 @@ _DECISION_62 = [
     ], None),
     ("1040", "1099-Q.pdf", [
         "Form 1099-Q Payments From Qualified Education Programs 2025", "Box 5 Qualified tuition program",
-    ], None),
+    ], "L03"),      # parked until decision 141 gave the 1040 catalog a row for it
     ("1040", "941.pdf", [
         "Form 941 Employer's QUARTERLY Federal Tax Return 2025", "Form 941-V, Payment Voucher",
     ], None),
@@ -1643,6 +1643,190 @@ _DECISION_94 = [
 ]
 
 
+
+# Decision 141, the owner's rows for what clients actually send (SPEC-141).
+# Each document is typed from the form's own printed lines, never from a
+# client's: the SSA-1099 with the revision code the SSA prints at the top of
+# the page, which is where E02's `1099-r` was being said; the K-1 a business
+# receives, with a preparer's cover that names the "Return of Income"; an IRS
+# notice by the header every current CP notice prints; and the corrections
+# that must keep parking (the owner's item 17).
+def ssa_1099_lines(year: int) -> list[str]:
+    """The SSA-1099's printed lines, as the SSA prints them each January."""
+    return [
+        f"Form SSA-1099-R-OP1 (01-{year})",
+        "Discontinue Prior Editions",
+        "FORM SSA-1099 -- SOCIAL SECURITY BENEFIT STATEMENT",
+        f"{year} PART OF YOUR SOCIAL SECURITY BENEFITS SHOWN IN BOX 5 MAY BE TAXABLE INCOME.",
+        "Box 1. Name Box 2. Beneficiary's Social Security Number",
+        "JANE Q SAMPLE 000-00-0000",
+        f"Box 3. Benefits paid in {year} Box 4. Benefits Repaid to SSA in {year} "
+        f"Box 5. Net Benefits for {year} (Box 3 minus Box 4)",
+        "Box 6. Voluntary Federal Income Tax Withheld",
+        "DO NOT RETURN THIS FORM TO SSA OR IRS",
+    ]
+
+
+def k1_received_lines(year: int, *, form: str = "1065", share: str = "Partner's") -> list[str]:
+    """A K-1 package a business receives: the issuer's preparer's cover
+    letter, dated the next spring, and the K-1's face."""
+    return [
+        "Harbor & Vale CPAs LLP",
+        f"March 2, {year + 1}",
+        "RE: Example Holdings, LLC 00-0000000",
+        f"This package reports your share of the partnership's {year} Return of Income.",
+        f"Your {year} Schedule K-1 (Form {form}) is included with this letter.",
+        "Please contact us with any questions.",
+        f"Schedule K-1 {year} Final K-1 Amended K-1 OMB No. 1545-0123",
+        f"(Form {form}) For calendar year {year}, or tax year",
+        f"{share} Share of Income, Deductions, Credits, etc.",
+        "See separate instructions.",
+        "Part I Information About the Partnership",
+        "A Partnership's employer identification number 00-0000000",
+        "1 Ordinary business income (loss) 8,250.",
+    ]
+
+
+def cp_notice_lines(year: int) -> list[str]:
+    """The header block the IRS's current notices print on every page."""
+    return [
+        "Department of the Treasury",
+        "Internal Revenue Service",
+        "Notice CP14",
+        f"Tax year {year - 1}",
+        f"Notice date March 3, {year}",
+        "Social Security number XXX-XX-0000",
+        "To contact us Phone 800-829-0922",
+        "Page 1 of 4",
+        "Amount due: 1,234.56",
+        f"We believe you owe tax for {year - 1}. Pay the amount due now to avoid additional interest.",
+        f"Notice CP14 Tax year {year - 1} Notice date March 3, {year} Page 2 of 4",
+    ]
+
+
+_DECISION_141 = [
+    ("1040", "SSA-1099.pdf", ssa_1099_lines(2025), "A07"),
+    ("1040", "RRB-1099.pdf", [
+        "FORM RRB-1099 PAYER'S NAME: RAILROAD RETIREMENT BOARD 2025",
+        "PAYMENTS BY THE RAILROAD RETIREMENT BOARD",
+        "SOCIAL SECURITY EQUIVALENT BENEFIT PORTION OF TIER 1",
+        "1. Claim Number and Payee Code 2. Recipient's Identification Number",
+        "3. Gross Social Security Equivalent Benefit Portion of Tier 1 Paid in 2025",
+    ], "A07"),
+    # The railroad pension is a 1099-R by its own number and stays E02.
+    ("1040", "RRB-1099-R.pdf", [
+        "FORM RRB-1099-R ANNUITIES OR PENSIONS BY THE RAILROAD RETIREMENT BOARD 2025",
+        "PAYER'S NAME: RAILROAD RETIREMENT BOARD",
+        "1. Claim Number and Payee Code 2. Recipient's Identification Number",
+        "7. Gross Distribution 8. Total Employee Contributions",
+    ], "E02"),
+    ("1040", "1099-C Copy B.pdf", [
+        "Form 1099-C 2025 Cancellation of Debt Copy B For Debtor",
+        "CREDITOR'S name, street address, city or town, state or province",
+        "1 Date of identifiable event 2 Amount of debt discharged 6,210.00",
+        "Instructions for Debtor",
+    ], "A08"),
+    ("1040", "W-2G Copy B.pdf", [
+        "Form W-2G 2025 Certain Gambling Winnings Copy B Report this income on your federal tax return.",
+        "1 Reportable winnings 2 Date won 3 Type of wager",
+        "PAYER'S name, street address, city or town",
+    ], "A09"),
+    ("1040", "1098-E.pdf", [
+        "Form 1098-E 2025 Student Loan Interest Statement Copy B For Borrower",
+        "RECIPIENT'S/LENDER'S name, street address, city or town",
+        "1 Student loan interest received by lender 1,184.22",
+    ], "L02"),
+    ("1040", "1042-S Copy B.pdf", [
+        "Form 1042-S 2025 Foreign Person's U.S. Source Income Subject to Withholding",
+        "Copy B for Recipient",
+        "1 Income code 2 Gross income 3 Chapter indicator",
+        "13a Recipient's name 13b Recipient's country code",
+    ], "N01"),
+    ("1120", "1042-S Copy B.pdf", [
+        "Form 1042-S 2025 Foreign Person's U.S. Source Income Subject to Withholding",
+        "Copy B for Recipient",
+        "1 Income code 2 Gross income 3 Chapter indicator",
+    ], "J03"),
+    *[(form, "1042-S Copy B.pdf", [
+        "Form 1042-S 2025 Foreign Person's U.S. Source Income Subject to Withholding",
+        "Copy B for Recipient",
+        "1 Income code 2 Gross income 3 Chapter indicator",
+    ], row) for form, row in (("1120S", "I03"), ("1065", "H03"))],
+    ("1065", "K-1 received by the partnership.pdf", k1_received_lines(2025), "H01"),
+    ("1120S", "K-1 received by the S corporation.pdf", k1_received_lines(2025), "I01"),
+    ("1120", "K-1 received by the corporation.pdf", k1_received_lines(2025), "J01"),
+    ("1120", "trust K-1 received by the corporation.pdf",
+     k1_received_lines(2025, form="1041", share="Beneficiary's"), "J01"),
+    # No corporation or partnership can hold S corporation stock, and the
+    # S-corp return prints this title on its own K-1 pages: an 1120-S K-1
+    # in a business engagement parks, as it always did.
+    ("1065", "1120-S K-1 in a partnership.pdf",
+     k1_received_lines(2025, form="1120-S", share="Shareholder's"), None),
+    ("1120S", "1099-K Copy B.pdf", [
+        "Form 1099-K 2025 Payment Card and Third Party Network Transactions Copy B For Payee",
+        "FILER'S name, street address, city or town PAYEE'S TIN",
+        "1a Gross amount of payment card/third party network transactions 196,424.06",
+    ], "I02"),
+    ("1065", "1099-NEC Copy B.pdf", [
+        "Form 1099-NEC 2025 Nonemployee Compensation Copy B For Recipient",
+        "PAYER'S name, street address, city or town",
+        "1 Nonemployee compensation 12,500.00",
+    ], "H02"),
+    *[(form, "IRS notice CP14.pdf", cp_notice_lines(2025), "Z01")
+      for form in ("1040", "1120", "1120S", "1065", "1041", "990")],
+    # The row is narrow on purpose (SPEC-141 §2.5): an IRS letter in the
+    # older layout prints no "Notice date", and parks for a person.
+    ("1040", "IRS letter 12C.pdf", [
+        "Department of the Treasury Internal Revenue Service",
+        "Date: March 3, 2025", "Taxpayer ID number: XXX-XX-0000", "Tax year: 2024",
+        "We need more information to process your 2024 tax return.",
+        "Letter 12C (Rev. 1-2025)",
+    ], None),
+    # The owner's item 17: corrections and amended forms keep parking.
+    ("1040", "W-2c.pdf", [
+        "Form W-2c Corrected Wage and Tax Statement 2025",
+        "a Employer's name, address, and ZIP code c Tax year/Form corrected 2025 / W-2",
+        "Previously reported Correct information 1 Wages, tips, other compensation",
+    ], None),
+    ("1065", "1065-X.pdf", [
+        "Form 1065-X Amended Return or Administrative Adjustment Request (AAR) 2025",
+        "Under penalties of perjury, I declare that I have filed an original return",
+    ], None),
+]
+
+# The Schedule C sheet: the client's own workbook, in the shape the firm's
+# organizer worksheet has - a 1099-NEC named in a cell, which the 1099-NEC
+# row cannot take (it asks for a PDF or a CSV), beside the expense lines.
+_DECISION_141_XLSX = [
+    ("1040", "2025 business income and expense.xlsx", [
+        ["Business name (DBA)", "Sample Studio"], ["Year 2025"],
+        ["GROSS SALES", 30000, "1099-NEC: Sample Payer Inc"],
+        ["COST OF GOODS SOLD", 0], ["AUTOMOBILE EXPENSE", 1200], ["SUPPLIES", 850],
+        ["BUSINESS MILEAGE", 2100], ["COMMUTE MILEAGE", 0],
+        ["TOTAL EXPENSE", 9000], ["NET INCOME", 21000],
+    ], "M01"),
+    ("1040", "Schedule C summary 2025.xlsx", [
+        ["Schedule C Summary - 2025"], ["Gross receipts", 48000], ["Total expenses", 17250],
+    ], "M01"),
+    ("1040", "Schedule C worksheet.xlsx", [
+        ["Schedule C Worksheet"], ["Tax year 2025"], ["Gross receipts", 48000], ["Total expenses", 17250],
+    ], "M01"),
+    ("1040", "business income and expense summary.xlsx", [
+        ["Sample Studio - Business Income and Expense Summary - 2025"],
+        ["Gross receipts", 48000], ["Total expenses", 17250],
+    ], "M01"),
+    ("1040", "business income & expense summary.xlsx", [
+        ["Business Income & Expense Summary"], ["Year", 2025], ["Gross receipts", 48000],
+    ], "M01"),
+    # The owner gave the 1041 the 1040's own estimated-tax row (G01): a
+    # trust's schedule of the payments it made files there.
+    ("1041", "trust estimated payments made.xlsx", [
+        ["Doyle Family Trust"], ["Estimated payments made - 2025"],
+        ["Date", "Amount"], ["04/15/2025", 2500], ["06/16/2025", 2500],
+    ], "G01"),
+]
+
+
 #: (decision, form, file name, lines, expected) - every case, tagged with the
 #: decision that introduced it. tools/vocab_report.py reads this list too.
 CASES = [
@@ -1651,6 +1835,7 @@ CASES = [
         (62, _DECISION_62), (63, _DECISION_63), (65, _DECISION_65), (66, _DECISION_66),
         (67, _DECISION_67), (68, _DECISION_68), (69, _DECISION_69), (73, _DECISION_73),
         (85, _DECISION_85), (90, _DECISION_90), (93, _DECISION_93), (94, _DECISION_94),
+        (141, _DECISION_141),
     )
     for case in block
 ]
@@ -1660,7 +1845,8 @@ CASES = [
 #: reads this list too, rendering the rows the way a sheet is read.
 XLSX_CASES = ([(73, *case) for case in _DECISION_73_XLSX]
               + [(85, *case) for case in _DECISION_85_XLSX]
-              + [(90, *case) for case in _DECISION_90_XLSX])
+              + [(90, *case) for case in _DECISION_90_XLSX]
+              + [(141, *case) for case in _DECISION_141_XLSX])
 
 
 @pytest.mark.parametrize("decision, form, name, lines, expected", CASES, ids=[f"d{c[0]}-{c[2]}" for c in CASES])
@@ -1676,3 +1862,54 @@ def test_every_shipped_catalog_files_the_workbooks_clients_send(tmp_path, decisi
     items = shipped_rows(tmp_path, form)
     routing = route_file(sheet_xlsx(tmp_path / name, rows), items)
     assert filed_to(routing) == expected, (f"decision {decision}", name, routing.reason)
+
+
+# ------------------------------------------------ decision 141's claims ----
+
+
+@pytest.mark.parametrize("form, row", [("1065", "H01"), ("1120S", "I01"), ("1120", "J01")])
+@pytest.mark.parametrize("year", [2025, 2026], ids=["its-own-year", "the-next-year"])
+def test_a_k1_the_business_received_files_its_k1_row_this_year_and_next(tmp_path, form, row, year):
+    """A K-1 the business received files its K-1 row and never contests the
+    prior-year return. In the next year's engagement the return row's
+    period is the K-1's own year, so the period guard that stopped the
+    intake's K-1 is gone: what holds is that no return row's required
+    keywords are met by a K-1 package. The cover says "Return of Income",
+    which is what the 1065's A01 used to take for a California 568. The
+    Period check is live here, as in every case."""
+    items = [replace(i, min_size_kb=0) for i in validated(template_items(form, year=year))]
+    routing = route_file(text_pdf(tmp_path / "K-1 received.pdf", NL.join(k1_received_lines(2025))), items)
+    assert filed_to(routing) == row, routing.reason
+    assert routing.candidates == (row,), routing.candidates
+
+
+#: The rows a bookkeeping export or a bank statement files under, by name.
+_LEDGERS = {SHARED[key]["document"] for key in ("trial_balance", "general_ledger", "december_bank")}
+
+
+def test_the_schedule_c_sheet_files_m01_and_no_ledger_or_trial_balance_does(tmp_path):
+    """The Schedule C sheet is the client's own workbook, so M01 keys on the
+    sheet's vocabulary; a trial balance, a general ledger or a bank
+    statement a sole proprietor sends with it must not be taken for it.
+    Every such document the suite files anywhere is routed against the
+    1040 catalog, where M01 lives."""
+    rows_1040 = shipped_rows(tmp_path, "1040")
+    sheet = next(case for case in _DECISION_141_XLSX if case[3] == "M01")
+    assert filed_to(route_file(sheet_xlsx(tmp_path / sheet[1], sheet[2]), rows_1040)) == "M01"
+
+    def ledger_row(form, expected):
+        return any(spec["identifier"] == expected and spec["document"] in _LEDGERS
+                   for spec in FORM_TEMPLATES[form])
+
+    ledgers = 0
+    for n, (_decision, form, name, lines, expected) in enumerate(CASES):
+        if expected and ledger_row(form, expected):
+            ledgers += 1
+            routing = route_file(text_pdf(tmp_path / f"{n}-{name}", NL.join(lines)), rows_1040)
+            assert filed_to(routing) != "M01", (name, routing.reason)
+    for n, (_decision, form, name, rows, expected) in enumerate(XLSX_CASES):
+        if expected and ledger_row(form, expected):
+            ledgers += 1
+            routing = route_file(sheet_xlsx(tmp_path / f"x{n}-{name}", rows), rows_1040)
+            assert filed_to(routing) != "M01", (name, routing.reason)
+    assert ledgers >= 10       # the suite's own ledgers, trial balances and bank statements

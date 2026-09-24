@@ -116,14 +116,18 @@ def test_the_catalogs_year_is_one_constant():
 
 def test_the_catalog_keeps_exactly_one_k_1_row():
     """The owner's decision: one K-1 row, and the issuers are an engagement's
-    own business. A second catalog row would be a fact about one client."""
+    own business. A second catalog row would be a fact about one client.
+
+    Decision 141 is the owner's too: each business catalog that can be a
+    partner or a beneficiary asks for the K-1s *the business* received, one
+    row each. The 1040's stays the one row issuer rows are cut from."""
     k1_rows = [
         (form, spec["identifier"])
         for form, specs in FORM_TEMPLATES.items()
         for spec in specs
         if "k-1" in spec["document"].lower()
     ]
-    assert k1_rows == [(K1_CATALOG, K1_IDENTIFIER)]
+    assert k1_rows == [(K1_CATALOG, K1_IDENTIFIER), ("1120", "J01"), ("1120S", "I01"), ("1065", "H01")]
 
 
 def test_the_k_1_row_asks_for_the_state_k_1_too():
@@ -223,18 +227,20 @@ def test_the_ask_by_default_is_five_days_before_the_deadline_moved_back_to_a_wee
 #: identifier as well as by count, so a row moved from one side to the
 #: other is a test somebody has to change on purpose.
 NAMED_ROWS: dict[str, tuple[str, ...]] = {
-    "1040": ("A01", "A02", "A03", "A04", "A05", "A06", "B01", "C01",
-             "E01", "E02", "F01", "G01", "I01", "K01", "L01"),
-    "1120": ("A01", "B01", "B02", "D01", "E01"),
-    "1120S": ("A01", "B01", "B02", "D01", "E01", "G01"),
-    "1065": ("A01", "A02", "B01", "B02", "E01"),
-    "1041": ("A01", "A02", "A03", "B01", "B02"),
-    "990": ("A01", "B01", "B02", "G01"),
+    "1040": ("A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "B01", "C01",
+             "E01", "E02", "F01", "G01", "I01", "K01", "L01", "L02", "L03", "N01", "Z01"),
+    "1120": ("A01", "B01", "B02", "D01", "E01", "J01", "J02", "J03", "Z01"),
+    "1120S": ("A01", "B01", "B02", "D01", "E01", "G01", "I01", "I02", "I03", "Z01"),
+    "1065": ("A01", "A02", "B01", "B02", "E01", "H01", "H02", "H03", "Z01"),
+    "1041": ("A01", "A02", "A03", "B01", "B02", "Z01"),
+    "990": ("A01", "B01", "B02", "G01", "Z01"),
 }
 #: Fable's counts, said as the SPEC says them: named of all, per catalog.
+#: Decision 141 added twenty-three rows, twenty-one of them named (the
+#: Schedule C sheet and the 1041's estimated-tax row are not).
 NAMED_COUNTS: dict[str, tuple[int, int]] = {
-    "1040": (15, 18), "1120": (5, 14), "1120S": (6, 15),
-    "1065": (5, 15), "1041": (5, 10), "990": (4, 12),
+    "1040": (22, 26), "1120": (9, 18), "1120S": (10, 19),
+    "1065": (9, 19), "1041": (6, 12), "990": (5, 13),
 }
 
 
@@ -242,7 +248,7 @@ def test_every_shipped_row_carries_a_named_mark_and_the_counts_are_fable_s():
     """Decision 128. Every catalog row says whether the document it asks for
     carries a name, because that is what decides whether a page naming
     nobody parks or files; a row with no mark would be a request whose
-    strictness nobody chose. Forty of the eighty-four are named."""
+    strictness nobody chose. Sixty-one of the hundred and seven are named."""
     named = 0
     total = 0
     for form, rows in FORM_TEMPLATES.items():
@@ -253,7 +259,7 @@ def test_every_shipped_row_carries_a_named_mark_and_the_counts_are_fable_s():
         assert (len(marked), len(rows)) == NAMED_COUNTS[form], form
         named += len(marked)
         total += len(rows)
-    assert (named, total) == (40, 84)
+    assert (named, total) == (61, 107)
     # The mark reaches the row a person's list is cut from, not just the spec.
     assert all(item_from_spec(spec).named for spec in FORM_TEMPLATES["1040"][:1])
     assert not item_from_spec(
@@ -267,3 +273,48 @@ def test_an_issuer_row_is_named_because_the_k1_row_it_is_cut_from_is():
     and never whose."""
     assert k1_row()["named"] is True
     assert issuer_row("F02", "Ashford Holdings LP")["named"] is True
+
+
+#: Decision 141, the owner's rows and titles exactly as he approved them
+#: (SPEC-141 §1): (catalog, identifier, title, named, extensions).
+_K1_RECEIVED = "Schedule K-1s Received by the Business"
+_PAYMENT_FORMS = "1099-K / 1099-NEC Received by the Business"
+_FOREIGN = "1042-S - Foreign Person's U.S. Source Income"
+_NOTICES = "IRS & State Tax Notices and Letters"
+OWNERS_ROWS_141 = [
+    ("1040", "A07", "SSA-1099 / RRB-1099 - Social Security & Railroad Retirement Benefits", True, "pdf"),
+    ("1040", "A08", "1099-C - Cancellation of Debt", True, "pdf"),
+    ("1040", "A09", "W-2G - Gambling Winnings", True, "pdf"),
+    ("1040", "L02", "1098-E - Student Loan Interest", True, "pdf, csv"),
+    ("1040", "L03", "1099-Q - 529 / Coverdell Education Savings Distributions", True, "pdf"),
+    ("1040", "M01", "Schedule C - Business Income & Expense Summary", False, "xlsx, pdf, csv"),
+    ("1040", "N01", _FOREIGN, True, "pdf"),
+    *[(form, f"{letter}0{n}", title, True, ext)
+      for form, letter in (("1120", "J"), ("1120S", "I"), ("1065", "H"))
+      for n, title, ext in ((1, _K1_RECEIVED, "pdf"), (2, _PAYMENT_FORMS, "pdf, csv"), (3, _FOREIGN, "pdf"))],
+    ("1041", "G01", "Estimated Tax Payment Records", False, "pdf, xlsx"),
+    *[(form, "Z01", _NOTICES, True, "pdf") for form in ("1040", "1120", "1120S", "1065", "1041", "990")],
+]
+
+
+def test_every_new_row_is_in_its_catalog_with_the_owners_exact_title():
+    """Decision 141: every row the owner added, identifier by identifier and
+    title by title, none of them pre-ticked - the wizard shows them unticked
+    and what an unticked row does is a later decision's (go-live item 15).
+    The 1041's G01 is the 1040's estimated-tax row itself, and the notices
+    row is one row on every catalog, so its words live in one place."""
+    assert len(OWNERS_ROWS_141) == 23
+    for form, identifier, title, named, extensions in OWNERS_ROWS_141:
+        spec = next((s for s in FORM_TEMPLATES[form] if s["identifier"] == identifier), None)
+        assert spec is not None, (form, identifier)
+        assert spec["document"] == title, (form, identifier)
+        assert spec["named"] is named and spec["core"] is False, (form, identifier)
+        assert spec["extensions"] == extensions, (form, identifier)
+        assert spec.get("required_keywords") or spec.get("any_keywords"), (form, identifier)
+    h01 = next(s for s in FORM_TEMPLATES["1040"] if s["identifier"] == "H01")
+    g01 = next(s for s in FORM_TEMPLATES["1041"] if s["identifier"] == "G01")
+    assert {k: v for k, v in g01.items() if k != "identifier"} == {k: v for k, v in h01.items() if k != "identifier"}
+    notices = [next(s for s in rows if s["identifier"] == "Z01") for rows in FORM_TEMPLATES.values()]
+    assert all(row == notices[0] for row in notices)
+    # Z01 sorts last on every catalog, so a notice reads the same everywhere.
+    assert all(rows[-1]["identifier"] == "Z01" for rows in FORM_TEMPLATES.values())
