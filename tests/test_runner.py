@@ -21,7 +21,7 @@ from tests.conftest import make_engagement, seed_index
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, build_samples
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
-from tracker.layout import household_of, inbox_of, originals_of
+from tracker.layout import household_of, inbox_of, originals_of, root_of
 from tracker.manifest import (
     EngagementInfo,
     Override,
@@ -56,6 +56,7 @@ from tracker.runner import (
     REMINDERS_ALWAYS,
     REMINDERS_AUTO,
     REMINDERS_NEVER,
+    SETTINGS_FLAG,
     STAGE_NOTE,
     STATUS_GENERATED,
     STATUS_HELD,
@@ -133,6 +134,9 @@ def a_pass(engagement, **kwargs):
     and the claims below are about the run it hands back for the return
     they named.
     """
+    # A pass needs the practice (decision 132): the walk of the root this
+    # return sits under, as the scheduled job hands it.
+    kwargs.setdefault("registry", discover_engagements(root_of(engagement.path)))
     runs = run_household(household_of(engagement.path), [engagement], **kwargs)
     return next(run for run in runs if run.engagement.path == engagement.path)
 
@@ -1220,7 +1224,7 @@ def test_the_household_pass_takes_every_open_returns_lock_in_name_order_and_rele
 
     monkeypatch.setattr(runner_module, "engagement_lock", watched)
     runs = run_household(household, [personal, business], today=FRIDAY,
-                         reminders=REMINDERS_NEVER)
+                         reminders=REMINDERS_NEVER, registry=discover_engagements(tmp_path))
 
     assert taken == ["1040 - John Park", "1120S - Park Landscaping"]
     assert taken == sorted(taken, key=str.lower)
@@ -1244,7 +1248,7 @@ def test_a_lock_held_on_one_return_skips_the_whole_household_and_touches_nothing
     (business.path / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
 
     runs = run_household(household, [personal, business], today=FRIDAY,
-                         reminders=REMINDERS_NEVER)
+                         reminders=REMINDERS_NEVER, registry=discover_engagements(tmp_path))
 
     assert all(run.skipped.startswith("another run is still going") for run in runs)
     assert all(run.filed == 0 for run in runs)
@@ -1276,7 +1280,8 @@ def test_two_open_years_sort_nothing_and_say_so_on_every_return(tmp_path, sample
                                 return_name="1040 - John Park", scaffold=False)
     every = [personal, business, engagement_from(next_year)]
 
-    runs = run_household(household, every, today=FRIDAY, reminders=REMINDERS_NEVER)
+    runs = run_household(household, every, today=FRIDAY, reminders=REMINDERS_NEVER,
+                         registry=discover_engagements(tmp_path))
 
     said = TWO_OPEN_YEARS.format(years="2025, 2026")
     assert all(said in run.warnings for run in runs)
@@ -1291,9 +1296,92 @@ def test_two_open_years_sort_nothing_and_say_so_on_every_return(tmp_path, sample
     # A person retires the year in the editor, and the next pass sorts.
     edit_details(next_year, active=False)
     runs = run_household(household, [personal, business, engagement_from(next_year)],
-                         today=FRIDAY, reminders=REMINDERS_NEVER)
+                         today=FRIDAY, reminders=REMINDERS_NEVER,
+                         registry=discover_engagements(tmp_path))
     assert not any(said in run.warnings for run in runs)
     assert sum(run.filed for run in runs) == 1
+
+
+# Decision 133: the reminder waits for the sort. A pass drafts after it
+# sorts, but when the sort does not take what the client sent, the letter
+# could ask for a document sitting in the client's own drop folder.
+
+
+def test_a_household_with_two_open_years_and_a_waiting_file_drafts_no_reminder_and_says_why(
+        tmp_path, samples, stamped_on, monkeypatch):
+    from tracker.reminder import INBOX_HOLD
+    from tracker.runner import TWO_OPEN_YEARS
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    set_clients_root(tmp_path)
+    personal, business = a_household(tmp_path, samples,
+                                     drops=(f"W-2 John Smith {YEAR}.pdf",))
+    household = household_of(personal.path)
+    next_year = make_engagement(tmp_path, DEMO_ITEMS,
+                                EngagementInfo(client="John Park", firm="J Park"),
+                                household="Park Family", year=2026,
+                                return_name="1040 - John Park", scaffold=False)
+    every = [personal, business, engagement_from(next_year)]
+
+    stamped_on(SATURDAY)
+    runs = run_household(household, every, today=SATURDAY,
+                         registry=discover_engagements(tmp_path))
+
+    # The inbox was not read, so the W-2 still waits in it - and no return
+    # of the household is asked for anything while it does.
+    assert (inbox_of(personal.path) / f"W-2 John Smith {YEAR}.pdf").is_file()
+    said = INBOX_HOLD.format(n=1)
+    for run in runs:
+        assert run.ok and run.drafted is None and run.held == 1
+        assert run.draft_note == said
+        assert TWO_OPEN_YEARS.format(years="2025, 2026") in run.warnings
+        assert list(run.engagement.path.glob("reminder-draft*")) == []
+        assert drafted_events(run.engagement.path) == [{ledger.HELD_KEY: []}]
+    # Said where a person looks: the run log, and the practice page's cell.
+    logged = append_log(tmp_path / LOG_FILENAME,
+                        RunReport(today=SATURDAY, runs=runs)).read_text(encoding="utf-8")
+    assert logged.count(said) == len(runs)
+    page = html.unescape(write_status_page(tmp_path, RunReport(today=SATURDAY, runs=runs))
+                         .read_text(encoding="utf-8"))
+    assert f"<td>{STATUS_HELD.format(n=1)}</td>" in page
+
+
+def test_the_pass_that_sorts_the_inbox_drafts_the_held_reminder_the_same_day(
+        tmp_path, samples, stamped_on, monkeypatch):
+    import tracker.filer as filer_module
+    from tracker.layout import README_NAME
+    from tracker.reminder import INBOX_HOLD
+
+    engagement = build_engagement(tmp_path, samples)
+    inbox = inbox_of(engagement.path)
+    real = filer_module._move_whole
+
+    def refused_once(source, target):
+        if Path(source).parent == inbox:
+            raise PermissionError("held open by the sync client")
+        return real(source, target)
+
+    # The draft day's first pass: the drop cannot be moved, so it fails to
+    # sort and stays in the inbox - and the reminder waits for it.
+    monkeypatch.setattr(filer_module, "_move_whole", refused_once)
+    held = pass_on(stamped_on, engagement, SATURDAY)
+    monkeypatch.undo()
+    assert held.file_errors and held.drafted is None
+    assert held.held == 1 and held.draft_note == INBOX_HOLD.format(n=1)
+    assert (inbox / f"W-2 John Smith {YEAR}.pdf").is_file()
+    assert not (engagement.path / DRAFT_FILENAME).exists()
+
+    # The next pass that same day sorts it, and drafts: a hold is not a
+    # draft, so the week's draft is still owed.
+    run = pass_on(stamped_on, engagement, SATURDAY)
+    assert run.ok and run.filed == 1 and run.held == 0
+    assert run.drafted == engagement.path / DRAFT_FILENAME
+    assert [one.name for one in inbox.iterdir() if one.name != README_NAME] == []
+    events = drafted_events(engagement.path)
+    assert [ledger.HELD_KEY in e for e in events] == [True, False]
+    assert last_drafted(engagement.path) == SATURDAY
 
 
 def api_state(engagement):
@@ -1467,3 +1555,411 @@ def test_the_dropping_households_pass_says_what_it_filed_into_a_fed_return(tmp_p
     assert FILED_INTO_FED.format(n=1, label=fed.label) in run.warnings
     [row] = read_index(fed.path)
     assert row.decision == FILED and row.identifier == "B01"
+
+
+def test_a_pass_cannot_be_run_without_the_practice(tmp_path, samples):
+    """There is one way to call a pass (decision 132): the practice is
+    required, so *Run now* and the schedule cannot differ by construction.
+    Left out, the call does not run; handed ``None`` - a root that could
+    not be walked - every run says so in one sentence and nothing is
+    sorted, scanned or written."""
+    from tracker.runner import NO_PRACTICE
+
+    personal, _fed = a_fed_household(tmp_path, samples,
+                                     drops=(f"W-2 John Smith {YEAR}.pdf",))
+    household = household_of(personal.path)
+
+    with pytest.raises(TypeError, match="registry"):
+        run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER)
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=None)
+
+    assert run.error == NO_PRACTICE and not run.ok
+    assert run.filed == 0
+    assert (inbox_of(personal.path) / f"W-2 John Smith {YEAR}.pdf").is_file()
+    assert read_index(personal.path) == []
+
+
+def test_a_feed_list_the_pass_cannot_read_is_said_on_every_own_return(tmp_path, samples):
+    """A household whose own record is there and will not read feeds only
+    its own returns this pass - and says so on every one of them (decision
+    132), exactly as a feed that resolves to nothing is said. Silence about
+    a route is the thing the feed list forbids."""
+    from tracker.layout import private_household_dir
+    from tracker.runner import FEEDS_UNREAD
+
+    personal, [fed] = a_fed_household(tmp_path, samples,
+                                      drops=(f"W-2 John Smith {YEAR}.pdf",))
+    registry = discover_engagements(tmp_path)
+    household = household_of(personal.path)
+    journal = ledger.path_for(private_household_dir(tmp_path, "Park Family"))
+    with open(journal, "ab") as handle:              # a line that is not an event
+        handle.write(b"this is not a line of the record\n")
+
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=registry)
+
+    unread = [w for w in run.warnings if w.startswith(FEEDS_UNREAD.split("(")[0])]
+    assert len(unread) == 1 and unread[0].endswith(FEEDS_UNREAD.split(")")[-1])
+    assert run.filed == 1                              # its own returns were fed
+    assert read_index(fed.path) == []                  # and nothing else
+
+
+def test_a_cross_fed_document_is_on_no_list_of_the_dropping_households_readme_and_a_parked_one_is_its_own(
+        tmp_path, samples):
+    """F-4, ruled by decision 132: the README in the drop folder is read by
+    everyone shared on the dropping household, and a document filed into
+    another household's return is seen only by that folder's sharing. So
+    the dropping client's README carries neither the document's own name
+    nor the firm's name for it; the household that holds it lists it as its
+    own. A document parked at home is the dropping household's, in its own
+    record, until a person decides. (Decision 130 extends this claim to the
+    received list once there is one.)"""
+    from tests.samples import SCRATCH_CLIENT, text_pdf
+    from tracker.filer import FILED, NEEDS_REVIEW
+    from tracker.scaffold import README_NAME
+
+    personal, [fed] = a_fed_household(tmp_path, samples)
+    text_pdf(inbox_of(personal.path) / "trial balance.pdf",
+             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT])
+    text_pdf(inbox_of(personal.path) / "unnamed w2.pdf",
+             [f"Form W-2 Wage and Tax Statement {YEAR}"])
+    household = household_of(personal.path)
+
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=discover_engagements(tmp_path))
+
+    assert run.ok
+    [filed] = read_index(fed.path)
+    assert filed.decision == FILED and filed.original_name == "trial balance.pdf"
+    [parked] = read_index(personal.path)
+    assert parked.decision == NEEDS_REVIEW and parked.original_name == "unnamed w2.pdf"
+    readme = (inbox_of(personal.path) / README_NAME).read_text(encoding="utf-8")
+    assert "trial balance.pdf" not in readme
+    assert "Trial Balance" not in readme
+    assert "Aaa Holdings" not in readme
+
+
+def test_in_a_household_a_slow_reading_is_said_once_on_the_first_own_returns_line(
+        tmp_path, samples, monkeypatch):
+    """SPEC-127.1 §9.2, folded in with decision 132: a reading is the
+    household's cost, paid once in the dropping household's pass, and said
+    once - on the line of the household's first own return (``first``, the
+    run the inbox's own notes ride), never on each return that judged it and
+    never cut short. Nothing about it reaches the record."""
+    import time
+
+    from tests.test_content_check import photo
+    from tracker.filer import FILED
+    from tracker.records import entry_to_json
+    from tracker.runner import SLOW_READING_NOTE
+
+    personal, business = a_household(tmp_path, samples,
+                                      drops=(f"W-2 John Smith {YEAR}.pdf",))
+    photo(inbox_of(personal.path) / "A photo.png", words="Trial balance")
+    monkeypatch.setattr(runner_module, "SLOW_READING_SECONDS", 0.05)
+    # The business's own name is on the page, as it is on a real trial
+    # balance: the request is named (decision 128).
+    [entity] = load_engagement_info(business.path).people
+
+    def a_slow_reader(path):
+        time.sleep(0.2)
+        return f"Trial balance as of December 31 {YEAR} {entity.name}"
+
+    monkeypatch.setattr("tracker.content_check._ocr_image", a_slow_reader)
+
+    report = run_registry(discover_engagements(tmp_path), today=FRIDAY,
+                          reminders=REMINDERS_NEVER)
+
+    first = next(run for run in report.runs if run.engagement.path == personal.path)
+    other = next(run for run in report.runs if run.engagement.path == business.path)
+    [row] = [one for one in read_index(business.path) if one.original_name == "A photo.png"]
+    assert row.decision == FILED and row.identifier == "B01"     # nothing was cut short
+    assert first.filed == 1                                      # the W-2, read after it
+    assert first.slowest[0][0] == "A photo.png"                  # the slow one, not the last
+    name, seconds = first.slowest[0]
+    note = SLOW_READING_NOTE.format(name=name, seconds=seconds)
+    assert first.summary().count(note) == 1
+    assert "slow reading" not in other.summary()
+    assert [one for run in (first, other) for one, _s in run.slowest].count("A photo.png") == 1
+    # Seconds are a fact about the machine and the pass, not the document.
+    assert "seconds" not in entry_to_json(row)
+    [event] = [e for e in ledger.read_events(business.path)
+               if e[ledger.EVENT_KEY] == ledger.FILED
+               and e[ledger.ROW_KEY]["original_name"] == "A photo.png"]
+    assert "seconds" not in event and "seconds" not in event[ledger.ROW_KEY]
+    assert all("seconds" not in stored for stored in store.documents(store.connect(),
+                                                                     business.path))
+
+
+# ============== what we have received, live (decision 130) ================
+#
+# The README is refreshed once by the household pass, after the sort and
+# after every return's scan and draft, still inside the locks: what the
+# client reads is current as of the pass, never one pass behind (D-d).
+
+
+def test_a_document_sorted_this_pass_is_on_the_readme_when_the_pass_ends(tmp_path, samples):
+    from tracker.filer import FILED
+    from tracker.manifest import load_manifest
+    from tracker.scaffold import README_NAME, RECEIVED_HEADING, day_text
+
+    engagement = build_engagement(tmp_path, samples)
+    readme = inbox_of(engagement.path) / README_NAME
+    assert not readme.exists() or RECEIVED_HEADING not in readme.read_text(encoding="utf-8")
+
+    run = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER)
+
+    assert run.ok and run.filed == 1
+    [row] = read_index(engagement.path)
+    assert row.decision == FILED
+    label = next(i.label for i in load_manifest(engagement.path) if i.identifier == row.identifier)
+    text = readme.read_text(encoding="utf-8")
+    assert RECEIVED_HEADING in text
+    assert f"  {label}  Received {day_text(FRIDAY)}" in text
+    assert row.original_name not in text
+
+
+def test_a_document_dropped_here_and_filed_into_another_households_return_is_on_neither_list_of_this_readme_and_on_that_households(
+        tmp_path, samples):
+    """132's F-4 ruling, carried into the received list: the document is in
+    the other household's index, so it is on that household's list - at
+    once, by the pass that filed it - and on no list of the README in the
+    folder it was dropped in, which never names the other household or its
+    return. A document parked at home is this household's, counted under
+    review."""
+    from tests.samples import SCRATCH_CLIENT, text_pdf
+    from tracker.filer import FILED
+    from tracker.manifest import load_manifest
+    from tracker.scaffold import (
+        README_NAME,
+        RECEIVED_HEADING,
+        UNDER_REVIEW_HEADING,
+        day_text,
+    )
+
+    personal, [fed] = a_fed_household(tmp_path, samples)
+    text_pdf(inbox_of(personal.path) / "trial balance.pdf",
+             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT])
+    text_pdf(inbox_of(personal.path) / "unnamed w2.pdf",
+             [f"Form W-2 Wage and Tax Statement {YEAR}"])
+    household = household_of(personal.path)
+
+    [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
+                          registry=discover_engagements(tmp_path))
+
+    assert run.ok
+    [filed] = read_index(fed.path)
+    assert filed.decision == FILED and filed.identifier == "B01"
+    [b01] = [i for i in load_manifest(fed.path) if i.identifier == "B01"]
+
+    here = (inbox_of(personal.path) / README_NAME).read_text(encoding="utf-8")
+    received_here = here[here.index(RECEIVED_HEADING):]
+    assert b01.label not in here and "Trial Balance" not in here
+    assert "Aaa Holdings" not in here and "trial balance.pdf" not in here
+    assert received_here.splitlines()[2:4] == [UNDER_REVIEW_HEADING,
+                                               f"  1 document received {day_text(FRIDAY)}"]
+    assert "unnamed w2" not in here
+
+    there = (inbox_of(fed.path) / README_NAME).read_text(encoding="utf-8")
+    assert f"  {b01.label}  Received {day_text(FRIDAY)}" in there
+    assert "trial balance.pdf" not in there and "Park Family" not in there
+# ------------------------------------ decision 131: the room a return has ----
+
+
+def _a_pass_over(engagement, **kwargs):
+    """One household pass over one return, the way the practice runs it."""
+    from tracker.layout import root_of
+
+    registry = discover_engagements(root_of(engagement))
+    [found] = registry.engagements
+    return run_household(household_of(engagement), [found], today=FRIDAY,
+                         reminders=REMINDERS_NEVER, registry=registry, **kwargs)
+
+
+def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path):
+    """Ten characters short: the W-2 files all the same, under a name cut
+    to fit - and the pass does **not** warn (the lead's L-1 on decision
+    131): nothing in the run's warnings, the run log's lines or the
+    practice page's Warnings column. With a reader's 218 for spreadsheets
+    every 1040 at the firm's root would warn every pass, and a warning that
+    is always on is a warning nobody reads."""
+    from tests.test_filer import drop, tight_return
+    from tracker.filer import ROOM_SHORT
+
+    engagement = tight_return(tmp_path, 10)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    [run] = _a_pass_over(engagement)
+
+    said = ROOM_SHORT.format(short=10)
+    assert run.warnings == [] and not run.skipped and not run.error
+    assert run.filed == 1
+    [entry] = read_index(engagement)
+    assert entry.prepared_location.endswith("/A01 - W-2 Wage - TY2025.pdf")
+    report = RunReport(today=FRIDAY, runs=[run])
+    assert said not in format_report(report)
+    page = write_status_page(tmp_path, report).read_text(encoding="utf-8")
+    assert "characters short of the room" not in page
+
+
+def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path):
+    """A request whose folder leaves no room for even its shortest name is
+    counted and said: a document for it parks until the root is shorter."""
+    from tests.test_filer import CANONICAL_BELOW, tight_return
+    from tracker.filer import ROOM_PARKS, ROOM_SHORT
+
+    engagement = tight_return(tmp_path, 210 + CANONICAL_BELOW - 260)   # A01's folder: 245
+
+    [run] = _a_pass_over(engagement)
+
+    assert ROOM_PARKS.format(count=1) in run.warnings
+    assert ROOM_SHORT.format(short=24) not in run.warnings        # L-1: the figure is no warning
+    assert not run.skipped and not run.error
+
+
+def test_a_household_with_no_room_for_a_review_copy_is_skipped_whole_before_anything_is_read(
+    tmp_path, monkeypatch,
+):
+    """A return whose review folder leaves no room for even ``x (99).pdf``
+    stops its household: every working return carries HOUSEHOLD_NO_ROOM,
+    the inbox is untouched, no lock is taken, and nothing is scaffolded,
+    scanned, drafted or drawn - the held-lock shape."""
+    from tests.conftest import root_for_a_return_of
+    from tests.test_filer import ROOM_ITEMS, drop
+    from tracker.filer import HOUSEHOLD_NO_ROOM
+    from tracker.layout import README_NAME
+    from tracker.locking import LOCK_FILENAME
+    from tracker.page import esc
+    from tracker.view import VIEW_FILENAME
+
+    root = root_for_a_return_of(tmp_path, 223)          # its floor: 223 + 38 = 261
+    engagement = make_engagement(root, ROOM_ITEMS, scaffold=False)
+    inbox = inbox_of(engagement)
+    inbox.mkdir(parents=True)
+    dropped = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    events = len(ledger.read_events(engagement))
+    locks = []
+    real_lock = runner_module.engagement_lock
+    monkeypatch.setattr(runner_module, "engagement_lock",
+                        lambda folder: (locks.append(folder), real_lock(folder))[1])
+
+    [run] = _a_pass_over(engagement)
+
+    said = HOUSEHOLD_NO_ROOM.format(label=run.engagement.label, length=261, limit=260)
+    assert run.skipped == said and not run.error
+    assert locks == []
+    assert dropped.is_file() and [p.name for p in inbox.iterdir()] == ["w2.pdf"]
+    assert not (inbox / README_NAME).exists()
+    assert not (engagement / LOCK_FILENAME).exists()
+    assert not (engagement / VIEW_FILENAME).exists()
+    assert not (engagement / DRAFT_FILENAME).exists()
+    assert not (engagement / PREPARED_DIR_NAME).exists()
+    assert len(ledger.read_events(engagement)) == events        # no scan, nothing recorded
+    page = write_status_page(tmp_path, RunReport(today=FRIDAY, runs=[run])).read_text(encoding="utf-8")
+    assert esc(said) in page
+
+
+def test_the_runner_reads_the_clients_root_from_the_settings_file_when_given_none(
+    tmp_path, monkeypatch, capsys,
+):
+    """The job names the app's settings folder and no root (decision 131):
+    with a root recorded there the pass runs over it; with none it exits
+    saying how to set one; a root on the command line still wins."""
+    from tracker.settings import ENV_SETTINGS_DIR, NO_ROOT_HINT, SET_ROOT_HINT, set_clients_root
+
+    recorded = tmp_path / "Recorded"
+    by_hand = tmp_path / "ByHand"
+    # Two households, so the one store the test has keys them apart.
+    for folder, name in ((recorded, "Recorded"), (by_hand, "By Hand")):
+        make_engagement(folder, [RequestItem(identifier="A01", document="W-2")],
+                        household=f"{name} Household", return_name=f"1040 - {name}")
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))     # put back when the test ends
+    set_clients_root(recorded)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "elsewhere"))
+
+    assert main([SETTINGS_FLAG, str(settings), "--reminders", "never"]) == 0
+    assert (recorded / STATUS_PAGE_FILENAME).is_file()
+    assert not (by_hand / STATUS_PAGE_FILENAME).exists()
+
+    assert main([str(by_hand), SETTINGS_FLAG, str(settings), "--reminders", "never"]) == 0
+    assert (by_hand / STATUS_PAGE_FILENAME).is_file()
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(SystemExit) as refused:
+        main([SETTINGS_FLAG, str(empty)])
+    assert "no clients root given" in str(refused.value) and SET_ROOT_HINT in str(refused.value)
+    # The app first - the packaged app has no python to type - the command second.
+    assert str(refused.value).endswith(NO_ROOT_HINT)
+    assert NO_ROOT_HINT.startswith("set the clients folder in the app")
+    capsys.readouterr()
+
+
+def test_the_old_scheduled_job_naming_another_root_is_refused_and_says_install_schedule(
+    tmp_path, monkeypatch, capsys,
+):
+    """F3: the job installed before decision 131 names a clients root on its
+    command line with ``--log``. After the root moves in the app that job
+    would go on sorting the old tree without a word, so a run of that shape
+    whose root is not the settings file's - or that has no settings root to
+    agree with - is refused, red, naming Install Schedule. The same root is
+    run; a person's hand-run without ``--log`` is never refused."""
+    import os
+
+    from tracker.runner import LOG_FLAG, OLD_JOB_ROOT
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    current = tmp_path / "Current"
+    old = tmp_path / "Old"
+    for folder, name in ((current, "Current"), (old, "Old")):
+        make_engagement(folder, [RequestItem(identifier="A01", document="W-2")],
+                        household=f"{name} Household", return_name=f"1040 - {name}")
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+
+    # No root in the settings file: nothing to agree with, refused.
+    with pytest.raises(SystemExit) as refused:
+        main([str(old), LOG_FLAG, "--reminders", "never"])
+    assert str(refused.value) == OLD_JOB_ROOT.format(root=str(old))
+    assert not (old / STATUS_PAGE_FILENAME).exists()
+
+    set_clients_root(current)
+    with pytest.raises(SystemExit) as refused:
+        main([str(old), LOG_FLAG, "--reminders", "never"])
+    assert str(refused.value) == OLD_JOB_ROOT.format(root=str(old))
+    assert "press Install Schedule" in str(refused.value)
+    assert not (old / STATUS_PAGE_FILENAME).exists()
+
+    # The settings file's own root, spelled another way, runs.
+    assert main([str(current) + os.sep, LOG_FLAG, "--reminders", "never"]) == 0
+    assert (current / STATUS_PAGE_FILENAME).is_file()
+
+    # A person running one folder by hand, no log: a root on the command line still wins.
+    assert main([str(old), "--reminders", "never"]) == 0
+    assert (old / STATUS_PAGE_FILENAME).is_file()
+    capsys.readouterr()
+
+
+def test_the_room_is_measured_from_the_list_the_pass_already_loaded(tmp_path, monkeypatch):
+    """One read of each return's list for the pass's own checks: the room is
+    measured from the list ``check_rules`` was handed, not a second read."""
+    from tests.test_filer import ROOM_ITEMS
+
+    root = tmp_path / "Clients"
+    make_engagement(root, ROOM_ITEMS, return_name="1040 - One")
+    make_engagement(root, ROOM_ITEMS, return_name="1040 - Two")
+    registry = discover_engagements(root)
+    reads = []
+    real = runner_module.load_manifest
+    monkeypatch.setattr(runner_module, "load_manifest", lambda folder: (reads.append(folder), real(folder))[1])
+
+    [(household, returns)] = registry.by_household().items()
+    runs = run_household(household, returns, today=FRIDAY, reminders=REMINDERS_NEVER, registry=registry)
+
+    assert all(not run.error for run in runs)
+    assert sorted(reads) == sorted(one.path for one in returns)
+    assert all(run.items for run in runs)

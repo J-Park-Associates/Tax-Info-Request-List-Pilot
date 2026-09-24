@@ -214,7 +214,13 @@ ENV_STORE = "TRACKER_STORE"
 #: file has no column for it, so it is refused, deleted and rebuilt from
 #: the journals like every version before it, and the feeds travel in the
 #: ``household_changed`` lines.
-SCHEMA_VERSION = 9
+#: Version 10 (decision 132) changed no column and changed the fold: a
+#: ``released`` line takes a row out of the index, and a version-9 file
+#: folded by the old code may hold ``Handed Over`` rows this version never
+#: produces - so it is refused, deleted and rebuilt from the journals like
+#: every version before it, and the retired ``handed_over_by_person`` lines
+#: in them are folded as the releases they meant.
+SCHEMA_VERSION = 10
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -1171,6 +1177,10 @@ def _household_cell(name: str, info: dict) -> object:
 
 
 MALFORMED_LINE = "{where}: line {seq} ({event}) {problem}; the journal is not applied past it"
+#: The key decision 129's hand-over intent carried the other record's half
+#: under. Named here, by the one reader that still speaks of it, so that
+#: the refusal says it by name (decision 132).
+ALSO_IN = "also_in"
 
 
 def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
@@ -1263,22 +1273,26 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         also = event.get(ledger.ALSO_KEY)
         if also is not None and not isinstance(also, list):
             refuse(f"carries {ledger.ALSO_KEY!r} that is not a list")
-        # The half of the decision that belongs in another return's record
-        # (decision 129): a mapping of that return's location to the
-        # events, whole. The recovery writes them into a second folder, so
-        # a shape it could not read would be found with a file already
-        # moved and one record ahead of the other.
-        also_in = event.get(ledger.ALSO_IN_KEY)
-        if also_in is not None and not isinstance(also_in, dict):
-            refuse(f"carries {ledger.ALSO_IN_KEY!r} that is not a mapping")
-        for location, events in (also_in or {}).items():
-            if not isinstance(location, str) or not location:
-                refuse(f"names a record to write in that is not a location: {location!r:.60}")
-            if not isinstance(events, list):
-                refuse(f"carries events for {location!r:.60} that are not a list")
-            for one in events:
-                if not isinstance(one, dict) or not one.get(ledger.EVENT_KEY):
-                    refuse(f"carries something for {location!r:.60} that is not an event")
+        reason = event.get(ledger.REASON_KEY)
+        if reason is not None and not isinstance(reason, str):
+            refuse(f"carries {ledger.REASON_KEY!r} that is not text")
+        # Decision 129's intent carried the events it would write into
+        # another return's record. Decision 132 retired that: nothing ever
+        # writes into another record, and an intent whose second half this
+        # version cannot write must not be recovered as if it had none.
+        if ALSO_IN in event:
+            refuse(f"carries {ALSO_IN!r}, the other record's half of a decision 129 "
+                   f"hand-over, which this version does not write; finish it with the "
+                   f"version that began it")
+    elif name == ledger.RELEASED:
+        # A release names the row it takes out and says where it went -
+        # and carries no row, because there is none left to carry.
+        if not isinstance(event.get(ledger.KEY_KEY), str) or not event.get(ledger.KEY_KEY):
+            refuse(f"carries no {ledger.KEY_KEY!r}")
+        if ledger.ROW_KEY in event:
+            refuse(f"carries {ledger.ROW_KEY!r}; a release carries no row")
+        if not isinstance(event.get(ledger.REASON_KEY, ""), str):
+            refuse(f"carries {ledger.REASON_KEY!r} that is not text")
     elif name in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
         for key in (ledger.IDENTIFIER_KEY, ledger.KEYWORD_KEY):
             value = event.get(key)
@@ -1372,6 +1386,13 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
             # there is nothing left to finish (decision 119).
             _close_intent(conn, engagement_id, event.get(ledger.KEY_KEY))
             _close_intent(conn, engagement_id, was)
+        elif name in ledger.RELEASE_EVENTS:
+            # The row leaves the index and its intent closes (decision
+            # 132): the ``was`` path's deletion, with no row to follow.
+            for gone in (event.get(ledger.KEY_KEY), event.get(ledger.WAS_KEY)):
+                if gone:
+                    seqs.pop(gone, None)
+                    _close_intent(conn, engagement_id, gone)
         elif name in (ledger.MOVING, ledger.MOVE_ABANDONED):
             _write_intent(conn, engagement_id, event, seq)
         elif name == ledger.SCANNED:
@@ -1396,7 +1417,8 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
         elif name == ledger.HOUSEHOLD_CHANGED:
             _write_household_info(conn, engagement_id, dict(event.get(ledger.HOUSEHOLD_KEY) or {}))
         ledger.apply(state, event)
-    if any(event.get(ledger.EVENT_KEY) in ledger.ROW_EVENTS for event in events):
+    if any(event.get(ledger.EVENT_KEY) in ledger.ROW_EVENTS | ledger.RELEASE_EVENTS
+           for event in events):
         _write_documents(conn, engagement_id, state.rows, seqs)
     for identifier, stored in state.statuses.items():
         _write_status(conn, engagement_id, identifier, stored, status_seqs[identifier_key(identifier)])

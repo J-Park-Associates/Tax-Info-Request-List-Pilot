@@ -155,15 +155,11 @@ FILES_KEY = "files"
 #: person's filing is still recorded as theirs. ``ALSO_KEY`` carries the
 #: events that travel with the row - today the one keyword a person's
 #: filing teaches - whole, as they would have been written.
-#: ``ALSO_IN_KEY`` carries the events one decision writes into **another
-#: return's** record (decision 129): ``{<that return's location, relative
-#: to this one>: [<the events, whole>]}``. A hand-over to a return this
-#: drop folder feeds is one decision that touches two records - the row it
-#: closes here and the row it opens there - and the second record's half
-#: is written down here, in the intent, so a kill between the two is
-#: finished from the record and the person's decision lands once, dated
-#: their day. Both folds pass over it: it is the intent's baggage, not a
-#: fact about this record, and the recovery is the only reader.
+#: Nothing an intent carries is ever written into **another** return's
+#: record (decision 132): a decision that touches two records is two
+#: intents, one in each, each finished by its own household's pass. The
+#: key decision 129 wrote the other record's half under is refused by
+#: name (``tracker.store.ALSO_IN``) wherever it is met.
 OPS_KEY = "ops"
 OP_KEY = "op"
 FROM_KEY = "from"
@@ -172,7 +168,11 @@ DIGEST_KEY = "digest"
 EVENT_KEY_AFTER = "then"
 DECIDED_BY_KEY = "by"
 ALSO_KEY = "also"
-ALSO_IN_KEY = "also_in"
+#: What a :data:`RELEASED` line carries besides its key, and what the
+#: release intent that it closes carries for it (decision 132): which
+#: return took the document and under which request, in the person's
+#: words, so a release finished by a recovery says what the click said.
+REASON_KEY = "reason"
 #: The three operations an intent can carry.
 OP_MOVE = "move"
 OP_COPY = "copy"
@@ -220,15 +220,21 @@ ASSIGNED_BY_PERSON = "assigned_by_person"
 DISMISSED_BY_PERSON = "dismissed_by_person"
 #: A person sent a filed document back for review.
 UNFILED_BY_PERSON = "unfiled_by_person"
-#: A person handed a parked document to a return this drop folder feeds
-#: (decision 129). Terminal for the return it leaves, like a duplicate: the
-#: document is the other return's now, its row there is the person's own
-#: ``assigned_by_person``, and nothing hands it back automatically. The row
-#: this event carries says where the original came to rest - under the
-#: household the destination's return lives in, where the plan says it must
-#: rest - and which return took it. Named ``_EVENT`` because the sentence
-#: the row reads is ``tracker.filer.HANDED_OVER_BY_PERSON``, and one name
-#: for the two would be two facts under one word.
+#: A person filed a parked document under a return in another record, and
+#: the row here is **released** (decision 132): it leaves the index, and
+#: this line - ``{event, key, reason}``, no row, the shape
+#: :data:`MOVE_ABANDONED` has - says which return took it and under which
+#: request (:data:`REASON_KEY`). The owner's sentence is that the dropping
+#: household keeps no copy and no row; the journal keeps the line, and
+#: the record holds nothing about a document that rests elsewhere. It
+#: closes the release intent under the same key. **Not a row event**: a
+#: reader that folded it as one would look for a row that is not there.
+RELEASED = "released"
+#: What decision 129 wrote when a person handed a parked document to a
+#: return this drop folder feeds: a terminal row kept here about a
+#: document that had moved elsewhere. **Retired by decision 132**: read
+#: once - folded as a :data:`RELEASED` of its key, because that is what the
+#: built row meant - and never written again.
 HANDED_OVER_BY_PERSON_EVENT = "handed_over_by_person"
 #: A person put a working copy the record had lost track of back where the
 #: record put it (decision 110). One name for the whole of that answer,
@@ -360,17 +366,20 @@ MIGRATED = "migrated"
 #: The events that carry a whole index row. Their fold is the index.
 ROW_EVENTS = frozenset({
     PRESERVED, FILED, PARKED, DUPLICATE, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
-    UNFILED_BY_PERSON, HANDED_OVER_BY_PERSON_EVENT, RESTORED_BY_PERSON, BYTES_RECORDED,
+    UNFILED_BY_PERSON, RESTORED_BY_PERSON, BYTES_RECORDED,
     COPY_MOVED, IMPORTED,
 })
+#: The events that take a row out of the index by its key (decision 132):
+#: the release, and the retired hand-over it replaced.
+RELEASE_EVENTS = frozenset({RELEASED, HANDED_OVER_BY_PERSON_EVENT})
 #: Every event name this version reads.
-EVENTS = ROW_EVENTS | frozenset({SCANNED, KEYWORD_LEARNED, KEYWORD_UNLEARNED, DRAFTED,
-                                 DRAFT_APPROVED,
-                                 MIGRATED, RULES_CHANGED, RULES_IMPORTED, MOVING,
-                                 MOVE_ABANDONED, HOUSEHOLD_CHANGED, SHARING_CONFIRMED})
+EVENTS = ROW_EVENTS | RELEASE_EVENTS | frozenset({
+    SCANNED, KEYWORD_LEARNED, KEYWORD_UNLEARNED, DRAFTED, DRAFT_APPROVED,
+    MIGRATED, RULES_CHANGED, RULES_IMPORTED, MOVING,
+    MOVE_ABANDONED, HOUSEHOLD_CHANGED, SHARING_CONFIRMED})
 #: The names this version reads and never writes: an older journal may
 #: carry them, a new line may not.
-RETIRED_EVENTS = frozenset({RULES_IMPORTED})
+RETIRED_EVENTS = frozenset({RULES_IMPORTED, HANDED_OVER_BY_PERSON_EVENT})
 #: How a retired name is refused, wherever it is offered for writing.
 RETIRED_EVENT = "{name!r} is retired; this version reads it and never writes it"
 
@@ -659,6 +668,8 @@ def apply(state: Folded, event: dict) -> Folded:
         return _apply_intent_event(state, event)
     if name in (KEYWORD_LEARNED, KEYWORD_UNLEARNED):
         return _apply_keyword_event(state, event)
+    if name in RELEASE_EVENTS:
+        return _apply_release(state, event)
     if name not in ROW_EVENTS:
         return state
     key = event.get(KEY_KEY)
@@ -682,6 +693,26 @@ def apply(state: Folded, event: dict) -> Folded:
     state.intents.pop(key, None)
     if was:
         state.intents.pop(was, None)
+    return state
+
+
+def _apply_release(state: Folded, event: dict) -> Folded:
+    """One row released (decision 132): it leaves the index, and the intent
+    its key had open is finished with.
+
+    The same deletion the ``was`` of a row event makes, without a row to
+    put in its place. A retired ``handed_over_by_person`` line is folded
+    here too: it carried the row re-keyed under the place the original
+    went, and the identity it left, so both go - which is what the built
+    row meant, a document this record no longer holds.
+    """
+    key = event.get(KEY_KEY)
+    if key is None:
+        raise LedgerError(f"a {event.get(EVENT_KEY)!r} event carries no {KEY_KEY!r}")
+    for gone in (key, event.get(WAS_KEY)):
+        if gone:
+            state.rows.pop(gone, None)
+            state.intents.pop(gone, None)
     return state
 
 

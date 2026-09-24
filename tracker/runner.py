@@ -6,7 +6,11 @@ clients folder:
 
     python -m tracker.runner <clients root>
 
-That is the whole scheduled task. There is nothing to register: a folder
+That is the whole pass. The scheduled task names no root at all (decision
+131): it runs ``python -m tracker.runner --settings <the app's settings
+folder> --log`` and reads the clients root from the settings file at every
+run, so the root has one home and changing it in the app is enough. There
+is nothing to register: a folder
 holding the engagement's own record is an engagement, and the details in
 that record say who the client is and how they are chased. Creating an
 engagement in the desktop app is all it takes for the nightly run to pick
@@ -43,6 +47,14 @@ on the record**: what the week's draft asked, or what held it, and which
 file it wrote is one ``ledger.DRAFTED`` event under the pass's lock, only
 when that moved; the day of the last draft is read from it, and the first
 pass after a hold clears drafts the client by the catch-up rule.
+
+**And the reminder waits for the sort** (decision 133). While the
+household's own ``Drop files here`` holds a file the sort has not taken -
+two open years, a drop that failed, a transfer in flight, a name the
+machine cannot handle - the draft is held the same way, whole, and the
+note says how many files wait. ``tracker.reminder`` counts them, so this
+module only reports the hold; the next pass that sorts the inbox drafts
+that same day, because a hold is not a draft.
 
 **Every real pass leaves the practice on one page.** ``STATUS_PAGE_FILENAME``
 is written into the clients root at the end of the pass: every engagement
@@ -99,6 +111,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import traceback
 from collections.abc import Iterable
 from contextlib import ExitStack, nullcontext
@@ -106,10 +119,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, store
-from tracker.filer import NEEDS_REVIEW, ensure, file_household_drops, read_index
+from tracker.filer import (
+    HOUSEHOLD_NO_ROOM,
+    NEEDS_REVIEW,
+    ROOM_PARKS,
+    ensure,
+    file_household_drops,
+    read_index,
+    refresh_household_readme,
+    room_for,
+)
 from tracker.fsio import write_text_atomically
 from tracker.households import load_household_info, open_years, resolve_feeds
-from tracker.layout import inbox_of, lock_order_key, originals_dir_for, root_of
+from tracker.layout import household_of, inbox_of, lock_order_key, originals_dir_for, root_of
 from tracker.ledger import LedgerError
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -147,7 +169,15 @@ from tracker.reminder import (
 )
 from tracker.scaffold import scaffold_engagement, scaffold_household
 from tracker.scanner import ScanLockedError, scan_engagement
-from tracker.settings import SettingsError, firm, product_name
+from tracker.settings import (
+    ENV_SETTINGS_DIR,
+    NO_ROOT_HINT,
+    SettingsError,
+    clients_root,
+    firm,
+    product_name,
+    settings_path,
+)
 from tracker.store import StoreError
 from tracker.view import VIEW_FILENAME, write_view
 
@@ -178,6 +208,41 @@ STATUS_PAGE_FILENAME = "status.html"
 #: line the parser below still accepts.
 LOG_FLAG = "--log"
 DATE_FLAG = "--date"
+#: The app's settings folder, which the scheduled job names instead of a
+#: clients root (decision 131): the root has one home, the settings file,
+#: and the job reads it at every run - so changing it in the app is enough,
+#: and no re-install is remembered or forgotten.
+SETTINGS_FLAG = "--settings"
+#: What the scheduled job installed before decision 131 is told. That job
+#: named a clients root on its command line with ``--log``; after the root
+#: moves in the app it would go on sorting the old tree silently, so a run
+#: of that shape whose root is not the settings file's is refused, red,
+#: until *Install Schedule* is pressed once (decision 131's review, F3).
+OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); open the app and "
+                "press Install Schedule")
+
+
+def _refuse_an_old_jobs_root(root: str) -> None:
+    """Refuse a run shaped like the job installed before decision 131 - a
+    root on the command line together with ``--log`` - whose root differs
+    from the settings file's, or that has no settings root to agree with.
+
+    A person running one folder by hand leaves ``--log`` off and is never
+    refused: a root on the command line still wins for them.
+    """
+    try:
+        configured = clients_root()
+    except SettingsError as exc:
+        raise SystemExit(f"Clients folder problem: {exc}") from None
+    if configured is None or _one_folder(configured) != _one_folder(Path(root)):
+        raise SystemExit(OLD_JOB_ROOT.format(root=root))
+
+
+def _one_folder(path: Path) -> str:
+    """A folder as two spellings of it compare: absolute, normalised, case-folded."""
+    return os.path.normcase(os.path.normpath(os.path.abspath(str(path))))
+
+
 #: How the packaged app's one executable (api_entry.py) is told to be the
 #: scheduled job rather than the API: this flag first, then the runner's own
 #: arguments. tracker.scheduling builds the packaged command line from it.
@@ -220,6 +285,10 @@ class EngagementRun:
     waiting: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
+    #: The request list :func:`_worth_a_pass` loaded for ``check_rules``,
+    #: kept so the room is measured from the same list (decision 131) and
+    #: the record is not read a second time for it.
+    items: list = field(default_factory=list)
     #: The view was not regenerated because somebody had it open. Not a
     #: failure: it holds no fact of its own, so it simply stays one pass
     #: behind until the next pass lands one.
@@ -234,8 +303,9 @@ class EngagementRun:
     #: app (decision 118). The pass leaves it exactly as it leaves an
     #: edited one, and the practice page says so instead of a stage.
     approved: bool = False
-    #: How many ambiguous rows hold this engagement's reminder (decision 115);
-    #: ``draft_note`` names them.
+    #: How many things hold this engagement's reminder: its ambiguous rows
+    #: (decision 115) and the files still waiting in its household's inbox
+    #: (decision 133); ``draft_note`` names them.
     held: int = 0
     #: This engagement's slowest readings, longest first (decision 127):
     #: (the document's own name, seconds). Carried from the filing report
@@ -418,6 +488,21 @@ TWO_OPEN_YEARS = ("two years are open in this household ({years}); nothing is so
 #: household's own returns, in the warnings: the channel the unresolved
 #: feed already speaks through.
 FILED_INTO_FED = "{n} document(s) filed into {label} from this drop folder"
+#: What every one of a household's own returns is warned with when its
+#: own record - the one holding the feed list - is there and will not read
+#: (decision 132). The pass goes on with the household's own returns, and
+#: says so: a route the pass cannot read is never skipped in silence.
+#: Discovery's misfit list covers a household *without* a record; this is
+#: one whose record is there and refuses to parse.
+FEEDS_UNREAD = ("this drop folder's record could not be read ({error}); it feeds only its own "
+                "returns this pass")
+#: What a pass handed no practice to walk says, on every return it was
+#: asked about, and does nothing else (decision 132). The feed list is
+#: resolved against the practice, and a pass that cannot honour the feed
+#: list is a second definition of a pass - which is how *Run now* and the
+#: schedule came to disagree once. So there is one way to call a pass.
+NO_PRACTICE = ("the practice could not be walked, so this household's feed list cannot be "
+               "resolved; nothing was sorted or scanned this pass")
 
 
 def run_household(
@@ -429,7 +514,7 @@ def run_household(
     dry_run: bool = False,
     reminders: str = REMINDERS_AUTO,
     weekday: int = DRAFT_WEEKDAY,
-    registry: object | None = None,
+    registry: object,
 ) -> list[EngagementRun]:
     """One pass over a whole household: sort its one inbox across every
     return it feeds, then scan, draft and draw each of its own returns.
@@ -445,7 +530,12 @@ def run_household(
     the co-owned business, the adult daughter's return a parent relays -
     and those returns are judged, locked and filed into exactly like the
     household's own; ``registry`` is the walk the feeds are resolved
-    against, and without one only the household's own returns are fed.
+    against (a :class:`tracker.registry.Registry`, or anything with its
+    ``engagements`` and ``households``). **It is required** (decision 132):
+    a pass that could be called without the practice silently fed nothing,
+    which is how *Run now* and the schedule once disagreed; a ``None`` -
+    a root that could not be walked - is refused with one sentence
+    (:data:`NO_PRACTICE`) on every run, and nothing is touched.
     The locks - its own and every fed one - are taken in the **one global
     order** (``layout.lock_order_key``: the household's folder name, then
     the return's, without case) before anything is read, so two processes
@@ -457,6 +547,11 @@ def run_household(
     inbox is not read; the scan, the draft and the page still run, because
     what each return already holds is still true.
 
+    **The room is measured before anything is read** (decision 131,
+    :func:`_no_room`): a return short of room is still sorted, its copies
+    named to fit, and is not warned; a request that cannot receive is; a return with no room for even a review copy
+    skips the whole household, as a held lock does.
+
     Never raises for a return-level problem: anything that goes wrong is
     recorded on that return's :class:`EngagementRun` so the caller can keep
     going through the rest of the practice.
@@ -465,8 +560,14 @@ def run_household(
     # Stamped before anything is touched, so a return that fails its
     # pre-checks still says when it was last looked at.
     runs = [EngagementRun(engagement=one, last_pass=dt.datetime.now()) for one in returns]
+    if registry is None:
+        for run in runs:
+            run.error = NO_PRACTICE
+        return runs
     working = [run for run in runs if _worth_a_pass(run)]
     if not working:
+        return runs
+    if _no_room(working):
         return runs
 
     years = open_years([run.engagement for run in working])
@@ -486,7 +587,7 @@ def run_household(
     # (decision 129), resolved to this year's returns; a line that answers
     # to nothing is said on every one of the household's own returns.
     fed: list[Engagement] = []
-    if sorting and registry is not None:
+    if sorting:
         fed, unresolved = _feeds_of(household, years[0], registry)
         for run in working:
             run.warnings.extend(unresolved)
@@ -500,12 +601,11 @@ def run_household(
                                       *(one.path for one in fed)],
                                      key=lock_order_key):
                     locks.enter_context(engagement_lock(folder))
-            # The household's own side - the inbox, the year's folder and
-            # the README that lists every return of the open year - is laid
-            # out once for the lot, before the inbox is read. The fed
-            # returns are not in it: a fed return's own household lays out
-            # its own folders, and its request list is not this client's
-            # to read.
+            # The household's own side - the inbox and the year's folder -
+            # is laid out once for the lot, before the inbox is read. The
+            # fed returns are not in it: a fed return's own household lays
+            # out its own folders, and its request list is not this
+            # client's to read.
             if not dry_run:
                 scaffold_household(household, returns=[run.engagement.path for run in working])
             if sorting:
@@ -514,6 +614,16 @@ def run_household(
                 run_engagement(run.engagement, root=root, today=today, dry_run=dry_run,
                                reminders=reminders, weekday=weekday, lock_held=not dry_run,
                                run=run)
+            # The README, once, after the sort and after every return's
+            # scan and draft, still inside the locks (decision 130): what
+            # the client reads is current as of this pass, never one pass
+            # behind. A household this inbox fed a document into is told
+            # too - the document is in its index now, so it is on its list
+            # (132's F-4 ruling), and it should not wait for its own pass.
+            # Each writes only when its text changed.
+            if not dry_run:
+                for one in dict.fromkeys([household, *(household_of(f.path) for f in fed)]):
+                    refresh_household_readme(one)
     except ScanLockedError as exc:
         for run in working:
             run.skipped = f"another run is still going ({exc})"
@@ -534,6 +644,40 @@ def run_household(
     return runs
 
 
+def _no_room(working: list[EngagementRun]) -> bool:
+    """Measure every working return's room before anything is read, and
+    say whether the household must stop (decision 131).
+
+    Each return's room is one number from one function
+    (``filer.room_for``), measured from the list :func:`_worth_a_pass`
+    already loaded. A return merely short of room is **not warned** (the
+    lead's L-1 on decision 131): its names are cut to fit where they are
+    written and everything still files, and with a reader's 218 for
+    spreadsheets every 1040 at the firm's root would carry the sentence
+    every pass - a warning always on is a warning nobody reads. The
+    return's page in the app and the reply to setting the root say the
+    figure as information. Warned: :data:`ROOM_PARKS`, when some request
+    cannot receive at all. A
+    return whose review folder leaves no room for even a review copy stops
+    its whole household, exactly as a lock held elsewhere does: one inbox
+    feeds every return, and a pass that cannot park cannot honour a scan
+    that regresses a copy either, so nothing is read, scanned, drafted or
+    drawn, and every working return carries :data:`HOUSEHOLD_NO_ROOM`.
+    """
+    stopped = ""
+    for run in working:
+        room = room_for(run.engagement.path, run.items)
+        if room.parks:
+            run.warnings.append(ROOM_PARKS.format(count=room.parks))
+        if room.floor > room.limit and not stopped:
+            stopped = HOUSEHOLD_NO_ROOM.format(label=run.engagement.label, length=room.floor,
+                                               limit=room.limit)
+    if stopped:
+        for run in working:
+            run.skipped = stopped
+    return bool(stopped)
+
+
 def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engagement], list[str]]:
     """The returns this household's drop folder also feeds this year, and
     the sentences for the feeds nothing answers (decision 129).
@@ -542,14 +686,15 @@ def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engage
     pass needs the label, because a filing into a fed return is reported
     on the dropping household's own run by the name a person reads.
 
-    A household whose own record cannot be read feeds nothing but its own:
-    the problem is said elsewhere, and a feed nobody can prove is a route
-    nothing should take.
+    A household whose own record cannot be read feeds nothing but its own
+    - a feed nobody can prove is a route nothing should take - and **says
+    so** (decision 132, :data:`FEEDS_UNREAD`), on every own return, exactly
+    as a feed that resolves to nothing is said.
     """
     try:
         feeds = load_household_info(household).feeds
-    except Exception:
-        return [], []
+    except Exception as exc:
+        return [], [FEEDS_UNREAD.format(error=f"{exc.__class__.__name__}: {exc}")]
     if not feeds:
         return [], []
     found, said = resolve_feeds(household, feeds, year, registry)
@@ -579,9 +724,9 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
     # (``tracker.registry.NAME_DISAGREES``), never renamed.
     year = sorting[0].engagement.tax_year
     originals = originals_dir_for(root_of(first), household.name, year)
-    own = [run.engagement.path for run in sorting]
     reports = file_household_drops(
-        inbox_of(first), originals, [*own, *(one.path for one in fed)], home=own,
+        inbox_of(first), originals,
+        own=[run.engagement.path for run in sorting], fed=[one.path for one in fed],
         today=today, dry_run=dry_run,
     )
     sorting[0].warnings.extend(
@@ -644,9 +789,10 @@ def run_engagement(
             # last pass is already in the journal (decision 104).
             ensure(engagement.path, root)
             # A row added, or made applicable again, in the app gets its
-            # folder and its README line here, on the next pass, rather
-            # than when somebody remembers to re-run scaffold. Idempotent:
-            # nothing existing is touched.
+            # folder here, on the next pass, rather than when somebody
+            # remembers to re-run scaffold. Idempotent: nothing existing is
+            # touched. It writes no README (decision 130): the household
+            # pass refreshes that once, after every return has run.
             if not dry_run:
                 scaffold_engagement(engagement.path)   # contact from the household
             scanned = scan_engagement(engagement.path, root=root, today=today, dry_run=dry_run,
@@ -732,7 +878,8 @@ def _worth_a_pass(run: EngagementRun) -> bool:
         run.error = RECORD_UNREADABLE.format(problem=engagement.problem)
         return False
     try:
-        run.warnings = check_rules(load_manifest(engagement.path))
+        run.items = load_manifest(engagement.path)
+        run.warnings = check_rules(run.items)
     except (ManifestError, LedgerError, StoreError) as exc:
         # A folder with no record, a journal line that will not parse, a
         # store that will not open: the registry names these as the
@@ -788,7 +935,10 @@ def _draft_step(run: EngagementRun, *, dry_run: bool, today: dt.date,
         # one is theirs (decision 15). Said in the note, counted on the
         # page, and on the record. The same path serves --reminders
         # always: the mode forces the attempt, and the attempt is held.
-        run.held = len(draft.held)
+        # What holds it: the rows (decision 115) and the files still
+        # waiting in the household's inbox (decision 133), counted
+        # together, and the sentence names both.
+        run.held = len(draft.held) + draft.unsorted
         run.draft_note = held_refusal(draft)
         _retire_unedited_drafts(engagement.path, approved_since=week)
         _record(engagement.path, previous, drafted_event(draft, None))
@@ -1256,7 +1406,12 @@ def main(argv: list[str] | None = None) -> int:
         description=f"File, scan and (on {DRAFT_DAY_NAME}s) draft reminders for every "
                     "engagement found under the clients folder. Never sends anything."
     )
-    parser.add_argument("root", help="the folder the firm keeps its clients in")
+    parser.add_argument("root", nargs="?", default="",
+                        help="the folder the firm keeps its clients in (default: the one in the "
+                             "settings file)")
+    parser.add_argument(SETTINGS_FLAG, default="", metavar="FOLDER",
+                        help="the app's settings folder, whose settings file names the clients root "
+                             "(what the scheduled job passes)")
     parser.add_argument("--only", default="",
                         help="just the engagements matching this text")
     parser.add_argument("--dry-run", action="store_true",
@@ -1272,8 +1427,27 @@ def main(argv: list[str] | None = None) -> int:
                         help=f"append the run summary to a log (default: {LOG_FILENAME})")
     ns = parser.parse_args(argv)
 
+    # The clients root has one home (decision 131): the scheduled job names
+    # the app's settings folder, and this process reads everything the app
+    # reads from there - the root and the store beside it - before anything
+    # reads settings at all. A root on the command line still wins: a
+    # person running one folder by hand.
+    if ns.settings:
+        os.environ[ENV_SETTINGS_DIR] = ns.settings
+    root = ns.root
+    if not root:
+        try:
+            configured = clients_root()
+        except SettingsError as exc:
+            raise SystemExit(f"Clients folder problem: {exc}") from None
+        if configured is None:
+            raise SystemExit(f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}")
+        root = str(configured)
+    elif ns.log:
+        _refuse_an_old_jobs_root(root)
+
     try:
-        loaded = discover_engagements(ns.root)
+        loaded = discover_engagements(root)
     except RegistryError as exc:
         raise SystemExit(f"Clients folder problem: {exc}") from None
 

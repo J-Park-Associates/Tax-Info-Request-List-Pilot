@@ -78,7 +78,7 @@ from pathlib import Path
 import pytest
 
 from tracker import ledger, store, view
-from tracker.filer import ensure, file_household_drops
+from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
     inbox_of,
@@ -214,7 +214,8 @@ def make_engagement(root, items, info: EngagementInfo | None = None, *,
     one ``household_changed`` event carrying the whole household, one
     ``rules_changed`` event carrying the whole list and the details,
     validated on the way in. The scaffold is the folders the filer and the
-    scanner need; a test that wants only the record says ``scaffold=False``.
+    scanner need, and the README the app writes after them (decision 130);
+    a test that wants only the record says ``scaffold=False``.
 
     A test that wants two returns in one household calls this twice with
     the same ``household`` - the second finds the household's record
@@ -239,8 +240,30 @@ def make_engagement(root, items, info: EngagementInfo | None = None, *,
                               return_name=return_name, people=tuple(people)),
                       form=form)
     if scaffold:
+        # What the app's create does: the folders, then the README from its
+        # one composer (decision 130).
         scaffold_engagement(folder)
+        refresh_household_readme(household_dir)
     return folder
+
+
+def root_for_a_return_of(base, length: int, *, household: str = TEST_HOUSEHOLD,
+                         year: int = TEST_YEAR, return_name: str = TEST_RETURN) -> Path:
+    """A clients root under ``base`` whose return folder is exactly
+    ``length`` characters (decision 131).
+
+    The room a return has is arithmetic on the whole path, so a claim about
+    it is made at a known length rather than at whatever the machine's
+    temporary folder happens to spend: one folder of padding is added under
+    ``base`` to reach it. A machine whose ``base`` is already longer than
+    the claim can use says so by name and skips.
+    """
+    base = Path(base)
+    below = len(str(return_dir_for(Path("r"), household, year, return_name))) - 1
+    pad = length - below - len(str(base)) - 1
+    if pad < 1:
+        pytest.skip(f"{base} is too long to make a return folder of {length} characters under it")
+    return base / ("r" * pad)
 
 
 def sort_all(returns, *, home=None, today=None, dry_run: bool = False):
@@ -251,17 +274,19 @@ def sort_all(returns, *, home=None, today=None, dry_run: bool = False):
     sort - a second would find nothing left to do. The first return's
     household is the one whose inbox is sorted; ``home`` names that
     household's **own** returns when the list also holds returns it feeds
-    (decision 129), and the locks are taken in the one global order, as
-    the pass takes them.
+    (decision 129) - handed down as the two lists the sort takes since
+    decision 132, own and fed, in the order they are listed here - and
+    the locks are taken in the one global order, as the pass takes them.
     """
     folders = [Path(one) for one in returns]
+    own = folders if home is None else [one for one in folders if one in set(map(Path, home))]
     with ExitStack() as locks:
         if not dry_run:
             for folder in sorted(folders, key=lock_order_key):
                 locks.enter_context(engagement_lock(folder))
         return file_household_drops(
-            inbox_of(folders[0]), originals_of(folders[0]), folders,
-            home=None if home is None else [Path(one) for one in home],
+            inbox_of(folders[0]), originals_of(folders[0]),
+            own=own, fed=[one for one in folders if one not in own],
             today=today, dry_run=dry_run,
         )
 

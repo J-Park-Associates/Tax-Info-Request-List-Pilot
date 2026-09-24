@@ -56,6 +56,8 @@ from tracker.filer import (
     FILED,
     NEEDS_REVIEW,
     NOT_REQUESTED,
+    ROOM_PARKS,
+    ROOM_SHORT,
     FilingError,
     Spelling,
     assign_review_file,
@@ -65,8 +67,10 @@ from tracker.filer import (
     hand_over,
     moved_to,
     read_index,
+    refresh_household_readme,
     refuse_a_path_past_the_limit,
     restore_working_copy,
+    room_for,
     unfile_document,
 )
 from tracker.fsio import write_text_atomically
@@ -84,6 +88,8 @@ from tracker.layout import (
     CLIENTS_TREE,
     ENGAGEMENT_LABEL_PATTERN,
     INBOX_DIR_NAME,
+    MAX_PATH_LENGTH,
+    PATH_TOO_LONG,
     PRIVATE_TREE,
     RETURN_NAME_PATTERN,
     client_household_dir,
@@ -311,6 +317,11 @@ HAND_OVER_LABEL = "File under another return"
 #: is being picked is a return and then one of that return's requests.
 HAND_OVER_RETURN_LABEL = "The return that takes it"
 HAND_OVER_REQUEST_LABEL = "Under which request"
+#: What the app says once a document has been filed under another return
+#: (decision 132): where it went, and that the row here is gone - released,
+#: nothing about it kept in this return. Filled by the page with the
+#: label and the request the reply carries.
+HANDED_OVER_LINE = "Filed under {label} ({identifier}); nothing about it stays here"
 #: What stands in for the members of a household nobody has typed any for.
 #: The warning must still say who will see the documents, and "nobody typed
 #: yet" is the honest answer - the tracker cannot see Drive's sharing.
@@ -587,6 +598,11 @@ def standing_rules() -> list[dict]:
             for headline, detail in STANDING_RULES]
 
 
+#: The heading the root dialog lists the returns short of room under, after
+#: a person sets the clients root (decision 131).
+ROOM_HEADING = "Returns short of room under this root"
+
+
 def _vocab() -> dict:
     """Every word and number the renderer shows or compares, from its owner.
 
@@ -656,7 +672,10 @@ def _vocab() -> dict:
                           # that return's requests.
                           "hand_over": HAND_OVER_LABEL,
                           "hand_over_return": HAND_OVER_RETURN_LABEL,
-                          "hand_over_request": HAND_OVER_REQUEST_LABEL},
+                          "hand_over_request": HAND_OVER_REQUEST_LABEL,
+                          # And what the page says once it is done
+                          # (decision 132): the row here is released.
+                          "handed_over": HANDED_OVER_LINE},
         # Every word tracker.review gives the card, from the module that
         # owns it: what is said when the evidence suggests nothing, the one
         # separator between an identifier and what follows it (the reason
@@ -774,6 +793,12 @@ def _vocab() -> dict:
             "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
             "task_name": TASK_NAME,
         },
+        # The room a return has under the clients root (decision 131): the
+        # two sentences the return's page, the warnings and the set-root
+        # reply fill - ROOM_SHORT as information, ROOM_PARKS as a warning
+        # (the lead's L-1) - and the heading the root dialog lists them
+        # under. The renderer types none.
+        "room": {"short": ROOM_SHORT, "parks": ROOM_PARKS, "heading": ROOM_HEADING},
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
         # Every word and colour the Reminder card shows (decisions 115 and
         # 118), from the module that owns the draft. The card types none of
@@ -783,6 +808,7 @@ def _vocab() -> dict:
         # takes. A hex never reaches the renderer or the stylesheet.
         "reminder": {
             "held_line": reminder.HELD_SUMMARY,
+            "inbox_held_line": reminder.INBOX_HELD_SUMMARY,
             "heading": reminder.REMINDER_HEADING,
             "stage_group": reminder.STAGE_GROUP_LABEL,
             "subject_prefix": reminder.SUBJECT_PREFIX,
@@ -1127,10 +1153,12 @@ def _sharing_checklist(root: Path, household: str) -> dict:
 
 def _return_reminder(path: Path, today: dt.date) -> dict:
     """One return's reminder state for the household card (decision 128):
-    when it was last drafted, whether this week's draft is approved, and
-    how many requests are holding it.
+    when it was last drafted, whether this week's draft is approved, how
+    many requests are holding it, and how many files wait unsorted in the
+    household's inbox (decision 133, counted by the reminder's own
+    :func:`tracker.reminder.unsorted_in_inbox`).
 
-    Three numbers and two dates - never a word of the letter. The card
+    Four numbers and two dates - never a word of the letter. The card
     puts them into the sentences the Reminder card already uses
     (``vocab.reminder``'s ``last_drafted_line``, ``approved_line``,
     ``never_drafted_line`` and ``held_line``), so the returns of a
@@ -1138,7 +1166,7 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
     page types nothing new. A return whose record this read cannot open
     says nothing rather than breaking the card.
     """
-    blank = {"last": None, "approved": None, "held": 0}
+    blank = {"last": None, "approved": None, "held": 0, "unsorted": 0}
     try:
         items = load_manifest(path)
         entries = read_index(path)
@@ -1148,6 +1176,7 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
         in_force = reminder.is_approved_this_week(
             path, path / reminder.DRAFT_FILENAME,
             since=last_draft_day(today, DRAFT_WEEKDAY))
+        unsorted = reminder.unsorted_in_inbox(path)
     except Exception:                        # said elsewhere; the card still draws
         return blank
     return {
@@ -1157,6 +1186,7 @@ def _return_reminder(path: Path, today: dt.date) -> dict:
                       "stage": approved.get(reminder.STAGE_KEY) or 0}
                      if approved and in_force else None),
         "held": len(held),
+        "unsorted": unsorted,
     }
 
 
@@ -1313,6 +1343,10 @@ def _state(engagement: Path) -> dict:
     # card carries out and a person's action carries back (decision 112).
     seqs = store.document_seqs(conn, engagement)
     view_path = engagement / VIEW_FILENAME
+    # The room this return has under the clients root (decision 131),
+    # measured from the list already loaded - no second read - so a person
+    # opening a return sees the number without waiting for a pass.
+    room = room_for(engagement, items)
     return {
         # The derived page, and whether it still describes this engagement.
         # Reading the stamp takes no lock and tolerates another program
@@ -1340,7 +1374,14 @@ def _state(engagement: Path) -> dict:
         "rules": [rule_as_read(row) for row in rules],
         "learned": {row["identifier"]: list(taught[identifier_key(row["identifier"])])
                     for row in rules if taught.get(identifier_key(row["identifier"]))},
-        "warnings": check_rules(items),
+        # A request that cannot receive is a warning; a return merely short
+        # of room is not (the lead's L-1): its names are cut to fit and
+        # everything files, so the figure is information on its page.
+        "warnings": check_rules(items) + (
+            [ROOM_PARKS.format(count=room.parks)] if room.parks else []),
+        "room": {"need": room.need, "least": room.least, "floor": room.floor,
+                 "short": room.short, "parks": room.parks, "limit": room.limit},
+        "room_note": ROOM_SHORT.format(short=room.short) if room.short else "",
         # The index's packed cells travel as data, not as text the app
         # would have to parse: the candidates as a list, the evidence as
         # the record it was written from keyed by candidate identifier,
@@ -1407,6 +1448,14 @@ def _state(engagement: Path) -> dict:
     }
 
 
+def _room_sentences(room) -> list[str]:
+    """What the reply to setting the root says about one return's room
+    (decision 131), filled: the figure it is short by, as information, and
+    the requests that cannot receive, as the warning they are."""
+    said = [ROOM_SHORT.format(short=room.short)] if room.short else []
+    return said + ([ROOM_PARKS.format(count=room.parks)] if room.parks else [])
+
+
 def _reminder_payload(engagement: Path, items, entries) -> dict:
     """What holds this engagement's reminder, and when it was last drafted.
 
@@ -1419,6 +1468,7 @@ def _reminder_payload(engagement: Path, items, entries) -> dict:
     drafted = last_drafted(engagement)
     return {
         "held": _held_rows(held),
+        "unsorted": reminder.unsorted_in_inbox(engagement),
         "last_drafted": drafted.isoformat() if drafted else None,
     }
 
@@ -1432,6 +1482,18 @@ def _held_rows(held) -> list[dict]:
     a page parsing a sentence Python wrote."""
     return [{"identifier": flag.item.identifier, "document": flag.item.document,
              "label": flag.item.label, "reason": flag.reason} for flag in held]
+
+
+def _refresh_readmes(*engagements: Path) -> None:
+    """Rewrite the client README of each household these returns are in,
+    once each (decision 130): after an action that creates or edits a
+    return or changes a document's row, what the client reads is current
+    at once rather than at the next pass. A hand-over across households
+    names both. Never raises - :func:`filer.refresh_household_readme` is a
+    log line on failure - and is reached only after the action succeeded,
+    so a refused action refreshes nothing."""
+    for household_dir in dict.fromkeys(household_of(Path(one)) for one in engagements):
+        refresh_household_readme(household_dir)
 
 
 def _cmd_state(argv: list[str]) -> dict:
@@ -1491,7 +1553,11 @@ def _cmd_scan(argv: list[str]) -> dict:
     households are judged, locked and filed into here exactly as the
     scheduled pass does it: without the walk the same trial balance would
     file under the co-owned LLC on the schedule and park at home on Run
-    now, which is two definitions of a pass and one of them wrong.
+    now, which is two definitions of a pass and one of them wrong. Since
+    decision 132 the pass cannot be called without the walk at all: a root
+    that cannot be walked is refused by the runner in one sentence
+    (``tracker.runner.NO_PRACTICE``), which is this reply's ``error``, and
+    nothing is sorted.
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
@@ -1583,7 +1649,9 @@ def _cmd_edit(argv: list[str]) -> dict:
         if key not in ENGAGEMENT_EDITABLE:
             raise ManifestError(f"'{key}' is not edited here")
     info = _info_from_spec(details, carry=load_engagement_info(engagement), blank_clears=True)
+    _refuse_a_changed_row_past_the_limit(engagement, items)
     saved = save_rules(engagement, items, info)
+    _refresh_readmes(engagement)
     state = _state(engagement)
     return {
         "saved": {"changed": list(saved.changed), "removed": list(saved.removed),
@@ -1591,6 +1659,36 @@ def _cmd_edit(argv: list[str]) -> dict:
         "warnings": state["warnings"],
         "state": state,
     }
+
+
+#: What a row is compared on to say the editor changed it (decision 131):
+#: the four things a working copy's path is made of.
+_PATH_FIELDS = ("identifier", "document", "period", "allowed_extensions")
+
+
+def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
+    """The editor's save keeps creation's standard for the rows it changes
+    (decision 131).
+
+    A row whose identifier, document, period or file types differ from the
+    stored list, and every new row, is measured as creation measures a
+    list (``filer.room_for``); one whose canonical working copy would pass
+    what Windows opens refuses the save with creation's own sentence, and
+    nothing is recorded - the person shortens the label and saves again.
+    A row the person did not touch is never refused: it is already in the
+    room the page and the banner report, so shortening one label is never
+    trapped by another. A row set Not Applicable is not measured, as
+    creation does not measure it.
+    """
+    stored = {item.identifier: item for item in load_manifest(engagement)}
+    changed = [item for item in items
+               if item.identifier not in stored
+               or any(getattr(item, name) != getattr(stored[item.identifier], name)
+                      for name in _PATH_FIELDS)]
+    need = room_for(engagement, changed).need
+    if need > MAX_PATH_LENGTH:
+        raise ManifestError(PATH_TOO_LONG.format(folder=engagement, length=need,
+                                                 limit=MAX_PATH_LENGTH))
 
 
 def _cmd_unlearn(argv: list[str]) -> dict:
@@ -1795,6 +1893,7 @@ def _cmd_create(argv: list[str]) -> dict:
         if made_household is not None:
             _undo_create(made_household)
         raise
+    _refresh_readmes(engagement)
     reply = {"created": Engagement(path=engagement, info=info,
                                    household_path=household_dir).label,
              "state": _state(engagement)}
@@ -2012,6 +2111,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
     except Exception:
         _undo_create(engagement)
         raise
+    _refresh_readmes(engagement)
 
     return {
         "created": Engagement(path=engagement, info=info,
@@ -2206,8 +2306,9 @@ def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *
     nothing routes outside it, and a person extends it in the household's
     editor rather than by naming a folder here. The re-scan afterwards is
     the **target's** - it is the return that gained a document - and this
-    return's own row is terminal, so nothing about it changed that a scan
-    would see.
+    return's own row is released (decision 132): it held a parked
+    document, which no request's status counted, so nothing about it
+    changed that a scan would see.
     """
     fed = _fed_returns(engagement)
     label = fed.get(target)
@@ -2220,6 +2321,7 @@ def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *
         scan_engagement(target)
     except ScanLockedError as exc:
         scan_note = f"not re-scanned: {exc}"
+    _refresh_readmes(engagement, target)
     return {
         "handed_over": {
             "original_name": result.entry.original_name,
@@ -2253,7 +2355,8 @@ def _cmd_assign(argv: list[str]) -> dict:
     identifier names a request of that return, the original moves where it
     must rest - under the household the return lives in - the working copy
     is made there, the parked copy here goes, and this return's row is
-    closed as handed over. The target must be a return this drop folder
+    released (decision 132): nothing about it stays here, and the journal
+    says which return took it. The target must be a return this drop folder
     feeds, own or fed (:data:`NOT_FED`); nothing routes outside the feed
     list. Without it, everything below is as it has always been.
 
@@ -2304,6 +2407,7 @@ def _cmd_assign(argv: list[str]) -> dict:
         scan_engagement(engagement)
     except ScanLockedError as exc:
         scan_note = f"not re-scanned: {exc}"
+    _refresh_readmes(engagement)
     return {
         "assigned": {
             "original_name": result.entry.original_name,
@@ -2348,6 +2452,7 @@ def _cmd_dismiss(argv: list[str]) -> dict:
         raise ManifestError("Pick the file no request asks for")
     result = dismiss_review_file(engagement, original, str(spec.get("note", "") or ""),
                                  seq=_seq_of(spec))
+    _refresh_readmes(engagement)
     return {
         "dismissed": {
             "original_name": result.entry.original_name,
@@ -2383,6 +2488,7 @@ def _cmd_unfile(argv: list[str]) -> dict:
         raise ManifestError("Pick the document to send back for review")
     result = unfile_document(engagement, original, str(spec.get("note", "") or ""),
                              seq=_seq_of(spec))
+    _refresh_readmes(engagement)
     return {
         "unfiled": {
             "original_name": result.entry.original_name,
@@ -2421,6 +2527,7 @@ def _cmd_restore(argv: list[str]) -> dict:
     if not original:
         raise ManifestError("Pick the working copy to put back")
     result = restore_working_copy(engagement, original, seq=_seq_of(spec))
+    _refresh_readmes(engagement)
     return {
         "restored": {
             "original_name": result.entry.original_name,
@@ -2509,7 +2616,10 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     and the card is something a person can copy from. So the subject, the
     text, the body and the letter are all empty while it is held, the
     toggle stands at the stage the day gives, and a stage asked for is
-    ignored - there is nothing to re-stage.
+    ignored - there is nothing to re-stage. A reminder held only by files
+    still waiting in the household's inbox (decision 133) is held the same
+    way: ``held`` is the rows (none), ``unsorted`` is the count, and the
+    card's hold line comes from ``vocab.reminder.inbox_held_line``.
     """
     try:
         info = load_engagement_info(engagement)
@@ -2526,7 +2636,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     in_force = reminder.is_approved_this_week(engagement, path,
                                               since=last_draft_day(today, DRAFT_WEEKDAY))
 
-    if draft.held:
+    if draft.is_held:
         stage = day_stage
     else:
         recorded = last.get(reminder.STAGE_KEY) if last else None
@@ -2537,7 +2647,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
             except reminder.ReminderError as exc:
                 raise ManifestError(str(exc)) from None
 
-    if draft.held:
+    if draft.is_held:
         subject, text, html, letter = "", "", "", None
     elif edited:
         # What a person edited is what they approve and what they copy:
@@ -2556,7 +2666,8 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "draft": draft,
         "stage": stage,
         "held": _held_rows(draft.held),
-        "refusal": reminder.held_refusal(draft) if draft.held else "",
+        "unsorted": draft.unsorted,
+        "refusal": reminder.held_refusal(draft) if draft.is_held else "",
         "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
                   "stage": last.get(reminder.STAGE_KEY) or 0,
                   "asked": list(last.get(ledger.ASKED_KEY) or []),
@@ -2573,7 +2684,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "fingerprint": reminder.draft_fingerprint(shown),
         "asked": draft.asked,
         "stages": _stages(),
-        "editable": not draft.held and not edited and draft.has_outstanding,
+        "editable": not draft.is_held and not edited and draft.has_outstanding,
     }
 
 
@@ -2626,7 +2737,7 @@ def _cmd_approve(argv: list[str]) -> dict:
     today = dt.date.today()
     with engagement_lock(engagement):
         state = _reminder_now(engagement, requested, today)
-        if state["held"]:
+        if state["draft"].is_held:
             raise ManifestError(state["refusal"])
         if shown != state["fingerprint"]:
             raise ManifestError(DRAFT_MOVED)
@@ -2672,22 +2783,63 @@ def _cmd_set_root(argv: list[str]) -> dict:
         set_firm_phone(str(spec["phone"]))
     return {"root": str(root), "firm": firm(), "phone": firm_phone(),
             "settings_path": str(settings_path()),
-            "engagements": _cmd_list([])["engagements"]}
+            "engagements": _cmd_list([])["engagements"],
+            "short_of_room": _short_of_room(root)}
+
+
+def _short_of_room(root: Path) -> list[dict]:
+    """Every return short of room under a clients root a person has just
+    set, in label order (decision 131).
+
+    The one moment every move the tracker survives passes through - a root
+    that moved is a root the tracker cannot find until somebody sets it
+    again - so it is the moment to say what the move costs. The root is
+    recorded regardless: the firm's data is where it is. One walk, one read
+    of each list; the one time this is done outside a pass, because it is
+    the one moment a person is asking. A return whose list will not read
+    is left to the pass and the picker, which already say why.
+    """
+    try:
+        registry = discover_engagements(root)
+    except RegistryError:
+        return []
+    short = []
+    for engagement in registry.engagements:
+        # The returns a pass would work: a prior rolled forward and a client
+        # finished with are never written to, so their room is nobody's worry.
+        if engagement.problem or engagement.superseded_by or not engagement.active:
+            continue
+        try:
+            room = room_for(engagement.path, load_manifest(engagement.path))
+        except Exception as exc:          # the pass and the picker say this return's problem
+            log.warning("Could not measure %s (%s)", engagement.label, exc)
+            continue
+        if room.short or room.parks:
+            short.append({"engagement": engagement.label, "short": room.short, "parks": room.parks,
+                          "sentences": _room_sentences(room)})
+    return sorted(short, key=lambda one: one["engagement"])
 
 
 def _cmd_install_schedule(argv: list[str]) -> dict:
-    """Generate the Task Scheduler job for the configured root and register it.
+    """Generate the Task Scheduler job for this app's settings and register it.
 
     JSON on stdin (all optional): {"start": "HH:MM", "every": minutes},
-    defaulting to tracker.scheduling's DEFAULT_START / DEFAULT_REPEAT_MINUTES. The
-    root and the working folder are the ones this app runs with, so the job
-    walks exactly the folder the app shows. From a source checkout the job
+    defaulting to tracker.scheduling's DEFAULT_START / DEFAULT_REPEAT_MINUTES.
+    The job names this app's settings folder and the working folder it runs
+    from, and reads the clients root from the settings file at every run
+    (decision 131), so it walks exactly the folder the app shows - today
+    and after the root is changed. A root must be set before a job is
+    registered; the reply names it for the dialog's sentence. From a source checkout the job
     is the Python this API runs under; in the packaged app it is this same
     executable in runner mode (api_entry.py, RUNNER_MODE_FLAG), which needs
     none of the environment the shell gives the API.
     """
     spec = json.loads(sys.stdin.read() or "{}")
     root = _root()
+    # The job names this app's settings folder, never the root (decision
+    # 131): it reads the root from the settings file at every run, so a
+    # root changed in the app is the root the job walks next.
+    folder = settings_dir()
     start = str(spec.get("start") or DEFAULT_START)
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
     frozen = bool(getattr(sys, "frozen", False))
@@ -2695,7 +2847,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     xml_path = settings_path().with_name(SCHEDULE_XML_FILENAME)
     write_text_atomically(
         xml_path,
-        task_scheduler_xml(python=sys.executable, root=root, working_dir=working_dir,
+        task_scheduler_xml(python=sys.executable, settings=folder, working_dir=working_dir,
                            start_time=start, repeat_minutes=every, frozen=frozen),
         encoding=SCHEDULE_XML_ENCODING,
     )
@@ -2708,6 +2860,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         "xml": str(xml_path),
         "command": command,
         "root": str(root),
+        "settings": str(folder),
         "start": start,
         "every": every,
         "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],

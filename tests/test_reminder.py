@@ -1299,3 +1299,203 @@ def test_the_command_lines_write_lands_beside_an_approved_draft_and_never_over_i
     assert beside.is_file() and beside.read_bytes() != kept
     assert stage_named(1).close in beside.read_text(encoding="utf-8")
     assert NEW_DRAFT_FILENAME in run.stdout
+
+
+# ------------------------------------------- the reminder waits for the sort ----
+# Decision 133. A pass drafts after it sorts, but the sort does not always
+# take what the client sent - and a person can draft from the app hours
+# after the last pass. While the household's own Drop files here holds a
+# file the sort has not taken, the letter could ask for a document sitting
+# in it, and it cannot know which request that file answers: the whole
+# draft is held, as decision 115's is.
+
+
+def waiting_in(folder, *names):
+    """Files the client sent, still waiting in this return's household inbox."""
+    inbox = inbox_of(folder)
+    inbox.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (inbox / name).write_bytes(b"%PDF-1.4 waiting to be sorted")
+    return inbox
+
+
+def test_a_file_waiting_in_the_drop_folder_holds_the_whole_reminder(tmp_path):
+    from tracker.reminder import INBOX_HOLD, unsorted_in_inbox
+
+    folder = engagement(tmp_path, SENDABLE)
+    assert not draft_reminder(folder).is_held, "nothing waits yet"
+    waiting_in(folder, "W-2 from the client.pdf")
+    # A client who drags a whole folder in has sent that too.
+    (inbox_of(folder) / "bank").mkdir()
+    (inbox_of(folder) / "bank" / "march.pdf").write_bytes(b"%PDF-1.4 a statement")
+
+    draft = draft_reminder(folder)
+
+    assert unsorted_in_inbox(folder) == 2 and draft.unsorted == 2
+    assert draft.is_held and draft.held == [], "no row holds it; the inbox does, whole"
+    # The letter is still composed, as a held draft's always is - it is
+    # simply never written, shown or sent.
+    assert draft.lines and draft.body
+    assert reminder_module.held_refusal(draft) == INBOX_HOLD.format(n=2)
+
+
+def test_a_transfer_still_in_progress_holds_the_reminder(tmp_path):
+    from tracker.filer import iter_drops
+
+    folder = engagement(tmp_path, SENDABLE)
+    inbox = waiting_in(folder)
+    (inbox / "W-2 2025.pdf.driveupload").write_bytes(b"%PDF-1.4 half of it")
+    assert iter_drops(inbox) == [], "a transfer in flight is not a drop yet"
+
+    draft = draft_reminder(folder)
+
+    assert draft.unsorted == 1 and draft.is_held
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="APFS refuses the names the machine cannot handle")
+def test_a_name_the_machine_cannot_handle_holds_the_reminder_until_a_person_deals_with_it(tmp_path):
+    from tracker.filer import unreachable_drops
+
+    folder = engagement(tmp_path, SENDABLE)
+    inbox = waiting_in(folder)
+    if sys.platform == "win32":
+        # A Mac or a sync client can deliver a name ending in a dot; only
+        # the \\?\ form creates one here, and only it removes one.
+        raw = "\\\\?\\" + str(inbox / "bank statement.pdf.")
+    else:
+        # A name UTF-8 cannot hold: the record could never name it.
+        raw = os.fsencode(inbox) + b"/bank statement \xff.pdf"
+    with open(raw, "wb") as handle:
+        handle.write(b"%PDF-1.4 a name the machine cannot handle")
+    assert len(unreachable_drops(inbox)) == 1
+
+    # Held, and held again on every reading: a file that can never be
+    # sorted keeps the letter held until a person deals with the file.
+    for _ in range(2):
+        draft = draft_reminder(folder)
+        assert draft.is_held and draft.unsorted == 1
+
+    os.remove(raw)          # a person deals with the file
+    assert not draft_reminder(folder).is_held
+
+
+def test_the_readme_and_sync_junk_do_not_hold_the_reminder(tmp_path):
+    from tracker.layout import README_NAME
+
+    folder = engagement(tmp_path, SENDABLE)
+    inbox = waiting_in(folder)
+    (inbox / README_NAME).write_text("What we still need from you", encoding="utf-8")
+    for junk in ("desktop.ini", "Thumbs.db", ".DS_Store", "~$W-2.docx"):
+        (inbox / junk).write_bytes(b"junk")
+
+    draft = draft_reminder(folder)
+
+    assert draft.unsorted == 0 and not draft.is_held
+
+
+def test_a_readme_write_left_behind_by_a_crash_does_not_hold_the_reminder(tmp_path):
+    """The review of decision 133: the README's atomic write leaves
+    ``_README.txt.<pid>.<hex>.tmp`` beside it when it is killed. That is
+    the firm's leftover, not a transfer the client started - while a
+    client's own ``.tmp`` still holds."""
+    from tracker.layout import README_NAME
+
+    folder = engagement(tmp_path, SENDABLE)
+    inbox = waiting_in(folder)
+    (inbox / README_NAME).write_text("the list", encoding="utf-8")
+    (inbox / f"{README_NAME}.4242.9f1c.tmp").write_text("half a list", encoding="utf-8")
+
+    assert draft_reminder(folder).unsorted == 0
+
+    (inbox / "W-2 scan.pdf.tmp").write_bytes(b"still arriving")
+
+    assert draft_reminder(folder).unsorted == 1
+
+
+def test_a_folder_the_pass_cannot_list_holds_the_reminder(tmp_path, monkeypatch):
+    """What the client put in a folder the pass cannot list is not sorted,
+    so the letter could ask for it: one count per such folder."""
+    from tracker import filer
+
+    folder = engagement(tmp_path, SENDABLE)
+    inbox = waiting_in(folder)
+    locked = inbox / "From my accountant"
+    locked.mkdir()
+    monkeypatch.setattr(filer, "unlistable_folders",
+                        lambda path: [locked] if path == inbox else [])
+
+    draft = draft_reminder(folder)
+
+    assert draft.unsorted == 1 and draft.is_held
+
+
+def test_a_held_draft_by_the_inbox_writes_nothing_and_says_why(tmp_path):
+    from tracker.reminder import INBOX_HOLD
+
+    folder = engagement(tmp_path, SENDABLE, name="Waiting TY2025")
+    waiting_in(folder, "W-2 from the client.pdf")
+    draft = draft_reminder(folder)
+
+    with pytest.raises(ReminderHeldError) as caught:
+        write_draft(draft, engagement_dir=folder, preserve_edits=True)
+    assert str(caught.value) == INBOX_HOLD.format(n=1)
+    assert list(folder.glob("reminder-draft*")) == []
+    # On the record it is a hold, naming no row: a hold is not a draft.
+    assert drafted_event(draft, None)[ledger.HELD_KEY] == []
+
+    # The command line says the same sentence and, asked to write, refuses
+    # with the scanner's own "not done, not an error" and writes nothing.
+    from tracker import store
+
+    store.close()
+    repo = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(repo), "PYTHONIOENCODING": "utf-8"}
+    written = subprocess.run([sys.executable, "-m", "tracker.reminder", str(folder), "--write"],
+                             cwd=repo, capture_output=True, text=True, env=env)
+    assert written.returncode == 2, written.stdout + written.stderr
+    assert INBOX_HOLD.format(n=1) in written.stdout
+    assert "Subject:" not in written.stdout
+    assert list(folder.glob("reminder-draft*")) == []
+
+
+def test_both_holds_are_said_together(tmp_path):
+    from tracker.reminder import INBOX_HOLD
+
+    folder = _held_engagement(tmp_path)
+    waiting_in(folder, "another W-2.pdf")
+    draft = draft_reminder(folder)
+
+    assert [flag.item.identifier for flag in draft.held] == ["C01"] and draft.unsorted == 1
+    said = reminder_module.held_refusal(draft)
+    assert said == "; ".join([
+        INBOX_HOLD.format(n=1),
+        HELD_REFUSAL.format(n=1, listed=draft.held[0].item.label),
+    ])
+    with pytest.raises(ReminderHeldError) as caught:
+        write_draft(draft, engagement_dir=folder)
+    assert str(caught.value) == said
+
+
+def test_an_inbox_of_another_household_that_feeds_this_return_does_not_hold_it(tmp_path):
+    """Decision 133's ruling 4: only the return's own household's inbox. A
+    drop folder that also feeds it (decision 132) is another client's, and
+    its arrivals are not this household's letter to decide."""
+    from dataclasses import replace as replaced
+
+    from tests.conftest import make_engagement
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+    from tracker.records import Feed
+    from tracker.reminder import unsorted_in_inbox
+
+    folder = engagement(tmp_path, SENDABLE)
+    other = make_engagement(tmp_path, SENDABLE, household="Other Family",
+                            return_name="1040 - Other Client", scaffold=False)
+    feeding = private_household_dir(tmp_path, "Other Family")
+    save_household(feeding, replaced(load_household_info(feeding),
+                                     feeds=(Feed("Test Household", "Smith TY2025"),)))
+    waiting_in(other, "a document for the Smiths.pdf")
+
+    assert unsorted_in_inbox(other) == 1, "it waits in the other household's own inbox"
+    draft = draft_reminder(folder)
+    assert draft.unsorted == 0 and not draft.is_held

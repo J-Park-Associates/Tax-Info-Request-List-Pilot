@@ -66,7 +66,8 @@ editor shows it.
 
 Either way the result is the request list in the record plus the
 scaffolded household inbox and `Prepared/` tree, and a `_README.txt` for the
-client.
+client, written by the app straight after the return is made (decision 130:
+the scaffold lays out folders only).
 
 A household is shared **once**, by the checklist the app shows when its
 first return is made: the household folder as Viewer, `Drop files here` as
@@ -129,9 +130,9 @@ person types.
   return lines in other households; nothing is ever inferred into that list,
   and a document nobody may file waits for a person in the household it was
   dropped in. A parked document can be filed under a request of any return
-  the folder feeds — one decision that moves the original where it must
-  rest, makes the working copy there, and closes the row here as *Handed
-  Over*. Every feed added, and every return added to a household, is warned
+  the folder feeds — it moves the original where it must rest, makes the
+  working copy there, and releases the row here: nothing about the document
+  stays in the household that dropped it (decision 132). Every feed added, and every return added to a household, is warned
   about in the same breath: whoever is on that folder will see what is
   filed under it.
 - **Catalog changes affect every future engagement.** Edit

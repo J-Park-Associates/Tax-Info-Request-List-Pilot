@@ -31,7 +31,7 @@ from tests.conftest import make_engagement, named_page, sort
 from tests.test_scanner import text_pdf
 from tracker import ledger, review, view
 from tracker.filer import NEEDS_REVIEW, read_index
-from tracker.layout import household_of, inbox_of
+from tracker.layout import household_of, inbox_of, root_of
 from tracker.manifest import (
     COL_ANY_KEYWORDS,
     COL_STATUS,
@@ -511,7 +511,8 @@ def test_a_pass_whose_view_cannot_be_replaced_reports_it_and_still_succeeds(
     monkeypatch.setattr(view, "write_text_atomically", held)
     # The pass is the household's since decision 125 - one inbox feeds
     # every return of it - and this return's run is what it answers with.
-    [run] = run_household(household_of(engagement), [engagement_from(engagement)], today=DAY1)
+    [run] = run_household(household_of(engagement), [engagement_from(engagement)], today=DAY1,
+                          registry=discover_engagements(root_of(engagement)))
 
     assert run.ok and not run.error
     assert run.view_stale
@@ -569,10 +570,11 @@ def test_a_pass_regenerates_the_view_and_a_dry_run_writes_none(tmp_path, engagem
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     run_household(household_of(engagement), [engagement_from(engagement)],
-                  today=DAY1, dry_run=True)
+                  today=DAY1, dry_run=True, registry=discover_engagements(root_of(engagement)))
     assert not view.path_for(engagement).exists()
 
-    [run] = run_household(household_of(engagement), [engagement_from(engagement)], today=DAY1)
+    [run] = run_household(household_of(engagement), [engagement_from(engagement)], today=DAY1,
+                          registry=discover_engagements(root_of(engagement)))
     assert not run.view_stale
     assert view.view_state(engagement) == view.CURRENT
     assert index_table(engagement)[1:] == [
@@ -586,7 +588,8 @@ def test_a_pass_writes_no_workbook_for_a_person_to_open(engagement):
     from tracker.registry import engagement_from
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    run_household(household_of(engagement), [engagement_from(engagement)], today=DAY1)
+    run_household(household_of(engagement), [engagement_from(engagement)], today=DAY1,
+                          registry=discover_engagements(root_of(engagement)))
 
     assert view.path_for(engagement).suffix == ".html"
     assert sorted(p.name for p in engagement.rglob("*.xlsx")) == []

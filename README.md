@@ -95,8 +95,9 @@ decides. `docs/runbook.md` §4 is what each answer means in plain words.
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
 3. `python -m tracker.scaffold <return_dir>` — builds the household's
-   inbox and the year's folder, and this return's `Prepared/`, and writes
-   the client's README
+   inbox and the year's folder, and this return's `Prepared/` (folders
+   only: the client's README is written by the pass and by the app,
+   decision 130)
 4. Share the household's folder with the client as Viewer and its inbox as
    Contributor, paste the inbox's link into the household and mark it
    shared — the app asks for all three, once, and `docs/runbook.md` §1
@@ -224,12 +225,27 @@ is left out of the letter entirely when it is blank. Everything else reads
 that one value:
 
 ```
-python -m tracker.runner "G:\Shared drives\Clients" --log     # or the app's Install Schedule button
+python -m tracker.runner "G:\Shared drives\Clients"     # one pass, by hand, over the folder named
 ```
 
-That single command is the whole scheduled task. Per engagement it files the
-drop folder, scans it, and **on Saturdays** drafts the chase email. Creating
-an engagement in the app is all it takes for the next run to include it —
+That single command is a whole pass. Per engagement it files the
+drop folder, scans it, and **on Saturdays** drafts the chase email. The
+scheduled task runs the same pass but names no clients root (decision 131):
+it names the app's settings folder, and the runner reads the root from
+`settings.json` there at every run, so the root has one home and changing
+it in the app is all a move takes:
+
+```
+python -m tracker.runner --settings "C:\Tools\tax-tracker" --log     # what the scheduled job runs
+```
+
+A root on the command line together with `--log` is the shape of the job
+installed before decision 131, and it is refused - red, naming *Install
+Schedule* - unless that root is the settings file's own, so an old job
+never goes on sorting a tree the app has moved away from. A person's
+hand-run, without `--log`, is never refused.
+
+Creating an engagement in the app is all it takes for the next run to include it —
 `python -m tracker.registry "G:\Shared drives\Clients"` lists what the run would
 find and flags any manifest it cannot read.
 
@@ -247,13 +263,18 @@ Generate the job itself with:
 python -m tracker.scheduling --working-dir "C:\Tools\tax-tracker" --out tax-tracker.xml --install
 ```
 
-`--root` defaults to the folder in `settings.json`; `--install` registers
-the task as it writes the XML, and running the same line again changes the
-schedule. The app's **Install Schedule** button does exactly this for the
+`--settings` defaults to this checkout's own folder, whose `settings.json`
+must already name a clients root; the job carries no root of its own.
+`--install` registers the task as it writes the XML, and running the same
+line again changes the schedule. The app's **Install Schedule** button does exactly this for the
 folder it is showing - from source with the Python it runs under, and in
 the packaged app with its own executable, which runs the job when given
-`--run` first (there is no Python on that machine). Every pass also re-scaffolds each engagement, so a
-row added in the app has its folder and its README line by the next run, and
+`--run` first (there is no Python on that machine). A job registered by a
+version before decision 131 still carries the root it was installed with:
+press **Install Schedule** once after upgrading, and never again for a
+move. Every pass also re-scaffolds each engagement, so a
+row added in the app has its folder by the next run, and rewrites the
+household's README once, after the sort (decision 130), and
 an engagement that has been rolled forward is retired by its successor
 without anyone opening last year's engagement.
 
@@ -305,6 +326,10 @@ The schedule is a default, not a cage:
 | just one client | `python -m tracker.runner "G:\Shared drives\Clients" --only smith` |
 | see what would happen | `python -m tracker.runner "G:\Shared drives\Clients" --dry-run` |
 | move the drafting day | `python -m tracker.runner "G:\Shared drives\Clients" --weekday monday` |
+
+These are a person's lines, so they name the folder they run over; left
+out, the root is read from `settings.json`. The scheduled job names no
+root at all (decision 131) - it names the settings folder, as above.
 
 `Reminders: no` in an engagement's details is a standing decision that this
 client isn't chased by email — neither the schedule nor `--reminders always`

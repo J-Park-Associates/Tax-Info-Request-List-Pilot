@@ -59,6 +59,24 @@ the clients root, and the difference between them is the whole point:
   exactly one request accepts it.
 - An original moves **once** — out of `Drop files here` into the year's folder
   the client can see — and never again.
+- The inbox holds one file of ours, `_README.txt`, which the tracker writes
+  and nobody edits. Step 2 of it reads *"We will examine and place all
+  documents into the current year's folder."*; step 3 reads *"Please keep
+  sending the documents listed under REQUESTED, NOT YET RECEIVED."*; step 4 begins *"Original
+  PDFs or Excel files are preferred. A clear photo from your phone is fine
+  too, just get the whole page in the frame."* After **REQUESTED, NOT YET RECEIVED**
+  (only the active requests nothing has been received for yet; a return
+  with nothing left has no heading there, and an empty list reads
+  *Nothing at the moment.*) comes **WHAT WE HAVE RECEIVED**,
+  once something has arrived (decision 130): each document confirmed into
+  a request, by that request's name, under its return, with the day it
+  came in; and under **Under Review**, how many documents a person is
+  looking at, counted by the day they arrived and never named. It never
+  says whether a request is complete or where anything was filed, and
+  never shows the client's own file names. It is rewritten at the end of
+  every pass and straight after each click in the app that files, unfiles,
+  sets aside, hands over or puts back a document, or creates or edits a
+  return - and only when its words changed.
 - Type the root with the quotes: the firm's own name has an ampersand in it,
   and `G:\Shared drives\JPA Clients\J Park & Associates` without quotes is two
   commands to a Windows shell. `"G:\Shared drives\JPA Clients"` is safe.
@@ -167,8 +185,13 @@ The schedule is one daily task that starts at
 `tracker.scheduling.DEFAULT_START` and repeats every
 `tracker.scheduling.DEFAULT_REPEAT_MINUTES` through the day. Each pass
 files what arrived, scans it, and on the draft day writes the chase emails.
-The app's **Install Schedule** button registers it for the folder the app
-is showing.
+The app's **Install Schedule** button registers it for this app's own
+settings: the job names the settings folder, never the clients root, and
+reads the root from `settings.json` there at every run (decision 131). So
+changing the root in the app is all it takes for the schedule to follow.
+A job installed by a version before decision 131 carries the root it was
+installed with: **press Install Schedule once after upgrading**, and never
+again for a move.
 
 **It only runs while someone is logged on.** The task is registered to run
 as the logged-on person, not as a background service, so the designated
@@ -192,6 +215,40 @@ documents are no use arriving a day late. The exception is declared rather
 than hidden: `automation.manifest.json` carries it in the dated
 `safety.scheduled_exception` field the Command Center's contract gained the
 same day, and the tool's card there prints that sentence.
+
+### If the clients root moves
+
+A Shared Drive remounted at another letter, a parent folder renamed, the
+tree copied under an archive folder: every one of these leaves the old
+path naming nothing, so the app asks where the clients live and the next
+scheduled pass stops with *Clients folder problem*. Nothing is lost - the
+record keys every return by its path below the root - and the whole
+answer is to **set the root again in the app** (or
+`python -m tracker.settings <folder>`). The schedule follows by itself;
+it reads the root from the settings file at every run.
+
+A longer root leaves every return less room: Windows opens a path of
+`tracker.layout.MAX_PATH_LENGTH` characters at most, and a working copy
+deep in a return with a long household name, a long return name and a
+long document label can pass it. So the reply to setting the root lists,
+under *Returns short of room under this root*, every return the new root
+leaves short, with the number. Nothing is refused - the firm's data is
+where it is - and the pass copes: it cuts the document part of a working
+copy's name to fit, keeping the request's identifier, the period, the
+`(2)` of a series and the extension, and records the name it wrote. A
+reader's limit counts too: Excel opens a workbook from a path of at most
+218 characters (Microsoft's own figure), so spreadsheet copies - `.xlsx`,
+`.xlsm`, `.xls`, `.csv` - are cut to fit 218 (`tracker.layout.OPEN_LIMITS`,
+the owner's ruling of 2026-09-23); creation still refuses only past
+Windows's own limit.
+
+A person has exactly three levers, and every sentence the tracker says
+about room names one of them: **a shorter clients root** (a drive letter
+over a profile path, the Shared Drive's own folder over one deep inside
+it), **a shorter label** in the editor for the request (every copy filed
+from then on is shorter; the folder keeps its name), and **a shorter
+return name** at the next rollover. Nothing in the tracker ever renames a
+folder or a filed copy to make room.
 
 ### Sharing a household with a client
 
@@ -257,7 +314,10 @@ What the tracker does and does not do:
 - The document is judged against every return the drop folder feeds, its own
   and the fed ones together: the request lists accept, the name on the page
   confirms or vetoes, and exactly one return is left or the document waits
-  for a person **in the household it was dropped in**.
+  for a person **in the household it was dropped in**. Where a document
+  has come before, the records are asked for its bytes with the household's
+  own returns first and the fed ones after: the record closest to the drop
+  decides.
 - A feed is a **return line**, not a return: the household and the return's
   name, the name it keeps every year. Roll Forward carries nothing about
   feeds, and a line the other household has retired is said on the card
@@ -277,16 +337,15 @@ Adding a return to a household is warned about too: everyone with access to
 the folder will see that return's documents.
 
 A parked document can be filed under a request of any return the drop folder
-feeds — *File under another return*, in the queue. It is one decision: the
-original moves where it must rest, the working copy is made in that return's
-request folder, the copy waiting here goes, and the row here closes as
-*Handed Over*. Nothing hands it back; if it went to the wrong return, unfile
-it **there**, where it now is.
+feeds — *File under another return*, in the queue. The original moves where it
+must rest, the working copy is made in that return's request folder, the copy
+waiting here goes, and the row here is released: nothing about it stays in
+this household; the journal says which return took it; if it went to the
+wrong return, unfile it *there*.
 
-If a feed is trimmed while one of those hand-overs is only half made — the
-machine died mid-decision — the home return refuses every action in its queue
-and says so on every pass, until somebody puts that feed back for one pass
-and lets it finish.
+If the machine dies in the middle of one of these, each household's next pass
+finishes its own half; the queue of a return with a half-finished decision
+refuses actions until that pass has run, as it does for any interrupted move.
 
 ### Rolling a household into the next year
 
@@ -326,6 +385,28 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    engagement's folder — the pass you just read about regenerated it, so it
    is that engagement's list, index and review queue as of this morning, and
    the app says beside the engagement's name whether it is still current.
+
+   What the page says about room (decision 131, and *If the clients root
+   moves* in §1). A return merely **short of room** is not warned at all:
+   it is sorted as usual and its copies' names are cut to fit, and the
+   figure - *N characters short of the room its working copies need* - is
+   shown as information on the return's page in the app and in the reply
+   to setting the root, never in the Warnings column (a warning on every
+   pass would be a warning nobody reads). A **Warnings** line *N
+   request(s) have no room for a working copy* does need a person: a
+   document for those requests parks in the review folder with the reason
+   *the working copy's path would be N characters at its shortest, past
+   the N characters a .pdf copy may have* (the sentence names the other
+   return when the request is in a return this drop folder feeds):
+   shorten the root or that request's label, then file it. A review
+   copy's row that ends *longer than a spreadsheet program may open* is
+   there and whole; open it from a shorter folder. A household **skipped**
+   with *no room under ... for even a review copy* was not touched at all
+   - nothing read, nothing moved, nothing scanned - and will not be until
+   the clients root is shorter; move the root and set it again in the app.
+   A scheduled run that ends red with *the scheduled job still names an
+   old clients root* is the job installed before this version: open the
+   app and press *Install Schedule* once.
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document
@@ -398,6 +479,11 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    shortcut rather than a document: the note tells the client how to send
    an exported copy (`tracker.reasons.GOOGLE_EXPORT_HINT`), and that ask is
    already in the draft.
+5. **A file still waiting in a drop folder.** A file the sort could not take
+   — it failed, it is still arriving, its name cannot be handled, or the
+   household has two open years — is named on the run every pass, and from
+   decision 133 it also holds the household's reminders (§3, *the reminder
+   waits for the sort*). Deal with it before Saturday and nothing waits.
 
 ## 3. Every Saturday
 
@@ -501,6 +587,28 @@ file's own problem named. Work it in the app: file it, mark it not
 requested, or ask the client for a copy we can open. A parked file that
 looks like nothing holds nothing, and one nobody here could read is ours to
 fix, not the client's to resend.
+
+**And the reminder waits for the sort** (decision 133). The pass drafts after
+it sorts the household's `Drop files here`, but the sort does not always take
+everything: a household with two open years does not read its inbox at all,
+a file can fail to sort, a transfer can still be arriving, a name can be one
+the machine cannot handle, and a file can land after the sort. While the
+household's own inbox holds any such file, every return of that household is
+held the same whole way, because the letter cannot know which request the
+file answers. The practice page's Drafted column says `held (N)`, `runs.log`
+says *"held - N file(s) the client sent are still waiting in Drop files here
+and have not been sorted yet"*, and the app's card says **"Reminder held: N
+file(s) still waiting to be sorted"**. On a Saturday that means: press **Sort &
+Scan** — Run now — (or wait for the next pass — the schedule runs every two hours, and the
+pass that sorts the inbox drafts the reminder that same day), or deal with the
+file the run log names — retire a year in the editor, rename a name the
+machine cannot handle, or remove a transfer that never finished. A file that
+can never be sorted keeps the letter held, and says so every pass, until you
+deal with it: that is on purpose, because the alternative is a letter asking
+the client for what they sent. The README the firm writes into the inbox and
+sync junk never hold anything. Only the household's own inbox counts: a drop
+folder in another household that also feeds a return (§1, *Households that
+feed each other*) does not hold that return's letter.
 
 One warning before you send: if the app or the command line says files the
 client has already sent are still sitting in review, identify those first.
@@ -683,8 +791,12 @@ with *a run was interrupted here; the next pass finishes it first* - press
    program silently loses its command line and answers every call with a
    usage error.
 3. Start the app. It asks where the clients live on first launch — give it
-   the same folder, the synced one.
-4. Press **Install Schedule**.
+   the same folder, the synced one. This is the one place the root is set;
+   if the new machine mounts it at a longer path, the reply lists every
+   return that leaves short of room (§1, *If the clients root moves*).
+4. Press **Install Schedule** - once. Since decision 131 the job names the
+   app's settings folder and reads the clients root from it at every run,
+   so a later change of root is made in the app alone.
 5. Install the **Tesseract engine** (the UB Mannheim Windows installer),
    with the `eng` and `osd` language data — `osd` is ticked by default and
    is what turns a page the right way up before it is read. The reader

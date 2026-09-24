@@ -155,13 +155,16 @@ def _owner_gone(lock: Path) -> bool:
     return pid_alive(fields.get(_PID_KEY, "")) is False
 
 
-def acquire_lock(engagement_dir: Path) -> EngagementLock:
+def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementLock:
     """Take the engagement lock or raise :class:`EngagementLockedError`.
 
     The returned handle stays open until :func:`release_lock`; use
-    :func:`engagement_lock` unless there is a reason not to.
+    :func:`engagement_lock` unless there is a reason not to. ``name`` is
+    the lock file's name: the engagement's own by default; another name
+    is another lock with the same guarantees, in whatever folder it guards
+    (the household README's, ``tracker.filer.README_LOCK_FILENAME``).
     """
-    lock = engagement_dir / LOCK_FILENAME
+    lock = engagement_dir / name
     for _attempt in (1, 2):
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)

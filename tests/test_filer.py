@@ -404,9 +404,14 @@ def test_a_pass_writes_nothing_under_the_clients_root_but_the_record_and_the_pag
     # What the pass did put there: the client's own files, moved and copied,
     # and the record. The page is the runner's, so a bare sort and scan
     # leave none - and nothing else either.
+    # The working copy's name is fitted to the room the path leaves
+    # (decision 131), so under a long temporary folder it is cut: it is
+    # known by its request, not spelled out whole.
     new = names - before
-    assert new <= {"w2.pdf", "scan0012.pdf", "A01 - W-2 Wage Statements - TY2025.pdf",
-                   LEDGER_FILENAME, VIEW_FILENAME}, new
+    copies = {name for name in new if name.startswith("A01 - W-2 Wage Statement")
+              and name.endswith(".pdf")}
+    assert len(copies) == 1, new
+    assert new - copies <= {"w2.pdf", "scan0012.pdf", LEDGER_FILENAME, VIEW_FILENAME}, new
 
 
 # --------------------------------------------------------------------- index ----
@@ -4305,7 +4310,7 @@ def test_the_household_pass_refuses_to_sort_a_return_whose_lock_it_does_not_hold
     personal, business = two_returns
     drop(personal, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     with pytest.raises(FilingError, match="only while this run holds"):
-        file_household_drops(inbox_of(personal), originals(personal), list(two_returns),
+        file_household_drops(inbox_of(personal), originals(personal), own=list(two_returns),
                              today=DAY1)
     assert (inbox_of(personal) / "w2.pdf").is_file()
 
@@ -4670,7 +4675,7 @@ def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
         assert reasons.NAME_NOT_ON_PAGE.matches(again.reason)
 
 
-# ============ the household routes: the feed list (decision 129) ===========
+# ====== the household routes: the feed list (decisions 129 and 132) =======
 #
 # A client with a co-owned business keeps one drop folder, and the business
 # lives in a household shared to its co-owners. So a household's drop folder
@@ -4736,6 +4741,7 @@ def test_a_drop_in_the_fathers_inbox_files_to_the_co_owned_llc_and_the_original_
     assert not any(originals(father).iterdir())
     assert [p.name for p in inbox_of(father).iterdir()] == [README_NAME]
     assert (llc / row.prepared_location).is_file()
+    rows_rest_at_home(father, llc)
 
 
 def test_a_drop_that_fails_the_name_check_parks_in_the_dropping_household_naming_the_fed_return(fed):
@@ -4821,6 +4827,7 @@ def test_a_cross_household_filing_killed_between_the_move_and_the_copy_is_finish
     assert read_index(father) == []
     conserved(father, before_father, moves, gone=[document])
     conserved(llc, before_llc, moves, added=[document, document])
+    rows_rest_at_home(father, llc)
 
 
 def test_a_cross_household_original_mid_recovery_is_never_a_stray_of_the_dropping_household(
@@ -4851,7 +4858,7 @@ def test_a_cross_household_original_mid_recovery_is_never_a_stray_of_the_droppin
     assert read_index(father) == [] and not any(originals(father).iterdir())
 
 
-# ---------------- File under another return (decision 129) ----------------
+# ------------- File under another return (decisions 129 and 132) -----------
 
 
 def parked_notice(father):
@@ -4861,13 +4868,27 @@ def parked_notice(father):
     return sort(father, returns=[father], today=DAY1).review[0]
 
 
-def test_a_hand_over_moves_the_original_copies_the_working_copy_removes_the_parked_copy_and_records_both_rows(
+def rows_rest_at_home(*returns):
+    """Claim 27's invariant (decision 132), asked of every record named:
+    once no intent is open, every row a record holds names an original
+    under **that record's own** household-year folder. A row about a
+    document resting under another household is the one thing the owner's
+    sentence rules out."""
+    for engagement in returns:
+        assert open_intents(engagement) == [], engagement.name
+        home = originals_of(engagement)
+        for row in read_index(engagement):
+            assert locate(engagement, row.pbc_location).parent == home, (engagement.name, row)
+
+
+def test_a_hand_over_moves_the_original_copies_the_working_copy_removes_the_parked_copy_and_records_both_records(
         fed):
-    """One decision, two records: the original moves where it must rest,
-    the working copy is made in the taking return's request folder, the
-    parked copy here goes, this row closes as handed over and the taking
-    return's row is the person's own filing."""
-    from tracker.filer import HANDED_OVER, HANDED_OVER_BY_PERSON, hand_over
+    """The taking return's row is the person's own filing, the original
+    rests under the household that return lives in, the working copy is
+    made there and the parked copy here goes. And the dropping household
+    keeps **no row** (decision 132): the row is released - gone from the
+    index - and the journal's last line says which return took it."""
+    from tracker.filer import RELEASED_TO, hand_over
 
     father, llc = fed
     parked = parked_notice(father)
@@ -4876,12 +4897,15 @@ def test_a_hand_over_moves_the_original_copies_the_working_copy_removes_the_park
 
     assert done.moved_original is True
     assert done.label == "Park & Lee LLC 2025 1120S - Park & Lee LLC"
-    [home] = read_index(father)
-    assert home.decision == HANDED_OVER and home.identifier == ""
-    assert home.prepared_location == ""
-    assert home.reason.startswith(HANDED_OVER_BY_PERSON.format(label=done.label, identifier="B01"))
-    assert home.pbc_location == location_of(father, originals(llc) / "notice.pdf")
+    assert done.entry == parked                        # the row as it was, for the app
+    assert read_index(father) == []
+    last = ledger.read_events(father)[-1]
+    assert last[ledger.EVENT_KEY] == ledger.RELEASED
+    assert last[ledger.KEY_KEY] == ledger_key(parked)
+    assert last[ledger.REASON_KEY] == RELEASED_TO.format(label=done.label, identifier="B01")
+    assert ledger.ROW_KEY not in last
     [taken] = read_index(llc)
+    assert taken == done.target_entry
     assert taken.decision == FILED and taken.identifier == "B01"
     assert taken.pbc_location == original_at(llc, "notice.pdf")
     assert taken.reason.startswith("assigned by a person on 2026-07-09")
@@ -4891,14 +4915,18 @@ def test_a_hand_over_moves_the_original_copies_the_working_copy_removes_the_park
     assert not any(originals(father).iterdir())
     assert (llc / taken.prepared_location).is_file()
     assert not (father / parked.prepared_location).exists()
+    rows_rest_at_home(father, llc)
 
 
-def test_a_hand_over_within_one_household_moves_no_original(two_returns):
+def test_a_hand_over_within_one_household_moves_no_original_and_writes_the_same_two_intents(
+        two_returns):
     """An original moves once, out of the inbox into the year's folder the
     client can see, and never again (decision 125) - which holds for every
-    filing inside one household, hand-over included. Only across households
-    does it move a second time, because there it must rest somewhere else."""
-    from tracker.filer import HANDED_OVER, hand_over
+    filing inside one household, hand-over included. And there is no
+    special case for one household any more (decision 132): the same two
+    intents are written, the release here and the filing there, and the
+    filing has no move in it."""
+    from tracker.filer import hand_over
 
     personal, business = two_returns
     drop(personal, "notice.pdf", "an agency notice nothing asks for")
@@ -4908,197 +4936,1044 @@ def test_a_hand_over_within_one_household_moves_no_original(two_returns):
     done = hand_over(personal, where, business, "B01", today=DAY2)
 
     assert done.moved_original is False
-    [home] = read_index(personal)
-    assert home.decision == HANDED_OVER and home.pbc_location == where
+    assert read_index(personal) == []
     [taken] = read_index(business)
     assert taken.pbc_location == original_at(business, "notice.pdf")
     assert locate(business, taken.pbc_location) == locate(personal, where)
+    assert "dropped in" not in taken.reason
     assert [p.name for p in originals(personal).iterdir()] == ["notice.pdf"]
+    # The two intents, one in each record, each closed by its own record.
+    [release] = [e for e in ledger.read_events(personal) if e[ledger.EVENT_KEY] == ledger.MOVING
+                 and e[ledger.DECIDED_BY_KEY] == ledger.BY_PERSON]
+    assert release[ledger.EVENT_KEY_AFTER] == ledger.RELEASED
+    assert [op[ledger.OP_KEY] for op in release[ledger.OPS_KEY]] == [ledger.OP_REMOVE]
+    [filing] = [e for e in ledger.read_events(business) if e[ledger.EVENT_KEY] == ledger.MOVING]
+    assert filing[ledger.EVENT_KEY_AFTER] == ledger.ASSIGNED_BY_PERSON
+    assert [op[ledger.OP_KEY] for op in filing[ledger.OPS_KEY]] == [ledger.OP_COPY]
+    rows_rest_at_home(personal, business)
 
 
-def test_a_handed_over_row_is_terminal_and_never_in_the_queue(fed):
-    """The document is the other return's now. The row this return keeps is
-    terminal, like a duplicate: it is not offered in the queue, not counted
-    in it, and no second decision can be made on it here."""
+def test_a_released_row_is_gone_from_the_index_the_queue_and_every_count_and_the_journal_says_where_it_went(
+        fed):
+    """The document is the other return's now, and this return holds
+    nothing about it (decision 132): not a row, not a place in the queue,
+    not a count, not a second decision. Only the journal keeps the line,
+    and it names the return and the request - never a person."""
     from tracker import review
-    from tracker.filer import HANDED_OVER, FilingError, assign_review_file, hand_over
+    from tracker.filer import RELEASED_TO, FilingError, assign_review_file, hand_over
 
     father, llc = fed
     parked = parked_notice(father)
-    hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    done = hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
 
-    entries = read_index(father)
-    assert [e.decision for e in entries] == [HANDED_OVER]
-    assert review.triage(father, entries, items=load_manifest(father)) == []
-    assert [e for e in entries if e.decision == NEEDS_REVIEW] == []
-    with pytest.raises(FilingError):
+    assert read_index(father) == []
+    assert store.documents(store.connect(), father) == []
+    assert review.triage(father, read_index(father), items=load_manifest(father)) == []
+    assert [e for e in read_index(father) if e.decision in (NEEDS_REVIEW, DUPLICATE)] == []
+    with pytest.raises(FilingError, match="nothing in the index is called"):
         hand_over(father, parked.pbc_location, llc, "B01", today=DAY3)
-    with pytest.raises(FilingError):
+    with pytest.raises(FilingError, match="nothing in the index is called"):
         assign_review_file(father, parked.pbc_location, "A01", today=DAY3)
+    said = [e for e in ledger.read_events(father) if e[ledger.EVENT_KEY] == ledger.RELEASED]
+    assert [e[ledger.REASON_KEY] for e in said] == [
+        RELEASED_TO.format(label=done.label, identifier="B01")]
+    assert "John Park" not in said[0][ledger.REASON_KEY]
 
 
 def test_a_re_drop_of_a_handed_over_document_is_the_taking_returns_duplicate(fed):
-    """A handed-over row keeps the document's bytes but not the document.
-    The client sending it again is the **taking** return's arrival - the
-    record that has it decides, in its own record, as decision 111 says -
-    so the row here is untouched and the sentence names the working copy
-    the other return really holds."""
+    """While the feed stands the client sending it again is the **taking**
+    return's arrival - the record that has it decides, in its own record,
+    as decision 111 says - and the dropping household still holds nothing."""
     from tracker.filer import DUPLICATE_OF_FILED, hand_over
 
     father, llc = fed
     parked = parked_notice(father)
     hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
-    home_before = read_index(father)
     [taken] = read_index(llc)
 
     drop(father, "notice again.pdf", "an agency notice nothing asks for")
     done = sort_all([father, llc], home=[father], today=DAY3)
 
-    assert done[father].handled == 0 and read_index(father) == home_before
+    assert done[father].handled == 0 and read_index(father) == []
     [duplicate] = done[llc].duplicates
     assert duplicate.reason == DUPLICATE_OF_FILED.format(name="notice.pdf",
                                                          copy=taken.filed_as)
     assert [r.decision for r in read_index(llc)] == [FILED, DUPLICATE]
 
 
-def test_a_re_drop_of_a_handed_over_document_says_so_once_the_feed_is_trimmed(fed, tmp_path):
-    """With the feed trimmed, the return that has the document is out of
-    this pass's reach and the handed-over row is the only record of the
-    bytes left. It decides, then - and says where the document went,
-    rather than reporting a working copy that was never missing."""
-    from tracker.filer import DUPLICATE_OF_HANDED_OVER, HANDED_OVER, HANDED_OVER_BY_PERSON, hand_over
+def test_a_re_drop_after_the_feed_is_trimmed_is_judged_as_the_households_own_document(
+        fed, tmp_path):
+    """Once the feed is trimmed the household that no longer feeds that
+    return has no business recognising its documents, and holds no row to
+    recognise them by (decision 132). A re-send is this household's own
+    arrival: filed where exactly one of its own returns accepts it, parked
+    otherwise - and the taking return is not touched."""
+    from tracker.filer import hand_over
 
     father, llc = fed
     parked = parked_notice(father)
-    done = hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
     taken_before = read_index(llc)
     feeding(tmp_path, [])                       # a person trims the feed
 
     drop(father, "notice again.pdf", "an agency notice nothing asks for")
+    drop(father, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="John Park")
     first = sort(father, returns=[father], today=DAY3)
 
-    [duplicate] = first.duplicates
-    assert duplicate.reason == DUPLICATE_OF_HANDED_OVER.format(
-        name="notice.pdf",
-        handed=HANDED_OVER_BY_PERSON.format(label=done.label, identifier="B01"))
-    assert [r.decision for r in read_index(father)] == [HANDED_OVER, DUPLICATE]
-    # Nothing files and nothing is copied: the document is the other
-    # return's, and that record is not this pass's to write in.
-    assert not first.filed and read_index(llc) == taken_before
-    assert not any((father / PREPARED_DIR_NAME).rglob("notice*"))
+    assert first.duplicates == []
+    [again] = first.review
+    assert again.original_name == "notice again.pdf" and again.decision == NEEDS_REVIEW
+    assert not again.reason.startswith("identical to")
+    assert [row.original_name for row in first.filed] == ["w2.pdf"]
+    assert read_index(llc) == taken_before
+    rows_rest_at_home(father, llc)
 
 
-def test_a_hand_over_into_a_name_a_vanished_original_left_behind_still_writes_the_taking_returns_row(
-        fed):
+@pytest.mark.parametrize("by", ("the pass", "a hand-over"))
+def test_a_filing_into_a_name_a_vanished_original_left_behind_still_writes_the_taking_returns_row(
+        fed, by):
     """A key is a location, and a location comes free again. An original
     filed into the LLC and then removed by hand leaves its row behind,
     pointed at nothing (decision 109); the next document of that name is
-    handed the same place and so the same key. The hand-over must still
-    write the taking return's row - it is that row's next version - or the
-    home row would close as handed over while the other record kept the
-    stale row and a working copy no row named."""
-    from tracker.filer import ASSIGNED_BY_PERSON, HANDED_OVER, hand_over
+    handed the same place and so the same key. Whoever files it - the pass
+    or a person - the filing goes through the one function (decision 132),
+    and the row it writes is that row's next version."""
+    from tracker.filer import ASSIGNED_BY_PERSON, hand_over
 
     father, llc = fed
     drop(father, "notice.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
     sort_all([father, llc], home=[father], today=DAY1)
     [stale] = read_index(llc)
     (originals(llc) / "notice.pdf").unlink()    # the client removed it by hand
-    parked = parked_notice(father)
 
-    done = hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    if by == "the pass":
+        drop(father, "notice.pdf", "Trial balance as of December 31 2025 restated",
+             who="Park & Lee LLC")
+        sort_all([father, llc], home=[father], today=DAY2)
+    else:
+        parked = parked_notice(father)
+        done = hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+        assert done.moved_original is True
 
-    assert done.moved_original is True
     [taken] = read_index(llc)
     assert ledger_key(taken) == ledger_key(stale)       # the same place, a new row
+    assert taken.digest != stale.digest
     assert taken.decision == FILED and taken.identifier == "B01"
-    assert taken.reason.startswith(ASSIGNED_BY_PERSON)
+    assert taken.reason.startswith(ASSIGNED_BY_PERSON) == (by == "a hand-over")
     assert taken.pbc_location == original_at(llc, "notice.pdf")
-    [home] = read_index(father)
-    assert home.decision == HANDED_OVER
+    assert read_index(father) == []
     # One original under the household the taking return lives in, and one
-    # working copy made by this decision, in the request the person chose
-    # and named by the row. The earlier filing's copy is still beside it
-    # with no row naming it any more, which is decision 109's sweep to say
-    # on the next pass - exactly as it is for any name the pass reuses.
+    # working copy made by this filing, in the request's folder and named
+    # by the row. The earlier filing's copy is still beside it with no row
+    # naming it any more, which is decision 109's sweep to say on the next
+    # pass - exactly as it is for any name the pass reuses.
     assert [p.name for p in originals(llc).iterdir()] == ["notice.pdf"]
     copies = sorted(p.name for p in prepared(llc, "B01").iterdir())
     assert Path(taken.filed_as).name in copies and len(copies) == 2
 
 
-#: Where a hand-over is killed, for the conservation claim: the intent, each
-#: of its three file steps, and each of the two records it writes.
-HAND_OVER_CRASH_POINTS = (
-    "the intent before the move",
+# The kill matrix of SPEC-129R §3.4 (decision 132): where the machine dies
+# in a hand-over, by the step it had finished. Four writes (the release
+# intent, the filing intent, the taking return's row, the release) and
+# three file operations (the move, the copy, the removal of the parked
+# copy), in that order.
+HAND_OVER_KILL_POINTS = (
+    "after the release intent",
+    "after the filing intent",
     "after the move",
     "after the copy",
-    "after the parked copy went",
-    "before the taking return's row",
     "after the taking return's row",
+    "after the parked copy went",
 )
+#: Which pass runs next: the dropping household's with the feed in place
+#: (it holds both locks), the same household's after a person trimmed the
+#: feed, or the taking return's own household's.
+NEXT_PASSES = ("home with the feed", "home without the feed", "the taking return's")
 
 
-def killed_at_the_nth_record(monkeypatch, n=1):
-    """The machine dies as the n-th record of *rows* is written - the
-    intent's own line is not one - so a decision that writes two records
-    can be cut between them."""
+def killed_after_the_nth_write(monkeypatch, n):
+    """The machine dies just after the n-th record a decision writes -
+    intents included - has reached the journal and the store."""
     real = store.record
     state = {"seen": 0, "died": False}
 
     def killing(conn, engagement_dir, *events):
-        if events[0][ledger.EVENT_KEY] != ledger.MOVING:
-            state["seen"] += 1
-            if state["seen"] >= n and not state["died"]:
-                state["died"] = True
-                raise KeyboardInterrupt
-        return real(conn, engagement_dir, *events)
+        result = real(conn, engagement_dir, *events)
+        state["seen"] += 1
+        if state["seen"] == n and not state["died"]:
+            state["died"] = True
+            raise KeyboardInterrupt
+        return result
 
     monkeypatch.setattr(store, "record", killing)
     return state
 
 
-@pytest.mark.parametrize("point", HAND_OVER_CRASH_POINTS)
-def test_a_hand_over_killed_at_every_point_is_finished_from_the_record_as_the_persons_and_the_target_row_is_written_once(
-        fed, monkeypatch, point):
-    """Whichever of the six steps the machine dies on, the next pass that
-    holds both locks finishes the person's decision from the record: the
-    original ends where it must rest, one working copy is made, the parked
-    copy is gone, both rows are written exactly once and dated the day the
-    person decided - and nothing is overwritten, deleted or moved twice."""
-    from tracker.filer import HANDED_OVER, hand_over
+@pytest.mark.parametrize("next_pass", NEXT_PASSES)
+@pytest.mark.parametrize("point", HAND_OVER_KILL_POINTS)
+def test_a_hand_over_killed_at_every_point_is_finished_from_the_record_as_the_persons(
+        fed, monkeypatch, tmp_path, point, next_pass):
+    """Each record's half is its own intent, finished by its own
+    household's pass with no lock it does not hold (decision 132). Walk
+    every point of the matrix with every pass going next, then let the
+    other household's pass run too, and ask of both records what decision
+    119 asks: nothing overwritten, nothing moved twice, the store agreeing
+    with the journal and no intent left open.
+
+    - After the release intent alone the person's click is the whole cost:
+      the row is released and the original, named by no row, is sorted
+      again where it lies.
+    - From the filing intent on, the decision lands whichever pass runs
+      first, feed or no feed: a pass holding the taking return finishes the
+      filing, the release waits for the dropping household's own pass, and
+      a dropping pass that runs first leaves the original alone - another
+      record's open intent names it (the lead's ruling R-1). There is no
+      window that needs a person.
+    """
+    from tracker.filer import hand_over
 
     father, llc = fed
     parked = parked_notice(father)
     document = parked.digest
     before_father, before_llc = digests_under(father), digests_under(llc)
     moves = moves_made(monkeypatch)
-    if point == "the intent before the move":
-        killed_at_the_intent(monkeypatch, ledger.OP_MOVE)
+    if point == "after the release intent":
+        killed_after_the_nth_write(monkeypatch, 1)
+    elif point == "after the filing intent":
+        killed_after_the_nth_write(monkeypatch, 2)
     elif point == "after the move":
         killed_after_ops(monkeypatch, after=1)
     elif point == "after the copy":
         killed_after_ops(monkeypatch, after=2)
-    elif point == "after the parked copy went":
-        killed_after_ops(monkeypatch, after=3)
-    elif point == "before the taking return's row":
-        killed_at_the_nth_record(monkeypatch, 1)
+    elif point == "after the taking return's row":
+        killed_after_the_nth_write(monkeypatch, 3)
     else:
-        killed_at_the_nth_record(monkeypatch, 2)
+        killed_after_ops(monkeypatch, after=3)
+    with pytest.raises(KeyboardInterrupt):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    real_moves = list(moves)
+    monkeypatch.undo()
+    moves = moves_made(monkeypatch)
+    moves.extend(real_moves)
+
+    if next_pass == "home with the feed":
+        sort_all([father, llc], home=[father], today=DAY3)
+    elif next_pass == "home without the feed":
+        feeding(tmp_path, [])
+        sort(father, returns=[father], today=DAY3)
+        sort_all([llc], today=DAY3)
+    else:
+        sort_all([llc], today=DAY3)
+        sort_all([father, llc], home=[father], today=DAY3)
+
+    if point == "after the release intent":
+        # The click is to make again: the document is the father's
+        # arrival once more, parked where it lies, dated the day it was
+        # sorted again.
+        [again] = read_index(father)
+        assert again.decision == NEEDS_REVIEW and again.digest == document
+        assert again.pbc_location == parked.pbc_location and again.received == DAY3.isoformat()
+        conserved(father, before_father, moves)          # one parked copy out, one in
+        assert read_index(llc) == []
+        conserved(llc, before_llc, moves)
+    else:
+        assert read_index(father) == []
+        [taken] = read_index(llc)
+        assert taken.decision == FILED and taken.identifier == "B01"
+        assert taken.received == parked.received          # the day the client sent it
+        assert "on 2026-07-09" in taken.reason            # dated the day the person decided
+        assert taken.pbc_location == original_at(llc, "notice.pdf")
+        assert (llc / taken.prepared_location).is_file()
+        # The parked copy and the original leave this household; the
+        # original and one working copy arrive in the other. Nothing twice.
+        conserved(father, before_father, moves, gone=[document, document])
+        conserved(llc, before_llc, moves, added=[document, document])
+    rows_rest_at_home(father, llc)
+
+
+def test_no_record_ever_holds_a_row_for_an_original_resting_under_another_household_once_no_intent_is_open(
+        fed, monkeypatch, tmp_path):
+    """The invariant behind the owner's sentence (decision 132), asked after
+    a season's worth of the feed's roads in one pair of households: a pass
+    files into the fed return, a W-2 naming the fed return parks at home, a
+    cross-household filing is killed between its move and its copy and
+    recovered, a parked document is handed over, and a re-send arrives
+    after the feed is trimmed. After each, every row of both records names
+    an original under its own household's folder for the year."""
+    from tracker.filer import hand_over
+
+    father, llc = fed
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+    drop(father, "w2.pdf", "Form W-2 Wage and Tax Statement 2025", who="Park & Lee LLC")
+    sort_all([father, llc], home=[father], today=DAY1)
+    rows_rest_at_home(father, llc)
+
+    drop(father, "tb2.pdf", "Trial balance as of December 31 2025 second copy",
+         who="Park & Lee LLC")
+    killed_after_ops(monkeypatch, after=1)
+    with pytest.raises(KeyboardInterrupt):
+        sort_all([father, llc], home=[father], today=DAY2)
+    monkeypatch.undo()
+    sort_all([father, llc], home=[father], today=DAY2)
+    rows_rest_at_home(father, llc)
+
+    [w2] = [row for row in read_index(father) if row.original_name == "w2.pdf"]
+    hand_over(father, w2.pbc_location, llc, "B01", today=DAY2)
+    rows_rest_at_home(father, llc)
+
+    feeding(tmp_path, [])
+    drop(father, "w2 again.pdf", "Form W-2 Wage and Tax Statement 2025", who="Park & Lee LLC")
+    sort(father, returns=[father], today=DAY3)
+    rows_rest_at_home(father, llc)
+    assert [row.original_name for row in read_index(llc)] == ["tb.pdf", "tb2.pdf", "w2.pdf"]
+
+
+def killed_between_the_two_intents(monkeypatch):
+    """A hand-over dies with both intents written and nothing else done:
+    the release open in the dropping record, the filing open in the taking
+    one, every file where it was."""
+    killed_after_the_nth_write(monkeypatch, 2)
+
+
+@pytest.mark.parametrize("order", ("the taking pass during the dropping pass",
+                                   "the taking pass after the dropping pass"))
+def test_a_stray_named_by_another_records_open_intent_is_left_alone_by_the_pass(
+        fed, monkeypatch, tmp_path, order):
+    """The lead's ruling R-1 (decision 132). With the feed trimmed, the
+    dropping household's own pass releases its row, and the original -
+    still in its year folder, named by no row of its own - would be a
+    stray. It is not: the taking return's open filing intent names that
+    path with those bytes as the source of its move. So the pass never
+    re-sorts, parks or records it, whether the taking return's pass runs
+    in the middle of it (another process, its own lock) or after it; the
+    document ends claimed by exactly one row, in the return that took it."""
+    import tracker.filer as filer_module
+    from tracker.filer import LEFT_FOR_ANOTHER_RETURN, hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    killed_between_the_two_intents(monkeypatch)
     with pytest.raises(KeyboardInterrupt):
         hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
     monkeypatch.undo()
+    feeding(tmp_path, [])                       # a person trims the feed
 
-    sort_all([father, llc], home=[father], today=DAY3)
+    if order == "the taking pass during the dropping pass":
+        real_record = filer_module._record
+        ran = {"llc": False}
 
-    [home] = read_index(father)
-    assert home.decision == HANDED_OVER
-    assert home.pbc_location == location_of(father, originals(llc) / "notice.pdf")
+        def interleaved(engagement_dir, *args, **kwargs):
+            if not ran["llc"] and engagement_dir == father:
+                ran["llc"] = True
+                sort_all([llc], today=DAY3)      # the other process's pass
+            return real_record(engagement_dir, *args, **kwargs)
+
+        monkeypatch.setattr(filer_module, "_record", interleaved)
+        first = sort(father, returns=[father], today=DAY3)
+        monkeypatch.undo()
+        assert ran["llc"]
+    else:
+        first = sort(father, returns=[father], today=DAY3)
+        assert (originals(father) / "notice.pdf").is_file()     # left where it lies
+        sort_all([llc], today=DAY3)
+
+    assert first.handled == 0 and first.review == []
+    said = [e.error for e in first.attention if e.name == "notice.pdf"]
+    assert said == [LEFT_FOR_ANOTHER_RETURN.format(name="notice.pdf")]
+    assert read_index(father) == []
+    claimed = [row for row in read_index(father) + read_index(llc) if row.digest == parked.digest]
+    assert len(claimed) == 1 and claimed[0].decision == FILED
+    rows_rest_at_home(father, llc)
+
+
+def test_the_taking_returns_recovery_finishes_the_move_after_the_dropping_pass_has_run(
+        fed, monkeypatch, tmp_path):
+    """Killed after the filing intent, the feed trimmed, the dropping
+    household's pass first and then the taking return's (decision 132,
+    ruling R-1): what §3.4 once called the one window that needs a person
+    needs nobody. The taking return's recovery finishes the move and the
+    copy, and the document is one row, Filed, in the return that took it,
+    its original under that return's household."""
+    from tracker.filer import hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    before_father, before_llc = digests_under(father), digests_under(llc)
+    killed_between_the_two_intents(monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    monkeypatch.undo()
+    moves = moves_made(monkeypatch)
+    feeding(tmp_path, [])
+
+    sort(father, returns=[father], today=DAY3)
+    sort_all([llc], today=DAY3)
+
+    assert read_index(father) == []
     [taken] = read_index(llc)
     assert taken.decision == FILED and taken.identifier == "B01"
-    assert taken.received == parked.received          # the day the client sent it
-    assert "on 2026-07-09" in taken.reason            # dated the day the person decided
-    assert (llc / taken.prepared_location).is_file()
-    # The parked copy and the original leave this household; the original
-    # and one working copy arrive in the other. Nothing twice.
-    conserved(father, before_father, moves, gone=[document, document])
-    conserved(llc, before_llc, moves, added=[document, document])
+    assert "on 2026-07-09" in taken.reason
+    assert taken.pbc_location == original_at(llc, "notice.pdf")
+    assert [p.name for p in originals(llc).iterdir()] == ["notice.pdf"]
+    assert not any(originals(father).iterdir())
+    conserved(father, before_father, moves, gone=[parked.digest, parked.digest])
+    conserved(llc, before_llc, moves, added=[parked.digest, parked.digest])
+    rows_rest_at_home(father, llc)
+
+
+def test_a_rebuilt_store_still_lets_the_taking_returns_recovery_finish_the_filing(
+        fed, monkeypatch, tmp_path):
+    """The reviewer's finding 3, as a regression claim (decision 132). Killed
+    after the filing intent with the feed in place, and then the store is
+    rebuilt - a new machine, a version bump - and the taking return's pass
+    runs first, before anything has read the dropping household's record
+    into the new store. Its recovery finishes the filing from its own
+    record, and the dropping household's pass then finishes the release."""
+    from tracker.filer import hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    killed_between_the_two_intents(monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    monkeypatch.undo()
+    store.close()
+    monkeypatch.setenv(store.ENV_STORE, str(tmp_path / "app2" / store.STORE_FILENAME))
+
+    sort_all([llc], today=DAY3)
+    [taken] = read_index(llc)
+    assert taken.decision == FILED and taken.identifier == "B01", taken.reason
+    assert taken.pbc_location == original_at(llc, "notice.pdf")
+
+    sort_all([father, llc], home=[father], today=DAY3)
+    assert read_index(father) == []
+    assert [row.decision for row in read_index(llc)] == [FILED]
+    rows_rest_at_home(father, llc)
+
+
+def test_an_original_left_for_another_returns_filing_is_said_on_every_pass(
+        fed, monkeypatch, tmp_path):
+    """The lead's ruling R-3 (decision 132): an original a pass leaves alone
+    because another return's unfinished filing names it is said, on the
+    dropping household's first own return, on every pass it happens - by
+    its name in the year folder, never a full path. An intent that never
+    finishes (its return retired, unreadable, its pass never run) must not
+    leave an original unrecorded in silence. Once the filing finishes, the
+    sentence stops."""
+    from tracker.filer import LEFT_FOR_ANOTHER_RETURN, hand_over
+
+    father, llc = fed
+    parked = parked_notice(father)
+    killed_between_the_two_intents(monkeypatch)
+    with pytest.raises(KeyboardInterrupt):
+        hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)
+    monkeypatch.undo()
+    feeding(tmp_path, [])
+    sentence = LEFT_FOR_ANOTHER_RETURN.format(name="notice.pdf")
+
+    for day in (DAY2, DAY3):                     # the other return's pass never runs
+        report = sort(father, returns=[father], today=day)
+        assert [e.error for e in report.attention if e.name == "notice.pdf"] == [sentence]
+        assert report.handled == 0 and read_index(father) == []
+        assert (originals(father) / "notice.pdf").is_file()
+    assert str(originals(father)) not in sentence
+
+    sort_all([llc], today=DAY3)                  # the filing finishes
+    report = sort(father, returns=[father], today=DAY3)
+    assert all(e.error != sentence for e in report.attention)
+    rows_rest_at_home(father, llc)
+
+
+# ============== what we have received (decision 130) ======================
+
+
+def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
+    """The README's received list is a rendering of the index and nothing
+    else (S-2): one index read and one request-list read per return, and
+    no second copy anywhere."""
+    import tracker.filer as filer_module
+    from tests.conftest import seed_index
+    from tracker.filer import received_for
+    from tracker.records import IndexEntry
+
+    items = [RequestItem(identifier="A01", document="W-2")]
+    first = make_engagement(tmp_path, items, return_name="1040 - First")
+    second = make_engagement(tmp_path, items, return_name="1040 - Second")
+    for folder in (first, second):
+        seed_index(folder, [IndexEntry(
+            received="2026-09-23", original_name="w2.pdf", size_kb=1.0, digest=f"d-{folder.name}",
+            identifier="A01", prepared_location="PBC/A01 - W-2/A01 - W-2.pdf",
+            pbc_location=f"../x/{folder.name}/w2.pdf", decision=FILED, reason="")])
+
+    read = []
+    lists = []
+    real_read, real_list = filer_module.read_index, filer_module.load_manifest
+    monkeypatch.setattr(filer_module, "read_index",
+                        lambda folder: read.append(Path(folder)) or real_read(folder))
+    monkeypatch.setattr(filer_module, "load_manifest",
+                        lambda folder: lists.append(Path(folder)) or real_list(folder))
+
+    received = received_for([first, second])
+
+    assert read == [first, second]
+    assert lists == [first, second]
+    assert [(line.return_path, line.label) for line in received.lines] == [
+        (first, "A01 - W-2"), (second, "A01 - W-2")]
+    assert received.under_review == ()
+
+    # And the refresh reads each return's details and list once, handing
+    # that one read to both received_for and write_readme (the review's F3).
+    import tracker.scaffold as scaffold_module
+    from tracker.filer import refresh_household_readme
+    from tracker.layout import household_of
+
+    read.clear()
+    lists.clear()
+    details = []
+    real_scaffold_list = scaffold_module.load_manifest
+    real_details = scaffold_module.load_engagement_info
+    monkeypatch.setattr(scaffold_module, "load_manifest",
+                        lambda folder: lists.append(Path(folder)) or real_scaffold_list(folder))
+    monkeypatch.setattr(scaffold_module, "load_engagement_info",
+                        lambda folder: details.append(Path(folder)) or real_details(folder))
+
+    assert refresh_household_readme(household_of(first)) is not None
+
+    assert sorted(read) == sorted([first, second])
+    assert sorted(lists) == sorted([first, second])
+    assert sorted(details) == sorted([first, second])
+
+
+def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_another_request(
+        tmp_path):
+    """The review's F1 (decision 130). A two-form page was filed under A02
+    with a second copy under A01-B; A01-B has since been deleted from the
+    list. The copy's folder, ``A01-B - Loan Statement``, starts with
+    ``A01`` - but a bare prefix proves nothing, and the README must never
+    tell the client their W-2 arrived when none did. A copy names a request
+    only when its folder is that request's own folder name, or the text
+    after the identifier begins with the label separator."""
+    from tests.conftest import seed_index
+    from tracker.filer import received_for
+    from tracker.records import IndexEntry
+    from tracker.scaffold import OTHER_DOCUMENT, PREPARED_DIR_NAME
+
+    items = [RequestItem(identifier="A01", document="W-2 Wage Statement"),
+             RequestItem(identifier="A02", document="1098 Mortgage Interest")]
+    engagement = make_engagement(tmp_path, items, return_name="1040 - Smith")
+    seed_index(engagement, [IndexEntry(
+        received="2026-09-23 10:00:00", original_name="combo.pdf", size_kb=12.0,
+        digest="d-combo", identifier="A02",
+        prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest/combo.pdf",
+        pbc_location="../../x/combo.pdf", decision=FILED, reason="a reason",
+        also_filed=f"{PREPARED_DIR_NAME}/A01-B - Loan Statement/combo.pdf")])
+
+    labels = [line.label for line in received_for([engagement]).lines]
+
+    assert labels == ["A02 - 1098 Mortgage Interest", OTHER_DOCUMENT]
+    assert "A01 - W-2 Wage Statement" not in labels
+
+    # A folder a person renamed within the shape still names its request.
+    seed_index(engagement, [IndexEntry(
+        received="2026-09-24 10:00:00", original_name="combo2.pdf", size_kb=12.0,
+        digest="d-combo2", identifier="A02",
+        prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest/combo2.pdf",
+        pbc_location="../../x/combo2.pdf", decision=FILED, reason="a reason",
+        also_filed=f"{PREPARED_DIR_NAME}/a01 - my w2s/combo2.pdf")])
+
+    labels = [line.label for line in received_for([engagement]).lines]
+
+    assert labels.count("A01 - W-2 Wage Statement") == 1
+# ------------------------------------ decision 131: the room a return has ----
+
+
+#: One request with no second file expected, as the room's claims want it:
+#: its canonical copy is ``Prepared/A01 - W-2 Wage Statements/A01 - W-2
+#: Wage Statements - TY2025.pdf``, 74 characters below the return folder.
+ROOM_ITEMS = [
+    RequestItem(
+        identifier="A01", document="W-2 Wage Statements", period="TY2025",
+        allowed_extensions=("pdf",), min_size_kb=0,
+        required_keywords=("W-2",), date_pattern=r"(?i)\b2025\b",
+    ),
+]
+#: Below the return folder: the canonical copy's path, the request folder's.
+CANONICAL_BELOW = 74
+FOLDER_BELOW = 35
+
+
+def tight_return(base, over: int, items=ROOM_ITEMS, **kwargs):
+    """A return whose A01 canonical copy passes Windows's limit by ``over``
+    characters: its folder is ``260 + over - 74`` characters long."""
+    from tests.conftest import root_for_a_return_of
+
+    root = root_for_a_return_of(base, 260 + over - CANONICAL_BELOW)
+    engagement = make_engagement(root, items, **kwargs)
+    assert len(str(engagement)) + CANONICAL_BELOW == 260 + over
+    return engagement
+
+
+def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchanged(tmp_path):
+    """``room_for`` reads no disk: a return folder that does not exist is
+    measured as readily as one that does. Its ``need`` is creation's figure
+    exactly - the deepest canonical copy - so decision 125's measurements
+    stand: 164 for the example row, 223 for the whole 1040 core list at its
+    longest extension, 316 for a hundred-character document."""
+    from tracker.filer import Room, room_for, shortest_name_for
+    from tracker.layout import MAX_PATH_LENGTH, deepest_path_length, limit_for, return_dir_for
+    from tracker.scaffold import folder_name_for
+    from tracker.templates import template_items
+
+    root = Path("G:/Shared drives/JPA Clients")
+    engagement = return_dir_for(root, "Park Family", 2026, "1040 - John & Maria Park")
+    assert not engagement.exists()
+
+    w2 = replace(ITEMS[0], period="TY2026", expected_count=1)
+    room = room_for(engagement, [w2])
+    assert room.need == 164 and room.limit == MAX_PATH_LENGTH and room.short == 0
+    # The shortest name: the identifier, the period, a two-digit suffix, the extension.
+    assert shortest_name_for(w2, "pdf") == "A01 - TY2026 (99).pdf"
+    assert room.least == len(str(engagement / PREPARED_DIR_NAME / folder_name_for(w2)
+                                 / "A01 - TY2026 (99).pdf"))
+    assert room.floor == len(str(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / "x (99).pdf"))
+    assert room.floor == 128 and room.parks == 0
+
+    core = [replace(item, allowed_extensions=("xlsx",))
+            for item in template_items("1040", core_only=True)]
+    subpaths = [f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/{prepared_name_for(item, 'xlsx', set())}"
+                for item in core]
+    assert room_for(engagement, core).need == deepest_path_length(engagement, subpaths) == 223
+    # Every copy is a workbook, and a workbook's reader allows 218: five short.
+    assert limit_for("xlsx") == 218
+    assert room_for(engagement, core).short == 223 - 218 == 5
+
+    long_row = replace(template_items("1040", core_only=True)[0], document="x" * 100,
+                       allowed_extensions=("xlsx",))
+    long = room_for(engagement, [long_row])
+    assert long.need == 316 and long.short == 316 - 218
+    # Its folder is named after the hundred characters too, and leaves a
+    # workbook no room even for ``A01 - TY2026 (99).xlsx``: it parks.
+    assert long.least == 223 and long.parks == 1
+    assert room_for(engagement, [replace(long_row, allowed_extensions=("pdf",))]).parks == 0
+
+    # A row set aside is not measured, as creation does not measure it.
+    from tracker.manifest import Override
+
+    aside = replace(long_row, manual_override=Override.NOT_APPLICABLE)
+    nothing = len(str(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / "x (99).xlsx"))
+    assert room_for(engagement, [aside]) == Room(need=0, least=0, floor=nothing, parks=0, short=0)
+
+
+def test_a_working_copy_is_named_to_fit_the_room_left_under_its_folder(tmp_path):
+    """A root long enough that the canonical name does not fit: the pass
+    files all the same, under a name that keeps the identifier, the period
+    and the extension and loses the tail of the document label. The row
+    names the copy on disk, the scan proves it, and the next pass's reuse
+    check finds it."""
+    from tracker.filer import _existing_copy
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+    from tracker.validators import sha256_of
+
+    engagement = tight_return(tmp_path, 10)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    report = sort(engagement, today=DAY1)
+
+    [entry] = report.filed
+    folder = prepared(engagement, "A01")
+    [copy] = list(folder.iterdir())
+    assert copy.name == "A01 - W-2 Wage - TY2025.pdf"             # " Statements" cut, then the space
+    assert len(str(copy)) <= 260
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/{folder.name}/{copy.name}"
+    assert locate(engagement, entry.prepared_location) == copy
+
+    scan_engagement(engagement, today=DAY1)
+    assert load_manifest(engagement)[0].status == Status.RECEIVED
+
+    original = originals(engagement) / "w2.pdf"
+    assert _existing_copy(folder, original, sha256_of(original)) == copy
+
+
+def test_the_numbered_suffix_is_counted_when_a_name_is_cut(tmp_path):
+    """Two files for one request under the same tight root: the second's
+    ``(2)`` is counted in the same loop that cuts, so its document part
+    gives up the suffix's four characters (less what the cut had to spare)
+    and the pair is still one series - the same stem cut further, and the
+    number after it."""
+    items = [replace(ROOM_ITEMS[0], expected_count=2)]
+    engagement = tight_return(tmp_path, 10, items=items)
+    drop(engagement, "w2-a.pdf", "Form W-2 Wage and Tax Statement 2025 employer one")
+    drop(engagement, "w2-b.pdf", "Form W-2 Wage and Tax Statement 2025 employer two")
+
+    report = sort(engagement, today=DAY1)
+
+    assert len(report.filed) == 2
+    folder = prepared(engagement, "A01")
+    room = 260 - len(str(folder)) - 1
+    names = sorted(p.name for p in folder.iterdir())
+    assert names == ["A01 - W-2 W - TY2025 (2).pdf", "A01 - W-2 Wage - TY2025.pdf"]
+    assert all(len(name) <= room for name in names)
+    second, first = names
+    # One series: the second is the first's stem, cut further, numbered.
+    assert second.removesuffix(" - TY2025 (2).pdf") in first.removesuffix(" - TY2025.pdf")
+    assert len(first.removesuffix(" - TY2025.pdf")) - len(second.removesuffix(" - TY2025 (2).pdf")) == 3
+    assert sorted(e.prepared_location.rsplit("/", 1)[1] for e in report.filed) == names
+
+
+def test_a_request_with_no_room_for_its_shortest_name_parks_with_the_sentence(tmp_path):
+    """Every rule accepted the W-2 and its request's folder leaves no room
+    for even ``A01 - TY2025.pdf``: it parks, with PATH_NO_ROOM naming both
+    numbers, the request as its candidate, a review copy a person can open
+    and the original where every original rests."""
+    from tracker.filer import PATH_NO_ROOM
+
+    # The request folder is 245 characters: 14 left for a name that needs 16.
+    engagement = tight_return(tmp_path, 210 + CANONICAL_BELOW - 260, scaffold=True)
+    assert len(str(engagement)) + FOLDER_BELOW == 245
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    report = sort(engagement, today=DAY1)
+
+    assert report.filed == []
+    [parked] = report.review
+    assert parked.reason == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260,
+                                                ext=".pdf")
+    assert parked.candidates == "A01"
+    copy = locate(engagement, parked.prepared_location)
+    assert copy.is_file() and copy.parent.name == REVIEW_DIR_NAME
+    assert (originals(engagement) / "w2.pdf").is_file()
+    assert list(prepared(engagement, "A01").iterdir()) == []
+
+
+def test_a_review_copy_is_named_to_fit_and_the_row_keeps_the_clients_name(short_root):
+    """A client's file name of 150 characters under a root that leaves the
+    review folder less room than that: the document parks, its review copy
+    is cut to fit - the extension kept - and the row's ``original_name`` is
+    the client's whole name, which is what the queue's *what the name says*
+    line reads."""
+    from tests.conftest import root_for_a_return_of
+    from tracker import review
+
+    root = root_for_a_return_of(short_root, 109)                  # the review folder: 135
+    engagement = make_engagement(root, ROOM_ITEMS)
+    review_dir = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    name = "letter " + "n" * 139 + ".pdf"
+    assert len(name) == 150 and len(str(review_dir)) + 1 + len(name) > 260
+    drop(engagement, name, "A letter about nothing on the list")
+
+    report = sort(engagement, today=DAY1)
+
+    [parked] = report.review
+    assert parked.original_name == name
+    copy = locate(engagement, parked.prepared_location)
+    assert copy.is_file() and copy.suffix == ".pdf"
+    assert copy.name.startswith("letter nnn") and len(str(copy)) == 260
+    assert (originals(engagement) / name).is_file()                # the original, uncut
+    [triaged] = review.triage(engagement, read_index(engagement), items=load_manifest(engagement))
+    assert triaged.entry.original_name == name
+
+
+def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor(tmp_path):
+    """A person's filing and a hand-over name the working copy the way the
+    pass does: cut to fit where the canonical name does not, and refused
+    with PATH_NO_ROOM - nothing moved - only where not even the shortest
+    name fits."""
+    from tests.conftest import root_for_a_return_of
+    from tracker.filer import PATH_NO_ROOM, assign_review_file, hand_over
+
+    # One household, three returns: home fits; ``cut`` leaves A01 ten short;
+    # ``none`` leaves its request folder 14 characters for a 16-character name.
+    root = root_for_a_return_of(tmp_path, 150, return_name="1040 - Home")
+    home = make_engagement(root, ROOM_ITEMS, return_name="1040 - Home")
+    cut = make_engagement(root, ROOM_ITEMS, return_name="1040 - " + "s" * 50)
+    none = make_engagement(root, ROOM_ITEMS, return_name="1040 - " + "t" * 64)
+    assert len(str(cut)) + CANONICAL_BELOW == 270
+    assert len(str(none)) + FOLDER_BELOW == 245
+    drop(home, "note.pdf", "A letter the list does not ask for")
+    drop(home, "other.pdf", "Another letter the list does not ask for")
+    sort_all([home, cut, none], today=DAY1)
+    parked = {e.original_name: e for e in read_index(home) if e.decision == NEEDS_REVIEW}
+    assert set(parked) == {"note.pdf", "other.pdf"}
+
+    # Refused below the floor, with the sentence, and nothing moved.
+    before = sorted(str(p) for p in root.rglob("*"))
+    with pytest.raises(FilingError) as refused:
+        hand_over(home, parked["note.pdf"].pbc_location, none, "A01", today=DAY2)
+    assert str(refused.value) == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"),
+                                                     limit=260, ext=".pdf")
+    assert sorted(str(p) for p in root.rglob("*")) == before
+
+    # Handed to the return with room for a cut name: named to fit.
+    handed = hand_over(home, parked["note.pdf"].pbc_location, cut, "A01", today=DAY2)
+    copy = locate(cut, handed.target_entry.prepared_location)
+    assert copy.is_file() and copy.name == "A01 - W-2 Wage - TY2025.pdf" and len(str(copy)) <= 260
+
+    # A person's filing in a return with no room: refused, nothing moved.
+    tight = tight_return(tmp_path / "t", 210 + CANONICAL_BELOW - 260)
+    drop(tight, "note.pdf", "A letter the list does not ask for")
+    sort(tight, today=DAY1)
+    [waiting] = [e for e in read_index(tight) if e.decision == NEEDS_REVIEW]
+    before = sorted(str(p) for p in (tmp_path / "t").rglob("*"))
+    with pytest.raises(FilingError, match="at its shortest"):
+        assign_review_file(tight, waiting.pbc_location, "A01", today=DAY2)
+    assert sorted(str(p) for p in (tmp_path / "t").rglob("*")) == before
+
+    # And one with room for a cut name: filed under it.
+    roomy = tight_return(tmp_path / "r", 10)
+    drop(roomy, "note.pdf", "A letter the list does not ask for")
+    sort(roomy, today=DAY1)
+    [waiting] = [e for e in read_index(roomy) if e.decision == NEEDS_REVIEW]
+    done = assign_review_file(roomy, waiting.pbc_location, "A01", today=DAY2)
+    assert done.entry.prepared_location.endswith("/A01 - W-2 Wage - TY2025.pdf")
+    assert locate(roomy, done.entry.prepared_location).is_file()
+
+
+def test_creation_and_the_rollover_still_refuse_the_canonical_name_past_the_limit(tmp_path):
+    """Creation's and the rollover's refusal are unchanged: the canonical
+    name at each row's longest extension, against Windows's 260 - not a
+    reader's 218, which only cuts a name - with decision 125's words."""
+    from tracker.filer import refuse_a_path_past_the_limit
+    from tracker.layout import PATH_TOO_LONG, return_dir_for
+    from tracker.manifest import ManifestError
+    from tracker.templates import template_items
+
+    root = Path("G:/Shared drives/JPA Clients")
+    engagement = return_dir_for(root, "Park Family", 2026, "1040 - John & Maria Park")
+    core = [replace(item, allowed_extensions=("xlsx",))
+            for item in template_items("1040", core_only=True)]
+    refuse_a_path_past_the_limit(engagement, core)          # 223: past 218, inside 260 - accepted
+
+    long_row = replace(core[0], document="x" * 100)
+    with pytest.raises(ManifestError) as refused:
+        refuse_a_path_past_the_limit(engagement, [long_row])
+    assert str(refused.value) == PATH_TOO_LONG.format(folder=engagement, length=316, limit=260)
+
+
+# --------------------------- decision 131's review: the lead's rulings ----
+
+
+def test_unfiling_a_long_named_document_cuts_its_review_copy_to_fit(tmp_path):
+    """F1: a person's unfiling names the review copy the way the pass's park
+    does - the client's name cut to the room the review folder leaves,
+    the extension kept - where before it was written under the whole name,
+    past the limit. The row keeps the client's whole name."""
+    from tests.conftest import root_for_a_return_of
+    from tracker.filer import unfile_document
+
+    engagement = make_engagement(root_for_a_return_of(tmp_path, 180), ROOM_ITEMS)
+    inbox = inbox_of(engagement)
+    name = "W-2 " + "w" * (255 - len(str(inbox)) - 1 - len("W-2 .pdf")) + ".pdf"
+    assert len(str(inbox / name)) == 255
+    assert len(str(review_dir(engagement))) + 1 + len(name) > 260
+    drop(engagement, name, "Form W-2 Wage and Tax Statement 2025")
+    [filed] = sort(engagement, today=DAY1).filed
+
+    result = unfile_document(engagement, filed.pbc_location, today=DAY2)
+
+    copy = locate(engagement, result.entry.prepared_location)
+    assert copy.is_file() and copy.parent == review_dir(engagement)
+    assert copy.suffix == ".pdf" and copy.name.startswith("W-2 www")
+    assert len(str(copy)) == 260
+    assert result.entry.original_name == name
+    assert (originals(engagement) / name).is_file()                  # the original, uncut
+
+
+def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy(tmp_path, monkeypatch):
+    """F1: the recovery's copy to act on is named as every review copy is;
+    and where none can be made the row names **no** copy - never the one
+    the interrupted step was making, which is not there - and says why in
+    a fixed sentence."""
+    from tests.conftest import root_for_a_return_of
+    from tracker import filer
+    from tracker.filer import REVIEW_NO_ROOM, NoRoom
+
+    engagement = make_engagement(root_for_a_return_of(tmp_path, 180), ROOM_ITEMS)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    [filed] = sort(engagement, today=DAY1).filed
+    locate(engagement, filed.prepared_location).unlink()       # the copy the step was making: gone
+    long_named = replace(filed, original_name="letter " + "n" * 150 + ".pdf")
+
+    location, said = filer._a_copy_to_act_on(engagement, long_named, None)
+
+    copy = locate(engagement, location)
+    assert said == "" and copy.is_file() and copy.parent == review_dir(engagement)
+    assert copy.name.startswith("letter nnn") and copy.suffix == ".pdf" and len(str(copy)) == 260
+
+    copy.unlink()
+    sentence = REVIEW_NO_ROOM.format(name="w2.pdf", length=270, limit=260, ext=".pdf")
+
+    def no_room(_folder, _name):
+        raise NoRoom(270, 260, "pdf", sentence=sentence)
+
+    monkeypatch.setattr(filer, "_review_copy_path", no_room)
+    assert filer._a_copy_to_act_on(engagement, filed, None) == ("", sentence)
+
+
+def test_a_spreadsheet_limit_is_never_called_what_windows_allows():
+    """F2: since the owner's Q-A a workbook's limit is a reader's 218, so
+    every sentence of decision 131 names the limit as that kind of copy's,
+    never as what Windows allows."""
+    from tracker.filer import (
+        HOUSEHOLD_NO_ROOM,
+        PATH_NO_ROOM,
+        PATH_NO_ROOM_IN,
+        REVIEW_NO_ROOM,
+        NoRoom,
+    )
+
+    for sentence in (PATH_NO_ROOM, PATH_NO_ROOM_IN, HOUSEHOLD_NO_ROOM, REVIEW_NO_ROOM):
+        assert "Windows" not in sentence
+    workbook = replace(ROOM_ITEMS[0], allowed_extensions=("xlsx",))
+    with pytest.raises(NoRoom) as refused:
+        prepared_name_for(workbook, "xlsx", set(), room=5)
+    said = str(refused.value)
+    assert refused.value.limit == 218 and "past the 218 characters a .xlsx copy may have" in said
+    assert "Windows" not in said
+    with pytest.raises(NoRoom) as refused:
+        prepared_name_for(ROOM_ITEMS[0], "pdf", set(), room=5)
+    assert "past the 260 characters a .pdf copy may have" in str(refused.value)
+    with pytest.raises(NoRoom) as refused:
+        prepared_name_for(ROOM_ITEMS[0], "", set(), room=5)
+    assert "a working copy may have" in str(refused.value)
+
+
+def test_a_review_copy_with_an_odd_suffix_is_cut_to_fit_or_said_as_a_review_copy(tmp_path):
+    """F4: the pass's floor proves room for a short extension, not for
+    whatever a client's file name ends in. A name whose "suffix" is not an
+    extension is cut as one stem to fit; a real extension is kept whole,
+    and where not even one character of stem fits beside it the sentence
+    says a *review copy* could not be made - never a request's label."""
+    from tracker.filer import REVIEW_NO_ROOM, NoRoom, _review_copy_path, _unique_path
+
+    folder = tmp_path / "review"
+    folder.mkdir()
+    odd = "Scan 2026.01.15 from the phone of the client for the W-2"
+    cut = _unique_path(folder, odd, room=30)
+    assert len(cut.name) <= 30 and cut.name.startswith("Scan 2026.01")
+    cut.write_text("one")
+    again = _unique_path(folder, odd, room=30)
+    assert again != cut and len(again.name) <= 30 and again.name.endswith("(2)")
+    # Through the one function every review copy is named by.
+    fitted, said = _review_copy_path(folder, odd * 5)
+    assert said == "" and len(str(fitted)) <= 260
+
+    with pytest.raises(NoRoom) as refused:
+        _unique_path(folder, "statement.pdf", room=4)
+    assert str(refused.value) == REVIEW_NO_ROOM.format(
+        name="statement.pdf", length=len(str(folder / "s.pdf")), limit=len(str(folder)) + 1 + 4,
+        ext=".pdf")
+    assert "label" not in str(refused.value)
+    # Without a room nothing changes: an original keeps its own name, always.
+    assert _unique_path(folder, odd).name == odd
+
+
+def test_an_existing_copy_is_found_before_a_name_is_measured(tmp_path):
+    """F5: a killed run left the copy in a request folder that has no room
+    for a new name. The pass finds it by its bytes first - as the
+    hand-over already did - and files under the name it has, rather than
+    parking a document whose copy is already there."""
+    engagement = tight_return(tmp_path, 210 + CANONICAL_BELOW - 260, scaffold=True)
+    folder = prepared(engagement, "A01")
+    assert len(str(folder)) == 245                           # no room for "A01 - TY2025.pdf"
+    dropped = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    (folder / "c.pdf").write_bytes(dropped.read_bytes())
+
+    report = sort(engagement, today=DAY1)
+
+    assert report.review == []
+    [entry] = report.filed
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/{folder.name}/c.pdf"
+    assert [p.name for p in folder.iterdir()] == ["c.pdf"]
+
+
+def test_a_filing_that_parks_for_room_leaves_no_request_folder_it_made(short_root):
+    """F6: decision 94 files one page under two requests. The first has room
+    and the second has none, so the filing parks - and the request folder
+    the attempt would have made for the first is not left behind empty:
+    nothing is made until every copy of the filing is named."""
+    from tests.conftest import root_for_a_return_of
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.filer import PATH_NO_ROOM
+    from tracker.scaffold import folder_name_for
+
+    long_c01 = replace(ITEMS[1], document="Mortgage Interest Statement " + "m" * 80)
+    assert len(folder_name_for(long_c01)) == 100
+    items = [ITEMS[0], long_c01]
+    engagement = make_engagement(root_for_a_return_of(short_root, 135), items, scaffold=False)
+    assert len(str(engagement / PREPARED_DIR_NAME / folder_name_for(long_c01))) == 245
+    inbox_of(engagement).mkdir(parents=True, exist_ok=True)
+    drop(engagement, "scan0003.pdf", "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+
+    report = sort(engagement, today=DAY1)
+
+    assert report.filed == []
+    [parked] = report.review
+    assert parked.reason == PATH_NO_ROOM.format(length=245 + 1 + len("C01 - TY2025.pdf"),
+                                                limit=260, ext=".pdf")
+    made = sorted(p.name for p in (engagement / PREPARED_DIR_NAME).iterdir())
+    assert made == [REVIEW_DIR_NAME]                          # no empty A01 folder
+
+
+def test_the_period_survives_a_long_label():
+    """F6: the cap on a working copy's name cuts the document label, never
+    the period - the one part that says which year a copy belongs to."""
+    from tracker.filer import _MAX_STEM
+
+    long = RequestItem(identifier="A01", document="X" * 120, period="TY2026")
+    name = prepared_name_for(long, "pdf", set())
+    assert name.endswith(" - TY2026.pdf") and len(name) == _MAX_STEM + len(".pdf")
+    assert name.startswith("A01 - XXX")
+    fitted = prepared_name_for(long, "pdf", set(), room=40)
+    assert fitted.endswith(" - TY2026.pdf") and len(fitted) <= 40
+
+
+def test_a_workbook_review_copy_fitted_past_a_readers_limit_says_so(tmp_path):
+    """Deviation 4: a reader's shorter limit never stops a park - the copy
+    is fitted to Windows's own - but the row says the copy is longer than
+    a spreadsheet program may open, and what to do about it."""
+    from tracker.filer import REVIEW_COPY_PAST_READER
+
+    engagement = tight_return(tmp_path, 14)                  # the review folder: 227
+    assert len(str(review_dir(engagement))) == 227
+    inbox_of(engagement).mkdir(parents=True, exist_ok=True)
+    (inbox_of(engagement) / "note.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+
+    report = sort(engagement, today=DAY1)
+
+    [parked] = report.review
+    copy = locate(engagement, parked.prepared_location)
+    assert copy.is_file() and copy.name == "note.csv" and len(str(copy)) > 218
+    assert parked.reason.endswith("; " + REVIEW_COPY_PAST_READER)
+
+
+def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path):
+    """Deviation 5: the fed return's request accepts the trial balance and
+    its folder has no room even for the shortest name. The document parks
+    where it was dropped, and the sentence names the fed return by its
+    label - "this request" would be a list the person reading the row in
+    the dropping household is not looking at."""
+    from tests.conftest import root_for_a_return_of
+    from tracker.filer import PATH_NO_ROOM_IN
+    from tracker.records import Feed
+    from tracker.registry import discover_engagements
+
+    llc_name = "1120S - Park & Lee LLC " + "l" * 20
+    root = root_for_a_return_of(tmp_path, 215, household="Park & Lee LLC", return_name=llc_name)
+    father = make_engagement(root, ITEMS, household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    llc = make_engagement(root, BUSINESS, household="Park & Lee LLC",
+                          return_name=llc_name, people=LLC_PEOPLE)
+    feeding(root, [Feed("Park & Lee LLC", llc_name)])
+    b01 = prepared(llc, "B01")
+    assert len(str(b01)) + 1 + len("B01 - TY2025.pdf") == 261
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+
+    done = sort_all([father, llc], home=[father], today=DAY1)
+
+    assert read_index(llc) == [] and list(b01.iterdir()) == []
+    [parked] = done[father].review
+    label = next(one.label for one in discover_engagements(root).engagements if one.path == llc)
+    assert parked.reason == PATH_NO_ROOM_IN.format(label=label, length=261, limit=260, ext=".pdf")
+    assert "this request" not in parked.reason
+    assert parked.pbc_location == original_at(father, "tb.pdf")

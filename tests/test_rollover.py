@@ -970,7 +970,7 @@ def test_a_return_left_out_of_the_household_rollover_is_retired_and_the_househol
     returns = registry.by_household()[_household(root)]
     assert open_years(returns) == [2027]
     # And the next pass sorts: nothing warns about two open years.
-    runs = run_household(_household(root), returns, root=root)
+    runs = run_household(_household(root), returns, root=root, registry=registry)
     said = TWO_OPEN_YEARS.split("(")[0]
     assert [w for run in runs for w in run.warnings if said in w] == []
 

@@ -149,6 +149,11 @@ function render(state) {
   // Nothing waits for anything: the statuses and the request list are both
   // in the record (decisions 103 and 104).
   $("summary").textContent = state.summary ? state.summary.line : "";
+  // Decision 131: how far this return's working copies are short of room
+  // under the clients root - information, not a warning (their names are
+  // cut to fit and everything files). The API's sentence, or nothing.
+  $("room-note").textContent = state.room_note || "";
+  $("room-note").classList.toggle("hidden", !state.room_note);
 
   // The catalog the engagement was cut from, beside its name in the
   // toolbar. It is shown exactly as the record holds it — the catalog's
@@ -236,7 +241,11 @@ async function loadReminder() {
 function drawReminder(card) {
   reminderCard = card;
   const words = vocab.reminder;
-  const held = (card.held || []).length > 0;
+  const rows = (card.held || []).length;
+  const unsorted = card.unsorted || 0;
+  // Held by a row (decision 115), or by files still waiting in the
+  // household's inbox (decision 133): the same card either way.
+  const held = rows > 0 || unsorted > 0;
   const quiet = !held && (card.asked || []).length === 0;
   $("reminder-card").classList.remove("hidden");
   // Held, the card is the hold, the rows holding it and the toggle, and
@@ -249,8 +258,7 @@ function drawReminder(card) {
   const hold = $("reminder-hold");
   hold.classList.toggle("hidden", !held);
   hold.style.setProperty("--stage-ink", words.palette[words.hold_colour]);
-  $("reminder-held").textContent =
-    held ? fill(vocab.reminder.held_line, { n: card.held.length }) : "";
+  $("reminder-held").textContent = holdLine(rows, unsorted);
   show("reminder-held-rows", (card.held || []).map((row) =>
     el("li", {},
       el("span", { className: "rem-hold-id" }, row.identifier),
@@ -301,6 +309,14 @@ function drawReminder(card) {
   // like something to send. There is no file to open either.
   $("reminder-actions").classList.toggle("hidden", held);
   $("btn-open-draft").disabled = !card.file.exists;
+}
+
+// The hold, in the API's words: the rows' line, the inbox's line, or both.
+function holdLine(rows, unsorted) {
+  return [
+    rows ? fill(vocab.reminder.held_line, { n: rows }) : "",
+    unsorted ? fill(vocab.reminder.inbox_held_line, { n: unsorted }) : "",
+  ].filter(Boolean).join(" · ");
 }
 
 function reminderStatus(card) {
@@ -732,7 +748,8 @@ async function fileHandOver() {
     $("handover-modal").classList.add("hidden");
     render(result.state);
     const a = result.handed_over;
-    const notes = [`${a.original_name} filed as ${a.filed_as} under ${a.label}`];
+    const notes = [`${a.original_name}: ${fill(vocab.review_labels.handed_over,
+      { label: a.label, identifier: a.identifier })}`];
     if (a.left_in_review) notes.push(a.left_in_review);
     if (a.scan_note) notes.push(a.scan_note);
     banner(notes.join(". ") + ".", a.left_in_review || a.scan_note ? "warn" : "ok");
@@ -1101,7 +1118,8 @@ function returnReminderLine(state) {
     : state.last
       ? fill(words.last_drafted_line, { date: state.last.date, n: state.last.stage })
       : words.never_drafted_line;
-  return state.held ? `${said} · ${fill(words.held_line, { n: state.held })}` : said;
+  const hold = holdLine(state.held || 0, state.unsorted || 0);
+  return hold ? `${said} · ${hold}` : said;
 }
 
 // Whether the firm has said it shared this household, and the checklist
@@ -1422,12 +1440,24 @@ async function saveRoot() {
       phone: $("phone-input").value.trim(),
     });
     banner(`Clients folder set to ${result.root} (written to ${result.settings_path}).`, "ok");
+    renderShortOfRoom(result.short_of_room || []);
     await refresh();
   } catch (err) {
     toast(err.message);
   } finally {
     btn.disabled = false;
   }
+}
+
+// Decision 131: every return short of room under the root just set, one
+// line each - the return's label and the API's own sentences - or nothing.
+function renderShortOfRoom(shortOf) {
+  $("room-card").classList.toggle("hidden", shortOf.length === 0);
+  $("room-heading").textContent = `${vocab.room.heading} (${shortOf.length})`;
+  show("room-list", shortOf.map((one) =>
+    el("li", { className: "r-item" },
+      el("div", { className: "r-name" }, one.engagement),
+      el("div", { className: "r-why" }, one.sentences.join(" ")))));
 }
 
 async function installSchedule() {

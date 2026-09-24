@@ -317,6 +317,14 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
             continue
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
         assert f">{literal}<" not in html, literal
+    # Decision 131: the room's heading and its two sentences are the API's.
+    # The renderer fills neither pattern: the set-root reply carries each
+    # return's sentences already filled.
+    assert set(words["room"]) == {"heading", "short", "parks"}
+    for literal in words["room"].values():
+        assert literal not in js and literal not in html, literal
+        stem = literal.split("{")[0].strip() or literal.split("}")[1].split("{")[0].strip()
+        assert stem not in js and stem not in html, stem
 
 
 def test_the_renderers_one_list_writer_flattens_what_it_is_handed():
@@ -567,6 +575,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     repo file, or one of the files the log retired (``RETIRED_FILES``)."""
     import subprocess
 
+    from tracker.filer import README_LOCK_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
@@ -580,7 +589,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
 
     assert LEGACY_MANIFEST_FILENAME in RETIRED_FILES
     owned = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
-             LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME,
+             LOG_FILENAME, STATUS_PAGE_FILENAME, README_NAME, README_LOCK_FILENAME,
              SCHEDULE_XML_FILENAME, SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
@@ -953,6 +962,7 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     """A docstring or comment may name LEDGER_FILENAME; it may not spell the value."""
     import ast
 
+    from tracker.filer import README_LOCK_FILENAME
     from tracker.layout import (
         CLIENTS_TREE,
         INBOX_DIR_NAME,
@@ -971,7 +981,7 @@ def test_the_package_prose_names_constants_rather_than_their_values():
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
-    values = {LEDGER_FILENAME, LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
+    values = {LEDGER_FILENAME, LOCK_FILENAME, README_LOCK_FILENAME, DRAFT_FILENAME, NEW_DRAFT_FILENAME,
               LOG_FILENAME, LEGACY_MANIFEST_FILENAME, README_NAME, REVIEW_DIR_NAME,
               RETIRED_CACHE_FILENAME,
               SETTINGS_FILENAME, STORE_FILENAME, VIEW_FILENAME,
@@ -1054,3 +1064,47 @@ def test_the_feed_editor_picks_a_return_by_index_and_never_takes_a_value_apart()
     # And no separator a source file cannot show: a raw NUL in this file is
     # what made the earlier bug read as a space to everything that looked.
     assert chr(0) not in js
+
+
+def test_the_pass_and_the_hand_over_file_into_another_household_through_one_function():
+    """Decision 132: one act, one shape. A filing into a return - by the
+    pass or by a person's hand-over - is that return's filing, written down
+    and carried out by ``filer._file_into`` and nothing else, so the two
+    roads cannot drift apart again. Decision 129's second machinery is gone
+    from the package: nothing carries another record's half of a decision
+    (the one place that names the retired key is the store's refusal of
+    it), no ``Handed Over`` decision, no sentence cut at a ``_WAS_PREFIX``."""
+    filer = read("tracker/filer.py")
+    calls = re.findall(r"\b_file_into\(", filer)
+    assert len(calls) == 3                          # the definition and its two callers
+    assert len(re.findall(r"^def _file_into\(", filer, re.M)) == 1
+    body = lambda name: re.search(rf"^def {name}\(.*?(?=^def )", filer, re.S | re.M).group(0)  # noqa: E731
+    assert "_file_into(" in body("_file_it") and "_file_into(" in body("hand_over")
+
+    tracker = {path.name: path.read_text(encoding="utf-8")
+               for path in (REPO / "tracker").glob("*.py")}
+    for name, text in tracker.items():
+        assert not re.search(r"\bHANDED_OVER\b", text), name
+        assert "_WAS_PREFIX" not in text and "ALSO_IN_KEY" not in text, name
+        assert "_also_in_the_other_record" not in text and "INTERRUPTED_ELSEWHERE" not in text, name
+        assert "DUPLICATE_OF_HANDED_OVER" not in text, name
+    assert sum(text.count('"also_in"') for text in tracker.values()) == 1
+    assert 'ALSO_IN = "also_in"' in tracker["store.py"]
+
+
+def test_documents_quote_the_jobs_command_line_as_the_scheduler_writes_it():
+    """Decision 131: the scheduled job names the app's settings folder and
+    no clients root. The README shows the job's command line, and it shows
+    it exactly as ``tracker.scheduling.runner_arguments`` writes it - so the
+    day the line changes, the document is out of step here, not at the
+    office."""
+    from tracker.runner import SETTINGS_FLAG
+    from tracker.scheduling import runner_arguments
+
+    readme = read("README.md")
+    job = f"python {runner_arguments('C:' + chr(92) + 'Tools' + chr(92) + 'tax-tracker')}"
+    assert job in readme, job
+    assert SETTINGS_FLAG in job
+    # And nothing still tells a person the scheduler takes a root.
+    for rel in ("README.md", "docs/runbook.md"):
+        assert "--root" not in read(rel), rel

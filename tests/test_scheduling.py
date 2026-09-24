@@ -19,7 +19,7 @@ from tracker.scheduling import (
     TASK_XML_NAMESPACE,
     is_absolute_path,
     n8n_workflow,
-    resolve_root,
+    resolve_folder,
     task_scheduler_xml,
 )
 
@@ -27,9 +27,11 @@ NS = {"t": TASK_XML_NAMESPACE}
 
 ARGS = dict(
     python=r"C:\Python311\python.exe",
-    root=r"D:\OneDrive\Clients",
+    settings=r"C:\Tools\tax-tracker",
     working_dir=r"C:\Tools\tax-tracker",
 )
+#: A clients root, to show that no job ever carries one (decision 131).
+ROOT = r"D:\OneDrive\Clients"
 
 
 def parsed(**overrides):
@@ -43,7 +45,7 @@ def test_the_xml_is_well_formed_and_runs_the_runner():
 
     assert command == ARGS["python"]
     assert "-m tracker.runner" in arguments
-    assert ARGS["root"] in arguments
+    assert ARGS["settings"] in arguments
 
 
 def test_the_job_runs_daily_so_saturday_is_never_missed():
@@ -109,16 +111,16 @@ def test_relative_paths_are_not_mistaken_for_absolute(text):
     assert is_absolute_path(text) is False
 
 
-def test_an_absolute_root_is_left_exactly_as_given():
-    root = r"D:\OneDrive\Clients"
-    assert resolve_root(root, r"C:\Tools\tax-tracker") == root
+def test_an_absolute_folder_is_left_exactly_as_given():
+    folder = r"D:\Apps\Tracker"
+    assert resolve_folder(folder, r"C:\Tools\tax-tracker") == folder
 
 
-def test_a_relative_root_joins_in_the_flavour_of_the_working_directory():
-    assert resolve_root("Clients", r"C:\Tools\tax-tracker") == (
-        r"C:\Tools\tax-tracker\Clients"
+def test_a_relative_folder_joins_in_the_flavour_of_the_working_directory():
+    assert resolve_folder("app", r"C:\Tools\tax-tracker") == (
+        r"C:\Tools\tax-tracker\app"
     )
-    assert resolve_root("Clients", "/opt/tracker") == "/opt/tracker/Clients"
+    assert resolve_folder("app", "/opt/tracker") == "/opt/tracker/app"
 
 
 # ---------------------------------------------------------------------- n8n ----
@@ -137,7 +139,7 @@ def test_the_n8n_command_runs_the_runner_from_the_working_directory():
     command = n8n_workflow(**ARGS)["nodes"][1]["parameters"]["command"]
     assert ARGS["working_dir"] in command
     assert "-m tracker.runner" in command
-    assert ARGS["root"] in command
+    assert ARGS["settings"] in command
 
 
 def test_the_n8n_hour_is_validated():
@@ -185,8 +187,8 @@ def test_the_command_line_is_built_once_for_both_schedulers():
     xml = task_scheduler_xml(**ARGS)
     flow = n8n_workflow(**ARGS)
     command = flow["nodes"][1]["parameters"]["command"]
-    assert runner_arguments(ARGS["root"]) in xml
-    assert runner_arguments(ARGS["root"]) in command
+    assert runner_arguments(ARGS["settings"]) in xml
+    assert runner_arguments(ARGS["settings"]) in command
     assert start_hour(DEFAULT_START) == int(DEFAULT_START.split(":")[0]) and start_hour("18:30") == 18
     assert flow["nodes"][0]["parameters"]["rule"]["interval"][0]["triggerAtHour"] == start_hour()
 
@@ -202,13 +204,13 @@ def test_the_packaged_job_is_the_same_command_line_behind_the_api_executable():
     arguments = root.find(".//t:Exec/t:Arguments", NS).text
     assert root.find(".//t:Exec/t:Command", NS).text == exe
     assert arguments.startswith(RUNNER_MODE_FLAG) and "-m tracker.runner" not in arguments
-    assert arguments == runner_arguments(ARGS["root"], frozen=True)
+    assert arguments == runner_arguments(ARGS["settings"], frozen=True)
     flow = n8n_workflow(**{**ARGS, "python": exe}, frozen=True)
-    assert runner_arguments(ARGS["root"], frozen=True) in flow["nodes"][1]["parameters"]["command"]
+    assert runner_arguments(ARGS["settings"], frozen=True) in flow["nodes"][1]["parameters"]["command"]
 
-    tail = f'"{ARGS["root"]}" {LOG_FLAG}'
-    assert runner_arguments(ARGS["root"]).endswith(tail)
-    assert runner_arguments(ARGS["root"], frozen=True).endswith(tail)
+    tail = f'"{ARGS["settings"]}" {LOG_FLAG}'
+    assert runner_arguments(ARGS["settings"]).endswith(tail)
+    assert runner_arguments(ARGS["settings"], frozen=True).endswith(tail)
 
 
 def test_the_time_limit_is_the_locks_run_limit_rendered():
@@ -246,3 +248,31 @@ def test_a_clients_root_ending_in_a_backslash_survives_the_argument_parser():
         argv = subprocess.run(command, capture_output=True, text=True, check=True).stdout.strip()
         assert argv == repr([root, "--log"]), (root, argv)
     assert runner_arguments("D:" + "\\", frozen=True).startswith(f"{RUNNER_MODE_FLAG} ")
+
+
+def test_the_scheduled_job_names_the_settings_folder_and_no_clients_root():
+    """Decision 131: the clients root has one home, the settings file, and
+    the job reads it at every run. The command line names the app's
+    settings folder after ``SETTINGS_FLAG`` and carries no root; a folder
+    ending in a backslash still has its backslash doubled before the
+    closing quote; the description names the settings file."""
+    from tracker.runner import LOG_FLAG, SETTINGS_FLAG
+    from tracker.scheduling import quote_argument, runner_arguments
+    from tracker.settings import SETTINGS_FILENAME
+
+    root = parsed()
+    arguments = root.find(".//t:Exec/t:Arguments", NS).text
+    assert arguments == f'-m tracker.runner {SETTINGS_FLAG} "{ARGS["settings"]}" {LOG_FLAG}'
+    assert ROOT not in task_scheduler_xml(**ARGS)
+    description = root.find(".//t:Description", NS).text
+    assert description.startswith("Files and scans every engagement under the clients root named in "
+                                  + ARGS["settings"] + "\\" + SETTINGS_FILENAME)
+
+    sep = chr(92)
+    drive = "D:" + sep
+    assert quote_argument(drive) == '"D:' + sep * 2 + '"'
+    assert runner_arguments(drive, frozen=True).endswith(
+        f'{SETTINGS_FLAG} "D:{sep * 2}" {LOG_FLAG}')
+    # From anywhere: a POSIX settings folder is named in its own flavour.
+    posix = task_scheduler_xml(**{**ARGS, "settings": "/srv/tracker"})
+    assert f"/srv/tracker/{SETTINGS_FILENAME}" in posix

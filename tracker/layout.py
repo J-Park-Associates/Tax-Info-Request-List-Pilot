@@ -79,6 +79,23 @@ MAX_PATH_LENGTH = 260
 #: What such a refusal says.
 PATH_TOO_LONG = ("the deepest file the tracker would write under {folder} would be {length} "
                  "characters, past the {limit} Windows allows; shorten the household or the return name")
+#: Readers with a documented limit shorter than Windows's, by extension,
+#: lower-case without the dot (decision 131). A working copy is written
+#: once and then opened by people, and their programs have limits of their
+#: own: Microsoft documents 218 characters as the longest path Excel opens
+#: a workbook from. The owner ruled (decision 131, Q-A) that spreadsheet
+#: copies are cut to fit it; creation's refusal stays at
+#: :data:`MAX_PATH_LENGTH`, because this is a reader's limit and not the
+#: tracker's own write. A name is cut to the shortest limit that applies
+#: to its extension (:func:`limit_for`).
+OPEN_LIMITS: dict[str, int] = {"xlsx": 218, "xlsm": 218, "xls": 218, "csv": 218}
+#: How many trailing folder names a Rolled From path must share with a
+#: return folder to name it once the path itself no longer resolves: the
+#: household's, the year's and the return's (decision 125's three; moved
+#: here from the registry by decision 131 so the scaffold reads the same
+#: rule). Three, because a return keeps its name every year and two
+#: households may each hold ``2025/1040 - John Park`` - two names would tie.
+ROLLED_FROM_TAIL = 3
 
 
 # --------------------------------------------------------------- the year ----
@@ -265,3 +282,43 @@ def deepest_path_length(return_dir: Path | str, subpaths: Iterable[str]) -> int:
     """
     lengths = [len(str(Path(return_dir) / sub)) for sub in subpaths]
     return max(lengths, default=0)
+
+
+def limit_for(extension: str) -> int:
+    """The longest path a working copy with ``extension`` may have: the
+    shortest of Windows's limit and any reader's (:data:`OPEN_LIMITS`).
+
+    ``xlsx``, ``.XLSX`` and ``.xlsx`` are one extension."""
+    return min(MAX_PATH_LENGTH, OPEN_LIMITS.get(extension.lower().lstrip("."), MAX_PATH_LENGTH))
+
+
+# ------------------------------------------------ a return, after a move ----
+
+
+def shared_tail(a: str | Path, b: str | Path) -> int:
+    """How many trailing folder names ``a`` and ``b`` have in common,
+    compared as Windows compares them (``os.path.normcase``)."""
+    named = [os.path.normcase(part) for part in Path(a).parts]
+    folder = [os.path.normcase(part) for part in Path(b).parts]
+    count = 0
+    while count < len(named) and count < len(folder) and named[-1 - count] == folder[-1 - count]:
+        count += 1
+    return count
+
+
+def same_return(rolled_from: str, path: Path | str) -> bool:
+    """Whether a Rolled From path names the return folder ``path``: the
+    same path, or - once the clients root has moved and the recorded path
+    names nothing - the same last :data:`ROLLED_FROM_TAIL` folder names.
+
+    **Lexical, never resolved** (decision 131): this is layer 0 and reads
+    no link. Rolled From is written absolute, so a root that moves leaves
+    every one of them naming a folder that is no longer there; the three
+    names below the root still say which return it was. The registry adds
+    its own uniqueness rule across the whole practice; within one
+    household, where the scaffold asks, ``<household>/<year>/<return>`` is
+    unique by construction.
+    """
+    left = os.path.normcase(os.path.normpath(rolled_from))
+    right = os.path.normcase(os.path.normpath(str(path)))
+    return left == right or shared_tail(rolled_from, path) >= ROLLED_FROM_TAIL

@@ -1527,8 +1527,30 @@ def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monke
     assert code == 0, payload
     assert payload["root"] == str(demo_root)
     xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
-    assert str(demo_root) in xml and "T06:30:00" in xml and "PT60M" in xml
+    # The job reads the root the app reads, from the one settings file
+    # (decision 131) - it names the folder of that file, never the root.
+    assert payload["settings"] in xml and "T06:30:00" in xml and "PT60M" in xml
     assert calls == [Path(payload["xml"])]
+
+
+def test_install_schedule_writes_the_job_from_the_apps_own_settings_folder(
+    capsys, demo_root, monkeypatch, tmp_path,
+):
+    """Decision 131: the job's command line names the settings folder this
+    app runs with - the one the Electron shell hands it - and no clients
+    root, so a root changed in the app is the root the job walks next."""
+    import tracker.api as api_module
+    from tracker.runner import SETTINGS_FLAG
+    from tracker.scheduling import quote_argument
+    from tracker.settings import settings_dir
+
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert code == 0, payload
+    assert payload["settings"] == str(settings_dir()) == str(tmp_path / "app")
+    xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
+    assert f"{SETTINGS_FLAG} {quote_argument(settings_dir())}" in xml
+    assert str(demo_root) not in xml
 
 
 def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys, demo_root, monkeypatch, tmp_path):
@@ -1548,7 +1570,7 @@ def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys,
     assert payload["frozen"] is True
     xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
     assert f"<Command>{exe}</Command>" in xml
-    assert f"<Arguments>{RUNNER_MODE_FLAG} " in xml and LOG_FLAG in xml and str(demo_root) in xml
+    assert f"<Arguments>{RUNNER_MODE_FLAG} " in xml and LOG_FLAG in xml and payload["settings"] in xml
     assert f"<WorkingDirectory>{exe.parent}</WorkingDirectory>" in xml
     assert "-m tracker.runner" not in xml
 
@@ -1591,6 +1613,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "hand_over": api.HAND_OVER_LABEL,
         "hand_over_return": api.HAND_OVER_RETURN_LABEL,
         "hand_over_request": api.HAND_OVER_REQUEST_LABEL,
+        "handed_over": api.HANDED_OVER_LINE,
     }
     assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
@@ -1641,6 +1664,7 @@ def _the_reminder_card_words_are_all_pythons(words):
 
     assert words == {
         "held_line": reminder.HELD_SUMMARY,
+        "inbox_held_line": reminder.INBOX_HELD_SUMMARY,
         "heading": reminder.REMINDER_HEADING,
         "stage_group": reminder.STAGE_GROUP_LABEL,
         "subject_prefix": reminder.SUBJECT_PREFIX,
@@ -2199,6 +2223,40 @@ def test_a_held_reminder_shows_no_letter_and_offers_no_action(capsys, demo_root)
                         stdin={"stage": card["stage"], "fingerprint": card["fingerprint"]})
     assert code == 1 and "the reminder is held" in payload["error"]
     assert list(folder.glob("reminder-draft*")) == []
+
+
+def test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve(capsys, demo_root):
+    """Decision 133 on this surface: a file still waiting in the household's
+    inbox holds the card as a held row does (118 §9) - the hold line, no
+    rows, a dead toggle, no letter and no approval - and every word of it is
+    the API's; the renderer types none."""
+    from tracker.reminder import INBOX_HELD_SUMMARY, INBOX_HOLD
+
+    folder = chased_engagement(capsys, demo_root, name="Waiting")
+    (inbox_of(folder) / "W-2 from the client.pdf").write_bytes(b"%PDF-1.4 not sorted yet")
+
+    card = reminder_card(capsys, folder)
+    assert card["held"] == [] and card["unsorted"] == 1
+    assert (card["subject"], card["text"], card["html"], card["letter"]) == ("", "", "", {})
+    assert card["editable"] is False
+
+    code, payload = run(capsys, "approve", api.ENGAGEMENT_FLAG, str(folder),
+                        stdin={"stage": card["stage"], "fingerprint": card["fingerprint"]})
+    assert code == 1 and payload["error"] == INBOX_HOLD.format(n=1)
+    assert list(folder.glob("reminder-draft*")) == []
+
+    # The household card says the same hold beside the return.
+    [one] = api._state(folder)["household"]["returns"]
+    assert one["reminder"]["unsorted"] == 1
+
+    vocab = run(capsys, "list")[1]["vocab"]
+    assert vocab["reminder"]["inbox_held_line"] == INBOX_HELD_SUMMARY
+    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8")
+    for word in (INBOX_HELD_SUMMARY, INBOX_HELD_SUMMARY.split("{")[0].strip(),
+                 INBOX_HOLD.split("{")[0].strip()):
+        assert word not in renderer, word
+    assert "vocab.reminder.inbox_held_line" in renderer
 
 
 def test_approve_writes_the_shown_text_records_the_event_and_sets_the_other_draft_aside(
@@ -2959,7 +3017,7 @@ def test_the_household_card_shows_every_returns_reminder_state(capsys, demo_root
     assert [one["return_name"] for one in returns] == [
         "1040 - John Park", "1120S - Park Landscaping"]
     for one in returns:
-        assert one["reminder"] == {"last": None, "approved": None, "held": 0}
+        assert one["reminder"] == {"last": None, "approved": None, "held": 0, "unsorted": 0}
     # The words the card fills those numbers into are the reminder's own.
     words = run(capsys, "list")[1]["vocab"]["reminder"]
     assert words["never_drafted_line"] == reminder.NEVER_DRAFTED_LINE
@@ -3038,8 +3096,7 @@ def test_assign_with_a_target_refuses_an_unfed_return_and_hands_over_to_a_fed_on
     """Nothing routes outside the feed list: a target this drop folder does
     not feed is refused by name, and a target it does feed takes the
     document - the original moving under the household that return lives
-    in, and the row here closing as handed over."""
-    from tracker.filer import HANDED_OVER
+    in, and the row here released (decision 132): nothing of it stays."""
     from tracker.layout import originals_of
     father, llc = two_households(capsys, demo_root)
     parked, seq = a_parked_document(capsys, father)
@@ -3062,7 +3119,7 @@ def test_assign_with_a_target_refuses_an_unfed_return_and_hands_over_to_a_fed_on
     assert code == 0, payload
     assert payload["handed_over"]["moved_original"] is True
     assert payload["handed_over"]["identifier"] == "B01"
-    assert [e.decision for e in read_index(father)] == [HANDED_OVER]
+    assert read_index(father) == []
     [taken] = read_index(llc)
     assert taken.decision == FILED and taken.identifier == "B01"
     assert (originals_of(llc) / "notice.pdf").is_file()
@@ -3123,7 +3180,7 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
     for word in (api.FEEDS_LABEL, api.FEEDS_HELP, api.FEEDS_LINE, api.FED_BY_LINE,
                  api.ADD_FEED_LABEL, api.FEED_WARNING, api.RETURN_WARNING,
                  api.HAND_OVER_LABEL, api.HAND_OVER_RETURN_LABEL, api.HAND_OVER_REQUEST_LABEL,
-                 api.NOBODY_TYPED, api.NOT_FED):
+                 api.NOBODY_TYPED, api.NOT_FED, api.HANDED_OVER_LINE):
         assert f'"{word}"' not in js and f"'{word}'" not in js, word
         assert word not in html, word
     words = api._vocab()
@@ -3138,3 +3195,230 @@ def test_the_renderer_types_none_of_the_feed_words(capsys, demo_root):
     # the moment either was reworded for its own screen.
     assert words["review_labels"]["hand_over_return"] == api.HAND_OVER_RETURN_LABEL
     assert words["review_labels"]["hand_over_request"] == api.HAND_OVER_REQUEST_LABEL
+    # And what the page says once a document has gone (decision 132): the
+    # row here is released, in the API's words, filled with the reply's
+    # label and request.
+    assert words["review_labels"]["handed_over"] == api.HANDED_OVER_LINE
+    assert "vocab.review_labels.handed_over" in js
+
+
+def test_a_pass_cannot_be_run_without_the_practice(capsys, demo_root, monkeypatch):
+    """*Run now* on a root that cannot be walked is refused in the runner's
+    one sentence, which is the run's ``error`` in the reply - and nothing
+    is sorted (decision 132). Before, the pass fed nothing in silence and
+    the button and the schedule could disagree about what the inbox was
+    for."""
+    from tests.samples import text_pdf
+    from tracker.registry import RegistryError
+    from tracker.runner import NO_PRACTICE
+
+    father, _llc = two_households(capsys, demo_root)
+    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
+
+    def unwalkable(root):
+        raise RegistryError(f"{root} cannot be walked")
+
+    monkeypatch.setattr(api, "discover_engagements", unwalkable)
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(father))
+
+    assert code == 0, payload
+    assert payload["run"]["error"] == NO_PRACTICE
+    assert payload["run"]["filed"] == 0
+    assert (inbox_of(father) / "tb.pdf").is_file()      # nothing was sorted
+    assert read_index(father) == []
+
+
+# ============== what we have received, at once (decision 130) =============
+#
+# A person's action in the app changes the index between passes, so the
+# action refreshes the client README itself: the list is never behind the
+# record once an action has run.
+
+
+def client_readme(engagement) -> str:
+    from tracker.scaffold import README_NAME
+
+    return (inbox_of(engagement) / README_NAME).read_text(encoding="utf-8")
+
+
+def test_filing_a_parked_card_moves_it_from_under_review_to_received_at_once(
+        capsys, demo_root, tmp_path):
+    from tracker.scaffold import RECEIVED_HEADING, UNDER_REVIEW_HEADING
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [parked] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
+    before = client_readme(engagement)
+    assert UNDER_REVIEW_HEADING in before and "  1 document received " in before
+    d01 = next(i for i in payload["state"]["items"] if i["identifier"] == "D01")
+    d01_label = next(item.label for item in load_manifest(engagement) if item.identifier == "D01")
+    assert f"  {d01_label}  Received" not in before
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked["pbc_location"], "identifier": d01["identifier"],
+                               "seq": parked["seq"]})
+    assert code == 0, payload
+
+    after = client_readme(engagement)
+    assert RECEIVED_HEADING in after
+    assert f"  {d01_label}  Received" in after
+    assert UNDER_REVIEW_HEADING not in after
+    assert "Mortgage Notes" not in after
+
+
+def test_unfiling_moves_it_back_to_under_review_at_once(capsys, demo_root, tmp_path):
+    from tracker.scaffold import UNDER_REVIEW_HEADING
+
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
+    code, payload = run(capsys, "scan", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 0, payload
+    [filed] = [e for e in payload["state"]["index"] if e["decision"] == FILED]
+    label = next(item.label for item in load_manifest(engagement)
+                 if item.identifier == filed["identifier"])
+    before = client_readme(engagement)
+    assert f"  {label}  Received" in before and UNDER_REVIEW_HEADING not in before
+
+    code, payload = run(capsys, "unfile", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": filed["pbc_location"], "seq": filed["seq"]})
+    assert code == 0, payload
+
+    after = client_readme(engagement)
+    assert f"  {label}  Received" not in after
+    assert UNDER_REVIEW_HEADING in after and "  1 document received " in after
+    assert filed["original_name"] not in after
+# ------------------------------------ decision 131: the room a return has ----
+
+
+def _a_long_row_return(root, return_name="1040 - Long", household=HOUSEHOLD):
+    """A return made the way a test makes one - past creation's refusal - whose
+    second row's canonical copy no longer fits under ``root``: the state a
+    root that grew leaves behind."""
+    from tracker.manifest import RequestItem
+
+    return make_engagement(root, [
+        RequestItem(identifier="A01", document="W-2", allowed_extensions=("pdf",)),
+        RequestItem(identifier="B01", document="y" * 100, allowed_extensions=("pdf",)),
+    ], household=household, return_name=return_name)
+
+
+def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
+    capsys, tmp_path, monkeypatch,
+):
+    """Setting the root is the one moment every move passes through, so its
+    reply names every return short of room under the new root, with its
+    numbers, in label order - and records the root regardless."""
+    from tests.conftest import TEST_YEAR
+    from tracker.filer import ROOM_SHORT, room_for
+    from tracker.manifest import RequestItem
+    from tracker.settings import ENV_SETTINGS_DIR, clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    root = tmp_path / "Clients"
+    fits = make_engagement(root, [RequestItem(identifier="A01", document="W-2")],
+                           return_name="1040 - Fits")
+    short = _a_long_row_return(root)
+    room = room_for(short, load_manifest(short))
+    assert room.short > 0 and room_for(fits, load_manifest(fits)).short == 0
+
+    code, payload = run(capsys, "set-root", stdin={"root": str(root)})
+
+    assert code == 0, payload
+    assert clients_root() == root.resolve()
+    [entry] = payload["short_of_room"]
+    assert entry["engagement"] == f"{HOUSEHOLD} {TEST_YEAR} 1040 - Long"
+    assert entry["short"] == room.short and entry["parks"] == room.parks
+    assert entry["sentences"][0] == ROOM_SHORT.format(short=room.short)
+
+
+def test_state_carries_the_returns_room_as_information_and_warns_only_what_cannot_receive(
+    capsys, demo_root,
+):
+    """A person opening a return sees its room without waiting for a pass:
+    the six numbers, and the figure it is short by as a note on the
+    return's page - **not** among the warnings (the lead's L-1: its names
+    are cut to fit and everything files). Only requests that cannot
+    receive at all are a warning."""
+    from tracker.filer import ROOM_PARKS, ROOM_SHORT, room_for
+    from tracker.manifest import RequestItem
+
+    engagement = _a_long_row_return(demo_root)
+    room = room_for(engagement, load_manifest(engagement))
+
+    state = payload_of_state(capsys, engagement)
+
+    assert state["room"] == {"need": room.need, "least": room.least, "floor": room.floor,
+                             "short": room.short, "parks": room.parks, "limit": 260}
+    assert room.short > 0
+    assert state["room_note"] == ROOM_SHORT.format(short=room.short)
+    assert ROOM_SHORT.format(short=room.short) not in state["warnings"]
+    assert (ROOM_PARKS.format(count=room.parks) in state["warnings"]) == bool(room.parks)
+    assert run(capsys, "list")[1]["vocab"]["room"]["short"] == ROOM_SHORT
+
+    # A return with room: no note at all.
+    fits = make_engagement(demo_root, [RequestItem(identifier="A01", document="W-2")],
+                           return_name="1040 - Fits")
+    assert payload_of_state(capsys, fits)["room_note"] == ""
+
+
+def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and_leaves_an_unchanged_one_alone(
+    capsys, demo_root,
+):
+    """The editor's save keeps creation's standard for the rows it changes:
+    a hundred-character label typed into one row is refused with creation's
+    sentence and nothing is recorded; a row already past the limit that the
+    person did not touch never traps a save that shortens another."""
+    from tracker.layout import PATH_TOO_LONG
+
+    engagement = _a_long_row_return(demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    by_id = {row["identifier"]: row for row in rows}
+
+    before = ledger.path_for(engagement).read_bytes()
+    typed = [{**by_id["A01"], "document": "z" * 100}, by_id["B01"]]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": typed, "engagement": {}})
+    assert code == 1
+    assert payload["error"].startswith(PATH_TOO_LONG.split("{")[0])
+    assert "shorten the household or the return name" in payload["error"]
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    shortened = [{**by_id["A01"], "document": "W2"}, by_id["B01"]]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": shortened, "engagement": {}})
+    assert code == 0, payload
+    assert payload["saved"]["changed"] == ["A01"]
+
+
+def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor(
+    capsys, tmp_path, monkeypatch,
+):
+    """The API half: a person's filing into a request with no room for even
+    its shortest name comes back as the one error sentence, PATH_NO_ROOM,
+    and nothing has moved."""
+    from tests.conftest import named_page, root_for_a_return_of, sort
+    from tests.test_scanner import text_pdf
+    from tracker.filer import PATH_NO_ROOM
+    from tracker.manifest import RequestItem
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    root = root_for_a_return_of(tmp_path, 210)
+    engagement = make_engagement(root, [RequestItem(
+        identifier="A01", document="W-2 Wage Statements", period="TY2025",
+        allowed_extensions=("pdf",), required_keywords=("W-2",))])
+    set_clients_root(root)
+    text_pdf(inbox_of(engagement) / "note.pdf", named_page("A letter the list does not ask for"))
+    sort(engagement)
+    [parked] = [e for e in read_index(engagement) if e.decision == NEEDS_REVIEW]
+    seq = next(row["seq"] for row in payload_of_state(capsys, engagement)["index"]
+               if row["original_name"] == "note.pdf")
+    before = sorted(str(p) for p in root.rglob("*"))
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked.pbc_location, "identifier": "A01", "seq": seq})
+
+    assert code == 1
+    assert payload["error"] == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260,
+                                                   ext=".pdf")
+    assert sorted(str(p) for p in root.rglob("*")) == before
