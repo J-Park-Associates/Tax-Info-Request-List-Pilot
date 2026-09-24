@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 107 rows · 368 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 357 cases
+6 catalogs · 107 rows · 371 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 357 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -468,6 +468,7 @@ Reached, but proven nothing: the cheapest placements to add.
 ### H02 — 1099-K / 1099-NEC Received by the Business
 
 - `1099-k | 1099-nec` (required) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-K Copy B.pdf (d141) → ?; 1099-NEC Copy B.pdf (d141) → **here**; 2025 business income and expense.xlsx (d141) → ?; f1099k.pdf → **here**; f1099nec.pdf → **here**; f1099nec_2024.pdf → **here**
+- `for recipient | for payee` (required) — 1095-C with instructions.pdf (d62) → ?; 1099-NEC.pdf (d62) → ?; 1099-SA with instructions.pdf (d62) → ?; fax cover then 1099-R.pdf (d66) → ?; 1099-B Copy B.pdf (d73) → ?; fax cover then 1099-R.pdf (d73) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-G 2025 Copy B.pdf (d90) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-MISC 2025 Copy B.pdf (d90) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → H03; 1099-K Copy B.pdf (d141) → ?; 1099-NEC Copy B.pdf (d141) → **here**; f1095a.pdf → ?; f1095b.pdf → ?; f1095c.pdf → ?; f1099da.pdf → parks; f1099div.pdf → ?; f1099g.pdf → ?; f1099h.pdf → ?; f1099int.pdf → ?; f1099k.pdf → **here**; f1099msc.pdf → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → **here**; f1099oid.pdf → ?; f1099q.pdf → ?; f1099qa.pdf → ?; f1099r.pdf → ?; f1099sa.pdf → ?
 
 ### H03 — 1042-S - Foreign Person's U.S. Source Income
 
@@ -584,6 +585,7 @@ Reached, but proven nothing: the cheapest placements to add.
 ### J02 — 1099-K / 1099-NEC Received by the Business
 
 - `1099-k | 1099-nec` (required) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-K Copy B.pdf (d141) → ?; 1099-NEC Copy B.pdf (d141) → ?; 2025 business income and expense.xlsx (d141) → ?; f1099k.pdf → **here**; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
+- `for recipient | for payee` (required) — 1095-C with instructions.pdf (d62) → ?; 1099-NEC.pdf (d62) → ?; 1099-SA with instructions.pdf (d62) → ?; fax cover then 1099-R.pdf (d66) → ?; 1099-B Copy B.pdf (d73) → ?; fax cover then 1099-R.pdf (d73) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-G 2025 Copy B.pdf (d90) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-MISC 2025 Copy B.pdf (d90) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → J03; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1099-K Copy B.pdf (d141) → ?; 1099-NEC Copy B.pdf (d141) → ?; f1095a.pdf → ?; f1095b.pdf → ?; f1095c.pdf → ?; f1099da.pdf → parks; f1099div.pdf → ?; f1099g.pdf → ?; f1099h.pdf → ?; f1099int.pdf → ?; f1099k.pdf → **here**; f1099msc.pdf → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?; f1099oid.pdf → ?; f1099q.pdf → ?; f1099qa.pdf → ?; f1099r.pdf → ?; f1099sa.pdf → ?
 
 ### J03 — 1042-S - Foreign Person's U.S. Source Income
 
@@ -706,6 +708,7 @@ Reached, but proven nothing: the cheapest placements to add.
 ### I02 — 1099-K / 1099-NEC Received by the Business
 
 - `1099-k | 1099-nec` (required) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-K Copy B.pdf (d141) → **here**; 1099-NEC Copy B.pdf (d141) → ?; 2025 business income and expense.xlsx (d141) → ?; f1099k.pdf → **here**; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
+- `for recipient | for payee` (required) — 1095-C with instructions.pdf (d62) → ?; 1099-NEC.pdf (d62) → ?; 1099-SA with instructions.pdf (d62) → ?; fax cover then 1099-R.pdf (d66) → ?; 1099-B Copy B.pdf (d73) → ?; fax cover then 1099-R.pdf (d73) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-G 2025 Copy B.pdf (d90) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-MISC 2025 Copy B.pdf (d90) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → I03; 1042-S Copy B.pdf (d141) → ?; 1099-K Copy B.pdf (d141) → **here**; 1099-NEC Copy B.pdf (d141) → ?; f1095a.pdf → ?; f1095b.pdf → ?; f1095c.pdf → ?; f1099da.pdf → parks; f1099div.pdf → ?; f1099g.pdf → ?; f1099h.pdf → ?; f1099int.pdf → ?; f1099k.pdf → **here**; f1099msc.pdf → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?; f1099oid.pdf → ?; f1099q.pdf → ?; f1099qa.pdf → ?; f1099r.pdf → ?; f1099sa.pdf → ?
 
 ### I03 — 1042-S - Foreign Person's U.S. Source Income
 

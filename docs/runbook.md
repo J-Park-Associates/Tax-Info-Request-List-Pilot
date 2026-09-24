@@ -932,7 +932,12 @@ so an older-style IRS letter or a state notice still parks for you to file
 by hand. And a Social Security statement no longer reaches the 1099-R row:
 the SSA prints a code with "1099-R" in it at the top of the page, and the
 statement now has a row of its own that wins. A corrected or amended form
-(a W-2c, a 1065-X) still parks, on purpose.
+(a W-2c, a 1065-X) still parks, on purpose. So does this year's own return
+when it arrives with papers stapled to it - a 1065 with its K-1s, a 1040
+with a W-2G - rather than filing as the K-1s or the W-2G; you see it as
+"looks like" the prior-year return row, with the period quoted. And a
+business's 1099-K / 1099-NEC row takes only the recipient's copy (Copy B):
+the copies a business keeps of 1099s it issued park.
 
 What turns that from an impression into a number is the backtest
 (`tools/backtest.py`): the firm's own already-sorted documents routed

@@ -43,6 +43,7 @@ from dataclasses import replace
 
 from tracker.manifest import (
     DEFAULT_EXTENSIONS,
+    JURAT,
     KEYWORD_ALL_OF,
     KEYWORD_ANY_OF,
     ManifestError,
@@ -116,9 +117,9 @@ def _row(identifier: str, document: str, *, core: bool, named: bool, period: str
     return row
 
 
-#: The line every federal return carries over its signature and the firm's
-#: own paperwork never does (decision 65). One owner: six rows ask for it.
-JURAT = "under penalties of perjury"
+# JURAT, the line every federal return carries over its signature (decision
+# 65), is read from tracker.manifest since decision 141: six rows here ask
+# for it, and the router knows a return row by it.
 
 
 def _prior_return(*federal: str, state: tuple[str, ...] = ()) -> str:
@@ -239,8 +240,14 @@ SHARED = {
     # title can be a keyword: `nonemployee compensation` is on the IRS
     # "Attention" page ahead of every information return (decision 90),
     # and `payment card` is said by papers that only mention a 1099-K.
+    # And the recipient's copy (the designer's ruling on the review, F2): a
+    # business also *issues* 1099-NECs, and its own Copy A or Copy C is not
+    # one it received. Copy B says "For Recipient" on the 1099-NEC and "For
+    # Payee" on the 1099-K; Copy A says "For Internal Revenue Service
+    # Center" and Copy C "For Payer".
     "payment_forms_received": dict(document="1099-K / 1099-NEC Received by the Business",
-                                   required_keywords="1099-k | 1099-nec", extensions="pdf, csv"),
+                                   required_keywords="1099-k | 1099-nec, for recipient | for payee",
+                                   extensions="pdf, csv"),
     # The 1042-S by its printed title. Its number cannot be the keyword:
     # 1042 is no form family the matcher knows, so `1042-s` is a phrase,
     # and the Form 1065, 1120, 1120-F, 1040-NR and W-2G say it in their
@@ -254,6 +261,10 @@ SHARED = {
     # keyword (it varies, and a keyword is a whole phrase), so the header's
     # two fields stand for it, with the agency by either of its names - a
     # scan of a notice's later pages carries "IRS" and not the heading.
+    # All of it on the first page (the designer's ruling on the review, N2):
+    # the matcher reads these header phrases there and nowhere else
+    # (``content_check.FIRST_PAGE_PHRASES``), so a county tax bill whose
+    # back page says "notice date", "tax year" and "IRS" is not a notice.
     # No blank form says "notice date", and an EIN letter (CP 575) prints
     # no tax year, so it stays the 1041's A02. A notice laid out any other
     # way - a state's, an IRS letter - parks for a person, which is safe;

@@ -4326,6 +4326,166 @@
         }
        ],
        "rule": "required"
+      },
+      {
+       "keyword": "for recipient | for payee",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1095-C with instructions.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-SA with instructions.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "1099-B Copy B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-G 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-MISC 2025 Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "H03",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "H02",
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095a.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095b.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095c.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1099da.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099div.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099g.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099int.pdf"
+        },
+        {
+         "expected": "H02",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099msc.pdf"
+        },
+        {
+         "expected": "H02",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "expected": "H02",
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099oid.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099q.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099qa.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099r.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099sa.pdf"
+        }
+       ],
+       "rule": "required"
       }
      ]
     },
@@ -5858,6 +6018,164 @@
         }
        ],
        "rule": "required"
+      },
+      {
+       "keyword": "for recipient | for payee",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1095-C with instructions.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-SA with instructions.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "1099-B Copy B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-G 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-MISC 2025 Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "J03",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095a.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095b.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095c.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1099da.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099div.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099g.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099int.pdf"
+        },
+        {
+         "expected": "J02",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099msc.pdf"
+        },
+        {
+         "expected": "J02",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099oid.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099q.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099qa.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099r.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099sa.pdf"
+        }
+       ],
+       "rule": "required"
       }
      ]
     },
@@ -7384,6 +7702,165 @@
         }
        ],
        "rule": "required"
+      },
+      {
+       "keyword": "for recipient | for payee",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1095-C with instructions.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-SA with instructions.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "1099-B Copy B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-G 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-MISC 2025 Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "I03",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "I02",
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095a.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095b.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095c.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1099da.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099div.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099g.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099int.pdf"
+        },
+        {
+         "expected": "I02",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099msc.pdf"
+        },
+        {
+         "expected": "I02",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099oid.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099q.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099qa.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099r.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099sa.pdf"
+        }
+       ],
+       "rule": "required"
       }
      ]
     },
@@ -8695,7 +9172,7 @@
    "case": 357,
    "irs": 106
   },
-  "keywords": 368,
+  "keywords": 371,
   "reached_only_elsewhere": 2,
   "reached_without_expectation": 11,
   "rows": 107,
@@ -8809,13 +9286,13 @@
   "tests/irs/nyit204.pdf": "814ae022406c8d92f91499c3b29f62bd2946039c12ff9c012109c2bfff2643e9",
   "tests/irs/nyit204ip.pdf": "22a4a83ed55ade1db141eaa7721160a589f1ece2a0080b006e8c325040cfc764",
   "tests/irs/nyit204ll.pdf": "2fa553d27d160150080a13d8de4e128b5c5c1c5149cb515811ac3b17a9664044",
-  "tests/test_catalog.py": "b1da371b576bb5f915d4dc7cb8878b1b0df2b78eb6a2dda55ad6133caf323143",
+  "tests/test_catalog.py": "572398ba146e14d12f869c158ffda2d954bb88cb5768d092ad75d724caebebbf",
   "tests/test_irs_forms.py": "cfe7dc30d5794c151d32a456c52335af0206ee0350c669da332cd83cc270d97e",
   "tests/test_real_corpus.py": "b2d17daa988c1b8ea2f3fbbd4400ecd6794c275067ff4b81734e7eb46d29db88",
   "tools/vocab_report.py": "0a1e8dbf69491e1d2ef6c842b5bf3f886088c528af4b8e3ebc8848ba577d85c0",
-  "tracker/content_check.py": "ff01abbc602dcef64a5b24e8d3ad12d75914324e288a4a02c469f4f4690b2129",
-  "tracker/manifest.py": "88ca7b67482f73f823a47e0999f49f429f7fa47ddf5b694c2090644a6e40c876",
-  "tracker/templates.py": "a20e4fbddd83342c7d6797570c6d8b13acbda2f01ff5461a422ad4af2baf5ef5"
+  "tracker/content_check.py": "6a213c4bf77e25a68d407135741addc5ff703be5750d6ea0bc0b214f9eb73ebd",
+  "tracker/manifest.py": "7ee630d67eeb533ac7f2b0ac06bc6fca99266e318c69b7bd175f785726abe01d",
+  "tracker/templates.py": "d8e7c40b24777a7c5ad1494b8ee9e8363bff5542834dd378c6e7212a412cd95c"
  },
  "note": "GENERATED by tools/vocab_report.py \u2014 do not edit by hand.",
  "schema": 1

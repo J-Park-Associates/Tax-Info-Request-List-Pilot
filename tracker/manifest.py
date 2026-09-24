@@ -529,6 +529,30 @@ def keyword_alternatives(keyword: str) -> tuple[tuple[str, ...], ...]:
     return tuple(alternatives)
 
 
+#: The line every federal return carries over its signature and the firm's
+#: own paperwork never does (decision 65). The catalog's prior-year return
+#: rows require it (``tracker.templates._prior_return``), and since decision
+#: 141 it is also how the router knows a return row: here, beside the
+#: grammar that reads a keyword cell, so the catalog and the router read
+#: one word.
+JURAT = "under penalties of perjury"
+
+
+def asks_for_a_return(item: RequestItem) -> bool:
+    """Whether ``item`` asks for a signed return: one of its required
+    keywords names the jurat among the phrases an alternative wants.
+
+    Decision 141 (the designer's ruling on the review, F1): a document that
+    meets such a row's required keywords and fails only on its period is a
+    return of the wrong year, and it parks for a person rather than filing
+    under another row that matched it strongly - a signed return with its
+    K-1s, or with a W-2G stapled to it, is never the K-1 or the W-2G.
+    """
+    jurat = JURAT.lower()
+    return any(jurat in (phrase.lower() for phrase in alternative)
+               for keyword in item.required_keywords
+               for alternative in keyword_alternatives(keyword))
+
 
 # ------------------------------------------------- a row per issuer (d93) ----
 

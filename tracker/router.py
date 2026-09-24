@@ -50,7 +50,9 @@ Two things deliberately do *not* route a file:
   but fails that row's other rules — last year's W-2, say — it is not filed
   anywhere, even if some other row would accept it. It looks like a W-2, so
   it must not be filed as a prior-year return; a person gets it, with the
-  failed rule quoted.
+  failed rule quoted. A signed return of the wrong year is contested even
+  when another row matched it strongly (decision 141): this year's 1065
+  carries its K-1s, and it is never the K-1s.
 - **A document whose issuer the list does not know.** A person holding
   several Schedule K-1s gets one row per issuing entity (decision 93, the
   owner's), each an ordinary row carrying the entity's name in Required
@@ -157,7 +159,7 @@ from tracker.content_check import (
     says,
     self_named_forms,
 )
-from tracker.manifest import Override, RequestItem, has_routing_rules, narrowing_rows
+from tracker.manifest import Override, RequestItem, asks_for_a_return, has_routing_rules, narrowing_rows
 
 # The routing decision is a record and lives in tracker/records.py
 # (decision 100); this module is the deciding. Routing and EVIDENCE_CONTENT
@@ -540,6 +542,10 @@ def _decide(
     medium: list[str] = []      # passed on any_keywords / date alone
     ocr_only: list[str] = []    # passed on any_keywords, but the text is OCR's word for it
     near: list[tuple[str, str]] = []   # looks like this request but fails a rule
+    #: A signed return of the wrong year: a return row's required keywords
+    #: matched and only its period failed (decision 141). Parks even when
+    #: another row matched strongly.
+    signed: list[tuple[str, str]] = []
     leads: list[tuple[str, str]] = []  # its keywords matched and only the year did not
     #: Nothing could be read, and the file's *name* carries this row's
     #: keywords. Never filed on (decision 92) and never a candidate: it is
@@ -601,6 +607,8 @@ def _decide(
                     medium.append(item.identifier)
             elif _required_matched(words, item):
                 near.append((item.identifier, verdict.reason))
+                if asks_for_a_return(item) and reasons.WRONG_PERIOD.matches(verdict.reason):
+                    signed.append((item.identifier, verdict.reason))
             elif reasons.WRONG_PERIOD.matches(verdict.reason) and any_keyword_matched(words, item):
                 # Every keyword this row asks for matched and only its year
                 # did not. That is no filing decision - the year is a check,
@@ -610,6 +618,17 @@ def _decide(
         elif said_by_the_name := _filename_evidence(path, item):
             record[item.identifier] = said_by_the_name
             named.append(item.identifier)
+
+    # A signed return of another year (decision 141, the designer's ruling
+    # on the review): it met a return row's required keywords - the form's
+    # own title and the jurat - and failed only that row's period. This
+    # year's 1065 carries its partners' K-1s and a 1040 may have a W-2G
+    # stapled to it, so the K-1 row or the W-2G row can match it strongly,
+    # and filing it there would put a signed return among the K-1s. It
+    # parks, whatever else matched. Return rows only: they are the rows
+    # whose document contains other forms.
+    if signed:
+        return _contested(path, signed, record)
 
     # A document that announces itself as one request's paperwork but fails
     # that request's other rules is contested — never file it somewhere else.

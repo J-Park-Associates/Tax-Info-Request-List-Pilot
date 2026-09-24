@@ -150,7 +150,9 @@ RETIRED_CACHE_FILENAME = "_content_cache.json"
 #:    documents; a verdict cached before that read the characters as words.
 #: 10 (decision 127): the reading turns a page or a photo upright before
 #:    OCR, so a verdict on a scan read at 9 may have been read sideways.
-CACHE_VERSION = 10
+#: 11 (decision 141): a notice's header phrases (``FIRST_PAGE_PHRASES``)
+#:    count on the first page only, so a verdict that found one deeper is void.
+CACHE_VERSION = 11
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -1054,6 +1056,19 @@ def _says_where(text: str, keyword: str, dominant: set[str] | None = None) -> tu
     return None
 
 
+#: The phrases a notice prints in its header block, which count as evidence
+#: only on the first page (decision 141, the designer's ruling on the
+#: review, N2). A notice says who sent it, the tax year and the notice date
+#: at its head; the same words deep in another document - the back of a
+#: county tax bill, a letter's closing paragraph - are that document talking
+#: about a notice. Keyed by the phrase, as ``FORM_VARIANTS`` is by the
+#: number, in the one module that reads keywords; the catalog's notices row
+#: (``tracker.templates.SHARED["notices"]``) is the only row that uses them,
+#: and ``tests/test_irs_forms.py`` holds it to that. A reading with no page
+#: breaks (OCR reads a scan as one run of text) is all first page.
+FIRST_PAGE_PHRASES = frozenset({"notice date", "tax year", "tax period", "irs", "internal revenue service"})
+
+
 def _one_says_where(text: str, keyword: str, dominant: set[str]) -> tuple[str, int] | None:
     """Where ``text`` says one phrase as content evidence - the place and
     the page - or None where it does not say it at all.
@@ -1068,7 +1083,14 @@ def _one_says_where(text: str, keyword: str, dominant: set[str]) -> tuple[str, i
     low = text.lower()
     if not is_form_number(keyword):
         at = _in_its_own_words_at(low, keyword)
-        return None if at is None else _where_said(low, at)
+        if at is None:
+            return None
+        place = _where_said(low, at)
+        # The first place a phrase is said in its own words; a header phrase
+        # first said past page 1 is not said on page 1 at all.
+        if keyword.strip().lower() in FIRST_PAGE_PHRASES and place[1] > 1:
+            return None
+        return place
     at = _first_said_at(low, keyword)
     if at is None:
         return None
