@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 123,
     "edges": 732,
-    "reused": 90
+    "reused": 100
   },
   "node_types": [
     "artifact",
@@ -2245,8 +2245,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "85f0bc3bf8fd75eb",
-      "lines": 395,
+      "sha256": "28a106e287d8637b",
+      "lines": 393,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
