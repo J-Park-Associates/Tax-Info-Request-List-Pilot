@@ -184,6 +184,20 @@ _MAX_OCR_PAGES = MAX_PAGES
 PIXEL_BUDGET = 40_000_000
 #: The scale an ordinary PDF page is rendered at for OCR (144 dpi).
 RENDER_SCALE = 2.0
+#: The reader's safety stop (decision 137, B1.2; the owner's Q-1 of
+#: 2026-09-24): ten times the ceiling he approved for decision 127 (6 s a
+#: photo, 60 s a ten-page scan). A page - a photo is one page - gets a
+#: minute and a document ten, rendering included. A reading that reaches
+#: either is **abandoned**: a kept verdict, ``reasons.READING_STOPPED``,
+#: not read again until the file changes. Under the stop nothing changes:
+#: a slow reading is finished and named (``runner.SLOW_READING_SECONDS``).
+#: Before this, the only stop was Task Scheduler's two-hour kill, which
+#: ended the whole pass and met the same file again next time.
+READING_STOP_PAGE_SECONDS = 60.0
+READING_STOP_DOCUMENT_SECONDS = 600.0
+#: The clock the stop reads. A name of its own so the suite can move it
+#: rather than wait ten minutes.
+_clock = time.monotonic
 
 #: Tesseract's own confidence in the turn it says a page has. Its scale is
 #: not a percentage: on a form it comes back in the tens, and anything
@@ -1290,6 +1304,58 @@ def extract_text(path: Path) -> str | None:
     return None
 
 
+class ReadingStopped(Exception):
+    """A reading reached the safety stop (decision 137, B1.2). ``seconds``
+    is how long it had been reading the file when it stopped."""
+
+    def __init__(self, seconds: float):
+        super().__init__(f"the reading stopped after {seconds:.0f} s")
+        self.seconds = seconds
+
+
+class _SafetyStop:
+    """The time one document's reading may take: a document deadline and,
+    within it, one page's (decision 137, B1.2)."""
+
+    def __init__(self) -> None:
+        self.started = _clock()
+        self.deadline = self.started + READING_STOP_DOCUMENT_SECONDS
+        self.page_deadline = self.deadline
+
+    def page(self) -> None:
+        """A page starts: it has a minute, or what is left of the ten."""
+        self.page_deadline = min(_clock() + READING_STOP_PAGE_SECONDS, self.deadline)
+
+    def remaining(self) -> float:
+        """Seconds left for the page now being read, or the stop."""
+        left = self.page_deadline - _clock()
+        if left <= 0:
+            raise ReadingStopped(_clock() - self.started)
+        return left
+
+
+#: The stop of the reading under way, set by :func:`extract_by_ocr`. None
+#: outside a reading, where a Tesseract call has no timeout (a test's).
+_STOP: _SafetyStop | None = None
+
+
+def _tesseract(call, image, **kwargs):
+    """One call into Tesseract, inside what is left of the page's time.
+
+    Every ``pytesseract`` call is made through here (decision 137, B1.2):
+    its ``timeout=`` is the page's remaining budget, which is never more
+    than the document's, and a Tesseract that is killed at it is the
+    safety stop, not an OCR failure to retry."""
+    if _STOP is None:
+        return call(image, **kwargs)
+    try:
+        return call(image, timeout=_STOP.remaining(), **kwargs)
+    except RuntimeError as exc:
+        if "timeout" in str(exc).lower():
+            raise ReadingStopped(_clock() - _STOP.started) from exc
+        raise
+
+
 def _score_of(image) -> float | None:
     """How well Tesseract reads this image, or None when there is too little.
 
@@ -1302,7 +1368,7 @@ def _score_of(image) -> float | None:
     import pytesseract
     from pytesseract import Output
 
-    data = pytesseract.image_to_data(image, output_type=Output.DICT)
+    data = _tesseract(pytesseract.image_to_data, image, output_type=Output.DICT)
     # strict: the words and their confidences are two columns of one table,
     # and a reading whose columns do not line up is a broken reading. It
     # raises here, becomes OcrError, and the file is tried again next pass -
@@ -1358,10 +1424,10 @@ def _upright(image):
     from pytesseract import Output
 
     try:
-        said = pytesseract.image_to_osd(image, output_type=Output.DICT)
+        said = _tesseract(pytesseract.image_to_osd, image, output_type=Output.DICT)
         turn = int(said.get("rotate", 0) or 0)
         confidence = float(said.get("orientation_conf", 0) or 0)
-    except pytesseract.TesseractNotFoundError:
+    except (pytesseract.TesseractNotFoundError, ReadingStopped):
         raise
     except Exception:
         # No `osd` data, or too little text for the detector to speak.
@@ -1418,15 +1484,21 @@ def _ocr_pdf(path: Path) -> str | None:
         doc = pdfium.PdfDocument(path)
         try:
             for index in range(min(len(doc), _MAX_OCR_PAGES)):
+                if _STOP is not None:
+                    _STOP.page()              # a page's minute starts before its render
                 page_of = doc[index]
                 bitmap = page_of.render(scale=render_scale(*page_of.get_size()))
+                if _STOP is not None:
+                    _STOP.remaining()         # the render counts against the budget
                 page = _upright(bitmap.to_pil().convert("L"))
-                parts.append(pytesseract.image_to_string(page))
+                parts.append(_tesseract(pytesseract.image_to_string, page))
         finally:
             doc.close()
         return "\n".join(parts)
     except pytesseract.TesseractNotFoundError:
         return None  # pip packages present but the Tesseract engine is not
+    except ReadingStopped:
+        raise
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
         raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
@@ -1463,9 +1535,11 @@ def _ocr_image(path: Path) -> str | None:
                 factor = (PIXEL_BUDGET / (opened.width * opened.height)) ** 0.5
                 opened.draft("L", (int(opened.width * factor), int(opened.height * factor)))
             image = _within_budget(ImageOps.exif_transpose(opened).convert("L"))
-        return pytesseract.image_to_string(_upright(image))
+        return _tesseract(pytesseract.image_to_string, _upright(image))
     except pytesseract.TesseractNotFoundError:
         return None  # pip packages present but the Tesseract engine is not
+    except ReadingStopped:
+        raise
     except Image.DecompressionBombError as exc:
         # Pillow's own guard, which stays on (decision 137, B1): a picture
         # too large even to decode smaller. A size rule, so it is a kept
@@ -1497,8 +1571,11 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
 
     Every reading is timed and the seconds ride back on the
     :class:`Extraction` (decision 127). Nothing acts on the number: no
-    reading is cut short, capped or abandoned for being slow - a pass says
-    its slowest reading and finishes it.
+    reading is cut short for being slow - a pass says its slowest reading
+    and finishes it. The one exception is the safety stop, ten times the
+    owner's ceiling (decision 137, B1.2, :data:`READING_STOP_PAGE_SECONDS`
+    and :data:`READING_STOP_DOCUMENT_SECONDS`): a reading that reaches it
+    is abandoned, and its verdict kept.
     """
     started = time.perf_counter()
     # A file past the ceiling is never opened (decision 137, M5): the
@@ -1540,10 +1617,21 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
 
 def extract_by_ocr(path: Path) -> Extraction:
     """Read a scan or a photo by OCR; says why when it cannot (no OCR
-    installed, or no words)."""
+    installed, no words, or the safety stop)."""
+    global _STOP
+
     reader = _ocr_image if extension_of(path) in IMAGE_EXTENSIONS else _ocr_pdf
+    # The safety stop (decision 137, B1.2): one per document, and a photo
+    # is its own one page.
+    _STOP = _SafetyStop()
+    _STOP.page()
     try:
         ocr_text = reader(path)
+    except ReadingStopped as exc:
+        # Abandoned, and kept: the file's verdict until the file changes.
+        minutes = max(1, round(exc.seconds / 60))
+        return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=minutes),
+                          extractable=False)
     except TooLargeToRead as exc:
         return Extraction(None, reason=str(exc), extractable=False)
     except OcrError as exc:
@@ -1552,6 +1640,8 @@ def extract_by_ocr(path: Path) -> Extraction:
             None, reason=reasons.OCR_FAILED.format(error=str(exc)),
             extractable=False, error=str(exc), transient=True,
         )
+    finally:
+        _STOP = None
     if ocr_text is None:
         # No OCR on this machine: a fact about the machine, remembered by
         # nobody, so the day it is installed the scan reads the file.
@@ -1559,7 +1649,6 @@ def extract_by_ocr(path: Path) -> Extraction:
     if not ocr_text.strip():
         return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
     return Extraction(ocr_text, from_ocr=True)
-
 
 # ---------------------------------------------------------------- checking ----
 

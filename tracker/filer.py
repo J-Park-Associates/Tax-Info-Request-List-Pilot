@@ -3180,9 +3180,17 @@ def _decide_across(
     kept = stage.kept
 
     no_room: NoRoom | None = None
+    unnamed_across = False
     if len(kept) == 1:
         run, routing = kept[0]
         item = run.context.by_id.get(routing.identifier or "")
+        # Across households, filing needs a confirmed name (decision 137,
+        # B2; the owner's Q-2). A document the name tier kept only because
+        # its request is unnamed would otherwise move into another
+        # household's folder, which that household's people can open, on
+        # the strength of its keywords alone. It waits at home for a person.
+        if item is not None and _across_households(run, first) and id(run) not in stage.confirmed:
+            unnamed_across, item = True, None
         if item is not None:
             try:
                 return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
@@ -3216,6 +3224,14 @@ def _decide_across(
             evidence=format_evidence(said.evidence_record),
         )
 
+    if unnamed_across:
+        return home, _park_it(
+            drop, original, digest, size_kb, stamp, home,
+            reason=reasons.UNNAMED_ACROSS_HOUSEHOLDS.format(),
+            candidates=home_routing.candidates,
+            evidence=format_evidence(home_routing.evidence_record),
+        )
+
     if len(kept) > 1:
         # Two returns ask for the same row - two 1040s share every row of
         # their lists - and the name did not tell them apart either, which
@@ -3241,6 +3257,16 @@ def _decide_across(
         reason=stage.reason or home_routing.reason, candidates=home_routing.candidates,
         evidence=format_evidence(home_routing.evidence_record),
     )
+
+
+def _across_households(run: _ReturnRun, first: _ReturnRun) -> bool:
+    """Whether ``run`` lives in another household than the one the drop was
+    made in - ``first`` is always the dropping household's own - so filing
+    there would move the original into a folder other people are shared on
+    (decision 129's feeds). Compared as Windows compares folder names."""
+    here = os.path.normcase(os.path.normpath(str(household_of(first.engagement_dir))))
+    there = os.path.normcase(os.path.normpath(str(household_of(run.engagement_dir))))
+    return here != there
 
 
 def _the_home(accepting, routed, runs: list[_ReturnRun]) -> tuple[_ReturnRun, object]:

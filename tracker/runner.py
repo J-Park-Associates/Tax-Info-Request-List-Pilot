@@ -118,7 +118,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, store
+from tracker import content_check, ledger, store
 from tracker.content_check import OCR_SCRATCH_DIR_NAME, ocr_scratch
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
@@ -269,11 +269,17 @@ VIEW_NOT_REGENERATED = "status report open (not regenerated)"
 #: scanned page costs about a second to read on the office machine, so
 #: twenty seconds is a document doing something unusual - a long scan, a
 #: photo of a whole desk, a page the four-way scorer had to read four
-#: times. **Nothing is cut short at this number or any other**: it decides
-#: only whether the run's line mentions the document. Photos and scans are
-#: the readings the owner's speed ceiling will be measured against, and a
-#: pass that quietly abandoned the slow ones could not measure them.
+#: times. **Nothing is cut short at this number**: it decides only whether
+#: the run's line mentions the document. Photos and scans are the readings
+#: the owner's speed ceiling will be measured against, and a pass that
+#: quietly abandoned the slow ones could not measure them. The one stop is
+#: the safety stop beside it, ten times that ceiling (decision 137, B1.2).
 SLOW_READING_SECONDS = 20.0
+#: The safety stop, a minute a page and ten minutes a document: the reader
+#: owns them (``tracker.content_check``) and they are named here beside the
+#: number a slow reading is said at, so the two are read together.
+READING_STOP_PAGE_SECONDS = content_check.READING_STOP_PAGE_SECONDS
+READING_STOP_DOCUMENT_SECONDS = content_check.READING_STOP_DOCUMENT_SECONDS
 SLOW_READING_NOTE = "slow reading: {name} took {seconds:.0f} s"
 
 

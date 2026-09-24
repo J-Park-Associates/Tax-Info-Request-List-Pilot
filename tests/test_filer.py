@@ -6047,3 +6047,43 @@ def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_
     assert report.errors[0].left_in_place and "reached through a link" in report.errors[0].error
     assert (outside / "theirs.pdf").exists()
     assert report.filed == [] and report.review == []
+
+
+def test_an_unnamed_document_is_not_filed_across_households(tmp_path):
+    """Decision 137 (B2; the owner's Q-2 of 2026-09-24, "never; a person
+    decides"). A page that names nobody, accepted by an unnamed request of a
+    return in another household the drop folder feeds, used to be filed there
+    on its keywords - moving the original into a folder that household's
+    people can open. It now parks in the dropping household's own Needs
+    Review with the one sentence that says why. The same page within one
+    household files as it always did, and a page that names the fed
+    return's people still crosses (decision 129's headline case)."""
+    from tracker.records import Feed
+
+    unnamed = [replace(BUSINESS[0], named=False)]
+    father = make_engagement(tmp_path / "a", ITEMS, household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    llc = make_engagement(tmp_path / "a", unnamed, household="Park & Lee LLC",
+                          return_name="1120S - Park & Lee LLC", people=LLC_PEOPLE)
+    feeding(tmp_path / "a", [Feed("Park & Lee LLC", "1120S - Park & Lee LLC")])
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="")
+
+    done = sort_all([father, llc], home=[father], today=DAY1)
+
+    assert read_index(llc) == [] and done[llc].filed == []
+    [parked] = read_index(father)
+    assert parked.decision == NEEDS_REVIEW
+    assert parked.reason == "Unnamed, so it was not filed into another household's return."
+    assert reasons.UNNAMED_ACROSS_HOUSEHOLDS.matches(parked.reason)
+    assert [p.name for p in originals(father).iterdir()] == ["tb.pdf"]    # it stays at home
+    assert not originals(llc).exists() or not any(originals(llc).iterdir())
+
+    # Within one household the same unnamed page files, as decision 128 says.
+    personal = make_engagement(tmp_path / "b", ITEMS, household="Park Family",
+                               return_name="1040 - John Park", people=FATHER)
+    business = make_engagement(tmp_path / "b", unnamed, household="Park Family",
+                               return_name="1120S - Park Landscaping")
+    drop(personal, "tb.pdf", "Trial balance as of December 31 2025", who="")
+    sort_all([personal, business], today=DAY1)
+    [filed] = read_index(business)
+    assert filed.decision == FILED and filed.identifier == "B01"

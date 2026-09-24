@@ -246,3 +246,22 @@ def test_the_build_fails_when_a_frozen_version_differs_from_the_constraints():
         frozen = frozen_in(info.read_text(encoding="utf-8", errors="replace"))
         assert frozen, info
         assert drift(frozen, pinned) == [], info
+
+
+def test_every_action_the_workflows_run_is_pinned_by_commit():
+    """Decision 137 (B3): an action named by tag runs whatever code the tag
+    names on the day - a tag can be moved. Every action a workflow takes
+    from another repository is pinned by a full commit SHA, with the tag it
+    stood for beside it; the repository's own reusable workflow is not
+    somebody else's code and is named by path."""
+    used = []
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            found = re.search(r"^\s*-?\s*uses:\s*(\S+)(.*)$", line)
+            if found:
+                used.append((path.name, found.group(1), found.group(2)))
+    remote = [(name, ref, rest) for name, ref, rest in used if not ref.startswith("./")]
+    assert remote
+    for name, ref, rest in remote:
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), (name, ref)
+        assert re.search(r"#\s*v\d+", rest), (name, ref, "the tag it stood for")

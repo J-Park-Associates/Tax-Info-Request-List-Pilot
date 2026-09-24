@@ -1256,3 +1256,101 @@ def test_a_picture_past_pillows_guard_is_a_kept_too_large_verdict_not_a_retry(tm
     Image.new("L", (100, 101), "white").save(photo)                     # the file changed
     with pytest.raises(AssertionError, match="read again"):
         check_content(photo, rules, cache)
+
+
+def test_a_reading_past_the_safety_stop_is_abandoned_cached_and_not_retried(tmp_path, monkeypatch):
+    """Decision 137 (B1.2; the owner's Q-1 of 2026-09-24): a reading gets a
+    minute a page (a photo is one page) and ten minutes a document,
+    rendering included. Every Tesseract call is given what is left of that
+    as its timeout; a reading that reaches the stop is abandoned - "The
+    reader stopped after N minutes on this file. A person reads it." - kept
+    as the verdict, parked for a person, and not read again until the file
+    changes. A slow reading under the stop is finished as before. The
+    clock is moved, not waited for."""
+    from PIL import Image
+    from pypdf import PdfWriter
+
+    import tracker.content_check as content_check
+    from tracker.content_check import ContentCache
+    from tracker.router import route_file
+
+    pytesseract = pytest.importorskip("pytesseract")
+    pytest.importorskip("pypdfium2")
+    now = [1000.0]
+    monkeypatch.setattr(content_check, "_clock", lambda: now[0])
+    monkeypatch.setattr(content_check, "_upright", lambda image: image)
+    assert (content_check.READING_STOP_PAGE_SECONDS,
+            content_check.READING_STOP_DOCUMENT_SECONDS) == (60.0, 600.0)
+    photo = tmp_path / "photo.png"
+    Image.new("L", (40, 40), "white").save(photo)
+    rules = item(allowed_extensions=("pdf",), any_keywords=("w-2",), min_size_kb=0)
+
+    # Slow but under the stop: finished and read, as decision 127 says.
+    given = []
+
+    def slow(image, *, timeout=0, **kwargs):
+        given.append(timeout)
+        now[0] += 59.0
+        return "Form W-2"
+
+    monkeypatch.setattr(pytesseract, "image_to_string", slow)
+    assert content_check.extract(photo).text == "Form W-2"
+    assert given == [60.0]                                   # a photo: one page's minute
+
+    # Past it: Tesseract is killed at its timeout, and the reading is abandoned.
+    def killed(image, *, timeout=0, **kwargs):
+        given.append(timeout)
+        now[0] += timeout
+        raise RuntimeError("Tesseract process timeout")
+
+    monkeypatch.setattr(pytesseract, "image_to_string", killed)
+    stopped = content_check.extract(photo)
+    said = "The reader stopped after 1 minutes on this file. A person reads it."
+    assert stopped.text is None and stopped.reason == said and not stopped.transient
+    routed = route_file(photo, [rules])
+    assert routed.identifier is None and routed.reason == said
+
+    cache = ContentCache()
+    verdict = check_content(photo, rules, cache)
+    assert not verdict.ok and reasons.READING_STOPPED.matches(verdict.reason)
+    monkeypatch.setattr(pytesseract, "image_to_string",
+                        lambda *a, **k: pytest.fail("a kept verdict was read again"))
+    assert check_content(photo, rules, cache) == verdict      # not retried
+    Image.new("L", (40, 41), "white").save(photo)             # the file changed
+    monkeypatch.setattr(pytesseract, "image_to_string", killed)
+    before = len(given)
+    assert reasons.READING_STOPPED.matches(check_content(photo, rules, cache).reason)
+    assert len(given) == before + 1                           # read again, stopped again
+
+    # A document: the render counts against the budget. Two pages render
+    # in half a minute each; the third's render alone runs past its minute,
+    # and the stop comes before Tesseract is asked about it.
+    writer = PdfWriter()
+    for _ in range(10):
+        writer.add_blank_page(width=612, height=792)
+    scan = tmp_path / "scan.pdf"
+    with scan.open("wb") as handle:
+        writer.write(handle)
+    import pypdfium2
+
+    real_render = pypdfium2.PdfPage.render
+    renders = iter([30.0, 30.0, 61.0])
+
+    def slow_render(page, **kwargs):
+        now[0] += next(renders)
+        return real_render(page, scale=0.1)
+
+    asked = []
+    monkeypatch.setattr(pypdfium2.PdfPage, "render", slow_render)
+    monkeypatch.setattr(pytesseract, "image_to_string",
+                        lambda image, *, timeout=0, **k: asked.append(timeout) or "page")
+    stopped = content_check.extract_by_ocr(scan)
+    assert stopped.reason == "The reader stopped after 2 minutes on this file. A person reads it."
+    assert asked == [30.0, 30.0]                              # page 3 never reached Tesseract
+    # Each page's timeout is what is left of its own minute, never more
+    # than what is left of the document's ten.
+    stop = content_check._SafetyStop()
+    now[0] = stop.started + 590.0
+    stop.page()
+    assert stop.remaining() == 10.0
+    assert content_check._STOP is None                       # nothing outlives the reading

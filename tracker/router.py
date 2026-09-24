@@ -471,9 +471,11 @@ def route_file(
         return Routing(path=path, identifier=None, reason=too_large)
 
     reading = read_once(path) if reading is None else reading
-    # A picture too large even for Pillow to decode (decision 137, B1)
-    # parks on that one sentence, as a file past the ceiling does.
-    if reading.text is None and reasons.TOO_LARGE.matches(reading.reason):
+    # A picture too large even for Pillow to decode, and a reading the
+    # safety stop abandoned (decision 137, B1), park on their one sentence,
+    # as a file past the ceiling does.
+    if reading.text is None and (reasons.TOO_LARGE.matches(reading.reason)
+                                 or reasons.READING_STOPPED.matches(reading.reason)):
         return Routing(path=path, identifier=None, reason=reading.reason, seconds=reading.seconds)
     # How long the reading took rides back with the decision (decision
     # 127), so the pass can name its slowest documents. It changes no
