@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 126,
+    "nodes": 122,
     "edges": 722,
-    "reused": 0
+    "reused": 99
   },
   "node_types": [
     "artifact",
@@ -2165,20 +2165,6 @@
       "type": "doc",
       "layer": "docs",
       "sha256": "4af24614e39eff17",
-      "lines": 387
-    },
-    {
-      "id": "docs/ROADMAP.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "4af24614e39eff17",
-      "lines": 387
-    },
-    {
-      "id": "docs/ROADMAP.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "4af24614e39eff17",
       "lines": 387,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2191,20 +2177,6 @@
       "lines": 6,
       "role": "The one number the backtest commits: how often the router filed the firm's own sorted documents where a person filed them, the count it was measured over, and the day it was measured.",
       "notes": "Decision 74. Owned by tools/backtest.py; `record` writes it and `check` fails a report below it. It ships with no agreement recorded, and `check` then says plainly that the owner has not yet run the backtest at the office and exits 0 - an unknown baseline is never reported as a met one. It holds a number and a date and nothing a client could be read out of."
-    },
-    {
-      "id": "docs/repo-map.curated.json",
-      "type": "file",
-      "layer": "docs",
-      "sha256": "15c4797aac353b35",
-      "lines": 791
-    },
-    {
-      "id": "docs/repo-map.curated.json",
-      "type": "file",
-      "layer": "docs",
-      "sha256": "15c4797aac353b35",
-      "lines": 791
     },
     {
       "id": "docs/repo-map.curated.json",
@@ -2845,8 +2817,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "55004933528280b9",
-      "lines": 5974,
+      "sha256": "dec68aa50d082d41",
+      "lines": 5979,
       "exports": [
         "BUSINESS",
         "CANONICAL_BELOW",
