@@ -63,8 +63,10 @@ the clients root, and the difference between them is the whole point:
   and nobody edits. Step 2 of it reads *"We will examine and place all
   documents into the current year's folder."*; step 4 begins *"Original
   PDFs or Excel files are preferred. A clear photo from your phone is fine
-  too, just get the whole page in the frame."* After **WHAT WE STILL NEED**
-  (every active request, received or not) comes **WHAT WE HAVE RECEIVED**,
+  too, just get the whole page in the frame."* After **REQUESTED, NOT YET RECEIVED**
+  (only the active requests nothing has been received for yet; a return
+  with nothing left has no heading there, and an empty list reads
+  *Nothing at the moment.*) comes **WHAT WE HAVE RECEIVED**,
   once something has arrived (decision 130): each document confirmed into
   a request, by that request's name, under its return, with the day it
   came in; and under **Under Review**, how many documents a person is

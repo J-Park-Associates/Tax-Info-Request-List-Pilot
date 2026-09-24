@@ -437,23 +437,89 @@ def test_the_client_file_name_never_reaches_the_readme(tmp_path):
     assert "Received 23 Sep 2026" in readme
 
 
-def test_what_we_still_need_is_unchanged_by_the_new_section(tmp_path):
-    """Decision 124's guarantee, narrowed by 130 and kept: the list of what
-    is still needed is every active request, received or not, byte for byte
-    what it was before anything arrived."""
+A01_LABEL = "A01 - Dec 2025 Bank Statement (Dec 2025)"
+ACTIVE_IDS = ("A01", "A02", "B01")   # C01 is Not Applicable: on no list
+
+
+def _mentions(section: list[str], identifier: str) -> bool:
+    return any(line.strip().startswith(f"{identifier} - ") for line in section[2:])
+
+
+def test_the_first_list_is_headed_in_jasons_words():
+    """Jason's decision of 2026-09-23 (decision 130), replacing 124's D-1."""
+    from tracker.scaffold import NOTHING_OUTSTANDING_LINE
+
+    assert README_HEADING == "REQUESTED, NOT YET RECEIVED"
+    assert NOTHING_OUTSTANDING_LINE == "  Nothing at the moment."
+
+
+def test_a_request_with_a_received_document_leaves_the_not_yet_received_list(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+    from tracker.scaffold import RECEIVED_HEADING
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    seed_index(engagement, [arrived("A01", FILED, original="bank.pdf")])
+    readme = readme_of(engagement)
+
+    first = section_of(readme, README_HEADING)
+    assert not _mentions(first, "A01")
+    assert _mentions(first, "A02") and _mentions(first, "B01")
+    assert TEST_RETURN in first      # a return with something left keeps its heading
+    assert any(A01_LABEL in line for line in section_of(readme, RECEIVED_HEADING))
+
+
+def test_a_document_under_review_does_not_take_its_request_off_the_list(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import NEEDS_REVIEW
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    before = section_of(readme_of(engagement), README_HEADING)
+    seed_index(engagement, [arrived("", NEEDS_REVIEW, original="parked.pdf")])
+
+    assert section_of(readme_of(engagement), README_HEADING) == before
+
+
+def _all_received(tmp_path):
+    from tests.conftest import seed_index
+    from tracker.filer import FILED
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    seed_index(engagement, [arrived(i, FILED, original=f"{i}.pdf") for i in ACTIVE_IDS])
+    return readme_of(engagement)
+
+
+def test_a_return_with_nothing_outstanding_has_no_heading_there(tmp_path):
+    readme = _all_received(tmp_path)
+
+    assert TEST_RETURN not in section_of(readme, README_HEADING)
+
+
+def test_nothing_outstanding_reads_nothing_at_the_moment(tmp_path):
+    from tracker.scaffold import NOTHING_OUTSTANDING_LINE
+
+    readme = _all_received(tmp_path)
+
+    assert section_of(readme, README_HEADING)[2:] == [NOTHING_OUTSTANDING_LINE]
+
+
+def test_every_request_is_on_exactly_one_list_or_under_review_never_lost(tmp_path):
+    """No request is ever on neither list, and none is on both: a request
+    that leaves the first list is a Received line below it."""
     from tests.conftest import seed_index
     from tracker.filer import FILED, NEEDS_REVIEW
     from tracker.scaffold import RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
-    before = readme_of(engagement)
     seed_index(engagement, [arrived("A01", FILED, original="bank.pdf"),
                             arrived("", NEEDS_REVIEW, original="parked.pdf")])
-    after = readme_of(engagement)
+    readme = readme_of(engagement)
+    first = section_of(readme, README_HEADING)
+    received = section_of(readme, RECEIVED_HEADING)
 
-    assert RECEIVED_HEADING in after
-    assert section_of(after, README_HEADING) == section_of(before, README_HEADING)
-    assert "  A01 - Dec 2025 Bank Statement (Dec 2025)" in section_of(after, README_HEADING)
+    for identifier in ACTIVE_IDS:
+        assert _mentions(first, identifier) != _mentions(received, identifier), identifier
+    assert not _mentions(first, "C01") and not _mentions(received, "C01")
 
 
 def test_the_readme_is_not_rewritten_when_nothing_changed(tmp_path):

@@ -420,15 +420,18 @@ def ledger_key(entry: IndexEntry) -> str:
 class ReceivedLine:
     """One document confirmed into one request, as the client is told it.
 
-    ``label`` is the request's own label - the words the client already
-    reads under *WHAT WE STILL NEED* - and never the client's file name nor
+    ``label`` is the request's own label - the words the client read under
+    *REQUESTED, NOT YET RECEIVED* - and never the client's file name nor
     the firm's working name. ``day`` is the date part of the row's received
     stamp, or ``None`` where the stamp does not read as a date.
+    ``identifier`` is the request's, which takes it off that list; empty
+    for a line said as "Other document", whose request is not on it.
     """
 
     return_path: Path
     label: str
     day: dt.date | None
+    identifier: str = ""
 
 
 @dataclass(frozen=True, slots=True)

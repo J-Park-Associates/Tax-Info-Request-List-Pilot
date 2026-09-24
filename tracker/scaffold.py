@@ -15,8 +15,8 @@ household - the two trees :mod:`tracker.layout` names:
   identify.
 
 One inbox serves every return of the household, so the README is written
-once for the household and lists what each return still needs under its own
-sub-heading: a client is told about one folder and keeps using it, whether
+once for the household and lists what each return has not yet received under
+its own sub-heading: a client is told about one folder and keeps using it, whether
 they have one return or ten (decision 125).
 
 **The README has one composer** (decision 130): :func:`write_readme` is the
@@ -84,8 +84,13 @@ from tracker.validators import google_stub_examples
 
 log = logging.getLogger("tracker.scaffold")
 
-#: Heads the client README's request list.
-README_HEADING = "WHAT WE STILL NEED"
+#: Heads the client README's request list, in Jason's words (decision 130,
+#: his decision of 2026-09-23, which replaces decision 124's D-1 for the
+#: README): the list holds only the requests nothing has been received for,
+#: so a client never reads a document as both needed and received.
+README_HEADING = "REQUESTED, NOT YET RECEIVED"
+#: The one line under :data:`README_HEADING` when no request is left on it.
+NOTHING_OUTSTANDING_LINE = "  Nothing at the moment."
 #: Step 2 of the client README, in Jason's words (decision 130, D-b): no
 #: timing clause and nothing more. Until then the step promised the move
 #: "on the next scheduled pass" and explained the filing in two more
@@ -110,8 +115,9 @@ README_PHOTO_LINE = (
 #: Decision 130: the section that acknowledges what has arrived. Two
 #: states only (D-a): a document confirmed into its request is Received,
 #: one a person is looking at is Under Review. Neither says whether a
-#: request is complete or where anything was filed - that stays decision
-#: 124's rule; *WHAT WE STILL NEED* is unchanged by it.
+#: request is complete or where anything was filed. A request with a
+#: Received line leaves *REQUESTED, NOT YET RECEIVED* and is shown here, so
+#: no request is ever on neither list.
 RECEIVED_HEADING = "WHAT WE HAVE RECEIVED"
 RECEIVED_WORD = "Received"
 UNDER_REVIEW_HEADING = "Under Review"
@@ -497,8 +503,8 @@ def _received_lines(returns: Sequence[_ReturnLine], received: Received) -> list[
     """The *WHAT WE HAVE RECEIVED* section, or nothing when no line would
     render under its heading (decision 130, D-f; the review's F4).
 
-    Received lines per return, under the return's name, in the order *WHAT
-    WE STILL NEED* lists the returns, by day and then label; a return with
+    Received lines per return, under the return's name, in the order
+    *REQUESTED, NOT YET RECEIVED* lists the returns, by day and then label; a return with
     none has no heading here. Under Review documents belong to no settled
     return, so they are one trailing block, one line per arrival day.
     """
@@ -526,6 +532,33 @@ def _received_lines(returns: Sequence[_ReturnLine], received: Received) -> list[
     # zero, renders nothing, and a heading over nothing tells the client
     # something arrived when the section says nothing did.
     return ["", RECEIVED_HEADING, "-" * 45, *lines] if lines else []
+
+
+def _outstanding(
+    returns: Sequence[tuple[_ReturnLine, list[RequestItem]]], received: Received,
+) -> list[tuple[_ReturnLine, list[RequestItem]]]:
+    """The returns and requests *REQUESTED, NOT YET RECEIVED* lists
+    (decision 130, Jason's decision of 2026-09-23): every active request
+    with no Received line - no Filed or File Moved row naming it, by its
+    identifier or by an also-filed copy - and only the returns with one
+    left. Under Review does not take a request off: nothing is confirmed
+    into it yet. A request that expects several documents leaves after its
+    first, which the owner accepted.
+
+    Read from the same :class:`Received` the section below renders, so a
+    request that leaves this list is always a line there - never on
+    neither."""
+    have: dict[Path, set[str]] = {}
+    for line in received.lines:
+        if line.identifier:
+            have.setdefault(Path(line.return_path), set()).add(line.identifier)
+    left = []
+    for one, items in returns:
+        mine = have.get(Path(one.path), set())
+        waiting = [item for item in items if item.identifier not in mine]
+        if waiting:
+            left.append((one, waiting))
+    return left
 
 
 def _readme_text(
@@ -562,13 +595,16 @@ def _readme_text(
         README_HEADING,
         "-" * 45,
     ]
-    for one, items in returns:
+    outstanding = _outstanding(returns, received)
+    for one, items in outstanding:
         lines.append(one.return_name)
         for item in items:
             entry = f"  {item.label}"
             if item.expected_text:
                 entry += f"  [{item.expected_text}]"
             lines.append(entry)
+    if not outstanding:
+        lines.append(NOTHING_OUTSTANDING_LINE)
     lines.extend(_received_lines([one for one, _ in returns], received))
     lines.append("")
     if contact:

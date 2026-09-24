@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 122,
     "edges": 710,
-    "reused": 99
+    "reused": 93
   },
   "node_types": [
     "artifact",
@@ -378,8 +378,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ad11067ab1df13cc",
-      "lines": 4607,
+      "sha256": "7faf6bdccc8907fe",
+      "lines": 4608,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
@@ -1051,8 +1051,8 @@
       "id": "tracker/records.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0edeefee87ea7986",
-      "lines": 1133,
+      "sha256": "3c0efd6bd12bf30a",
+      "lines": 1136,
       "exports": [
         "BEHIND",
         "CANDIDATE_SEP",
@@ -1626,11 +1626,12 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "da4d2d93736fabf3",
-      "lines": 607,
+      "sha256": "a346445f22752db4",
+      "lines": 643,
       "cli": "python -m tracker.scaffold",
       "exports": [
         "HouseholdScaffold",
+        "NOTHING_OUTSTANDING_LINE",
         "OTHER_DOCUMENT",
         "README_HEADING",
         "README_PHOTO_LINE",
@@ -1651,7 +1652,8 @@
         "write_readme"
       ],
       "constants": {
-        "README_HEADING": "'WHAT WE STILL NEED'",
+        "README_HEADING": "'REQUESTED, NOT YET RECEIVED'",
+        "NOTHING_OUTSTANDING_LINE": "'  Nothing at the moment.'",
         "README_STEP_2": "\"2. We will examine and place all documents into the current year's\\n   folder.\"",
         "README_PHOTO_LINE": "'4. Original PDFs or Excel files are preferred. A clear photo from your\\n   phone is fine too, just get the whole page in the frame.'",
         "RECEIVED_HEADING": "'WHAT WE HAVE RECEIVED'",
@@ -1660,7 +1662,7 @@
         "UNDER_REVIEW_LINE": "'{n} document{s} received {day}'",
         "OTHER_DOCUMENT": "'Other document'"
       },
-      "role": "Turns a return's request list, read from the record, into folders. DECISION 125 - THE HOUSEHOLD'S CLIENT SIDE AND THE RETURN'S FIRM SIDE: scaffold_household() makes the household's folder in the client tree, its one permanent inbox and one folder per open tax year of originals, and lays out folders only (decision 130). DECISION 130 - ONE COMPOSER: write_readme() is the only function that writes the client's _README.txt in that inbox - the steps (README_STEP_2 and README_PHOTO_LINE in Jason's words), WHAT WE STILL NEED per return of the open year, and WHAT WE HAVE RECEIVED once something has arrived (Received lines per return by request label and day; an Under Review block counted by day, never named) - rendered from a records.Received handed in by tracker.filer.received_for(); it never reads the index (tests/test_layers.py proves it), writes only when the text changed, and with two open years writes nothing, because the pass sorts nothing from an inbox that cannot say which year a document is for. scaffold_engagement() makes the return's Prepared/<folder_name_for(item)>/ plus 00 - Needs Review, and lays out its household too, so a return made on its own still has its inbox and its year folder.",
+      "role": "Turns a return's request list, read from the record, into folders. DECISION 125 - THE HOUSEHOLD'S CLIENT SIDE AND THE RETURN'S FIRM SIDE: scaffold_household() makes the household's folder in the client tree, its one permanent inbox and one folder per open tax year of originals, and lays out folders only (decision 130). DECISION 130 - ONE COMPOSER: write_readme() is the only function that writes the client's _README.txt in that inbox - the steps (README_STEP_2 and README_PHOTO_LINE in Jason's words), REQUESTED, NOT YET RECEIVED per return of the open year (only the requests with no Received line - Jason's decision of 2026-09-23, replacing 124's D-1; NOTHING_OUTSTANDING_LINE when none is left), and WHAT WE HAVE RECEIVED once something has arrived (Received lines per return by request label and day; an Under Review block counted by day, never named) - rendered from a records.Received handed in by tracker.filer.received_for(); it never reads the index (tests/test_layers.py proves it), writes only when the text changed, and with two open years writes nothing, because the pass sorts nothing from an inbox that cannot say which year a document is for. scaffold_engagement() makes the return's Prepared/<folder_name_for(item)>/ plus 00 - Needs Review, and lays out its household too, so a return made on its own still has its inbox and its year folder.",
       "notes": "The folder-name constants it used to own moved to tracker/layout.py with decision 125 - PREPARED_DIR_NAME, REVIEW_DIR_NAME, README_NAME, the two trees and the inbox - and SHARED_DIR_NAME and PBC_DIR_NAME went with the shape they named; this module imports them like everyone else and owns only what it builds (the request list's own file name left with decision 104; there is no such file). Runs on every scheduled pass now, so a row added in the app has its folder by the next run; the README is rewritten only when its text changed. The README contact comes from the engagement's details in the record (firm, else sender) unless given. Decision 61: the README is written whole and a failure to refresh it is a log line, never the end of a pass. Decision 89: the view's own file name lives in tracker/view.py with the module that writes it, as the record's does in tracker/ledger.py - one owner, the writer. Decision 104: it reads through manifest.load_manifest() and manifest.load_engagement_info(), which follow the journal into the store, so it is a reader of tracker.db like every other."
     },
     {
@@ -2125,7 +2127,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "88f7a20461ca6e74",
+      "sha256": "08e16550f566a6bb",
       "lines": 382,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2143,7 +2145,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "c4e610114e17b230",
+      "sha256": "37bd78523cf4d9e4",
       "lines": 791,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2152,8 +2154,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e64cb79a4718d2db",
-      "lines": 908,
+      "sha256": "7fac9edaa1e8ee95",
+      "lines": 910,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -3917,15 +3919,18 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "861b927387c0ad5d",
-      "lines": 653,
+      "sha256": "093eb70baa52657c",
+      "lines": 719,
       "exports": [
+        "A01_LABEL",
+        "ACTIVE_IDS",
         "ITEMS",
         "arrived",
         "engagement",
         "readme_of",
         "section_of",
         "test_a_document_filed_to_two_requests_is_listed_once_per_request",
+        "test_a_document_under_review_does_not_take_its_request_off_the_list",
         "test_a_filed_document_is_listed_as_received_under_its_return_by_its_request_label",
         "test_a_folder_with_no_record_raises",
         "test_a_household_with_two_open_years_is_left_alone",
@@ -3933,16 +3938,20 @@
         "test_a_readme_refresh_never_writes_older_text_over_newer",
         "test_a_readme_the_client_side_holds_does_not_stop_the_scaffold",
         "test_a_refresh_that_finds_the_readme_busy_waits_briefly_then_skips_with_a_log_line",
+        "test_a_request_with_a_received_document_leaves_the_not_yet_received_list",
+        "test_a_return_with_nothing_outstanding_has_no_heading_there",
         "test_a_write_failure_is_a_log_line_and_the_caller_goes_on",
         "test_assign_folders_longest_identifier_wins",
         "test_client_rename_with_prefix_not_duplicated",
         "test_duplicates_and_not_requested_rows_are_not_listed",
         "test_each_issuer_gets_its_own_client_folder",
+        "test_every_request_is_on_exactly_one_list_or_under_review_never_lost",
         "test_existing_client_files_never_touched",
         "test_folder_names_are_windows_safe",
         "test_idempotent_rerun_creates_nothing",
         "test_matches_identifier_boundaries",
         "test_not_applicable_folder_left_alone_if_it_exists",
+        "test_nothing_outstanding_reads_nothing_at_the_moment",
         "test_readme_refreshed_on_rerun",
         "test_recreates_deleted_folder",
         "test_sanitize_component",
@@ -3950,6 +3959,7 @@
         "test_step_2_reads_jasons_sentence_and_the_old_wording_is_gone",
         "test_step_4_reads_jasons_sentence_and_the_three_dropped_phrases_are_gone",
         "test_the_client_file_name_never_reaches_the_readme",
+        "test_the_first_list_is_headed_in_jasons_words",
         "test_the_readme_contact_comes_from_the_engagement_details",
         "test_the_readme_is_not_rewritten_when_nothing_changed",
         "test_the_readme_names_the_household_contact",
@@ -3957,9 +3967,12 @@
         "test_the_received_heading_is_written_only_over_a_line_under_it",
         "test_the_received_section_is_absent_until_something_has_arrived",
         "test_the_review_folder_is_never_assigned_to_an_identifier",
-        "test_the_scaffold_makes_both_trees_and_the_readme_in_the_inbox_is_grouped_by_return",
-        "test_what_we_still_need_is_unchanged_by_the_new_section"
-      ]
+        "test_the_scaffold_makes_both_trees_and_the_readme_in_the_inbox_is_grouped_by_return"
+      ],
+      "constants": {
+        "A01_LABEL": "'A01 - Dec 2025 Bank Statement (Dec 2025)'",
+        "ACTIVE_IDS": "('A01', 'A02', 'B01')"
+      }
     },
     {
       "id": "tests/test_scanner.py",

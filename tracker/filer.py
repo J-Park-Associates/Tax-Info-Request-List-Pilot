@@ -739,7 +739,7 @@ def received_for(returns: Sequence) -> Received:
 
     - ``Filed`` and ``File Moved`` are **Received**, once per request the
       document satisfied, under the request's own label - the words the
-      client already reads under *WHAT WE STILL NEED* - and never the
+      client read under *REQUESTED, NOT YET RECEIVED* - and never the
       client's file name or the firm's working name. A request no longer on
       the list reads :data:`OTHER_DOCUMENT`.
     - ``Needs Review`` is **Under Review**, counted by the day it arrived and
@@ -768,7 +768,8 @@ def received_for(returns: Sequence) -> Received:
             if entry.decision in _RECEIVED_DECISIONS:
                 lines.extend(ReceivedLine(return_path=folder,
                                           label=labels.get(identifier, OTHER_DOCUMENT),
-                                          day=day)
+                                          day=day,
+                                          identifier=identifier if identifier in labels else "")
                              for identifier in _requests_of(entry, items))
             elif entry.decision == NEEDS_REVIEW:
                 waiting[day] = waiting.get(day, 0) + 1
