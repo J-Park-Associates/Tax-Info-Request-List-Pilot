@@ -55,11 +55,12 @@ is not somewhere else.
 **Current, behind, or unknown.** Because the view is a mirrored derivation,
 a person has to be able to tell whether the thing in front of them is still
 true. :func:`view_state` answers by comparing the stamp the page carries in
-its ``<head>`` - the record's head as it was when the page was drawn - with
-the head now: ``CURRENT`` when they match, ``BEHIND`` when the page is
-there and the record has moved on (a rules edit is an event, so an edit
-moves it too), ``UNKNOWN`` when there is no page or its stamp cannot be
-read. The stamp is
+its ``<head>`` - the record's head as it was when the page was drawn, read
+*before* the rows so it never names a line they did not see (decision
+152) - with the head now: ``CURRENT`` when they match, ``BEHIND`` when the
+page is there and the record has moved on (a rules edit is an event, so an
+edit moves it too), ``UNKNOWN`` when there is no page or its stamp cannot
+be read. The stamp is
 in meta tags rather than in the visible text, so reading it is a short
 regular expression over the head of the file and never a parser; the same
 values are shown in the Summary for a person.
@@ -470,8 +471,26 @@ def _readers(
     engagement_dir: Path,
     items: list[RequestItem] | None,
     entries: list[IndexEntry] | None,
-) -> tuple[list[RequestItem], list[IndexEntry]]:
-    """What the readers say, read here if the caller has not read it already."""
+    head: str | None,
+) -> tuple[str, list[RequestItem], list[IndexEntry]]:
+    """The record's head, then what the readers say, each read here if the
+    caller has not read it already.
+
+    **The head first** (decision 152). The page takes no lock, so a pass
+    may append a line while it is drawn. Read after the rows, the head
+    could name a line the rows never saw, and ``view_state()`` would call a
+    page current that is behind. Read before them, a line appended in
+    between leaves a digest *older* than the rows: the page reads as
+    behind and the next draw replaces it - an error toward one redraw,
+    never toward hiding a change. It is the head the record had at most
+    when the readers read, which is what the page can claim to show.
+    ``tracker.ledger.read_with_head`` cannot serve here: the rows come from
+    the readers (the store, following the journal), not from this read of
+    the file. A caller handing in rows it read hands in the head it read
+    before them.
+    """
+    if head is None:
+        head = ledger.head(engagement_dir)
     try:
         if items is None:
             items = load_manifest(engagement_dir)
@@ -482,11 +501,12 @@ def _readers(
         # caller decides what that means. A pass says it in a log line and
         # stands.
         raise ViewError(f"{engagement_dir.name}: the view could not be built ({exc})") from exc
-    return items, entries
+    return head, items, entries
 
 
 def _stamp(
     engagement_dir: Path,
+    head: str,
     items: list[RequestItem],
     entries: list[IndexEntry],
     parked: list[IndexEntry],
@@ -496,14 +516,16 @@ def _stamp(
 
     Both times come from one moment: the UTC one is what a reader compares
     and what travels between machines, the local one is the only one a
-    person in the office reads without arithmetic.
+    person in the office reads without arithmetic. ``head`` is the digest
+    :func:`_readers` read before the rows (decision 152), never one read
+    here, after them.
     """
     generated = now or dt.datetime.now(dt.UTC)
     return {
         LABEL_ENGAGEMENT: engagement_dir.name,
         LABEL_GENERATED: generated.isoformat(timespec="seconds"),
         LABEL_GENERATED_LOCAL: generated.astimezone().isoformat(sep=" ", timespec="seconds"),
-        LABEL_RECORD_DIGEST: ledger.head(engagement_dir),
+        LABEL_RECORD_DIGEST: head,
         LABEL_REQUEST_ROWS: str(len(items)),
         LABEL_INDEX_ROWS: str(len(entries)),
         LABEL_PARKED_ROWS: str(len(parked)),
@@ -621,6 +643,7 @@ def render_page(
     *,
     items: list[RequestItem] | None = None,
     entries: list[IndexEntry] | None = None,
+    head: str | None = None,
     now: dt.datetime | None = None,
 ) -> str:
     """The page for one engagement as text, writing nothing.
@@ -632,10 +655,10 @@ def render_page(
     the only claim the fixture makes.
     """
     engagement_dir = Path(engagement_dir)
-    items, entries = _readers(engagement_dir, items, entries)
+    head, items, entries = _readers(engagement_dir, items, entries, head)
     triaged = review.triage(engagement_dir, entries, items=items)
     parked = [one.entry for one in triaged]
-    stamp = _stamp(engagement_dir, items, entries, parked, now)
+    stamp = _stamp(engagement_dir, head, items, entries, parked, now)
     return _page(engagement_dir, items, entries, triaged, stamp)
 
 
@@ -644,15 +667,18 @@ def write_view(
     *,
     items: list[RequestItem] | None = None,
     entries: list[IndexEntry] | None = None,
+    head: str | None = None,
     now: dt.datetime | None = None,
 ) -> ViewResult:
     """Regenerate the view for one engagement. Returns what it did.
 
     ``items`` and ``entries`` are the readers' answers, so a caller that has
-    already read them (a pass has) does not pay for a second reading. Left
-    out, they are read here exactly as the app reads them: nothing is moved,
-    not even a sidecar that cannot be parsed - drawing the view changes
-    nothing about what it describes.
+    already read them does not pay for a second reading; such a caller
+    hands in ``head`` too, the record's head as it read it *before* them
+    (decision 152). Left out, all three are read here - the head first -
+    exactly as the app reads them: nothing is moved, not even a sidecar
+    that cannot be parsed - drawing the view changes nothing about what it
+    describes.
 
     **Never raises because somebody had it open.** The replace goes through
     the same atomic swap the index uses, and a file another process holds
@@ -662,10 +688,10 @@ def write_view(
     """
     engagement_dir = Path(engagement_dir)
     path = engagement_dir / VIEW_FILENAME
-    items, entries = _readers(engagement_dir, items, entries)
+    head, items, entries = _readers(engagement_dir, items, entries, head)
     triaged = review.triage(engagement_dir, entries, items=items)
     parked = [one.entry for one in triaged]
-    stamp = _stamp(engagement_dir, items, entries, parked, now)
+    stamp = _stamp(engagement_dir, head, items, entries, parked, now)
     result = ViewResult(path=path, requests=len(items), rows=len(entries),
                         parked=len(parked), stamp=stamp)
     try:

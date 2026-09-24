@@ -469,6 +469,50 @@ def test_the_view_is_behind_after_a_person_edits_the_rules_and_after_a_new_event
     assert view.view_state(engagement) == view.CURRENT
 
 
+def test_a_line_appended_while_the_page_is_drawn_leaves_it_stale_not_current(
+    engagement, monkeypatch
+):
+    """Decision 152: the page's digest is the head read *before* its rows.
+
+    A line the record gains after the readers have read - a pass recording
+    while ``python -m tracker.view``, which takes no lock, draws - is not on
+    the page, so the page must not name it: its digest is the head from
+    before the line and ``view_state()`` calls it behind, never current.
+    Both ways the page is drawn, the one written and the one rendered.
+    """
+    view.write_view(engagement)
+    read_index = view.read_index
+
+    def rows_then_a_line(engagement_dir):
+        entries = read_index(engagement_dir)
+        teach_a_keyword(engagement, "C01", "lender")     # the record moves on
+        return entries
+
+    monkeypatch.setattr(view, "read_index", rows_then_a_line)
+
+    before = ledger.head(engagement)
+    written = view.write_view(engagement)
+    assert ledger.head(engagement) != before                 # the line did land
+    assert written.stamp[view.LABEL_RECORD_DIGEST] == before
+    assert view.read_stamp(engagement)[view.LABEL_RECORD_DIGEST] == before
+    assert view.view_state(engagement) == view.BEHIND
+
+    before = ledger.head(engagement)
+    drawn = view.render_page(engagement)
+    assert ledger.head(engagement) != before
+    digest = f'<meta name="{view.META_NAMES[view.LABEL_RECORD_DIGEST]}" content="{before}">'
+    assert digest in drawn
+
+
+def test_a_page_drawn_on_a_quiet_record_is_current(engagement):
+    """Decision 152: nothing appended while the page is drawn, and the head
+    read first is the head now - the page is current, as it always was."""
+    teach_a_keyword(engagement, "C01", "lender")
+    written = view.write_view(engagement)
+    assert written.stamp[view.LABEL_RECORD_DIGEST] == ledger.head(engagement)
+    assert view.view_state(engagement) == view.CURRENT
+
+
 # ------------------------------------------------------------ held open ----
 
 
