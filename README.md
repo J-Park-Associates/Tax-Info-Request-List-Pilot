@@ -160,7 +160,9 @@ accountant instead:
   scan). The document may be perfect; asking a client to resend it is how a
   firm looks careless.
 - A row with no request folder. We can't tell a client we never received
-  something we never made a place to put — that's a scaffold problem.
+  something we never made a place to put — that's a scaffold problem. (A
+  row nobody asked for has no folder until its first document, on
+  purpose, and is never chased at all — decision 142.)
 
 And one thing **holds the whole reminder** for a person (decision 115): a
 row whose file arrived and failed the rules with no firm-side reason. A copy
@@ -360,9 +362,14 @@ Prior-year data takes precedence over the template, absolutely:
   its own "Previous Year Not Applicable" heading for a fresh decision: clear
   the override in the editor to ask for it this year, or leave it set aside.
   `Accepted` does not — that was a judgment about one year's particular files.
-- Checklist rows this client has never had are **offered, not added**. They
-  are listed in the output, once; `--include-new` adds them, and an offer
-  you want later is added in the app's editor.
+- Whether a row is **asked** carries, and so does whether it is **named**.
+  A row nobody asked for that received a document this year is asked next
+  year: the client sent one, so asking is the likelier need (untick Asked
+  in the editor if not).
+- Checklist rows this client has never had are **added as not asked**
+  (decision 142): on the return, never listed as needed and never chased,
+  but a document that arrives for one files there instead of parking. Set
+  Asked in the app's editor to ask for one.
 - Documents that arrived last year and matched no request are surfaced too —
   exactly the gap next year's list should close.
 
@@ -453,8 +460,11 @@ For a returning client the request list is last year's, rolled forward
 (the desktop wizard's first page, or `python -m tracker.rollover`). For a
 new client you choose the return type (1040, 1120, 1120-S, 1065, 1041, 990)
 and every form carries its own checklist in `tracker/templates.py`,
-the only place it lives. The wizard shows it to tick, trim and extend, for
-the tax year the calendar says, and the manifest it creates is the readable
+the only place it lives. Every row of it goes on the return (decision 142);
+the wizard's tick is **Ask the client**: a ticked row is asked for and
+chased, an unticked one is never asked for but files a document that
+arrives for it. Add custom rows (always asked) as needed. It is cut for the
+tax year the calendar says, and the manifest it creates is the readable
 copy.
 
 ## Setup

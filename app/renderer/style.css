@@ -315,6 +315,8 @@ body {
 .chip-pending-sync   { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
 .chip-requested { background: #f8fafc; border-color: #e2e8f0; color: #64748b; }
 .chip-requested::before { background: #cbd5e1; }
+.chip-not-asked { background: #f8fafc; border-color: #e2e8f0; color: #64748b; font-style: italic; }
+.chip-not-asked::before { background: #cbd5e1; }
 
 /* ── Assurance bar ───────────────────────────────────────────────────── */
 
@@ -511,6 +513,8 @@ body {
 .ed-set-aside { margin-top: 8px; }
 .ed-set-aside > summary { cursor: pointer; font-size: 12.5px; color: var(--subtle); }
 .ed-set-aside .editor-table td { color: var(--subtle); }
+.ed-not-asked { margin-top: 8px; }
+.ed-not-asked > summary { cursor: pointer; font-size: 12.5px; color: var(--subtle); }
 .req-reason { font-size: 12px; color: var(--subtle); margin-top: 2px; max-width: 220px;
               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r-set-aside { color: var(--subtle); }

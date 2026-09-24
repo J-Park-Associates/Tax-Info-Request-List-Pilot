@@ -891,8 +891,9 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     firm-side work (``attention``), scaffold gaps (``gaps``) and the
     ambiguous rows that hold the whole draft (``held``, decisions 115 and 117).
 
-    Overridden rows and anything already in are dropped here and never reach
-    the draft. For the rest, in this order: a row with no request folder is
+    A row nobody asked for (decision 142) is dropped first, whatever its
+    status or notes. Overridden rows and anything already in are dropped
+    here too and never reach the draft. For the rest, in this order: a row with no request folder is
     a scaffold gap; a row carrying any firm-side marker, on any outstanding
     status, is the firm's (decisions 20, 21, 58, and 109's rule for a
     Missing row); a Failed row, or a Partial whose shortfall is a refused
@@ -912,6 +913,11 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     held: list[FirmSideFlag] = []
 
     for item in items:
+        # Decision 142: a row nobody asked for is never chased, and is
+        # skipped before anything else - it has no folder on purpose, so
+        # the scaffold-gap check below would report it every week.
+        if not item.asked:
+            continue
         if item.manual_override or item.status not in OUTSTANDING:
             continue
 

@@ -6154,3 +6154,118 @@ def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path
     again = [r for r in read_index(father) if r.original_name == "tb again.pdf"]
     assert [r.decision for r in again] == [NEEDS_REVIEW]
     assert again[0].reason.startswith("Unnamed, so it was not filed into another household's return.")
+# --------------------------------------------- decision 142: accepted, not asked ----
+#
+# Every catalog row is on every return; only the ticked ones are asked for.
+# A row nobody asked for is a request the router considers like any other:
+# a document for it files there, under a folder its first document makes.
+
+NOT_ASKED_ITEMS = [ITEMS[0], replace(ITEMS[1], asked=False)]      # A01 asked, C01 (1098) not
+
+
+def test_a_document_for_a_not_asked_row_files_there_and_reads_received(tmp_path):
+    from tracker.manifest import Status, summarize
+    from tracker.scanner import scan_engagement
+
+    engagement = make_engagement(tmp_path, NOT_ASKED_ITEMS)
+    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
+
+    report = sort(engagement, today=DAY1)
+
+    [entry] = report.filed
+    assert entry.identifier == "C01" and entry.decision == FILED
+    assert (engagement / entry.prepared_location).is_file()
+    scan_engagement(engagement, today=DAY1)
+    c01 = {i.identifier: i for i in load_manifest(engagement)}["C01"]
+    assert c01.status == Status.RECEIVED and c01.asked is False
+    summary = summarize(load_manifest(engagement))
+    assert summary.also_received == 1 and summary.total == 1 and summary.received == 0
+
+
+def test_no_folder_is_made_for_a_not_asked_row_until_its_first_document(tmp_path):
+    """The scaffold makes none, the scanner writes no scaffold-gap note for
+    the folder it lacks on purpose, and the filing makes it with the first
+    document - after which it stays."""
+    from tracker.manifest import Status
+    from tracker.scaffold import assign_folders
+    from tracker.scanner import scan_engagement
+
+    engagement = make_engagement(tmp_path, NOT_ASKED_ITEMS)
+    prepared_dir = engagement / PREPARED_DIR_NAME
+    assert assign_folders(prepared_dir, ["A01", "C01"]) == {
+        "A01": assign_folders(prepared_dir, ["A01"])["A01"], "C01": []}
+
+    scan_engagement(engagement, today=DAY1)
+    rows = {i.identifier: i for i in load_manifest(engagement)}
+    assert rows["C01"].status == Status.MISSING
+    assert not reasons.NO_REQUEST_FOLDER.matches(rows["C01"].validation_notes or "")
+
+    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    sort(engagement, today=DAY1)
+    [folder] = assign_folders(prepared_dir, ["C01"])["C01"]
+    assert [p.name for p in folder.iterdir()]
+    from tracker.scaffold import scaffold_engagement
+    assert "C01" in scaffold_engagement(engagement).existing
+
+
+def test_two_returns_in_one_household_that_both_accept_a_notice_park_it_unless_the_name_decides(tmp_path):
+    """A 1040 and a 1065 each carry decision 141's notices row, not asked.
+    The name decides whose a notice is: the person's files to the 1040, the
+    entity's to the 1065. One naming both is contested between the returns
+    and parks; one naming neither parks too, with the name's own reason -
+    nothing is guessed either way."""
+    from tests.test_catalog import cp_notice_lines
+    from tracker.filer import CONTESTED_BETWEEN_RETURNS
+    from tracker.templates import template_items
+
+    def rows(form):        # the suite's pages are small; the catalog's floor is for real mail
+        return [replace(item, min_size_kb=0, asked=item.identifier != "Z01")
+                for item in template_items(form) if item.identifier in ("A01", "Z01")]
+
+    entity = "Park Landscaping LLC"
+    personal = make_engagement(tmp_path, rows("1040"), household="Park Family",
+                               return_name="1040 - Test Client")
+    business = make_engagement(tmp_path, rows("1065"), household="Park Family",
+                               return_name="1065 - Park Landscaping",
+                               people=(Person("entity", entity, propose_spellings(entity, "entity")),))
+    notice = "\n".join(cp_notice_lines(2026))
+    drop(personal, "person.pdf", notice, who=TEST_CLIENT)
+    drop(personal, "entity.pdf", notice + "\nNotice for account holder", who=entity)
+    drop(personal, "both.pdf", notice + "\nSecond notice", who=f"{TEST_CLIENT}\n{entity}")
+    drop(personal, "nobody.pdf", notice + "\nThird notice", who="")
+
+    done = sort_all([personal, business], today=DAY1)
+
+    assert [(e.original_name, e.identifier) for e in done[personal].filed] == [("person.pdf", "Z01")]
+    assert [(e.original_name, e.identifier) for e in done[business].filed] == [("entity.pdf", "Z01")]
+    parked = {e.original_name: e for e in done[personal].review}
+    assert set(parked) == {"both.pdf", "nobody.pdf"}
+    assert parked["both.pdf"].reason == CONTESTED_BETWEEN_RETURNS.format(
+        listed="Park Family 2025 1040 - Test Client: Z01; Park Family 2025 1065 - Park Landscaping: Z01")
+    assert reasons.NAME_NOT_ON_PAGE.matches(parked["nobody.pdf"].reason)
+
+
+def test_a_document_set_aside_as_not_requested_keeps_that_answer_when_re_sent(tmp_path):
+    """Decision 111 is untouched by decision 142. A document a person set
+    aside as Not requested - the day the list had no row for it - keeps
+    that row and its answer. The client sending it again is a new arrival,
+    routed afresh as 111 says: once the catalog's row is on the return as
+    not asked, the re-send files there, and its row quotes the earlier
+    decision whole."""
+    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE, dismiss_review_file
+
+    engagement = make_engagement(tmp_path, [ITEMS[0]])
+    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
+    parked = sort(engagement, today=DAY1).review[0]
+    dismissed = dismiss_review_file(engagement, parked.pbc_location, "not ours", today=DAY2).entry
+
+    save_rules(engagement, [*load_manifest(engagement), replace(ITEMS[1], asked=False)],
+               load_engagement_info(engagement))
+    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")   # the same bytes
+    report = sort(engagement, today=DAY2)
+
+    [again] = report.filed
+    assert again.identifier == "C01"
+    assert RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason) in again.reason
+    earlier = [row for row in read_index(engagement) if row.decision == NOT_REQUESTED]
+    assert [row.reason for row in earlier] == [dismissed.reason]

@@ -454,9 +454,14 @@ def _scan_item(
 def _resolve_status(
     item: RequestItem, folders: list[Path], count: int, pending: int, failed: bool, facts: list[str],
 ) -> str:
-    """The deterministic status for what tiers 1-3 found; adds the note that says why."""
+    """The deterministic status for what tiers 1-3 found; adds the note that says why.
+
+    A row nobody asked for (decision 142) has no folder until its first
+    document is filed, on purpose, so its missing folder is Missing with no
+    note: ``NO_REQUEST_FOLDER`` is a scaffold gap, and there is none."""
     if not folders:
-        facts.insert(0, reasons.NO_REQUEST_FOLDER.format())
+        if item.asked:
+            facts.insert(0, reasons.NO_REQUEST_FOLDER.format())
         return Status.MISSING
     if count >= item.expected_count:
         if pending:

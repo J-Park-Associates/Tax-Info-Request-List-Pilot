@@ -1032,7 +1032,11 @@ def household_from_json(raw: dict) -> HouseholdInfo:
 #: default. ``named`` (decision 128) is last for the same reason, and its
 #: default is **strict**: a row stored before the mark existed reads as
 #: named, so a W-2 in an old engagement needs the name on the page exactly
-#: as a new one does.
+#: as a new one does. ``asked`` (decision 142) comes after it, and its
+#: default is **yes**: every row written before the mark existed was a row a
+#: person ticked, so it reads as asked and no existing list changes meaning.
+#: A row that is not asked is on the return, accepts what arrives for it
+#: and files it, but is never listed as needed and never chased.
 RULE_FIELDS: tuple[str, ...] = (
     "identifier",
     "document",
@@ -1048,6 +1052,7 @@ RULE_FIELDS: tuple[str, ...] = (
     "row",
     "override_reason",
     "named",
+    "asked",
 )
 
 
@@ -1061,12 +1066,14 @@ RULE_LIST_FIELDS: frozenset[str] = frozenset({
 #: The rule fields that are yes/no. Stored as 0 and 1, like every other
 #: flag the store holds, and turned back into booleans here so a row read
 #: from the record is the row that was written and not a near-enough copy.
-RULE_FLAG_FIELDS: frozenset[str] = frozenset({"date_pattern_derived", "named"})
+RULE_FLAG_FIELDS: frozenset[str] = frozenset({"date_pattern_derived", "named", "asked"})
 #: What a yes/no rule field means when the line that wrote the row never
 #: said - a journal from before the field existed, and so a column holding
 #: null. The record owns the answer, because it is the record's default:
-#: ``named`` is **true**, so a row written before decision 128 is strict.
-RULE_FLAG_DEFAULTS: dict[str, bool] = {"date_pattern_derived": False, "named": True}
+#: ``named`` is **true**, so a row written before decision 128 is strict,
+#: and ``asked`` is **true**, so a row written before decision 142 is the
+#: request a person ticked.
+RULE_FLAG_DEFAULTS: dict[str, bool] = {"date_pattern_derived": False, "named": True, "asked": True}
 assert set(RULE_FLAG_DEFAULTS) == set(RULE_FLAG_FIELDS)
 
 

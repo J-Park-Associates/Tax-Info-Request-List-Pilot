@@ -24,7 +24,10 @@ might be. Four sections, in the order a person reads them:
   ``Override.NOT_APPLICABLE`` are not in that table: they sit below it in
   a folded block per year (:data:`NOT_APPLICABLE_SECTION`), dimmed, in
   the same columns - off the working view, kept and findable (decision
-  116).
+  116). The rows nobody asked for with nothing received fold the same
+  way into one block, :data:`NOT_ASKED_SECTION` (decision 142); a row
+  nobody asked for that *has* received a document is real work, and sits
+  in the table like any row, marked not asked.
 - **Index** - every original, in the index's own column order.
 - **Needs Review** - the rows parked for a person, and under each the
   shortlist the app's review card shows, in the words
@@ -95,6 +98,7 @@ from tracker.manifest import (
     ANY_EXTENSION,
     COL_ALLOWED_EXTENSIONS,
     COL_ANY_KEYWORDS,
+    COL_ASKED,
     COL_DATE_PATTERN,
     COL_DOCUMENT,
     COL_EXPECTED_COUNT,
@@ -110,13 +114,16 @@ from tracker.manifest import (
     COL_STATUS,
     COL_VALIDATION_NOTES,
     HEADERS,
+    NOT_ASKED_LABEL,
     ManifestError,
     Override,
     RequestItem,
     Status,
+    is_idle_unasked,
     load_engagement_info,
     load_manifest,
     override_label,
+    status_label,
 )
 from tracker.page import Cell, Row, details, esc, page_text, slug, table, tolerant_console, unesc
 from tracker.records import (
@@ -200,6 +207,13 @@ NOT_APPLICABLE_CLASS = "not-applicable"
 #: The folded block's heading on the Requests section: the label (the
 #: value with the rows' year) and how many rows it holds.
 NOT_APPLICABLE_SECTION = "{label} ({n})"
+#: A row nobody asked for is classed apart, dimmed like a set-aside one
+#: while it waits in its fold and marked in the table once a document has
+#: arrived for it (decision 142).
+NOT_ASKED_CLASS = "not-asked"
+#: The one folded block of rows nobody asked for with nothing received,
+#: and how many it holds (decision 142).
+NOT_ASKED_SECTION = NOT_ASKED_LABEL + " ({n})"
 _BADGE_COLOURS: dict[str, str] = {
     Status.RECEIVED: "background: #ecfdf5; border-color: #a7f3d0; color: #047857;",
     Status.PARTIAL: "background: #fffbeb; border-color: #fde68a; color: #b45309;",
@@ -208,6 +222,7 @@ _BADGE_COLOURS: dict[str, str] = {
     Status.PENDING_SYNC: "background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8;",
     Override.ACCEPTED: "background: #ecfdf5; border-color: #a7f3d0; color: #047857;",
     Override.NOT_APPLICABLE: "background: #f8fafc; border-color: #e2e8f0; color: #64748b;",
+    NOT_ASKED_LABEL: "background: #f8fafc; border-color: #e2e8f0; color: #64748b;",
 }
 
 #: Inline, because the page is one file that must render from a share, a
@@ -240,6 +255,7 @@ th[data-sort="up"]::after { content: " \\2191"; }
 th[data-sort="down"]::after { content: " \\2193"; }
 tr:hover td { background: #f6f5f2; }
 tr.not-applicable td { color: #9b978f; }
+tr.not-asked td { font-style: italic; }
 details { margin: 0.6rem 0 0; font-size: 0.87rem; }
 summary { cursor: pointer; color: #6b6862; }
 li.set-aside { color: #6b6862; }
@@ -309,7 +325,7 @@ def _text(value: object) -> str:
     return str(value)
 
 
-#: What the page shows about a request: the twelve columns a person edits
+#: What the page shows about a request: the thirteen columns a person edits
 #: (``manifest.HEADERS``) and the four the record holds. A person wants to
 #: read them side by side, and this is the page that shows them. The
 #: status columns come last, as they always did.
@@ -344,7 +360,11 @@ def request_row(item: RequestItem) -> dict[str, str]:
         # (decision 128), in the two words the record describes a yes/no
         # in - the same words the editor's box shows.
         COL_NAMED: YES if item.named else NO,
-        COL_STATUS: _text(item.status),
+        # Whether the client is asked for it (decision 142), in the same
+        # two words; and a row nobody asked for, with nothing in, is said
+        # to be not asked rather than Missing - nobody owes it.
+        COL_ASKED: YES if item.asked else NO,
+        COL_STATUS: NOT_ASKED_LABEL if status_label(item) == NOT_ASKED_LABEL else _text(item.status),
         COL_RECEIVED_DATE: _text(item.received_date),
         COL_FILE_COUNT: _text(item.file_count),
         COL_VALIDATION_NOTES: _text(item.validation_notes),
@@ -382,7 +402,23 @@ def _request_cells(item: RequestItem) -> Row:
             values.append(_badge(word))
         else:
             values.append(word)
-    return Row(tuple(values), class_name=NOT_APPLICABLE_CLASS if set_aside else "")
+    classes = [name for name, on in ((NOT_APPLICABLE_CLASS, set_aside),
+                                     (NOT_ASKED_CLASS, not item.asked)) if on]
+    return Row(tuple(values), class_name=" ".join(classes))
+
+
+def _not_asked_block(items: list[RequestItem]) -> list[str]:
+    """The rows nobody asked for with nothing received (decision 142),
+    folded away under the Requests table in one ``<details>``, in the same
+    columns, the way the set-aside rows fold. Nothing is drawn when there
+    are none."""
+    rows = [item for item in items if is_idle_unasked(item)]
+    if not rows:
+        return []
+    return details(
+        NOT_ASKED_SECTION.format(n=len(rows)),
+        table(REQUEST_COLUMNS, (_request_cells(item) for item in rows), sortable=True),
+    )
 
 
 def _not_applicable_blocks(items: list[RequestItem]) -> list[str]:
@@ -525,7 +561,8 @@ def _body(
     triaged: list[review.Triage],
     stamp: dict[str, str],
 ) -> list[str]:
-    active = [item for item in items if item.manual_override != Override.NOT_APPLICABLE]
+    active = [item for item in items
+              if item.manual_override != Override.NOT_APPLICABLE and not is_idle_unasked(item)]
     return [
         f"<h1>{esc(label_of(engagement_dir))} — {esc(VIEW_LABEL)}</h1>",
         f'<p class="stamp">{esc(VIEW_NOTE)}</p>',
@@ -538,6 +575,7 @@ def _body(
         # view and what was set aside is one click away.
         *_heading(REQUESTS_SECTION, len(active)),
         *table(REQUEST_COLUMNS, (_request_cells(item) for item in active), sortable=True),
+        *_not_asked_block(items),
         *_not_applicable_blocks(items),
         "</section>",
         *_heading(INDEX_HEADING, len(entries)),

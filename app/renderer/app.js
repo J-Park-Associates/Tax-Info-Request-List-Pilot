@@ -87,10 +87,22 @@ function overrideLabel(override, year) {
   return override || "";
 }
 
+// A row nobody asked for (decision 142) has the API's own word while
+// nothing is in its folder - never the word for a request or for a gap,
+// because nobody owes it. Once a document arrives it shows its real status,
+// as any row does. The API says which (state.items[].status_label); the
+// page compares.
+function isIdleNotAsked(item) {
+  return item.status_label === vocab.not_asked_label;
+}
+
 function chip(item) {
   if (isSetAside(item.manual_override)) {
     return el("span", { className: `chip chip-${vocab.unscanned_key}` },
       overrideLabel(item.manual_override, item.year));
+  }
+  if (isIdleNotAsked(item)) {
+    return el("span", { className: `chip chip-${vocab.not_asked_key}` }, vocab.not_asked_label);
   }
   const label = item.status || vocab.unscanned_label;
   return el("span", { className: `chip chip-${statusKey(item.status)}` }, label);
@@ -102,10 +114,6 @@ function fill(pattern, values) {
 
 // The one button label the app owns; the docs that name it are pinned to it.
 const SCAN_LABEL = "Sort & Scan";
-// What the rollover's per-return box offers, in the page's own words: it
-// is a description of a flag, not a fact the tracker owns.
-const INCLUDE_NEW_NOTE =
-  "Also add checklist rows this client has never had (otherwise they are offered, once, when the rollover is done, and added later in the editor)";
 
 function toast(msg) {
   const el = $("toast");
@@ -1650,7 +1658,7 @@ function renderPriorPage() {
     .filter((h) => priorsOfHousehold(h.path).length)
     .map((h) => el("option", { value: h.path, selected: h.path === rollFor }, h.name)));
   const shown = rollFor ? priorsOfHousehold(rollFor) : [];
-  show("prior-list", shown.map((p, n) =>
+  show("prior-list", shown.map((p) =>
     el("div", { className: "prior-item roll-return" },
       el("label", { className: "prior-head" },
         el("input", { type: "checkbox", className: "roll-tick", checked: true,
@@ -1668,16 +1676,11 @@ function renderPriorPage() {
                        dataset: { path: p.path } }, vocab.people.review_people),
       ),
       el("label", { className: "field roll-form" },
-        el("span", {}, "Form template (fills blanks, offers new rows)"),
+        el("span", {}, "Form template (fills blanks, adds the rows this client never had as not asked)"),
         el("select", { className: "roll-form-pick", dataset: { path: p.path } },
           el("option", { value: "" }, "No template — carry last year's list as it is"),
           forms.map((f) => el("option", { value: f.id }, `${f.label} · ${f.who}`)),
         ),
-      ),
-      el("label", { className: "wiz-check" },
-        el("input", { type: "checkbox", className: "roll-include-new",
-                      dataset: { path: p.path }, id: `ro-include-${n}` }),
-        el("span", {}, INCLUDE_NEW_NOTE),
       ),
     )));
   $("prior-list").classList.toggle("hidden", shown.length === 0);
@@ -1719,15 +1722,14 @@ async function rollForward() {
         returns: ticked.map((box) => ({
           prior: box.dataset.path,
           form: pick("roll-form-pick", box.dataset.path).value,
-          include_new: pick("roll-include-new", box.dataset.path).checked,
         })),
       });
     $("modal").classList.add("hidden");
     await refresh(result.state.paths.engagement);
     // The banner: how many returns rolled into the year and how many were
-    // retired, then each return's offers and last year's unfiled files -
-    // said here, once, because there is no sheet to point at and an offer
-    // a person wants is added in the editor (decision 104).
+    // retired, then each return's rows added as not asked (decision 142)
+    // and last year's unfiled files - said here, once, because there is no
+    // sheet to point at and a row a person wants asked is set in the editor.
     const lines = [
       `${result.rolled.length} return(s) rolled into ${result.target_year}; ` +
       `${result.retired.length} retired`,
@@ -1737,13 +1739,10 @@ async function rollForward() {
     ];
     for (const one of result.rolled) {
       const setAside = one.carried.filter((c) => c.origin === vocab.origin_not_applicable);
-      const parts = [`${one.carried.length - setAside.length} request(s) carried`];
+      const added = one.carried.filter((c) => c.origin === vocab.origin_new);
+      const parts = [`${one.carried.length - setAside.length - added.length} request(s) carried`];
       if (setAside.length) parts.push(fill(vocab.not_applicable_carried, { n: setAside.length }));
-      if (one.offered.length) {
-        const offered = one.offered
-          .map((o) => `${o.identifier}${vocab.triage.identifier_separator}${o.document}`).join(", ");
-        parts.push(`${one.offered.length} template row(s) offered but not added: ${offered}`);
-      }
+      if (added.length) parts.push(fill(vocab.new_not_asked_carried, { n: added.length }));
       if (one.unfiled_last_year.length) {
         parts.push(`${one.unfiled_last_year.length} file(s) sent last year were never filed`);
       }
@@ -1780,7 +1779,8 @@ function chooseForm(formId) {
   customItems = [];
   $("items-title").textContent = `New ${form.label} Engagement`;
   $("chosen-form").textContent = `${form.label} · ${form.who}`;
-  $("tmpl-head-label").textContent = `${form.label} request list — tick what applies`;
+  $("tmpl-head-label").textContent = `${form.label} request list — ${vocab.ask_the_client}`;
+  $("tmpl-note").textContent = vocab.ask_the_client_note;
   $("ne-name").value = "";
   nameIsAuto = true;
   $("ne-year").value = defaultYear || "";
@@ -1963,6 +1963,15 @@ function cellInput(row, column, onChange) {
     select.addEventListener("change", () => { row[key] = select.value; onChange(); });
     return select;
   }
+  if (vocab.editor.yes_no_fields.includes(key)) {
+    // Named and Asked: a pick of the two words, blank reading as yes.
+    const current = row[key] === vocab.editor.no ? vocab.editor.no : vocab.editor.yes;
+    const select = el("select", { "aria-label": column.label, title: column.help },
+      [vocab.editor.yes, vocab.editor.no].map((value) =>
+        el("option", { value, selected: current === value }, value)));
+    select.addEventListener("change", () => { row[key] = select.value; onChange(); });
+    return select;
+  }
   if (key === "override_reason") {
     // A pick from the API's reasons, and a box for the person's own words
     // when they pick the last entry. What is saved is the text: one of
@@ -2106,14 +2115,19 @@ function addCustomItem() {
 }
 
 async function createEngagement() {
-  const checked = [...$("tmpl-list").querySelectorAll("input:checked")]
-    .map((box) => templates[Number(box.dataset.index)]);
+  // Every catalog row goes on the return (decision 142), each carrying its
+  // tick as `asked`: a ticked row is asked for and chased, an unticked one
+  // is never chased but files what arrives for it. Custom rows are always
+  // asked. A list with nothing asked is refused here and by the API.
+  const catalog = [...$("tmpl-list").querySelectorAll("input[type=checkbox]")]
+    .map((box) => ({ ...templates[Number(box.dataset.index)], asked: box.checked }));
   if (customItems.some((c) => !String(c.document || "").trim())) {
     toast("Give each custom request a document name first.");
     return;
   }
-  const items = [...checked, ...customItems];
-  if (!items.length) {
+  const items = [...catalog, ...customItems.map((c) => ({ ...c, asked: true }))];
+  const asked = items.filter((i) => i.asked).length;
+  if (!asked) {
     toast("Select at least one request item.");
     return;
   }
@@ -2133,7 +2147,7 @@ async function createEngagement() {
     $("modal").classList.add("hidden");
     await refresh(result.state.paths.engagement);
     const lines = [
-      `Engagement "${result.created}" created — ${items.length} request folder(s) scaffolded, client README generated. Open the Client Folder to show it.`,
+      `Engagement "${result.created}" created — ${asked} request folder(s) scaffolded, client README generated. Open the Client Folder to show it.`,
     ];
     // A household's first return comes back with the sharing checklist
     // (decision 126): the two grants a person makes in Drive, once, in
@@ -2180,6 +2194,11 @@ function editorRow(rule) {
     date_pattern: rule.date_pattern_derived ? "" : (rule.date_pattern || vocab.editor.no_date_check),
     manual_override: rule.manual_override,
     override_reason: rule.override_reason || "",
+    // The two yes/no marks, in the words the API reads them in. Left out,
+    // a save sends none and a blank reads as yes, so every save turned a
+    // named=no row into yes (decision 142 fixed it with the Asked mark).
+    named: rule.named === false ? vocab.editor.no : vocab.editor.yes,
+    asked: rule.asked === false ? vocab.editor.no : vocab.editor.yes,
   };
 }
 
@@ -2195,8 +2214,13 @@ function editorRowYear(row) {
   return known ? known.year : null;
 }
 
+// The key the rows nobody asked for fold under (decision 142): not a
+// label, so it can never collide with a set-aside group's.
+const NOT_ASKED_GROUP = "\u0001";
+
 function editorGroupKey(row) {
-  return isSetAside(row.manual_override) ? overrideLabel(row.manual_override, editorRowYear(row)) : "";
+  if (isSetAside(row.manual_override)) return overrideLabel(row.manual_override, editorRowYear(row));
+  return row.asked === vocab.editor.no ? NOT_ASKED_GROUP : "";
 }
 
 // The active rows in one table; the rows set aside as not applicable in a
@@ -2226,11 +2250,18 @@ function renderEditorRows() {
   }
   const activeBox = el("div", { className: "editor-rows" });
   requestRows(activeBox, active, options(active));
-  const folded = [...groups.entries()].map(([label, rows]) => {
+  // The rows nobody asked for first, in one group; then the set-aside
+  // rows, one group per label. Setting Asked moves a row out before the save.
+  const ordered = [...groups.entries()]
+    .sort(([a], [b]) => (a === NOT_ASKED_GROUP ? -1 : b === NOT_ASKED_GROUP ? 1 : 0));
+  const folded = ordered.map(([label, rows]) => {
     const box = el("div", { className: "editor-rows" });
     requestRows(box, rows, options(rows));
-    return el("details", { className: "ed-set-aside" },
-      el("summary", {}, fill(vocab.editor.set_aside_heading, { label, n: rows.length })), box);
+    const heading = label === NOT_ASKED_GROUP
+      ? fill(vocab.editor.not_asked_heading, { n: rows.length })
+      : fill(vocab.editor.set_aside_heading, { label, n: rows.length });
+    return el("details", { className: label === NOT_ASKED_GROUP ? "ed-not-asked" : "ed-set-aside" },
+      el("summary", {}, heading), box);
   });
   $("ed-rows").replaceChildren(activeBox, ...folded);
 }

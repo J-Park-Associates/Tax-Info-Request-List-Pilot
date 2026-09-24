@@ -1648,3 +1648,34 @@ def test_a_reminder_link_is_only_http_or_https_refused_on_save_and_dropped_from_
     written = write_draft(draft, engagement_dir=folder).read_text(encoding="utf-8")
     assert draft.link_dropped in written
     assert old not in written.split(draft.link_dropped)[0]           # never in the letter itself
+# --------------------------------------------- decision 142: accepted, not asked ----
+
+
+def test_the_reminder_never_chases_or_reports_a_not_asked_row(tmp_path):
+    """A row nobody asked for is skipped before anything else: no line, no
+    scaffold gap for the folder it lacks on purpose, no hold for a failed
+    file under it, and the "N of M" figure counts asked rows only."""
+    rows = [
+        *SENDABLE,
+        item("B01", "Social Security Benefit Statement", Status.MISSING, asked=False),
+        item("B02", "1099-C", Status.MISSING, asked=False,
+             validation_notes=reasons.NO_REQUEST_FOLDER.format()),
+        item("B03", "W-2G", Status.FAILED, asked=False,
+             validation_notes="w2g.pdf: " + reasons.PASSWORD_PROTECTED.format()),
+        item("B04", "1098-E", Status.RECEIVED, asked=False, file_count=1,
+             received_date=dt.date(2026, 2, 1)),
+    ]
+    lines, attention, gaps, held = triage(rows)
+    unasked = {"B01", "B02", "B03", "B04"}
+    for flagged in (lines, attention, gaps, held):
+        assert not unasked & {one.item.identifier for one in flagged}
+
+    draft = draft_reminder(
+        engagement(tmp_path, items=rows), client_name="Dana Smith",
+        share_link="https://drive.example/abc", due_date=DUE,
+        today=DUE - dt.timedelta(days=15), sender="Jason Park", firm="J Park & Associates, CPA",
+    )
+    assert "2 of 5 items are in" in draft.body
+    assert draft.total_requests == 5 and draft.received_requests == 2
+    for word in ("Social Security", "1099-C", "W-2G", "1098-E"):
+        assert word not in draft.body, word

@@ -114,6 +114,7 @@ from tracker.manifest import (
     MIN_SIZE_KB_FLOOR,
     NO_DATE_CHECK,
     NOT_APPLICABLE_LABEL,
+    NOT_ASKED_LABEL,
     OVERRIDE_REASON_OTHER,
     OVERRIDE_REASONS,
     UNSCANNED_LABEL,
@@ -130,6 +131,7 @@ from tracker.manifest import (
     load_manifest,
     rule_as_read,
     save_rules,
+    status_label,
     summarize,
     unlearn_keyword,
 )
@@ -153,6 +155,7 @@ from tracker.records import (
     PERSON_KINDS,
     RETURN_NAME_HELP,
     RETURN_NAME_LABEL,
+    RULE_FLAG_FIELDS,
     THE_RECORD,
     YES,
     EngagementInfo,
@@ -174,6 +177,7 @@ from tracker.registry import (
     mark_superseded,
 )
 from tracker.rollover import (
+    ORIGIN_NEW,
     ORIGIN_NOT_APPLICABLE,
     ORIGIN_PRIOR,
     UNKNOWN_YEAR_LABEL,
@@ -252,6 +256,7 @@ from tracker.templates import (  # the catalog; re-exported for the wizard
 )
 from tracker.view import (
     NOT_APPLICABLE_SECTION,
+    NOT_ASKED_SECTION,
     VIEW_FILENAME,
     VIEW_LABEL,
     VIEW_OPEN_LABEL,
@@ -445,8 +450,19 @@ LEARNED_NOTE = "taught by a filing: {keywords}"
 UNLEARN_LABEL = "Unlearn"
 UNLEARNED_NOTE = "{keyword} unlearned from {identifier}; the request was re-scanned"
 #: What the returning-client page says of last year's set-aside rows, in
-#: one line beside the carried and offered counts.
+#: one line beside the carried counts.
 NOT_APPLICABLE_CARRIED = "{n} request(s) not applicable last year - review them in the editor"
+#: And of the catalog rows the client never had, added as not asked
+#: (decision 142, rewording decision 9: they used to be offered, not added).
+NEW_NOT_ASKED_CARRIED = ("{n} catalog row(s) this client never had added as not asked - "
+                         "a document for one files there; set Asked in the editor to ask for it")
+#: The wizard's heading over the catalog's checkboxes, and the sentence
+#: under it (decision 142): a tick is a request the client is asked for
+#: and reminded of; every row is on the return either way.
+ASK_THE_CLIENT = "Ask the client"
+ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for and reminded; "
+                       "an unticked one is never asked for, but a document that arrives for "
+                       "it is filed there.")
 #: The settings page's box for the firm's telephone number (decision 117).
 #: It sits beside the firm's name because it is the firm's, not one
 #: engagement's, and only the final-notice reminder ever says it.
@@ -644,6 +660,13 @@ def _vocab() -> dict:
         "statuses": [{"value": status, "key": _slug(status)} for status in Status.ALL],
         "unscanned_label": UNSCANNED_LABEL,
         "unscanned_key": _slug(UNSCANNED_LABEL),
+        # What a row nobody asked for is called while nothing has arrived
+        # for it (decision 142), and the chip class it is drawn with.
+        "not_asked_label": NOT_ASKED_LABEL,
+        "not_asked_key": _slug(NOT_ASKED_LABEL),
+        # The wizard's heading over the catalog's ticks, and its sentence.
+        "ask_the_client": ASK_THE_CLIENT,
+        "ask_the_client_note": ASK_THE_CLIENT_NOTE,
         "overrides": {"accepted": Override.ACCEPTED, "not_applicable": Override.NOT_APPLICABLE},
         # How a set-aside row is named to a person: the value with the
         # row's year, which travels per item as ``year`` in the state so
@@ -657,6 +680,10 @@ def _vocab() -> dict:
         # set-aside rows, and the origin value it groups them on.
         "origin_not_applicable": ORIGIN_NOT_APPLICABLE,
         "not_applicable_carried": NOT_APPLICABLE_CARRIED,
+        # The catalog rows a rollover added as not asked (decision 142),
+        # grouped on their origin value.
+        "origin_new": ORIGIN_NEW,
+        "new_not_asked_carried": NEW_NOT_ASKED_CARRIED,
         # The key a decision is looked up by is the app's handle on it, not
         # the word: NOT_REQUESTED is keyed by the action that writes it,
         # because the renderer may not carry the word "Requested" in any
@@ -899,6 +926,12 @@ def _vocab() -> dict:
             # The folded group the editor keeps the set-aside rows in,
             # headed as the Status Report heads its own (decision 116).
             "set_aside_heading": NOT_APPLICABLE_SECTION,
+            # The folded group of rows nobody asked for (decision 142),
+            # headed as the Status Report heads its own, and the columns
+            # that are a yes/no pick rather than a box - so the editor
+            # sends each back as the record holds it.
+            "not_asked_heading": NOT_ASKED_SECTION,
+            "yes_no_fields": [key for _, key in COLUMNS if key in RULE_FLAG_FIELDS],
         },
     }
 
@@ -1384,12 +1417,15 @@ def _state(engagement: Path) -> dict:
             "line": summary.line, "counts": summary.counts, "total": summary.total,
             "received": summary.received, "outstanding": summary.outstanding,
             "not_applicable": summary.not_applicable, "unscanned": summary.unscanned,
+            "also_received": summary.also_received, "not_asked": summary.not_asked,
         },
         # Each row with the year its own Period gives, so the renderer
-        # labels a set-aside row without reading the Period's text.
+        # labels a set-aside row without reading the Period's text, and
+        # the word its status is shown as - "Not asked" for a row nobody
+        # asked for with nothing in (decision 142) - so it types none.
         "items": [
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None,
-                         "year": i.year}
+                         "year": i.year, "status_label": status_label(i)}
             for i in items
         ],
         # The person's rows as stored - read the way every reader reads
@@ -1704,13 +1740,16 @@ def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
     A row the person did not touch is never refused: it is already in the
     room the page and the banner report, so shortening one label is never
     trapped by another. A row set Not Applicable is not measured, as
-    creation does not measure it.
+    creation does not measure it, and neither is a row nobody asked for
+    (decision 142); a row a person has just set Asked is measured, because
+    it is now a request creation would have measured.
     """
     stored = {item.identifier: item for item in load_manifest(engagement)}
     changed = [item for item in items
                if item.identifier not in stored
                or any(getattr(item, name) != getattr(stored[item.identifier], name)
-                      for name in _PATH_FIELDS)]
+                      for name in _PATH_FIELDS)
+               or (item.asked and not stored[item.identifier].asked)]
     need = room_for(engagement, changed).need
     if need > MAX_PATH_LENGTH:
         raise ManifestError(PATH_TOO_LONG.format(folder=engagement, length=need,
@@ -1881,8 +1920,11 @@ def _cmd_create(argv: list[str]) -> dict:
             link=" ".join(str(spec.get("link", "") or "").split()),
         )
 
+    # Decision 142: the wizard sends every catalog row, each with its tick
+    # as ``asked``, and the custom rows (always asked). A list nobody is
+    # asked for is still refused - it would chase nothing.
     items = [item_from_spec(s) for s in spec.get("items", [])]
-    if not items:
+    if not any(item.asked for item in items):
         raise ManifestError("Select at least one request item")
     # The wizard sends catalog rows as written (the base year); shift them
     # to the return's year so TY2025 does not get asked for in 2027.
@@ -2121,9 +2163,10 @@ def _cmd_rollover(argv: list[str]) -> dict:
     """Build next year's engagement from a returning client's prior one.
 
     JSON spec on stdin: {"prior": "<path or name>", "name": "...",
-                         "form": "1040", "year": 2026, "include_new": false}
+                         "form": "1040", "year": 2026}
     Prior-year data wins on every field it specifies; the form template only
-    fills blanks. Rows the client has never had are offered, not added.
+    fills blanks. Rows the client has never had are added as not asked
+    (decision 142).
     """
     spec = json.loads(sys.stdin.read() or "{}")
     prior_raw = str(spec.get("prior", "")).strip()
@@ -2147,7 +2190,6 @@ def _cmd_rollover(argv: list[str]) -> dict:
         prior,
         target_year=_tax_year(spec.get("year")),
         template=template,
-        include_new=bool(spec.get("include_new")),
     )
 
     if report.target_year is None:
@@ -2214,16 +2256,12 @@ def _cmd_rollover(argv: list[str]) -> dict:
 
 def _carried_payload(report) -> dict:
     """One return's rollover as the app reads it: every rolled row with its
-    origin and note, the rows only offered, and last year's unfiled files."""
+    origin, its note and whether it is asked, and last year's unfiled files."""
     return {
         "carried": [
             {"identifier": r.item.identifier, "document": r.item.document,
-             "origin": r.origin, "note": r.note}
+             "origin": r.origin, "note": r.note, "asked": r.item.asked}
             for r in report.rolled
-        ],
-        "offered": [
-            {"identifier": r.item.identifier, "document": r.item.document, "note": r.note}
-            for r in report.offered
         ],
         "unfiled_last_year": report.unfiled_last_year,
         # Decision 137 (L5): the prior's link, when it was left behind.
@@ -2239,7 +2277,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
 
         {"year": 2027 | null,
          "returns": [{"prior": "<return folder>", "form": "1040",
-                      "include_new": false, "return_name": ""}, ...]}
+                      "return_name": ""}, ...]}
 
     Every ticked return is rolled into the year, one at a time, each under
     its own lock and by the same carry rule the per-return ``rollover``
@@ -2273,7 +2311,6 @@ def _cmd_roll_household(argv: list[str]) -> dict:
         plans.append(ReturnPlan(
             prior=prior,
             form=str((one or {}).get("form", "") or "").strip(),
-            include_new=bool((one or {}).get("include_new")),
             # A name a person typed is one folder name, checked here as
             # every other typed name is; blank keeps the prior's own.
             return_name=_folder_name(named, "type the return's name on its own") if named else "",

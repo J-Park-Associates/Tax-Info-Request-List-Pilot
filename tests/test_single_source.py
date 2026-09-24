@@ -220,12 +220,14 @@ def test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet():
 
 
 def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
+    """Every status, the word for a row not yet scanned, and (decision 142)
+    the word for a row nobody asked for with nothing in."""
     from tracker.api import _slug
-    from tracker.manifest import UNSCANNED_LABEL, Status
+    from tracker.manifest import NOT_ASKED_LABEL, UNSCANNED_LABEL, Status
 
     css = read("app/renderer/style.css")
     chips = set(re.findall(r"\.chip-([a-z-]+)\s*\{", css))
-    assert chips == {_slug(s) for s in Status.ALL} | {_slug(UNSCANNED_LABEL)}
+    assert chips == {_slug(s) for s in Status.ALL} | {_slug(UNSCANNED_LABEL), _slug(NOT_ASKED_LABEL)}
 
 
 def test_the_stylesheet_has_a_class_for_every_view_state():

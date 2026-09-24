@@ -485,7 +485,11 @@
           <button type="button" id="wp-add" class="btn btn-small"></button>
         </div>
 
-        <div class="tmpl-head" id="tmpl-head-label">Standard request list — tick what applies</div>
+        <!-- The tick is "Ask the client" (decision 142): every row goes on
+             the return, and only the ticked ones are asked for and chased.
+             The heading's last words and the note are the API's. -->
+        <div class="tmpl-head" id="tmpl-head-label"></div>
+        <p id="tmpl-note" class="wiz-note"></p>
         <div id="tmpl-list" class="tmpl-list"></div>
 
         <div class="tmpl-head">Add a custom request</div>

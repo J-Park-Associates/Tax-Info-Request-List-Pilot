@@ -128,7 +128,10 @@ README_PHOTO_LINE = (
 #: one a person is looking at is Under Review. Neither says whether a
 #: request is complete or where anything was filed. A request with a
 #: Received line leaves *REQUESTED, NOT YET RECEIVED* and is shown here, so
-#: no request is ever on neither list.
+#: no *asked* request is ever on neither list. A row nobody asked for
+#: (decision 142) is never on the first list: with nothing received it is
+#: on neither, by the owner's rule, and a document filed under it is a
+#: Received line here under its own title, exactly as under an asked one.
 RECEIVED_HEADING = "WHAT WE HAVE RECEIVED"
 RECEIVED_WORD = "Received"
 UNDER_REVIEW_HEADING = "Under Review"
@@ -237,6 +240,7 @@ class ScaffoldResult:
     created: list[Path] = field(default_factory=list)       # new folders made
     existing: list[str] = field(default_factory=list)       # identifiers already present
     not_applicable: list[str] = field(default_factory=list)  # skipped (Override.NOT_APPLICABLE)
+    not_asked: list[str] = field(default_factory=list)       # no folder up front (decision 142)
     readme: Path | None = None
 
     def describe(self) -> list[str]:
@@ -427,6 +431,13 @@ def scaffold_engagement(engagement_dir: Path | str) -> ScaffoldResult:
         if assigned[item.identifier]:
             result.existing.append(item.identifier)
             continue
+        # Decision 142: a row nobody asked for gets no folder up front - a
+        # 1040 would otherwise carry a dozen empty folders the preparer did
+        # not ask for. Filing makes the folder with its first document, and
+        # a folder made that way stays (the branch above).
+        if not item.asked:
+            result.not_asked.append(item.identifier)
+            continue
         folder = prepared_dir / folder_name_for(item)
         folder.mkdir(exist_ok=True)  # identifiers are unique, so names are too
         result.created.append(folder)
@@ -555,16 +566,17 @@ def _outstanding(
     returns: Sequence[tuple[_ReturnLine, list[RequestItem]]], received: Received,
 ) -> list[tuple[_ReturnLine, list[RequestItem]]]:
     """The returns and requests *REQUESTED, NOT YET RECEIVED* lists
-    (decision 130, Jason's decision of 2026-09-23): every active request
-    with no Received line - no Filed or File Moved row naming it, by its
+    (decision 130, Jason's decision of 2026-09-23): every active *asked*
+    request (decision 142) with no Received line - no Filed or File Moved row naming it, by its
     identifier or by an also-filed copy - and only the returns with one
     left. Under Review does not take a request off: nothing is confirmed
     into it yet. A request that expects several documents leaves after its
     first, which the owner accepted.
 
-    Read from the same :class:`Received` the section below renders, so a
-    request that leaves this list is always a line there - never on
-    neither."""
+    Read from the same :class:`Received` the section below renders, so an
+    asked request that leaves this list is always a line there - never on
+    neither. A row nobody asked for is never listed here: the client is
+    not asked for it, and sees it only as received."""
     have: dict[Path, set[str]] = {}
     for line in received.lines:
         if line.identifier:
@@ -572,7 +584,7 @@ def _outstanding(
     left = []
     for one, items in returns:
         mine = have.get(Path(one.path), set())
-        waiting = [item for item in items if item.identifier not in mine]
+        waiting = [item for item in items if item.asked and item.identifier not in mine]
         if waiting:
             left.append((one, waiting))
     return left
@@ -656,4 +668,6 @@ if __name__ == "__main__":
         print(f"  = exists   {ident}")
     for ident in res.not_applicable:
         print(f"  ~ set aside {ident} (no folder created)")
+    for ident in res.not_asked:
+        print(f"  ~ not asked {ident} (a folder is made with its first document)")
     print(f"  (folders only: {res.readme.name} is written by the pass and the app)")
