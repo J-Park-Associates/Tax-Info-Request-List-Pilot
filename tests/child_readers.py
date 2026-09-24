@@ -50,6 +50,25 @@ def a_render_that_never_finishes(path: Path, *, ocr: bool = True):
     return content_check.extract(path, ocr=ocr)
 
 
+def a_photo_open_that_never_finishes(path: Path, *, ocr: bool = True):
+    """The open test and the reading, with the open test's Pillow open of a
+    photo blocked for ever - where a native decoder stuck on a picture
+    would hold it. Only the open test's call blocks (the frame that asks is
+    ``validators._image_error``); the reading's own open of the picture
+    goes through, so the claim is about the open test and nothing else."""
+    from PIL import Image
+
+    real_open = Image.open
+
+    def open_(*args, **kwargs):
+        if sys._getframe(1).f_code.co_name == "_image_error":
+            _never_finishes(path, "photo-open")
+        return real_open(*args, **kwargs)
+
+    Image.open = open_
+    return content_check.open_and_read(path, ocr=ocr)
+
+
 def a_reader_that_dies_on_a_crash(path: Path, *, ocr: bool = True):
     """The real reading, except that a file named for a crash ends the
     process on the spot - no exception, no answer, as pdfium does."""

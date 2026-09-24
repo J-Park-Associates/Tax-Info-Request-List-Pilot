@@ -579,6 +579,8 @@ def route_file(
     # without an answer and one whose reader could not start at all
     # (decision 150) park on their one sentence, as a file past the ceiling
     # does. The open test was made in the same child, so it stopped with it.
+    # A pass never records the last of these: tracker.filer leaves a drop
+    # whose reader could not start for the next pass (the re-review's ruling).
     if reading.text is None and (reasons.TOO_LARGE.matches(reading.reason)
                                  or reasons.READING_STOPPED.matches(reading.reason)
                                  or reasons.READING_CRASHED.matches(reading.reason)

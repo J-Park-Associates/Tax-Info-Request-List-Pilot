@@ -1888,9 +1888,10 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     """The review's second fix. A reader that cannot start is the machine's
     fault, not the file's: a death before the child says "started" - or a
     child that could not be created at all - keeps nothing against the
-    file. The document parks for this pass with the firm-side sentence, the
-    scan asks again next pass, and the pass warns once, however many files
-    it met. Only a death after "started" is kept (the crash claim above)."""
+    file. Nothing is kept, a drop is neither decided nor recorded - it
+    rests in the year's folder with no row, for the next pass - and the
+    pass warns once, however many files it met. Only a death after
+    "started" is kept (the crash claim above)."""
     import multiprocessing.context
 
     import tracker.content_check as content_check
@@ -1903,7 +1904,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     from tracker.validators import sha256_of
 
     unavailable = ("The reader could not start on this machine, so this file was not read. "
-                   "A person looks at it.")
+                   "It is read again on the next pass.")
     in_a_child.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(in_a_child))
     rules = item(required_keywords=("W-2",))
     page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
@@ -1927,8 +1928,8 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
         assert content_check.extract_bounded(page).reason == unavailable
     content_check.readers_that_could_not_start()          # the claims above were not a pass
 
-    # A pass: two documents park for this pass, nothing is kept about
-    # either, and the pass says it once.
+    # A pass: two documents wait for the next pass - no row, nothing kept
+    # about either - and the pass says it once.
     w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
                      min_size_kb=0, required_keywords=("W-2",))
     engagement = make_engagement(tmp_path / "root", [w2])
@@ -1937,9 +1938,9 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     report = run_registry(discover_engagements(tmp_path / "root"), today=dt.date(2026, 7, 1),
                           reminders=REMINDERS_NEVER)
 
-    rows = read_index(engagement)
-    assert sorted(row.original_name for row in rows) == ["one.pdf", "two.pdf"]
-    assert all(row.reason == unavailable and not row.identifier for row in rows)
+    assert read_index(engagement) == []                  # not decided, not recorded
+    assert sorted(path.name for path in originals_of(engagement).iterdir()) == ["one.pdf", "two.pdf"]
+    assert [run.review for run in report.runs] == [0]
     assert reasons.READER_UNAVAILABLE.firm_side
     [warning] = report.warnings
     assert "could not start on this machine for 2 file(s)" in warning
@@ -1949,4 +1950,85 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     _memos, verdicts = store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
     for original in originals_of(engagement).iterdir():
         assert sha256_of(original) not in verdicts, original.name      # nothing kept
+    assert no_child_left()
+
+
+def test_a_drop_the_reader_could_not_start_on_is_routed_next_pass(tmp_path, in_a_child):
+    """The re-review's blocker. A machine fault must leave nothing
+    permanent, and a routing decision is as permanent as a kept verdict: a
+    Needs Review row made the original a non-stray for ever, so a good W-2
+    waited for a person after the machine was fixed. Pass 1's reader cannot
+    start: the W-2 is moved out of the inbox but decided and recorded
+    nowhere. Pass 2's reader works: the W-2 is a stray in the year's folder,
+    routed where it lies, and filed."""
+    import tracker.content_check as content_check
+    from tests.conftest import named_page
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.filer import read_index
+    from tracker.layout import inbox_of, originals_of
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, run_registry
+
+    root = tmp_path / "root"
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(root, [w2])
+    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+
+    with pytest.MonkeyPatch.context() as broken:           # the machine is broken
+        broken.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(broken))
+        first = run_registry(discover_engagements(root), today=dt.date(2026, 7, 1),
+                             reminders=REMINDERS_NEVER)
+    [warning] = first.warnings
+    assert "could not start on this machine for 1 file(s)" in warning and "w2.pdf" in warning
+    assert read_index(engagement) == []                    # no row: not decided, not recorded
+    assert [path.name for path in originals_of(engagement).iterdir()] == ["w2.pdf"]
+
+    second = run_registry(discover_engagements(root), today=dt.date(2026, 7, 2),
+                          reminders=REMINDERS_NEVER)       # the machine is fixed
+    assert second.warnings == []
+    [row] = read_index(engagement)
+    assert row.original_name == "w2.pdf" and row.identifier == "A01"
+    assert [run.filed for run in second.runs] == [1]
+    assert no_child_left()
+
+
+def test_a_photo_the_open_test_cannot_finish_is_stopped(tmp_path, in_a_child):
+    """The re-review's note 6: the open test's photo branch - Pillow and
+    pillow-heif opening the picture, native code - runs in the reading's
+    child like the PDF branch. A photo whose open never finishes is ended
+    at a photo's stop (patched to seconds; a file's stays ten minutes, so
+    the photo's is the one that ended it): the router parks it on the
+    stop's sentence, and the scanner's open test is the same kept verdict."""
+    import time
+    from pathlib import Path
+
+    from PIL import Image
+
+    import tracker.content_check as content_check
+    from tests import child_readers
+    from tracker.router import route_file
+    from tracker.validators import check_file
+
+    in_a_child.setattr(content_check, "READING_STOP_PAGE_SECONDS", STOP_IN_TESTS)
+    in_a_child.setattr(content_check, "_CHILD_READER", child_readers.a_photo_open_that_never_finishes)
+    photo = tmp_path / "w2 photo.jpg"
+    Image.new("RGB", (200, 100), "white").save(photo)
+    rules = item(allowed_extensions=("pdf",), required_keywords=("W-2",), min_size_kb=0)
+
+    started = time.monotonic()
+    routed = route_file(photo, [rules])
+    took = time.monotonic() - started
+
+    assert child_readers.reached(photo, "photo-open").is_file()   # stopped inside the photo open
+    assert STOP_IN_TESTS <= took < STOP_IN_TESTS + 45
+    assert routed.identifier is None and routed.reason == STOPPED
+    assert no_child_left()
+
+    cache = ContentCache()
+    assert content_check.open_verdict(photo, cache) == STOPPED
+    in_a_child.setattr(content_check, "_read_in_a_child",
+                       lambda *a, **k: pytest.fail("a kept open test was made again"))
+    refused = check_file(photo, rules, open_test=lambda path: content_check.open_verdict(Path(path), cache))
+    assert not refused.ok and refused.reason == STOPPED
     assert no_child_left()

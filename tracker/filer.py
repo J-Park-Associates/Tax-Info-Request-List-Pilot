@@ -2992,7 +2992,16 @@ def _sort_all(
             log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
 
         try:
-            run, entry = _decide_across(drop, original, digest, size_kb, stamp, runs, first)
+            decided = _decide_across(drop, original, digest, size_kb, stamp, runs, first)
+            if decided is None:
+                # The reader could not start (decision 150): the machine's
+                # fault, not the file's, so nothing is decided and nothing
+                # recorded. A drop already moved rests in the year's folder
+                # with no row - a stray - and the next pass routes it where
+                # it lies; the pass's one warning says how many wait.
+                log.warning("Left %s for the next pass: the reader could not start", drop.name)
+                continue
+            run, entry = decided
         except Exception as exc:  # the original is safe; say so and go on
             log.exception("Could not file %s", drop.name)
             run = first
@@ -3142,9 +3151,11 @@ def _by_the_name(
 def _decide_across(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str, runs: list[_ReturnRun],
     first: _ReturnRun,
-) -> tuple[_ReturnRun, IndexEntry]:
+) -> tuple[_ReturnRun, IndexEntry] | None:
     """Which of the household's returns this one preserved original belongs
-    to, and the row that says so.
+    to, and the row that says so - or None where the reader could not
+    start on it (:func:`_not_read`), which decides nothing and records
+    nothing.
 
     In order (decisions 125 and 128):
 
@@ -3184,6 +3195,8 @@ def _decide_across(
     # judges the drop where it lies, as it always has.
     judged = drop if runs[0].context.dry_run else original
     reading = read_once(judged)
+    if _not_read(reading):
+        return None
     # What the reading cost, kept for the run's summary (decision 127). One
     # reading serves every return that judges it (decision 128), so it is
     # recorded once, against the pass's first own return (``first``, the
@@ -3281,6 +3294,24 @@ def _decide_across(
         reason=stage.reason or home_routing.reason, candidates=home_routing.candidates,
         evidence=format_evidence(home_routing.evidence_record),
     )
+
+
+def _not_read(reading) -> bool:
+    """Whether the reader could not start on this document at all
+    (decision 150, the designer's ruling on the re-review).
+
+    That is the machine's fault - antivirus refusing the second process, a
+    build missing a module, memory - and never the file's, so it must leave
+    nothing permanent, and a routing decision is as permanent as a kept
+    verdict: a Needs Review row makes the original a non-stray for ever,
+    and a good W-2 would wait for a person after the machine was fixed. So
+    the drop is not decided and not recorded, the shape of
+    :func:`unfinished_drops`: what was not yet moved stays in the inbox,
+    what was moved rests in the year's folder with no row, and the next
+    pass reads it again as a stray. The reader that started and then died
+    is the file's (``READING_CRASHED``) and is decided as before.
+    """
+    return bool(reading.transient) and reasons.READER_UNAVAILABLE.matches(reading.reason)
 
 
 def _across_households(run: _ReturnRun) -> bool:
@@ -3638,9 +3669,11 @@ def _sort_one(
     stamp: str,
     run: _ReturnRun,
     runs: list[_ReturnRun],
-) -> tuple[_ReturnRun, IndexEntry]:
+) -> tuple[_ReturnRun, IndexEntry] | None:
     """Decide one preserved original's fate inside the one return whose
-    record already holds its bytes, and, unless dry-running, copy it.
+    record already holds its bytes, and, unless dry-running, copy it - or
+    None where it must be read afresh and the reader could not start
+    (:func:`_not_read`).
 
     The road decision 111 laid: the content hash says *which* row already
     holds these bytes, and that row's decision says what this arrival is.
@@ -3710,6 +3743,8 @@ def _sort_one(
 
     judged = drop if context.dry_run else original
     reading = read_once(judged)
+    if _not_read(reading):
+        return None
     # What the reading cost, for the run's summary (decision 127).
     run.report.timed(drop.name, reading.seconds)
     routing = route_file(

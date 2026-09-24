@@ -284,10 +284,11 @@ READING_STOP_DOCUMENT_SECONDS = content_check.READING_STOP_DOCUMENT_SECONDS
 SLOW_READING_NOTE = "slow reading: {name} took {seconds:.0f} s"
 #: What a pass says, once, when the reader could not start for some of its
 #: files (decision 150): the machine's fault, not the files'. Nothing was
-#: kept about them; they park for a person this pass and are read again on
-#: the scan's next pass.
+#: kept or recorded about them; they wait and are read again on the next
+#: pass.
 READER_COULD_NOT_START = ("the reader could not start on this machine for {n} file(s) this pass "
-                          "({names}); nothing was kept about them - look at the machine")
+                          "({names}); nothing was kept about them and they wait for the next "
+                          "pass - look at the machine")
 
 
 def reader_start_warning() -> str:

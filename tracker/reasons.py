@@ -444,12 +444,15 @@ READING_CRASHED = Reason(
 
 #: A reader that could not start at all (decision 150): its child process
 #: was never created, or ended - or said nothing - before it touched the
-#: file. The machine's doing, not the file's, so it is never kept: the
-#: document parks for this pass, the scan asks again next pass, and the
-#: pass warns once. Ours.
+#: file. The machine's doing, not the file's, so it leaves nothing
+#: permanent: no verdict is kept, a drop is neither decided nor recorded
+#: (it waits, in the inbox or as a stray in the year's folder), the scan
+#: asks again, and the pass warns once. The file is read again on the next
+#: pass. Ours.
 READER_UNAVAILABLE = Reason(
     "reader-unavailable",
-    "The reader could not start on this machine, so this file was not read. A person looks at it.",
+    "The reader could not start on this machine, so this file was not read. "
+    "It is read again on the next pass.",
     "The reader could not start on this machine", firm_side=True,
     firm_note="the reader could not start on this machine; a person here looks at the machine",
 )

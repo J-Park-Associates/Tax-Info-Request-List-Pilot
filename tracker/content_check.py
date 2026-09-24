@@ -1757,9 +1757,10 @@ def abandoned(seconds: float) -> Extraction:
 # A child that cannot start at all is the machine's fault and not the
 # file's. It says "started" before it does anything with the file, and an
 # end before that - or no word by the stop - is a reader that could not
-# start (reasons.READER_UNAVAILABLE): transient, nothing kept, the file
-# parked for this pass and the pass warned once. Only an end after
-# "started" is kept against the file.
+# start (reasons.READER_UNAVAILABLE): transient, nothing kept, the drop
+# neither decided nor recorded (tracker.filer leaves it for the next pass)
+# and the pass warned once. Only an end after "started" is kept against
+# the file.
 #
 # The pass and the child talk over multiprocessing's Pipe: a named pipe
 # on Windows, an OS pipe elsewhere, never a socket.
