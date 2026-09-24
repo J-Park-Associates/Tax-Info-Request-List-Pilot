@@ -32,6 +32,8 @@ from tracker.reminder import (
     CHANGED_ADDED,
     CHANGED_HEADING,
     CHANGED_REMOVED,
+    CONFIRM_HOLD,
+    CONFIRM_REFUSAL,
     DEADLINE_CLAUSE,
     DRAFT_BANNER,
     DRAFT_FILENAME,
@@ -67,6 +69,7 @@ from tracker.reminder import (
     draft_changed,
     draft_reminder,
     drafted_event,
+    held_refusal,
     is_approved_this_week,
     is_protected,
     is_unedited,
@@ -1021,6 +1024,110 @@ def test_a_parked_locked_file_whose_shortlist_is_partial_holds_it_too(tmp_path):
     draft = draft_reminder(folder)
     assert [flag.item.identifier for flag in draft.held] == ["A02"]
     assert [line.item.identifier for line in draft.lines] == ["A01"]
+
+
+# ------------------- a near miss holds the letter and blames nobody (d140) ----
+# Jason, 2026-09-23: while a document that shows a request's form number
+# waits for a person, that request's reminder is held - and nothing tells
+# the client their file was wrong, because it may well be exactly right.
+
+#: The same two requests, with A01 asking for the three phrases the 1040
+#: catalog's W-2 row asks for.
+NEAR_MISSED = [
+    replace(DROPPED[0], required_keywords=(
+        "W-2", "wage and tax statement", "employee's social security number")),
+    DROPPED[1],
+]
+
+
+def test_a_near_miss_holds_the_reminder_and_blames_no_file(tmp_path):
+    """Decision 140, claim 4. A W-2 whose reading lost the SSN label parks
+    with A01 on its shortlist; the draft holds A01 rather than asking for
+    it, and neither the held line nor the draft says the file was wrong."""
+    from tests.test_router import LOST_ONE_PHRASE
+    from tests.test_scanner import text_pdf
+    from tracker.review import shortlist_for
+
+    folder = engagement(tmp_path, NEAR_MISSED, name="Near Miss TY2025")
+    report = sorted_drop(folder, lambda shared: text_pdf(shared / "scan0001.pdf", LOST_ONE_PHRASE))
+    assert len(report.review) == 1
+
+    [row] = parked_rows(folder)
+    assert reasons.find(row.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+    assert row.candidates == "", "a suggestion is never a candidate"
+    assert [s.identifier for s in shortlist_for(row, NEAR_MISSED)] == ["A01"]
+
+    draft = draft_reminder(folder)
+    assert [flag.item.identifier for flag in draft.held] == ["A01"]
+    assert draft.held[0].reason == CONFIRM_HOLD.format(
+        note=reasons.SHOWS_ITS_FORM_NUMBER.firm_side_note)
+    assert [line.item.identifier for line in draft.lines] == ["A02"]
+    blame = (reasons.WRONG_DOCUMENT.client_ask, reasons.GENERIC_ASK, "could not be used",
+             "wrong", "right file", "send it again")
+    for said in (draft.held[0].reason, draft.text):
+        for word in blame:
+            assert word not in said, word
+    refusal = held_refusal(draft)
+    assert refusal == CONFIRM_REFUSAL.format(listed=draft.held[0].item.label)
+    assert "held until a person confirms the parked file (open it in Needs Review)" in refusal
+    assert "resends" not in refusal and "fix it here" not in refusal
+    with pytest.raises(ReminderHeldError, match="A01"):
+        write_draft(draft, engagement_dir=folder)
+    assert list(folder.glob("reminder-draft*")) == []
+
+
+def test_a_draft_held_both_ways_is_refused_in_both_sentences():
+    """Decision 140: a confirm hold beside an ordinary one. Each row is
+    refused in its own sentence - the ordinary row still asks whether the
+    client resends, the confirm-held row only that a person confirms."""
+    from tracker.reminder import FirmSideFlag, ReminderDraft
+
+    decide = FirmSideFlag(item=NEAR_MISSED[1], reason=AMBIGUOUS_HOLD)
+    confirm = FirmSideFlag(item=NEAR_MISSED[0], reason=CONFIRM_HOLD.format(note="x"), confirm=True)
+    draft = ReminderDraft(engagement="E", subject="", body="", held=[decide, confirm])
+    assert held_refusal(draft) == "; ".join([
+        HELD_REFUSAL.format(n=1, listed=NEAR_MISSED[1].label),
+        CONFIRM_REFUSAL.format(listed=NEAR_MISSED[0].label),
+    ])
+
+
+#: The reasons whose parked file held the letter before decision 140: every
+#: one the client could fix, and no other. Typed out, so a reason that
+#: starts or stops holding fails here by name.
+HELD_BEFORE_140 = {
+    "password", "no-pages", "unreadable-pdf", "unreadable-image", "google-stub",
+    "extension", "too-small", "wrong-document", "no-keyword", "wrong-period",
+    "extraction-failed",
+}
+
+
+@pytest.mark.parametrize("reason", reasons.ALL, ids=lambda r: r.code)
+def test_every_existing_reason_holds_exactly_as_before(reason):
+    """Decision 140, claim 5. ``Reason.holds`` replaced "not firm-side" as
+    the hold's test, so every reason that held still holds, in the same
+    words, every one that did not still does not - and the two new reasons,
+    the page's and the file name's, are the firm-side reasons that hold.
+    Asked of the hold itself, with a parked row carrying the reason's own
+    sentence and evidence for A01."""
+    # The reasons' own sample sentence, so a placeholder a later reason adds
+    # is filled here the moment test_reasons.py learns it.
+    from tests.test_reasons import _sample
+    from tests.test_review import parked_row
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.reminder import _ask_for, _parked_holds
+
+    row = parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
+                     reason="scan.pdf: " + _sample(reason))
+    holds = {identifier: (flag.reason, flag.confirm)
+             for identifier, flag in _parked_holds(DROPPED, [row]).items()}
+    if reason in (reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT):
+        assert reason.firm_side and reason.holds
+        assert holds == {"A01": (CONFIRM_HOLD.format(note=reason.firm_side_note), True)}
+        return
+    assert reason.holds == (reason.code in HELD_BEFORE_140) == (not reason.firm_side)
+    expected = ({"A01": (PARKED_HOLD.format(ask=_ask_for(reason, DROPPED[0])), False)}
+                if reason.code in HELD_BEFORE_140 else {})
+    assert holds == expected
 
 
 # ---------------------- the letter, the body and the ladder (decision 118) ----

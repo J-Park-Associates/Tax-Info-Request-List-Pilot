@@ -190,6 +190,19 @@ def test_the_irs_blank_corpus_keeps_every_placement_and_every_park(catalogs, pdf
     assert routing.identifier == expected, (pdf, form, routing.reason)
 
 
+@pytest.mark.parametrize("pdf", ["fw2c.pdf", "fw3c.pdf", "fw3ss.pdf", "fw3pr.pdf"])
+def test_the_w3_family_and_the_w2c_park_on_the_1040(catalogs, pdf):
+    """Decision 140, claim 6. Every looser A01 rule the fact sheet tried
+    filed the W-3 family and the W-2c as W-2s, and only ``fw3.pdf``'s
+    expectation noticed. Each is pinned here, so no later keyword change
+    files one silently. They park; since decision 140 a person is shown
+    A01, because each shows the W-2's number - and A01 is never a
+    candidate, so nothing files on it."""
+    routing = route_file(IRS / pdf, catalogs("1040", 2025))
+    assert routing.identifier is None, (pdf, routing.reason)
+    assert routing.candidates == (), (pdf, routing.reason)
+
+
 # ------------------------------------------------ decision 141's claims ----
 
 

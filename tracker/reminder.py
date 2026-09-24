@@ -232,11 +232,27 @@ AMBIGUOUS_HOLD = "held - a person decides whether the client resends this or we 
 #: so the person sees what was wrong with the file without opening it.
 PARKED_HOLD = ("held - a file the client sent for this could not be used ({ask}); "
                "a person decides whether the client resends it or we file what came")
+#: Why a request holds the draft when the parked file pointing at it is
+#: waiting on a person here rather than on the client (decision 140): a
+#: document that matched no request but shows this request's form number.
+#: The file may be exactly what was asked for, so nothing here says it
+#: could not be used, and there is no client ask to quote - the reason's
+#: firm note rides in brackets instead.
+CONFIRM_HOLD = "held - a file the client sent may be this one ({note})"
 #: What write_draft() refuses a held draft with, and what the run log, the
 #: practice page's note and the CLI say: the count, then every held row.
 HELD_REFUSAL = (
     "the reminder is held: {n} request(s) need a person to decide whether the client "
     "resends or we fix it here - {listed}; nothing was written"
+)
+#: What a draft held only by a confirm hold (:data:`CONFIRM_HOLD`,
+#: decision 140) is refused with, beside :data:`HELD_REFUSAL`: there is no
+#: question of the client resending anything - the parked file may be
+#: exactly what was asked for - only of a person here confirming it. Said
+#: of the confirm-held rows alone; a draft held both ways says both.
+CONFIRM_REFUSAL = (
+    "the reminder is held until a person confirms the parked file (open it in Needs Review) "
+    "- {listed}; nothing was written"
 )
 #: The one line the app shows for a held reminder (through the API's vocabulary).
 HELD_SUMMARY = "Reminder held: {n} request(s) need a decision"
@@ -533,6 +549,11 @@ class FirmSideFlag:
 
     item: RequestItem
     reason: str
+    #: True for a confirm hold (decision 140): the row is held because a
+    #: parked file that may be it waits for a person here, not because the
+    #: client might have to resend. It picks the refusal sentence
+    #: (:data:`CONFIRM_REFUSAL` rather than :data:`HELD_REFUSAL`).
+    confirm: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -802,7 +823,7 @@ def _ambiguous_reason(item: RequestItem) -> str:
     return ""
 
 
-def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, str]:
+def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, FirmSideFlag]:
     """Which requests a parked file the client could fix holds, and why.
 
     Decision 117, the end-to-end review's third discrepancy. A drop the
@@ -813,10 +834,18 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, s
     loses things.
 
     A parked row holds a request when both halves are true: its reason is
-    one the *client* could fix (a firm-side one - a scan with no text
-    layer, a file nobody here has read - is ours, and decision 115's rule
-    that we never chase a client for our own work stands), and the review
-    queue's own shortlist for that row names the request.
+    one that holds (``Reason.holds``), and the review queue's own shortlist
+    for that row names the request. Every reason the *client* could fix
+    holds; a firm-side one - a scan with no text layer, a file nobody here
+    has read - does not, because decision 115's rule that we never chase a
+    client for our own work stands. The one firm-side reason that holds is
+    decision 140's: a read document that matched no request and shows a
+    request's form number. It holds, because asking for a W-2 the client
+    sent while it waits in review is the letter this exists to stop; and
+    its sentence (:data:`CONFIRM_HOLD`) blames no file, because the file
+    may be perfectly good. Whether a reason holds is its own property, read
+    here and nowhere else, so "whose problem" and "does it hold" can never
+    be answered by one flag again.
 
     **The shortlist, not the row's Candidates cell.** Candidates are the
     router's column - the requests that *accepted* the file - and a file
@@ -838,17 +867,20 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, s
 
     rows = {item.identifier: item for item in items}
     listed = list(items)
-    holds: dict[str, str] = {}
+    holds: dict[str, FirmSideFlag] = {}
     for row in parked:
         if row.decision != NEEDS_REVIEW:
             continue
         reason = reasons.find(row.reason or "")
-        if reason is None or reason.firm_side:
+        if reason is None or not reason.holds:
             continue
         for suggestion in shortlist_for(row, listed):
             item = rows.get(suggestion.identifier)
             if item is not None:
-                holds[suggestion.identifier] = PARKED_HOLD.format(ask=_ask_for(reason, item))
+                holds[suggestion.identifier] = (
+                    FirmSideFlag(item=item, reason=CONFIRM_HOLD.format(note=reason.firm_side_note),
+                                 confirm=True) if reason.firm_side
+                    else FirmSideFlag(item=item, reason=PARKED_HOLD.format(ask=_ask_for(reason, item))))
     return holds
 
 
@@ -911,9 +943,9 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
     if holds:
         asked: list[ReminderLine] = []
         for line in lines:
-            reason = holds.get(line.item.identifier)
-            if reason:
-                held.append(FirmSideFlag(item=line.item, reason=reason))
+            flag = holds.get(line.item.identifier)
+            if flag is not None:
+                held.append(flag)
             else:
                 asked.append(line)
         lines = asked
@@ -1610,14 +1642,20 @@ def stage_line(draft: ReminderDraft) -> str:
 def held_refusal(draft: ReminderDraft) -> str:
     """The one sentence a held draft is refused with: the inbox's (decision
     133) when files wait to be sorted, the held rows' (decision 115) when a
-    row holds it, and both, joined, when both do."""
+    row holds it, the confirm-held rows' (decision 140) when a parked file
+    waits for a person here to confirm it, and each of them, joined, when
+    more than one does."""
     said = []
     if draft.unsorted:
         said.append(INBOX_HOLD.format(n=draft.unsorted))
-    if draft.held:
+    decide = [flag for flag in draft.held if not flag.confirm]
+    confirm = [flag for flag in draft.held if flag.confirm]
+    if decide:
         said.append(HELD_REFUSAL.format(
-            n=len(draft.held), listed=", ".join(flag.item.label for flag in draft.held),
+            n=len(decide), listed=", ".join(flag.item.label for flag in decide),
         ))
+    if confirm:
+        said.append(CONFIRM_REFUSAL.format(listed=", ".join(flag.item.label for flag in confirm)))
     return "; ".join(said)
 
 
