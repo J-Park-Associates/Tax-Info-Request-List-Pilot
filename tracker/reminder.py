@@ -232,6 +232,13 @@ AMBIGUOUS_HOLD = "held - a person decides whether the client resends this or we 
 #: so the person sees what was wrong with the file without opening it.
 PARKED_HOLD = ("held - a file the client sent for this could not be used ({ask}); "
                "a person decides whether the client resends it or we file what came")
+#: Why a request holds the draft when the parked file pointing at it is
+#: waiting on a person here rather than on the client (decision 140): a
+#: document that matched no request but shows this request's form number.
+#: The file may be exactly what was asked for, so nothing here says it
+#: could not be used, and there is no client ask to quote - the reason's
+#: firm note rides in brackets instead.
+CONFIRM_HOLD = "held - a file the client sent may be this one ({note})"
 #: What write_draft() refuses a held draft with, and what the run log, the
 #: practice page's note and the CLI say: the count, then every held row.
 HELD_REFUSAL = (
@@ -813,10 +820,18 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, s
     loses things.
 
     A parked row holds a request when both halves are true: its reason is
-    one the *client* could fix (a firm-side one - a scan with no text
-    layer, a file nobody here has read - is ours, and decision 115's rule
-    that we never chase a client for our own work stands), and the review
-    queue's own shortlist for that row names the request.
+    one that holds (``Reason.holds``), and the review queue's own shortlist
+    for that row names the request. Every reason the *client* could fix
+    holds; a firm-side one - a scan with no text layer, a file nobody here
+    has read - does not, because decision 115's rule that we never chase a
+    client for our own work stands. The one firm-side reason that holds is
+    decision 140's: a read document that matched no request and shows a
+    request's form number. It holds, because asking for a W-2 the client
+    sent while it waits in review is the letter this exists to stop; and
+    its sentence (:data:`CONFIRM_HOLD`) blames no file, because the file
+    may be perfectly good. Whether a reason holds is its own property, read
+    here and nowhere else, so "whose problem" and "does it hold" can never
+    be answered by one flag again.
 
     **The shortlist, not the row's Candidates cell.** Candidates are the
     router's column - the requests that *accepted* the file - and a file
@@ -843,12 +858,14 @@ def _parked_holds(items: Sequence[RequestItem], parked: Sequence) -> dict[str, s
         if row.decision != NEEDS_REVIEW:
             continue
         reason = reasons.find(row.reason or "")
-        if reason is None or reason.firm_side:
+        if reason is None or not reason.holds:
             continue
         for suggestion in shortlist_for(row, listed):
             item = rows.get(suggestion.identifier)
             if item is not None:
-                holds[suggestion.identifier] = PARKED_HOLD.format(ask=_ask_for(reason, item))
+                holds[suggestion.identifier] = (
+                    CONFIRM_HOLD.format(note=reason.firm_side_note) if reason.firm_side
+                    else PARKED_HOLD.format(ask=_ask_for(reason, item)))
     return holds
 
 

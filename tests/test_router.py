@@ -863,3 +863,144 @@ def test_a_not_applicable_issuer_row_does_not_park_anybody_elses_k_1(tmp_path):
     rows = [K1, _replace(issuer("F02", "Ashford Holdings"), manual_override=Override.NOT_APPLICABLE)]
     f = text_pdf(tmp_path / "k-1.pdf", federal_k1("Dunmore Capital Group"))
     assert route_file(f, rows).identifier == "F01"
+
+
+# --------------------------------- a near miss is a suggestion (decision 140) ----
+# Three real scanned W-2s parked as bare "matched no request" with nothing
+# on the review card. The readings below are synthetic: the phrases the
+# fact sheet says the reader found, at the places it found them, and no
+# word of any client's document. A01's required phrases are not loosened -
+# every looser rule filed the W-3 family and the W-2c as W-2s - so each of
+# these still parks, and the card now says why a person should look at A01.
+
+#: What a skewed OCR copy puts in the title zone: nothing a form says.
+_SCAN_NOISE = NL.join(["iil ~~ .. | rn 1l :; 0O mmm ww ;; x"] * 14)
+#: The fact sheet's 24/2025: "W-2" dominating the first page and "wage and
+#: tax statement" beside it, the title zone noise, and the SSN label cut
+#: off at the box rule on every copy.
+LOST_ONE_PHRASE = NL.join([
+    _SCAN_NOISE,
+    "22222 Void a Employee's social security|",
+    "b Employer ID number (EIN) 1 Wages, tips, other compensation",
+    "c Employer's name, address, and ZIP code 3 Social security wages",
+    "W-2 Wage and Tax Statement 2025 Department of the Treasury-Internal Revenue Service",
+    "Copy B - To Be Filed With Employee's FEDERAL Tax Return",
+    "a Employee's social security|",
+    "W-2 Wage and Tax Statement 2025 Department of the Treasury-Internal Revenue Service",
+])
+#: The fact sheet's 10/2024: "W-2" in the title and nowhere else in its own
+#: right, the title wrapping across two lines, the SSN label abbreviated.
+IN_THE_TITLE_ONLY = NL.join([
+    "Form W-2 2025 Wage and Tax",
+    "W-2 Statement 2025",
+    "a. Employee's soc. sec. no. b Employer ID number (EIN)",
+    "1 Wages, tips, other comp. 2 Federal income tax withheld",
+    _SCAN_NOISE,
+])
+#: The fact sheet's 7/2014: the reading is garbage and the one clean form
+#: token is deep and in passing, so the page shows no form number at all.
+GARBLED = NL.join([
+    *["Wa9e anc Tax 5tatemnt 2O25 ;; Emp1oyer .. rn"] * 12,
+    _SCAN_NOISE,
+    "W-2 and EARNINGS SUMMARY 2025",
+])
+
+
+def _catalog_1040():
+    from dataclasses import replace
+
+    from tracker.manifest import validated
+    from tracker.templates import template_items
+
+    return [replace(i, min_size_kb=0) for i in validated(template_items("1040", year=2025))]
+
+
+def _read_by_ocr(tmp_path, name, text, items):
+    """Route ``text`` as an OCR reading of a scan called ``name``."""
+    from tracker.content_check import Extraction
+
+    scan = text_pdf(tmp_path / name, "")
+    return route_file(scan, items, reading=Extraction(text=text, from_ocr=True))
+
+
+def _shortlist(routing, items, name="scan.pdf"):
+    from tests.test_review import parked_row
+    from tracker.review import shortlist_for
+
+    return shortlist_for(parked_row(name, routing.evidence_record, reason=routing.reason), items)
+
+
+@pytest.mark.parametrize("text, where", [(LOST_ONE_PHRASE, "on page 1"), (IN_THE_TITLE_ONLY, "in the title")],
+                         ids=["form-number-dominates-page-1", "form-number-in-the-title"])
+def test_a_w2_whose_ocr_lost_one_phrase_parks_with_a01_on_its_shortlist(tmp_path, text, where):
+    """Decision 140, claim 1. Before it, both parked as bare "matched no
+    request" and the card said nothing: A01's partial evidence was in hand
+    and thrown away at the last exit. Now A01 is the shortlist, the reason
+    says the page shows its form number, and nothing is filed."""
+    items = _catalog_1040()
+    routing = _read_by_ocr(tmp_path, "scan0001.pdf", text, items)
+
+    assert routing.identifier is None
+    assert routing.candidates == (), "a suggestion is never a candidate"
+    assert reasons.find(routing.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+    assert routing.reason.startswith(UNMATCHED), "it still matched no request"
+    assert list(routing.evidence_record) == ["A01"]
+    [suggestion] = _shortlist(routing, items)
+    assert suggestion.identifier == "A01"
+    assert f"'W-2' {where}" in suggestion.reason
+
+
+def test_a_garbled_w2_named_w2_gets_its_file_name_as_the_hint(tmp_path):
+    """Decision 140, claim 2 - the fact sheet's 7/2014. The page shows no
+    row's form number, so the file's own name is the last hint, marked as
+    the name's and ranked as the weakest evidence there is. A garbled page
+    whose name says nothing either is the plain park it always was."""
+    from tracker.records import RULE_FILENAME
+
+    items = _catalog_1040()
+    routing = _read_by_ocr(tmp_path, "Employer W2.pdf", GARBLED, items)
+
+    assert routing.identifier is None and routing.candidates == ()
+    assert reasons.find(routing.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+    assert [e.rule for e in routing.evidence_record["A01"]] == [RULE_FILENAME]
+    [suggestion] = _shortlist(routing, items, "Employer W2.pdf")
+    assert suggestion.identifier == "A01" and "the file name says W-2" in suggestion.reason
+
+    nameless = _read_by_ocr(tmp_path, "scan0009.pdf", GARBLED, items)
+    assert nameless.reason == UNMATCHED and nameless.evidence_record == {}
+
+
+def test_the_page_outranks_the_name_for_the_hint(tmp_path):
+    """Where the page shows a row's form number, the name is not read: a
+    W-2 page in a file called "1098 scan" suggests A01 and only A01."""
+    items = _catalog_1040()
+    routing = _read_by_ocr(tmp_path, "Mortgage 1098 scan.pdf", LOST_ONE_PHRASE, items)
+    assert list(routing.evidence_record) == ["A01"]
+
+
+@pytest.mark.parametrize("name, text", [("scan0001.pdf", LOST_ONE_PHRASE), ("scan0002.pdf", IN_THE_TITLE_ONLY),
+                                        ("Employer W2.pdf", GARBLED)],
+                         ids=["lost-one-phrase", "title-only", "garbled-named-w2"])
+def test_a_near_miss_is_never_filed(tmp_path, name, text):
+    """Decision 140, claim 3. On a list where A01 is the only row left, a
+    near miss still parks: filing it there would be filing by elimination
+    on a row whose own rules said no."""
+    only_a01 = [item for item in _catalog_1040() if item.identifier == "A01"]
+    routing = _read_by_ocr(tmp_path, name, text, only_a01)
+    assert routing.identifier is None and routing.also == ()
+    assert routing.candidates == ()
+    assert reasons.find(routing.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+
+
+def test_a_form_number_said_only_deep_is_not_shown(tmp_path):
+    """"Shows" means the title zone or the first page. A W-2 number that
+    is the page's own only from page 2 on is no near miss: it is where a
+    person opening the document would not see it first."""
+    from tracker.content_check import PAGE_BREAK, _says_where
+
+    items = _catalog_1040()
+    page_two = NL.join(["W-2 Wage and Tax Statement 2025"] * 2 + [_SCAN_NOISE])
+    text = PAGE_BREAK.join([_SCAN_NOISE + NL + _SCAN_NOISE, page_two])
+    assert _says_where(text, "W-2") == ("deep", 2), "the premise: said, and deep"
+    routing = _read_by_ocr(tmp_path, "scan0003.pdf", text, items)
+    assert routing.reason == UNMATCHED and routing.evidence_record == {}

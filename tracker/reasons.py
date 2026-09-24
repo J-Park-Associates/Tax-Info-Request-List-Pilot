@@ -10,8 +10,10 @@ test failing at either end.
 Each :class:`Reason` here is the one definition of one cause: the sentence
 the scanner writes (a template, since most carry a detail), the marker the
 reminder recognises it by (a literal part of that template, checked by the
-suite), the plain sentence the client is asked with, and whether the row is
-the firm's to look at rather than the client's to fix. Producers call
+suite), the plain sentence the client is asked with, whether the row is
+the firm's to look at rather than the client's to fix, and - its own
+answer since decision 140 - whether a parked file carrying it holds the
+client's reminder. Producers call
 ``REASON.format(...)``; the reminder consults the same objects. There is
 nothing to keep in step.
 
@@ -75,6 +77,14 @@ class Reason:
     ask: str = ""      # the client-facing sentence; "" means GENERIC_ASK
     firm_side: bool = False   # True: waiting on a person here, never put to the client
     firm_note: str = ""       # what the firm is told instead; "" means FIRM_WAITING
+    #: True: a parked file carrying this reason holds the reminder for every
+    #: request its shortlist names (decision 117's hold). Its own property
+    #: since decision 140, and deliberately not read off ``firm_side``: a
+    #: file the client can fix holds, and so does one that shows a request's
+    #: form number and waits for a person here - which is firm-side, because
+    #: the client's file may be perfectly good. Whose problem a row is and
+    #: whether it holds the letter are two questions.
+    holds: bool = False
 
     def format(self, **detail: object) -> str:
         return self.template.format(**detail)
@@ -100,14 +110,17 @@ GOOGLE_EXPORT_HINT = "File > Download > PDF or Excel"
 PASSWORD_PROTECTED = Reason(
     "password", "PDF is password-protected; please ask the client for an unlocked copy",
     "password-protected", "the file is password-protected; please send an unlocked copy",
+    holds=True,
 )
-NO_PAGES = Reason("no-pages", "PDF contains no pages", "contains no pages")
-UNREADABLE_PDF = Reason("unreadable-pdf", "not a readable PDF ({error})", "not a readable PDF")
+NO_PAGES = Reason("no-pages", "PDF contains no pages", "contains no pages", holds=True)
+UNREADABLE_PDF = Reason("unreadable-pdf", "not a readable PDF ({error})", "not a readable PDF",
+                        holds=True)
 #: A photo Pillow will not open (decision 127). The client's to fix, like a
 #: corrupt PDF: a half-transferred photo is a photo they still have.
 UNREADABLE_IMAGE = Reason(
     "unreadable-image", "not a readable image ({error})", "not a readable image",
     "the photo that arrived could not be opened; please send it again",
+    holds=True,
 )
 #: An iPhone's HEIC photo on a machine whose HEIC decoder is missing
 #: (decision 127). Ours, and only ours: the client sent an ordinary photo,
@@ -126,16 +139,19 @@ GOOGLE_STUB = Reason(
     "Google Docs shortcut",
     "that was a Google Docs/Sheets shortcut rather than the document itself; "
     f"please download it ({GOOGLE_EXPORT_HINT}) and send that copy",
+    holds=True,
 )
 EXTENSION_NOT_ALLOWED = Reason(
     "extension", "extension .{extension} not allowed (expected: {allowed})", "not allowed",
     "we cannot open that file type; please send it as a PDF, a photo or an Excel file",
+    holds=True,
 )
 TOO_SMALL = Reason(
     "too-small",
     "file is {size_kb:.1f} KB, below the {minimum} KB minimum; possible placeholder or failed upload",
     "possible placeholder or failed upload",
     "the file arrived almost empty, so the upload may not have finished; please send it again",
+    holds=True,
 )
 #: A drop past ``validators.MAX_READ_MB`` (decision 137, M5), or a picture
 #: past Pillow's own decompression-bomb limit (decision 137, B1). Not read
@@ -163,19 +179,23 @@ WRONG_DOCUMENT = Reason(
     "wrong-document", "required keyword(s) {listed} not found; possible wrong document",
     "possible wrong document",
     "the document that arrived does not look like this item; please check that the right file was sent",
+    holds=True,
 )
 NO_EXPECTED_KEYWORD = Reason(
     "no-keyword", "none of the expected keywords found ({listed})",
     "none of the expected keywords found",
     "the document that arrived does not look like this item; please check that the right file was sent",
+    holds=True,
 )
 WRONG_PERIOD = Reason(
     "wrong-period", "expected period not found (pattern: {pattern}); possible wrong period",
     "possible wrong period",
     "the document that arrived appears to cover a different period; please check the year",
+    holds=True,
 )
 EXTRACTION_FAILED = Reason(
     "extraction-failed", "text extraction failed ({error})", "text extraction failed",
+    holds=True,
 )
 UNCHECKABLE_TYPE = Reason(
     "uncheckable-type", "content rules cannot be checked on .{extension} files; review manually",
@@ -234,6 +254,28 @@ ISSUER_NOT_NAMED = Reason(
     "names none of them", firm_side=True,
     firm_note="the list asks for this one by issuer and the document names none of "
               "the issuers on it; a person here files it or adds the row",
+)
+
+#: A document that was read, matched no request, and shows the **form
+#: number** of one or more rows on its page - in the title, or as the form
+#: that dominates the first page - or, where the page shows none, carries a
+#: row's keyword in its file name (decision 140). The commonest cause is an
+#: OCR reading that lost one of a row's required phrases: a real W-2 whose
+#: "employee's social security number" label the scan cut at the box rule.
+#: The rows are the shortlist a person is handed, never candidates: a
+#: suggestion is not evidence to file on (decision 92).
+#:
+#: Firm-side, because the client's file may be perfectly good and nothing
+#: may tell them it was wrong; and it **holds** the reminder for the rows
+#: its shortlist names (Jason, 2026-09-23), because asking the client for a
+#: W-2 they sent, while it sits in review, is the letter decision 117
+#: exists to stop.
+SHOWS_ITS_FORM_NUMBER = Reason(
+    "shows-form-number",
+    "matched no request, but it shows the form number of {listed}; a person should confirm",
+    "but it shows the form number of", firm_side=True, holds=True,
+    firm_note="it matched no request but shows this request's form number; "
+              "a person here confirms it - never the client",
 )
 
 #: The record says this row's working copy is at one path and the pass
@@ -403,7 +445,7 @@ ALL: tuple[Reason, ...] = (
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
     NO_PAGES, UNREADABLE_PDF, UNREADABLE_IMAGE, HEIC_NOT_SUPPORTED, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
-    ISSUER_NOT_NAMED,
+    ISSUER_NOT_NAMED, SHOWS_ITS_FORM_NUMBER,
     NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE, UNNAMED_ACROSS_HOUSEHOLDS,
     FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST, READING_STOPPED,
     PENDING_SYNC, VANISHED,
@@ -412,6 +454,9 @@ ALL: tuple[Reason, ...] = (
 
 #: Reasons that mean "a person here has not looked yet", never a client ask.
 FIRM_SIDE: tuple[Reason, ...] = tuple(r for r in ALL if r.firm_side)
+#: Reasons whose parked file holds the reminder for the requests its
+#: shortlist names (decisions 117 and 140).
+HOLDS: tuple[Reason, ...] = tuple(r for r in ALL if r.holds)
 
 
 def find(note: str) -> Reason | None:

@@ -94,6 +94,18 @@ default. A lead of that kind never pre-empts a filing the way a
 required-keyword match does: it is read only when the file would otherwise
 be parked with no candidate at all.
 
+**A near miss is a suggestion** (decision 140). A read document that
+matched nothing, and whose page still shows a row's own form number - in
+the title, or as the form dominating the first page - parks with
+``reasons.SHOWS_ITS_FORM_NUMBER`` and that row's evidence, so the card
+offers it and the reminder holds rather than asking the client for what
+they sent. A real W-2 whose OCR reading lost one of the row's three
+required phrases is the case. Where the page shows no row's form number,
+the file's name is the last hint, as it is for a scan nothing could read.
+The rows are never candidates: the required phrases were not loosened,
+because every looser rule tried filed the W-3 family and the W-2c as
+W-2s, and a suggestion is not evidence to file on.
+
 A decision also keeps *why* it was reached. ``Routing.evidence`` names the
 tier the decision rested on - ``EVIDENCE_CONTENT`` or nothing, since no
 decision rests on a name any more; ``Routing.evidence_record`` carries, per
@@ -172,6 +184,7 @@ from tracker.records import (
     RULE_FILENAME,
     RULE_REFUSED,
     RULE_REQUIRED,
+    WHERE_FIRST_PAGE,
     WHERE_TITLE,
     Evidence,
     Routing,
@@ -207,6 +220,15 @@ ISSUER_NOT_NAMED = reasons.ISSUER_NOT_NAMED
 #: a request. Both worded once, in :mod:`tracker.reasons`.
 SEVERAL_FORMS = reasons.NAMES_SEVERAL_FORMS
 SEVERAL_FORMS_UNSORTED = reasons.SEVERAL_FORMS_UNSORTED
+#: A read document that matched no request but shows a row's own form
+#: number (decision 140). Worded once, in :mod:`tracker.reasons`.
+SHOWS_ITS_FORM_NUMBER = reasons.SHOWS_ITS_FORM_NUMBER
+#: Where a form number has to have been said for the page to *show* it:
+#: named in the title zone, or dominating the first page. A form number
+#: counts at all only where the title names it or it is the page's
+#: dominant form (``content_check.says``), so this is those two readings
+#: at the two places a person opening the document sees first.
+_SHOWN_AT = (WHERE_TITLE, WHERE_FIRST_PAGE)
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 #: What a file name uses between words, read as spaces; a hyphen stays,
@@ -266,6 +288,66 @@ def _recorded_for(
     kept is what the decision itself points at.
     """
     return {identifier: record[identifier] for identifier in identifiers if record.get(identifier)}
+
+
+def _shows_its_form_number(evidence: tuple[Evidence, ...]) -> bool:
+    """Whether a row's evidence says the page shows that row's own form number.
+
+    Decision 140. A row's own form number is a keyword of the row that is a
+    form's number (``content_check.form_key``, the one normalisation, which
+    reads ``W-2``, ``1098`` and ``1099-INT`` as forms and a bare ``1099``
+    only as its family); it is *shown* when the evidence says it was said
+    in the title zone or on the first page (:data:`_SHOWN_AT`). This reads
+    only what the verdict already recorded - nothing is read off the page
+    again - and it decides nothing about filing: it is the question of
+    whether a person should be handed this row to read the document
+    against.
+    """
+    return any(
+        found.rule in (RULE_REQUIRED, RULE_ANY)
+        and found.where in _SHOWN_AT
+        and form_key(found.term) is not None
+        for found in evidence
+    )
+
+
+def _near_miss(
+    path: Path, allowed: list[RequestItem], record: dict[str, tuple[Evidence, ...]], hint: str,
+) -> Routing | None:
+    """Decision 140: a read document that matched no request, and still
+    points at one.
+
+    The rows whose tier-2 rules let the file through and whose verdict
+    recorded their own form number shown on the page (:func:`_shows_its_form_number`)
+    - a real W-2 whose OCR reading cut "employee's social security number"
+    at the box rule still shows "W-2" dominating its first page. Where the
+    page shows no row's form number, the file's own name is the last hint
+    (:func:`_filename_evidence`, the same evidence an unreadable scan
+    keeps), added beside whatever the row's verdict did record.
+
+    **Never a candidate, and never a filing.** A row here failed its own
+    rules - that is how the file got this far - and a suggestion is not
+    evidence to file on (decision 92). The rows travel as the evidence
+    record, so the review card offers them and the reminder's hold reads
+    them (``reasons.SHOWS_ITS_FORM_NUMBER`` holds, decision 117's hold);
+    ``candidates`` stays empty. None when nothing points anywhere, and the
+    file parks as plain "matched no request", as it always did.
+    """
+    shown = [item.identifier for item in allowed
+             if _shows_its_form_number(record.get(item.identifier, ()))]
+    if not shown:
+        for item in allowed:
+            if said_by_the_name := _filename_evidence(path, item):
+                record[item.identifier] = record.get(item.identifier, ()) + said_by_the_name
+                shown.append(item.identifier)
+    if not shown:
+        return None
+    return Routing(
+        path=path,
+        identifier=None,
+        reason=SHOWS_ITS_FORM_NUMBER.format(listed=", ".join(shown)) + hint,
+        evidence_record=_recorded_for(record, shown),
+    )
 
 
 def _required_matched(text: str, item: RequestItem) -> bool:
@@ -649,8 +731,10 @@ def _decide(
     # The forms are taken in first-mention order (self_named_forms), because
     # which request the page files under first is part of the decision.
     if own is not None:
-        named = self_named_forms(words)
-        if split := _multi_form(path, words, allowed, named, keep):
+        # Its own name, not ``named``: that list is the rows a file's name
+        # pointed at, and decision 140 reads it again at the last exit.
+        self_named = self_named_forms(words)
+        if split := _multi_form(path, words, allowed, self_named, keep):
             return split
 
     # The list asks for this document one row per issuer (decision 93): the
@@ -782,6 +866,11 @@ def _decide(
             f"; add a keyword to {', '.join(rule_less[:3])} in the manifest "
             "to route files like this automatically"
         )
+    # Read, matched nothing - and a row's own form number is on the page,
+    # or the file's name says a row's word (decision 140). The rows go to
+    # the person as a shortlist and hold the letter; nothing is filed.
+    if near_miss := _near_miss(path, allowed, record, hint):
+        return near_miss
     return Routing(path=path, identifier=None, reason=f"{UNMATCHED}{hint}")
 
 

@@ -32,6 +32,7 @@ from tracker.reminder import (
     CHANGED_ADDED,
     CHANGED_HEADING,
     CHANGED_REMOVED,
+    CONFIRM_HOLD,
     DEADLINE_CLAUSE,
     DRAFT_BANNER,
     DRAFT_FILENAME,
@@ -1021,6 +1022,92 @@ def test_a_parked_locked_file_whose_shortlist_is_partial_holds_it_too(tmp_path):
     draft = draft_reminder(folder)
     assert [flag.item.identifier for flag in draft.held] == ["A02"]
     assert [line.item.identifier for line in draft.lines] == ["A01"]
+
+
+# ------------------- a near miss holds the letter and blames nobody (d140) ----
+# Jason, 2026-09-23: while a document that shows a request's form number
+# waits for a person, that request's reminder is held - and nothing tells
+# the client their file was wrong, because it may well be exactly right.
+
+#: The same two requests, with A01 asking for the three phrases the 1040
+#: catalog's W-2 row asks for.
+NEAR_MISSED = [
+    replace(DROPPED[0], required_keywords=(
+        "W-2", "wage and tax statement", "employee's social security number")),
+    DROPPED[1],
+]
+
+
+def test_a_near_miss_holds_the_reminder_and_blames_no_file(tmp_path):
+    """Decision 140, claim 4. A W-2 whose reading lost the SSN label parks
+    with A01 on its shortlist; the draft holds A01 rather than asking for
+    it, and neither the held line nor the draft says the file was wrong."""
+    from tests.test_router import LOST_ONE_PHRASE
+    from tests.test_scanner import text_pdf
+    from tracker.review import shortlist_for
+
+    folder = engagement(tmp_path, NEAR_MISSED, name="Near Miss TY2025")
+    report = sorted_drop(folder, lambda shared: text_pdf(shared / "scan0001.pdf", LOST_ONE_PHRASE))
+    assert len(report.review) == 1
+
+    [row] = parked_rows(folder)
+    assert reasons.find(row.reason) is reasons.SHOWS_ITS_FORM_NUMBER
+    assert row.candidates == "", "a suggestion is never a candidate"
+    assert [s.identifier for s in shortlist_for(row, NEAR_MISSED)] == ["A01"]
+
+    draft = draft_reminder(folder)
+    assert [flag.item.identifier for flag in draft.held] == ["A01"]
+    assert draft.held[0].reason == CONFIRM_HOLD.format(
+        note=reasons.SHOWS_ITS_FORM_NUMBER.firm_side_note)
+    assert [line.item.identifier for line in draft.lines] == ["A02"]
+    blame = (reasons.WRONG_DOCUMENT.client_ask, reasons.GENERIC_ASK, "could not be used",
+             "wrong", "right file", "send it again")
+    for said in (draft.held[0].reason, draft.text):
+        for word in blame:
+            assert word not in said, word
+    with pytest.raises(ReminderHeldError, match="A01"):
+        write_draft(draft, engagement_dir=folder)
+    assert list(folder.glob("reminder-draft*")) == []
+
+
+def _sample(reason):
+    return reason.template.format(**{
+        name: "x" for name in ("error", "extension", "allowed", "listed", "pattern")
+    } | {"size_kb": 1.0, "minimum": 5})
+
+
+#: The reasons whose parked file held the letter before decision 140: every
+#: one the client could fix, and no other. Typed out, so a reason that
+#: starts or stops holding fails here by name.
+HELD_BEFORE_140 = {
+    "password", "no-pages", "unreadable-pdf", "unreadable-image", "google-stub",
+    "extension", "too-small", "wrong-document", "no-keyword", "wrong-period",
+    "extraction-failed",
+}
+
+
+@pytest.mark.parametrize("reason", reasons.ALL, ids=lambda r: r.code)
+def test_every_existing_reason_holds_exactly_as_before(reason):
+    """Decision 140, claim 5. ``Reason.holds`` replaced "not firm-side" as
+    the hold's test, so every reason that held still holds, in the same
+    words, every one that did not still does not - and the one new reason
+    is the one firm-side reason that holds. Asked of the hold itself, with
+    a parked row carrying the reason's own sentence and evidence for A01."""
+    from tests.test_review import parked_row
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
+    from tracker.reminder import _ask_for, _parked_holds
+
+    row = parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
+                     reason="scan.pdf: " + _sample(reason))
+    holds = _parked_holds(DROPPED, [row])
+    if reason is reasons.SHOWS_ITS_FORM_NUMBER:
+        assert reason.firm_side and reason.holds
+        assert holds == {"A01": CONFIRM_HOLD.format(note=reason.firm_side_note)}
+        return
+    assert reason.holds == (reason.code in HELD_BEFORE_140) == (not reason.firm_side)
+    expected = ({"A01": PARKED_HOLD.format(ask=_ask_for(reason, DROPPED[0]))}
+                if reason.code in HELD_BEFORE_140 else {})
+    assert holds == expected
 
 
 # ---------------------- the letter, the body and the ladder (decision 118) ----
