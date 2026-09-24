@@ -19,6 +19,7 @@ colorama==0.4.6
 cryptography==50.0.1
 et_xmlfile==2.0.0
 iniconfig==2.3.0
+olefile==0.47
 openpyxl==3.1.5
 packaging==26.3
 pdfminer.six==20260107

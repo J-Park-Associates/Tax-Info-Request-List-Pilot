@@ -100,7 +100,7 @@ LAYERS: dict[int, frozenset[str]] = {
     0: frozenset({"__init__", "reasons", "locking", "page", "fsio", "settings", "layout"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
-    2: frozenset({"content_check", "names", "router"}),
+    2: frozenset({"containers", "content_check", "names", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     4: frozenset({"runner", "scheduling"}),
     5: frozenset({"api"}),
@@ -117,6 +117,17 @@ FORBIDDEN_MODULES: tuple[str, ...] = (
     "smtplib", "email", "imaplib", "poplib", "ftplib", "urllib", "http", "socket", "ssl",
     "requests",
 )
+
+#: The one exception to :data:`FORBIDDEN_MODULES`, by module and by name
+#: (decision 143): ``tracker/containers.py`` opens a client's ``.eml``, and
+#: the standard library's ``email`` package is its parser - the message is
+#: read from bytes already on disk, no address is parsed, nothing is
+#: composed and nothing is sent. Only the parsing names, and only there:
+#: ``smtplib``, ``imaplib`` and the rest stay forbidden everywhere, this
+#: module included, and ``email`` stays forbidden in every other module.
+MAIL_PARSING_ALLOWED: dict[str, frozenset[str]] = {
+    "containers": frozenset({"email", "email.message", "email.policy"}),
+}
 
 #: The four readers decision 127 pinned, imported inside the functions that
 #: need them (``content_check`` for the reading, ``validators`` for the HEIC
@@ -306,9 +317,33 @@ def test_no_module_under_tracker_imports_a_mail_or_network_module():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for name in _imported_names(tree):
             top = name.split(".")[0]
-            if top in FORBIDDEN_MODULES:
+            if top in FORBIDDEN_MODULES and name not in MAIL_PARSING_ALLOWED.get(path.stem, ()):
                 found.append(f"{path.name} imports {name}")
     assert not found, found
+
+
+def test_the_email_parser_reaches_no_mail_client_and_no_network_call():
+    """Decision 143's one exception, measured rather than trusted: the
+    module that opens a client's ``.eml`` is imported in an interpreter of
+    its own, and of the forbidden names only ``email`` itself and the two
+    the standard library's own helpers reach (:data:`READER_IMPORTS_ALLOWED`:
+    ``email.utils`` imports ``socket`` for a message id it is never asked
+    for, and ``urllib.parse`` to unquote a parameter) may come back - never
+    ``smtplib``, ``imaplib``, ``poplib``, ``http`` or ``ssl``."""
+    import json
+    import subprocess
+    import sys
+
+    program = (
+        "import json,sys\n"
+        "before={m.split('.')[0] for m in sys.modules}\n"
+        "import tracker.containers\n"
+        "print(json.dumps(sorted({m.split('.')[0] for m in sys.modules}-before)))\n"
+    )
+    done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True,
+                          check=True, cwd=REPO)
+    reached = {name for name in json.loads(done.stdout) if name in FORBIDDEN_MODULES}
+    assert reached <= READER_IMPORTS_ALLOWED | {"email"}, sorted(reached)
 
 
 def test_no_reader_imports_a_network_module():

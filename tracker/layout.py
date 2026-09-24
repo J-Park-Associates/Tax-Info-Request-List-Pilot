@@ -61,6 +61,17 @@ REVIEW_DIR_NAME = "00 - Needs Review"
 #: The generated note telling the client they need not sort anything. It
 #: lives in the inbox, which is the one folder they are asked to use.
 README_NAME = "_README.txt"
+#: Where what was taken out of a client's email or zip rests (decision
+#: 143): one hidden folder per household-year in the **private** tree,
+#: beside the year's returns, never in the tree the client is shared. The
+#: leading underscore is what keeps discovery from listing it as a folder
+#: that does not fit; it holds no journal, so it is never read as a return;
+#: and it is not under any return's working set, so the sweep of the
+#: working copies never names what is in it. Synced like everything in the
+#: private tree - a named exception to decision 107's rule, by the owner's
+#: decision of 2026-09-23 - because a recovery (decision 119) and a move to
+#: another machine must both reach it.
+OPENED_DIR_NAME = "_Opened"
 
 #: How a return folder is named: the form first, the name after, so the
 #: same return line can be followed year after year. ``form`` is the
@@ -194,6 +205,14 @@ def inbox_of(return_dir: Path | str) -> Path:
     """The inbox this return's drops arrive in: the household's one inbox,
     in the client tree."""
     return inbox_dir_for(root_of(return_dir), household_name_of(return_dir))
+
+
+def opened_dir_of(return_dir: Path | str) -> Path:
+    """Where this return's household-year keeps what was taken out of an
+    email or a zip (:data:`OPENED_DIR_NAME`): beside the return, in the
+    private tree, shared by every return of the household-year as the
+    originals folder is."""
+    return Path(return_dir).parent / OPENED_DIR_NAME
 
 
 def originals_of(return_dir: Path | str) -> Path:

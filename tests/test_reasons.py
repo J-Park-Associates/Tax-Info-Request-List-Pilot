@@ -16,7 +16,8 @@ from tracker.reasons import ALL, FIRM_SIDE, GENERIC_ASK, Reason, find
 def test_every_marker_is_part_of_its_own_sentence(reason: Reason):
     sample = reason.template.format(**{
         name: "x" for name in ("error", "extension", "allowed", "listed", "pattern")
-    } | {"size_kb": 1.0, "minimum": 5, "size": "300 MB", "minutes": "10 minutes"})
+    } | {"size_kb": 1.0, "minimum": 5, "size": "300 MB", "minutes": "10 minutes",
+         "kind": "an email"})
     assert reason.marker.lower() in sample.lower()
     assert reason.matches(sample)
 
@@ -29,7 +30,8 @@ def test_codes_are_unique():
 def _sample(reason: Reason) -> str:
     return reason.template.format(**{
         name: "x" for name in ("error", "extension", "allowed", "listed", "pattern")
-    } | {"size_kb": 1.0, "minimum": 5, "size": "300 MB", "minutes": "10 minutes"})
+    } | {"size_kb": 1.0, "minimum": 5, "size": "300 MB", "minutes": "10 minutes",
+         "kind": "an email"})
 
 
 @pytest.mark.parametrize("reason", ALL, ids=lambda r: r.code)

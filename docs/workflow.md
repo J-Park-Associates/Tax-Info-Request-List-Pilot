@@ -21,7 +21,9 @@ people side.
   `00 - Needs Review` with the app's *File it* action, sets `Manual Override`
   when their judgment beats the rules, and sends the drafted reminders.
 - **Client** — a household, with one folder to drop everything into — PDFs,
-  spreadsheets, or photos from a phone. Nothing else.
+  spreadsheets, or photos from a phone. Nothing else. An email or a zip
+  with those attached is opened, and each attachment is sorted as a
+  document of its own (decision 143).
 
 ## The folders
 
@@ -44,6 +46,16 @@ other households, which is how a client with a co-owned business keeps one
 folder while the business lives in a household shared to its co-owners. A
 document filed to one of those moves into *that* household's year folder,
 because an original rests under the folder its return lives in.
+
+An email or a zip a client drops is an original like any other: it moves
+into their folder for the year, untouched, and its row says `Opened`. What
+was attached is taken out - in the private tree, into a hidden `_Opened`
+folder beside the year's returns, one folder per container - and each
+attachment is sorted as a document of its own, its row naming the container
+it came in (decision 143). The client sees the container in their year
+folder and, in the README's list of what has arrived, each attachment that
+filed. A document from inside one is never filed into another household's
+return; it waits at home for a person.
 
 ## Starting an engagement
 
