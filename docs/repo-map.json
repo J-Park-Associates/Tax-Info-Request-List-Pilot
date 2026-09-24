@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 123,
     "edges": 741,
-    "reused": 96
+    "reused": 100
   },
   "node_types": [
     "artifact",
@@ -3956,8 +3956,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7f002976383090df",
-      "lines": 1105,
+      "sha256": "b7545d5f52186592",
+      "lines": 1108,
       "exports": [
         "PARK",
         "PRIOR",

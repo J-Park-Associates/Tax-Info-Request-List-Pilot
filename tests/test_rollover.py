@@ -1076,8 +1076,11 @@ def test_the_rollover_carries_asked_and_named_and_asks_what_arrived(tmp_path, mo
     had is added as not asked."""
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    (tmp_path / "app").mkdir(exist_ok=True)
+    # The settings beside the root, not inside it: a root that holds the
+    # app's settings is refused (decision 137).
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    settings.mkdir(exist_ok=True)
     set_clients_root(tmp_path)
     rows = [
         RequestItem(identifier="A01", document="W-2", period="TY2025", required_keywords=("W-2",)),
