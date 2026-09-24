@@ -51,16 +51,16 @@ from dataclasses import replace
 
 from tracker.manifest import (
     DEFAULT_EXTENSIONS,
+    ISSUER_DOCUMENT,
     JURAT,
     KEYWORD_ALL_OF,
     KEYWORD_ANY_OF,
-    WINDOWS_ILLEGAL_CHARS,
     ManifestError,
     RequestItem,
-    derived_short_title,
     detect_year,
     entity_keyword,
     identifier_problem,
+    issuer_short_title,
     item_from_fields,
     shift_item,
 )
@@ -586,16 +586,12 @@ FORM_TEMPLATES = {
 #: and this is which one they copy.
 K1_CATALOG = "1040"
 K1_IDENTIFIER = "F01"
-#: How an issuer row is named to people - the README and the letter - so
-#: they say whose K-1 it is ("F02 - Schedule K-1 - Ashford Holdings LP");
-#: its folder and copies take :data:`ISSUER_SHORT` (decision 144).
-ISSUER_DOCUMENT = "Schedule K-1 - {entity}"
-#: An issuer row's short name (decision 144, the owner's Q-B of
-#: 2026-09-24): ``K-1`` and the issuer, cut to twenty characters at a whole
-#: word - ``K-1 Ashford Holdings`` - so the firm's folder says whose K-1 it
-#: is. Derived from the Document it would have been ``Schedule K-1`` and
-#: little or nothing of the issuer.
-ISSUER_SHORT = "K-1 {entity}"
+# ISSUER_DOCUMENT (how an issuer row's Document is written, "Schedule K-1 -
+# Ashford Holdings LP") is read from tracker.manifest since decision 144's
+# ruling on the build: the derivation of a blank short name recognises an
+# issuer title there, at layer 1, so the one constant lives beside it, with
+# ISSUER_SHORT ("K-1 Ashford Holdings"). It is still read from this module
+# by the callers that have always read it.
 
 
 def k1_row() -> dict:
@@ -629,12 +625,12 @@ def issuer_row(identifier: str, entity: str) -> dict:
     "Ashford Holdings, L.P." and "Ashford Holdings LP" build one row and
     neither smuggles a comma into a comma-separated cell.
 
-    Its short name is set here (decision 144, the owner's Q-B):
-    :data:`ISSUER_SHORT` cut to twenty characters at a whole word, so
-    "Ashford Holdings, L.P."'s row is ``K-1 Ashford Holdings`` in the
-    firm's folders. A character a folder cannot hold becomes a hyphen, as
-    the scaffold would make it. A preparer's own row still derives its
-    short name from its title.
+    Its short name is set here (decision 144, the owner's Q-B) by
+    :func:`tracker.manifest.issuer_short_title` - ``K-1`` and the issuer,
+    cut to twenty characters at a whole word, so "Ashford Holdings,
+    L.P."'s row is ``K-1 Ashford Holdings`` in the firm's folders. A K-1
+    row a person types in the editor with the same Document derives the
+    same name through the same function.
     """
     name = entity_keyword(entity)
     if not name:
@@ -657,7 +653,7 @@ def issuer_row(identifier: str, entity: str) -> dict:
         # (decision 145: this line was missing, so an issuer row expected one
         # whatever the K-1 row expected - one today, so no list changed).
         expected_count=source.get("expected_count", 1),
-        short=derived_short_title(WINDOWS_ILLEGAL_CHARS.sub("-", ISSUER_SHORT.format(entity=name))),
+        short=issuer_short_title(name),
     )
 
 

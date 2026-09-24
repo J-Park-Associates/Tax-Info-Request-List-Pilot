@@ -1020,7 +1020,7 @@ def test_a_row_with_no_short_title_derives_one_at_a_whole_word():
     from tracker.manifest import COL_SHORT_TITLE, SHORT_TITLE_MAX, derived_short_title, item_from_record
 
     assert SHORT_TITLE_MAX == 20
-    assert derived_short_title("Schedule K-1 - ABC Partners LLC") == "Schedule K-1 - ABC"
+    assert derived_short_title("Rental Property Income and Expenses") == "Rental Property"
     assert derived_short_title("W-2 Wage Statements - All Employers") == "W-2 Wage Statements"
     assert derived_short_title("1099-INT / 1099-DIV - Interest") == "1099-INT / 1099-DIV"
     assert derived_short_title("Fiduciary, Attorney & Accounting Fees") == "Fiduciary, Attorney"
@@ -1031,9 +1031,9 @@ def test_a_row_with_no_short_title_derives_one_at_a_whole_word():
     # Exactly twenty, ending at a word: kept whole.
     assert derived_short_title("Brokerage Statements and more") == "Brokerage Statements"
 
-    row = item_from_fields({"identifier": "X01", "document": "Schedule K-1 - ABC Partners LLC"},
+    row = item_from_fields({"identifier": "X01", "document": "Rental Property Income and Expenses"},
                            where="Row 1")
-    assert row.short_title == "" and row.short_name == "Schedule K-1 - ABC"
+    assert row.short_title == "" and row.short_name == "Rental Property"
     typed = item_from_fields({"identifier": "X01", "document": "Anything at all",
                               "short_title": "  K-1 ABC  "}, where="Row 1")
     assert typed.short_title == "K-1 ABC" and typed.short_name == "K-1 ABC"

@@ -367,7 +367,7 @@ def test_a_k1_issuer_row_is_short_named_by_its_issuer():
     whole word - not the first twenty of its Document, which kept at most
     five letters of the issuer ("Schedule K-1") and none of Ashford's. The
     Document the client reads keeps the whole name; the row's folder takes
-    the short one; a preparer's own row still derives from its title."""
+    the short one."""
     from tracker.manifest import item_from_fields, short_title_problem
     from tracker.scaffold import folder_name_for
 
@@ -384,6 +384,36 @@ def test_a_k1_issuer_row_is_short_named_by_its_issuer():
     ashford = item_from_spec(issuer_row("F02", "Ashford Holdings, L.P."))
     assert ashford.document == "Schedule K-1 - Ashford Holdings LP"
     assert folder_name_for(ashford) == "F02 - K-1 Ashford Holdings"
-    # The same words typed as a preparer's own row: derived from the title.
-    own = item_from_fields({"identifier": "X01", "document": ashford.document}, where="Row 1")
-    assert own.short_title == "" and own.short_name == "Schedule K-1"
+    # Any other title a preparer types still derives its first twenty.
+    own = item_from_fields({"identifier": "X01", "document": "Schedule K-1s Received by the Trust"},
+                           where="Row 1")
+    assert own.short_title == "" and own.short_name == "Schedule K-1s"
+
+
+def test_a_hand_added_k1_row_derives_its_short_name_from_the_issuer():
+    """Decision 144, the designer's ruling on the build: in the app a K-1
+    row per issuer is added by hand in the editor (the runbook's "Adding
+    one"), with the Document written as ``ISSUER_DOCUMENT`` and the Short
+    name left blank. Its folder still says whose K-1 it is: the blank
+    derives ``K-1 <issuer>`` through the one function ``issuer_row`` uses
+    - the same cut, the same hyphen for a character a folder cannot hold -
+    and the title is recognised from the one constant, its prefix without
+    case. Any other title derives its first twenty characters."""
+    from tracker import manifest, templates
+    from tracker.manifest import derived_short_title, issuer_short_title, item_from_fields
+    from tracker.scaffold import folder_name_for
+
+    assert templates.ISSUER_DOCUMENT is manifest.ISSUER_DOCUMENT
+    typed = item_from_fields({"identifier": "F02", "document": "Schedule K-1 - Ashford Holdings LP",
+                              "required_keywords": "Ashford Holdings LP"}, where="Row 1")
+    assert typed.short_title == "" and typed.short_name == "K-1 Ashford Holdings"
+    assert folder_name_for(typed) == "F02 - K-1 Ashford Holdings"
+    # The same name issuer_row gives the same entity, by the same function.
+    cut = item_from_spec(issuer_row("F02", "Ashford Holdings, L.P."))
+    assert cut.short_title == typed.short_name == issuer_short_title("Ashford Holdings LP")
+    # The prefix is matched without case; what a folder cannot hold is a hyphen.
+    assert derived_short_title("SCHEDULE K-1 - Birch Lane Partners") == "K-1 Birch Lane"
+    assert derived_short_title("schedule k-1 - A/B Co") == "K-1 A-B Co"
+    # Not the pattern: the first twenty characters, as any title.
+    assert derived_short_title("Schedule K-1s Received") == "Schedule K-1s"
+    assert derived_short_title(templates.ISSUER_DOCUMENT.format(entity="")) == "Schedule K-1"

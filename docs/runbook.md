@@ -1049,7 +1049,7 @@ and fill the same five cells as `F01` with these differences; then
 |---|---|
 | Identifier | The next free one in F's block — `F02`, then `F03`. Leave `F01` where it is. |
 | Document | `Schedule K-1 - ` and the entity, e.g. `Schedule K-1 - Ashford Holdings LP`. This is what the client reads in the README and the letter. |
-| **Short name** | **`K-1 ` and the entity**, cut to 20 characters at a whole word, e.g. `K-1 Ashford Holdings`. This names the firm's folder and the filed copies (decision 144). Left blank it would be the Document's first 20 characters, `Schedule K-1`, which says nothing about whose K-1 it is. |
+| Short name | Leave it blank. A Document written `Schedule K-1 - ` and the entity gives the short name `K-1 ` and the entity, cut to 20 characters at a whole word - `K-1 Ashford Holdings` - which names the firm's folder and the filed copies (decision 144). Type one only to name the folder differently. |
 | Any Keywords | Exactly what `F01` has. Copy the cell. |
 | **Required Keywords** | **The entity's name**, and nothing else. |
 | Period, Allowed Extensions, Min Size KB | Copy `F01`'s. |

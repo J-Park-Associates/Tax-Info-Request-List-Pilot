@@ -538,6 +538,40 @@ SHORT_TITLE_MAX = 20
 #: ``Schedule K-1 -``) is dropped with it. A closing bracket is kept,
 #: because ``704(b)`` ends in one.
 _SHORT_TITLE_TRAILING = " .,;:-/&|+_"
+#: How a per-issuer K-1 row's Document is written (decision 93): the K-1
+#: and the entity that issued it, so the README and the letter say whose
+#: K-1 it is. Worded here, beside the derivation that recognises it, and
+#: read by ``tracker.templates.issuer_row`` from here - one constant.
+ISSUER_DOCUMENT = "Schedule K-1 - {entity}"
+#: A per-issuer K-1 row's short name (decision 144, the owner's Q-B of
+#: 2026-09-24): ``K-1`` and the issuer, cut as every short name is -
+#: ``K-1 Ashford Holdings`` - so the firm's folder says whose K-1 it is.
+#: The first twenty characters of the Document would have been
+#: ``Schedule K-1`` and little or nothing of the issuer.
+ISSUER_SHORT = "K-1 {entity}"
+#: What an issuer Document begins with, read off :data:`ISSUER_DOCUMENT`.
+_ISSUER_PREFIX = ISSUER_DOCUMENT.split("{entity}", 1)[0]
+
+
+def _cut_short(text: str) -> str:
+    """``text`` cut to :data:`SHORT_TITLE_MAX` characters at a whole word,
+    trailing separators removed (:func:`derived_short_title`'s cut)."""
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(text) > SHORT_TITLE_MAX:
+        head = text[:SHORT_TITLE_MAX]
+        if text[SHORT_TITLE_MAX].isalnum() and (cut := head.rfind(" ")) > 0:
+            head = head[:cut]
+        text = head
+    return text.rstrip(_SHORT_TITLE_TRAILING) or text.strip()
+
+
+def issuer_short_title(entity: str) -> str:
+    """A per-issuer K-1 row's short name: :data:`ISSUER_SHORT` for
+    ``entity``, a character a folder cannot hold turned into a hyphen as
+    the scaffold would turn it, cut as every short name is. The one
+    function, for the row ``tracker.templates.issuer_row`` builds and for
+    a K-1 row a person typed in the editor (:func:`derived_short_title`)."""
+    return _cut_short(WINDOWS_ILLEGAL_CHARS.sub("-", ISSUER_SHORT.format(entity=entity.strip())))
 
 
 def derived_short_title(document: str) -> str:
@@ -550,15 +584,21 @@ def derived_short_title(document: str) -> str:
     back to the last space before them, and a first word longer than the
     limit is cut at the limit, since there is no whole word to keep.
 
-    ``Schedule K-1 - ABC Partners LLC`` is ``Schedule K-1 - ABC``.
+    **A per-issuer K-1 title is the one exception** (the designer's ruling
+    on the build): a Document written as :data:`ISSUER_DOCUMENT` - the
+    prefix matched without case - derives :func:`issuer_short_title` of
+    its entity, so the folder says whose K-1 it is however the row was
+    added: cut from the catalog by ``issuer_row``, or typed by a person
+    following the runbook. ``Schedule K-1 - Ashford Holdings LP`` is
+    ``K-1 Ashford Holdings``; ``Rental Property Income and Expenses`` is
+    ``Rental Property``.
     """
     text = re.sub(r"\s+", " ", str(document or "")).strip()
-    if len(text) > SHORT_TITLE_MAX:
-        head = text[:SHORT_TITLE_MAX]
-        if text[SHORT_TITLE_MAX].isalnum() and (cut := head.rfind(" ")) > 0:
-            head = head[:cut]
-        text = head
-    return text.rstrip(_SHORT_TITLE_TRAILING) or text.strip()
+    if text.casefold().startswith(_ISSUER_PREFIX.casefold()):
+        entity = text[len(_ISSUER_PREFIX):].strip()
+        if entity:
+            return issuer_short_title(entity)
+    return _cut_short(text)
 
 
 def short_title_problem(short_title: str) -> str:

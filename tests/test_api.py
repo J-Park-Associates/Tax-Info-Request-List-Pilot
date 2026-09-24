@@ -4010,7 +4010,7 @@ def test_the_short_title_round_trips_through_the_editor_and_the_rollover(capsys,
     assert {r["identifier"]: r["short_title"] for r in state["rules"]} == {
         "A01": "W-2", "D01": "Donations", "E01": "", "X01": ""}
     assert {i["identifier"]: i["short_name"] for i in state["items"]} == {
-        "A01": "W-2", "D01": "Donations", "E01": "My own brokerage", "X01": "Schedule K-1 - ABC"}
+        "A01": "W-2", "D01": "Donations", "E01": "My own brokerage", "X01": "K-1 ABC Partners LLC"}
     vocab = run(capsys, "list")[1]["vocab"]
     assert {"key": "short_title", "label": "Short name"}.items() <= next(
         c for c in vocab["columns"] if c["key"] == "short_title").items()
