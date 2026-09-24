@@ -1229,9 +1229,14 @@ def unlearn_keyword(
     (:class:`tracker.ledger.Folded`) - and the filing that taught the word
     spelt the request as the list spells it. So the identifier recorded
     here is the one the rules hold, whatever case the caller used, or the
-    caller's where no rule holds that request any more; otherwise a person
-    who typed ``a01`` would leave the journal's fold and the store's
-    disagreeing for good, and ``store.check()`` would say so every pass.
+    caller's where no rule holds that request any more, and the journal
+    read on its own (``python -m tracker.ledger``) shows the word gone -
+    wherever the list still spells the request as the teaching line did.
+    After a respelling by case it does not: the journal's fold keeps the
+    word under the old spelling.
+    The gate does not depend on it: ``store.check()`` folds the words by
+    the store's case rule (decision 136), so a line spelt either way is
+    the same request to it.
 
     Unfiling still unlearns nothing (decision 77): the request wanted the
     word when the document was filed and wants it still, and guessing

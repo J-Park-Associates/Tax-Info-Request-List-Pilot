@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 122,
     "edges": 723,
-    "reused": 92
+    "reused": 91
   },
   "node_types": [
     "artifact",
@@ -653,8 +653,8 @@
       "id": "tracker/ledger.py",
       "type": "module",
       "layer": "core",
-      "sha256": "26dceca063b9b3df",
-      "lines": 911,
+      "sha256": "d6e8c77557338031",
+      "lines": 917,
       "cli": "python -m tracker.ledger",
       "exports": [
         "ALSO_KEY",
@@ -833,8 +833,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "bb802e9bb6f5c7f3",
-      "lines": 1396,
+      "sha256": "e59fd53a226ff1bd",
+      "lines": 1401,
       "exports": [
         "ANY_EXTENSION",
         "BARE_FORM_NUMBER_WARNING",
@@ -1859,8 +1859,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0361dfb98fed5f81",
-      "lines": 2301,
+      "sha256": "774e114e0914bd66",
+      "lines": 2354,
       "cli": "python -m tracker.store",
       "exports": [
         "ALSO_IN",
@@ -1935,7 +1935,7 @@
         "ENGAGEMENTS_CSV": "'engagements.csv'"
       },
       "role": "The store: one SQLite file per clients root (STORE_FILENAME) on the designated machine's local disk, beside the settings file, holding engagements, requests, statuses, learned_keywords, documents and events for every engagement under that root, all folded from the journal and from nothing else - and, since decision 107, the two tables of the tier-3 verdict cache, VERDICTS_TABLE and FILE_MEMOS_TABLE, which are NOT the record's: derived from the bytes and the rules, never journalled, left empty by a rebuild and never compared by check(). Owns the file name, the schema and its user_version (bumped by decision 104 when the workbook digest column left, by 107 when the cache's two tables arrived, by 116 for override_reason, by 117 for the Filing Deadline column and by 119 for the intents table), path_for(), open(), connect() / close() (one connection per process, to the file TRACKER_STORE names or the one beside the settings file), documents(), rules(), statuses(), learned_keywords() and engagement_info() (what the readers answer from), record() (the journal first, then one immediate transaction), sync(), catch_up() and follow_the_journal() (replay the lines the store has not applied, building the engagement from the journal alone where it has none; catch_up() is filer.ensure()'s, by count, and a look that finds nothing to apply takes no lock), rebuild_engagement() (delete and build again from the journal), cached_verdicts() and remember_verdicts() (the verdict cache's one read and one write - the write is its own immediate transaction under the engagement lock, never record()), forget() (drop a failed create's row), check() (every disagreement with the journal, as sentences), state() (current / behind / unknown, from the journal's head alone), export() (three CSVs on demand, every cell text, a cell that begins like a formula behind an apostrophe) and the CLI that rebuilds, checks, exports or states a whole clients root - its first argument read by store_named(): the app folder, the settings file in it, or the store file itself, and anything else refused so a typo never creates a store; a store open() refuses is said in its one sentence with exit 1, never a traceback (decision 107).",
-      "notes": "Decision 101 built it and had nothing read it; 102 moved the index into it; 103 the statuses and the person's rules; 104 took away the last thing that was passed in from anywhere else. WHERE IT LIVES IS THE POINT: never under the clients root and never in an engagement folder, because those sync and a synced database file is a corrupted one - decision 87's finding, kept, with the owner's 2026-09-19 decision adding the local database the other side of that line. The journal stays in the folder and travels with the engagement; the store is local and disposable, and the arrow only points one way - the store is rebuilt from the journal, never the reverse. THE GUARANTEE is journal-then-apply: record() refuses outside the engagement lock and refuses a retired event name by sentence, appends each event through append() and only then folds them in one BEGIN IMMEDIATE, so a machine that dies between the two leaves the journal ahead and sync() replays the difference. The fold has one owner, apply() in tracker/ledger.py, so a line-at-a-time replay and a whole-file fold cannot differ. ONE CONNECTION PER PROCESS: connect() opens it on first use and every writer deep in the package asks for it by name; close() lets it go, which Windows needs before a database file can be deleted. TRACKER_STORE overrides where it is - the suite points every test at its own file. It imports records, ledger and locking and nothing else of the package at load time - narrower than its layer allows, so the database the readers answer from never depends on the modules that walk folders and move files; connect() reads tracker/settings.py at call time and the CLI imports the registry at call time to find the folders. The gate is check(), run by the autouse fixture in tests/conftest.py over every engagement the suite leaves behind: the documents, the statuses and the rules are all compared with ledger.replay() over the journal, always - an engagement with no rules event has none on either side. Decision 104: the requests table is the fold of rules_changed (and of the rules_imported lines older journals carry, which _apply_rules_event folds the same way); rules() returns [] for an engagement the store holds and None only for one it does not; has_rules_event() is what a save is a difference from; rebuild_engagement() takes nothing but the journal (the workbook-fed fallback, the sequence number workbook rows were marked with, the digest column and its bookkeeping all went, and the schema guard that refused a request row whose fields had moved is a test in tests/test_store.py now); state() has one stamp, the journal's head, because a rules edit is an event; forget() is what a failed create leaves behind - nothing - and writes nothing to any journal. A version-1 file is refused by the sentence open() has always had, and is deleted and rebuilt: the store is disposable and no store at the office predates this chain. key_root() is the one rule for the key an engagement is stored under (root_for() is its name for a caller with no root in hand): the root the settings file names whenever the folder is under it - the record's own root, which wins over the root a caller typed, so a pass run on one client's folder and a check given the drive key the engagement as the app does - else the caller's root, else the root a return's position names (decision 134: four levels up, when its parent is a year folder and its household sits in the private tree, asked of layout at call time - so two years of one return are two rows on a machine or in a reader with no root in hand), else, only for a folder outside that layout, the folder's parent. _engagement_row() answers by that exact key, and under the recorded root by nothing else: a folder there with no row is one the store has not met, never another engagement whose key its path ends with (decision 106; the pre-integration audit found Clients/Archive/Smith 2025 answered as Clients/Smith 2025's row). The tail - the one stored path the folder ends with, longest wins - answers only where no recorded root covers the folder, which is decision 103's end-to-end finding on a machine with no settings file. Decision 107: the verdict cache's two tables are per engagement and cascade with it; cached_verdicts() returns the memos and the verdicts at the CACHE_VERSION the caller names as plain dicts and JSON text (this module never learns the verdict's record - test_layers pins that it imports nothing above it); remember_verdicts() deletes the rows at other versions, the paths and digests pruned, and upserts what was learned, refusing outside the lock and for an unknown engagement by the two sentences record() uses (_held_under_the_lock()). A version-2 file is refused by the same sentence a version-1 file was. RULE_COLUMNS is built from records.RULE_FIELDS; _rule_from_sql() hands the list fields back as lists and the flag as a boolean, the shape the API hands the editor. Decision 115: last_event() answers the newest event of a name for an engagement (or the newest carrying a key) from the events table - what the reminder compares this week's draft with, and what the runner reads the last draft day from. Decision 112: document_seqs() reads back what _apply() has always written - which journal line last wrote each index row - keyed through the recorded root as documents() is, {} for an engagement the store does not hold, no lock (a read). It is the freshness handle the app carries out with the row and a person's action carries back; per row rather than the engagement's head, so a scan between the card and the click refuses nothing. A rebuild numbers the same lines the same way, so the mapping survives it. Decision 113: _apply() deletes a learned_keywords row on a keyword_unlearned event, keyed by identifier_key and the keyword exactly, as the insert keys it; _check_learned() holds the table to ledger.Folded.learned - the table's words in seq order against the journal's fold, both sides folded through identifier_key first, one sentence per request that differs - and check() appends it, so the one part of this database the record could not vouch for is in the gate. _refuse_a_malformed_line() checks a keyword event for the first time: both events must name a request and a word, both text and neither blank, because a keyword that is not text was written into the table as the text of whatever it carried while the journal's fold kept the value itself, which is a disagreement the check would now report and nobody could act on. Decision 119: SCHEMA_VERSION 6 and the intents table - the fold of the moving lines, one row per key, holding the whole line - written by _apply() as each line is met and deleted by any row event naming the key (or by move_abandoned); open_intents() reads them back oldest first for the filer's recovery and for the refusal a person's action makes while one is open; _check_intents() holds the table to ledger.replay()'s own fold, so a rebuild gives the same open set and the gate would say which key they disagreed about; _refuse_a_malformed_line() learns the moving shape, because a recovery acts on it with a file already half moved, and (decision 126) the sharing_confirmed shape, which is no shape at all: that event carries nothing but its stamp, so a line of it carrying anything is another version's or a hand-written one and is refused by name rather than kept where a reader would trust it. The store's version did not move for it - it is folded by nothing and read back out of the events by last_event(). Version 8 (decision 128) added the return's people to engagements as JSON text and the named mark to requests; _to_sql writes a list with sorted keys, as the journal writes a line, so the column and the fold of the same people are one text and check() compares like with like. A rules_changed line whose people this version cannot read - an unknown kind, a one-word spelling - is refused by name before a value of it reaches a table. Decision 129 put the household's feed list into the household columns as JSON text and moved the schema to version 9; the malformed-line guard learned the feeds' shape. Decision 132 moved the schema to version 10 with no column change, because the fold changed: a released line (ledger.RELEASE_EVENTS) deletes the row under its key and closes its intent in _apply(), exactly as ledger.apply() does, and a version-9 file may hold Handed Over rows this version never produces. The guard requires a released line's key and refuses a row on it, and refuses a moving line carrying decision 129's also_in by name (ALSO_IN) - an intent whose second half this version cannot write must not be recovered as if it had none. Decision 134 moved the schema to version 11 with no column change, because the key changed: a version-10 file may hold two years of one return as one row, keyed by the return's name alone. DECISION 135, A READ NEVER OUTRUNS A WRITE: readers take no lock and the app's process and the pass's share the store, so every function that applies journal lines reads the row, the lines and the head inside its own BEGIN IMMEDIATE and takes the lines and the head from ONE read (ledger.read_with_head()): sync(), catch_up() (follow_the_journal()'s slow path and filer.ensure()'s) and record()'s apply through one helper, _catch_up(), and rebuild_engagement() through the same one read. A look that finds nothing to apply takes no lock: sync() and catch_up() first read the row and the journal outside any transaction and return when the applied seq already equals the journal's lines, and only a decision to write takes BEGIN IMMEDIATE and reads both again inside (_look_then_catch_up(); the look's parsed lines are reused there only when the file still digests to the look's head) - so the app's views, the Status Report and dry runs never queue a pass's record() behind the lock. A stored head therefore always names exactly the lines applied. record() applies what the journal holds past the store's applied_seq as it is inside the transaction, not the batch it was handed. follow_the_journal()'s head fast path stays outside any transaction and parses nothing; filer.ensure() calls catch_up(), which compares by count, so a store an earlier build left with a matching head and a short applied_seq (the stuck return: current by its head, every writer refused) is repaired by the next pass with no rebuild and no version change."
+      "notes": "Decision 101 built it and had nothing read it; 102 moved the index into it; 103 the statuses and the person's rules; 104 took away the last thing that was passed in from anywhere else. WHERE IT LIVES IS THE POINT: never under the clients root and never in an engagement folder, because those sync and a synced database file is a corrupted one - decision 87's finding, kept, with the owner's 2026-09-19 decision adding the local database the other side of that line. The journal stays in the folder and travels with the engagement; the store is local and disposable, and the arrow only points one way - the store is rebuilt from the journal, never the reverse. THE GUARANTEE is journal-then-apply: record() refuses outside the engagement lock and refuses a retired event name by sentence, appends each event through append() and only then folds them in one BEGIN IMMEDIATE, so a machine that dies between the two leaves the journal ahead and sync() replays the difference. The fold has one owner, apply() in tracker/ledger.py, so a line-at-a-time replay and a whole-file fold cannot differ. ONE CONNECTION PER PROCESS: connect() opens it on first use and every writer deep in the package asks for it by name; close() lets it go, which Windows needs before a database file can be deleted. TRACKER_STORE overrides where it is - the suite points every test at its own file. It imports records, ledger and locking and nothing else of the package at load time - narrower than its layer allows, so the database the readers answer from never depends on the modules that walk folders and move files; connect() reads tracker/settings.py at call time and the CLI imports the registry at call time to find the folders. The gate is check(), run by the autouse fixture in tests/conftest.py over every engagement the suite leaves behind: the documents and the rules are compared with ledger.replay() over the journal, always - an engagement with no rules event has none on either side - and the statuses and taught keywords with the same lines folded by the store's case rule (decision 136). Decision 104: the requests table is the fold of rules_changed (and of the rules_imported lines older journals carry, which _apply_rules_event folds the same way); rules() returns [] for an engagement the store holds and None only for one it does not; has_rules_event() is what a save is a difference from; rebuild_engagement() takes nothing but the journal (the workbook-fed fallback, the sequence number workbook rows were marked with, the digest column and its bookkeeping all went, and the schema guard that refused a request row whose fields had moved is a test in tests/test_store.py now); state() has one stamp, the journal's head, because a rules edit is an event; forget() is what a failed create leaves behind - nothing - and writes nothing to any journal. A version-1 file is refused by the sentence open() has always had, and is deleted and rebuilt: the store is disposable and no store at the office predates this chain. key_root() is the one rule for the key an engagement is stored under (root_for() is its name for a caller with no root in hand): the root the settings file names whenever the folder is under it - the record's own root, which wins over the root a caller typed, so a pass run on one client's folder and a check given the drive key the engagement as the app does - else the caller's root, else the root a return's position names (decision 134: four levels up, when its parent is a year folder and its household sits in the private tree, asked of layout at call time - so two years of one return are two rows on a machine or in a reader with no root in hand), else, only for a folder outside that layout, the folder's parent. _engagement_row() answers by that exact key, and under the recorded root by nothing else: a folder there with no row is one the store has not met, never another engagement whose key its path ends with (decision 106; the pre-integration audit found Clients/Archive/Smith 2025 answered as Clients/Smith 2025's row). The tail - the one stored path the folder ends with, longest wins - answers only where no recorded root covers the folder, which is decision 103's end-to-end finding on a machine with no settings file. Decision 107: the verdict cache's two tables are per engagement and cascade with it; cached_verdicts() returns the memos and the verdicts at the CACHE_VERSION the caller names as plain dicts and JSON text (this module never learns the verdict's record - test_layers pins that it imports nothing above it); remember_verdicts() deletes the rows at other versions, the paths and digests pruned, and upserts what was learned, refusing outside the lock and for an unknown engagement by the two sentences record() uses (_held_under_the_lock()). A version-2 file is refused by the same sentence a version-1 file was. RULE_COLUMNS is built from records.RULE_FIELDS; _rule_from_sql() hands the list fields back as lists and the flag as a boolean, the shape the API hands the editor. Decision 115: last_event() answers the newest event of a name for an engagement (or the newest carrying a key) from the events table - what the reminder compares this week's draft with, and what the runner reads the last draft day from. Decision 112: document_seqs() reads back what _apply() has always written - which journal line last wrote each index row - keyed through the recorded root as documents() is, {} for an engagement the store does not hold, no lock (a read). It is the freshness handle the app carries out with the row and a person's action carries back; per row rather than the engagement's head, so a scan between the card and the click refuses nothing. A rebuild numbers the same lines the same way, so the mapping survives it. Decision 113: _apply() deletes a learned_keywords row on a keyword_unlearned event, keyed by identifier_key and the keyword exactly, as the insert keys it; _check_learned() holds the table to ledger.Folded.learned - the table's words in seq order against the journal's fold, both sides folded through identifier_key first, one sentence per request that differs - and check() appends it, so the one part of this database the record could not vouch for is in the gate. _refuse_a_malformed_line() checks a keyword event for the first time: both events must name a request and a word, both text and neither blank, because a keyword that is not text was written into the table as the text of whatever it carried while the journal's fold kept the value itself, which is a disagreement the check would now report and nobody could act on. Decision 119: SCHEMA_VERSION 6 and the intents table - the fold of the moving lines, one row per key, holding the whole line - written by _apply() as each line is met and deleted by any row event naming the key (or by move_abandoned); open_intents() reads them back oldest first for the filer's recovery and for the refusal a person's action makes while one is open; _check_intents() holds the table to ledger.replay()'s own fold, so a rebuild gives the same open set and the gate would say which key they disagreed about; _refuse_a_malformed_line() learns the moving shape, because a recovery acts on it with a file already half moved, and (decision 126) the sharing_confirmed shape, which is no shape at all: that event carries nothing but its stamp, so a line of it carrying anything is another version's or a hand-written one and is refused by name rather than kept where a reader would trust it. The store's version did not move for it - it is folded by nothing and read back out of the events by last_event(). Version 8 (decision 128) added the return's people to engagements as JSON text and the named mark to requests; _to_sql writes a list with sorted keys, as the journal writes a line, so the column and the fold of the same people are one text and check() compares like with like. A rules_changed line whose people this version cannot read - an unknown kind, a one-word spelling - is refused by name before a value of it reaches a table. Decision 129 put the household's feed list into the household columns as JSON text and moved the schema to version 9; the malformed-line guard learned the feeds' shape. Decision 132 moved the schema to version 10 with no column change, because the fold changed: a released line (ledger.RELEASE_EVENTS) deletes the row under its key and closes its intent in _apply(), exactly as ledger.apply() does, and a version-9 file may hold Handed Over rows this version never produces. The guard requires a released line's key and refuses a row on it, and refuses a moving line carrying decision 129's also_in by name (ALSO_IN) - an intent whose second half this version cannot write must not be recovered as if it had none. Decision 134 moved the schema to version 11 with no column change, because the key changed: a version-10 file may hold two years of one return as one row, keyed by the return's name alone. DECISION 135, A READ NEVER OUTRUNS A WRITE: readers take no lock and the app's process and the pass's share the store, so every function that applies journal lines reads the row, the lines and the head inside its own BEGIN IMMEDIATE and takes the lines and the head from ONE read (ledger.read_with_head()): sync(), catch_up() (follow_the_journal()'s slow path and filer.ensure()'s) and record()'s apply through one helper, _catch_up(), and rebuild_engagement() through the same one read. A look that finds nothing to apply takes no lock: sync() and catch_up() first read the row and the journal outside any transaction and return when the applied seq already equals the journal's lines, and only a decision to write takes BEGIN IMMEDIATE and reads both again inside (_look_then_catch_up(); the look's parsed lines are reused there only when the file still digests to the look's head) - so the app's views, the Status Report and dry runs never queue a pass's record() behind the lock. A stored head therefore always names exactly the lines applied. record() applies what the journal holds past the store's applied_seq as it is inside the transaction, not the batch it was handed. follow_the_journal()'s head fast path stays outside any transaction and parses nothing; filer.ensure() calls catch_up(), which compares by count, so a store an earlier build left with a matching head and a short applied_seq (the stuck return: current by its head, every writer refused) is repaired by the next pass with no rebuild and no version change. Decision 136: check() folds the record's statuses and learned keywords from the journal's lines itself, keyed by identifier_key in journal order (_recorded_statuses, _recorded_learned), rather than taking ledger.replay()'s, which keys them by each line's spelling - so a request respelled by case is one request to the gate, as it is to the store."
     },
     {
       "id": "tracker/templates.py",
@@ -2166,8 +2166,8 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "478f853550dd11f6",
-      "lines": 390,
+      "sha256": "e18df4a9fa9ffe4f",
+      "lines": 391,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
     },
@@ -2184,7 +2184,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "d4ae460392bc21c1",
+      "sha256": "fabb89cfa58af40e",
       "lines": 791,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2202,8 +2202,8 @@
       "id": "docs/storage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d071122a51e16656",
-      "lines": 530,
+      "sha256": "3b0e0c65ed46fd48",
+      "lines": 540,
       "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, what each of the four stages took away, and (decision 107) why the verdict cache is in the store and not in the record.",
       "notes": "Written with decision 101 and finished with 104. It is the page to read before touching storage. The migrations of decisions 102 and 103, which it described step by step, are gone from the tree and from this page; the History section says they existed and where their reading copy is."
     },
@@ -2211,7 +2211,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "943c7a8a56f358e0",
+      "sha256": "810dcefafab060e2",
       "lines": 7697,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -2408,8 +2408,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "411a2673e6486e99",
-      "lines": 421,
+      "sha256": "e2a698368b7fcb44",
+      "lines": 422,
       "exports": [
         "TEST_CLIENT",
         "TEST_HOUSEHOLD",
@@ -4265,8 +4265,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "883bcd5d6c8859d8",
-      "lines": 1770,
+      "sha256": "02076cb158fd08da",
+      "lines": 1892,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",
@@ -4291,6 +4291,7 @@
         "root",
         "rows",
         "said",
+        "scanned",
         "test_a_caller_root_still_wins_over_the_position",
         "test_a_catch_up_with_nothing_to_apply_takes_no_lock",
         "test_a_failed_create_is_forgotten_and_a_retired_event_is_refused",
@@ -4316,17 +4317,22 @@
         "test_a_released_line_takes_the_row_out_and_closes_its_intent_in_both_folds",
         "test_a_return_typed_relative_to_its_household_is_keyed_by_where_it_sits",
         "test_a_row_that_changed_identity_keeps_the_place_the_index_keeps_it_in",
+        "test_a_status_scanned_under_a_case_respelled_identifier_is_one_request_to_the_check",
         "test_a_status_the_record_holds_is_in_the_store_and_answers_load_manifest",
         "test_a_store_at_a_version_this_code_does_not_know_is_refused_by_name",
         "test_a_store_of_the_previous_version_is_refused_and_rebuilt",
         "test_a_torn_last_line_is_not_replayed_until_it_is_whole",
         "test_a_version_nine_store_is_refused_and_rebuilt",
+        "test_a_word_retaught_under_the_other_spelling_is_checked_last_once",
+        "test_a_word_taken_back_under_the_other_spelling_is_gone_from_both_sides",
         "test_a_writer_whose_lines_a_reader_already_applied_applies_none_of_them_twice",
+        "test_an_end_to_end_respelling_leaves_the_check_empty",
         "test_an_engagement_the_store_has_never_seen_is_said_so_rather_than_passed",
         "test_an_unlearn_deletes_the_row_and_a_rebuild_from_the_journal_agrees",
         "test_check_reports_a_learned_keyword_in_the_store_and_not_in_the_record_and_the_other_way_round",
         "test_document_seqs_names_the_line_that_last_wrote_each_row_and_agrees_after_a_rebuild",
         "test_every_request_the_manifest_holds_has_a_rule_in_the_store",
+        "test_keywords_taught_under_two_spellings_of_one_request_are_checked_in_the_order_they_were_taught",
         "test_last_event_returns_the_newest_of_that_name_or_none",
         "test_one_call_is_one_transaction_over_the_journal_and_the_tables",
         "test_one_process_has_one_connection_and_a_second_file_is_refused",
@@ -4336,6 +4342,7 @@
         "test_remembering_verdicts_refuses_outside_the_lock_and_for_an_unknown_engagement",
         "test_the_check_names_a_move_the_two_sides_do_not_agree_is_open",
         "test_the_check_names_the_engagement_the_row_and_the_field",
+        "test_the_check_still_names_a_status_planted_in_the_store_behind_the_journals_back",
         "test_the_command_line_builds_and_checks_the_household_records_too",
         "test_the_command_line_builds_every_engagement_under_a_root",
         "test_the_command_line_says_a_refused_store_in_one_sentence",

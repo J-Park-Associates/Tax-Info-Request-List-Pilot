@@ -1405,8 +1405,9 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
     again when a person takes it back (decision 113): the insert carries the
     line's own sequence number, so a word taught again comes back last -
     whether or not it was taken back first - which is the order
-    ``tracker.ledger.apply`` folds it in and what :func:`check` holds the
-    two to.
+    ``tracker.ledger.apply`` folds it in for one spelling. :func:`check`
+    holds the two to its own fold of the same lines, keyed by
+    ``records.identifier_key`` as this table is (decision 136).
 
     An edit of the person's rules is written as it is met too: the rows it
     carries replace those identifiers, the ones it names as removed go,
@@ -1909,19 +1910,33 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     fold, which is what a rebuild is made of and what a rebuild must come
     back to - the rules included, always: an engagement with no rules
     event has none on either side.
+
+    **A request is one request whatever its case** (decision 136). The
+    journal's own fold keys a status and a taught word by the spelling
+    each line carries, because :mod:`tracker.ledger` sits below
+    :mod:`tracker.records` and has no case rule; the store keys both by
+    ``records.identifier_key``. So those two are folded again here, from
+    the same lines, by the store's rule (:func:`_recorded_statuses`,
+    :func:`_recorded_learned`) - otherwise a request the person retyped by
+    case is two requests to the check and one to the store, and the gate
+    names a disagreement no rebuild can clear. The lines are read once
+    (:func:`tracker.ledger.read_with_head`, decision 135) and the same list
+    is handed to the replay and to both folds, so no two of them can be
+    looking at two different moments of the journal.
     """
     name = Path(engagement_dir).name
     rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
     engagement = _engagement_row(conn, engagement_dir, root)
-    folded = ledger.replay(ledger.read_events(engagement_dir))
+    events, _head = ledger.read_with_head(engagement_dir)
+    folded = ledger.replay(events)
     if engagement is None:
         return [f"{rel}: the store does not hold this engagement, and its record carries "
                 f"{len(folded.rows)} index row(s) and {len(folded.rules)} request row(s)"]
     problems = _check_documents(conn, engagement["id"], name, folded.rows)
-    problems += _check_statuses(conn, engagement["id"], name, folded.statuses)
+    problems += _check_statuses(conn, engagement["id"], name, _recorded_statuses(events))
     problems += _check_rules(conn, engagement["id"], name, folded)
     problems += _check_intents(conn, engagement["id"], name, folded.intents)
-    problems += _check_learned(conn, engagement["id"], name, folded.learned)
+    problems += _check_learned(conn, engagement["id"], name, _recorded_learned(events))
     problems += _check_household(conn, engagement["id"], name, folded.household)
     return problems
 
@@ -2014,16 +2029,58 @@ def _check_intents(
     return problems
 
 
+def _recorded_statuses(events: list[dict]) -> dict[str, tuple[str, dict]]:
+    """The record's status for each request, keyed as the store keys it
+    (decision 136): ``identifier_key`` -> (the spelling the last scan used,
+    what it recorded).
+
+    Every ``scanned`` line in order, each identifier's status replacing
+    whatever its key held, so the last write per request wins whichever
+    case it was spelt in - the store's ``INSERT OR REPLACE`` by the folded
+    key, stated once more on the record's side.
+    """
+    statuses: dict[str, tuple[str, dict]] = {}
+    for event in events:
+        if event.get(ledger.EVENT_KEY) == ledger.SCANNED:
+            for identifier, status in (event.get(ledger.STATUSES_KEY) or {}).items():
+                statuses[identifier_key(identifier)] = (identifier, status)
+    return statuses
+
+
+def _recorded_learned(events: list[dict]) -> dict[str, tuple[str, ...]]:
+    """The words filings taught each request, keyed as the store keys it
+    (decision 136), in the order they were taught.
+
+    ``ledger._apply_keyword_event``'s rule applied per ``identifier_key``:
+    a word taught is moved last, a word taken back is removed and a
+    request left with none is dropped - which is the store's
+    ``INSERT OR REPLACE ... seq`` read back ``ORDER BY seq``.
+    """
+    learned: dict[str, tuple[str, ...]] = {}
+    for event in events:
+        name = event.get(ledger.EVENT_KEY)
+        if name not in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
+            continue
+        key = identifier_key(str(event.get(ledger.IDENTIFIER_KEY, "")))
+        keyword = str(event.get(ledger.KEYWORD_KEY, ""))
+        left = tuple(word for word in learned.get(key, ()) if word != keyword)
+        if name == ledger.KEYWORD_LEARNED:
+            learned[key] = left + (keyword,)
+        elif left:
+            learned[key] = left
+        else:
+            learned.pop(key, None)
+    return learned
+
+
 def _check_statuses(
-    conn: sqlite3.Connection, engagement_id: int, name: str, recorded: dict[str, dict]
+    conn: sqlite3.Connection, engagement_id: int, name: str,
+    recorded: dict[str, tuple[str, dict]],
 ) -> list[str]:
     stored = {row["identifier"]: row for row in conn.execute(
         "SELECT * FROM statuses WHERE engagement_id = ?", (engagement_id,))}
     problems = []
-    seen = set()
-    for identifier, status in recorded.items():
-        key = identifier_key(identifier)
-        seen.add(key)
+    for key, (identifier, status) in recorded.items():
         held = stored.get(key)
         if held is None:
             problems.append(f"{name}: request {identifier} has a status in the record and none in the store")
@@ -2034,7 +2091,7 @@ def _check_statuses(
                 problems.append(
                     f"{name}: request {identifier}, {field}: the store says {held[field]!r}, "
                     f"the record says {theirs!r}")
-    for key in sorted(set(stored) - seen):
+    for key in sorted(set(stored) - set(recorded)):
         problems.append(f"{name}: request {key} has a status in the store and none in the record")
     return problems
 
@@ -2090,10 +2147,10 @@ def _check_learned(
 
     The table keys a request without case and the journal's fold keys it
     exactly as each line spells it (:class:`tracker.ledger.Folded`), so the
-    record's side is folded here, by the one rule that owns it. Two
-    spellings of one request - which takes a case-respelling of an
-    identifier between two filings - are joined in the order the fold met
-    them.
+    record's side is folded from the lines by the table's own rule
+    (:func:`_recorded_learned`, decision 136): two spellings of one request
+    are one list, in the order the words were taught, and a word taken
+    back under either spelling is gone from it.
     """
     stored: dict[str, tuple[str, ...]] = {}
     for row in conn.execute(
@@ -2101,15 +2158,11 @@ def _check_learned(
         "ORDER BY seq, keyword", (engagement_id,),
     ):
         stored[row["identifier"]] = stored.get(row["identifier"], ()) + (row["keyword"],)
-    folded: dict[str, tuple[str, ...]] = {}
-    for identifier, taught in recorded.items():
-        key = identifier_key(identifier)
-        folded[key] = folded.get(key, ()) + tuple(taught)
     return [
         f"{name}: request {key}, the keywords filings taught: the store says "
-        f"{list(stored.get(key, ()))!r}, the record says {list(folded.get(key, ()))!r}"
-        for key in sorted(set(stored) | set(folded))
-        if stored.get(key, ()) != folded.get(key, ())
+        f"{list(stored.get(key, ()))!r}, the record says {list(recorded.get(key, ()))!r}"
+        for key in sorted(set(stored) | set(recorded))
+        if stored.get(key, ()) != recorded.get(key, ())
     ]
 
 
