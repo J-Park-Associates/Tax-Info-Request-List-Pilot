@@ -1993,6 +1993,54 @@ def test_a_drop_the_reader_could_not_start_on_is_routed_next_pass(tmp_path, in_a
     assert no_child_left()
 
 
+def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(tmp_path, in_a_child):
+    """The final review's note. The re-send road reads again too: a W-2
+    already on record whose working copy was deleted by hand, sent again,
+    goes through ``_sort_one`` - the digest is known - and must be read
+    before it is filed again. Pass 1's reader cannot start: no new row,
+    nothing re-filed, no working copy made, one warning; the re-send rests
+    in the year's folder. Pass 2's reader works: it is filed again."""
+    import tracker.content_check as content_check
+    from tests.conftest import named_page
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.filer import read_index
+    from tracker.layout import inbox_of, originals_of
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, run_registry
+
+    root = tmp_path / "root"
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(root, [w2])
+    page = named_page("Form W-2 Wage and Tax Statement 2025")
+    page_pdf(inbox_of(engagement) / "w2.pdf", page)
+    run_registry(discover_engagements(root), today=dt.date(2026, 7, 1), reminders=REMINDERS_NEVER)
+    [filed] = read_index(engagement)
+    prepared = engagement / filed.prepared_location
+    prepared.unlink()                                      # the working copy, deleted by hand
+
+    page_pdf(inbox_of(engagement) / "w2 again.pdf", page)  # the same document, sent again
+    with pytest.MonkeyPatch.context() as broken:           # the machine is broken
+        broken.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(broken))
+        first = run_registry(discover_engagements(root), today=dt.date(2026, 7, 2),
+                             reminders=REMINDERS_NEVER)
+    [warning] = first.warnings
+    assert "could not start on this machine for 1 file(s)" in warning and "w2 again.pdf" in warning
+    assert read_index(engagement) == [filed]               # no new row: not decided, not recorded
+    assert not prepared.exists()                           # nothing re-filed
+    assert sorted(path.name for path in originals_of(engagement).iterdir()) == ["w2 again.pdf", "w2.pdf"]
+
+    second = run_registry(discover_engagements(root), today=dt.date(2026, 7, 3),
+                          reminders=REMINDERS_NEVER)       # the machine is fixed
+    assert second.warnings == []
+    first_row, again = read_index(engagement)
+    assert first_row == filed
+    assert again.original_name == "w2 again.pdf" and again.identifier == "A01"
+    assert "re-filed: the earlier copy" in again.reason     # the re-send road, not a new arrival
+    assert [run.filed for run in second.runs] == [1]
+    assert no_child_left()
+
+
 def test_a_photo_the_open_test_cannot_finish_is_stopped(tmp_path, in_a_child):
     """The re-review's note 6: the open test's photo branch - Pillow and
     pillow-heif opening the picture, native code - runs in the reading's

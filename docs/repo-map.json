@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 125,
     "edges": 753,
-    "reused": 91
+    "reused": 100
   },
   "node_types": [
     "artifact",
@@ -2312,7 +2312,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "92060ae4a6a4f8bc",
+      "sha256": "fba708aa6c6ebf77",
       "lines": 397,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2953,8 +2953,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1ca40db74d36add0",
-      "lines": 2034,
+      "sha256": "d23733c9a2e17a29",
+      "lines": 2082,
       "exports": [
         "A_PASS_READING",
         "CRASHED",
@@ -3005,6 +3005,7 @@
         "test_a_reading_on_time_returns_what_it_returned_in_process",
         "test_a_reading_past_the_safety_stop_is_abandoned_cached_and_not_retried",
         "test_a_render_that_never_finishes_is_stopped_and_abandoned",
+        "test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass",
         "test_a_rotated_scanned_pdf_page_goes_through_the_same_upright_step",
         "test_a_save_that_fails_leaves_the_previous_verdicts",
         "test_a_sheets_row_is_a_line_and_its_cells_are_set_apart",
