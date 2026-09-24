@@ -1642,6 +1642,8 @@ def replaced_in_pbc(
 
     Per return over that return's own rows: the folder is the household's,
     and a file another return's row holds is that return's to answer for.
+    The pass asks it of the year's folder and of ``_Opened`` (decision
+    143's review, B2), where an attachment's row locates the file taken out.
     """
     by_path: dict[Path, IndexEntry] = {}
     for entry in entries:            # the newest row for a location wins
@@ -2923,12 +2925,16 @@ def _follow_and_say(
         ), True))
     # An original replaced under its own name is said loudly, every run,
     # until a person has looked; it is not sorted again and not guessed.
-    for path, earlier in (replaced_in_pbc(originals_dir, engagement_dir, run.entries)
-                          if originals_dir.is_dir() else []):
-        run.report.attention.append(FileError(path.name, REPLACED_IN_PBC.format(
-            location=earlier.pbc_location, received=earlier.received,
-            prepared=earlier.prepared_location or "(none)",
-        ), True))
+    # An attachment taken out of an email or a zip rests under _Opened, and
+    # a file replaced there is said the same way (decision 143's review,
+    # B2): the row's location is the file taken out, like any original's.
+    for folder in (originals_dir, opened_dir_of(engagement_dir)):
+        for path, earlier in (replaced_in_pbc(folder, engagement_dir, run.entries)
+                              if folder.is_dir() else []):
+            run.report.attention.append(FileError(path.name, REPLACED_IN_PBC.format(
+                location=earlier.pbc_location, received=earlier.received,
+                prepared=earlier.prepared_location or "(none)",
+            ), True))
     return strays
 
 
@@ -3323,7 +3329,7 @@ def _decide_attachment(
     for run in runs:
         run.context.container = at[id(run)]
     try:
-        if attachment.parks and not any(digest in run.known for run in runs):
+        if attachment.parks and not any(digest in run.known and _may_hold(run) for run in runs):
             run, entry = first, _park_it(named, path, digest, size_kb, stamp, first,
                                          reason=attachment.parks, candidates=(), evidence="")
         else:
@@ -3555,11 +3561,26 @@ def _decide_across(
     """
     if digest:
         holders = [run for run in runs if digest in run.known]
-        if holders:
+        # Out of an email or a zip (decision 143, ruling 7 and the review's
+        # B1): a return in another household is not asked. Its record would
+        # otherwise take a Duplicate row naming this household's attachment
+        # and the private _Opened path it rests under - the other
+        # household's record reached by the bytes, where the requests may
+        # never reach it. A loose drop is asked as decision 132 says.
+        mine = [run for run in holders if _may_hold(run)]
+        if mine:
             # Own returns first, as they are handed in (decision 132's
             # second order; the locks were taken in the global one).
-            run = holders[0]
+            run = mine[0]
             return _sort_one(drop, original, digest, size_kb, stamp, run, runs)
+        if holders:
+            # Only another household holds these bytes: the attachment
+            # waits at home, in the words a first arrival gets, and nothing
+            # is written in that household's record.
+            home = next((one for one in runs if one.home), first)
+            return home, _park_it(drop, original, digest, size_kb, stamp, home,
+                                  reason=reasons.OPENED_NOT_ACROSS.format(),
+                                  candidates=(), evidence="")
 
     # One reading, however many returns judge it (decision 128). A dry run
     # judges the drop where it lies, as it always has.
@@ -3708,6 +3729,16 @@ def _across_households(run: _ReturnRun) -> bool:
     against a "first" run, which falls back to a fed return when a
     household has none of its own (decision 137's review, B #4)."""
     return not run.home
+
+
+def _may_hold(run: _ReturnRun) -> bool:
+    """Whether ``run``'s record may answer for the bytes of the document
+    being decided (decision 143's review, B1): any return for a loose drop
+    (decision 132), and only the dropping household's own for an
+    attachment, whose name and ``_Opened`` path never enter another
+    household's record. ``context.container`` is set on every run around
+    one attachment's decision, so the run itself says which it is."""
+    return not (run.context.container and _across_households(run))
 
 
 def _with_the_wanting_return(home_routing, run: _ReturnRun, routing) -> str:
@@ -4074,6 +4105,11 @@ def _sort_one(
     again; one a person set aside is routed afresh against that return's
     list; anything else is a duplicate of the row that holds it.
 
+    An attachment (decision 143) never arrives here with a return in
+    another household: :func:`_decide_across` asks only the returns
+    :func:`_may_hold` allows, so every road below - the duplicate row, the
+    re-file and the set-aside re-route - stays in the dropping household.
+
     Both roads that route afresh are name-checked before they file
     (decision 128): a W-2 set aside the day the list had no row for it and
     re-sent once the row was added would otherwise file on its keywords
@@ -4153,17 +4189,6 @@ def _sort_one(
         # parks it.
         text = "" if reading.needs_ocr else (reading.text or "")
         stage = _by_the_name(text, [(run, routing)], runs)
-        if stage.kept and _across_households(run) and context.container:
-            # Out of an email or a zip, whose bytes a return in another
-            # household already holds (decision 143): an attachment's
-            # original never moves into another household's folder, so it
-            # parks at home, as a first arrival does.
-            home = next((one for one in runs if one.home), run)
-            return home, _park_it(drop, original, digest, size_kb, stamp, home,
-                                  reason=reasons.OPENED_NOT_ACROSS.format(),
-                                  candidates="",
-                                  evidence=_with_the_wanting_return(_NO_ROUTING, run, routing),
-                                  resent=resent)
         if stage.kept and _across_households(run) and id(run) not in stage.confirmed:
             # A re-send whose bytes a return in another household already
             # holds is held to the same rule as a first arrival (decision

@@ -584,6 +584,30 @@ def test_an_attachment_never_files_into_another_household(fed):
     assert read_index(llc) == []
 
 
+def test_an_attachment_identical_to_another_households_document_writes_nothing_there(fed):
+    # The review's B1: the bytes-first road asked every return in the feed
+    # list whether it held the bytes, and the one in the other household
+    # wrote a Duplicate row naming this household's attachment and its
+    # private _Opened path. An attachment never reaches another household's
+    # record, by the bytes or by the requests.
+    father, llc = fed
+    page = pdf("Trial balance as of December 31 2025", who="Park & Lee LLC")
+    drop_bytes(llc, "tb.pdf", page)
+    sort_all([llc], home=[llc], today=DAY1)
+    before = read_index(llc)
+    assert [row.decision for row in before] == [FILED]
+
+    drop_bytes(father, "mail.eml", eml([("tb from email.pdf", page)]))
+    done = sort_all([father, llc], home=[father], today=DAY2)
+
+    assert read_index(llc) == before
+    [parked] = done[father].review
+    assert parked.reason == reasons.OPENED_NOT_ACROSS.format()
+    assert parked.original_name == "tb from email.pdf" and parked.container
+    assert locate(father, parked.pbc_location).is_relative_to(opened_dir_of(father))
+    assert not done[llc].duplicates
+
+
 # ----------------------------------------------------------------- claim 11 ----
 
 
@@ -619,6 +643,25 @@ def test_an_unnamed_file_in_opened_is_reported_and_left_alone(engagement):
     assert "left.pdf" in said
     assert stray.read_bytes() == b"%PDF somebody put this here" and orphan.is_file()
     assert not any(row.original_name in ("dragged in.pdf", "left.pdf") for row in read_index(engagement))
+
+
+def test_a_replaced_attachment_under_opened_is_reported(engagement):
+    # The review's B2: a file replaced under its own name in the year's
+    # folder is said every pass; one replaced under _Opened was said by
+    # nothing until something tried to use its row.
+    drop_bytes(engagement, "mail.eml", eml([("w2.pdf", pdf(W2))]))
+    sort(engagement, today=DAY1)
+    [one] = [row for row in read_index(engagement) if row.container]
+    taken_out = locate(engagement, one.pbc_location)
+    assert taken_out.is_relative_to(opened_dir_of(engagement))
+    taken_out.write_bytes(b"%PDF a different document under the same name")
+
+    done = sort(engagement, today=DAY2)
+
+    said = [s.error for s in done.attention if s.name == taken_out.name]
+    assert len(said) == 1 and "no longer holds the bytes recorded" in said[0]
+    assert one.pbc_location in said[0]
+    assert taken_out.read_bytes() == b"%PDF a different document under the same name"
 
 
 def test_a_folder_whose_container_row_is_gone_is_reported(engagement):
