@@ -166,7 +166,7 @@ from tracker.content_check import (
     any_keyword_matched,
     contains_keyword,
     evaluate_rules,
-    extract,
+    extract_bounded,
     form_key,
     own_forms,
     rules_fingerprint,
@@ -527,8 +527,13 @@ def read_once(path: Path) -> Extraction:
     (:func:`tracker.filer.file_household_drops`), so a two-return household
     does not OCR every photo twice. The reading is handed back into
     :func:`route_file` as ``reading``.
+
+    Read in a process the pass can stop (decision 150,
+    :func:`tracker.content_check.extract_bounded`): the safety stop bounds
+    the whole reading - text layer, render and OCR - and a reader that
+    crashes parks this file rather than ending the pass.
     """
-    return extract(path)
+    return extract_bounded(path)
 
 
 def route_file(
@@ -568,11 +573,13 @@ def route_file(
         return Routing(path=path, identifier=None, reason=too_large)
 
     reading = read_once(path) if reading is None else reading
-    # A picture too large even for Pillow to decode, and a reading the
-    # safety stop abandoned (decision 137, B1), park on their one sentence,
-    # as a file past the ceiling does.
+    # A picture too large even for Pillow to decode, a reading the safety
+    # stop abandoned (decision 137, B1) and a reading whose process ended
+    # without an answer (decision 150) park on their one sentence, as a
+    # file past the ceiling does.
     if reading.text is None and (reasons.TOO_LARGE.matches(reading.reason)
-                                 or reasons.READING_STOPPED.matches(reading.reason)):
+                                 or reasons.READING_STOPPED.matches(reading.reason)
+                                 or reasons.READING_CRASHED.matches(reading.reason)):
         return Routing(path=path, identifier=None, reason=reading.reason, seconds=reading.seconds)
     # How long the reading took rides back with the decision (decision
     # 127), so the pass can name its slowest documents. It changes no

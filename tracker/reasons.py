@@ -430,6 +430,18 @@ READING_STOPPED = Reason(
     firm_note="the reader gave up on it at the safety stop; a person here reads it",
 )
 
+#: A reading whose process ended without an answer (decision 150): pdfium
+#: or Tesseract crashed, or memory ran out. Not an abandoned reading - the
+#: stop was not reached - but kept the same way, so the file is not read
+#: again until it changes, and the pass goes on to the next document where
+#: it used to end with this one. Ours: the file may be perfectly good.
+READING_CRASHED = Reason(
+    "reading-crashed",
+    "The reader could not read this file (it stopped unexpectedly). A person reads it.",
+    "The reader could not read this file", firm_side=True,
+    firm_note="the reader stopped unexpectedly on it; a person here reads it",
+)
+
 #: A document the household's drop folder feeds to a return in **another**
 #: household, whose page names nobody (decision 137, B2; the owner's Q-2 of
 #: 2026-09-24: "never; a person decides"). Within one household an unnamed
@@ -461,7 +473,7 @@ ALL: tuple[Reason, ...] = (
     ISSUER_NOT_NAMED, SHOWS_ITS_FORM_NUMBER, NAME_POINTS_AT,
     NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE, UNNAMED_ACROSS_HOUSEHOLDS,
     FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST, READING_STOPPED,
-    PENDING_SYNC, VANISHED,
+    READING_CRASHED, PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )
 

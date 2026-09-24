@@ -64,6 +64,14 @@ append ``imported`` and ``scanned`` events under the engagement lock
 through the store, which is the same call every writer in the package
 makes.
 
+**Reading in the test's own process** (``reading_in_this_process``,
+decision 150). The pass reads each document in a child process it can
+stop, and the suite's stand-in readers - a fake OCR, a slow reader, a
+reader that must never be called - are patched into the test's process,
+which a child started fresh never sees. So every test reads in its own
+process, and the tests about the child (``tests/test_content_check.py``,
+the decision-150 section) turn the child back on.
+
 Looking changes nothing: these fixtures read the record and never write in
 an engagement folder.
 """
@@ -78,7 +86,7 @@ from pathlib import Path
 
 import pytest
 
-from tracker import ledger, store, view
+from tracker import content_check, ledger, store, view
 from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
@@ -134,6 +142,24 @@ def a_store_of_its_own(tmp_path):
         for folder in _ALSO_WALK:
             shutil.rmtree(folder, ignore_errors=True)
         _ALSO_WALK.clear()
+
+
+@pytest.fixture(autouse=True)
+def reading_in_this_process():
+    """Every test reads a document in its own process (decision 150).
+
+    ``content_check.extract_bounded()`` reads in a child process in the
+    tracker, and a child imports the reader afresh: the patches the suite
+    makes to it would not be there. A ``MonkeyPatch`` of its own, like the
+    store's, so a test calling ``monkeypatch.undo()`` does not turn the
+    child on by accident; a test about the child turns it on with its own.
+    """
+    patch = pytest.MonkeyPatch()
+    patch.setattr(content_check, "READ_IN_A_CHILD", False)
+    try:
+        yield
+    finally:
+        patch.undo()
 
 
 #: Engagements the comparison passes over, by folder name, with the decision

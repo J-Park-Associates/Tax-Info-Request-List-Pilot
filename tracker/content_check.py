@@ -82,8 +82,12 @@ import logging
 import os
 import re
 import shutil
+import signal
+import subprocess
+import sys
 import tempfile
 import time
+import traceback
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import MISSING, asdict, dataclass, fields, replace
@@ -194,7 +198,11 @@ RENDER_SCALE = 2.0
 #: not read again until the file changes. Under the stop nothing changes:
 #: a slow reading is finished and named (``runner.SLOW_READING_SECONDS``).
 #: Before this, the only stop was Task Scheduler's two-hour kill, which
-#: ended the whole pass and met the same file again next time.
+#: ended the whole pass and met the same file again next time. Since
+#: decision 150 the same two numbers bound the **whole** reading as well -
+#: text layer, render and OCR - because the pass reads in a child process
+#: it ends at the stop (:func:`extract_bounded`): ten minutes a file, one
+#: a photo.
 READING_STOP_PAGE_SECONDS = 60.0
 READING_STOP_DOCUMENT_SECONDS = 600.0
 #: The clock the stop reads. A name of its own so the suite can move it
@@ -1625,12 +1633,14 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
     and finishes it. The one exception is the safety stop, ten times the
     owner's ceiling (decision 137, B1.2, :data:`READING_STOP_PAGE_SECONDS`
     and :data:`READING_STOP_DOCUMENT_SECONDS`): a reading that reaches it
-    is abandoned, and its verdict kept. **What the stop covers:** OCR -
-    every Tesseract call is killed at its timeout - and an overrun noticed
-    between pages. It cannot interrupt the PDF text layer (pdfplumber), a
-    workbook's reading, or a single page render, which run inside this
-    process and can only be seen to have overrun once they return. The
-    bound on a whole reading is decision 150's.
+    is abandoned, and its verdict kept. **What the stop covers here:** OCR
+    - every Tesseract call is killed at its timeout - and an overrun
+    noticed between pages. It cannot interrupt the PDF text layer
+    (pdfplumber), a workbook's reading, or a single page render, which run
+    inside the reading's own process and can only be seen to have overrun
+    once they return. The bound on the whole reading is the process
+    itself: the pass reads through :func:`extract_bounded`, which runs
+    this function in a child it ends at the stop (decision 150).
     """
     started = time.perf_counter()
     # A file past the ceiling is never opened (decision 137, M5): the
@@ -1683,11 +1693,7 @@ def extract_by_ocr(path: Path) -> Extraction:
     try:
         ocr_text = reader(path)
     except ReadingStopped as exc:
-        # Abandoned, and kept: the file's verdict until the file changes.
-        minutes = max(1, round(exc.seconds / 60))
-        said = "1 minute" if minutes == 1 else f"{minutes} minutes"
-        return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=said),
-                          extractable=False)
+        return abandoned(exc.seconds)
     except TooLargeToRead as exc:
         return Extraction(None, reason=str(exc), extractable=False)
     except OcrError as exc:
@@ -1705,6 +1711,177 @@ def extract_by_ocr(path: Path) -> Extraction:
     if not ocr_text.strip():
         return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
     return Extraction(ocr_text, from_ocr=True)
+
+
+def abandoned(seconds: float) -> Extraction:
+    """The reading the safety stop abandoned after ``seconds`` (decision
+    137, B1.2): no text, and a verdict that is the file's, so it is kept
+    and the file is not read again until it changes. One sentence, whether
+    the stop was Tesseract's timeout inside the reading or the end of the
+    reading's own process (decision 150)."""
+    minutes = max(1, round(seconds / 60))
+    said = "1 minute" if minutes == 1 else f"{minutes} minutes"
+    return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=said),
+                      extractable=False, seconds=seconds)
+
+
+# ----------------------------------------------- a reading the pass can stop ----
+#
+# Decision 150. The stop above reaches OCR, and only notices the rest - the
+# PDF text layer, a page's render, a workbook - once it returns: a
+# compressed PDF of a few megabytes can hold hours of drawing commands for
+# pdfplumber or pdfium, far under the size ceiling. So the pass reads each
+# document in a child process and waits for it at most the document's
+# stop. On time, the child hands back the Extraction it made, exactly what
+# extract() returns in the pass's own process. Over time, the child is
+# ended - with everything it started, Tesseract included - and the reading
+# is abandoned: the same kept verdict as above. A child that ends without
+# answering - pdfium or Tesseract crashing, memory running out - is a
+# reading that failed, kept the same way: the file waits for a person, and
+# the pass goes on to the next one.
+
+#: Whether :func:`extract_bounded` reads in a child process (decision 150).
+#: Always, in the tracker. The suite turns it off for every test but the
+#: ones about the child (``tests/conftest.py``): its stand-in readers are
+#: patched into the test's own process, which a child never shares.
+READ_IN_A_CHILD = True
+#: What the child runs: the one reading. A name of its own, handed to the
+#: child by reference, so the suite can give the child a reader that never
+#: finishes or dies - a patch made in the pass's process is not in the
+#: child's, which imports this module afresh.
+_CHILD_READER = extract
+#: How long an ended child is waited for, and how long one that has
+#: answered is given to exit on its own, before the pass goes on.
+_CHILD_EXIT_SECONDS = 30.0
+
+
+def reading_stop_seconds(path: Path) -> float:
+    """How long the whole reading of ``path`` may take (decision 150): a
+    photo is one page - :data:`READING_STOP_PAGE_SECONDS` - and any other
+    file is a document - :data:`READING_STOP_DOCUMENT_SECONDS`."""
+    if extension_of(path) in IMAGE_EXTENSIONS:
+        return READING_STOP_PAGE_SECONDS
+    return READING_STOP_DOCUMENT_SECONDS
+
+
+def extract_bounded(path: Path, *, ocr: bool = True) -> Extraction:
+    """:func:`extract`, in a process the pass can stop (decision 150).
+
+    What the pass reads through - the router's one reading of a drop
+    (:func:`tracker.router.read_once`) and the scanner's reading on a
+    cache miss - so the safety stop bounds the whole reading, text layer
+    and render included, and a reader that crashes parks the file instead
+    of ending the pass. A cached verdict never gets here, so it never
+    starts a child. The child writes nothing anywhere: it hands back the
+    reading, and the pass does every write, as before. OCR's temporary
+    folder reaches it through the environment it is started with
+    (:func:`ocr_scratch`, decision 137 L7). The benchmark calls
+    :func:`extract` itself: it measures the reader, not the stop.
+    """
+    if not READ_IN_A_CHILD:
+        return extract(path, ocr=ocr)
+    return _read_in_a_child(Path(path), ocr=ocr)
+
+
+def reading_failed(seconds: float, error: str) -> Extraction:
+    """The reading whose process ended without an answer (decision 150):
+    the file's verdict, kept like an abandoned one, for a person to read."""
+    return Extraction(None, reason=reasons.READING_CRASHED.format(), extractable=False,
+                      error=error, seconds=seconds)
+
+
+def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
+    """Read ``path`` in a child process, waiting at most its stop."""
+    import multiprocessing
+
+    stop = reading_stop_seconds(path)
+    context = multiprocessing.get_context("spawn")      # Windows has no fork
+    answers, sender = context.Pipe(duplex=False)
+    child = context.Process(target=_the_child, args=(sender, _CHILD_READER, str(path), ocr),
+                            name="tracker-reading", daemon=True)
+    started = time.monotonic()
+    try:
+        child.start()
+    except BaseException:
+        answers.close()
+        raise
+    finally:
+        sender.close()          # the child holds its own end: end-of-file means it is gone
+    kind, answer = "died", ()
+    try:
+        if not answers.poll(stop):
+            _end(child)
+            log.warning("Reading %s stopped at the safety stop (%.0f s)", path.name, stop)
+            return abandoned(time.monotonic() - started)
+        try:
+            kind, *answer = answers.recv()
+        except (EOFError, OSError):
+            pass                # it ended without a word
+    finally:
+        answers.close()
+        exit_code = _wait_for(child)
+    seconds = time.monotonic() - started
+    if kind == "read":
+        return answer[0]
+    if kind == "failed":
+        error, trace = answer
+        log.warning("The reader failed on %s: %s", path.name, trace)
+        return reading_failed(seconds, error)
+    error = f"the reading's process ended with exit code {exit_code}"
+    log.warning("The reader stopped unexpectedly on %s: %s", path.name, error)
+    return reading_failed(seconds, error)
+
+
+def _the_child(sender, reader, path: str, ocr: bool) -> None:
+    """The child's whole life: read one file, hand back the reading, exit.
+
+    On POSIX it leads a process group of its own first, so ending it ends
+    whatever it started. Anything the reading raises is handed back as
+    words, never left to end the process in silence."""
+    if hasattr(os, "setsid"):
+        os.setsid()
+    try:
+        try:
+            reading = reader(Path(path), ocr=ocr)
+        except BaseException as exc:
+            sender.send(("failed", f"{exc.__class__.__name__}: {exc}", traceback.format_exc()))
+        else:
+            sender.send(("read", reading))
+    finally:
+        sender.close()
+
+
+def _end(child) -> None:
+    """End a reading's child and everything it started. Tesseract is the
+    child's own child, and ending the child alone would leave it reading."""
+    if sys.platform == "win32":
+        system = Path(os.environ.get("SystemRoot") or r"C:\Windows") / "System32"
+        try:
+            subprocess.run([str(system / "taskkill.exe"), "/F", "/T", "/PID", str(child.pid)],
+                           capture_output=True, timeout=_CHILD_EXIT_SECONDS, check=False,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("Could not end the reading's process tree (%s)", exc)
+    else:
+        try:
+            if os.getpgid(child.pid) == child.pid:      # it leads its own group
+                os.killpg(child.pid, signal.SIGKILL)
+        except OSError:
+            pass                                        # already gone
+    child.kill()                                        # the child itself, whatever happened above
+    child.join(_CHILD_EXIT_SECONDS)
+
+
+def _wait_for(child) -> int | None:
+    """Let a child that has answered (or ended) exit, end it if it will
+    not, release it, and say its exit code."""
+    child.join(_CHILD_EXIT_SECONDS)
+    if child.is_alive():
+        _end(child)
+    exit_code = child.exitcode
+    if exit_code is not None:
+        child.close()
+    return exit_code
 
 # ---------------------------------------------------------------- checking ----
 
@@ -1743,7 +1920,7 @@ def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
     verdict from an empty cache and a verdict the router kept are one
     verdict, and a rebuilt store cannot turn a filed copy into a failure.
     """
-    reading = extract(path)
+    reading = extract_bounded(path)
     if reading.text is None:
         return ContentResult(
             ok=False, reason=reading.reason, extractable=False, transient=reading.transient,
