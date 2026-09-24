@@ -341,8 +341,8 @@
       "id": "tracker/containers.py",
       "type": "module",
       "layer": "core",
-      "sha256": "21363ac65bf4d6d3",
-      "lines": 554,
+      "sha256": "31c17587dd36ae92",
+      "lines": 579,
       "cli": "python -m tracker.containers",
       "exports": [
         "Attachment",
@@ -351,12 +351,15 @@
         "LIMIT_COUNT",
         "LIMIT_DEPTH",
         "LIMIT_RATIO",
+        "LIMIT_SKIPPED",
         "LIMIT_TOTAL",
         "MAX_ATTACHMENTS",
         "MAX_DEPTH",
         "MAX_RATIO",
+        "MAX_SKIPPED",
         "MAX_TOTAL_BYTES",
         "MAX_TOTAL_MB",
+        "NAME_MAX",
         "NotOpened",
         "Opened",
         "SKIP_BODY",
@@ -376,6 +379,8 @@
         "MAX_ATTACHMENTS": "200",
         "MAX_TOTAL_MB": "250",
         "MAX_RATIO": "100",
+        "MAX_SKIPPED": "200",
+        "NAME_MAX": "255",
         "SKIP_INLINE": "'inline image, shown in the message rather than attached'",
         "SKIP_BODY": "\"the message's own text, never saved\"",
         "SKIP_REFERENCE": "'attached by reference: it holds a link, not the document'",
@@ -387,7 +392,7 @@
         "KIND_ZIP": "'a zip'"
       },
       "role": "Opens an email or a zip a client dropped, in memory, and hands back what was attached (decision 143): open_container(bytes, extension) gives each attachment's own name (safe_name(), a basename that cannot leave its folder) and bytes, and each part skipped with why (an inline picture, the message's own text, an attachment by reference or an OLE object); NotOpened carries the sentence a container parks with (reasons.CONTAINER_LOCKED, CONTAINER_DAMAGED, CONTAINER_EMPTY, CONTAINER_LIMIT). is_container() decides by the extension alone (.msg, .eml, .zip) - never magic bytes, because an .xlsx is a zip too.",
-      "notes": "Writes nothing, decides nothing about a folder and holds no file open: the filer reads the container under the size ceiling, hands over its bytes, and writes what comes back. Three parsers on untrusted input: the standard library's email (policy.default; the one module under tracker/ that may import it, for parsing only - tests/test_layers.py names the exception and proves in a subprocess that importing this module reaches no mail client or network module beyond the socket and urllib the standard library's own helpers pull in), zipfile streamed through a counting read (never extract or extractall; names decoded as the zip marks them), and olefile for .msg (BSD-2-Clause, pinned; opened with DEFECT_INCORRECT raised; its sector-chain loops are bounded by the stream's size and its directory walk refuses a re-referenced entry). The limits are constants here, each with a test at its edge: MAX_DEPTH 2, MAX_ATTACHMENTS 200, MAX_TOTAL_MB 250 counted from the bytes actually produced, MAX_RATIO 100 per zip member. The whole container is opened before anything is written, so a limit leaves nothing behind. A container nested past the depth, or one inside that will not open, is handed back whole as an attachment carrying its sentence (Attachment.parks) and parks as a container of its own; an embedded .msg message past the depth has no bytes to hand back and stops the whole container. An unnamed part is 'attachment N' plus the extension its Content-Type names, from a fixed table (mimetypes reads the Windows registry, so two machines would name one part two ways). The CLI lists what a container holds and writes nothing."
+      "notes": "Writes nothing, decides nothing about a folder and holds no file open: the filer reads the container under the size ceiling, hands over its bytes, and writes what comes back. Three parsers on untrusted input: the standard library's email (policy.default; the one module under tracker/ that may import it, for parsing only - tests/test_layers.py names the exception and proves in a subprocess that importing this module reaches no mail client or network module beyond the socket and urllib the standard library's own helpers pull in), zipfile streamed through a counting read (never extract or extractall; names decoded as the zip marks them), and olefile for .msg (BSD-2-Clause, pinned; opened with DEFECT_INCORRECT raised; its sector-chain loops are bounded by the stream's size and its directory walk refuses a re-referenced entry). The limits are constants here, each with a test at its edge: MAX_DEPTH 2, MAX_ATTACHMENTS 200, MAX_TOTAL_MB 250 counted from the bytes actually produced, MAX_RATIO 100 per zip member, and MAX_SKIPPED 200 parts left inside (each is named on the record's line); a name on the record is cut to NAME_MAX, 255. The whole container is opened before anything is written, so a limit leaves nothing behind. A container nested past the depth, or one inside that will not open, is handed back whole as an attachment carrying its sentence (Attachment.parks) and parks as a container of its own; an embedded .msg message past the depth has no bytes to hand back and stops the whole container. An unnamed part is 'attachment N' plus the extension its Content-Type names, from a fixed table (mimetypes reads the Windows registry, so two machines would name one part two ways). The CLI lists what a container holds and writes nothing."
     },
     {
       "id": "tracker/content_check.py",
@@ -2391,7 +2396,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d4d0545f1b5d67f3",
+      "sha256": "27e1532f6719305f",
       "lines": 402,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2409,7 +2414,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "709608fdf8e65106",
+      "sha256": "5649ee1c3a710b7e",
       "lines": 813,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -2418,7 +2423,7 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b43542659cd0dd11",
+      "sha256": "b0d599e83f1bf921",
       "lines": 1159,
       "role": "The operator's page for one tax season: the designated machine and why only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
@@ -3047,8 +3052,8 @@
       "id": "tests/test_containers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "73cf32149c0e2362",
-      "lines": 726,
+      "sha256": "48a4de7d2487fd0b",
+      "lines": 747,
       "exports": [
         "FORM_1098",
         "Killed",
@@ -3067,6 +3072,7 @@
         "test_a_content_id_alone_is_not_an_inline_signal",
         "test_a_dry_run_opens_nothing_on_disk",
         "test_a_folder_whose_container_row_is_gone_is_reported",
+        "test_a_name_on_the_record_is_never_longer_than_a_file_name",
         "test_a_nested_container_that_will_not_open_is_handed_back_to_park",
         "test_a_pass_killed_after_writing_attachments_opens_again_and_reuses_them",
         "test_a_re_sent_identical_email_is_not_opened_again",
@@ -3085,6 +3091,7 @@
         "test_limits_count",
         "test_limits_depth",
         "test_limits_park_the_container_with_the_limit_in_the_sentence",
+        "test_limits_parts_left_inside",
         "test_limits_ratio",
         "test_limits_total_bytes",
         "test_limits_total_bytes_ignores_what_the_directory_declares",

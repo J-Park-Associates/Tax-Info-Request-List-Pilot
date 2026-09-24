@@ -724,3 +724,24 @@ def test_the_command_line_lists_and_writes_nothing(tmp_path):
                           capture_output=True, text=True, cwd=Path(__file__).resolve().parents[1])
     assert done.returncode == 0 and "w2.pdf" in done.stdout
     assert files_under(tmp_path) == before
+
+
+def test_limits_parts_left_inside():
+    """Every part left inside is named on the container's line, so their
+    number is held too: the body and 199 inline pictures are 200, and open;
+    one more stops the container."""
+    from tracker.containers import LIMIT_SKIPPED, MAX_SKIPPED
+
+    pictures = [(f"p{n}.png", b"\x89PNG" + b"0" * 16) for n in range(MAX_SKIPPED - 1)]
+    opened = open_container(eml([("w2.pdf", b"%PDF w2")], inline=pictures), "eml")
+    assert len(opened.skipped) == MAX_SKIPPED
+    one_more = pictures + [("last.png", b"\x89PNG" + b"1" * 16)]
+    with pytest.raises(NotOpened, match=LIMIT_SKIPPED):
+        open_container(eml([("w2.pdf", b"%PDF w2")], inline=one_more), "eml")
+
+
+def test_a_name_on_the_record_is_never_longer_than_a_file_name():
+    from tracker.containers import NAME_MAX
+
+    kept = safe_name("L" * 1000 + ".pdf", "attachment")
+    assert len(kept) == NAME_MAX and kept.endswith(".pdf")

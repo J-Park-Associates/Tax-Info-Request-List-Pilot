@@ -102,6 +102,15 @@ MAX_TOTAL_MB = 250
 MAX_TOTAL_BYTES = MAX_TOTAL_MB * 1024 * 1024
 #: How many times its compressed size a zip member may decompress to.
 MAX_RATIO = 100
+#: How many parts one container may leave inside - message texts, inline
+#: pictures, links, folder entries. Not a document limit: every part left
+#: is named on the container's line in the record, and a crafted message of
+#: a million inline parts would otherwise write a line nobody can read.
+MAX_SKIPPED = 200
+#: The longest name an attachment keeps on the record (NTFS's own limit for
+#: one name). Longer is cut from the end of its stem, keeping its extension;
+#: the room its file has on disk is measured, and cut to, where it is written.
+NAME_MAX = 255
 
 #: How much a zip member is read at a time: small enough that a member
 #: past a limit is stopped within one chunk of it.
@@ -112,6 +121,7 @@ LIMIT_DEPTH = f"nested more than {MAX_DEPTH} deep"
 LIMIT_COUNT = f"more than {MAX_ATTACHMENTS} attachments"
 LIMIT_TOTAL = f"more than {MAX_TOTAL_MB} MB once unpacked"
 LIMIT_RATIO = f"a file inside unpacks to more than {MAX_RATIO} times its packed size"
+LIMIT_SKIPPED = f"more than {MAX_SKIPPED} parts that are not documents"
 
 #: Why a part was skipped, as the container's record says it.
 SKIP_INLINE = "inline image, shown in the message rather than attached"
@@ -208,11 +218,17 @@ def safe_name(raw: object, fallback: str | Callable[[], str]) -> str:
     all, is ``fallback`` (a string, or a function asked only when it is
     needed, so an unnamed part's number is spent only on an unnamed part).
     A name the record cannot hold as UTF-8 is mended first. Not cut: the
-    room a name has is measured where it is written.
+    room a name has on disk is measured where it is written; a name past
+    :data:`NAME_MAX` is cut here only so that the record never holds one
+    longer than a file name can be.
     """
     text = str(raw or "").encode("utf-8", "replace").decode("utf-8")
     text = text.replace("\\", "/").rsplit("/", 1)[-1]
     text = WINDOWS_ILLEGAL_CHARS.sub("_", text).strip().rstrip(". ")
+    if len(text) > NAME_MAX:
+        suffix = PurePath(text).suffix
+        suffix = suffix if 1 < len(suffix) <= 11 else ""
+        text = (text[:NAME_MAX - len(suffix)].rstrip(". ") + suffix) if suffix else text[:NAME_MAX]
     if text.strip("._ ") and not is_reserved_name(text):
         return text
     instead = fallback() if callable(fallback) else fallback
@@ -253,6 +269,13 @@ class _Walk:
         if self.produced > MAX_TOTAL_BYTES:
             raise NotOpened(reasons.CONTAINER_LIMIT.format(error=LIMIT_TOTAL))
 
+    def skip(self, part: Skipped) -> None:
+        """Name one part left inside; stop the container past
+        :data:`MAX_SKIPPED`, because every one is named on the record's line."""
+        if len(self.skipped) >= MAX_SKIPPED:
+            raise NotOpened(reasons.CONTAINER_LIMIT.format(error=LIMIT_SKIPPED))
+        self.skipped.append(Skipped(part.name[:NAME_MAX], part.why))
+
     def fallback(self) -> str:
         self.unnamed += 1
         return UNNAMED.format(n=self.unnamed)
@@ -289,7 +312,8 @@ class _Walk:
         if len(self.attachments) + len(inner.attachments) > MAX_ATTACHMENTS:
             raise NotOpened(reasons.CONTAINER_LIMIT.format(error=LIMIT_COUNT))
         self.attachments.extend(inner.attachments)
-        self.skipped.extend(inner.skipped)
+        for one in inner.skipped:
+            self.skip(one)
         self.produced, self.unnamed = inner.produced, inner.unnamed
 
     # -- the three parsers --------------------------------------------------
@@ -311,8 +335,9 @@ class _Walk:
             raise NotOpened(reasons.CONTAINER_DAMAGED.format(error=_said(exc))) from exc
         with archive:
             members = [info for info in archive.infolist() if not info.is_dir()]
-            self.skipped.extend(Skipped(info.filename, SKIP_FOLDER)
-                                for info in archive.infolist() if info.is_dir())
+            for info in archive.infolist():
+                if info.is_dir():
+                    self.skip(Skipped(info.filename, SKIP_FOLDER))
             # Counted before a byte is decompressed: the directory lists them.
             if len(self.attachments) + len(members) > MAX_ATTACHMENTS:
                 raise NotOpened(reasons.CONTAINER_LIMIT.format(error=LIMIT_COUNT))
@@ -366,7 +391,7 @@ class _Walk:
             inner = part.get_payload()
             embedded = inner[0] if isinstance(inner, list) and inner else None
             if not isinstance(embedded, Message):
-                self.skipped.append(Skipped(part.get_filename() or "attached message", SKIP_EMPTY))
+                self.skip(Skipped(part.get_filename() or "attached message", SKIP_EMPTY))
                 return
             if depth + 1 > MAX_DEPTH:
                 # Handed back whole, as an .eml, and parks as a container.
@@ -386,14 +411,14 @@ class _Walk:
         disposition = part.get_content_disposition()
         filename = part.get_filename()
         if disposition == "inline" and (filename or part.get_content_maintype() != "text"):
-            self.skipped.append(Skipped(filename or content_type, SKIP_INLINE))
+            self.skip(Skipped(filename or content_type, SKIP_INLINE))
             return
         if not filename and disposition != "attachment" and part.get_content_maintype() in ("text", "multipart"):
-            self.skipped.append(Skipped(content_type, SKIP_BODY))
+            self.skip(Skipped(content_type, SKIP_BODY))
             return
         payload = part.get_payload(decode=True)
         if not isinstance(payload, (bytes, bytearray)) or not payload:
-            self.skipped.append(Skipped(filename or content_type, SKIP_EMPTY))
+            self.skip(Skipped(filename or content_type, SKIP_EMPTY))
             return
         self.spend(len(payload))
         name = safe_name(filename, lambda: self.fallback() + _extension_for(content_type))
@@ -431,18 +456,18 @@ class _Walk:
         name = _msg_name(ole, storage)
         shown = name or f"attachment {storage[-1][len(_ATTACH_PREFIX):]}"
         if properties.get(_PROP_HIDDEN, 0) or properties.get(_PROP_FLAGS, 0) & _RENDERED_IN_PLACE:
-            self.skipped.append(Skipped(shown, SKIP_INLINE))
+            self.skip(Skipped(shown, SKIP_INLINE))
             return
         if method in _BY_REFERENCE:
-            self.skipped.append(Skipped(shown, SKIP_REFERENCE))
+            self.skip(Skipped(shown, SKIP_REFERENCE))
             return
         if method == _OLE:
-            self.skipped.append(Skipped(shown, SKIP_OLE))
+            self.skip(Skipped(shown, SKIP_OLE))
             return
         if method == _EMBEDDED:
             inner = [*storage, _EMBEDDED_STORAGE]
             if not ole.exists("/".join(inner)):
-                self.skipped.append(Skipped(shown, SKIP_EMPTY))
+                self.skip(Skipped(shown, SKIP_EMPTY))
                 return
             if depth + 1 > MAX_DEPTH:
                 # An embedded message has no bytes of its own to hand back
@@ -452,7 +477,7 @@ class _Walk:
             return
         stream = "/".join([*storage, _DATA_STREAM])
         if not ole.exists(stream):
-            self.skipped.append(Skipped(shown, SKIP_EMPTY))
+            self.skip(Skipped(shown, SKIP_EMPTY))
             return
         size = ole.get_size(stream)
         if self.produced + size > MAX_TOTAL_BYTES:
@@ -460,7 +485,7 @@ class _Walk:
         with ole.openstream(stream) as handle:
             payload = handle.read()
         if not payload:
-            self.skipped.append(Skipped(shown, SKIP_EMPTY))
+            self.skip(Skipped(shown, SKIP_EMPTY))
             return
         self.spend(len(payload))
         self.add(safe_name(name, self.fallback), payload, depth)
