@@ -923,7 +923,8 @@ RRB-1099), the 1099-C, the W-2G, the 1098-E, the 1099-Q, the 1042-S and a
 client's own Schedule C income and expense sheet. The 1120, 1120-S and
 partnership checklists each ask for the K-1s the business itself received,
 the 1099-K and 1099-NEC it received, and the 1042-S. The trust checklist
-asks for estimated tax payments. And every checklist ends with **Z01, IRS &
+asks for its estimated tax vouchers (the 1041-ES; an individual's 1040-ES
+voucher dropped there still parks). And every checklist ends with **Z01, IRS &
 State Tax Notices and Letters**. Two things to know about that last one. It
 is deliberately narrow: it recognises the IRS's current notice layout - the
 CP number printed beside "Tax year" (or "Tax period") and "Notice date" -

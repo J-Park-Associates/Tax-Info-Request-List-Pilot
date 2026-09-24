@@ -1782,6 +1782,17 @@ _DECISION_141 = [
         "We need more information to process your 2024 tax return.",
         "Letter 12C (Rev. 1-2025)",
     ], None),
+    # G01 is the 1041-ES's row (the designer's ruling on G1): the voucher
+    # torn off alone files it, and an individual's voucher parks.
+    ("1041", "1041-ES voucher 1.pdf", [
+        "Form 1041-ES 2025 Payment Voucher 1",
+        "Department of the Treasury Internal Revenue Service OMB No. 1545-0971",
+        "File only if the estate or trust is making a payment of estimated tax. Return this voucher with a check.",
+        "Amount of estimated tax you are paying by check or money order.",
+    ], "G01"),
+    ("1041", "1040-ES voucher in a trust.pdf", ["2025 Estimated Tax Payment Voucher 1", "Form 1040-ES",
+                                                "Amount of estimated tax you are paying by check or money order."],
+     None),
     # The owner's item 17: corrections and amended forms keep parking.
     ("1040", "W-2c.pdf", [
         "Form W-2c Corrected Wage and Tax Statement 2025",
@@ -1801,7 +1812,7 @@ _DECISION_141_XLSX = [
     ("1040", "2025 business income and expense.xlsx", [
         ["Business name (DBA)", "Sample Studio"], ["Year 2025"],
         ["GROSS SALES", 30000, "1099-NEC: Sample Payer Inc"],
-        ["COST OF GOODS SOLD", 0], ["AUTOMOBILE EXPENSE", 1200], ["SUPPLIES", 850],
+        ["ENDING INVENTORY", 0], ["COST OF GOODS SOLD", 0], ["AUTOMOBILE EXPENSE", 1200], ["SUPPLIES", 850],
         ["BUSINESS MILEAGE", 2100], ["COMMUTE MILEAGE", 0],
         ["TOTAL EXPENSE", 9000], ["NET INCOME", 21000],
     ], "M01"),
@@ -1818,12 +1829,12 @@ _DECISION_141_XLSX = [
     ("1040", "business income & expense summary.xlsx", [
         ["Business Income & Expense Summary"], ["Year", 2025], ["Gross receipts", 48000],
     ], "M01"),
-    # The owner gave the 1041 the 1040's own estimated-tax row (G01): a
-    # trust's schedule of the payments it made files there.
-    ("1041", "trust estimated payments made.xlsx", [
-        ["Doyle Family Trust"], ["Estimated payments made - 2025"],
-        ["Date", "Amount"], ["04/15/2025", 2500], ["06/16/2025", 2500],
-    ], "G01"),
+    # A mileage log is Schedule C support, not the summary M01 asks for,
+    # and says none of the summary's lines (the designer's ruling on G5).
+    ("1040", "2025 mileage log.xlsx", [
+        ["Vehicle mileage log 2025"], ["Date", "Destination", "Purpose", "Business mileage"],
+        ["01/06/2025", "Client site", "Consultation", 42], ["Total business mileage", 2100],
+    ], None),
 ]
 
 

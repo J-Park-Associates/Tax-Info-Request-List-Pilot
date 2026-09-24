@@ -308,10 +308,18 @@ FORM_TEMPLATES = {
         # These three, L02 and L03 by their numbers, required: no other form
         # in either corpus says them where a form names itself, and each
         # number's variants keep it off its siblings (1099-C is not 1099-CAP,
-        # W-2G is not W-2). The printed titles cannot serve: Schedule 1 says
-        # "cancellation of debt" and "student loan interest", the 1040-ES
-        # booklet "gambling winnings".
-        _row("A08", "1099-C - Cancellation of Debt", core=False, named=True, required_keywords="1099-c"),
+        # W-2G is not W-2). A printed title cannot serve alone: Schedule 1
+        # says "cancellation of debt" and "student loan interest", the
+        # 1040-ES booklet "gambling winnings".
+        # The 1099-C's number is not enough on its own either (the designer's
+        # ruling on the build): OCR reads a 1099-G's "G" as "C", and a
+        # required number would file that misreading. So A08 also wants the
+        # form's own words - its title, or its box 2 label, because the IRS
+        # sets the title one word to a line ("Cancellation" / "of Debt") and
+        # the blank never says it as a phrase. Schedule 1's "cancellation of
+        # debt" is harmless here: a return does not say "1099-C" as its own.
+        _row("A08", "1099-C - Cancellation of Debt", core=False, named=True,
+             required_keywords=f"1099-c, cancellation of debt {KEYWORD_ANY_OF} amount of debt discharged"),
         _row("A09", "W-2G - Gambling Winnings", core=False, named=True, required_keywords="w-2g"),
         _row("B01", "Prior-Year Federal & State Tax Returns", core=True, named=True, period=TY_PRIOR,
              required_keywords=_prior_return("individual income tax return", "filing status", JURAT,
@@ -365,14 +373,18 @@ FORM_TEMPLATES = {
         # return that prints the same words outranks it. `schedule c` alone
         # is what every 1099's instructions say ("report on Schedule C"),
         # and `cost of goods sold`, `gross sales`, `total expense` and `net
-        # income` are every business return's lines. `business mileage` is
-        # the sheet's own line (an organizer worksheet asks for it beside
-        # the expenses), said by no form, bank statement, ledger or
-        # trial balance in either corpus; the others are the headings a
-        # client's summary carries, the owner's title among them.
+        # income` are every business return's lines. A summary is known by
+        # its shape: the sales line, the inventory that goes into cost of
+        # goods and the expense total, together - the 990s print the first
+        # and the last but never `ending inventory`, and a mileage log, a
+        # receipt or a bank statement prints none of the three (a mileage
+        # line alone is a log, not a summary: the designer's ruling on the
+        # build). The others are the headings a client's summary carries,
+        # the owner's title among them.
         _row("M01", "Schedule C - Business Income & Expense Summary", core=False, named=False,
              extensions="xlsx, pdf, csv",
-             any_keywords="business mileage, business income and expense summary, "
+             any_keywords=f"gross sales {KEYWORD_ALL_OF} ending inventory {KEYWORD_ALL_OF} total expense, "
+                          "business income and expense summary, "
                           "business income & expense summary, schedule c worksheet, schedule c summary"),
         _shared("N01", "foreign_source_income", core=False, named=True),
         _shared("Z01", "notices", core=False, named=True),
@@ -497,8 +509,14 @@ FORM_TEMPLATES = {
         # value, and the blank form would have filed here.
         _row("E01", "Cost Basis for Assets Sold During the Year", core=False, named=False, extensions="xlsx, pdf", any_keywords="cost basis schedule, basis of assets sold, date acquired and date sold, purchase price and sale price, stepped-up basis"),
         _row("F01", "Rental / Business Income & Expense Detail", core=False, named=False, extensions="xlsx, pdf", any_keywords="rental income and expenses, rent roll, schedule e detail, schedule c detail"),
-        # The owner's (decision 141): the 1040's estimated-tax row, as it is.
-        _shared("G01", "estimated_tax", core=False, named=False),
+        # The owner's title (decision 141), and the 1041-ES's own words, not
+        # the 1040's: an individual's 1040-ES voucher in a trust's engagement
+        # is another entity's estimated payments and parks (decision 96's
+        # (b)). Required: the form's number, with its title (the booklet's
+        # first page) or the voucher's own line (a voucher torn off alone).
+        _row("G01", SHARED["estimated_tax"]["document"], core=False, named=False, extensions="pdf, xlsx",
+             required_keywords=f"1041-es, estimated income tax for estates and trusts {KEYWORD_ANY_OF} "
+                               "estate or trust is making a payment of estimated tax"),
         _shared("Z01", "notices", core=False, named=True),
     ],
     "990": [

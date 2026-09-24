@@ -148,6 +148,9 @@ EXPECT = [
     ("f1099k.pdf", "1120", 2025, "J02"), ("f1099k.pdf", "1120S", 2025, "I02"), ("f1099k.pdf", "1065", 2025, "H02"),
     ("f1099nec.pdf", "1120", 2025, "J02"), ("f1099nec.pdf", "1120S", 2025, "I02"), ("f1099nec.pdf", "1065", 2025, "H02"),
     ("f1099nec_2024.pdf", "1065", 2025, "H02"),
+    # The 1041's G01 is the 1041-ES's row: an individual's 1040-ES, package
+    # or voucher, is another entity's estimated payments there and parks.
+    ("f1040es_2025.pdf", "1041", 2025, None), ("f1040es.pdf", "1041", 2026, None),
     # The owner's item 17, now committed: a corrected or amended form parks
     # in every catalog, whatever row it resembles - the W-2c and W-3c are
     # not wage statements or transmittals, the 1065-X's title is not the
@@ -161,9 +164,7 @@ EXPECT = [
     # the CA 100S in a 1040 files F01 on its own K-1 pages; the 1041-A,
     # 1041-QFT and 1120-ND in a 1041 file D01 on a fee line every return
     # prints; the 1041-ES in a 1040 (H01) and the 1041-T in an 1120 (F01)
-    # file as another entity's estimated payments - and, since decision 141
-    # gave the 1041 the 1040's own estimated-tax row as the owner asked,
-    # the 1040-ES package in a 1041 files G01 the same way.
+    # file as another entity's estimated payments.
 ]
 
 
@@ -216,6 +217,49 @@ def test_a_1099_r_still_files_e02(catalogs):
     routing = route_file(IRS / "f1099r.pdf", catalogs("1040", 2025))
     assert routing.identifier == "E02", routing.reason
     assert "A07" not in routing.candidates
+
+
+def test_a_1040_es_parks_on_the_1041_and_a_1041_es_files_g01(catalogs, tmp_path):
+    """The designer's ruling on G1: the 1041's G01 keeps the owner's title
+    and files only the 1041-ES - the IRS's booklet, and a voucher torn off
+    and sent alone. An individual's 1040-ES, the booklet or one voucher, is
+    another entity's estimated payments and parks (decision 96's (b)).
+    The Period check is lifted, as for every blank here."""
+    rows = catalogs("1041", 2025)
+    assert route_file(IRS / "f1041es.pdf", rows).identifier == "G01"
+    assert route_file(IRS / "f1040es_2025.pdf", rows).identifier is None
+    assert route_file(IRS / "f1040es.pdf", catalogs("1041", 2026)).identifier is None
+    voucher_1041 = text_pdf(tmp_path / "1041-ES voucher.pdf", chr(10).join([
+        "Form 1041-ES 2025 Payment Voucher 3",
+        "File only if the estate or trust is making a payment of estimated tax.",
+        "Amount of estimated tax you are paying by check or money order.",
+    ]))
+    voucher_1040 = text_pdf(tmp_path / "1040-ES voucher.pdf", chr(10).join([
+        "Form 1040-ES 2025 Estimated Tax Payment Voucher 3",
+        "Amount of estimated tax you are paying by check or money order.",
+    ]))
+    assert route_file(voucher_1041, rows).identifier == "G01"
+    routing = route_file(voucher_1040, rows)
+    assert routing.identifier is None and "G01" not in routing.candidates, routing.reason
+
+
+def test_a_1099_g_read_as_1099_c_does_not_file_a08(catalogs, tmp_path):
+    """The designer's ruling on G4. OCR reads a 1099-G's "G" as "C"; a page
+    that says "1099-C" and the 1099-G's own words parks, because A08 wants
+    the 1099-C's words as well as its number. On the number alone - the
+    rule as first built - the same page filed A08."""
+    misread = text_pdf(tmp_path / "1099-G misread.pdf", chr(10).join([
+        "Form 1099-C 2025 Certain Government Payments Copy B For Recipient",
+        "PAYER'S name, street address, city or town",
+        "1 Unemployment compensation 4 Federal income tax withheld",
+        "2 State or local income tax refunds, credits, or offsets",
+    ]))
+    rows = catalogs("1040", 2025)
+    number_alone = [replace(i, required_keywords=("1099-c",)) if i.identifier == "A08" else i for i in rows]
+    assert route_file(misread, number_alone).identifier == "A08"      # the risk, kept visible
+    routing = route_file(misread, rows)
+    assert routing.identifier is None and "A08" not in routing.filed_to, routing.reason
+    assert route_file(IRS / "f1099c.pdf", rows).identifier == "A08"   # the real form still files
 
 
 def test_a_notice_files_z01_and_no_return_or_form_does(catalogs, tmp_path):

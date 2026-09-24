@@ -678,6 +678,28 @@
         }
        ],
        "rule": "required"
+      },
+      {
+       "keyword": "cancellation of debt | amount of debt discharged",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "A08",
+         "kind": "case",
+         "name": "1099-C Copy B.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1040s1.pdf"
+        },
+        {
+         "expected": "A08",
+         "kind": "irs",
+         "name": "f1099c.pdf"
+        }
+       ],
+       "rule": "required"
       }
      ]
     },
@@ -1491,6 +1513,11 @@
          "decision": 73,
          "kind": "case",
          "name": "1040-ES voucher in a corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1040-ES voucher in a trust.pdf"
         }
        ],
        "rule": "any"
@@ -1569,6 +1596,16 @@
          "name": "paid voucher stub in a corporation.pdf"
         },
         {
+         "decision": 141,
+         "kind": "case",
+         "name": "1040-ES voucher in a trust.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1041-ES voucher 1.pdf"
+        },
+        {
          "expected": "H01",
          "kind": "irs",
          "name": "f1040es_2025.pdf"
@@ -1610,11 +1647,6 @@
          "expected": "H01",
          "kind": "case",
          "name": "estimated payments made schedule.xlsx"
-        },
-        {
-         "decision": 141,
-         "kind": "case",
-         "name": "trust estimated payments made.xlsx"
         }
        ],
        "rule": "any"
@@ -1991,7 +2023,7 @@
      "document": "Schedule C - Business Income & Expense Summary",
      "keywords": [
       {
-       "keyword": "business mileage",
+       "keyword": "gross sales + ending inventory + total expense",
        "reached_by": [
         {
          "decision": 141,
@@ -2157,32 +2189,7 @@
   },
   "1041": {
    "reached_only_elsewhere": [],
-   "reached_without_expectation": [
-    [
-     "G01",
-     "estimated tax payment voucher 1"
-    ],
-    [
-     "G01",
-     "estimated tax payment voucher 2"
-    ],
-    [
-     "G01",
-     "estimated tax payment voucher 3"
-    ],
-    [
-     "G01",
-     "estimated tax payment voucher 4"
-    ],
-    [
-     "G01",
-     "estimated tax payment voucher for individuals"
-    ],
-    [
-     "G01",
-     "estimated tax voucher"
-    ]
-   ],
+   "reached_without_expectation": [],
    "rows": {
     "A01": {
      "document": "Trust Instrument / Will & Amendments",
@@ -2983,91 +2990,13 @@
      "document": "Estimated Tax Payment Records",
      "keywords": [
       {
-       "keyword": "estimated tax payment voucher 1",
+       "keyword": "1041-es",
        "reached_by": [
         {
-         "decision": 62,
+         "decision": 141,
+         "expected": "G01",
          "kind": "case",
-         "name": "1040-ES voucher.pdf"
-        },
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "1040-ES voucher in a corporation.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "estimated tax payment voucher 2",
-       "reached_by": [
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "1040-ES voucher 2.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "estimated tax payment voucher 3",
-       "reached_by": [
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "1040-ES voucher 3.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "estimated tax payment voucher 4",
-       "reached_by": [
-        {
-         "decision": 67,
-         "kind": "case",
-         "name": "paid voucher stub.pdf"
-        },
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "paid voucher stub in a corporation.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "estimated tax payment voucher for individuals",
-       "reached_by": [
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "NY IT-2105 voucher.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "amount of estimated tax you are paying",
-       "reached_by": [
-        {
-         "decision": 67,
-         "kind": "case",
-         "name": "paid voucher stub.pdf"
-        },
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "1040-ES voucher 2.pdf"
-        },
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "paid voucher stub in a corporation.pdf"
-        },
-        {
-         "kind": "irs",
-         "name": "f1040es_2025.pdf"
+         "name": "1041-ES voucher 1.pdf"
         },
         {
          "expected": "G01",
@@ -3075,45 +3004,24 @@
          "name": "f1041es.pdf"
         }
        ],
-       "rule": "any"
+       "rule": "required"
       },
       {
-       "keyword": "estimated tax voucher",
+       "keyword": "estimated income tax for estates and trusts | estate or trust is making a payment of estimated tax",
        "reached_by": [
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "corporation estimated tax voucher.pdf"
-        },
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "estimated tax voucher 4th quarter.pdf"
-        }
-       ],
-       "rule": "any"
-      },
-      {
-       "keyword": "estimated payments made",
-       "reached_by": [
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "corporate estimated payments made.xlsx"
-        },
-        {
-         "decision": 73,
-         "kind": "case",
-         "name": "estimated payments made schedule.xlsx"
-        },
         {
          "decision": 141,
          "expected": "G01",
          "kind": "case",
-         "name": "trust estimated payments made.xlsx"
+         "name": "1041-ES voucher 1.pdf"
+        },
+        {
+         "expected": "G01",
+         "kind": "irs",
+         "name": "f1041es.pdf"
         }
        ],
-       "rule": "any"
+       "rule": "required"
       }
      ]
     },
@@ -5645,11 +5553,6 @@
          "decision": 73,
          "kind": "case",
          "name": "estimated payments made schedule.xlsx"
-        },
-        {
-         "decision": 141,
-         "kind": "case",
-         "name": "trust estimated payments made.xlsx"
         }
        ],
        "rule": "any"
@@ -8789,12 +8692,12 @@
  "counts": {
   "catalogs": 6,
   "documents": {
-   "case": 355,
+   "case": 357,
    "irs": 106
   },
-  "keywords": 373,
+  "keywords": 368,
   "reached_only_elsewhere": 2,
-  "reached_without_expectation": 17,
+  "reached_without_expectation": 11,
   "rows": 107,
   "rows_without_a_filing_document": 0,
   "unreached": 66
@@ -8906,13 +8809,13 @@
   "tests/irs/nyit204.pdf": "814ae022406c8d92f91499c3b29f62bd2946039c12ff9c012109c2bfff2643e9",
   "tests/irs/nyit204ip.pdf": "22a4a83ed55ade1db141eaa7721160a589f1ece2a0080b006e8c325040cfc764",
   "tests/irs/nyit204ll.pdf": "2fa553d27d160150080a13d8de4e128b5c5c1c5149cb515811ac3b17a9664044",
-  "tests/test_catalog.py": "2052754e007343c8f691dbad100d4caa5ea69a129d54f7e0fd90a90ba7f102ce",
-  "tests/test_irs_forms.py": "df07d93a64134782bba6e065a44aa638abdfe6b1507a4b6dc880c81d0c1e85cf",
+  "tests/test_catalog.py": "b1da371b576bb5f915d4dc7cb8878b1b0df2b78eb6a2dda55ad6133caf323143",
+  "tests/test_irs_forms.py": "cfe7dc30d5794c151d32a456c52335af0206ee0350c669da332cd83cc270d97e",
   "tests/test_real_corpus.py": "b2d17daa988c1b8ea2f3fbbd4400ecd6794c275067ff4b81734e7eb46d29db88",
   "tools/vocab_report.py": "0a1e8dbf69491e1d2ef6c842b5bf3f886088c528af4b8e3ebc8848ba577d85c0",
   "tracker/content_check.py": "ff01abbc602dcef64a5b24e8d3ad12d75914324e288a4a02c469f4f4690b2129",
   "tracker/manifest.py": "88ca7b67482f73f823a47e0999f49f429f7fa47ddf5b694c2090644a6e40c876",
-  "tracker/templates.py": "fb300697b24ceb726f308555ec00c89e6f3e6fcce3d1203eea021b906af65fee"
+  "tracker/templates.py": "a20e4fbddd83342c7d6797570c6d8b13acbda2f01ff5461a422ad4af2baf5ef5"
  },
  "note": "GENERATED by tools/vocab_report.py \u2014 do not edit by hand.",
  "schema": 1

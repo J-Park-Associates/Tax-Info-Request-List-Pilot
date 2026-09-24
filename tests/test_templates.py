@@ -88,12 +88,23 @@ def test_catalog_rows_shift_to_the_engagements_year():
     assert unshifted["A01"].period == TY
 
 
+#: The one catalog row that carries a shared row's title with rules of its
+#: own. Decision 73 named the corporate estimated-tax row apart so that one
+#: document name never means two sets of rules; decision 141's 1041 G01 is
+#: the exception by ruling - the owner approved the title, and the designer
+#: ruled (on the build's G1) that the trust's row files only a 1041-ES, not
+#: the individual's voucher the 1040's row keys on.
+SAME_TITLE_OWN_RULES = {("1041", "G01")}
+
+
 def test_shared_requests_are_defined_once_and_agree_everywhere():
     from tracker.templates import SHARED
 
     by_document: dict[str, set[tuple]] = {}
-    for rows in FORM_TEMPLATES.values():
+    for form, rows in FORM_TEMPLATES.items():
         for row in rows:
+            if (form, row["identifier"]) in SAME_TITLE_OWN_RULES:
+                continue
             signature = (row["document"], row.get("any_keywords", ""), row.get("required_keywords", ""),
                          row["extensions"], row["period"])
             by_document.setdefault(row["document"], set()).add(signature)
@@ -301,8 +312,9 @@ def test_every_new_row_is_in_its_catalog_with_the_owners_exact_title():
     """Decision 141: every row the owner added, identifier by identifier and
     title by title, none of them pre-ticked - the wizard shows them unticked
     and what an unticked row does is a later decision's (go-live item 15).
-    The 1041's G01 is the 1040's estimated-tax row itself, and the notices
-    row is one row on every catalog, so its words live in one place."""
+    The 1041's G01 carries the 1040's estimated-tax title but the 1041-ES's
+    own words (the designer's ruling on the build), and the notices row is
+    one row on every catalog, so its words live in one place."""
     assert len(OWNERS_ROWS_141) == 23
     for form, identifier, title, named, extensions in OWNERS_ROWS_141:
         spec = next((s for s in FORM_TEMPLATES[form] if s["identifier"] == identifier), None)
@@ -313,7 +325,8 @@ def test_every_new_row_is_in_its_catalog_with_the_owners_exact_title():
         assert spec.get("required_keywords") or spec.get("any_keywords"), (form, identifier)
     h01 = next(s for s in FORM_TEMPLATES["1040"] if s["identifier"] == "H01")
     g01 = next(s for s in FORM_TEMPLATES["1041"] if s["identifier"] == "G01")
-    assert {k: v for k, v in g01.items() if k != "identifier"} == {k: v for k, v in h01.items() if k != "identifier"}
+    assert g01["document"] == h01["document"]
+    assert "1041-es" in g01["required_keywords"] and "any_keywords" not in g01
     notices = [next(s for s in rows if s["identifier"] == "Z01") for rows in FORM_TEMPLATES.values()]
     assert all(row == notices[0] for row in notices)
     # Z01 sorts last on every catalog, so a notice reads the same everywhere.

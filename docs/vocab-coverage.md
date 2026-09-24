@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 107 rows · 373 keywords · **66 unreached** · 2 reached only elsewhere · 17 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 355 cases
+6 catalogs · 107 rows · 368 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 357 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -90,12 +90,6 @@ The row's other rules are all that keep those documents out.
 
 Reached, but proven nothing: the cheapest placements to add.
 
-- **1041 G01** `estimated tax payment voucher 1`
-- **1041 G01** `estimated tax payment voucher 2`
-- **1041 G01** `estimated tax payment voucher 3`
-- **1041 G01** `estimated tax payment voucher 4`
-- **1041 G01** `estimated tax payment voucher for individuals`
-- **1041 G01** `estimated tax voucher`
 - **1065 B01** `statement of activities`
 - **1065 B01** `statement of functional expenses`
 - **1065 E01** `loan agreement`
@@ -151,6 +145,7 @@ Reached, but proven nothing: the cheapest placements to add.
 ### A08 — 1099-C - Cancellation of Debt
 
 - `1099-c` (required) — 1099-C Copy B.pdf (d141) → **here**; f1099c.pdf → **here**
+- `cancellation of debt | amount of debt discharged` (required) — 1099-C Copy B.pdf (d141) → **here**; f1040s1.pdf → parks; f1099c.pdf → **here**
 
 ### A09 — W-2G - Gambling Winnings
 
@@ -214,14 +209,14 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### H01 — Estimated Tax Payment Records
 
-- `estimated tax payment voucher 1` (any) — 1040-ES voucher.pdf (d62) → **here**; 1040-ES voucher in a corporation.pdf (d73) → ?
+- `estimated tax payment voucher 1` (any) — 1040-ES voucher.pdf (d62) → **here**; 1040-ES voucher in a corporation.pdf (d73) → ?; 1040-ES voucher in a trust.pdf (d141) → ?
 - `estimated tax payment voucher 2` (any) — 1040-ES voucher 2.pdf (d73) → **here**
 - `estimated tax payment voucher 3` (any) — 1040-ES voucher 3.pdf (d73) → **here**
 - `estimated tax payment voucher 4` (any) — paid voucher stub.pdf (d67) → **here**; paid voucher stub in a corporation.pdf (d73) → ?
 - `estimated tax payment voucher for individuals` (any) — NY IT-2105 voucher.pdf (d73) → **here**
-- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → **here**; 1040-ES voucher 2.pdf (d73) → **here**; paid voucher stub in a corporation.pdf (d73) → ?; f1040es_2025.pdf → **here**; f1041es.pdf → ?
+- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → **here**; 1040-ES voucher 2.pdf (d73) → **here**; paid voucher stub in a corporation.pdf (d73) → ?; 1040-ES voucher in a trust.pdf (d141) → ?; 1041-ES voucher 1.pdf (d141) → ?; f1040es_2025.pdf → **here**; f1041es.pdf → ?
 - `estimated tax voucher` (any) — corporation estimated tax voucher.pdf (d73) → ?; estimated tax voucher 4th quarter.pdf (d73) → **here**
-- `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → ?; estimated payments made schedule.xlsx (d73) → **here**; trust estimated payments made.xlsx (d141) → ?
+- `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → ?; estimated payments made schedule.xlsx (d73) → **here**
 
 ### I01 — Form 1095-A - Marketplace Health Insurance
 
@@ -267,7 +262,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### M01 — Schedule C - Business Income & Expense Summary
 
-- `business mileage` (any) — 2025 business income and expense.xlsx (d141) → **here**
+- `gross sales + ending inventory + total expense` (any) — 2025 business income and expense.xlsx (d141) → **here**
 - `business income and expense summary` (any) — business income and expense summary.xlsx (d141) → **here**
 - `business income & expense summary` (any) — business income & expense summary.xlsx (d141) → **here**
 - `schedule c worksheet` (any) — Schedule C worksheet.xlsx (d141) → **here**
@@ -359,14 +354,8 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### G01 — Estimated Tax Payment Records
 
-- `estimated tax payment voucher 1` (any) — 1040-ES voucher.pdf (d62) → ?; 1040-ES voucher in a corporation.pdf (d73) → ?
-- `estimated tax payment voucher 2` (any) — 1040-ES voucher 2.pdf (d73) → ?
-- `estimated tax payment voucher 3` (any) — 1040-ES voucher 3.pdf (d73) → ?
-- `estimated tax payment voucher 4` (any) — paid voucher stub.pdf (d67) → ?; paid voucher stub in a corporation.pdf (d73) → ?
-- `estimated tax payment voucher for individuals` (any) — NY IT-2105 voucher.pdf (d73) → ?
-- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → ?; 1040-ES voucher 2.pdf (d73) → ?; paid voucher stub in a corporation.pdf (d73) → ?; f1040es_2025.pdf → ?; f1041es.pdf → **here**
-- `estimated tax voucher` (any) — corporation estimated tax voucher.pdf (d73) → ?; estimated tax voucher 4th quarter.pdf (d73) → ?
-- `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → ?; estimated payments made schedule.xlsx (d73) → ?; trust estimated payments made.xlsx (d141) → **here**
+- `1041-es` (required) — 1041-ES voucher 1.pdf (d141) → **here**; f1041es.pdf → **here**
+- `estimated income tax for estates and trusts | estate or trust is making a payment of estimated tax` (required) — 1041-ES voucher 1.pdf (d141) → **here**; f1041es.pdf → **here**
 
 ### Z01 — IRS & State Tax Notices and Letters
 
@@ -564,7 +553,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 - `corporation estimated tax` (any) — corporation estimated tax voucher.pdf (d73) → **here**
 - `estimated tax voucher` (any) — corporation estimated tax voucher.pdf (d73) → **here**; estimated tax voucher 4th quarter.pdf (d73) → ?
-- `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → **here**; estimated payments made schedule.xlsx (d73) → ?; trust estimated payments made.xlsx (d141) → ?
+- `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → **here**; estimated payments made schedule.xlsx (d73) → ?
 - `estimated tax payments made` (any) — organizer with every line.pdf (d66) → ?; corporate estimated tax payments made.xlsx (d73) → **here**; f1041t.pdf → ?
 
 ### G01 — Shareholder List & Ownership Changes
