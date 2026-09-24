@@ -220,7 +220,13 @@ ENV_STORE = "TRACKER_STORE"
 #: produces - so it is refused, deleted and rebuilt from the journals like
 #: every version before it, and the retired ``handed_over_by_person`` lines
 #: in them are folded as the releases they meant.
-SCHEMA_VERSION = 10
+#: Version 11 (decision 134) changed no column and changed the key: a
+#: return is keyed by where it sits in the layout when no root is in
+#: hand, where it was keyed by its parent - its year folder - so a
+#: version-10 file may hold two years of one return as one row. It is
+#: refused, deleted and rebuilt from the journals like every version
+#: before it, and each return is keyed by household, year and return.
+SCHEMA_VERSION = 11
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -597,12 +603,19 @@ def key_root(engagement_dir: Path | str, root: Path | str | None = None) -> Path
       narrower one somebody ran a single client's folder through; the key
       is the same whichever was typed;
     - else the ``root`` the caller was given, when it has one;
-    - else the folder's own parent (a test's temporary tree, a folder
-      somebody named by hand, a machine with no settings file). Keying by
+    - else **the root the folder's position names** (decision 134), when it
+      sits in the layout of decision 125 - a year folder above it and the
+      private tree above its household (:func:`_positional_root`). Every
+      reader reaches this step, because none of them is handed the
+      runner's root; and since decision 125 a return's parent is its year
+      and rollover keeps a return's name every year, so keying by the
+      parent made two years of one return one row. Keyed by position, the
+      key carries household, year and return;
+    - else the folder's own parent, for a folder outside that layout (a
+      test's temporary tree, a folder somebody named by hand). Keying by
       the parent is keying by name, and decision 104 records what that
-      means on such a machine: two folders of one name under different
-      parents are one row. The runner and the app never work that way,
-      because they always have a root.
+      means: two folders of one name under different parents are one row.
+      Decision 134 narrowed that note to folders the layout does not read.
     """
     folder = Path(engagement_dir)
     recorded = _recorded_root_over(folder)
@@ -610,7 +623,45 @@ def key_root(engagement_dir: Path | str, root: Path | str | None = None) -> Path
         return recorded
     if root is not None:
         return Path(root)
+    positional = _positional_root(folder)
+    if positional is not None:
+        return positional
     return folder.parent
+
+
+def _positional_root(folder: Path) -> Path | None:
+    """The clients root ``folder`` sits under when it is a return in the
+    layout of decision 125 - its parent named as a year and its
+    household's parent named :data:`tracker.layout.PRIVATE_TREE` - else
+    ``None``.
+
+    Both names are asked: a folder that happens to sit four levels deep is
+    not a return unless the layout's own words say so. They are asked of
+    the folder **resolved**, the spelling :func:`engagement_path` keys it
+    by: a relative path (``2025/1040 - Smith``, typed from inside the
+    household) has no private tree above it as written, and a private
+    tree typed in another case (``j park & associates`` on a filesystem
+    that does not tell the two apart) is not the layout's name as typed.
+    Either, asked as given, would fall back to the year folder - the very
+    collision decision 134 removes. The review of decision 134 found both.
+    :mod:`tracker.layout` is imported at call time because this module
+    imports ``records``, ``ledger`` and ``locking`` and nothing else at
+    load time (``tests/test_layers.py``); ``layout`` stays the one place
+    the shape is worded.
+    """
+    from tracker import layout
+
+    try:
+        folder = folder.resolve()
+    except OSError:
+        return None
+    if len(folder.parents) < 4:
+        return None
+    if not layout.is_year_folder(folder.parent.name):
+        return None
+    if folder.parent.parent.parent.name != layout.PRIVATE_TREE:
+        return None
+    return layout.root_of(folder)
 
 
 def root_for(engagement_dir: Path | str) -> Path:
