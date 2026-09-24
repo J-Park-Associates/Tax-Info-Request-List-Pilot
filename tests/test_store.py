@@ -1101,6 +1101,98 @@ def test_an_end_to_end_respelling_leaves_the_check_empty(conn, root, engagement)
     assert store.check(live, root, engagement) == []
 
 
+# ------------------------------- a batch of lines across two spellings (138) ----
+
+
+#: ``A01``, then ``a01``, then ``A01`` again: one request scanned three
+#: times, the last to ``PARTIAL``. A fold keyed by the exact spelling holds
+#: ``{A01: PARTIAL, a01: MISSING}`` and, written in that order, left the
+#: second scan's status standing.
+THREE_SCANS = (("A01", Status.RECEIVED), ("a01", Status.MISSING), ("A01", Status.PARTIAL))
+
+
+def three_scans() -> list[dict]:
+    return [scanned(**{identifier: status}) for identifier, status in THREE_SCANS]
+
+
+def held_statuses(conn, folder) -> list[tuple[str, str]]:
+    return [(row["identifier"], row["status"]) for row in conn.execute(
+        'SELECT "identifier", status FROM statuses WHERE engagement_id = ? ORDER BY "identifier"',
+        (id_of(conn, folder),))]
+
+
+def test_a_rebuild_keeps_the_last_scans_status_across_spellings(conn, root, by_hand):
+    """Decision 138: a rebuild applies the journal as one batch, and the
+    batch writes each request's last scan, whatever case it was spelt in.
+    The table keys the row without case (``_write_status``), so the one
+    row is ``a01``."""
+    with engagement_lock(by_hand):
+        for line in three_scans():
+            ledger.append(by_hand, line)
+    build(conn, root, by_hand)
+
+    assert held_statuses(conn, by_hand) == [("a01", Status.PARTIAL)]
+    assert said(conn, root, by_hand) == []
+
+
+@pytest.mark.parametrize("apply", [store.catch_up, store.sync], ids=["catch_up", "sync"])
+def test_catch_up_keeps_the_last_scans_status_across_spellings(conn, root, by_hand, apply):
+    """The store built, then behind the journal by the three lines, which
+    the top-up applies as one batch (decision 138)."""
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        for line in three_scans():
+            ledger.append(by_hand, line)
+    apply(conn, root, by_hand)
+
+    assert held_statuses(conn, by_hand) == [("a01", Status.PARTIAL)]
+    assert said(conn, root, by_hand) == []
+
+
+def test_one_record_of_several_scan_lines_keeps_the_last(conn, root, by_hand):
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, *three_scans())
+
+    assert held_statuses(conn, by_hand) == [("a01", Status.PARTIAL)]
+    assert said(conn, root, by_hand) == []
+
+
+def test_the_writer_and_the_check_use_one_rule(conn, root):
+    """Forty seeded journals of mixed-spelling scans, each written as a few
+    batches - some by ``record()``, some appended and then ``sync()``-ed -
+    and the store the batches left agrees with the check, as does a store
+    rebuilt from nothing (decision 138). The seed is fixed so a failure
+    names the same journal every run."""
+    import random
+
+    chance = random.Random(138)
+    spellings = ("A01", "a01", "B02", "b02")
+    kinds = (Status.RECEIVED, Status.MISSING, Status.PARTIAL)
+    for number in range(40):
+        folder = make_engagement(root, ITEMS, household=f"Fuzz {number:02d}", scaffold=False)
+        try:
+            build(conn, root, folder)
+            for _batch in range(chance.randint(1, 3)):
+                lines = [
+                    scanned(**{identifier: chance.choice(kinds)
+                               for identifier in chance.sample(spellings, chance.randint(1, 2))})
+                    for _line in range(chance.randint(2, 5))
+                ]
+                with engagement_lock(folder):
+                    if chance.random() < 0.5:
+                        store.record(conn, folder, *lines)
+                    else:
+                        for line in lines:
+                            ledger.append(folder, line)
+                        store.sync(conn, root, folder)
+                assert said(conn, root, folder) == [], f"journal {number}"
+            build(conn, root, folder)
+            assert said(conn, root, folder) == [], f"journal {number}, rebuilt"
+        finally:
+            ledger.path_for(folder).unlink(missing_ok=True)
+
+
 def test_the_rebuilt_rows_are_the_readers_rows_after_a_person_files_a_parked_one(
         conn, root, engagement):
     from tracker.filer import assign_review_file

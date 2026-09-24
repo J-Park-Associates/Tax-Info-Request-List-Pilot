@@ -1443,9 +1443,14 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
     shape that function folds, hands it one event at a time, and writes the
     result back - so an index replayed a line at a time here and one folded
     from the first line by a reader cannot come out different. The statuses
-    are folded from an empty start, which gives exactly what these events
-    changed, and that is upserted onto what the table already said, because
-    the status fold is that update and nothing else.
+    are the exception (decision 138): ``ledger.Folded.statuses`` is keyed by
+    the exact spelling, because the ledger imports nothing that could fold
+    case, so a batch scanning ``A01``, ``a01`` and ``A01`` again would hold
+    two entries and write the second scan's status last. What these events
+    changed is taken instead from :func:`_recorded_statuses` - the rule
+    :func:`check` holds the table to, one entry per ``identifier_key`` with
+    the last scan's spelling and status - and upserted onto what the table
+    already said, so the writer and the check cannot disagree.
 
     A keyword a person's filing taught is inserted as it is met and deleted
     again when a person takes it back (decision 113): the insert carries the
@@ -1518,8 +1523,8 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
     if any(event.get(ledger.EVENT_KEY) in ledger.ROW_EVENTS | ledger.RELEASE_EVENTS
            for event in events):
         _write_documents(conn, engagement_id, state.rows, seqs)
-    for identifier, stored in state.statuses.items():
-        _write_status(conn, engagement_id, identifier, stored, status_seqs[identifier_key(identifier)])
+    for key, (identifier, stored) in _recorded_statuses(events).items():
+        _write_status(conn, engagement_id, identifier, stored, status_seqs[key])
     return seq
 
 
@@ -2149,7 +2154,8 @@ def _recorded_statuses(events: list[dict]) -> dict[str, tuple[str, dict]]:
     Every ``scanned`` line in order, each identifier's status replacing
     whatever its key held, so the last write per request wins whichever
     case it was spelt in - the store's ``INSERT OR REPLACE`` by the folded
-    key, stated once more on the record's side.
+    key. It is also what :func:`_apply` writes for a batch of lines
+    (decision 138), so the writer and the check read the one rule.
     """
     statuses: dict[str, tuple[str, dict]] = {}
     for event in events:
