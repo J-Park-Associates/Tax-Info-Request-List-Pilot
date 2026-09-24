@@ -1408,3 +1408,675 @@ def test_orientation_is_scored_on_a_small_copy_and_only_the_chosen_turn_is_full_
     assert len(scored) == 4
     assert all(max(size) <= content_check.SCORING_LONG_SIDE for size in scored)
     assert turned.size == (3024, 4032)                           # the full page, turned
+
+
+# ------------------------------------ a reading the pass can stop (150) ----
+#
+# Decision 150. The pass reads each document in a child process and waits
+# for it at most the document's stop; the claims below run a real child.
+# The suite reads in its own process everywhere else (tests/conftest.py),
+# so each of these turns the child back on. The stops are patched down to
+# seconds - never minutes - and the child is handed a stand-in reader from
+# tests/child_readers.py, because a patch made here never reaches it.
+
+#: The stop these claims patch in, in seconds. A child starts in about half
+#: a second on the office machine; this leaves a slow build runner room to
+#: reach the stage it is claimed to be stopped in.
+STOP_IN_TESTS = 5.0
+#: What a reading stopped at a stop under a minute says.
+STOPPED = "The reader stopped after 1 minute on this file. A person reads it."
+CRASHED = "The reader could not read this file (it stopped unexpectedly). A person reads it."
+
+
+@pytest.fixture
+def in_a_child(monkeypatch):
+    """The reading in a child process, as the pass makes it, at the real stops."""
+    import tracker.content_check as content_check
+
+    monkeypatch.setattr(content_check, "READ_IN_A_CHILD", True)
+    return monkeypatch
+
+
+@pytest.fixture
+def a_short_stop(in_a_child):
+    """The child, stopped at :data:`STOP_IN_TESTS` for a file and a photo alike.
+    Only the pass's own wait is shortened: the child's own stop (decision 137,
+    B1.2) is still ten minutes, so what ends the reading is the child being
+    ended."""
+    import tracker.content_check as content_check
+
+    in_a_child.setattr(content_check, "READING_STOP_DOCUMENT_SECONDS", STOP_IN_TESTS)
+    in_a_child.setattr(content_check, "READING_STOP_PAGE_SECONDS", STOP_IN_TESTS)
+    return in_a_child
+
+
+def no_child_left():
+    """No reading's child of this process is still running."""
+    import multiprocessing
+
+    return multiprocessing.active_children() == []
+
+
+def running(pid: int) -> bool:
+    """Whether the process ``pid`` is still running, asked of the system."""
+    import os
+    import sys
+    from pathlib import Path
+
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        handle = kernel32.OpenProcess(0x1000, False, pid)     # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return code.value == 259                          # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    stat = Path(f"/proc/{pid}/stat")
+    try:
+        return stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"   # a zombie has ended
+    except (OSError, IndexError):
+        return True
+
+
+def eventually(check, within: float = 15.0) -> bool:
+    import time
+
+    deadline = time.monotonic() + within
+    while time.monotonic() < deadline:
+        if check():
+            return True
+        time.sleep(0.1)
+    return check()
+
+
+def test_a_text_layer_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short_stop):
+    """The PDF text layer runs before any OCR, where decision 137's stop
+    never reached: a few megabytes of drawing commands kept pdfplumber busy
+    for hours. The reading is now ended at the document's stop, and it is
+    the abandoned reading - the same sentence, kept by the cache and not
+    read again until the file changes."""
+    import time
+
+    import tracker.content_check as content_check
+    from tests import child_readers
+
+    a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_text_layer_that_never_finishes)
+    pdf = text_pdf(tmp_path / "drawing.pdf", "Form W-2 Wage and Tax Statement 2025")
+    rules = item(required_keywords=("W-2",))
+    cache = ContentCache()
+
+    started = time.monotonic()
+    verdict = check_content(pdf, rules, cache)
+    took = time.monotonic() - started
+
+    assert child_readers.reached(pdf, "text-layer").is_file()      # stopped inside the text layer
+    assert STOP_IN_TESTS <= took < STOP_IN_TESTS + 45
+    assert verdict == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False)
+    assert no_child_left()
+    a_short_stop.setattr(content_check, "_read_in_a_child",
+                         lambda *a, **k: pytest.fail("a kept verdict was read again"))
+    assert check_content(pdf, rules, cache) == verdict              # kept, not retried
+
+
+def test_a_render_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short_stop):
+    """One page's render ran inside the reading, and decision 137's stop
+    only noticed an overrun once it returned. Ended at the stop now: the
+    router parks the file on the abandoned reading's sentence, and the
+    scanner keeps that verdict."""
+    import tracker.content_check as content_check
+    from tests import child_readers
+    from tracker.router import route_file
+
+    pytest.importorskip("pytesseract")
+    pytest.importorskip("pypdfium2")
+    a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_render_that_never_finishes)
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)                    # a scan: no text layer
+    scan = tmp_path / "scan.pdf"
+    with scan.open("wb") as handle:
+        writer.write(handle)
+    rules = item(allowed_extensions=("pdf",), required_keywords=("W-2",), min_size_kb=0)
+
+    routed = route_file(scan, [rules])
+    assert child_readers.reached(scan, "render").is_file()          # stopped inside the render
+    assert routed.identifier is None and routed.reason == STOPPED
+    assert no_child_left()
+
+    cache = ContentCache()
+    verdict = check_content(scan, rules, cache)
+    assert verdict == content_check.ContentResult(ok=False, reason=STOPPED, extractable=False)
+    a_short_stop.setattr(content_check, "_read_in_a_child",
+                         lambda *a, **k: pytest.fail("a kept verdict was read again"))
+    assert check_content(scan, rules, cache) == verdict
+    assert no_child_left()
+
+
+def test_a_reader_that_crashes_is_a_failed_reading_not_a_dead_pass(tmp_path, in_a_child):
+    """A crash in pdfium or Tesseract used to end the pass's own process,
+    and every return after the file went unsorted. The child ends instead:
+    the file is a reading that failed - parked with its own sentence, not
+    the abandoned one - and the pass goes on to the next document."""
+    import tracker.content_check as content_check
+    from tests import child_readers
+    from tests.conftest import named_page, sort
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.layout import inbox_of
+
+    in_a_child.setattr(content_check, "_CHILD_READER", child_readers.a_reader_that_dies_on_a_crash)
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(tmp_path, [w2])
+    page_pdf(inbox_of(engagement) / "a crash.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    page_pdf(inbox_of(engagement) / "the next one.pdf",
+             named_page("Form W-2 Wage and Tax Statement 2025 Employer copy"))
+
+    report = sort(engagement, today=dt.date(2026, 7, 1))
+
+    [parked] = report.review
+    assert parked.original_name == "a crash.pdf" and parked.reason == CRASHED
+    assert reasons.find(parked.reason) is reasons.READING_CRASHED and reasons.READING_CRASHED.firm_side
+    [filed] = report.filed
+    assert filed.original_name == "the next one.pdf" and filed.identifier == "A01"
+    assert no_child_left()
+
+
+def test_a_reading_on_time_returns_what_it_returned_in_process(tmp_path, in_a_child):
+    """On time, the child hands back exactly the reading the pass's own
+    process makes - text, OCR or not, every reason, and tier 2's open test
+    beside it (the review's ruling) - for the synthetic
+    pile: the samples every client sends (text PDFs, a workbook, a CSV, a
+    Word file, a Google shortcut, a bitmap), IRS forms, and a photo and a
+    scan read by OCR where this machine has it. Only the seconds differ."""
+    from dataclasses import replace
+    from pathlib import Path
+
+    from PIL import Image
+
+    import tracker.content_check as content_check
+    from tests.samples import build_samples
+
+    pile = tmp_path / "pile"
+    pile.mkdir()
+    build_samples(pile)
+    (pile / "statement.csv").write_text("Date,Amount\n2025-12-31,100\n", encoding="utf-8")
+    picture = photo(pile / "w-2.png")
+    Image.open(picture).convert("RGB").save(pile / "scanned w-2.pdf")
+    irs = Path(__file__).resolve().parent / "irs"
+    documents = sorted(pile.iterdir()) + [irs / name for name in ("fw2.pdf", "f1099div.pdf", "f1098.pdf")]
+
+    assert len(documents) >= 12
+    for document in documents:
+        in_process = content_check.open_and_read(document)
+        in_child = content_check.extract_bounded(document)
+        assert in_child.opened is not None, document.name
+        assert replace(in_child, seconds=0.0) == replace(in_process, seconds=0.0), document.name
+    assert no_child_left()
+
+
+def test_a_cached_verdict_starts_no_child(tmp_path, in_a_child):
+    """A child is started on a cache miss only. A pass reads a drop once to
+    route it, and the scan that follows finds the router's kept verdict for
+    the working copy; a second pass starts nothing at all."""
+    from pathlib import Path
+
+    import tracker.content_check as content_check
+    from tests.conftest import named_page
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.layout import inbox_of
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, run_registry
+
+    started = []
+    real = content_check._read_in_a_child
+
+    def counted(path, *, ocr):
+        started.append(Path(path).name)
+        return real(path, ocr=ocr)
+
+    in_a_child.setattr(content_check, "_read_in_a_child", counted)
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(tmp_path, [w2])
+    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+
+    first = run_registry(discover_engagements(tmp_path), today=dt.date(2026, 7, 1),
+                         reminders=REMINDERS_NEVER)
+    assert [run.filed for run in first.runs] == [1]
+    assert started == ["w2.pdf"]                       # routed once; the scan found the verdict
+    run_registry(discover_engagements(tmp_path), today=dt.date(2026, 7, 2), reminders=REMINDERS_NEVER)
+    assert started == ["w2.pdf"]                       # a second pass starts nothing
+
+    loose = page_pdf(tmp_path / "loose.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    rules = item(required_keywords=("W-2",))
+    cache = ContentCache()
+    assert check_content(loose, rules, cache).ok
+    assert check_content(loose, rules, cache).ok
+    assert started == ["w2.pdf", "loose.pdf"]          # one child for the miss, none for the hit
+    assert no_child_left()
+
+
+def test_no_child_is_left_running_after_a_stop(tmp_path, a_short_stop):
+    """Ending the reading ends everything it started. OCR runs Tesseract as
+    the child's own child, and ending only the child would leave Tesseract
+    reading a client's page with nobody waiting for it - so the whole tree
+    goes, on Windows as elsewhere."""
+    import tracker.content_check as content_check
+    from tests import child_readers
+
+    a_short_stop.setattr(content_check, "_CHILD_READER",
+                         child_readers.a_reader_that_starts_a_reader_of_its_own)
+    pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
+
+    reading = content_check.extract_bounded(pdf)
+
+    assert reading.text is None and reading.reason == STOPPED and not reading.transient
+    helper = child_readers.reached(pdf, "helper")
+    assert helper.is_file()                                          # it had started its own
+    pid = int(helper.read_text(encoding="utf-8"))
+    assert eventually(lambda: not running(pid)), f"process {pid} outlived the stop"
+    assert no_child_left()
+
+
+def test_the_readers_child_puts_its_temporary_files_where_the_pass_said(tmp_path, in_a_child):
+    """OCR's temporary page images go to the pass's own scratch folder
+    (decision 137, L7). The child is started inside the pass, so it takes
+    that folder with the rest of the environment."""
+    from pathlib import Path
+
+    import tracker.content_check as content_check
+    from tests import child_readers
+
+    in_a_child.setattr(content_check, "_CHILD_READER", child_readers.where_temporary_files_go)
+    page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
+    with content_check.ocr_scratch(tmp_path / "scratch") as scratch:
+        reading = content_check.extract_bounded(page)
+    assert reading.text is not None
+    assert Path(reading.text).resolve() == scratch.resolve()
+
+
+#: A pass, as a process of its own, that reads one document in a child
+#: with a stand-in reader that starts a helper (Tesseract's stand-in) and
+#: never finishes. ``lifeline`` as the second argument takes the job object
+#: away, so the lifeline alone is what is proved.
+A_PASS_READING = """
+import sys
+from pathlib import Path
+sys.path[:0] = [sys.argv[3]]
+from tests import child_readers
+from tracker import content_check
+content_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own
+if sys.argv[2] == "lifeline":
+    content_check._kill_on_close_job = lambda pid: None
+content_check.extract_bounded(Path(sys.argv[1]))
+"""
+
+
+@pytest.mark.parametrize("protection", ["job and lifeline", "lifeline"])
+def test_a_reading_child_dies_with_its_pass(tmp_path, protection):
+    """The designer's ruling on the build: the reading's child never
+    outlives its pass. Task Scheduler's stop kills the pass outright - no
+    code of the pass's runs - and the child must go with it, within a few
+    seconds, not whenever its own reading ends. Here the pass is a real
+    process, killed the way the scheduler kills it, mid-read.
+
+    Two things do it. The lifeline: the child ends itself when the pass's
+    end of a pipe closes, which the pass's death closes. And on Windows a
+    job object that kills everything in it - the child and what it started
+    - when the pass's handle on it closes. Each is proved: all of it, and
+    the lifeline alone."""
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    from tests import child_readers
+
+    if protection == "job and lifeline" and sys.platform != "win32":
+        pytest.skip("the job object is Windows'")
+    repo = str(Path(__file__).resolve().parents[1])
+    pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
+    the_pass = subprocess.Popen([sys.executable, "-c", A_PASS_READING, str(pdf),
+                                 "lifeline" if protection == "lifeline" else "all", repo])
+    waiting, helper = child_readers.reached(pdf, "waiting"), child_readers.reached(pdf, "helper")
+    try:
+        assert eventually(waiting.is_file, within=60), "the child never started reading"
+        child = int(waiting.read_text(encoding="utf-8"))
+        started = int(helper.read_text(encoding="utf-8"))
+        assert running(child) and running(started)                 # mid-read
+
+        the_pass.kill()                                            # the scheduler's stop: no code runs
+        the_pass.wait(30)
+        killed = time.monotonic()
+
+        assert eventually(lambda: not running(child), within=10), "the child outlived its pass"
+        assert time.monotonic() - killed < 10
+        if protection == "job and lifeline":
+            assert eventually(lambda: not running(started), within=10), "what it started outlived it"
+    finally:
+        if the_pass.poll() is None:
+            the_pass.kill()
+        for mark in (waiting, helper):
+            if mark.is_file():
+                _stop_if_running(int(mark.read_text(encoding="utf-8")))
+
+
+def _stop_if_running(pid: int) -> None:
+    """Leave nothing behind, whatever the test found (the lifeline alone
+    ends the child, and on Windows not what it started)."""
+    import os
+    import signal
+    import subprocess
+    import sys
+
+    if not running(pid):
+        return
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, check=False)
+    else:
+        os.kill(pid, signal.SIGKILL)
+
+
+def page_tree_bomb(path, depth: int = 40):
+    """A PDF whose page tree is ``depth`` levels deep, each level naming its
+    one child twice: a few kilobytes that claim 2**depth pages, and a page
+    count that walks every one of them (the review of decision 150, its
+    generator's logic; every byte is made here). Padded with a comment line
+    so no row's minimum size refuses it before it is opened."""
+    objects = {1: b"<< /Type /Catalog /Pages 2 0 R >>"}
+    for level in range(depth):
+        number = 2 + level
+        objects[number] = b"<< /Type /Pages /Kids [%d 0 R %d 0 R] /Count %d >>" % (
+            number + 1, number + 1, 2 ** (depth - level))
+    leaf = depth + 2
+    objects[leaf] = b"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 612 792] >>" % (depth + 1)
+    out = bytearray(b"%PDF-1.4\n%" + b"x" * 200_000 + b"\n")
+    offsets = {}
+    for number in sorted(objects):
+        offsets[number] = len(out)
+        out += b"%d 0 obj\n" % number + objects[number] + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (leaf + 1)
+    out += b"".join(b"%010d 00000 n \n" % offsets[number] for number in range(1, leaf + 1))
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (leaf + 1, xref)
+    path.write_bytes(bytes(out))
+    return path
+
+
+def test_a_page_tree_bomb_cannot_stall_the_pass(tmp_path, a_short_stop):
+    """The review of decision 150's blocker: tier 2's open test - pypdf
+    counting a PDF's pages - ran in the pass's own process, and a page
+    tree of a few kilobytes counts to a trillion. The open test now runs in
+    the reading's child, beside the reading: the pass finishes, the bomb
+    parks with the stop's sentence, the next document files, and the
+    scanner's open test is the same kept verdict, starting no child."""
+    import time
+    from pathlib import Path
+
+    import tracker.content_check as content_check
+    from tests.conftest import named_page
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.filer import read_index
+    from tracker.layout import inbox_of
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, run_registry
+
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(tmp_path, [w2])
+    page_tree_bomb(inbox_of(engagement) / "bomb.pdf")
+    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+
+    started = time.monotonic()
+    report = run_registry(discover_engagements(tmp_path), today=dt.date(2026, 7, 1),
+                          reminders=REMINDERS_NEVER)
+    took = time.monotonic() - started
+
+    assert took < STOP_IN_TESTS + 90                     # the pass finished
+    rows = {row.original_name: row for row in read_index(engagement)}
+    assert rows["bomb.pdf"].reason == STOPPED            # parked, on the stop's sentence
+    assert rows["w2.pdf"].identifier == "A01"            # and the next document filed
+    assert [run.filed for run in report.runs] == [1]
+    assert no_child_left()
+
+    # The scanner's open test: the child's verdict, kept by the fingerprint.
+    bomb = page_tree_bomb(tmp_path / "loose bomb.pdf")
+    cache = ContentCache()
+    assert content_check.open_verdict(bomb, cache) == STOPPED
+    a_short_stop.setattr(content_check, "_read_in_a_child",
+                         lambda *a, **k: pytest.fail("a kept open test was made again"))
+    assert content_check.open_verdict(bomb, cache) == STOPPED
+    from tracker.validators import check_file
+    refused = check_file(bomb, w2, open_test=lambda path: content_check.open_verdict(Path(path), cache))
+    assert not refused.ok and refused.reason == STOPPED
+    assert no_child_left()
+
+
+def _a_reader_only_the_pass_has(monkeypatch):
+    """A reader the child can never import: its module is in the pass's
+    process only, so the child ends while it is still being set up - the
+    shape of a frozen build missing a module, or a machine that cannot
+    start the reader - before it has said "started"."""
+    import sys
+    import types
+
+    module = types.ModuleType("only_in_the_pass_150")
+
+    def reader(path, *, ocr=True):          # never runs: the child cannot find it
+        raise AssertionError("unreachable")
+
+    reader.__module__ = module.__name__
+    reader.__qualname__ = "reader"
+    module.reader = reader
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    return reader
+
+
+def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
+    """The review's second fix. A reader that cannot start is the machine's
+    fault, not the file's: a death before the child says "started" - or a
+    child that could not be created at all - keeps nothing against the
+    file. Nothing is kept, a drop is neither decided nor recorded - it
+    rests in the year's folder with no row, for the next pass - and the
+    pass warns once, however many files it met. Only a death after
+    "started" is kept (the crash claim above)."""
+    import multiprocessing.context
+
+    import tracker.content_check as content_check
+    from tests.conftest import named_page
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.filer import read_index
+    from tracker.layout import inbox_of, originals_of
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, append_log, format_report, run_registry
+    from tracker.validators import sha256_of
+
+    unavailable = ("The reader could not start on this machine, so this file was not read. "
+                   "It is read again on the next pass.")
+    in_a_child.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(in_a_child))
+    rules = item(required_keywords=("W-2",))
+    page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
+
+    # Dies before "started": transient, and nothing is kept.
+    reading = content_check.extract_bounded(page)
+    assert reading.text is None and reading.transient and reading.reason == unavailable
+    cache = ContentCache()
+    verdict = check_content(page, rules, cache)
+    assert verdict.transient and verdict.reason == unavailable
+    assert cache.get(page, rules_fingerprint(rules)) is None
+    assert content_check.open_verdict(page, cache) == unavailable
+    assert cache.get(page, content_check.OPEN_TEST_FINGERPRINT) is None
+
+    # Could not even be created: the same.
+    def no_process(_process):
+        raise OSError("no more processes")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(multiprocessing.context.SpawnProcess, "_Popen", staticmethod(no_process))
+        assert content_check.extract_bounded(page).reason == unavailable
+    content_check.readers_that_could_not_start()          # the claims above were not a pass
+
+    # A pass: two documents wait for the next pass - no row, nothing kept
+    # about either - and the pass says it once.
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(tmp_path / "root", [w2])
+    for name in ("one.pdf", "two.pdf"):              # two documents, not one sent twice
+        page_pdf(inbox_of(engagement) / name, named_page(f"Form W-2 Wage and Tax Statement 2025 {name}"))
+    report = run_registry(discover_engagements(tmp_path / "root"), today=dt.date(2026, 7, 1),
+                          reminders=REMINDERS_NEVER)
+
+    assert read_index(engagement) == []                  # not decided, not recorded
+    assert sorted(path.name for path in originals_of(engagement).iterdir()) == ["one.pdf", "two.pdf"]
+    assert [run.review for run in report.runs] == [0]
+    assert reasons.READER_UNAVAILABLE.firm_side
+    [warning] = report.warnings
+    assert "could not start on this machine for 2 file(s)" in warning
+    assert format_report(report).count(warning) == 1
+    log = append_log(tmp_path / "runs.log", report)
+    assert log.read_text(encoding="utf-8").count(warning) == 1
+    _memos, verdicts = store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
+    for original in originals_of(engagement).iterdir():
+        assert sha256_of(original) not in verdicts, original.name      # nothing kept
+    assert no_child_left()
+
+
+def test_a_drop_the_reader_could_not_start_on_is_routed_next_pass(tmp_path, in_a_child):
+    """The re-review's blocker. A machine fault must leave nothing
+    permanent, and a routing decision is as permanent as a kept verdict: a
+    Needs Review row made the original a non-stray for ever, so a good W-2
+    waited for a person after the machine was fixed. Pass 1's reader cannot
+    start: the W-2 is moved out of the inbox but decided and recorded
+    nowhere. Pass 2's reader works: the W-2 is a stray in the year's folder,
+    routed where it lies, and filed."""
+    import tracker.content_check as content_check
+    from tests.conftest import named_page
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.filer import read_index
+    from tracker.layout import inbox_of, originals_of
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, run_registry
+
+    root = tmp_path / "root"
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(root, [w2])
+    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+
+    with pytest.MonkeyPatch.context() as broken:           # the machine is broken
+        broken.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(broken))
+        first = run_registry(discover_engagements(root), today=dt.date(2026, 7, 1),
+                             reminders=REMINDERS_NEVER)
+    [warning] = first.warnings
+    assert "could not start on this machine for 1 file(s)" in warning and "w2.pdf" in warning
+    assert read_index(engagement) == []                    # no row: not decided, not recorded
+    assert [path.name for path in originals_of(engagement).iterdir()] == ["w2.pdf"]
+
+    second = run_registry(discover_engagements(root), today=dt.date(2026, 7, 2),
+                          reminders=REMINDERS_NEVER)       # the machine is fixed
+    assert second.warnings == []
+    [row] = read_index(engagement)
+    assert row.original_name == "w2.pdf" and row.identifier == "A01"
+    assert [run.filed for run in second.runs] == [1]
+    assert no_child_left()
+
+
+def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(tmp_path, in_a_child):
+    """The final review's note. The re-send road reads again too: a W-2
+    already on record whose working copy was deleted by hand, sent again,
+    goes through ``_sort_one`` - the digest is known - and must be read
+    before it is filed again. Pass 1's reader cannot start: no new row,
+    nothing re-filed, no working copy made, one warning; the re-send rests
+    in the year's folder. Pass 2's reader works: it is filed again."""
+    import tracker.content_check as content_check
+    from tests.conftest import named_page
+    from tests.test_scanner import text_pdf as page_pdf
+    from tracker.filer import read_index
+    from tracker.layout import inbox_of, originals_of
+    from tracker.registry import discover_engagements
+    from tracker.runner import REMINDERS_NEVER, run_registry
+
+    root = tmp_path / "root"
+    w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
+                     min_size_kb=0, required_keywords=("W-2",))
+    engagement = make_engagement(root, [w2])
+    page = named_page("Form W-2 Wage and Tax Statement 2025")
+    page_pdf(inbox_of(engagement) / "w2.pdf", page)
+    run_registry(discover_engagements(root), today=dt.date(2026, 7, 1), reminders=REMINDERS_NEVER)
+    [filed] = read_index(engagement)
+    prepared = engagement / filed.prepared_location
+    prepared.unlink()                                      # the working copy, deleted by hand
+
+    page_pdf(inbox_of(engagement) / "w2 again.pdf", page)  # the same document, sent again
+    with pytest.MonkeyPatch.context() as broken:           # the machine is broken
+        broken.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(broken))
+        first = run_registry(discover_engagements(root), today=dt.date(2026, 7, 2),
+                             reminders=REMINDERS_NEVER)
+    [warning] = first.warnings
+    assert "could not start on this machine for 1 file(s)" in warning and "w2 again.pdf" in warning
+    assert read_index(engagement) == [filed]               # no new row: not decided, not recorded
+    assert not prepared.exists()                           # nothing re-filed
+    assert sorted(path.name for path in originals_of(engagement).iterdir()) == ["w2 again.pdf", "w2.pdf"]
+
+    second = run_registry(discover_engagements(root), today=dt.date(2026, 7, 3),
+                          reminders=REMINDERS_NEVER)       # the machine is fixed
+    assert second.warnings == []
+    first_row, again = read_index(engagement)
+    assert first_row == filed
+    assert again.original_name == "w2 again.pdf" and again.identifier == "A01"
+    assert "re-filed: the earlier copy" in again.reason     # the re-send road, not a new arrival
+    assert [run.filed for run in second.runs] == [1]
+    assert no_child_left()
+
+
+def test_a_photo_the_open_test_cannot_finish_is_stopped(tmp_path, in_a_child):
+    """The re-review's note 6: the open test's photo branch - Pillow and
+    pillow-heif opening the picture, native code - runs in the reading's
+    child like the PDF branch. A photo whose open never finishes is ended
+    at a photo's stop (patched to seconds; a file's stays ten minutes, so
+    the photo's is the one that ended it): the router parks it on the
+    stop's sentence, and the scanner's open test is the same kept verdict."""
+    import time
+    from pathlib import Path
+
+    from PIL import Image
+
+    import tracker.content_check as content_check
+    from tests import child_readers
+    from tracker.router import route_file
+    from tracker.validators import check_file
+
+    in_a_child.setattr(content_check, "READING_STOP_PAGE_SECONDS", STOP_IN_TESTS)
+    in_a_child.setattr(content_check, "_CHILD_READER", child_readers.a_photo_open_that_never_finishes)
+    photo = tmp_path / "w2 photo.jpg"
+    Image.new("RGB", (200, 100), "white").save(photo)
+    rules = item(allowed_extensions=("pdf",), required_keywords=("W-2",), min_size_kb=0)
+
+    started = time.monotonic()
+    routed = route_file(photo, [rules])
+    took = time.monotonic() - started
+
+    assert child_readers.reached(photo, "photo-open").is_file()   # stopped inside the photo open
+    assert STOP_IN_TESTS <= took < STOP_IN_TESTS + 45
+    assert routed.identifier is None and routed.reason == STOPPED
+    assert no_child_left()
+
+    cache = ContentCache()
+    assert content_check.open_verdict(photo, cache) == STOPPED
+    in_a_child.setattr(content_check, "_read_in_a_child",
+                       lambda *a, **k: pytest.fail("a kept open test was made again"))
+    refused = check_file(photo, rules, open_test=lambda path: content_check.open_verdict(Path(path), cache))
+    assert not refused.ok and refused.reason == STOPPED
+    assert no_child_left()

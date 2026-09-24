@@ -282,6 +282,22 @@ SLOW_READING_SECONDS = 20.0
 READING_STOP_PAGE_SECONDS = content_check.READING_STOP_PAGE_SECONDS
 READING_STOP_DOCUMENT_SECONDS = content_check.READING_STOP_DOCUMENT_SECONDS
 SLOW_READING_NOTE = "slow reading: {name} took {seconds:.0f} s"
+#: What a pass says, once, when the reader could not start for some of its
+#: files (decision 150): the machine's fault, not the files'. Nothing was
+#: kept or recorded about them; they wait and are read again on the next
+#: pass.
+READER_COULD_NOT_START = ("the reader could not start on this machine for {n} file(s) this pass "
+                          "({names}); nothing was kept about them and they wait for the next "
+                          "pass - look at the machine")
+
+
+def reader_start_warning() -> str:
+    """The pass's one warning about readers that could not start since it
+    last asked (decision 150), or "" when every reader started."""
+    names = content_check.readers_that_could_not_start()
+    if not names:
+        return ""
+    return READER_COULD_NOT_START.format(n=len(names), names=", ".join(sorted(set(names))[:5]))
 
 
 @dataclass(slots=True)
@@ -376,6 +392,9 @@ class RunReport:
     #: why (decision 125). Carried on the report because the practice page
     #: is drawn from the report and never from a fresh walk.
     misfits: list[Misfit] = field(default_factory=list)
+    #: What the pass says once, about the pass rather than one return: a
+    #: reader that could not start on this machine (decision 150).
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def processed(self) -> list[EngagementRun]:
@@ -1067,6 +1086,7 @@ def run_registry(
 
     report = RunReport(today=today, dry_run=dry_run, reminders=reminders,
                        misfits=list(registry.misfits))
+    reader_start_warning()          # this pass's count starts here
     for household, returns in registry.by_household().items():
         if not any(one.path in selected for one in returns):
             continue
@@ -1076,6 +1096,8 @@ def run_registry(
                                          registry=registry)
             if run.engagement.path in selected
         )
+    if warning := reader_start_warning():
+        report.warnings.append(warning)
     return report
 
 
@@ -1101,6 +1123,8 @@ def format_report(report: RunReport) -> str:
             lines.append(f"            {run.draft_note}")
         for warning in run.warnings:
             lines.append(f"            ! {warning}")
+    for warning in report.warnings:
+        lines.append(f"  ! {warning}")
 
     lines += [
         "",
@@ -1127,6 +1151,8 @@ def append_log(path: Path | str, report: RunReport) -> Path:
             # A hold is said with its rows (decision 115): the log is where
             # a person finds out which request wants their decision.
             lines.append(f"            {run.draft_note}")
+    for warning in report.warnings:
+        lines.append(f"    ! {warning}")
     # A summary names client files, and a name NTFS holds is not always
     # one UTF-8 can (a lone surrogate); the log takes what it can write
     # rather than lose every engagement's line to one name.

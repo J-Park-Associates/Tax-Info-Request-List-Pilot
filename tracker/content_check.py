@@ -82,8 +82,13 @@ import logging
 import os
 import re
 import shutil
+import signal
+import subprocess
+import sys
 import tempfile
 import time
+import traceback
+from collections import OrderedDict
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import MISSING, asdict, dataclass, fields, replace
@@ -119,6 +124,7 @@ from tracker.validators import (
     PDF_EXTENSION,
     TEXT_READ_CAP_MB,
     extension_of,
+    open_test,
     picture_too_large_reason,
     sha256_of,
     too_large_reason,
@@ -194,7 +200,11 @@ RENDER_SCALE = 2.0
 #: not read again until the file changes. Under the stop nothing changes:
 #: a slow reading is finished and named (``runner.SLOW_READING_SECONDS``).
 #: Before this, the only stop was Task Scheduler's two-hour kill, which
-#: ended the whole pass and met the same file again next time.
+#: ended the whole pass and met the same file again next time. Since
+#: decision 150 the same two numbers bound the **whole** reading as well -
+#: text layer, render and OCR - because the pass reads in a child process
+#: it ends at the stop (:func:`extract_bounded`): ten minutes a file, one
+#: a photo.
 READING_STOP_PAGE_SECONDS = 60.0
 READING_STOP_DOCUMENT_SECONDS = 600.0
 #: The clock the stop reads. A name of its own so the suite can move it
@@ -291,6 +301,11 @@ class Extraction:
     #: Only the first ``validators.TEXT_READ_CAP_MB`` of a text file was
     #: read (decision 137). Said beside any verdict reached on it.
     cut: bool = False
+    #: Tier 2's open test of the same file, made where the reading was made
+    #: (decision 150, :func:`validators.open_test`): ``""`` when it opens
+    #: cleanly, the refusal otherwise, and None when it was not made - a
+    #: reading of :func:`extract` alone, or one that never finished.
+    opened: str | None = None
 
 
 # ------------------------------------------------------------------ rules ----
@@ -1625,12 +1640,14 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
     and finishes it. The one exception is the safety stop, ten times the
     owner's ceiling (decision 137, B1.2, :data:`READING_STOP_PAGE_SECONDS`
     and :data:`READING_STOP_DOCUMENT_SECONDS`): a reading that reaches it
-    is abandoned, and its verdict kept. **What the stop covers:** OCR -
-    every Tesseract call is killed at its timeout - and an overrun noticed
-    between pages. It cannot interrupt the PDF text layer (pdfplumber), a
-    workbook's reading, or a single page render, which run inside this
-    process and can only be seen to have overrun once they return. The
-    bound on a whole reading is decision 150's.
+    is abandoned, and its verdict kept. **What the stop covers here:** OCR
+    - every Tesseract call is killed at its timeout - and an overrun
+    noticed between pages. It cannot interrupt the PDF text layer
+    (pdfplumber), a workbook's reading, or a single page render, which run
+    inside the reading's own process and can only be seen to have overrun
+    once they return. The bound on the whole reading is the process
+    itself: the pass reads through :func:`extract_bounded`, which runs
+    this function in a child it ends at the stop (decision 150).
     """
     started = time.perf_counter()
     # A file past the ceiling is never opened (decision 137, M5): the
@@ -1683,11 +1700,7 @@ def extract_by_ocr(path: Path) -> Extraction:
     try:
         ocr_text = reader(path)
     except ReadingStopped as exc:
-        # Abandoned, and kept: the file's verdict until the file changes.
-        minutes = max(1, round(exc.seconds / 60))
-        said = "1 minute" if minutes == 1 else f"{minutes} minutes"
-        return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=said),
-                          extractable=False)
+        return abandoned(exc.seconds)
     except TooLargeToRead as exc:
         return Extraction(None, reason=str(exc), extractable=False)
     except OcrError as exc:
@@ -1705,6 +1718,430 @@ def extract_by_ocr(path: Path) -> Extraction:
     if not ocr_text.strip():
         return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
     return Extraction(ocr_text, from_ocr=True)
+
+
+def abandoned(seconds: float) -> Extraction:
+    """The reading the safety stop abandoned after ``seconds`` (decision
+    137, B1.2): no text, and a verdict that is the file's, so it is kept
+    and the file is not read again until it changes. One sentence, whether
+    the stop was Tesseract's timeout inside the reading or the end of the
+    reading's own process (decision 150)."""
+    minutes = max(1, round(seconds / 60))
+    said = "1 minute" if minutes == 1 else f"{minutes} minutes"
+    return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=said),
+                      extractable=False, seconds=seconds)
+
+
+# ----------------------------------------------- a reading the pass can stop ----
+#
+# Decision 150. The stop above reaches OCR, and only notices the rest - the
+# PDF text layer, a page's render, a workbook - once it returns: a
+# compressed PDF of a few megabytes can hold hours of drawing commands for
+# pdfplumber or pdfium, far under the size ceiling. So the pass reads each
+# document in a child process and waits for it at most the document's
+# stop. On time, the child hands back the Extraction it made, exactly what
+# extract() returns in the pass's own process. Over time, the child is
+# ended - with everything it started, Tesseract included - and the reading
+# is abandoned: the same kept verdict as above. A child that ends without
+# answering - pdfium or Tesseract crashing, memory running out - is a
+# reading that failed, kept the same way: the file waits for a person, and
+# the pass goes on to the next one.
+#
+# The child makes tier 2's open test too, before it reads (the designer's
+# ruling on the review): opening a PDF is parsing it, and a page tree of a
+# few kilobytes can keep pypdf counting pages for ever. So nothing of a
+# client's file is parsed in the pass's own process: the open test's
+# verdict comes back with the reading (Extraction.opened), and the router
+# and the scanner take it from there (open_verdict, kept by fingerprint).
+#
+# A child that cannot start at all is the machine's fault and not the
+# file's. It says "started" before it does anything with the file, and an
+# end before that - or no word by the stop - is a reader that could not
+# start (reasons.READER_UNAVAILABLE): transient, nothing kept, the drop
+# neither decided nor recorded (tracker.filer leaves it for the next pass)
+# and the pass warned once. Only an end after "started" is kept against
+# the file.
+#
+# The pass and the child talk over multiprocessing's Pipe: a named pipe
+# on Windows, an OS pipe elsewhere, never a socket.
+#
+# And the child never outlives its pass (the designer's ruling on the
+# build). Task Scheduler's stop, or anything else that kills the pass
+# outright, runs no code of the pass's: two things end the child anyway.
+# It holds a second pipe from the pass - its lifeline - that the pass never
+# writes to, and a thread in the child waits on it; the pass's end closes
+# when the pass does, however it ended, and the child ends itself (on
+# POSIX with the process group it leads, so what it started goes too). A
+# lifeline needs that thread to run, and a reader stuck in native code may
+# not let it, so on Windows the child is also put in a job object that
+# kills everything in it when its last handle closes - and the pass holds
+# the only handle. A process the child starts, Tesseract, is in the job
+# with it.
+
+#: Whether :func:`extract_bounded` reads in a child process (decision 150).
+#: Always, in the tracker. The suite turns it off for every test but the
+#: ones about the child (``tests/conftest.py``): its stand-in readers are
+#: patched into the test's own process, which a child never shares.
+READ_IN_A_CHILD = True
+#: What the child runs: the open test and the one reading
+#: (:func:`open_and_read`). A name of its own, handed to the child by
+#: reference, so the suite can give the child a reader that never finishes
+#: or dies - a patch made in the pass's process is not in the child's,
+#: which imports this module afresh.
+_CHILD_READER = None     # open_and_read, set below it
+#: The fingerprint the open test's verdict is kept under in the verdict
+#: cache (decision 150). It is about the file, whatever the row, so it
+#: sits beside the rows' verdicts under a name no rules fingerprint - a
+#: SHA-256 - can ever be.
+OPEN_TEST_FINGERPRINT = "open-test"
+#: The files whose reader could not start this pass, by name (decision
+#: 150). The pass says it once (``runner``), taking the list as it goes.
+_COULD_NOT_START: list[str] = []
+#: How long an ended child is waited for, and how long one that has
+#: answered is given to exit on its own, before the pass goes on.
+_CHILD_EXIT_SECONDS = 30.0
+#: The exit code of a child that ended itself because its pass was gone.
+ORPHANED_EXIT_CODE = 86
+
+
+def reading_stop_seconds(path: Path) -> float:
+    """How long the whole reading of ``path`` may take (decision 150): a
+    photo is one page - :data:`READING_STOP_PAGE_SECONDS` - and any other
+    file is a document - :data:`READING_STOP_DOCUMENT_SECONDS`."""
+    if extension_of(path) in IMAGE_EXTENSIONS:
+        return READING_STOP_PAGE_SECONDS
+    return READING_STOP_DOCUMENT_SECONDS
+
+
+def extract_bounded(path: Path, *, ocr: bool = True) -> Extraction:
+    """:func:`extract`, in a process the pass can stop (decision 150).
+
+    What the pass reads through - the router's one reading of a drop
+    (:func:`tracker.router.read_once`) and the scanner's reading on a
+    cache miss - so the safety stop bounds the whole reading, text layer
+    and render included, and a reader that crashes parks the file instead
+    of ending the pass. A cached verdict never gets here, so it never
+    starts a child. The child writes nothing anywhere: it hands back the
+    reading, and the pass does every write, as before. OCR's temporary
+    folder reaches it through the environment it is started with
+    (:func:`ocr_scratch`, decision 137 L7). The benchmark calls
+    :func:`extract` itself: it measures the reader, not the stop.
+    """
+    if not READ_IN_A_CHILD:
+        return open_and_read(Path(path), ocr=ocr)
+    return _read_in_a_child(Path(path), ocr=ocr)
+
+
+def open_and_read(path: Path, *, ocr: bool = True) -> Extraction:
+    """Tier 2's open test, then the reading: what a reading's child does
+    with the file (decision 150). The open test first, as tier 2 comes
+    before tier 3; its verdict rides back on the reading as ``opened``."""
+    opened = open_test(path)
+    return replace(extract(path, ocr=ocr), opened=opened)
+
+
+_CHILD_READER = open_and_read
+
+
+def could_not_start(seconds: float, error: str, name: str) -> Extraction:
+    """The reading whose child never started (decision 150): the machine's
+    doing, so transient - nothing is kept - and the pass says it once."""
+    _COULD_NOT_START.append(name)
+    return Extraction(None, reason=reasons.READER_UNAVAILABLE.format(), extractable=False,
+                      error=error, transient=True, seconds=seconds)
+
+
+def readers_that_could_not_start() -> list[str]:
+    """The files whose reader could not start since this was last asked,
+    and forget them: the pass asks once, at its end, and says it once."""
+    names = list(_COULD_NOT_START)
+    _COULD_NOT_START.clear()
+    return names
+
+
+def open_verdict(path: Path, cache: ContentCache) -> str:
+    """Tier 2's open test of ``path`` for the scanner: ``""`` or the
+    refusal, never made in this process (decision 150).
+
+    Kept in ``cache`` by the file's content digest, like a reading's
+    verdicts: a hit starts no child. On a miss the file is read in a child
+    (:func:`extract_bounded`) - the open test with the reading - and the
+    reading is held in memory for the content check that follows, so the
+    file is read once. A stopped or crashed child is the verdict, kept; a
+    child that could not start, or a machine without the HEIC decoder, is
+    the machine's, said and not kept.
+    """
+    digest = cache.digest_of(path)
+    if digest:
+        hit = cache.get_by_digest(digest, OPEN_TEST_FINGERPRINT)
+        if hit is not None:
+            return hit.reason
+    reading = extract_bounded(path)
+    verdict = reading.opened if reading.opened is not None else reading.reason
+    if digest:
+        cache.hold_reading(digest, reading)
+        if not reading.transient and not reasons.HEIC_NOT_SUPPORTED.matches(verdict):
+            cache.put_by_digest(digest, OPEN_TEST_FINGERPRINT,
+                                ContentResult(ok=not verdict, reason=verdict))
+    return verdict
+
+
+def reading_failed(seconds: float, error: str) -> Extraction:
+    """The reading whose process ended without an answer (decision 150):
+    the file's verdict, kept like an abandoned one, for a person to read."""
+    return Extraction(None, reason=reasons.READING_CRASHED.format(), extractable=False,
+                      error=error, seconds=seconds)
+
+
+def _read_in_a_child(path: Path, *, ocr: bool) -> Extraction:
+    """Read ``path`` in a child process, waiting at most its stop."""
+    import multiprocessing
+
+    stop = reading_stop_seconds(path)
+    context = multiprocessing.get_context("spawn")      # Windows has no fork
+    answers, sender = context.Pipe(duplex=False)
+    # The lifeline: the child holds the reading end and the pass the only
+    # writing end, which closes with the pass however the pass ends.
+    lifeline, held = context.Pipe(duplex=False)
+    child = context.Process(target=_the_child,
+                            args=(sender, lifeline, _CHILD_READER, str(path), ocr),
+                            name="tracker-reading", daemon=True)
+    started = time.monotonic()
+    try:
+        child.start()
+    except Exception as exc:
+        # Not the file's doing: nothing of it was opened. Transient.
+        answers.close()
+        held.close()
+        log.warning("The reader could not start for %s: %s", path.name, exc)
+        return could_not_start(time.monotonic() - started,
+                               f"{exc.__class__.__name__}: {exc}", path.name)
+    finally:
+        sender.close()          # the child holds its own end: end-of-file means it is gone
+        lifeline.close()
+    job = _kill_on_close_job(child.pid)
+    kind, answer, begun, over = "died", (), False, False
+    try:
+        while True:
+            left = started + stop - time.monotonic()
+            if left <= 0 or not answers.poll(left):
+                _end(child)
+                over = True
+                break
+            try:
+                kind, *answer = answers.recv()
+            except (EOFError, OSError):
+                kind, answer = "died", ()
+                break           # it ended without a word
+            if kind != "started":
+                break
+            begun = True        # from here on, what happens is the file's
+    finally:
+        answers.close()
+        exit_code = _wait_for(child)
+        held.close()
+        _close_job(job)
+    seconds = time.monotonic() - started
+    if not begun:
+        error = ("the reader did not start within the safety stop" if over else
+                 f"the reading's process ended with exit code {exit_code} before it started")
+        log.warning("The reader could not start for %s: %s", path.name, error)
+        return could_not_start(seconds, error, path.name)
+    if over:
+        log.warning("Reading %s stopped at the safety stop (%.0f s)", path.name, stop)
+        return abandoned(seconds)
+    if kind == "read":
+        return answer[0]
+    if kind == "failed":
+        error, trace = answer
+        log.warning("The reader failed on %s: %s", path.name, trace)
+        return reading_failed(seconds, error)
+    error = f"the reading's process ended with exit code {exit_code}"
+    log.warning("The reader stopped unexpectedly on %s: %s", path.name, error)
+    return reading_failed(seconds, error)
+
+
+def _the_child(sender, lifeline, reader, path: str, ocr: bool) -> None:
+    """The child's whole life: say it started, open and read one file,
+    hand back the reading, exit.
+
+    On POSIX it leads a process group of its own first, so ending it ends
+    whatever it started. It watches its lifeline from a thread of its own
+    and ends itself when the pass is gone (:func:`_watch_the_pass`), and an
+    answer the pass is no longer there to take ends it the same way.
+    "started" goes before anything touches the file: an end before it is
+    the machine's, after it the file's. Anything the reading raises is
+    handed back as words, never left to end the process in silence."""
+    import threading
+
+    if hasattr(os, "setsid"):
+        os.setsid()
+    threading.Thread(target=_watch_the_pass, args=(lifeline,), name="tracker-lifeline",
+                     daemon=True).start()
+    _answer(sender, ("started",))
+    try:
+        try:
+            reading = reader(Path(path), ocr=ocr)
+        except BaseException as exc:
+            _answer(sender, ("failed", f"{exc.__class__.__name__}: {exc}", traceback.format_exc()))
+        else:
+            _answer(sender, ("read", reading))
+    finally:
+        sender.close()
+
+
+def _answer(sender, message) -> None:
+    """Hand the pass the reading - or, when the pass is gone and the pipe
+    broken, end: there is nobody left to read it for."""
+    try:
+        sender.send(message)
+    except OSError:
+        _orphaned()
+
+
+def _watch_the_pass(lifeline) -> None:
+    """The child's lifeline thread. The pass never writes to it, so the
+    wait ends only when the pass's end closes - the pass finished with the
+    child, or the pass is gone. Either way the child has nothing left to do."""
+    try:
+        lifeline.recv()
+    except (EOFError, OSError):
+        pass
+    _orphaned()
+
+
+def _orphaned() -> None:
+    """End this child now, and on POSIX the process group it leads, so
+    whatever it started ends with it (on Windows its job does that)."""
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(os.getpgrp(), signal.SIGKILL)
+        except OSError:
+            pass
+    os._exit(ORPHANED_EXIT_CODE)
+
+
+def _kill_on_close_job(pid: int):
+    """On Windows, a job object holding the child ``pid`` that kills every
+    process in it when its last handle closes - the handle returned here,
+    which only the pass holds (it is not inheritable). None elsewhere, or
+    where Windows refuses; the lifeline still stands then, and it is said.
+
+    The standard library's ``ctypes`` and nothing else: ``kernel32``'s
+    CreateJobObject, SetInformationJobObject with
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, and AssignProcessToJobObject."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class BasicLimits(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
+                    ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD),
+                    ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t),
+                    ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_uint64) for name in (
+            "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+            "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+    class ExtendedLimits(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", BasicLimits),
+                    ("IoInfo", IoCounters),
+                    ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
+    kernel32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                                 wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        log.warning("No job object for the reading (Windows error %d); its lifeline stands",
+                    ctypes.get_last_error())
+        return None
+    limits = ExtendedLimits()
+    limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    process = kernel32.OpenProcess(_PROCESS_SET_QUOTA | _PROCESS_TERMINATE, False, pid)
+    placed = bool(process) and bool(
+        kernel32.SetInformationJobObject(job, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                                         ctypes.byref(limits), ctypes.sizeof(limits))
+        and kernel32.AssignProcessToJobObject(job, process))
+    error = ctypes.get_last_error()
+    if process:
+        kernel32.CloseHandle(process)
+    if not placed:
+        kernel32.CloseHandle(job)
+        log.warning("The reading could not be put in a job object (Windows error %d); "
+                    "its lifeline stands", error)
+        return None
+    return job
+
+
+#: kernel32's numbers for :func:`_kill_on_close_job`.
+_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+_PROCESS_SET_QUOTA = 0x0100
+_PROCESS_TERMINATE = 0x0001
+
+
+def _close_job(job) -> None:
+    """Close the pass's handle on a reading's job: anything still in it ends."""
+    if job is None:
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle(job)
+
+
+def _end(child) -> None:
+    """End a reading's child and everything it started. Tesseract is the
+    child's own child, and ending the child alone would leave it reading."""
+    if sys.platform == "win32":
+        system = Path(os.environ.get("SystemRoot") or r"C:\Windows") / "System32"
+        try:
+            subprocess.run([str(system / "taskkill.exe"), "/F", "/T", "/PID", str(child.pid)],
+                           capture_output=True, timeout=_CHILD_EXIT_SECONDS, check=False,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("Could not end the reading's process tree (%s)", exc)
+    else:
+        try:
+            if os.getpgid(child.pid) == child.pid:      # it leads its own group
+                os.killpg(child.pid, signal.SIGKILL)
+        except OSError:
+            pass                                        # already gone
+    child.kill()                                        # the child itself, whatever happened above
+    child.join(_CHILD_EXIT_SECONDS)
+
+
+def _wait_for(child) -> int | None:
+    """Let a child that has answered (or ended) exit, end it if it will
+    not, release it, and say its exit code."""
+    child.join(_CHILD_EXIT_SECONDS)
+    if child.is_alive():
+        _end(child)
+    exit_code = child.exitcode
+    if exit_code is not None:
+        child.close()
+    return exit_code
 
 # ---------------------------------------------------------------- checking ----
 
@@ -1727,14 +2164,14 @@ def check_content(
         if hit is not None:
             return hit
 
-    result = _check_uncached(path, item)
+    result = _check_uncached(path, item, cache.held_reading(path) if cache is not None else None)
 
     if cache is not None and not result.transient:
         cache.put(path, fingerprint, result)
     return result
 
 
-def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
+def _check_uncached(path: Path, item: RequestItem, reading: Extraction | None = None) -> ContentResult:
     """The scan's reading on a cache miss: the reading the router made.
 
     A page that names two forms as itself is read with both counted as its
@@ -1743,7 +2180,7 @@ def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
     verdict from an empty cache and a verdict the router kept are one
     verdict, and a rebuilt store cannot turn a filed copy into a failure.
     """
-    reading = extract(path)
+    reading = reading if reading is not None else extract_bounded(path)
     if reading.text is None:
         return ContentResult(
             ok=False, reason=reading.reason, extractable=False, transient=reading.transient,
@@ -1807,6 +2244,11 @@ def ocr_scratch(folder: Path) -> Iterator[Path]:
 # ------------------------------------------------------------------- cache ----
 
 
+#: How many readings a :class:`ContentCache` holds in memory for the
+#: content check that follows an open test (decision 150).
+_HELD_READINGS = 8
+
+
 class ContentCache:
     """Verdict cache: ``(content digest, rules-fingerprint) -> ContentResult``.
 
@@ -1839,6 +2281,11 @@ class ContentCache:
         self._learned_verdicts: set[tuple[str, str]] = set()
         self._forgotten_files: set[str] = set()
         self._forgotten_digests: set[str] = set()
+        #: Readings :func:`open_verdict` made in a child and the content
+        #: check will want next, by digest (decision 150): in memory, a
+        #: few at a time, for this pass only - never saved, like the
+        #: reading the router holds for the drop it routes.
+        self._readings: OrderedDict[str, Extraction] = OrderedDict()
         if self._engagement is not None:
             self._files, self._verdicts = store.cached_verdicts(
                 store.connect(), self._engagement, version=CACHE_VERSION)
@@ -1882,6 +2329,18 @@ class ContentCache:
         if "evidence" in values:
             values["evidence"] = _evidence_from_json(values["evidence"])
         return ContentResult(**values)
+
+    def hold_reading(self, digest: str, reading: Extraction) -> None:
+        """Keep a reading in memory for the content check about to ask
+        (decision 150); never saved, and only the last few."""
+        self._readings[digest] = reading
+        while len(self._readings) > _HELD_READINGS:
+            self._readings.popitem(last=False)
+
+    def held_reading(self, file: Path) -> Extraction | None:
+        """The reading :meth:`hold_reading` kept for ``file``'s bytes, if any."""
+        digest = self.digest_of(file)
+        return self._readings.get(digest) if digest else None
 
     def put(self, file: Path, fingerprint: str, result: ContentResult) -> None:
         digest = self.digest_of(file)

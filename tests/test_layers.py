@@ -32,6 +32,11 @@ and network modules and the one third-party client anyone reaches for, and
 the AST walk below finds none of them imported anywhere under ``tracker/``
 - at load time or inside a function, plainly or as ``from x.y import``.
 ``subprocess`` is not on the list: the build and the scheduler use it.
+Nor is ``multiprocessing``: since decision 150 the pass reads each
+document in a child process, and the two talk over ``multiprocessing``'s
+``Pipe`` - a named pipe on Windows, an OS pipe elsewhere. Its connection
+module reaches ``socket`` for listeners and clients the package never
+makes, and the test below holds it to the pipe.
 
 **Rule 7, amended** (from the implementation plan's rules for every step):
 ``ledger`` and ``locking`` import nothing of the package but each other;
@@ -345,3 +350,28 @@ def test_no_reader_imports_a_network_module():
             continue          # not installed here; requirements.txt pins it for CI
         reached = {name for name in result["added"] if name in FORBIDDEN_MODULES}
         assert reached <= READER_IMPORTS_ALLOWED, (reader, sorted(reached))
+
+
+#: What of ``multiprocessing`` could open a socket: its listener and client,
+#: and the managers that serve objects over one. The reading's child
+#: (decision 150) needs none of them - ``Pipe`` is a named pipe on Windows.
+SOCKET_SHAPED = frozenset({"Listener", "Client", "Manager", "BaseManager", "SyncManager"})
+
+
+def test_the_readings_child_talks_over_a_named_pipe_never_a_socket():
+    """Decision 150 put a child process in the reading path. What passes
+    between it and the pass is one document's reading, so it goes over a
+    named pipe: no module under tracker/ imports ``multiprocessing``'s
+    connection or managers modules, or names their listener, client or
+    manager."""
+    found = []
+    for path in sorted(PACKAGE.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for name in _imported_names(tree):
+            if name in ("multiprocessing.connection", "multiprocessing.managers"):
+                found.append(f"{path.name} imports {name}")
+        for node in ast.walk(tree):
+            named = node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", None)
+            if named in SOCKET_SHAPED:
+                found.append(f"{path.name}:{node.lineno} names {named}")
+    assert not found, found

@@ -205,6 +205,7 @@ from tracker.runner import (
     append_log,
     last_draft_day,
     last_drafted,
+    reader_start_warning,
     run_household,
     status_report,
     write_status_page,
@@ -1648,6 +1649,9 @@ def _cmd_scan(argv: list[str]) -> dict:
                          registry=_the_practice())
     run = next((one for one in runs if one.engagement.path == engagement),
                EngagementRun(engagement=engagement_from(engagement)))
+    # Said once, on the reply's own warnings (decision 150).
+    if warning := reader_start_warning():
+        run.warnings.append(warning)
     _record_pass(runs)
     payload = {
         "run": {
