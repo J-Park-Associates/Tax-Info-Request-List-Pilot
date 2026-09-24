@@ -3701,6 +3701,8 @@ def test_the_reminder_card_says_why_a_link_was_left_out(capsys, demo_root):
     js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
         encoding="utf-8")
     assert "card.link_dropped" in js
+
+
 # --------------------------------------------- decision 142: accepted, not asked ----
 
 

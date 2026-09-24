@@ -900,6 +900,8 @@ def test_superscript_ports_and_the_console_devices_are_reserved_too():
     assert "device" in identifier_problem("CONIN$")
     for name in ("COM\u00b9\u00b2", "CONINS", "LPT4x"):
         assert not is_reserved_name(name), name
+
+
 # --------------------------------------------- decision 142: accepted, not asked ----
 
 

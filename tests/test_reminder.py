@@ -1648,6 +1648,8 @@ def test_a_reminder_link_is_only_http_or_https_refused_on_save_and_dropped_from_
     written = write_draft(draft, engagement_dir=folder).read_text(encoding="utf-8")
     assert draft.link_dropped in written
     assert old not in written.split(draft.link_dropped)[0]           # never in the letter itself
+
+
 # --------------------------------------------- decision 142: accepted, not asked ----
 
 

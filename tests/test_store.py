@@ -2028,6 +2028,8 @@ def test_a_rebuild_computes_the_applied_digest_and_an_old_store_upgrades(
             == chain_of(by_hand, 2)
     finally:
         upgraded.close()
+
+
 # --------------------------------------------- decision 142: the Asked mark ----
 
 

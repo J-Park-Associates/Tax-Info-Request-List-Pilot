@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 123,
     "edges": 741,
-    "reused": 100
+    "reused": 96
   },
   "node_types": [
     "artifact",
@@ -2606,8 +2606,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6ded1e3528757362",
-      "lines": 3906,
+      "sha256": "56139ee5ee5c559e",
+      "lines": 3908,
       "exports": [
         "HOUSEHOLD",
         "PEOPLE",
@@ -2989,8 +2989,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0a2e0a9cc752231d",
-      "lines": 6272,
+      "sha256": "70b4c80e4dc4815c",
+      "lines": 6274,
       "exports": [
         "BUSINESS",
         "CANONICAL_BELOW",
@@ -3724,8 +3724,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fd0409fd10baefb2",
-      "lines": 1707,
+      "sha256": "917f3ee58413c260",
+      "lines": 1709,
       "exports": [
         "DEADLINE",
         "DROPPED",
@@ -4218,8 +4218,8 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "03a9fdfb25c505ed",
-      "lines": 945,
+      "sha256": "fa7f5db7cdac2fe2",
+      "lines": 947,
       "exports": [
         "A01_LABEL",
         "ACTIVE_IDS",
@@ -4481,8 +4481,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c23fd9115a5446eb",
-      "lines": 2056,
+      "sha256": "3148673f56249006",
+      "lines": 2058,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",
