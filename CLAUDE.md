@@ -73,7 +73,10 @@ python tools/repo_map.py update     # incremental — re-parses only what change
 It is genuinely incremental: every node carries a SHA-256 of its file, so
 unchanged files are copied forward untouched. A one-file change costs one
 parse, not a full rebuild. `build` exists for a from-scratch rebuild but is
-rarely the right command.
+rarely the right command. The map hashes what Git commits (LF, per
+.gitattributes), so a CRLF working copy is only a warning from `check`, and
+`update` refuses a half-resolved merge until the resolved files are `git add`-ed
+(decision 151).
 
 The map has two layers, and the distinction matters:
 

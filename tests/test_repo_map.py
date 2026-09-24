@@ -658,6 +658,101 @@ def test_every_curated_edge_type_renders(repo):
     assert "the manual" in text, "a document with a role renders"
 
 
+# ------------------------------- what Git commits, and a half-done merge ----
+
+
+def _git(repo, *args, check=True):
+    return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                           *args], cwd=repo, capture_output=True, check=check)
+
+
+def _staged(repo, rel: str) -> bytes:
+    """The blob Git staged for ``rel``: what a commit, and so CI, holds."""
+    return _git(repo, "cat-file", "blob", f":{rel}").stdout
+
+
+def test_a_crlf_working_copy_hashes_as_the_lf_file_git_commits(repo):
+    """#90 went red on CI with a map current where it was built: four CRLF working copies."""
+    (repo / ".gitattributes").write_bytes(b"* text=auto eol=lf\n")
+    (repo / "docs" / "crlf.md").write_bytes(b"# notes\r\n\r\nline\r\n")
+    (repo / "docs" / "lf.md").write_bytes(b"# notes\n\nline\n")
+    (repo / "docs" / "zero.txt").write_bytes(b"a\x00b\r\nc\r\n")
+    (repo / "docs" / "late-zero.txt").write_bytes(b"x" * 9000 + b"\r\n\x00\r\n")
+    (repo / "docs" / "lone-cr.txt").write_bytes(b"a\rb\r\nc\r\n")
+    _git(repo, "add", "-A")
+
+    assert repo_map.hash_file(repo / "docs" / "crlf.md") == repo_map.hash_file(repo / "docs" / "lf.md")
+    for rel in ("docs/crlf.md", "docs/zero.txt", "docs/late-zero.txt", "docs/lone-cr.txt"):
+        raw = (repo / rel).read_bytes()
+        assert repo_map.git_text_auto_eol_lf(raw) == _staged(repo, rel), (
+            f"{rel}: the map must hash the bytes Git commits")
+    zero = (repo / "docs" / "zero.txt").read_bytes()
+    assert repo_map.git_text_auto_eol_lf(zero) == zero, "a file with a NUL byte keeps its CR bytes"
+    graph = repo_map.build(repo)
+    assert node(graph, "docs/crlf.md")["sha256"] == node(graph, "docs/lf.md")["sha256"]
+
+
+def test_check_names_a_crlf_working_copy_and_still_passes(repo, capsys):
+    (repo / ".gitattributes").write_bytes(b"* text=auto eol=lf\n")
+    core = repo / "pkg" / "core.py"
+    lf = core.read_bytes().replace(b"\r\n", b"\n")   # write_text wrote CRLF on Windows
+    core.write_bytes(lf)
+    _git(repo, "add", "-A")
+    repo_map.write_outputs(repo_map.build(repo))
+    core.write_bytes(lf.replace(b"\n", b"\r\n"))
+    assert _git(repo, "diff", "--exit-code", "--", "pkg/core.py", check=False).returncode == 0, (
+        "Git sees no change: it commits the LF bytes")
+
+    assert repo_map.main(["check"]) == 0
+    out = capsys.readouterr().out
+    assert "pkg/core.py: the working copy has CRLF; Git commits LF; the map hashes LF" in out
+    assert "Map is current" in out
+
+
+def test_update_refuses_while_a_file_is_unmerged(repo, capsys):
+    """Handoff 007's rebases: an unmerged path is listed once per stage, so three nodes."""
+    add(repo, "docs/notes.md", "# notes\n\nbase\n")
+    _git(repo, "commit", "-q", "-m", "base")
+    first = _git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.decode().strip()
+    _git(repo, "checkout", "-q", "-b", "other")
+    add(repo, "docs/notes.md", "# notes\n\nother\n")
+    _git(repo, "commit", "-q", "-am", "other")
+    _git(repo, "checkout", "-q", first)
+    add(repo, "docs/notes.md", "# notes\n\nours\n")
+    _git(repo, "commit", "-q", "-am", "ours")
+    assert _git(repo, "merge", "other", check=False).returncode != 0, "the merge must conflict"
+    assert repo_map.unmerged_files(repo) == ["docs/notes.md"]
+
+    for command in ("update", "build", "check"):
+        assert repo_map.main([command]) == 1, command
+        out = capsys.readouterr().out
+        assert "unmerged docs/notes.md" in out and repo_map.UNMERGED_ADVICE in out, command
+    assert not (repo / "docs" / "repo-map.json").exists(), "no node is written"
+    with pytest.raises(repo_map.MapError, match="docs/notes.md"):
+        repo_map.build(repo)
+
+    _git(repo, "checkout", "--theirs", "docs/notes.md")
+    _git(repo, "add", "docs/notes.md")
+    assert repo_map.main(["update"]) == 0, "resolved and added, it maps again"
+    graph = repo_map.load_map()
+    assert [n["id"] for n in graph["nodes"]].count("docs/notes.md") == 1
+
+
+def test_the_text_rule_matches_gitattributes():
+    """``git_text_auto_eol_lf`` copies one line of .gitattributes; if it changes, so must the copy."""
+    rules = [line.split() for line in (ROOT / ".gitattributes").read_text(encoding="utf-8").splitlines()
+             if line.strip() and not line.lstrip().startswith("#")]
+    assert ["*", "text=auto", "eol=lf"] in rules, (
+        ".gitattributes no longer says `* text=auto eol=lf`. tools/repo_map.py's "
+        "git_text_auto_eol_lf() copies that rule so the map hashes what Git commits; "
+        "change it to follow the new rule, or the map goes stale on every CI checkout.")
+    text_rules = [r for r in rules if any(a.split("=")[0] in ("text", "-text", "eol", "binary")
+                                          for a in r[1:])]
+    assert text_rules == [["*", "text=auto", "eol=lf"]], (
+        f"another line sets text or eol: {text_rules}. The hash rule is one rule for every "
+        "path; follow it in git_text_auto_eol_lf() before adding one.")
+
+
 # ---------------------------------------- the real map's curated layer ----
 
 

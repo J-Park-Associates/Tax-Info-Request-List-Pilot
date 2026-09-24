@@ -20,6 +20,14 @@ judgment, and editing judgment never invalidates the derived half.
 drops nodes whose file is gone. Everything else is copied forward untouched, so
 updating after a one-file change costs one parse, not a full rebuild.
 
+**The hash is of what Git commits** (decision 151). ``.gitattributes`` says
+``text=auto eol=lf``, so a CRLF working copy is committed as LF and ``git
+diff`` shows no change; ``git_text_auto_eol_lf`` copies that rule, so the map
+agrees with a CI checkout whatever line endings an editor left, and ``check``
+names such a working copy as a warning. And the map is never built over a
+half-resolved merge: ``git ls-files`` lists an unmerged path once per stage,
+so ``build``, ``update`` and ``check`` refuse and name the paths instead.
+
 **Checking is not.** ``check`` compares hashes first, then rebuilds the derived
 layer from scratch and compares it fact for fact with the committed map, and
 finally renders the markdown and compares that too. A hash says a file did not
@@ -77,6 +85,9 @@ TESTED_BY = "tested by"
 EXERCISED_BY = "exercised by"
 NO_TEST_FILE = "no dedicated test file"
 IMPORTS_AT_CALL = "imports at call time"
+
+#: What ``build``, ``update`` and ``check`` say while a merge is half-resolved.
+UNMERGED_ADVICE = "Resolve these and `git add` them first"
 
 #: Extensions worth a node. Everything else is noise in a code map.
 #: ``.yml``/``.yaml`` earns its place because CI config is part of how the repo
@@ -244,8 +255,71 @@ def untracked_sources(root: Path | None = None) -> list[str]:
     return _mappable(root, _git_files(root, "--others", "--exclude-standard"))
 
 
+def unmerged_files(root: Path | None = None) -> list[str]:
+    """The paths a conflicted merge or rebase has left unresolved, once each.
+
+    ``git ls-files`` lists an unmerged path once per stage (1, 2 and 3), and
+    the file on disk still carries the conflict markers, so mapping it would
+    write three nodes of a file nobody meant. ``build`` refuses instead, and
+    the commands name the paths to resolve and ``git add`` (decision 151).
+    """
+    root = root or ROOT
+    return sorted({line.split("\t", 1)[1]
+                   for line in _git_files(root, "--unmerged") if "\t" in line})
+
+
+#: What Git's ``gather_stats()`` counts as a non-printable byte: the control
+#: bytes other than backspace, tab, escape and form feed (which it counts as
+#: printable) and CR and LF (line endings, counted as neither), plus DEL.
+_GIT_NONPRINTABLE = bytes(c for c in range(32) if c not in b"\b\t\x1b\x0c\r\n") + b"\x7f"
+_NOT_GIT_NONPRINTABLE = bytes(c for c in range(256) if c not in _GIT_NONPRINTABLE)
+
+
+def git_text_auto_eol_lf(raw: bytes) -> bytes:
+    """The bytes Git commits for ``raw`` under ``* text=auto eol=lf``.
+
+    A copy of the rule in ``.gitattributes`` that decides what a commit holds,
+    so the map hashes what CI checks out rather than what an editor left in
+    the working copy. ``git diff`` shows no change in a CRLF working copy
+    because Git turns its CRLF into LF on the way in; a map that hashed the CRLF bytes
+    was current on the machine that built it and stale on every checkout
+    (decision 151). ``tests/test_repo_map.py`` fails if ``.gitattributes``
+    stops saying ``text=auto eol=lf``: this function must follow it.
+
+    Text or binary is decided the way Git's ``convert_is_binary()`` decides it
+    for ``text=auto``, over the whole file: a NUL byte, a CR that does not
+    begin a CRLF, or more than one non-printable byte per 128 printable ones
+    makes it binary, and a binary file (the IRS PDFs) is committed as it is.
+    A text file has every CRLF turned to LF.
+    """
+    if b"\0" in raw:
+        return raw
+    crlf = raw.count(b"\r\n")
+    if not crlf or raw.count(b"\r") != crlf:
+        return raw      # nothing to turn, or a lone CR: Git calls it binary
+    nonprintable = len(raw.translate(None, _NOT_GIT_NONPRINTABLE))
+    printable = len(raw) - crlf - raw.count(b"\n") - nonprintable
+    if raw.endswith(b"\x1a"):
+        nonprintable -= 1       # Git does not count a trailing DOS end-of-file
+    if (printable >> 7) < nonprintable:
+        return raw
+    return raw.replace(b"\r\n", b"\n")
+
+
 def hash_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    """The SHA-256 of the file as Git commits it (``git_text_auto_eol_lf``)."""
+    return hashlib.sha256(git_text_auto_eol_lf(path.read_bytes())).hexdigest()[:16]
+
+
+def crlf_working_copies(root: Path | None = None) -> list[str]:
+    """Tracked text files whose working copy has CRLF where Git commits LF.
+
+    Not staleness: the hash is of the LF bytes, so the map is right about
+    them. ``check`` names them so the agent whose editor wrote CRLF knows.
+    """
+    root = root or ROOT
+    return [path for path in tracked_files(root)
+            if git_text_auto_eol_lf(raw := (root / path).read_bytes()) != raw]
 
 
 def classify(path: str) -> tuple[str, str]:
@@ -670,6 +744,8 @@ def build(root: Path | None = None, previous: dict | None = None) -> dict:
     is precisely the silent lie the map exists to avoid.
     """
     root = root or ROOT
+    if unmerged := unmerged_files(root):
+        raise MapError(UNMERGED_ADVICE + ": " + ", ".join(unmerged))
     curated = load_curated()
     files = tracked_files(root)
     table = ModuleTable.of(files)
@@ -1017,7 +1093,20 @@ def write_outputs(graph: dict, map_path: Path | None = None,
 # --------------------------------------------------------------------- CLI ----
 
 
+def _refuse_unmerged() -> bool:
+    """Name every unmerged path and say so; False when there is none."""
+    unmerged = unmerged_files()
+    if unmerged:
+        print(f"{len(unmerged)} file(s) are unmerged, so the map is not built over them:")
+        for path in unmerged:
+            print(f"  unmerged {path}")
+        print(f"\n{UNMERGED_ADVICE}, then run the command again.")
+    return bool(unmerged)
+
+
 def _cmd_build(_ns: argparse.Namespace) -> int:
+    if _refuse_unmerged():
+        return 1
     graph = build()
     write_outputs(graph)
     print(f"Built {MAP_PATH.relative_to(ROOT)}: "
@@ -1026,6 +1115,8 @@ def _cmd_build(_ns: argparse.Namespace) -> int:
 
 
 def _cmd_update(_ns: argparse.Namespace) -> int:
+    if _refuse_unmerged():
+        return 1
     try:
         previous = load_map()
     except MapError as exc:
@@ -1051,6 +1142,10 @@ def _cmd_update(_ns: argparse.Namespace) -> int:
 
 
 def _cmd_check(_ns: argparse.Namespace) -> int:
+    if _refuse_unmerged():
+        return 1
+    for path in crlf_working_copies():
+        print(f"warning: {path}: the working copy has CRLF; Git commits LF; the map hashes LF")
     graph = load_map()
     drift = stale_files(graph)
     total = sum(len(v) for v in drift.values())
