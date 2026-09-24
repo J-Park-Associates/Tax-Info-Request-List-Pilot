@@ -1091,12 +1091,6 @@ def test_a_draft_held_both_ways_is_refused_in_both_sentences():
     ])
 
 
-def _sample(reason):
-    return reason.template.format(**{
-        name: "x" for name in ("error", "extension", "allowed", "listed", "pattern")
-    } | {"size_kb": 1.0, "minimum": 5})
-
-
 #: The reasons whose parked file held the letter before decision 140: every
 #: one the client could fix, and no other. Typed out, so a reason that
 #: starts or stops holding fails here by name.
@@ -1115,6 +1109,9 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
     the page's and the file name's, are the firm-side reasons that hold.
     Asked of the hold itself, with a parked row carrying the reason's own
     sentence and evidence for A01."""
+    # The reasons' own sample sentence, so a placeholder a later reason adds
+    # is filled here the moment test_reasons.py learns it.
+    from tests.test_reasons import _sample
     from tests.test_review import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _ask_for, _parked_holds
