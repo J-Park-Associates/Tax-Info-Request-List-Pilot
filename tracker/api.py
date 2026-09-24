@@ -794,8 +794,10 @@ def _vocab() -> dict:
             "task_name": TASK_NAME,
         },
         # The room a return has under the clients root (decision 131): the
-        # two sentences the banner and the set-root reply fill, and the
-        # heading the root dialog lists them under. The renderer types none.
+        # two sentences the return's page, the warnings and the set-root
+        # reply fill - ROOM_SHORT as information, ROOM_PARKS as a warning
+        # (the lead's L-1) - and the heading the root dialog lists them
+        # under. The renderer types none.
         "room": {"short": ROOM_SHORT, "parks": ROOM_PARKS, "heading": ROOM_HEADING},
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
         # Every word and colour the Reminder card shows (decisions 115 and
@@ -1372,9 +1374,14 @@ def _state(engagement: Path) -> dict:
         "rules": [rule_as_read(row) for row in rules],
         "learned": {row["identifier"]: list(taught[identifier_key(row["identifier"])])
                     for row in rules if taught.get(identifier_key(row["identifier"]))},
-        "warnings": check_rules(items) + _room_sentences(room),
+        # A request that cannot receive is a warning; a return merely short
+        # of room is not (the lead's L-1): its names are cut to fit and
+        # everything files, so the figure is information on its page.
+        "warnings": check_rules(items) + (
+            [ROOM_PARKS.format(count=room.parks)] if room.parks else []),
         "room": {"need": room.need, "least": room.least, "floor": room.floor,
                  "short": room.short, "parks": room.parks, "limit": room.limit},
+        "room_note": ROOM_SHORT.format(short=room.short) if room.short else "",
         # The index's packed cells travel as data, not as text the app
         # would have to parse: the candidates as a list, the evidence as
         # the record it was written from keyed by candidate identifier,
@@ -1442,8 +1449,9 @@ def _state(engagement: Path) -> dict:
 
 
 def _room_sentences(room) -> list[str]:
-    """What the app's banner and the set-root reply say about one return's
-    room: the practice page's two sentences (decision 131), filled."""
+    """What the reply to setting the root says about one return's room
+    (decision 131), filled: the figure it is short by, as information, and
+    the requests that cannot receive, as the warning they are."""
     said = [ROOM_SHORT.format(short=room.short)] if room.short else []
     return said + ([ROOM_PARKS.format(count=room.parks)] if room.parks else [])
 

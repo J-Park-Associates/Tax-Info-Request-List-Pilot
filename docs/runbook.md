@@ -386,18 +386,27 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    is that engagement's list, index and review queue as of this morning, and
    the app says beside the engagement's name whether it is still current.
 
-   Two things the page may say about room (decision 131, and *If the
-   clients root moves* in §1). A **Warnings** line *N characters short of
-   the room its working copies need* is not a failure: that return is
-   sorted as usual and its copies' names are cut to fit; the app's banner
-   says the same when the return is opened. *N request(s) have no room for
-   a working copy* means a document for those requests parks in the review
-   folder with the reason *the working copy's path would be N characters
-   at its shortest*: shorten the root or that request's label, then file
-   it. A household **skipped** with *no room under ... for even a review
-   copy* was not touched at all - nothing read, nothing moved, nothing
-   scanned - and will not be until the clients root is shorter; move the
-   root and set it again in the app.
+   What the page says about room (decision 131, and *If the clients root
+   moves* in §1). A return merely **short of room** is not warned at all:
+   it is sorted as usual and its copies' names are cut to fit, and the
+   figure - *N characters short of the room its working copies need* - is
+   shown as information on the return's page in the app and in the reply
+   to setting the root, never in the Warnings column (a warning on every
+   pass would be a warning nobody reads). A **Warnings** line *N
+   request(s) have no room for a working copy* does need a person: a
+   document for those requests parks in the review folder with the reason
+   *the working copy's path would be N characters at its shortest, past
+   the N characters a .pdf copy may have* (the sentence names the other
+   return when the request is in a return this drop folder feeds):
+   shorten the root or that request's label, then file it. A review
+   copy's row that ends *longer than a spreadsheet program may open* is
+   there and whole; open it from a shorter folder. A household **skipped**
+   with *no room under ... for even a review copy* was not touched at all
+   - nothing read, nothing moved, nothing scanned - and will not be until
+   the clients root is shorter; move the root and set it again in the app.
+   A scheduled run that ends red with *the scheduled job still names an
+   old clients root* is the job installed before this version: open the
+   app and press *Install Schedule* once.
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document

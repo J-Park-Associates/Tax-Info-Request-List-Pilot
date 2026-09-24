@@ -149,6 +149,11 @@ function render(state) {
   // Nothing waits for anything: the statuses and the request list are both
   // in the record (decisions 103 and 104).
   $("summary").textContent = state.summary ? state.summary.line : "";
+  // Decision 131: how far this return's working copies are short of room
+  // under the clients root - information, not a warning (their names are
+  // cut to fit and everything files). The API's sentence, or nothing.
+  $("room-note").textContent = state.room_note || "";
+  $("room-note").classList.toggle("hidden", !state.room_note);
 
   // The catalog the engagement was cut from, beside its name in the
   // toolbar. It is shown exactly as the record holds it — the catalog's

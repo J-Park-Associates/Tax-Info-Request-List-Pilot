@@ -1777,10 +1777,13 @@ def _a_pass_over(engagement, **kwargs):
                          reminders=REMINDERS_NEVER, registry=registry, **kwargs)
 
 
-def test_a_return_short_of_room_is_warned_on_the_page_and_still_sorted(tmp_path):
-    """Ten characters short: the pass says so - in the run's warnings, the
-    run log's lines and the practice page's Warnings column - and files the
-    W-2 all the same, under a name cut to fit."""
+def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path):
+    """Ten characters short: the W-2 files all the same, under a name cut
+    to fit - and the pass does **not** warn (the lead's L-1 on decision
+    131): nothing in the run's warnings, the run log's lines or the
+    practice page's Warnings column. With a reader's 218 for spreadsheets
+    every 1040 at the firm's root would warn every pass, and a warning that
+    is always on is a warning nobody reads."""
     from tests.test_filer import drop, tight_return
     from tracker.filer import ROOM_SHORT
 
@@ -1790,14 +1793,14 @@ def test_a_return_short_of_room_is_warned_on_the_page_and_still_sorted(tmp_path)
     [run] = _a_pass_over(engagement)
 
     said = ROOM_SHORT.format(short=10)
-    assert said in run.warnings and not run.skipped and not run.error
+    assert run.warnings == [] and not run.skipped and not run.error
     assert run.filed == 1
     [entry] = read_index(engagement)
     assert entry.prepared_location.endswith("/A01 - W-2 Wage - TY2025.pdf")
     report = RunReport(today=FRIDAY, runs=[run])
-    assert f"! {said}" in format_report(report)
+    assert said not in format_report(report)
     page = write_status_page(tmp_path, report).read_text(encoding="utf-8")
-    assert f"<td>{len(run.warnings)}</td>" in page
+    assert "characters short of the room" not in page
 
 
 def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path):
@@ -1811,7 +1814,7 @@ def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path):
     [run] = _a_pass_over(engagement)
 
     assert ROOM_PARKS.format(count=1) in run.warnings
-    assert ROOM_SHORT.format(short=24) in run.warnings
+    assert ROOM_SHORT.format(short=24) not in run.warnings        # L-1: the figure is no warning
     assert not run.skipped and not run.error
 
 
@@ -1863,7 +1866,7 @@ def test_the_runner_reads_the_clients_root_from_the_settings_file_when_given_non
     """The job names the app's settings folder and no root (decision 131):
     with a root recorded there the pass runs over it; with none it exits
     saying how to set one; a root on the command line still wins."""
-    from tracker.settings import ENV_SETTINGS_DIR, SET_ROOT_HINT, set_clients_root
+    from tracker.settings import ENV_SETTINGS_DIR, NO_ROOT_HINT, SET_ROOT_HINT, set_clients_root
 
     recorded = tmp_path / "Recorded"
     by_hand = tmp_path / "ByHand"
@@ -1889,6 +1892,55 @@ def test_the_runner_reads_the_clients_root_from_the_settings_file_when_given_non
     with pytest.raises(SystemExit) as refused:
         main([SETTINGS_FLAG, str(empty)])
     assert "no clients root given" in str(refused.value) and SET_ROOT_HINT in str(refused.value)
+    # The app first - the packaged app has no python to type - the command second.
+    assert str(refused.value).endswith(NO_ROOT_HINT)
+    assert NO_ROOT_HINT.startswith("set the clients folder in the app")
+    capsys.readouterr()
+
+
+def test_the_old_scheduled_job_naming_another_root_is_refused_and_says_install_schedule(
+    tmp_path, monkeypatch, capsys,
+):
+    """F3: the job installed before decision 131 names a clients root on its
+    command line with ``--log``. After the root moves in the app that job
+    would go on sorting the old tree without a word, so a run of that shape
+    whose root is not the settings file's - or that has no settings root to
+    agree with - is refused, red, naming Install Schedule. The same root is
+    run; a person's hand-run without ``--log`` is never refused."""
+    import os
+
+    from tracker.runner import LOG_FLAG, OLD_JOB_ROOT
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    current = tmp_path / "Current"
+    old = tmp_path / "Old"
+    for folder, name in ((current, "Current"), (old, "Old")):
+        make_engagement(folder, [RequestItem(identifier="A01", document="W-2")],
+                        household=f"{name} Household", return_name=f"1040 - {name}")
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+
+    # No root in the settings file: nothing to agree with, refused.
+    with pytest.raises(SystemExit) as refused:
+        main([str(old), LOG_FLAG, "--reminders", "never"])
+    assert str(refused.value) == OLD_JOB_ROOT.format(root=str(old))
+    assert not (old / STATUS_PAGE_FILENAME).exists()
+
+    set_clients_root(current)
+    with pytest.raises(SystemExit) as refused:
+        main([str(old), LOG_FLAG, "--reminders", "never"])
+    assert str(refused.value) == OLD_JOB_ROOT.format(root=str(old))
+    assert "press Install Schedule" in str(refused.value)
+    assert not (old / STATUS_PAGE_FILENAME).exists()
+
+    # The settings file's own root, spelled another way, runs.
+    assert main([str(current) + os.sep, LOG_FLAG, "--reminders", "never"]) == 0
+    assert (current / STATUS_PAGE_FILENAME).is_file()
+
+    # A person running one folder by hand, no log: a root on the command line still wins.
+    assert main([str(old), "--reminders", "never"]) == 0
+    assert (old / STATUS_PAGE_FILENAME).is_file()
     capsys.readouterr()
 
 

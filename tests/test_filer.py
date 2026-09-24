@@ -5632,7 +5632,8 @@ def test_a_request_with_no_room_for_its_shortest_name_parks_with_the_sentence(tm
 
     assert report.filed == []
     [parked] = report.review
-    assert parked.reason == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260)
+    assert parked.reason == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260,
+                                                ext=".pdf")
     assert parked.candidates == "A01"
     copy = locate(engagement, parked.prepared_location)
     assert copy.is_file() and copy.parent.name == REVIEW_DIR_NAME
@@ -5695,7 +5696,7 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     with pytest.raises(FilingError) as refused:
         hand_over(home, parked["note.pdf"].pbc_location, none, "A01", today=DAY2)
     assert str(refused.value) == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"),
-                                                     limit=260)
+                                                     limit=260, ext=".pdf")
     assert sorted(str(p) for p in root.rglob("*")) == before
 
     # Handed to the return with room for a cut name: named to fit.
@@ -5742,3 +5743,232 @@ def test_creation_and_the_rollover_still_refuse_the_canonical_name_past_the_limi
     with pytest.raises(ManifestError) as refused:
         refuse_a_path_past_the_limit(engagement, [long_row])
     assert str(refused.value) == PATH_TOO_LONG.format(folder=engagement, length=316, limit=260)
+
+
+# --------------------------- decision 131's review: the lead's rulings ----
+
+
+def test_unfiling_a_long_named_document_cuts_its_review_copy_to_fit(tmp_path):
+    """F1: a person's unfiling names the review copy the way the pass's park
+    does - the client's name cut to the room the review folder leaves,
+    the extension kept - where before it was written under the whole name,
+    past the limit. The row keeps the client's whole name."""
+    from tests.conftest import root_for_a_return_of
+    from tracker.filer import unfile_document
+
+    engagement = make_engagement(root_for_a_return_of(tmp_path, 180), ROOM_ITEMS)
+    inbox = inbox_of(engagement)
+    name = "W-2 " + "w" * (255 - len(str(inbox)) - 1 - len("W-2 .pdf")) + ".pdf"
+    assert len(str(inbox / name)) == 255
+    assert len(str(review_dir(engagement))) + 1 + len(name) > 260
+    drop(engagement, name, "Form W-2 Wage and Tax Statement 2025")
+    [filed] = sort(engagement, today=DAY1).filed
+
+    result = unfile_document(engagement, filed.pbc_location, today=DAY2)
+
+    copy = locate(engagement, result.entry.prepared_location)
+    assert copy.is_file() and copy.parent == review_dir(engagement)
+    assert copy.suffix == ".pdf" and copy.name.startswith("W-2 www")
+    assert len(str(copy)) == 260
+    assert result.entry.original_name == name
+    assert (originals(engagement) / name).is_file()                  # the original, uncut
+
+
+def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy(tmp_path, monkeypatch):
+    """F1: the recovery's copy to act on is named as every review copy is;
+    and where none can be made the row names **no** copy - never the one
+    the interrupted step was making, which is not there - and says why in
+    a fixed sentence."""
+    from tests.conftest import root_for_a_return_of
+    from tracker import filer
+    from tracker.filer import REVIEW_NO_ROOM, NoRoom
+
+    engagement = make_engagement(root_for_a_return_of(tmp_path, 180), ROOM_ITEMS)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    [filed] = sort(engagement, today=DAY1).filed
+    locate(engagement, filed.prepared_location).unlink()       # the copy the step was making: gone
+    long_named = replace(filed, original_name="letter " + "n" * 150 + ".pdf")
+
+    location, said = filer._a_copy_to_act_on(engagement, long_named, None)
+
+    copy = locate(engagement, location)
+    assert said == "" and copy.is_file() and copy.parent == review_dir(engagement)
+    assert copy.name.startswith("letter nnn") and copy.suffix == ".pdf" and len(str(copy)) == 260
+
+    copy.unlink()
+    sentence = REVIEW_NO_ROOM.format(name="w2.pdf", length=270, limit=260, ext=".pdf")
+
+    def no_room(_folder, _name):
+        raise NoRoom(270, 260, "pdf", sentence=sentence)
+
+    monkeypatch.setattr(filer, "_review_copy_path", no_room)
+    assert filer._a_copy_to_act_on(engagement, filed, None) == ("", sentence)
+
+
+def test_a_spreadsheet_limit_is_never_called_what_windows_allows():
+    """F2: since the owner's Q-A a workbook's limit is a reader's 218, so
+    every sentence of decision 131 names the limit as that kind of copy's,
+    never as what Windows allows."""
+    from tracker.filer import (
+        HOUSEHOLD_NO_ROOM,
+        PATH_NO_ROOM,
+        PATH_NO_ROOM_IN,
+        REVIEW_NO_ROOM,
+        NoRoom,
+    )
+
+    for sentence in (PATH_NO_ROOM, PATH_NO_ROOM_IN, HOUSEHOLD_NO_ROOM, REVIEW_NO_ROOM):
+        assert "Windows" not in sentence
+    workbook = replace(ROOM_ITEMS[0], allowed_extensions=("xlsx",))
+    with pytest.raises(NoRoom) as refused:
+        prepared_name_for(workbook, "xlsx", set(), room=5)
+    said = str(refused.value)
+    assert refused.value.limit == 218 and "past the 218 characters a .xlsx copy may have" in said
+    assert "Windows" not in said
+    with pytest.raises(NoRoom) as refused:
+        prepared_name_for(ROOM_ITEMS[0], "pdf", set(), room=5)
+    assert "past the 260 characters a .pdf copy may have" in str(refused.value)
+    with pytest.raises(NoRoom) as refused:
+        prepared_name_for(ROOM_ITEMS[0], "", set(), room=5)
+    assert "a working copy may have" in str(refused.value)
+
+
+def test_a_review_copy_with_an_odd_suffix_is_cut_to_fit_or_said_as_a_review_copy(tmp_path):
+    """F4: the pass's floor proves room for a short extension, not for
+    whatever a client's file name ends in. A name whose "suffix" is not an
+    extension is cut as one stem to fit; a real extension is kept whole,
+    and where not even one character of stem fits beside it the sentence
+    says a *review copy* could not be made - never a request's label."""
+    from tracker.filer import REVIEW_NO_ROOM, NoRoom, _review_copy_path, _unique_path
+
+    folder = tmp_path / "review"
+    folder.mkdir()
+    odd = "Scan 2026.01.15 from the phone of the client for the W-2"
+    cut = _unique_path(folder, odd, room=30)
+    assert len(cut.name) <= 30 and cut.name.startswith("Scan 2026.01")
+    cut.write_text("one")
+    again = _unique_path(folder, odd, room=30)
+    assert again != cut and len(again.name) <= 30 and again.name.endswith("(2)")
+    # Through the one function every review copy is named by.
+    fitted, said = _review_copy_path(folder, odd * 5)
+    assert said == "" and len(str(fitted)) <= 260
+
+    with pytest.raises(NoRoom) as refused:
+        _unique_path(folder, "statement.pdf", room=4)
+    assert str(refused.value) == REVIEW_NO_ROOM.format(
+        name="statement.pdf", length=len(str(folder / "s.pdf")), limit=len(str(folder)) + 1 + 4,
+        ext=".pdf")
+    assert "label" not in str(refused.value)
+    # Without a room nothing changes: an original keeps its own name, always.
+    assert _unique_path(folder, odd).name == odd
+
+
+def test_an_existing_copy_is_found_before_a_name_is_measured(tmp_path):
+    """F5: a killed run left the copy in a request folder that has no room
+    for a new name. The pass finds it by its bytes first - as the
+    hand-over already did - and files under the name it has, rather than
+    parking a document whose copy is already there."""
+    engagement = tight_return(tmp_path, 210 + CANONICAL_BELOW - 260, scaffold=True)
+    folder = prepared(engagement, "A01")
+    assert len(str(folder)) == 245                           # no room for "A01 - TY2025.pdf"
+    dropped = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    (folder / "c.pdf").write_bytes(dropped.read_bytes())
+
+    report = sort(engagement, today=DAY1)
+
+    assert report.review == []
+    [entry] = report.filed
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/{folder.name}/c.pdf"
+    assert [p.name for p in folder.iterdir()] == ["c.pdf"]
+
+
+def test_a_filing_that_parks_for_room_leaves_no_request_folder_it_made(short_root):
+    """F6: decision 94 files one page under two requests. The first has room
+    and the second has none, so the filing parks - and the request folder
+    the attempt would have made for the first is not left behind empty:
+    nothing is made until every copy of the filing is named."""
+    from tests.conftest import root_for_a_return_of
+    from tests.samples import scanned_1098_lines, scanned_w2_lines
+    from tracker.filer import PATH_NO_ROOM
+    from tracker.scaffold import folder_name_for
+
+    long_c01 = replace(ITEMS[1], document="Mortgage Interest Statement " + "m" * 80)
+    assert len(folder_name_for(long_c01)) == 100
+    items = [ITEMS[0], long_c01]
+    engagement = make_engagement(root_for_a_return_of(short_root, 135), items, scaffold=False)
+    assert len(str(engagement / PREPARED_DIR_NAME / folder_name_for(long_c01))) == 245
+    inbox_of(engagement).mkdir(parents=True, exist_ok=True)
+    drop(engagement, "scan0003.pdf", "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025)))
+
+    report = sort(engagement, today=DAY1)
+
+    assert report.filed == []
+    [parked] = report.review
+    assert parked.reason == PATH_NO_ROOM.format(length=245 + 1 + len("C01 - TY2025.pdf"),
+                                                limit=260, ext=".pdf")
+    made = sorted(p.name for p in (engagement / PREPARED_DIR_NAME).iterdir())
+    assert made == [REVIEW_DIR_NAME]                          # no empty A01 folder
+
+
+def test_the_period_survives_a_long_label():
+    """F6: the cap on a working copy's name cuts the document label, never
+    the period - the one part that says which year a copy belongs to."""
+    from tracker.filer import _MAX_STEM
+
+    long = RequestItem(identifier="A01", document="X" * 120, period="TY2026")
+    name = prepared_name_for(long, "pdf", set())
+    assert name.endswith(" - TY2026.pdf") and len(name) == _MAX_STEM + len(".pdf")
+    assert name.startswith("A01 - XXX")
+    fitted = prepared_name_for(long, "pdf", set(), room=40)
+    assert fitted.endswith(" - TY2026.pdf") and len(fitted) <= 40
+
+
+def test_a_workbook_review_copy_fitted_past_a_readers_limit_says_so(tmp_path):
+    """Deviation 4: a reader's shorter limit never stops a park - the copy
+    is fitted to Windows's own - but the row says the copy is longer than
+    a spreadsheet program may open, and what to do about it."""
+    from tracker.filer import REVIEW_COPY_PAST_READER
+
+    engagement = tight_return(tmp_path, 14)                  # the review folder: 227
+    assert len(str(review_dir(engagement))) == 227
+    inbox_of(engagement).mkdir(parents=True, exist_ok=True)
+    (inbox_of(engagement) / "note.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+
+    report = sort(engagement, today=DAY1)
+
+    [parked] = report.review
+    copy = locate(engagement, parked.prepared_location)
+    assert copy.is_file() and copy.name == "note.csv" and len(str(copy)) > 218
+    assert parked.reason.endswith("; " + REVIEW_COPY_PAST_READER)
+
+
+def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path):
+    """Deviation 5: the fed return's request accepts the trial balance and
+    its folder has no room even for the shortest name. The document parks
+    where it was dropped, and the sentence names the fed return by its
+    label - "this request" would be a list the person reading the row in
+    the dropping household is not looking at."""
+    from tests.conftest import root_for_a_return_of
+    from tracker.filer import PATH_NO_ROOM_IN
+    from tracker.records import Feed
+    from tracker.registry import discover_engagements
+
+    llc_name = "1120S - Park & Lee LLC " + "l" * 20
+    root = root_for_a_return_of(tmp_path, 215, household="Park & Lee LLC", return_name=llc_name)
+    father = make_engagement(root, ITEMS, household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    llc = make_engagement(root, BUSINESS, household="Park & Lee LLC",
+                          return_name=llc_name, people=LLC_PEOPLE)
+    feeding(root, [Feed("Park & Lee LLC", llc_name)])
+    b01 = prepared(llc, "B01")
+    assert len(str(b01)) + 1 + len("B01 - TY2025.pdf") == 261
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="Park & Lee LLC")
+
+    done = sort_all([father, llc], home=[father], today=DAY1)
+
+    assert read_index(llc) == [] and list(b01.iterdir()) == []
+    [parked] = done[father].review
+    label = next(one.label for one in discover_engagements(root).engagements if one.path == llc)
+    assert parked.reason == PATH_NO_ROOM_IN.format(label=label, length=261, limit=260, ext=".pdf")
+    assert "this request" not in parked.reason
+    assert parked.pbc_location == original_at(father, "tb.pdf")

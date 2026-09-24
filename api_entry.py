@@ -6,8 +6,10 @@ schedule (the task's command is this executable in runner mode). The runner
 is imported on its own, before ``tracker.api`` is touched, because importing
 the API pulls in ``tracker.scheduling``, whose task name needs the product
 name the Electron shell passes in the environment - and Task Scheduler
-passes nothing. The job needs neither of the shell's variables: the clients
-root is on its command line and the log goes into that root.
+passes nothing. The job needs neither of the shell's variables: its command
+line names the app's settings folder, the clients root is read from the
+settings file there at every run (decision 131), and the log goes into that
+root.
 """
 import sys
 

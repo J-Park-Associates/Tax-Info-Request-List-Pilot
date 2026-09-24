@@ -3331,11 +3331,16 @@ def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
     assert entry["sentences"][0] == ROOM_SHORT.format(short=room.short)
 
 
-def test_state_carries_the_returns_room_and_the_banner_sentence(capsys, demo_root):
+def test_state_carries_the_returns_room_as_information_and_warns_only_what_cannot_receive(
+    capsys, demo_root,
+):
     """A person opening a return sees its room without waiting for a pass:
-    the six numbers, and the practice page's sentence in the warnings the
-    banner already shows."""
-    from tracker.filer import ROOM_SHORT, room_for
+    the six numbers, and the figure it is short by as a note on the
+    return's page - **not** among the warnings (the lead's L-1: its names
+    are cut to fit and everything files). Only requests that cannot
+    receive at all are a warning."""
+    from tracker.filer import ROOM_PARKS, ROOM_SHORT, room_for
+    from tracker.manifest import RequestItem
 
     engagement = _a_long_row_return(demo_root)
     room = room_for(engagement, load_manifest(engagement))
@@ -3344,8 +3349,16 @@ def test_state_carries_the_returns_room_and_the_banner_sentence(capsys, demo_roo
 
     assert state["room"] == {"need": room.need, "least": room.least, "floor": room.floor,
                              "short": room.short, "parks": room.parks, "limit": 260}
-    assert ROOM_SHORT.format(short=room.short) in state["warnings"]
+    assert room.short > 0
+    assert state["room_note"] == ROOM_SHORT.format(short=room.short)
+    assert ROOM_SHORT.format(short=room.short) not in state["warnings"]
+    assert (ROOM_PARKS.format(count=room.parks) in state["warnings"]) == bool(room.parks)
     assert run(capsys, "list")[1]["vocab"]["room"]["short"] == ROOM_SHORT
+
+    # A return with room: no note at all.
+    fits = make_engagement(demo_root, [RequestItem(identifier="A01", document="W-2")],
+                           return_name="1040 - Fits")
+    assert payload_of_state(capsys, fits)["room_note"] == ""
 
 
 def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and_leaves_an_unchanged_one_alone(
@@ -3406,5 +3419,6 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
                         stdin={"original": parked.pbc_location, "identifier": "A01", "seq": seq})
 
     assert code == 1
-    assert payload["error"] == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260)
+    assert payload["error"] == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260,
+                                                   ext=".pdf")
     assert sorted(str(p) for p in root.rglob("*")) == before

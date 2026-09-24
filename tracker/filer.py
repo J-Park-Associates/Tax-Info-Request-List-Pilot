@@ -433,8 +433,19 @@ def _parts_of(item: RequestItem) -> tuple[str, str, str]:
 
 
 def _stem_of(identifier: str, document: str, period: str) -> str:
-    """``label_for(identifier, document, period)`` capped at ``_MAX_STEM``."""
-    return label_for(identifier, document, period)[:_MAX_STEM].rstrip(". ")
+    """``label_for(identifier, document, period)`` capped at ``_MAX_STEM``.
+
+    The cap cuts the **document part**, never the period (decision 131's
+    review): a long label once lost the year from the end of the name,
+    which is the one part that says which year a copy belongs to. Only an
+    identifier and a period that are themselves past the cap are cut whole.
+    """
+    stem = label_for(identifier, document, period)
+    for keep in range(len(document) - 1, -1, -1):
+        if len(stem) <= _MAX_STEM:
+            break
+        stem = label_for(identifier, document[:keep].rstrip(". -"), period)
+    return stem[:_MAX_STEM].rstrip(". ")
 
 
 def _named(stem: str, counter: int, suffix: str) -> str:
@@ -490,7 +501,7 @@ def prepared_name_for(item: RequestItem, extension: str, taken: set[str], *,
         if candidate is None:
             shortest = _named(_stem_of(identifier, "", period), counter, suffix)
             limit = limit_for(extension)
-            raise NoRoom(limit - room + len(shortest), limit)
+            raise NoRoom(limit - room + len(shortest), limit, extension)
         if candidate.lower() not in taken:
             taken.add(candidate.lower())
             return candidate
@@ -515,32 +526,72 @@ def prepared_location(folder: Path, name: str) -> str:
 #: name: the document parks, and this is the row's reason (a firm-side
 #: reason; it carries no ask, like the three of decision 128). A person's
 #: filing and a hand-over are refused with the same sentence.
+#: Every sentence names the limit as the limit **of that kind of copy**
+#: (``{ext}`` is ``.xlsx``, or ``working`` for a file with no extension),
+#: never as what Windows allows: since the owner's Q-A a spreadsheet's
+#: limit is a reader's 218, not Windows's 260 (decision 131's review, F2).
 PATH_NO_ROOM = ("the working copy's path would be {length} characters at its shortest, past the "
-                "{limit} Windows allows; shorten the clients root, or this request's label in the editor")
+                "{limit} characters a {ext} copy may have; shorten the clients root, or this "
+                "request's label in the editor")
+#: The same, when the request that accepted the document is in a return
+#: this household's drop folder feeds (decision 129): the document parks at
+#: home, so "this request" would name a list the person is not looking at.
+PATH_NO_ROOM_IN = ("the working copy's path in {label} would be {length} characters at its shortest, "
+                   "past the {limit} characters a {ext} copy may have; shorten the clients root, or "
+                   "that request's label in {label}'s list in the editor")
 #: A return whose review folder leaves no room for a copy at all: nothing
 #: in its household is sorted this pass. The household's skip sentence.
 HOUSEHOLD_NO_ROOM = ("no room under {label} for even a review copy ({length} characters at its shortest, "
-                     "past the {limit} Windows allows); nothing in this household is sorted until the "
-                     "clients root is shorter")
-#: What the practice page and the app say of a return whose canonical
-#: copies no longer fit: the number, and the three levers a person has.
+                     "past the {limit} characters any copy may have); nothing in this household is "
+                     "sorted until the clients root is shorter")
+#: A review copy that cannot be named to fit even cut to one character -
+#: a drop whose suffix is a real extension and whose folder leaves almost
+#: nothing. Said as a *review copy*, never as a request's label: no request
+#: is involved (decision 131's review, F4).
+REVIEW_NO_ROOM = ("no review copy of {name} could be made: its path would be {length} characters at "
+                  "its shortest, past the {limit} characters a {ext} copy may have; shorten the "
+                  "clients root")
+#: A review copy that could not be made for any other reason (a disk that
+#: refused, a copy that did not come out as the original).
+REVIEW_COPY_FAILED = "no review copy of {name} could be made ({problem})"
+#: A review copy of a workbook fitted to Windows's 260 because a reader's
+#: shorter limit left no room: it exists, and a spreadsheet program may not
+#: open it where it is (decision 131's review, deviation 4).
+REVIEW_COPY_PAST_READER = ("the review copy's path is longer than a spreadsheet program may open; "
+                           "open it from a shorter folder")
+#: What the return's page and the reply to setting the root say of a return
+#: whose canonical copies no longer fit: the number, and the three levers a
+#: person has. **Information, not a warning** (the lead's L-1): the names
+#: are cut to fit and everything still files, and a warning that is on
+#: every pass is a warning nobody reads.
 ROOM_SHORT = ("{short} characters short of the room its working copies need, so their names are cut "
               "to fit; a shorter clients root, a shorter label in the editor, or a shorter return "
               "name at the next rollover gives it back")
-#: The same, when some request cannot receive at all.
+#: The warning, when some request cannot receive at all.
 ROOM_PARKS = ("{count} request(s) have no room for a working copy under this root; a document for "
               "them parks for a person until the clients root is shorter")
 
 
+def _kind_of(extension: str) -> str:
+    """How a sentence names a kind of copy: ``.xlsx``, or ``working``."""
+    extension = extension.lower().lstrip(".")
+    return f".{extension}" if extension else "working"
+
+
 class NoRoom(FilingError):
     """Not even the shortest name fits the room left under its folder
-    (decision 131). Carries both numbers; its sentence is
-    :data:`PATH_NO_ROOM`, so a person's refusal needs no second wording."""
+    (decision 131). Carries both numbers and the extension; its sentence is
+    :data:`PATH_NO_ROOM` unless the caller names another (a review copy's
+    is :data:`REVIEW_NO_ROOM`), so a person's refusal needs no second
+    wording."""
 
-    def __init__(self, length: int, limit: int) -> None:
+    def __init__(self, length: int, limit: int, extension: str = "", *,
+                 sentence: str = "") -> None:
         self.length = length
         self.limit = limit
-        super().__init__(PATH_NO_ROOM.format(length=length, limit=limit))
+        self.extension = extension
+        super().__init__(sentence or PATH_NO_ROOM.format(length=length, limit=limit,
+                                                         ext=_kind_of(extension)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -773,16 +824,29 @@ def _move_whole(source: Path, target: Path) -> None:
     os.rename(source, target)
 
 
+#: What a file name's suffix must look like to be kept whole when a review
+#: copy's name is cut: a dot and a short run of letters and digits.
+_AN_EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,10}")
+
+
 def _unique_path(folder: Path, name: str, *, room: int | None = None) -> Path:
     """A free path in ``folder`` for ``name``, never overwriting anything.
 
     ``room`` is how many characters the file name may take (decision 131):
     the stem is cut from its end to fit, keeping the extension and the
-    numbered suffix, down to one character; below that, :class:`NoRoom`.
-    ``None`` is no limit. Only ever a copy's name - an original is moved
-    under its own name, uncut, always.
+    numbered suffix, down to one character; below that, :class:`NoRoom`
+    with :data:`REVIEW_NO_ROOM` - every caller that passes a room is naming
+    a review copy. ``None`` is no limit. Only ever a copy's name - an
+    original is moved under its own name, uncut, always.
+
+    A suffix that is not an extension - ``Scan 2026.01.15 from the phone``
+    has ``.15 from the phone`` for one - is no promise the pass's floor
+    made, and keeping it whole could leave no room at all: with a room, such
+    a name is cut as one stem, whatever its dots (decision 131's review, F4).
     """
     stem, suffix = Path(name).stem, Path(name).suffix
+    if room is not None and suffix and not _AN_EXTENSION.fullmatch(suffix):
+        stem, suffix = name, ""
     counter = 1
     while True:
         fitted: str | None = _named(stem, counter, suffix)
@@ -791,8 +855,10 @@ def _unique_path(folder: Path, name: str, *, room: int | None = None) -> Path:
             fitted = next((_named(cut, counter, suffix) for cut in cuts
                            if cut and len(_named(cut, counter, suffix)) <= room), None)
             if fitted is None:
-                raise NoRoom(len(str(folder / _named(stem[:1], counter, suffix))),
-                             len(str(folder)) + 1 + room)
+                length = len(str(folder / _named(stem[:1], counter, suffix)))
+                limit = len(str(folder)) + 1 + room
+                raise NoRoom(length, limit, suffix, sentence=REVIEW_NO_ROOM.format(
+                    name=name, length=length, limit=limit, ext=_kind_of(suffix)))
         target = folder / fitted
         if not target.exists():
             return target
@@ -2150,7 +2216,7 @@ def _finish_the_ops(
 
 def _a_copy_to_act_on(
     engagement_dir: Path, entry: IndexEntry, cache: ContentCache | None
-) -> str:
+) -> tuple[str, str]:
     """Where the person's copy of this document is, making one if there is
     none this row can prove.
 
@@ -2159,13 +2225,17 @@ def _a_copy_to_act_on(
     the place it was going holds somebody else's file. The original in
     The year's folder is the record, so the copy comes from it, into
     ``REVIEW_DIR_NAME`` under the client's own name, never over anything.
-    A copy that cannot be made leaves the row naming what it named: the
-    pass says the trouble out loud either way, and inventing a path would
-    be worse than an honest one that is empty.
+    The copy is named as every review copy is (:func:`_review_copy_path`,
+    decision 131): cut to the room the review folder leaves. A copy that
+    cannot be made leaves the row naming **no** copy - never the one the
+    interrupted step was making, which is not there (decision 131's review,
+    F1) - and the second value is the sentence its reason gains; so is a
+    copy fitted past a reader's limit. Inventing a path would be worse than
+    an honest one that is empty.
     """
     for location in entry.filed_locations:
         if entry.digest and _the_bytes(locate(engagement_dir, location)) == entry.digest:
-            return location
+            return location, ""
     review_dir = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
     source = locate(engagement_dir, entry.pbc_location)
     # The copy the interrupted step was about to carry out of review is
@@ -2174,16 +2244,20 @@ def _a_copy_to_act_on(
     # doubled (:func:`_existing_copy`, as everywhere else).
     waiting = _existing_copy(review_dir, source, entry.digest) if entry.digest else None
     if waiting is not None:
-        return prepared_location(review_dir, waiting.name)
+        return prepared_location(review_dir, waiting.name), ""
     try:
+        parked, past_reader = _review_copy_path(review_dir, entry.original_name)
         review_dir.mkdir(parents=True, exist_ok=True)
-        parked = _unique_path(review_dir, entry.original_name)
         _copy_whole(source, parked, expect=entry.digest, cache=cache)
+    except NoRoom as exc:
+        log.error("Could not park a copy of %s from %s: %s",
+                  entry.original_name, entry.pbc_location, exc)
+        return "", str(exc)
     except (OSError, FilingError) as exc:
         log.error("Could not park a copy of %s from %s: %s",
                   entry.original_name, entry.pbc_location, exc)
-        return entry.prepared_location
-    return prepared_location(review_dir, parked.name)
+        return "", REVIEW_COPY_FAILED.format(name=entry.original_name, problem=exc)
+    return prepared_location(review_dir, parked.name), past_reader
 
 
 def _finish_interrupted_moves(
@@ -2270,11 +2344,12 @@ def _finish_interrupted_moves(
                         intent.get(ledger.EVENT_KEY_AFTER), entry.original_name)
             continue
         sentence = _the_trouble(engagement_dir, entry, op, outcome)
-        parked = _a_copy_to_act_on(engagement_dir, entry, cache)
+        parked, copy_said = _a_copy_to_act_on(engagement_dir, entry, cache)
         new_entry = replace(
             entry, decision=NEEDS_REVIEW, identifier="", also_filed="",
             prepared_location=parked,
-            reason=f"{_without_moved_sentence(entry.reason)}; {sentence}",
+            reason="; ".join(part for part in (
+                _without_moved_sentence(entry.reason), sentence, copy_said) if part),
         )
         store.record(conn, engagement_dir, _ledger_event(ledger.PARKED, new_entry))
         rows_recorded = True
@@ -3093,9 +3168,16 @@ def _decide_across(
 
     if no_room is not None:
         said = routing if home is run else home_routing
+        # A request in a return this drop folder feeds is named by that
+        # return's label (decision 131's review, deviation 5): the row
+        # parks at home, where "this request" would be a list the person
+        # reading it is not looking at.
+        reason = str(no_room) if home is run else PATH_NO_ROOM_IN.format(
+            label=run.label, length=no_room.length, limit=no_room.limit,
+            ext=_kind_of(no_room.extension))
         return home, _park_it(
             drop, original, digest, size_kb, stamp, home,
-            reason=str(no_room), candidates=said.candidates,
+            reason=reason, candidates=said.candidates,
             evidence=format_evidence(said.evidence_record),
         )
 
@@ -3205,20 +3287,26 @@ def _plan_working_copy(
             if dest_folder.is_dir()
             else set()
         )
+    # A copy already there is found before any name is measured (decision
+    # 131's review, F5, as the hand-over does): a killed run's copy is
+    # reused under the name it has, and a folder with no room for a new
+    # name does not park a document whose copy is already in it.
+    if not run.dry_run:
+        existing = _existing_copy(dest_folder, original, digest)
+        if existing is not None:
+            return prepared_location(dest_folder, existing.name), None
     # Named to fit the room its folder leaves (decision 131): the exact
     # path about to be written is what is measured, so a root that grew,
     # a label the editor lengthened and the numbered suffix are all
     # counted. No room for even the shortest name raises NoRoom, and the
-    # caller parks the document instead.
+    # caller parks the document instead. The folder itself is made by the
+    # caller once every copy of the filing is named, so a filing that
+    # parks leaves no empty request folder behind.
     extension = extension_of(drop)
     filed_as = prepared_name_for(item, extension, run.reserved[dest_folder],
                                  room=limit_for(extension) - len(str(dest_folder)) - 1)
     if run.dry_run:
         return prepared_location(dest_folder, filed_as), None
-    dest_folder.mkdir(parents=True, exist_ok=True)
-    existing = _existing_copy(dest_folder, original, digest)
-    if existing is not None:
-        return prepared_location(dest_folder, existing.name), None
     return prepared_location(dest_folder, filed_as), dest_folder / filed_as
 
 
@@ -3367,22 +3455,32 @@ def _file_it(
     return entry
 
 
-def _review_copy_path(review_dir: Path, drop: Path) -> Path:
-    """Where a parked document's review copy goes: the client's own name,
-    cut to the room the review folder leaves (decision 131).
+def _review_copy_path(review_dir: Path, name: str) -> tuple[Path, str]:
+    """Where a review copy goes, and what its row must say about it: the
+    client's own name, cut to the room the review folder leaves (decision
+    131). Every review copy is named here - the pass's park, the recovery's
+    copy to act on, a person's unfiling and a refused put-back - so no copy
+    anywhere is written past its limit.
 
     The row's ``original_name`` keeps the client's name whole - it is the
     record's, and the queue reads the row, not the copy. The room is the
     extension's (a reader's shorter limit cuts a workbook's name), but a
     reader's limit never stops a park: where it leaves no room, the copy is
-    fitted to Windows's own, which the pass's floor (``Room.floor``) has
-    already proved there is room for before anything was read.
+    fitted to Windows's own and the second value is
+    :data:`REVIEW_COPY_PAST_READER` for the row's reason, so the person is
+    told the copy is there and may not open where it is. Where not even
+    Windows's own leaves room, :class:`NoRoom` says a review copy could not
+    be made (:data:`REVIEW_NO_ROOM`) - the pass's floor proves room for a
+    short extension, not for every suffix a client's file can carry.
     """
     folder = len(str(review_dir)) + 1
+    limit = limit_for(extension_of(Path(name)))
     try:
-        return _unique_path(review_dir, drop.name, room=limit_for(extension_of(drop)) - folder)
+        return _unique_path(review_dir, name, room=limit - folder), ""
     except NoRoom:
-        return _unique_path(review_dir, drop.name, room=MAX_PATH_LENGTH - folder)
+        if limit >= MAX_PATH_LENGTH:
+            raise
+    return _unique_path(review_dir, name, room=MAX_PATH_LENGTH - folder), REVIEW_COPY_PAST_READER
 
 
 def _park_it(
@@ -3394,8 +3492,8 @@ def _park_it(
     context = run.context
     review_name = drop.name
     parking: list[dict] = []
+    past_reader = ""
     if not context.dry_run:
-        context.review_dir.mkdir(parents=True, exist_ok=True)
         # One row, one working copy. The copy already there holding these
         # bytes is the *set-aside* row's, and two rows naming one file would
         # let filing either of them carry the other's copy away, so a re-send
@@ -3404,18 +3502,23 @@ def _park_it(
         # state: two arrivals, two decisions to make.
         review_target = None if resent else _existing_copy(context.review_dir, original, digest)
         if review_target is None:
-            review_target = _review_copy_path(context.review_dir, drop)
+            # Named before the folder is made: a name that cannot fit
+            # (NoRoom, a review copy's sentence) leaves no empty folder, and
+            # the pass records the drop as one that could not be filed.
+            review_target, past_reader = _review_copy_path(context.review_dir, drop.name)
             parking.append(_op(run.engagement_dir, ledger.OP_COPY,
                                original, review_target, digest))
+        context.review_dir.mkdir(parents=True, exist_ok=True)
         review_name = review_target.name
+    reason = "; ".join(part for part in (resent, reason, past_reader) if part)
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
         digest=digest, identifier="",
         prepared_location=prepared_location(context.review_dir, review_name),
         pbc_location=location_of(run.engagement_dir, original), decision=NEEDS_REVIEW,
         # The flag first: what a person opening the card should read before
-        # the reason for parking it.
-        reason=f"{resent}; {reason}" if resent else reason,
+        # the reason for parking it; a copy past a reader's limit, last.
+        reason=reason,
         candidates=_CANDIDATE_SEP.join(candidates),
         evidence=evidence,
     )
@@ -3788,9 +3891,14 @@ def assign_review_file(
         # (decision 131): no room even for the shortest name refuses with
         # PATH_NO_ROOM, and nothing has moved.
         taken = {p.name.lower() for p in dest_folder.iterdir()} if dest_folder.is_dir() else set()
+        # A copy with these bytes already there is found before a name is
+        # measured (decision 131's review, F5): it is reused under its own
+        # name, so a folder short of room never refuses a filing it holds.
+        existing = _existing_copy(dest_folder, source, digest,
+                                  ignore=parked if parked_here else None)
         extension = extension_of(source)
-        filed_as = prepared_name_for(item, extension, taken,
-                                     room=limit_for(extension) - len(str(dest_folder)) - 1)
+        filed_as = existing.name if existing is not None else prepared_name_for(
+            item, extension, taken, room=limit_for(extension) - len(str(dest_folder)) - 1)
         dest_folder.mkdir(parents=True, exist_ok=True)
         target = dest_folder / filed_as
 
@@ -3808,8 +3916,6 @@ def assign_review_file(
         # What will move is decided here and written down before any of it
         # happens (decision 119), so a kill in between is finished from the
         # record rather than left for another person to notice.
-        existing = _existing_copy(dest_folder, source, digest,
-                                  ignore=parked if parked_here else None)
         if existing is not None:
             filed_as, target = existing.name, existing
             reused = True
@@ -4393,8 +4499,10 @@ def unfile_document(
             if is_cloud_placeholder(source):
                 raise FilingError(f"the original {entry.pbc_location} is still syncing; try again when it is here")
 
+        # Named as every review copy is, to fit (decision 131): no room
+        # refuses with the review copy's sentence, and nothing has moved.
+        parked, past_reader = _review_copy_path(review_dir, entry.original_name)
         review_dir.mkdir(parents=True, exist_ok=True)
-        parked = _unique_path(review_dir, entry.original_name)
         left_filed = "; ".join(
             LEFT_FILED.format(location=location, parked=parked.name) for location in strangers
         )
@@ -4419,7 +4527,8 @@ def unfile_document(
             identifier="",
             prepared_location=prepared_location(review_dir, parked.name),
             decision=NEEDS_REVIEW,
-            reason=f"{UNFILED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}",
+            reason=(f"{UNFILED_BY_PERSON} on {today.isoformat()}{_said(note)}; was: {entry.reason}"
+                    + (f"; {past_reader}" if past_reader else "")),
             also_filed="",
         )
         entries[position] = new_entry
@@ -4684,8 +4793,10 @@ def restore_working_copy(
             # itself when it still holds the bytes, a fresh one from the
             # original when nothing does - so the person has a working copy
             # to act on and both files are still on disk.
+            # Named as every review copy is, to fit (decision 131): no room
+            # refuses with the review copy's sentence, nothing touched.
+            parked, past_reader = _review_copy_path(review_dir, entry.original_name)
             review_dir.mkdir(parents=True, exist_ok=True)
-            parked = _unique_path(review_dir, entry.original_name)
             if wanderer is not None and _holds_the_row(wanderer, entry.digest):
                 ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, parked, entry.digest))
                 wanderer_moved = True
@@ -4696,6 +4807,8 @@ def restore_working_copy(
             sentence = PUT_BACK_REFUSED.format(
                 date=stamp, home=different[0],
                 parked=prepared_location(review_dir, parked.name))
+            if past_reader:
+                sentence = f"{sentence}; {past_reader}"
             new_entry = replace(
                 entry, decision=NEEDS_REVIEW, identifier="", also_filed="",
                 prepared_location=prepared_location(review_dir, parked.name),

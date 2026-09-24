@@ -50,6 +50,10 @@ KEY_FIRM = "firm"
 KEY_FIRM_PHONE = "firm_phone"
 #: How a person is told to set the root without the app.
 SET_ROOT_HINT = "python -m tracker.settings <folder>"
+#: What a command line with no clients root tells a person: the app first,
+#: because the packaged app is what the office runs and has no ``python``
+#: to type; the command second (decision 131's review).
+NO_ROOT_HINT = f"set the clients folder in the app, or run {SET_ROOT_HINT}"
 #: The clients-root example every prompt and document shows.
 EXAMPLE_ROOT = r"G:\Shared drives\Clients"
 ENV_SETTINGS_DIR = "TRACKER_SETTINGS_DIR"

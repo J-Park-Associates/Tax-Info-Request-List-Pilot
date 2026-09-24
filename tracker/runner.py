@@ -123,7 +123,6 @@ from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
     ROOM_PARKS,
-    ROOM_SHORT,
     ensure,
     file_household_drops,
     read_index,
@@ -172,7 +171,7 @@ from tracker.scaffold import scaffold_engagement, scaffold_household
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.settings import (
     ENV_SETTINGS_DIR,
-    SET_ROOT_HINT,
+    NO_ROOT_HINT,
     SettingsError,
     clients_root,
     firm,
@@ -214,6 +213,36 @@ DATE_FLAG = "--date"
 #: and the job reads it at every run - so changing it in the app is enough,
 #: and no re-install is remembered or forgotten.
 SETTINGS_FLAG = "--settings"
+#: What the scheduled job installed before decision 131 is told. That job
+#: named a clients root on its command line with ``--log``; after the root
+#: moves in the app it would go on sorting the old tree silently, so a run
+#: of that shape whose root is not the settings file's is refused, red,
+#: until *Install Schedule* is pressed once (decision 131's review, F3).
+OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); open the app and "
+                "press Install Schedule")
+
+
+def _refuse_an_old_jobs_root(root: str) -> None:
+    """Refuse a run shaped like the job installed before decision 131 - a
+    root on the command line together with ``--log`` - whose root differs
+    from the settings file's, or that has no settings root to agree with.
+
+    A person running one folder by hand leaves ``--log`` off and is never
+    refused: a root on the command line still wins for them.
+    """
+    try:
+        configured = clients_root()
+    except SettingsError as exc:
+        raise SystemExit(f"Clients folder problem: {exc}") from None
+    if configured is None or _one_folder(configured) != _one_folder(Path(root)):
+        raise SystemExit(OLD_JOB_ROOT.format(root=root))
+
+
+def _one_folder(path: Path) -> str:
+    """A folder as two spellings of it compare: absolute, normalised, case-folded."""
+    return os.path.normcase(os.path.normpath(os.path.abspath(str(path))))
+
+
 #: How the packaged app's one executable (api_entry.py) is told to be the
 #: scheduled job rather than the API: this flag first, then the runner's own
 #: arguments. tracker.scheduling builds the packaged command line from it.
@@ -519,8 +548,8 @@ def run_household(
     what each return already holds is still true.
 
     **The room is measured before anything is read** (decision 131,
-    :func:`_no_room`): a return short of room is warned and still sorted,
-    its copies named to fit; a return with no room for even a review copy
+    :func:`_no_room`): a return short of room is still sorted, its copies
+    named to fit, and is not warned; a request that cannot receive is; a return with no room for even a review copy
     skips the whole household, as a held lock does.
 
     Never raises for a return-level problem: anything that goes wrong is
@@ -621,9 +650,14 @@ def _no_room(working: list[EngagementRun]) -> bool:
 
     Each return's room is one number from one function
     (``filer.room_for``), measured from the list :func:`_worth_a_pass`
-    already loaded: a return short of room is warned (:data:`ROOM_SHORT`,
-    and :data:`ROOM_PARKS` when some request cannot receive at all) and
-    **still sorted** - its names are cut to fit where they are written. A
+    already loaded. A return merely short of room is **not warned** (the
+    lead's L-1 on decision 131): its names are cut to fit where they are
+    written and everything still files, and with a reader's 218 for
+    spreadsheets every 1040 at the firm's root would carry the sentence
+    every pass - a warning always on is a warning nobody reads. The
+    return's page in the app and the reply to setting the root say the
+    figure as information. Warned: :data:`ROOM_PARKS`, when some request
+    cannot receive at all. A
     return whose review folder leaves no room for even a review copy stops
     its whole household, exactly as a lock held elsewhere does: one inbox
     feeds every return, and a pass that cannot park cannot honour a scan
@@ -633,8 +667,6 @@ def _no_room(working: list[EngagementRun]) -> bool:
     stopped = ""
     for run in working:
         room = room_for(run.engagement.path, run.items)
-        if room.short:
-            run.warnings.append(ROOM_SHORT.format(short=room.short))
         if room.parks:
             run.warnings.append(ROOM_PARKS.format(count=room.parks))
         if room.floor > room.limit and not stopped:
@@ -1409,8 +1441,10 @@ def main(argv: list[str] | None = None) -> int:
         except SettingsError as exc:
             raise SystemExit(f"Clients folder problem: {exc}") from None
         if configured is None:
-            raise SystemExit(f"no clients root given and none in {settings_path()}; {SET_ROOT_HINT}")
+            raise SystemExit(f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}")
         root = str(configured)
+    elif ns.log:
+        _refuse_an_old_jobs_root(root)
 
     try:
         loaded = discover_engagements(root)

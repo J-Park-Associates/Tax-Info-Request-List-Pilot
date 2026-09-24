@@ -225,7 +225,7 @@ is left out of the letter entirely when it is blank. Everything else reads
 that one value:
 
 ```
-python -m tracker.runner "G:\Shared drives\Clients" --log     # one pass, by hand, over the folder named
+python -m tracker.runner "G:\Shared drives\Clients"     # one pass, by hand, over the folder named
 ```
 
 That single command is a whole pass. Per engagement it files the
@@ -238,6 +238,12 @@ it in the app is all a move takes:
 ```
 python -m tracker.runner --settings "C:\Tools\tax-tracker" --log     # what the scheduled job runs
 ```
+
+A root on the command line together with `--log` is the shape of the job
+installed before decision 131, and it is refused - red, naming *Install
+Schedule* - unless that root is the settings file's own, so an old job
+never goes on sorting a tree the app has moved away from. A person's
+hand-run, without `--log`, is never refused.
 
 Creating an engagement in the app is all it takes for the next run to include it —
 `python -m tracker.registry "G:\Shared drives\Clients"` lists what the run would

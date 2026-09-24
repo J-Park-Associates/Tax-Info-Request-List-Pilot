@@ -90,7 +90,7 @@ from tracker.manifest import (  # noqa: E402
     load_manifest,
 )
 from tracker.registry import SKIP_ROLLED_FORWARD, RegistryError, discover_engagements  # noqa: E402
-from tracker.settings import SET_ROOT_HINT, SettingsError, clients_root, settings_path  # noqa: E402
+from tracker.settings import NO_ROOT_HINT, SettingsError, clients_root, settings_path  # noqa: E402
 
 #: How an engagement the run would no longer chase is flagged where it is named.
 FLAG_INACTIVE = "inactive"
@@ -401,7 +401,7 @@ def chosen_root(named: str) -> Path:
     configured = clients_root()
     if configured is None:
         raise LearnedKeywordsError(
-            f"no clients root given and none in {settings_path()}; set one with: {SET_ROOT_HINT}"
+            f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}"
         )
     return configured
 

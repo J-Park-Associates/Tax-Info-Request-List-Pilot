@@ -365,10 +365,11 @@ if __name__ == "__main__":
         # None given: this checkout's own settings folder, which must already
         # name a clients root - a job pointed at a settings file with none
         # would fail every run.
-        from tracker.settings import clients_root, settings_dir, settings_path
+        from tracker.settings import NO_ROOT_HINT, clients_root, settings_dir, settings_path
 
         if clients_root() is None:
-            parser.error(f"no {SETTINGS_FLAG} given and no clients root in {settings_path()}")
+            parser.error(f"no {SETTINGS_FLAG} given and no clients root in {settings_path()}; "
+                         f"{NO_ROOT_HINT}")
         ns.settings = str(settings_dir())
     settings_arg = resolve_folder(ns.settings, ns.working_dir)
 
