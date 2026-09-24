@@ -198,11 +198,11 @@ as the logged-on person, not as a background service, so the designated
 machine has to stay signed in. A Windows Update reboot in March that leaves
 the machine at the sign-in screen stops every pass until someone logs in;
 the task is set to start when it can, so the missed pass runs as soon as
-they do. The owner's call (2026-09-23, decision 139): it does not sign
-itself in. Nobody at the keyboard should find a machine already signed in
-to every client's files. Whoever arrives signs in, and the missed pass runs
-then. Windows Update's active hours are set to cover office hours so an
-update does not restart it mid-day. Nothing in the tool decides either.
+they do. The owner's call (2026-09-23, decision 139): the machine does not
+sign itself in. Nobody at the keyboard should find a machine already signed
+in to every client's files, so whoever arrives signs in. Windows Update's
+active hours are set to cover office hours so an update does not restart
+it mid-day. Both are set on the machine; nothing in the tool decides them.
 A draft day the machine spent switched off is not lost either: drafting is
 weekly, not only on the day, so the next pass drafts instead of skipping
 the week.
@@ -791,15 +791,16 @@ with *a run was interrupted here; the next pass finishes it first* - press
    or download the package from a `build.yml` run (the Actions tab, *Run
    workflow*). There is no separate backup of the app, and none is needed.
    The client files are on the Shared Drive, `settings.json` holds only the
-   clients folder and is written again at step 3, and `tracker.db` rebuilds
-   itself from the journals. Running from source needs Python and
+   clients folder, the firm's name and its telephone number, all three typed
+   again at step 3, and `tracker.db` rebuilds itself from the journals. Running from source needs Python and
    Node; the packaged build needs neither. Keep the folder's path short — a
    few levels deep at most, like the `C:\Tools\tax-tracker` the README's
    scheduling example uses: past the classic Windows path limit the packaged
    program silently loses its command line and answers every call with a
    usage error.
 3. Start the app. It asks where the clients live on first launch — give it
-   the same folder, the synced one. This is the one place the root is set;
+   the same folder, the synced one — with the firm's name and telephone
+   number beside it. This is the one place the root is set;
    if the new machine mounts it at a longer path, the reply lists every
    return that leaves short of room (§1, *If the clients root moves*).
 4. Press **Install Schedule** - once. Since decision 131 the job names the
