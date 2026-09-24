@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 123,
     "edges": 741,
-    "reused": 91
+    "reused": 100
   },
   "node_types": [
     "artifact",
@@ -1308,8 +1308,8 @@
       "id": "tracker/reminder.py",
       "type": "module",
       "layer": "core",
-      "sha256": "71a2b3114dbd7edb",
-      "lines": 1975,
+      "sha256": "8a3814824c95bcfb",
+      "lines": 1987,
       "cli": "python -m tracker.reminder",
       "exports": [
         "AMBIGUOUS_HOLD",
@@ -1362,6 +1362,7 @@
         "PHONE_CLAUSE",
         "PROGRESS_ALSO",
         "PROGRESS_ASKED",
+        "PROGRESS_NONE_ASKED",
         "REMINDER_HEADING",
         "REVIEW_ADVICE",
         "REVIEW_WARNING",
@@ -1445,6 +1446,7 @@
         "DROP_ANYWHERE": "'Everything goes in the same place - just drop it into the shared'",
         "PROGRESS_ASKED": "'Of the {m} {items} we asked for, {n} {verb} in.'",
         "PROGRESS_ALSO": "'We have also received {k} other {documents} from you.'",
+        "PROGRESS_NONE_ASKED": "'We have received {k} {documents} from you, thank you. The {m} {items} we asked for {verb} still needed.'",
         "HELD_BACK_HEADING": "'NOT ASKED FOR'",
         "HELD_BACK_LINE": "'NOT ASKED'",
         "HELD_LINE": "'HELD'",
@@ -2290,7 +2292,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9652ce17a5bb9655",
+      "sha256": "2403ec6ae2f2097a",
       "lines": 396,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -3722,8 +3724,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "716744cbd789a5cb",
-      "lines": 1702,
+      "sha256": "fd0409fd10baefb2",
+      "lines": 1707,
       "exports": [
         "DEADLINE",
         "DROPPED",

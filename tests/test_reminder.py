@@ -1689,14 +1689,19 @@ def test_the_reminder_never_chases_or_reports_a_not_asked_row(tmp_path):
     (1, 1, 0, "Of the 1 item we asked for, 1 is in."),
     (1, 5, 2, "Of the 5 items we asked for, 1 is in. We have also received 2 other documents from you."),
     (3, 5, 1, "Of the 5 items we asked for, 3 are in. We have also received 1 other document from you."),
-    (0, 5, 2, "Of the 5 items we asked for, 0 are in. We have also received 2 other documents from you."),
+    (0, 5, 2, "We have received 2 documents from you, thank you. The 5 items we asked for are still needed."),
+    (0, 1, 1, "We have received 1 document from you, thank you. The 1 item we asked for is still needed."),
+    (0, 1, 3, "We have received 3 documents from you, thank you. The 1 item we asked for is still needed."),
+    (0, 4, 1, "We have received 1 document from you, thank you. The 4 items we asked for are still needed."),
     (0, 5, 0, ""),
 ])
 def test_the_letters_count_is_jasons_sentence_in_the_singular_and_the_plural(received, total, also, said):
     """Decision 142, Jason's wording of 2026-09-24: the count is of what we
     asked for, and the documents that arrived for rows nobody asked for are
-    thanked in a second sentence, said only when there are any. Every noun
-    and verb agrees with its number: this is a sentence a client reads."""
+    thanked in a second sentence, said only when there are any; when none
+    of what we asked for is in but others are, his softer pair thanks the
+    client first and says what is still needed. Every noun and verb agrees
+    with its number: this is a sentence a client reads."""
     from tracker.reminder import progress_line
 
     assert progress_line(received, total, also) == said

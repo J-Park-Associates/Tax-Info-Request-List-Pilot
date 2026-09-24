@@ -220,6 +220,11 @@ DROP_ANYWHERE = "Everything goes in the same place - just drop it into the share
 #: singular and the plural by :func:`progress_line`.
 PROGRESS_ASKED = "Of the {m} {items} we asked for, {n} {verb} in."
 PROGRESS_ALSO = "We have also received {k} other {documents} from you."
+#: Jason's softer words for the one case the count would read "0 are in"
+#: while other documents have arrived (2026-09-24): thank the client for
+#: what came first, then say what is still needed.
+PROGRESS_NONE_ASKED = ("We have received {k} {documents} from you, thank you. "
+                       "The {m} {items} we asked for {verb} still needed.")
 #: The footer headings for what the draft deliberately did not ask for.
 HELD_BACK_HEADING = "NOT ASKED FOR"
 HELD_BACK_LINE = "NOT ASKED"
@@ -1078,11 +1083,18 @@ def progress_line(received: int, total: int, also_received: int = 0) -> str:
 
     ``Of the 5 items we asked for, 1 is in.`` - the asked rows only - and,
     only when a document arrived for a row nobody asked for, ``We have also
-    received 2 other documents from you.`` Each noun and verb agrees with
-    its number, because this is a sentence a client reads.
+    received 2 other documents from you.`` When nothing asked for is in
+    but other documents are, Jason's softer pair instead:
+    ``We have received 2 documents from you, thank you. The 5 items we
+    asked for are still needed.`` Each noun and verb agrees with its
+    number, because this is a sentence a client reads.
     """
     if not received and not also_received:
         return ""
+    if not received:
+        return PROGRESS_NONE_ASKED.format(
+            k=also_received, documents="document" if also_received == 1 else "documents",
+            m=total, items="item" if total == 1 else "items", verb="is" if total == 1 else "are")
     said = PROGRESS_ASKED.format(m=total, items="item" if total == 1 else "items",
                                  n=received, verb="is" if received == 1 else "are")
     if also_received:
