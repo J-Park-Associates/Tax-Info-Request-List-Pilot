@@ -64,6 +64,12 @@
          "name": "W-2 and 1099-INT scanned together.pdf"
         },
         {
+         "decision": 141,
+         "expected": null,
+         "kind": "case",
+         "name": "W-2c.pdf"
+        },
+        {
          "expected": "A01",
          "kind": "irs",
          "name": "fw2.pdf"
@@ -84,6 +90,7 @@
          "name": "fw2as.pdf"
         },
         {
+         "expected": null,
          "kind": "irs",
          "name": "fw2c.pdf"
         },
@@ -103,6 +110,7 @@
          "name": "fw3.pdf"
         },
         {
+         "expected": null,
          "kind": "irs",
          "name": "fw3c.pdf"
         },
@@ -189,6 +197,12 @@
          "name": "W-2 and 1099-INT scanned together.pdf"
         },
         {
+         "decision": 141,
+         "expected": null,
+         "kind": "case",
+         "name": "W-2c.pdf"
+        },
+        {
          "expected": null,
          "kind": "irs",
          "name": "f941x.pdf"
@@ -214,6 +228,7 @@
          "name": "fw2as.pdf"
         },
         {
+         "expected": null,
          "kind": "irs",
          "name": "fw2c.pdf"
         },
@@ -233,6 +248,7 @@
          "name": "fw3.pdf"
         },
         {
+         "expected": null,
          "kind": "irs",
          "name": "fw3c.pdf"
         },
@@ -462,6 +478,17 @@
          "name": "1099-NEC 2025 Copy B one to a page.pdf"
         },
         {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "M01",
+         "kind": "case",
+         "name": "2025 business income and expense.xlsx"
+        },
+        {
          "expected": "A03",
          "kind": "irs",
          "name": "f1099nec.pdf"
@@ -545,6 +572,11 @@
          "name": "1099-K 2025 Copy B.pdf"
         },
         {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
          "expected": "A05",
          "kind": "irs",
          "name": "f1099k.pdf"
@@ -566,6 +598,11 @@
          "expected": "A05",
          "kind": "case",
          "name": "merchant payment summary.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
         },
         {
          "expected": "A05",
@@ -596,6 +633,95 @@
         }
        ],
        "rule": "any"
+      }
+     ]
+    },
+    "A07": {
+     "document": "SSA-1099 / RRB-1099 - Social Security & Railroad Retirement Benefits",
+     "keywords": [
+      {
+       "keyword": "social security benefit statement | payments by the railroad retirement board",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "A07",
+         "kind": "case",
+         "name": "RRB-1099.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "A07",
+         "kind": "case",
+         "name": "SSA-1099.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "A08": {
+     "document": "1099-C - Cancellation of Debt",
+     "keywords": [
+      {
+       "keyword": "1099-c",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "A08",
+         "kind": "case",
+         "name": "1099-C Copy B.pdf"
+        },
+        {
+         "expected": "A08",
+         "kind": "irs",
+         "name": "f1099c.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "cancellation of debt | amount of debt discharged",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "A08",
+         "kind": "case",
+         "name": "1099-C Copy B.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1040s1.pdf"
+        },
+        {
+         "expected": "A08",
+         "kind": "irs",
+         "name": "f1099c.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "A09": {
+     "document": "W-2G - Gambling Winnings",
+     "keywords": [
+      {
+       "keyword": "w-2g",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "A09",
+         "kind": "case",
+         "name": "W-2G Copy B.pdf"
+        },
+        {
+         "expected": "A09",
+         "kind": "irs",
+         "name": "fw2g.pdf"
+        }
+       ],
+       "rule": "required"
       }
      ]
     },
@@ -1148,6 +1274,18 @@
          "name": "fax cover then 1099-R.pdf"
         },
         {
+         "decision": 141,
+         "expected": "E02",
+         "kind": "case",
+         "name": "RRB-1099-R.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "A07",
+         "kind": "case",
+         "name": "SSA-1099.pdf"
+        },
+        {
          "expected": "E02",
          "kind": "irs",
          "name": "f1099r.pdf"
@@ -1192,6 +1330,21 @@
          "name": "K-1 with its footer under box 19.pdf"
         },
         {
+         "decision": 141,
+         "kind": "case",
+         "name": "K-1 received by the S corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "K-1 received by the corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "K-1 received by the partnership.pdf"
+        },
+        {
          "expected": "F01",
          "kind": "irs",
          "name": "f1065sk1.pdf"
@@ -1218,6 +1371,11 @@
          "name": "K-1 with its footer under box 16.pdf"
         },
         {
+         "decision": 141,
+         "kind": "case",
+         "name": "1120-S K-1 in a partnership.pdf"
+        },
+        {
          "kind": "irs",
          "name": "ca100s.pdf"
         },
@@ -1237,6 +1395,11 @@
       {
        "keyword": "beneficiary's share of income",
        "reached_by": [
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "trust K-1 received by the corporation.pdf"
+        },
         {
          "expected": "F01",
          "kind": "irs",
@@ -1350,6 +1513,11 @@
          "decision": 73,
          "kind": "case",
          "name": "1040-ES voucher in a corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1040-ES voucher in a trust.pdf"
         }
        ],
        "rule": "any"
@@ -1426,6 +1594,16 @@
          "decision": 73,
          "kind": "case",
          "name": "paid voucher stub in a corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1040-ES voucher in a trust.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1041-ES voucher 1.pdf"
         },
         {
          "expected": "H01",
@@ -1794,6 +1972,189 @@
         }
        ],
        "rule": "any"
+      }
+     ]
+    },
+    "L02": {
+     "document": "1098-E - Student Loan Interest",
+     "keywords": [
+      {
+       "keyword": "1098-e",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "L02",
+         "kind": "case",
+         "name": "1098-E.pdf"
+        },
+        {
+         "expected": "L02",
+         "kind": "irs",
+         "name": "f1098e.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "L03": {
+     "document": "1099-Q - 529 / Coverdell Education Savings Distributions",
+     "keywords": [
+      {
+       "keyword": "1099-q",
+       "reached_by": [
+        {
+         "decision": 62,
+         "expected": "L03",
+         "kind": "case",
+         "name": "1099-Q.pdf"
+        },
+        {
+         "expected": "L03",
+         "kind": "irs",
+         "name": "f1099q.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "M01": {
+     "document": "Schedule C - Business Income & Expense Summary",
+     "keywords": [
+      {
+       "keyword": "gross sales + ending inventory + total expense",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "M01",
+         "kind": "case",
+         "name": "2025 business income and expense.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "business income and expense summary",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "M01",
+         "kind": "case",
+         "name": "business income and expense summary.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "business income & expense summary",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "M01",
+         "kind": "case",
+         "name": "business income & expense summary.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "schedule c worksheet",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "M01",
+         "kind": "case",
+         "name": "Schedule C worksheet.xlsx"
+        }
+       ],
+       "rule": "any"
+      },
+      {
+       "keyword": "schedule c summary",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "M01",
+         "kind": "case",
+         "name": "Schedule C summary 2025.xlsx"
+        }
+       ],
+       "rule": "any"
+      }
+     ]
+    },
+    "N01": {
+     "document": "1042-S - Foreign Person's U.S. Source Income",
+     "keywords": [
+      {
+       "keyword": "foreign person's u.s. source income",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "N01",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "Z01": {
+     "document": "IRS & State Tax Notices and Letters",
+     "keywords": [
+      {
+       "keyword": "notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "Z01",
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        }
+       ],
+       "rule": "required"
       }
      ]
     }
@@ -2168,6 +2529,16 @@
          "name": "fax cover then 1099-R.pdf"
         },
         {
+         "decision": 141,
+         "kind": "case",
+         "name": "RRB-1099-R.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "SSA-1099.pdf"
+        },
+        {
          "expected": "B01",
          "kind": "irs",
          "name": "f1099r.pdf"
@@ -2214,6 +2585,16 @@
          "decision": 85,
          "kind": "case",
          "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "2025 business income and expense.xlsx"
         },
         {
          "expected": "B01",
@@ -2604,6 +2985,87 @@
        "rule": "any"
       }
      ]
+    },
+    "G01": {
+     "document": "Estimated Tax Payment Records",
+     "keywords": [
+      {
+       "keyword": "1041-es",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "G01",
+         "kind": "case",
+         "name": "1041-ES voucher 1.pdf"
+        },
+        {
+         "expected": "G01",
+         "kind": "irs",
+         "name": "f1041es.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "estimated income tax for estates and trusts | estate or trust is making a payment of estimated tax",
+       "reached_by": [
+        {
+         "decision": 141,
+         "expected": "G01",
+         "kind": "case",
+         "name": "1041-ES voucher 1.pdf"
+        },
+        {
+         "expected": "G01",
+         "kind": "irs",
+         "name": "f1041es.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "Z01": {
+     "document": "IRS & State Tax Notices and Letters",
+     "keywords": [
+      {
+       "keyword": "notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service",
+       "reached_by": [
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "Z01",
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
     }
    },
    "rows_without_a_filing_document": [],
@@ -2663,7 +3125,7 @@
      "document": "Prior-Year Federal & State Partnership Returns",
      "keywords": [
       {
-       "keyword": "return of partnership income + under penalties of perjury | return of income | partnership return",
+       "keyword": "return of partnership income + under penalties of perjury | return of income + limited liability company | partnership return",
        "reached_by": [
         {
          "decision": 90,
@@ -3670,6 +4132,7 @@
          "name": "CA Schedule K-1 568 2025.pdf"
         },
         {
+         "expected": "H01",
          "kind": "irs",
          "name": "ca568k1.pdf"
         }
@@ -3729,6 +4192,374 @@
        "keyword": "payroll by state",
        "reached_by": [],
        "rule": "any"
+      }
+     ]
+    },
+    "H01": {
+     "document": "Schedule K-1s Received by the Business",
+     "keywords": [
+      {
+       "keyword": "partner's share of income | beneficiary's share of income | member's share of income",
+       "reached_by": [
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "K-1 1065 in a trust.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "K-1 with its footer under box 19.pdf"
+        },
+        {
+         "decision": 93,
+         "kind": "case",
+         "name": "CA Schedule K-1 568 2025.pdf"
+        },
+        {
+         "decision": 93,
+         "kind": "case",
+         "name": "CA Schedule K-1 568 2025.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "K-1 received by the S corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "K-1 received by the corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "H01",
+         "kind": "case",
+         "name": "K-1 received by the partnership.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "trust K-1 received by the corporation.pdf"
+        },
+        {
+         "expected": "H01",
+         "kind": "irs",
+         "name": "ca568k1.pdf"
+        },
+        {
+         "expected": "H01",
+         "kind": "irs",
+         "name": "f1041sk1.pdf"
+        },
+        {
+         "expected": "H01",
+         "kind": "irs",
+         "name": "f1065sk1.pdf"
+        },
+        {
+         "expected": "H01",
+         "kind": "irs",
+         "name": "f1065sk1_2024.pdf"
+        },
+        {
+         "expected": "H01",
+         "kind": "irs",
+         "name": "nyit204ip.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "H02": {
+     "document": "1099-K / 1099-NEC Received by the Business",
+     "keywords": [
+      {
+       "keyword": "1099-k | 1099-nec",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "H02",
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "2025 business income and expense.xlsx"
+        },
+        {
+         "expected": "H02",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        },
+        {
+         "expected": "H02",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "expected": "H02",
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "for recipient | for payee",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1095-C with instructions.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-SA with instructions.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "1099-B Copy B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-G 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-MISC 2025 Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "H03",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "H02",
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095a.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095b.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095c.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1099da.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099div.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099g.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099int.pdf"
+        },
+        {
+         "expected": "H02",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099msc.pdf"
+        },
+        {
+         "expected": "H02",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "expected": "H02",
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099oid.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099q.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099qa.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099r.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099sa.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "H03": {
+     "document": "1042-S - Foreign Person's U.S. Source Income",
+     "keywords": [
+      {
+       "keyword": "foreign person's u.s. source income",
+       "reached_by": [
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "H03",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "Z01": {
+     "document": "IRS & State Tax Notices and Letters",
+     "keywords": [
+      {
+       "keyword": "notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service",
+       "reached_by": [
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "Z01",
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        }
+       ],
+       "rule": "required"
       }
      ]
     }
@@ -5057,6 +5888,370 @@
        "rule": "any"
       }
      ]
+    },
+    "J01": {
+     "document": "Schedule K-1s Received by the Business",
+     "keywords": [
+      {
+       "keyword": "partner's share of income | beneficiary's share of income | member's share of income",
+       "reached_by": [
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "K-1 1065 in a trust.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "K-1 with its footer under box 19.pdf"
+        },
+        {
+         "decision": 93,
+         "kind": "case",
+         "name": "CA Schedule K-1 568 2025.pdf"
+        },
+        {
+         "decision": 93,
+         "kind": "case",
+         "name": "CA Schedule K-1 568 2025.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "K-1 received by the S corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "J01",
+         "kind": "case",
+         "name": "K-1 received by the corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "K-1 received by the partnership.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "J01",
+         "kind": "case",
+         "name": "trust K-1 received by the corporation.pdf"
+        },
+        {
+         "expected": "J01",
+         "kind": "irs",
+         "name": "ca568k1.pdf"
+        },
+        {
+         "expected": "J01",
+         "kind": "irs",
+         "name": "f1041sk1.pdf"
+        },
+        {
+         "expected": "J01",
+         "kind": "irs",
+         "name": "f1065sk1.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1065sk1_2024.pdf"
+        },
+        {
+         "expected": "J01",
+         "kind": "irs",
+         "name": "nyit204ip.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "J02": {
+     "document": "1099-K / 1099-NEC Received by the Business",
+     "keywords": [
+      {
+       "keyword": "1099-k | 1099-nec",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "2025 business income and expense.xlsx"
+        },
+        {
+         "expected": "J02",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        },
+        {
+         "expected": "J02",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "for recipient | for payee",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1095-C with instructions.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-SA with instructions.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "1099-B Copy B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-G 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-MISC 2025 Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "J03",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095a.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095b.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095c.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1099da.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099div.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099g.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099int.pdf"
+        },
+        {
+         "expected": "J02",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099msc.pdf"
+        },
+        {
+         "expected": "J02",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099oid.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099q.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099qa.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099r.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099sa.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "J03": {
+     "document": "1042-S - Foreign Person's U.S. Source Income",
+     "keywords": [
+      {
+       "keyword": "foreign person's u.s. source income",
+       "reached_by": [
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "J03",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "Z01": {
+     "document": "IRS & State Tax Notices and Letters",
+     "keywords": [
+      {
+       "keyword": "notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service",
+       "reached_by": [
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "Z01",
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
     }
    },
    "rows_without_a_filing_document": [],
@@ -6377,6 +7572,371 @@
        "rule": "any"
       }
      ]
+    },
+    "I01": {
+     "document": "Schedule K-1s Received by the Business",
+     "keywords": [
+      {
+       "keyword": "partner's share of income | beneficiary's share of income | member's share of income",
+       "reached_by": [
+        {
+         "decision": 63,
+         "kind": "case",
+         "name": "K-1 1065 in a trust.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "K-1 with its footer under box 19.pdf"
+        },
+        {
+         "decision": 93,
+         "kind": "case",
+         "name": "CA Schedule K-1 568 2025.pdf"
+        },
+        {
+         "decision": 93,
+         "kind": "case",
+         "name": "CA Schedule K-1 568 2025.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "I01",
+         "kind": "case",
+         "name": "K-1 received by the S corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "K-1 received by the corporation.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "K-1 received by the partnership.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "trust K-1 received by the corporation.pdf"
+        },
+        {
+         "expected": "I01",
+         "kind": "irs",
+         "name": "ca568k1.pdf"
+        },
+        {
+         "expected": "I01",
+         "kind": "irs",
+         "name": "f1041sk1.pdf"
+        },
+        {
+         "expected": "I01",
+         "kind": "irs",
+         "name": "f1065sk1.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1065sk1_2024.pdf"
+        },
+        {
+         "expected": "I01",
+         "kind": "irs",
+         "name": "nyit204ip.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "I02": {
+     "document": "1099-K / 1099-NEC Received by the Business",
+     "keywords": [
+      {
+       "keyword": "1099-k | 1099-nec",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "I02",
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "2025 business income and expense.xlsx"
+        },
+        {
+         "expected": "I02",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        },
+        {
+         "expected": "I02",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        }
+       ],
+       "rule": "required"
+      },
+      {
+       "keyword": "for recipient | for payee",
+       "reached_by": [
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1095-C with instructions.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-NEC.pdf"
+        },
+        {
+         "decision": 62,
+         "kind": "case",
+         "name": "1099-SA with instructions.pdf"
+        },
+        {
+         "decision": 66,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "1099-B Copy B.pdf"
+        },
+        {
+         "decision": 73,
+         "kind": "case",
+         "name": "fax cover then 1099-R.pdf"
+        },
+        {
+         "decision": 85,
+         "kind": "case",
+         "name": "1099-NEC 2025 Copy B one to a page.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-G 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-K 2025 Copy B.pdf"
+        },
+        {
+         "decision": 90,
+         "kind": "case",
+         "name": "1099-MISC 2025 Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "I03",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "I02",
+         "kind": "case",
+         "name": "1099-K Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1099-NEC Copy B.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095a.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095b.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1095c.pdf"
+        },
+        {
+         "expected": null,
+         "kind": "irs",
+         "name": "f1099da.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099div.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099g.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099h.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099int.pdf"
+        },
+        {
+         "expected": "I02",
+         "kind": "irs",
+         "name": "f1099k.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099msc.pdf"
+        },
+        {
+         "expected": "I02",
+         "kind": "irs",
+         "name": "f1099nec.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099nec_2024.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099oid.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099q.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099qa.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099r.pdf"
+        },
+        {
+         "kind": "irs",
+         "name": "f1099sa.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "I03": {
+     "document": "1042-S - Foreign Person's U.S. Source Income",
+     "keywords": [
+      {
+       "keyword": "foreign person's u.s. source income",
+       "reached_by": [
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "I03",
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "1042-S Copy B.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
+    },
+    "Z01": {
+     "document": "IRS & State Tax Notices and Letters",
+     "keywords": [
+      {
+       "keyword": "notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service",
+       "reached_by": [
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "Z01",
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
     }
    },
    "rows_without_a_filing_document": [],
@@ -7501,6 +9061,48 @@
        "rule": "any"
       }
      ]
+    },
+    "Z01": {
+     "document": "IRS & State Tax Notices and Letters",
+     "keywords": [
+      {
+       "keyword": "notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service",
+       "reached_by": [
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        },
+        {
+         "decision": 141,
+         "expected": "Z01",
+         "kind": "case",
+         "name": "IRS notice CP14.pdf"
+        }
+       ],
+       "rule": "required"
+      }
+     ]
     }
    },
    "rows_without_a_filing_document": [],
@@ -7567,13 +9169,13 @@
  "counts": {
   "catalogs": 6,
   "documents": {
-   "case": 323,
+   "case": 357,
    "irs": 106
   },
-  "keywords": 339,
+  "keywords": 371,
   "reached_only_elsewhere": 2,
   "reached_without_expectation": 11,
-  "rows": 84,
+  "rows": 107,
   "rows_without_a_filing_document": 0,
   "unreached": 66
  },
@@ -7684,13 +9286,13 @@
   "tests/irs/nyit204.pdf": "814ae022406c8d92f91499c3b29f62bd2946039c12ff9c012109c2bfff2643e9",
   "tests/irs/nyit204ip.pdf": "22a4a83ed55ade1db141eaa7721160a589f1ece2a0080b006e8c325040cfc764",
   "tests/irs/nyit204ll.pdf": "2fa553d27d160150080a13d8de4e128b5c5c1c5149cb515811ac3b17a9664044",
-  "tests/test_catalog.py": "72e7b5e6656c6c9ec31bbec505fd32f67098c81c039aa8937e870abe2729db74",
-  "tests/test_irs_forms.py": "b3844ac06785d53bb530f4f4c67e728480ed3b033cb6f25d6351561822d011ee",
+  "tests/test_catalog.py": "572398ba146e14d12f869c158ffda2d954bb88cb5768d092ad75d724caebebbf",
+  "tests/test_irs_forms.py": "cfe7dc30d5794c151d32a456c52335af0206ee0350c669da332cd83cc270d97e",
   "tests/test_real_corpus.py": "b2d17daa988c1b8ea2f3fbbd4400ecd6794c275067ff4b81734e7eb46d29db88",
   "tools/vocab_report.py": "0a1e8dbf69491e1d2ef6c842b5bf3f886088c528af4b8e3ebc8848ba577d85c0",
-  "tracker/content_check.py": "ff01abbc602dcef64a5b24e8d3ad12d75914324e288a4a02c469f4f4690b2129",
-  "tracker/manifest.py": "88ca7b67482f73f823a47e0999f49f429f7fa47ddf5b694c2090644a6e40c876",
-  "tracker/templates.py": "3ace38e1e28f60426685a45ee95c394371ed3f1e8b6847b840a2410ccf6baa7f"
+  "tracker/content_check.py": "6a213c4bf77e25a68d407135741addc5ff703be5750d6ea0bc0b214f9eb73ebd",
+  "tracker/manifest.py": "7ee630d67eeb533ac7f2b0ac06bc6fca99266e318c69b7bd175f785726abe01d",
+  "tracker/templates.py": "d8e7c40b24777a7c5ad1494b8ee9e8363bff5542834dd378c6e7212a412cd95c"
  },
  "note": "GENERATED by tools/vocab_report.py \u2014 do not edit by hand.",
  "schema": 1

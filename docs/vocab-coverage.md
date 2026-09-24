@@ -4,7 +4,7 @@
 
 Which keyword is reached by which document: every catalog row's keywords against the IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, tested with `says()` the way the router and the scanner read. Rebuild with `python tools/vocab_report.py build`; `check` says whether this matches its inputs.
 
-6 catalogs · 84 rows · 339 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 323 cases
+6 catalogs · 107 rows · 371 keywords · **66 unreached** · 2 reached only elsewhere · 11 reached without an expectation · 0 rows without a filing document · 106 IRS forms · 357 cases
 
 A hit reads *document → where the suite files it in this catalog*: **here** is this row, *parks* is Needs Review, another identifier is another row, and `?` means the suite has no expectation for that document in this catalog.
 
@@ -110,8 +110,8 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A01 — W-2 Wage Statements - All Employers
 
-- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; W-2 1099-INT and 1098 scanned together.pdf (d94) → **here**, and A02+C01; W-2 1099-INT and a brokerage cover.pdf (d94) → parks; W-2 and 1099-INT scanned together.pdf (d94) → **here**, and A02; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → ?; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → ?; fw3pr.pdf → ?; fw3ss.pdf → ?
-- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; W-2 1099-INT and 1098 scanned together.pdf (d94) → **here**, and A02+C01; W-2 1099-INT and a brokerage cover.pdf (d94) → parks; W-2 and 1099-INT scanned together.pdf (d94) → **here**, and A02; f941x.pdf → parks; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → ?; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → ?; fw3ss.pdf → ?; nyit201.pdf → B01
+- `W-2` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; firm transmittal.pdf (d67) → parks; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; W-2 1099-INT and 1098 scanned together.pdf (d94) → **here**, and A02+C01; W-2 1099-INT and a brokerage cover.pdf (d94) → parks; W-2 and 1099-INT scanned together.pdf (d94) → **here**, and A02; W-2c.pdf (d141) → parks; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → parks; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → parks; fw3pr.pdf → ?; fw3ss.pdf → ?
+- `wage and tax statement` (required) — W-2.pdf (d62) → **here**; W-3.pdf (d62) → parks; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-3.pdf (d73) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; W-2 1099-INT and 1098 scanned together.pdf (d94) → **here**, and A02+C01; W-2 1099-INT and a brokerage cover.pdf (d94) → parks; W-2 and 1099-INT scanned together.pdf (d94) → **here**, and A02; W-2c.pdf (d141) → parks; f941x.pdf → parks; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2c.pdf → parks; fw2gu.pdf → **here**; fw2vi.pdf → **here**; fw3.pdf → parks; fw3c.pdf → parks; fw3ss.pdf → ?; nyit201.pdf → B01
 - `employee's social security number` (required) — W-2.pdf (d62) → **here**; W-2 IRS layout.pdf (d63) → **here**; scanner cover then W-2.pdf (d66) → ?; W-2 2025 Copy B one to a page.pdf (d85) → **here**; W-2 with state wages.pdf (d90) → **here**; W-2 1099-INT and 1098 scanned together.pdf (d94) → **here**, and A02+C01; W-2 1099-INT and a brokerage cover.pdf (d94) → parks; W-2 and 1099-INT scanned together.pdf (d94) → **here**, and A02; fw2.pdf → **here**; fw2_2024.pdf → **here**; fw2_2025.pdf → **here**; fw2as.pdf → **here**; fw2gu.pdf → **here**; fw2vi.pdf → **here**
 
 ### A02 — 1099-INT / 1099-DIV - Interest & Dividend Income
@@ -122,7 +122,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A03 — 1099-NEC - Nonemployee Compensation
 
-- `1099-nec` (any) — 1099-NEC.pdf (d62) → **here**; 1099-NEC 2025 Copy B one to a page.pdf (d85) → **here**; f1099nec.pdf → **here**; f1099nec_2024.pdf → **here**
+- `1099-nec` (any) — 1099-NEC.pdf (d62) → **here**; 1099-NEC 2025 Copy B one to a page.pdf (d85) → **here**; 1099-NEC Copy B.pdf (d141) → ?; 2025 business income and expense.xlsx (d141) → M01; f1099nec.pdf → **here**; f1099nec_2024.pdf → **here**
 
 ### A04 — 1099-MISC - Miscellaneous Income
 
@@ -131,12 +131,25 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### A05 — 1099-K - Payment Card & Third-Party Network Transactions
 
-- `1099-k` (any) — 1099-K 2025 Copy B.pdf (d90) → **here**; f1099k.pdf → **here**
-- `payment card` (any) — 1099-K 2025 Copy B.pdf (d90) → **here**; merchant payment summary.pdf (d90) → **here**; f1099k.pdf → **here**
+- `1099-k` (any) — 1099-K 2025 Copy B.pdf (d90) → **here**; 1099-K Copy B.pdf (d141) → ?; f1099k.pdf → **here**
+- `payment card` (any) — 1099-K 2025 Copy B.pdf (d90) → **here**; merchant payment summary.pdf (d90) → **here**; 1099-K Copy B.pdf (d141) → ?; f1099k.pdf → **here**
 
 ### A06 — 1099-G - Certain Government Payments
 
 - `1099-g` (any) — 1099-G 2025 Copy B.pdf (d90) → **here**; f1099g.pdf → **here**
+
+### A07 — SSA-1099 / RRB-1099 - Social Security & Railroad Retirement Benefits
+
+- `social security benefit statement | payments by the railroad retirement board` (required) — RRB-1099.pdf (d141) → **here**; SSA-1099.pdf (d141) → **here**
+
+### A08 — 1099-C - Cancellation of Debt
+
+- `1099-c` (required) — 1099-C Copy B.pdf (d141) → **here**; f1099c.pdf → **here**
+- `cancellation of debt | amount of debt discharged` (required) — 1099-C Copy B.pdf (d141) → **here**; f1040s1.pdf → parks; f1099c.pdf → **here**
+
+### A09 — W-2G - Gambling Winnings
+
+- `w-2g` (required) — W-2G Copy B.pdf (d141) → **here**; fw2g.pdf → **here**
 
 ### B01 — Prior-Year Federal & State Tax Returns
 
@@ -176,14 +189,14 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### E02 — 1099-R Retirement Distributions
 
-- `1099-r` (any) — fax cover then 1099-R.pdf (d66) → **here**; fax cover then 1099-R.pdf (d73) → ?; f1099r.pdf → **here**
+- `1099-r` (any) — fax cover then 1099-R.pdf (d66) → **here**; fax cover then 1099-R.pdf (d73) → ?; RRB-1099-R.pdf (d141) → **here**; SSA-1099.pdf (d141) → A07; f1099r.pdf → **here**
 - `retirement distribution` (any) — RMD notice for next year.pdf (d73) → parks; pension retirement distribution summary.pdf (d73) → **here**
 
 ### F01 — Schedule K-1s Received
 
-- `partner's share of income` (any) — K-1 1065 in a trust.pdf (d63) → ?; K-1 with its footer under box 19.pdf (d66) → ?; f1065sk1.pdf → **here**; f1065sk1_2024.pdf → **here**; nyit204ip.pdf → **here**
-- `shareholder's share of income` (any) — K-1 with its footer under box 16.pdf (d66) → ?; ca100s.pdf → ?; f1120ssk.pdf → **here**; f1120ssk_2024.pdf → **here**
-- `beneficiary's share of income` (any) — f1041sk1.pdf → **here**
+- `partner's share of income` (any) — K-1 1065 in a trust.pdf (d63) → ?; K-1 with its footer under box 19.pdf (d66) → ?; K-1 received by the S corporation.pdf (d141) → ?; K-1 received by the corporation.pdf (d141) → ?; K-1 received by the partnership.pdf (d141) → ?; f1065sk1.pdf → **here**; f1065sk1_2024.pdf → **here**; nyit204ip.pdf → **here**
+- `shareholder's share of income` (any) — K-1 with its footer under box 16.pdf (d66) → ?; 1120-S K-1 in a partnership.pdf (d141) → ?; ca100s.pdf → ?; f1120ssk.pdf → **here**; f1120ssk_2024.pdf → **here**
+- `beneficiary's share of income` (any) — trust K-1 received by the corporation.pdf (d141) → ?; f1041sk1.pdf → **here**
 - `member's share of income` (any) — CA Schedule K-1 568 2025.pdf (d93) → **here**; CA Schedule K-1 568 2025.pdf (d93) → ?; ca568k1.pdf → **here**
 
 ### G01 — Property Tax Statements
@@ -196,12 +209,12 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### H01 — Estimated Tax Payment Records
 
-- `estimated tax payment voucher 1` (any) — 1040-ES voucher.pdf (d62) → **here**; 1040-ES voucher in a corporation.pdf (d73) → ?
+- `estimated tax payment voucher 1` (any) — 1040-ES voucher.pdf (d62) → **here**; 1040-ES voucher in a corporation.pdf (d73) → ?; 1040-ES voucher in a trust.pdf (d141) → ?
 - `estimated tax payment voucher 2` (any) — 1040-ES voucher 2.pdf (d73) → **here**
 - `estimated tax payment voucher 3` (any) — 1040-ES voucher 3.pdf (d73) → **here**
 - `estimated tax payment voucher 4` (any) — paid voucher stub.pdf (d67) → **here**; paid voucher stub in a corporation.pdf (d73) → ?
 - `estimated tax payment voucher for individuals` (any) — NY IT-2105 voucher.pdf (d73) → **here**
-- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → **here**; 1040-ES voucher 2.pdf (d73) → **here**; paid voucher stub in a corporation.pdf (d73) → ?; f1040es_2025.pdf → **here**; f1041es.pdf → ?
+- `amount of estimated tax you are paying` (any) — paid voucher stub.pdf (d67) → **here**; 1040-ES voucher 2.pdf (d73) → **here**; paid voucher stub in a corporation.pdf (d73) → ?; 1040-ES voucher in a trust.pdf (d141) → ?; 1041-ES voucher 1.pdf (d141) → ?; f1040es_2025.pdf → **here**; f1041es.pdf → ?
 - `estimated tax voucher` (any) — corporation estimated tax voucher.pdf (d73) → ?; estimated tax voucher 4th quarter.pdf (d73) → **here**
 - `estimated payments made` (any) — corporate estimated payments made.xlsx (d73) → ?; estimated payments made schedule.xlsx (d73) → **here**
 
@@ -239,6 +252,30 @@ Reached, but proven nothing: the cheapest placements to add.
 - `1098-t` (any) — 1098-T behind the Attention page.pdf (d66) → ?; f1098t.pdf → **here**
 - `qualified tuition and related expenses` (any) — 1098-T behind the Attention page.pdf (d66) → ?; tuition statement without the number.pdf (d73) → **here**; f1098t.pdf → **here**
 
+### L02 — 1098-E - Student Loan Interest
+
+- `1098-e` (required) — 1098-E.pdf (d141) → **here**; f1098e.pdf → **here**
+
+### L03 — 1099-Q - 529 / Coverdell Education Savings Distributions
+
+- `1099-q` (required) — 1099-Q.pdf (d62) → **here**; f1099q.pdf → **here**
+
+### M01 — Schedule C - Business Income & Expense Summary
+
+- `gross sales + ending inventory + total expense` (any) — 2025 business income and expense.xlsx (d141) → **here**
+- `business income and expense summary` (any) — business income and expense summary.xlsx (d141) → **here**
+- `business income & expense summary` (any) — business income & expense summary.xlsx (d141) → **here**
+- `schedule c worksheet` (any) — Schedule C worksheet.xlsx (d141) → **here**
+- `schedule c summary` (any) — Schedule C summary 2025.xlsx (d141) → **here**
+
+### N01 — 1042-S - Foreign Person's U.S. Source Income
+
+- `foreign person's u.s. source income` (required) — 1042-S Copy B.pdf (d141) → **here**; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?
+
+### Z01 — IRS & State Tax Notices and Letters
+
+- `notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service` (required) — IRS notice CP14.pdf (d141) → **here**; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?
+
 ## 1041
 
 ### A01 — Trust Instrument / Will & Amendments
@@ -269,9 +306,9 @@ Reached, but proven nothing: the cheapest placements to add.
 - `1099-div` (any) — 1099-DIV.pdf (d66) → ?; Schwab consolidated 1099 with a B.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → ?; Vanguard consolidated 1099.pdf (d68) → **here**; Schwab consolidated 1099 with a B.pdf (d73) → parks; f1099div.pdf → **here**
 - `1099-b` (any) — 1099-B.pdf (d62) → **here**; Schwab consolidated 1099 with a B.pdf (d68) → ?; 1099-B Copy B.pdf (d73) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks
 - `1099-oid` (any) — f1099oid.pdf → **here**
-- `1099-r` (any) — fax cover then 1099-R.pdf (d66) → ?; fax cover then 1099-R.pdf (d73) → **here**; f1099r.pdf → **here**
+- `1099-r` (any) — fax cover then 1099-R.pdf (d66) → ?; fax cover then 1099-R.pdf (d73) → **here**; RRB-1099-R.pdf (d141) → ?; SSA-1099.pdf (d141) → ?; f1099r.pdf → **here**
 - `1099-misc` (any) — Schwab consolidated 1099 with a B.pdf (d68) → ?; Schwab consolidated 1099 with a B.pdf (d73) → parks; 1099-MISC 2025 Copy B.pdf (d90) → ?; f1099msc.pdf → **here**
-- `1099-nec` (any) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
+- `1099-nec` (any) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-NEC Copy B.pdf (d141) → ?; 2025 business income and expense.xlsx (d141) → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
 - `realized gain/loss` (any) — realized gain loss export.pdf (d85) → ?; realized gain loss export.pdf (d85) → **here**; realized gain loss.xlsx (d85) → ?
 - `realized gain loss` (any) — realized gain loss report.pdf (d85) → **here**; realized gain loss.xlsx (d85) → ?
 
@@ -315,11 +352,20 @@ Reached, but proven nothing: the cheapest placements to add.
 - `schedule e detail` (any) — *unreached*
 - `schedule c detail` (any) — *unreached*
 
+### G01 — Estimated Tax Payment Records
+
+- `1041-es` (required) — 1041-ES voucher 1.pdf (d141) → **here**; f1041es.pdf → **here**
+- `estimated income tax for estates and trusts | estate or trust is making a payment of estimated tax` (required) — 1041-ES voucher 1.pdf (d141) → **here**; f1041es.pdf → **here**
+
+### Z01 — IRS & State Tax Notices and Letters
+
+- `notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service` (required) — IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → **here**; IRS notice CP14.pdf (d141) → ?
+
 ## 1065
 
 ### A01 — Prior-Year Federal & State Partnership Returns
 
-- `return of partnership income + under penalties of perjury | return of income | partnership return` (required) — CA 568 2024.pdf (d90) → **here**; NY IT-204 2024.pdf (d90) → **here**; ca565.pdf → **here**; ca568.pdf → **here**; f1065.pdf → **here**; nyit204.pdf → **here**
+- `return of partnership income + under penalties of perjury | return of income + limited liability company | partnership return` (required) — CA 568 2024.pdf (d90) → **here**; NY IT-204 2024.pdf (d90) → **here**; ca565.pdf → **here**; ca568.pdf → **here**; f1065.pdf → **here**; nyit204.pdf → **here**
 
 ### A02 — Partnership Agreement & Amendments
 
@@ -405,7 +451,7 @@ Reached, but proven nothing: the cheapest placements to add.
 
 ### F01 — Special Allocation Support - Section 704(b)
 
-- `special allocation` (any) — special allocation 704(b) support.xlsx (d73) → **here**; CA Schedule K-1 568 2025.pdf (d93) → ?; ca568k1.pdf → ?
+- `special allocation` (any) — special allocation 704(b) support.xlsx (d73) → **here**; CA Schedule K-1 568 2025.pdf (d93) → ?; ca568k1.pdf → H01
 - `section 704(b)` (any) — special allocation 704(b) support.xlsx (d73) → **here**
 
 ### G01 — State Apportionment Data - Sales, Payroll, Property by State
@@ -414,6 +460,23 @@ Reached, but proven nothing: the cheapest placements to add.
 - `apportionment data` (any) — *unreached*
 - `sales by state` (any) — *unreached*
 - `payroll by state` (any) — *unreached*
+
+### H01 — Schedule K-1s Received by the Business
+
+- `partner's share of income | beneficiary's share of income | member's share of income` (required) — K-1 1065 in a trust.pdf (d63) → ?; K-1 with its footer under box 19.pdf (d66) → ?; CA Schedule K-1 568 2025.pdf (d93) → ?; CA Schedule K-1 568 2025.pdf (d93) → ?; K-1 received by the S corporation.pdf (d141) → ?; K-1 received by the corporation.pdf (d141) → ?; K-1 received by the partnership.pdf (d141) → **here**; trust K-1 received by the corporation.pdf (d141) → ?; ca568k1.pdf → **here**; f1041sk1.pdf → **here**; f1065sk1.pdf → **here**; f1065sk1_2024.pdf → **here**; nyit204ip.pdf → **here**
+
+### H02 — 1099-K / 1099-NEC Received by the Business
+
+- `1099-k | 1099-nec` (required) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-K Copy B.pdf (d141) → ?; 1099-NEC Copy B.pdf (d141) → **here**; 2025 business income and expense.xlsx (d141) → ?; f1099k.pdf → **here**; f1099nec.pdf → **here**; f1099nec_2024.pdf → **here**
+- `for recipient | for payee` (required) — 1095-C with instructions.pdf (d62) → ?; 1099-NEC.pdf (d62) → ?; 1099-SA with instructions.pdf (d62) → ?; fax cover then 1099-R.pdf (d66) → ?; 1099-B Copy B.pdf (d73) → ?; fax cover then 1099-R.pdf (d73) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-G 2025 Copy B.pdf (d90) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-MISC 2025 Copy B.pdf (d90) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → H03; 1099-K Copy B.pdf (d141) → ?; 1099-NEC Copy B.pdf (d141) → **here**; f1095a.pdf → ?; f1095b.pdf → ?; f1095c.pdf → ?; f1099da.pdf → parks; f1099div.pdf → ?; f1099g.pdf → ?; f1099h.pdf → ?; f1099int.pdf → ?; f1099k.pdf → **here**; f1099msc.pdf → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → **here**; f1099oid.pdf → ?; f1099q.pdf → ?; f1099qa.pdf → ?; f1099r.pdf → ?; f1099sa.pdf → ?
+
+### H03 — 1042-S - Foreign Person's U.S. Source Income
+
+- `foreign person's u.s. source income` (required) — 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → **here**
+
+### Z01 — IRS & State Tax Notices and Letters
+
+- `notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service` (required) — IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → **here**; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?
 
 ## 1120
 
@@ -514,6 +577,23 @@ Reached, but proven nothing: the cheapest placements to add.
 - `m-1 adjustment` (any) — *unreached*
 - `m-1 support` (any) — M-1 support schedule.xlsx (d73) → **here**
 - `book to tax reconciliation` (any) — book to tax reconciliation memo.pdf (d73) → **here**
+
+### J01 — Schedule K-1s Received by the Business
+
+- `partner's share of income | beneficiary's share of income | member's share of income` (required) — K-1 1065 in a trust.pdf (d63) → ?; K-1 with its footer under box 19.pdf (d66) → ?; CA Schedule K-1 568 2025.pdf (d93) → ?; CA Schedule K-1 568 2025.pdf (d93) → ?; K-1 received by the S corporation.pdf (d141) → ?; K-1 received by the corporation.pdf (d141) → **here**; K-1 received by the partnership.pdf (d141) → ?; trust K-1 received by the corporation.pdf (d141) → **here**; ca568k1.pdf → **here**; f1041sk1.pdf → **here**; f1065sk1.pdf → **here**; f1065sk1_2024.pdf → ?; nyit204ip.pdf → **here**
+
+### J02 — 1099-K / 1099-NEC Received by the Business
+
+- `1099-k | 1099-nec` (required) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-K Copy B.pdf (d141) → ?; 1099-NEC Copy B.pdf (d141) → ?; 2025 business income and expense.xlsx (d141) → ?; f1099k.pdf → **here**; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
+- `for recipient | for payee` (required) — 1095-C with instructions.pdf (d62) → ?; 1099-NEC.pdf (d62) → ?; 1099-SA with instructions.pdf (d62) → ?; fax cover then 1099-R.pdf (d66) → ?; 1099-B Copy B.pdf (d73) → ?; fax cover then 1099-R.pdf (d73) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-G 2025 Copy B.pdf (d90) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-MISC 2025 Copy B.pdf (d90) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → J03; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1099-K Copy B.pdf (d141) → ?; 1099-NEC Copy B.pdf (d141) → ?; f1095a.pdf → ?; f1095b.pdf → ?; f1095c.pdf → ?; f1099da.pdf → parks; f1099div.pdf → ?; f1099g.pdf → ?; f1099h.pdf → ?; f1099int.pdf → ?; f1099k.pdf → **here**; f1099msc.pdf → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?; f1099oid.pdf → ?; f1099q.pdf → ?; f1099qa.pdf → ?; f1099r.pdf → ?; f1099sa.pdf → ?
+
+### J03 — 1042-S - Foreign Person's U.S. Source Income
+
+- `foreign person's u.s. source income` (required) — 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → **here**; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?
+
+### Z01 — IRS & State Tax Notices and Letters
+
+- `notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service` (required) — IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → **here**; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?
 
 ## 1120S
 
@@ -621,6 +701,23 @@ Reached, but proven nothing: the cheapest placements to add.
 - `sales by state` (any) — *unreached*
 - `payroll by state` (any) — *unreached*
 
+### I01 — Schedule K-1s Received by the Business
+
+- `partner's share of income | beneficiary's share of income | member's share of income` (required) — K-1 1065 in a trust.pdf (d63) → ?; K-1 with its footer under box 19.pdf (d66) → ?; CA Schedule K-1 568 2025.pdf (d93) → ?; CA Schedule K-1 568 2025.pdf (d93) → ?; K-1 received by the S corporation.pdf (d141) → **here**; K-1 received by the corporation.pdf (d141) → ?; K-1 received by the partnership.pdf (d141) → ?; trust K-1 received by the corporation.pdf (d141) → ?; ca568k1.pdf → **here**; f1041sk1.pdf → **here**; f1065sk1.pdf → **here**; f1065sk1_2024.pdf → ?; nyit204ip.pdf → **here**
+
+### I02 — 1099-K / 1099-NEC Received by the Business
+
+- `1099-k | 1099-nec` (required) — 1099-NEC.pdf (d62) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-K Copy B.pdf (d141) → **here**; 1099-NEC Copy B.pdf (d141) → ?; 2025 business income and expense.xlsx (d141) → ?; f1099k.pdf → **here**; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?
+- `for recipient | for payee` (required) — 1095-C with instructions.pdf (d62) → ?; 1099-NEC.pdf (d62) → ?; 1099-SA with instructions.pdf (d62) → ?; fax cover then 1099-R.pdf (d66) → ?; 1099-B Copy B.pdf (d73) → ?; fax cover then 1099-R.pdf (d73) → ?; 1099-NEC 2025 Copy B one to a page.pdf (d85) → ?; 1099-G 2025 Copy B.pdf (d90) → ?; 1099-K 2025 Copy B.pdf (d90) → ?; 1099-MISC 2025 Copy B.pdf (d90) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → I03; 1042-S Copy B.pdf (d141) → ?; 1099-K Copy B.pdf (d141) → **here**; 1099-NEC Copy B.pdf (d141) → ?; f1095a.pdf → ?; f1095b.pdf → ?; f1095c.pdf → ?; f1099da.pdf → parks; f1099div.pdf → ?; f1099g.pdf → ?; f1099h.pdf → ?; f1099int.pdf → ?; f1099k.pdf → **here**; f1099msc.pdf → ?; f1099nec.pdf → **here**; f1099nec_2024.pdf → ?; f1099oid.pdf → ?; f1099q.pdf → ?; f1099qa.pdf → ?; f1099r.pdf → ?; f1099sa.pdf → ?
+
+### I03 — 1042-S - Foreign Person's U.S. Source Income
+
+- `foreign person's u.s. source income` (required) — 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → ?; 1042-S Copy B.pdf (d141) → **here**; 1042-S Copy B.pdf (d141) → ?
+
+### Z01 — IRS & State Tax Notices and Letters
+
+- `notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service` (required) — IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → **here**; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?
+
 ## 990
 
 ### A01 — Prior-Year Form 990 & State Filings
@@ -708,3 +805,7 @@ Reached, but proven nothing: the cheapest placements to add.
 - `form 990-t` (any) — 990-T for 2025.pdf (d73) → **here**; f990t.pdf → **here**
 - `unrelated business income detail` (any) — UBTI schedule.xlsx (d73) → **here**
 - `ubti schedule` (any) — *unreached*
+
+### Z01 — IRS & State Tax Notices and Letters
+
+- `notice date + tax year + irs | notice date + tax year + internal revenue service | notice date + tax period + irs | notice date + tax period + internal revenue service` (required) — IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → ?; IRS notice CP14.pdf (d141) → **here**

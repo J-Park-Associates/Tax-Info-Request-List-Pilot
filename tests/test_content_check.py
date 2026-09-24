@@ -345,8 +345,9 @@ def test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again(tmp_pa
     """A verdict reached at version 9 may have been reached on nonsense: the
     page it was read from was never turned upright. The cache is
     disposable, so the version moves and the first pass after this
-    decision re-reads those scans once."""
-    assert CACHE_VERSION == 10
+    decision re-reads those scans once. (Decision 141 moved it again, for
+    the notice's first-page phrases.)"""
+    assert CACHE_VERSION == 11
 
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
@@ -483,8 +484,9 @@ def test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save(t
     # read before decision 127 turned a page upright, so a verdict on a
     # scan that came through it may have been reached on nonsense. The
     # version is carried per row now (decision 107), and it still means
-    # all that.
-    assert CACHE_VERSION == 10
+    # all that. Version 10 was read before decision 141 kept a notice's
+    # header phrases to its first page.
+    assert CACHE_VERSION == 11
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")

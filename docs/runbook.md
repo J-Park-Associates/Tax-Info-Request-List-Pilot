@@ -916,6 +916,29 @@ depreciation schedule row the 1120 always had is in the 1120-S and the
 partnership checklists too; a register of what was bought and sold, which
 never says depreciation, still belongs to the fixed-asset row beside it.
 
+And the rows the owner added after the first run on the firm's own mail
+(decision 141), every one of them unticked in the wizard. A 1040 now asks
+for the Social Security or railroad benefit statement (SSA-1099 /
+RRB-1099), the 1099-C, the W-2G, the 1098-E, the 1099-Q, the 1042-S and a
+client's own Schedule C income and expense sheet. The 1120, 1120-S and
+partnership checklists each ask for the K-1s the business itself received,
+the 1099-K and 1099-NEC it received, and the 1042-S. The trust checklist
+asks for its estimated tax vouchers (the 1041-ES; an individual's 1040-ES
+voucher dropped there still parks). And every checklist ends with **Z01, IRS &
+State Tax Notices and Letters**. Two things to know about that last one. It
+is deliberately narrow: it recognises the IRS's current notice layout - the
+CP number printed beside "Tax year" (or "Tax period") and "Notice date" -
+so an older-style IRS letter or a state notice still parks for you to file
+by hand. And a Social Security statement no longer reaches the 1099-R row:
+the SSA prints a code with "1099-R" in it at the top of the page, and the
+statement now has a row of its own that wins. A corrected or amended form
+(a W-2c, a 1065-X) still parks, on purpose. So does this year's own return
+when it arrives with papers stapled to it - a 1065 with its K-1s, a 1040
+with a W-2G - rather than filing as the K-1s or the W-2G; you see it as
+"looks like" the prior-year return row, with the period quoted. And a
+business's 1099-K / 1099-NEC row takes only the recipient's copy (Copy B):
+the copies a business keeps of 1099s it issued park.
+
 What turns that from an impression into a number is the backtest
 (`tools/backtest.py`): the firm's own already-sorted documents routed
 against the catalogs at the office, under neutral names, measuring where the
@@ -1039,9 +1062,9 @@ page either prints one of your spellings or it does not.
 the document it asks for carries a name — the **Named** column. A W-2, a
 1099, a K-1, a mortgage statement, a bank statement, a return: named. A
 receipt, a mileage log, a trial balance, a schedule, a spreadsheet export:
-not. Forty of the eighty-four shipped rows are named. For a named request
-the name must confirm or the document parks; for an unnamed one a missing
-name is nothing at all and the keywords file it as they always did. Either
+not. Sixty-one of the hundred and seven shipped rows are named. For a named
+request the name must confirm or the document parks; for an unnamed one a
+missing name is nothing at all and the keywords file it as they always did. Either
 way, a page naming somebody on *another* return of the household parks
 rather than files.
 
