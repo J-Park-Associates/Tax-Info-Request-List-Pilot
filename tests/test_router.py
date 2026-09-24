@@ -1003,6 +1003,42 @@ def test_a_near_miss_on_the_file_name_says_the_file_name_not_the_page(tmp_path):
     assert routing.reason == reasons.NAME_POINTS_AT.format(listed="A01")
 
 
+#: A partnership K-1 as OCR reads a poor copy (synthetic): the partner line
+#: F01 asks for is misread, the title zone is noise, and the Section 199A
+#: statement's two "W-2 wages" lines make W-2 the page's dominant form.
+K1_MISREAD = NL.join([
+    _SCAN_NOISE,
+    "Schedule K-1 (Form 1065) 2025 Partncr's Sharc of lncome, Deductions, Credits",
+    "Part II Information About the Partner",
+    "Statement A - QBI Pass-through Entity Reporting",
+    "Trade or business A: Section 199A W-2 wages 12,400",
+    "Trade or business B: Section 199A W-2 wages 3,100",
+    "Unadjusted basis of qualified property 0",
+])
+
+
+def test_a_k1_mentioning_w2_wages_suggests_nothing_and_holds_nothing(tmp_path):
+    """Decision 140, the designer's ruling on the review. Dominance of the
+    first page alone does not show a row's form number: the K-1 above
+    makes W-2 its dominant form and says none of A01's other phrases, so
+    it parks as plain "matched no request" - no suggestion on the card,
+    and no hold on A01's letter."""
+    from tests.test_review import parked_row
+    from tracker.content_check import _says_where
+    from tracker.reminder import _parked_holds
+
+    assert _says_where(K1_MISREAD, "W-2") == ("first_page", 1), "the premise: W-2 dominates page 1"
+    items = _catalog_1040()
+    routing = _read_by_ocr(tmp_path, "scan0004.pdf", K1_MISREAD, items)
+
+    assert routing.identifier is None and routing.candidates == ()
+    assert routing.reason == UNMATCHED
+    assert routing.evidence_record == {}
+    assert _shortlist(routing, items) == ()
+    row = parked_row("scan0004.pdf", routing.evidence_record, reason=routing.reason)
+    assert _parked_holds(items, [row]) == {}
+
+
 def test_a_form_number_said_only_deep_is_not_shown(tmp_path):
     """"Shows" means the title zone or the first page. A W-2 number that
     is the page's own only from page 2 on is no near miss: it is where a

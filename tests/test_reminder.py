@@ -33,6 +33,7 @@ from tracker.reminder import (
     CHANGED_HEADING,
     CHANGED_REMOVED,
     CONFIRM_HOLD,
+    CONFIRM_REFUSAL,
     DEADLINE_CLAUSE,
     DRAFT_BANNER,
     DRAFT_FILENAME,
@@ -68,6 +69,7 @@ from tracker.reminder import (
     draft_changed,
     draft_reminder,
     drafted_event,
+    held_refusal,
     is_approved_this_week,
     is_protected,
     is_unedited,
@@ -1065,9 +1067,28 @@ def test_a_near_miss_holds_the_reminder_and_blames_no_file(tmp_path):
     for said in (draft.held[0].reason, draft.text):
         for word in blame:
             assert word not in said, word
+    refusal = held_refusal(draft)
+    assert refusal == CONFIRM_REFUSAL.format(listed=draft.held[0].item.label)
+    assert "held until a person confirms the parked file (open it in Needs Review)" in refusal
+    assert "resends" not in refusal and "fix it here" not in refusal
     with pytest.raises(ReminderHeldError, match="A01"):
         write_draft(draft, engagement_dir=folder)
     assert list(folder.glob("reminder-draft*")) == []
+
+
+def test_a_draft_held_both_ways_is_refused_in_both_sentences():
+    """Decision 140: a confirm hold beside an ordinary one. Each row is
+    refused in its own sentence - the ordinary row still asks whether the
+    client resends, the confirm-held row only that a person confirms."""
+    from tracker.reminder import FirmSideFlag, ReminderDraft
+
+    decide = FirmSideFlag(item=NEAR_MISSED[1], reason=AMBIGUOUS_HOLD)
+    confirm = FirmSideFlag(item=NEAR_MISSED[0], reason=CONFIRM_HOLD.format(note="x"), confirm=True)
+    draft = ReminderDraft(engagement="E", subject="", body="", held=[decide, confirm])
+    assert held_refusal(draft) == "; ".join([
+        HELD_REFUSAL.format(n=1, listed=NEAR_MISSED[1].label),
+        CONFIRM_REFUSAL.format(listed=NEAR_MISSED[0].label),
+    ])
 
 
 def _sample(reason):
@@ -1100,13 +1121,14 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
 
     row = parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
                      reason="scan.pdf: " + _sample(reason))
-    holds = _parked_holds(DROPPED, [row])
+    holds = {identifier: (flag.reason, flag.confirm)
+             for identifier, flag in _parked_holds(DROPPED, [row]).items()}
     if reason in (reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT):
         assert reason.firm_side and reason.holds
-        assert holds == {"A01": CONFIRM_HOLD.format(note=reason.firm_side_note)}
+        assert holds == {"A01": (CONFIRM_HOLD.format(note=reason.firm_side_note), True)}
         return
     assert reason.holds == (reason.code in HELD_BEFORE_140) == (not reason.firm_side)
-    expected = ({"A01": PARKED_HOLD.format(ask=_ask_for(reason, DROPPED[0]))}
+    expected = ({"A01": (PARKED_HOLD.format(ask=_ask_for(reason, DROPPED[0])), False)}
                 if reason.code in HELD_BEFORE_140 else {})
     assert holds == expected
 

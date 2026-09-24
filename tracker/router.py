@@ -96,7 +96,8 @@ be parked with no candidate at all.
 
 **A near miss is a suggestion** (decision 140). A read document that
 matched nothing, and whose page still shows a row's own form number - in
-the title, or as the form dominating the first page - parks with
+the title, or as the form dominating the first page beside another of
+the row's own keywords - parks with
 ``reasons.SHOWS_ITS_FORM_NUMBER`` and that row's evidence, so the card
 offers it and the reminder holds rather than asking the client for what
 they sent. A real W-2 whose OCR reading lost one of the row's three
@@ -226,12 +227,6 @@ SEVERAL_FORMS_UNSORTED = reasons.SEVERAL_FORMS_UNSORTED
 SHOWS_ITS_FORM_NUMBER = reasons.SHOWS_ITS_FORM_NUMBER
 #: The same near miss where only the file's name points at a row.
 NAME_POINTS_AT = reasons.NAME_POINTS_AT
-#: Where a form number has to have been said for the page to *show* it:
-#: named in the title zone, or dominating the first page. A form number
-#: counts at all only where the title names it or it is the page's
-#: dominant form (``content_check.says``), so this is those two readings
-#: at the two places a person opening the document sees first.
-_SHOWN_AT = (WHERE_TITLE, WHERE_FIRST_PAGE)
 
 _WORD_SPLIT = re.compile(r"[^a-z0-9]+")
 #: What a file name uses between words, read as spaces; a hyphen stays,
@@ -299,19 +294,27 @@ def _shows_its_form_number(evidence: tuple[Evidence, ...]) -> bool:
     Decision 140. A row's own form number is a keyword of the row that is a
     form's number (``content_check.form_key``, the one normalisation, which
     reads ``W-2``, ``1098`` and ``1099-INT`` as forms and a bare ``1099``
-    only as its family); it is *shown* when the evidence says it was said
-    in the title zone or on the first page (:data:`_SHOWN_AT`). This reads
-    only what the verdict already recorded - nothing is read off the page
-    again - and it decides nothing about filing: it is the question of
-    whether a person should be handed this row to read the document
-    against.
+    only as its family). It is *shown* when the evidence says it was said
+    in the title zone, or when it was said on the first page - where a form
+    number counts only as the page's dominant form - **and** at least one
+    more of the row's own keywords was found too (the designer's ruling on
+    the review). Dominance alone is not enough: an OCR reading is one
+    "page", and a K-1 whose partner line was misread still makes W-2 its
+    dominant form on two "W-2 wages" lines, which would suggest A01 and
+    hold the whole letter. This reads only what the verdict already
+    recorded - nothing is read off the page again - and it decides nothing
+    about filing: it is the question of whether a person should be handed
+    this row to read the document against.
     """
-    return any(
-        found.rule in (RULE_REQUIRED, RULE_ANY)
-        and found.where in _SHOWN_AT
-        and form_key(found.term) is not None
-        for found in evidence
-    )
+    keywords = [found for found in evidence if found.rule in (RULE_REQUIRED, RULE_ANY)]
+    for found in keywords:
+        if form_key(found.term) is None:
+            continue
+        if found.where == WHERE_TITLE:
+            return True
+        if found.where == WHERE_FIRST_PAGE and any(other.term != found.term for other in keywords):
+            return True
+    return False
 
 
 def _near_miss(

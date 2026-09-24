@@ -676,7 +676,7 @@ became, and — when it was not filed — why not.
 | `filer.NEEDS_REVIEW` | Parked for a person; the reason says which of the rows below. | Work it in the app. |
 | `filer.ASSIGNED_BY_PERSON` | Someone filed it with **File it**, on the date shown, and what the rules had said is kept after it. | Nothing. This is the audit trail. |
 | `router.UNMATCHED` | No request on this manifest accepted it. | File it to the right request, or add the request. |
-| `reasons.SHOWS_ITS_FORM_NUMBER` / `reasons.NAME_POINTS_AT` | No request accepted it, but the page shows the **form number** of the request(s) named — in its title, or as the form its first page is about — most often a scan whose reading lost one of the phrases the request asks for; or, where the page shows none, the file's **name** points at a request, and the sentence says "file name" instead. Those requests are the card's shortlist, never a filing, and the client's reminder is held for them rather than asking for what they sent (decision 140). | Open it: if it is that request's document, file it there; if not, file it where it belongs or set it aside, and the reminder is released. |
+| `reasons.SHOWS_ITS_FORM_NUMBER` / `reasons.NAME_POINTS_AT` | No request accepted it, but the page shows the **form number** of the request(s) named — in its title, or as the form its first page is about, beside another of that request's own words — most often a scan whose reading lost one of the phrases the request asks for; or, where the page shows none, the file's **name** points at a request, and the sentence says "file name" instead. Those requests are the card's shortlist, never a filing, and the client's reminder is held for them rather than asking for what they sent (decision 140). | Open it: if it is that request's document, file it there; if not, file it where it belongs or set it aside, and the reminder is released. |
 | `router.AMBIGUOUS` | More than one request accepted it. | Pick the right one. |
 | `router.CONTESTED_PREFIX` | It looks like a named request but failed one of that request's own rules — last year's W-2, say. | Read the named rule. Usually it is the wrong year or the wrong client. |
 | `router.OCR_ONLY` | A scan or a photo with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
@@ -793,7 +793,9 @@ router's, and they appear in the index's Reason column (§4) rather than
 against a request. All four are ours: the client may well have sent the
 right document. The last two are the firm-side reasons that hold the
 reminder (decision 140), and their held line says a person here is
-confirming the file, never that the file was wrong.
+confirming the file, never that the file was wrong; the reminder's refusal
+says it is "held until a person confirms the parked file (open it in Needs
+Review)".
 
 **A row that was Received and is not any more** keeps its Received Date
 and its note begins *was Received <date>;* followed by why it left: *files
