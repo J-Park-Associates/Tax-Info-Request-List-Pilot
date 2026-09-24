@@ -625,6 +625,10 @@ def issuer_row(identifier: str, entity: str) -> dict:
         extensions=source["extensions"],
         required_keywords=name,
         any_keywords=source["any_keywords"],
+        # How many files the K-1 row expects, as the row it is cut from says
+        # (decision 145: this line was missing, so an issuer row expected one
+        # whatever the K-1 row expected - one today, so no list changed).
+        expected_count=source.get("expected_count", 1),
     )
 
 

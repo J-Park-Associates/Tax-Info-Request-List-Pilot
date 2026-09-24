@@ -1396,6 +1396,25 @@ def _household_payload(engagement: Path) -> dict:
     }
 
 
+def _rule_for_the_editor(row) -> dict:
+    """One stored rule as ``state`` hands it out: read as every reader reads
+    it (``rule_as_read``), with a row that accepts any file type saying so
+    with the star, ``["*"]``.
+
+    The record holds "any" as an empty list, but a person's blank means the
+    default types (``parse_extensions``), and ``edit`` reads what it is sent
+    as a person's row. So ``[]`` sent back unchanged became pdf, xlsx, csv
+    and the save recorded a change nobody made (decision 145). The star is
+    what the editor already sends for such a row, and it is how "any" has
+    always had to be said; a blank typed in the editor still means the
+    default types.
+    """
+    rule = rule_as_read(row)
+    if not rule["allowed_extensions"]:
+        rule["allowed_extensions"] = [ANY_EXTENSION]
+    return rule
+
+
 def _state(engagement: Path) -> dict:
     root = clients_root()
     # The store is brought up to the record before anything is read, and
@@ -1451,8 +1470,9 @@ def _state(engagement: Path) -> dict:
         # them, so a retired override spelling in an old journal reaches
         # the editor as its successor - the keywords filings taught each
         # row, and the rows the rules cannot act on: what the editor
-        # opens on, and what it shows after a save.
-        "rules": [rule_as_read(row) for row in rules],
+        # opens on, and what it shows after a save - each in the form
+        # ``edit`` reads back as the same rule (``_rule_for_the_editor``).
+        "rules": [_rule_for_the_editor(row) for row in rules],
         "learned": {row["identifier"]: list(taught[identifier_key(row["identifier"])])
                     for row in rules if taught.get(identifier_key(row["identifier"]))},
         # A request that cannot receive is a warning; a return merely short
