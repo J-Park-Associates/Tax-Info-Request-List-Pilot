@@ -679,9 +679,11 @@ class Folded:
     #: has taken back, in the order they were taught (decision 113).
     #: Keyed by the identifier exactly as the event spells it: this module
     #: sits below :mod:`tracker.records` and may not borrow its
-    #: case-folding, so the comparison that joins the two spellings of one
-    #: request is made by the reader that already owns that rule
-    #: (``tracker.store._check_learned``).
+    #: case-folding. This is the journal's own fold, what
+    #: ``python -m tracker.ledger`` prints; the store's check does not
+    #: compare against it but folds the same lines again by
+    #: ``records.identifier_key``, as the store keys them
+    #: (``tracker.store._recorded_learned``, decision 136).
     learned: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
@@ -826,13 +828,17 @@ def _apply_keyword_event(state: Folded, event: dict) -> Folded:
     unlearn removes it - so teaching, taking back and teaching again
     leaves it last, and so does teaching it twice. That is what the
     store's own fold says, where a re-learned row is inserted again and
-    carries the new sequence number (``ORDER BY seq``). The two folds
-    agree by construction rather than because no writer here teaches a
-    word twice, so ``tracker.store.check()`` can compare them tuple for
-    tuple whatever a journal carries.
+    carries the new sequence number (``ORDER BY seq``). For lines that
+    spell the request alike the two folds agree by construction rather
+    than because no writer here teaches a word twice; across spellings
+    the store's check folds by ``records.identifier_key`` (decision 136).
 
     The keyword is matched exactly, as the store keys it; the identifier is
-    the event's own spelling, for the reason :class:`Folded` gives. An
+    the event's own spelling, for the reason :class:`Folded` gives - so
+    this fold keys a request by the exact spelling each line carries, and
+    ``tracker.store.check()`` applies this same rule per
+    ``records.identifier_key`` instead (``_recorded_learned``, decision
+    136), which is how the store keys it. An
     unlearn of a word nothing taught folds to nothing: the writer
     (``tracker.manifest.unlearn_keyword``) refuses the pair by name before
     a line is written, and a reader that met one anyway is reading a

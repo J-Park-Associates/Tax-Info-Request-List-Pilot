@@ -388,9 +388,10 @@ field and both values. An empty list is the claim that the store says what
 the other copy says.
 
 There is **one** other copy, and that is the point: the journal. The
-documents, the statuses, the rules the edits fold to and — since decision
-113 — the keywords filings taught are all compared with `ledger.replay()`
-over it. Asking the readers instead would be the
+documents and the rules the edits fold to are compared with
+`ledger.replay()` over it; the statuses and — since decision 113 — the
+keywords filings taught are folded from the same lines by the store's case
+rule (decision 136, below). Asking the readers instead would be the
 store compared with itself — they answer from these very tables. An
 engagement whose journal carries no rules event has no rules on either
 side.
@@ -404,11 +405,20 @@ for. The table only ever grew, the journal's fold did not know the event
 at all, and the check never looked: a row planted or dropped behind the
 journal's back said nothing. `ledger.Folded.learned` gives the journal the
 fold — learn appends, unlearn removes, a word taught again lands last —
-and `_check_learned()` compares it with the table, one sentence per
-request whose words differ, in the order each side holds them. The
-identifier is folded without case on both sides before they are compared,
-because the table keys it that way and the journal keeps the spelling each
-line carried.
+and `_check_learned()` compares the same fold, keyed without case
+(decision 136), with the table, one sentence per
+request whose words differ, in the order each side holds them.
+
+A request is one request whatever its case (decision 136). The store keys a
+status and a taught word by `records.identifier_key`; `ledger.replay()` keys
+them by the spelling each line carried, because the journal's module sits
+below `records` and has no case rule. So for those two the check does not
+use the journal's fold: it folds the same lines again, keyed without case
+and in journal order (`_recorded_statuses`, `_recorded_learned`) — the last
+scan of a request wins, a word taught again moves last, a word taken back
+under either spelling is gone. A request the person retyped by case is one
+request to the gate, as it is to the store; the index rows, the rules, the
+intents and the household are compared exactly as before.
 
 The autouse fixture in `tests/conftest.py` does exactly this after **every
 test in the suite**: for every engagement folder the test left behind, build

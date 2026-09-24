@@ -31,8 +31,9 @@ decision 101, re-aimed by 102, 103 and 104). Every engagement folder under
 ``tmp_path`` that carries a journal is built into a store in a throwaway
 database - ``rebuild_engagement()``, from the journal and nothing else -
 and ``check()`` must return nothing at all. The other copy is
-``ledger.replay()`` over the journal, for all three halves: the
-**documents**, the **statuses** and the **rules** the edits fold to. It is
+journal: ``ledger.replay()`` for the **documents** and the **rules** the
+edits fold to, and the same lines folded by the store's case rule for the
+**statuses** and the taught keywords (decision 136). It is
 the only other copy there is, because the readers answer from these very
 tables and asking them would be the store compared with itself. A journal
 the reader refuses raises, which is what that test is about.

@@ -978,6 +978,128 @@ def test_a_malformed_unlearn_line_is_refused_by_name(conn, root, by_hand):
              ledger.KEYWORD_KEY: "lender"}, 3, by_hand.name)
 
 
+# ------------------------------------------- a request respelled by case (136) ----
+
+
+def scanned(**statuses) -> dict:
+    """One scan's line, the statuses it changed by the spelling it met."""
+    return ledger.new(ledger.SCANNED, **{ledger.STATUSES_KEY: {
+        identifier: {"status": status, "file_count": 0} for identifier, status in statuses.items()}})
+
+
+def test_a_status_scanned_under_a_case_respelled_identifier_is_one_request_to_the_check(
+        conn, root, by_hand):
+    """Decision 136: ``A01`` and ``a01`` are one request, so the later scan
+    is its status. The store keys it that way; the check used to fold the
+    two spellings apart and name the earlier one as the record's word."""
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+        store.record(conn, by_hand, scanned(a01=Status.MISSING))
+
+    held = conn.execute('SELECT status FROM statuses WHERE "identifier" = ?', ("a01",)).fetchone()
+    assert held["status"] == Status.MISSING
+    assert said(conn, root, by_hand) == []
+
+
+def test_keywords_taught_under_two_spellings_of_one_request_are_checked_in_the_order_they_were_taught(
+        conn, root, by_hand):
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, learned("A01", "alpha"), learned("a01", "beta"),
+                     learned("A01", "gamma"))
+
+    assert store.learned_keywords(conn, by_hand) == {"a01": ("alpha", "beta", "gamma")}
+    assert said(conn, root, by_hand) == []
+
+
+def test_a_word_retaught_under_the_other_spelling_is_checked_last_once(conn, root, by_hand):
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, learned("A01", "alpha"), learned("a01", "beta"),
+                     learned("A01", "gamma"), learned("a01", "alpha"))
+
+    assert store.learned_keywords(conn, by_hand) == {"a01": ("beta", "gamma", "alpha")}
+    assert said(conn, root, by_hand) == []
+
+
+def test_a_word_taken_back_under_the_other_spelling_is_gone_from_both_sides(conn, root, by_hand):
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, learned("A01", "alpha"), learned("A01", "beta"),
+                     unlearned("a01", "alpha"))
+
+    assert store.learned_keywords(conn, by_hand) == {"a01": ("beta",)}
+    assert said(conn, root, by_hand) == []
+    build(conn, root, by_hand)                    # and a store built from nothing agrees
+    assert said(conn, root, by_hand) == []
+
+
+def test_the_check_still_names_a_status_planted_in_the_store_behind_the_journals_back(
+        conn, root, by_hand):
+    """The gate keeps its teeth: keying the record's side without case
+    joins two spellings of one request, and nothing else."""
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED), learned("A01", "lender"))
+    assert said(conn, root, by_hand) == []
+    engagement_id = id_of(conn, by_hand)
+
+    conn.execute('INSERT INTO statuses (engagement_id, "identifier", status, file_count, seq) '
+                 "VALUES (?, ?, ?, ?, ?)", (engagement_id, "c01", Status.RECEIVED, 1, 99))
+    (sentence,) = said(conn, root, by_hand)
+    assert "c01" in sentence and "in the store and none in the record" in sentence
+    conn.execute('DELETE FROM statuses WHERE "identifier" = ?', ("c01",))
+
+    conn.execute('UPDATE statuses SET status = ? WHERE "identifier" = ?', (Status.MISSING, "a01"))
+    (sentence,) = said(conn, root, by_hand)
+    assert "A01" in sentence and repr(Status.MISSING) in sentence and repr(Status.RECEIVED) in sentence
+
+    conn.execute("DELETE FROM statuses")
+    (sentence,) = said(conn, root, by_hand)
+    assert "A01" in sentence and "in the record and none in the store" in sentence
+
+    conn.execute("DELETE FROM learned_keywords")
+    problems = said(conn, root, by_hand)
+    assert any("a01" in p and "[]" in p and "['lender']" in p for p in problems)
+
+    store.rebuild_engagement(conn, root, by_hand)
+    assert said(conn, root, by_hand) == []
+
+
+def test_an_end_to_end_respelling_leaves_the_check_empty(conn, root, engagement):
+    """The way it happens in the app: a scan and a filing that taught a
+    word under ``A01``, the person retypes it ``a01``, then a scan, a
+    filing that teaches, and the first word taken back in the editor."""
+    from dataclasses import replace
+
+    from tracker.filer import assign_review_file
+    from tracker.manifest import unlearn_keyword
+
+    drop(engagement, "scan0012.pdf", "nothing the rules recognise")
+    parked = sort(engagement, today=DAY1).review[0]
+    assign_review_file(engagement, parked.pbc_location, "A01", keyword="lender", today=DAY1)
+    seed_statuses(engagement, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1,
+                                                   received_date=DAY1)})
+
+    rules = load_manifest(engagement)
+    respelled = [replace(row, identifier="a01") if row.identifier == "A01" else row for row in rules]
+    assert save_rules(engagement, respelled, load_engagement_info(engagement)).removed == ("A01",)
+
+    seed_statuses(engagement, {"a01": StatusUpdate(status=Status.PARTIAL, file_count=1,
+                                                   received_date=DAY2)})
+    drop(engagement, "scan0013.pdf", "nothing the rules recognise either")
+    parked = sort(engagement, today=DAY2).review[0]
+    assign_review_file(engagement, parked.pbc_location, "a01", keyword="escrow", today=DAY2)
+    unlearn_keyword(engagement, "a01", "lender")
+
+    build(conn, root, engagement)
+    assert store.learned_keywords(conn, engagement) == {"a01": ("escrow",)}
+    assert store.check(conn, root, engagement) == []
+    live = store.connect()                        # the store as the app left it, not a rebuild
+    assert store.check(live, root, engagement) == []
+
+
 def test_the_rebuilt_rows_are_the_readers_rows_after_a_person_files_a_parked_one(
         conn, root, engagement):
     from tracker.filer import assign_review_file
