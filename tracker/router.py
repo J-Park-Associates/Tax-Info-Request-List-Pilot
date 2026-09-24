@@ -176,12 +176,14 @@ from tracker.records import (
     format_evidence,
 )
 from tracker.validators import (
+    TEXT_READ_CAP_MB,
     PdfVerdictCache,
     check_file,
     extension_of,
     google_stub_reason,
     is_cloud_placeholder,
     is_ignored,
+    too_large_reason,
 )
 
 #: Why a file was not routed. Stored verbatim in the index's Reason column.
@@ -462,15 +464,31 @@ def route_file(
     if stub := google_stub_reason(path):
         return Routing(path=path, identifier=None, reason=stub)
 
+    # Past the size ceiling the file is never read (decision 137, M5): it
+    # parks for a person with the one sentence that says why, and nothing
+    # about its name or its type is weighed.
+    if too_large := too_large_reason(path):
+        return Routing(path=path, identifier=None, reason=too_large)
+
     reading = read_once(path) if reading is None else reading
+    # A picture too large even for Pillow to decode (decision 137, B1)
+    # parks on that one sentence, as a file past the ceiling does.
+    if reading.text is None and reasons.TOO_LARGE.matches(reading.reason):
+        return Routing(path=path, identifier=None, reason=reading.reason, seconds=reading.seconds)
     # How long the reading took rides back with the decision (decision
     # 127), so the pass can name its slowest documents. It changes no
     # decision and cuts no reading short.
-    return replace(
+    routing = replace(
         _decide(path, items, reading, digest=digest, cache=cache,
                 pdf_cache=pdf_cache or PdfVerdictCache()),
         seconds=reading.seconds,
     )
+    if reading.cut and routing.identifier is None and routing.reason:
+        # Parked on the first part of a long text file: the person opening
+        # it is told the rest was never read (decision 137).
+        routing = replace(routing, reason=f"{routing.reason}; "
+                                          f"{reasons.TEXT_CUT.format(limit=TEXT_READ_CAP_MB)}")
+    return routing
 
 
 def _decide(

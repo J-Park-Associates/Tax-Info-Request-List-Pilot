@@ -809,7 +809,20 @@ def _digest_or_none(path: Path) -> str | None:
         return None
 
 
-def _move_whole(source: Path, target: Path) -> None:
+#: What a move refuses when the folder it would take a file out of is now
+#: reached through a link (decision 137, L2).
+MOVE_THROUGH_A_LINK = ("{name} is now reached through a link (a junction or a shortcut folder) "
+                       "below {within}; nothing was moved")
+
+
+class MovedThroughALinkError(OSError):
+    """The source of a move is reached through a link now: nothing moved.
+
+    An ``OSError``, because every caller of a move already treats one as
+    "left in place" - which is exactly what happened."""
+
+
+def _move_whole(source: Path, target: Path, *, within: Path) -> None:
     """Move by rename, and only by rename.
 
     ``shutil.move`` falls back to copy-and-delete when the rename is
@@ -820,7 +833,18 @@ def _move_whole(source: Path, target: Path) -> None:
     place" while a phantom sits in the target folder under the client's
     own name. A rename moves the whole file or nothing; the folders this
     moves between are in one engagement, on one volume.
+
+    **The link check is made again here, immediately before the rename**
+    (decision 137, L2). The walk that listed the file refused anything
+    behind a junction, but the move comes later, and a folder of the drop
+    swapped for a junction in between would have the rename fetch a file
+    from wherever the junction points. ``within`` is the folder the walk
+    started from (the inbox for a drop, the clients root for a recorded
+    operation, the return for a rollback); every folder from the source up
+    to it is asked again, and a link anywhere on that path moves nothing.
     """
+    if _is_link(source) or _through_a_link(source.parent, within):
+        raise MovedThroughALinkError(MOVE_THROUGH_A_LINK.format(name=source.name, within=within))
     os.rename(source, target)
 
 
@@ -1264,7 +1288,7 @@ def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None)
     target = locate(engagement_dir, op[ledger.TO_KEY])
     target.parent.mkdir(parents=True, exist_ok=True)
     if kind == ledger.OP_MOVE:
-        _move_whole(source, target)
+        _move_whole(source, target, within=root_of(engagement_dir))
     else:
         _copy_whole(source, target, expect=op.get(ledger.DIGEST_KEY, ""), cache=cache)
 
@@ -2924,7 +2948,7 @@ def _sort_all(
         else:
             try:
                 original = _unique_path(originals_dir, drop.name)
-                _move_whole(drop, original)
+                _move_whole(drop, original, within=inbox_of(first.engagement_dir))
             except OSError as exc:
                 first.report.errors.append(FileError(
                     drop.name,
@@ -4008,7 +4032,7 @@ def assign_review_file(
             if not _the_record_holds(engagement_dir, new_entry):
                 try:
                     if moved:
-                        _move_whole(target, parked)
+                        _move_whole(target, parked, within=engagement_dir)
                     elif parked_stood_in:
                         _copy_whole(target, parked, expect=digest)
                     elif not reused:          # a copy that was already there stays
@@ -4556,7 +4580,7 @@ def unfile_document(
             if not _the_record_holds(engagement_dir, new_entry):
                 try:
                     if still_the_rows:
-                        _move_whole(parked, working)
+                        _move_whole(parked, working, within=engagement_dir)
                     else:
                         parked.unlink(missing_ok=True)
                     # The copies that stood down with it come back from the
@@ -4880,14 +4904,14 @@ def restore_working_copy(
                 try:
                     if parked is not None:
                         if wanderer_moved:
-                            _move_whole(parked, wanderer)
+                            _move_whole(parked, wanderer, within=engagement_dir)
                         else:
                             parked.unlink(missing_ok=True)
                     else:
                         for copy in filled[1:]:
                             copy.unlink(missing_ok=True)
                         if wanderer_moved and filled:
-                            _move_whole(filled[0], wanderer)
+                            _move_whole(filled[0], wanderer, within=engagement_dir)
                         elif filled:
                             filled[0].unlink(missing_ok=True)
                 except (OSError, FilingError) as undo:

@@ -841,3 +841,41 @@ def test_the_readme_is_still_written_after_the_clients_root_moves(short_root, tm
     assert readme.is_file() and "2026" in readme.read_text(encoding="utf-8")   # the pass's refresh too
     page = write_status_page(after, status_report(registry, passed=runs)).read_text(encoding="utf-8")
     assert SKIP_ROLLED_FORWARD.split("{")[0] in page
+
+
+# ---------------------------------------------- decision 137: the security review ----
+
+
+def test_windows_reserved_device_names_are_never_folder_names(tmp_path):
+    """Decision 137 (L6): ``CON``, ``PRN``, ``AUX``, ``NUL``, ``COM1``-``9``
+    and ``LPT1``-``9`` - with or without an extension, in any case - are
+    devices to Windows, not folders. The sanitiser never hands one back as
+    itself, an identifier may not be one, and a household, a return or a
+    feed whose name the sanitiser would change is refused. On Windows the
+    name the sanitiser gives back is made as a real folder."""
+    import os
+
+    import tracker.api as api
+    from tracker.manifest import ManifestError, identifier_problem, is_reserved_name
+    from tracker.scaffold import sanitize_component
+
+    reserved = ["CON", "prn", "Aux", "NUL", "nul.txt", "COM1", "com9.pdf", "LPT1", "LPT9 .log"]
+    ordinary = ["CONSOLE", "Smith", "COM10", "LPT", "CON - W-2", "1040 - Con Ed"]
+    for name in reserved:
+        assert is_reserved_name(name), name
+        cleaned = sanitize_component(name)
+        assert cleaned != name and not is_reserved_name(cleaned), (name, cleaned)
+        assert "device" in identifier_problem(name.split(".")[0].strip()), name
+        with pytest.raises(ManifestError, match="is not a folder name"):
+            api._folder_name(name, "type the household's name on its own")
+        with pytest.raises(ManifestError):
+            api._feeds_from_spec([{"household": name, "return_name": "1040 - John"}],
+                                 tmp_path / "Park Family")
+        if os.name == "nt":
+            made = tmp_path / cleaned
+            made.mkdir()
+            assert made.is_dir() and cleaned in os.listdir(tmp_path)
+    for name in ordinary:
+        assert not is_reserved_name(name) and sanitize_component(name) == name, name
+    assert api._feeds_from_spec([{"household": "Smith", "return_name": "1040 - John"}],
+                                tmp_path / "Park Family")

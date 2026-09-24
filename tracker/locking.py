@@ -42,7 +42,13 @@ id. A lock whose owner is no longer running - the desktop shell killed the
 API at its own timeout, a power cut, a crash - is stale at any age: waiting
 out the run limit for a process that is gone only blocks the engagement.
 A process id the system has since reused looks alive, and then the age
-rule above applies, which is the safe direction.
+rule above applies, which is the safe direction. **The stale rules rest on
+the one-machine rule below** (decision 137, L6): "is that process still
+running" can only be asked of this machine's process table, so a lock
+naming another host is left to the age rule - and the age rule's promise,
+that Task Scheduler has killed the owner by then, is this machine's
+schedule's promise. A second machine writing under the same clients root
+is held to neither, and its lock can be taken as stale while it writes.
 
 **One machine per clients root.** ``O_EXCL`` is atomic on one filesystem. A
 lock file that a cloud client syncs between two machines is not a lock:

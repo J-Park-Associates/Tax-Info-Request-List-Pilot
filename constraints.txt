@@ -1,0 +1,40 @@
+# The whole dependency tree the portable build freezes, pinned (decision 137).
+#
+# requirements.txt and requirements-build.txt pin what the tracker imports by
+# name. They do not pin what those packages pull in - pdfminer.six under
+# pdfplumber, cryptography and charset-normalizer under pdfminer.six - and
+# pip takes the newest of each on the day of the build. So two builds of one
+# commit were not the same build (the build of 09/17 froze pypdfium2 5.13.0
+# against a pinned 5.11.0). "Build App.bat" installs with -c constraints.txt,
+# and tests/test_build.py fails when a package's BUILD-INFO.txt froze differs
+# from the version here.
+#
+# This is `pip freeze` of the build's own virtual environment (Windows,
+# Python 3.14). Change a pin in requirements*.txt and this file together:
+# rebuild, copy the new BUILD-INFO.txt's list here, run the suite.
+altgraph==0.17.5
+cffi==2.1.1
+charset-normalizer==3.5.1
+colorama==0.4.6
+cryptography==50.0.1
+et_xmlfile==2.0.0
+iniconfig==2.3.0
+openpyxl==3.1.5
+packaging==26.3
+pdfminer.six==20260107
+pdfplumber==0.11.10
+pefile==2024.8.26
+pillow==12.3.0
+pillow_heif==1.7.0
+pluggy==1.6.0
+pycparser==3.0
+Pygments==2.21.0
+pyinstaller==6.20.0
+pyinstaller-hooks-contrib==2026.7
+pypdf==6.7.4
+pypdfium2==5.11.0
+pytesseract==0.3.13
+pytest==9.1.1
+pywin32-ctypes==0.2.3
+ruff==0.14.3
+setuptools==84.0.0

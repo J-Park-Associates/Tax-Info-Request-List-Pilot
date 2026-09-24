@@ -35,9 +35,22 @@ function statusKey(status) {
 // HTML string: a client's file name, a keyword somebody typed into the
 // request list or a folder name is text, whatever characters it contains.
 // `el` is the one builder.
+//
+// It sets only the attributes this list names (decision 137): no `on...`
+// handler, no `href`, no `src`, no `style` can reach a node through it, so
+// a value that came from the API can never become code or an address, even
+// if a later caller passes attributes built from data. A name not on the
+// list is a programming error and throws.
+const EL_ATTRIBUTES = new Set([
+  "className", "dataset", "id", "type", "value", "title", "placeholder",
+  "label", "rows", "checked", "selected", "disabled",
+  "aria-label", "aria-pressed",
+]);
+
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
+    if (!EL_ATTRIBUTES.has(key)) throw new Error(`el(): attribute not allowed: ${key}`);
     if (value === undefined || value === null || value === false) continue;
     if (key === "className") node.className = value;
     else if (key === "dataset") Object.assign(node.dataset, value);
@@ -1732,10 +1745,14 @@ async function rollForward() {
         parts.push(`${one.unfiled_last_year.length} file(s) sent last year were never filed`);
       }
       lines.push(`• ${one.label}: ${parts.join("; ")}.`);
+      // Decision 137: a link that was not a web address was left behind;
+      // the sentence is the API's.
+      if (one.link_dropped) lines.push(`  ${one.link_dropped}`);
     }
     for (const one of result.retired) lines.push(`• ${one}: retired.`);
     for (const one of result.skipped) lines.push(`• ${one.prior}: ${one.reason}`);
-    banner(lines.join("\n"), result.skipped.length ? "warn" : "ok");
+    const dropped = result.rolled.some((one) => one.link_dropped);
+    banner(lines.join("\n"), result.skipped.length || dropped ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
   } finally {

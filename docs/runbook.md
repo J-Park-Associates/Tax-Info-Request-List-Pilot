@@ -23,6 +23,29 @@ it. There *is* one database — `tracker.db`, beside the app on the
 designated machine — but it is disposable: it is rebuilt from the ledgers
 in the folders, it is never synced and nobody opens it.
 
+**The app's folder is private to the firm.** `tracker.db` holds every
+client's index rows, and the folder beside it where OCR puts a page it is
+reading (emptied at the start of every pass) can hold a client's page. The
+folder inherits its permissions from wherever the app was unpacked: put the
+app in a folder only the firm's accounts on that machine can read, not in a
+shared or public one. This is a machine-setup step; the tracker does not
+change permissions.
+
+**A return the store refuses as "changed behind the tracker's back".** The
+store keeps a fingerprint of every line of a return's record it has read
+(decision 137). If a sync client or a person rewrote or reordered the record
+while keeping its length, the pass and the app refuse that return, apply
+nothing and say so. Run the store check (`python -m tracker.store "<the app folder>" check "<clients root>"`)
+to see it named, then rebuild that return; the record itself is the truth
+and nothing is lost.
+
+**The clients root is a folder of clients, and only that.** The app refuses
+the system drive's root (`C:\`), the app's own folder, the folder holding its
+settings and store, and any folder that holds one of them, and says which
+(decision 137): a root like that would be walked every two hours and written
+into. Another drive's root is fine — a drive letter mapped to the clients
+share is a real root.
+
 **The clients root must be on a Shared Drive, not in My Drive.** In My Drive
 a client owns what they upload: they could delete a document the tracker has
 already filed, and the rule that originals are never altered cannot hold on
@@ -92,6 +115,13 @@ page, in the app under the engagement picker, and at the end of every command
 line pass, under **Folders the tracker leaves alone**. If a client's folder
 appears there, that is the tracker telling you it is not set up — read the
 sentence and set it up in the app.
+
+The app will not adopt one either. Creating a household whose folder is
+already there without a record is refused before anything is written, in
+these words (decision 137): *"A folder named '<name>' is already there and
+the tracker did not make it. Choose another name, or move that folder aside
+first. Nothing was changed."* And a create that fails part way removes only
+the folders it made itself — never one it found.
 
 There is no migration and no importer: a folder from an older shape is set up
 again in the app, and the old one is left where it is until somebody deletes
@@ -643,6 +673,7 @@ became, and — when it was not filed — why not.
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
 | `reasons.SEVERAL_FORMS_UNSORTED` | One page prints two or more forms' own names (a stack scanned in one pass) and they will not sort one to a request: a form no row asks for, two rows wanting one form, or a row that accepted the page on a phrase rather than a form number. When they do sort, the page files a copy under each request and the row's Reason says so (`reasons.NAMES_SEVERAL_FORMS`). | Split the scan, or file the whole page to the one request that matters and note the rest. |
+| `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | Open it yourself and file it, or ask the client what it was meant to be. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. |
 | `router.PENDING` | A cloud placeholder, still copying down. | Nothing. The next pass picks it up. |
 
@@ -690,7 +721,7 @@ read yet.
 **Ours to deal with** (never in the client's email):
 `reasons.PENDING_SYNC`, `reasons.VANISHED`, `reasons.NO_TEXT_LAYER`,
 `reasons.NO_TEXT_AFTER_OCR`, `reasons.OCR_FAILED`,
-`reasons.HEIC_NOT_SUPPORTED`,
+`reasons.HEIC_NOT_SUPPORTED`, `reasons.TOO_LARGE`,
 `reasons.UNCHECKABLE_TYPE`, `reasons.NO_REQUEST_FOLDER`,
 `reasons.FILE_MOVED`, `reasons.COPY_CHANGED`,
 `reasons.INTERRUPTED_MOVE`, `reasons.INTERRUPTED_MOVE_LOST`. These mean the
@@ -731,6 +762,11 @@ or put another file in its place.
 `reasons.NO_EXPECTED_KEYWORD`, `reasons.WRONG_PERIOD`,
 `reasons.NO_PAGES`, `reasons.UNREADABLE_PDF`,
 `reasons.EXTRACTION_FAILED`.
+
+A note on a `.csv`, `.tsv` or `.txt` may end with `reasons.TEXT_CUT`: only
+the first part of a very long text file was read
+(`validators.TEXT_READ_CAP_MB`), so "not found" means not found in that
+part. Open the file before believing it.
 
 Two reasons in that file are not validation notes at all:
 `reasons.NO_READABLE_TEXT` and `reasons.ISSUER_NOT_NAMED` are the router's,

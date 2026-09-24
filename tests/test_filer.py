@@ -3564,9 +3564,9 @@ def moves_made(monkeypatch) -> list[tuple[str, str]]:
     real = filer_module._move_whole
     made: list[tuple[str, str]] = []
 
-    def counted(source, target):
+    def counted(source, target, *, within):
         made.append((str(source), str(target)))
-        return real(source, target)
+        return real(source, target, within=within)
 
     monkeypatch.setattr(filer_module, "_move_whole", counted)
     return made
@@ -3605,8 +3605,8 @@ def killed_after_the_move(monkeypatch):
     real = filer_module._move_whole
     state = {"died": False}
 
-    def dying(source, target):
-        real(source, target)
+    def dying(source, target, *, within):
+        real(source, target, within=within)
         if not state["died"]:
             state["died"] = True
             raise KeyboardInterrupt
@@ -5977,3 +5977,73 @@ def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path)
     assert parked.reason == PATH_NO_ROOM_IN.format(label=label, length=261, limit=260, ext=".pdf")
     assert "this request" not in parked.reason
     assert parked.pbc_location == original_at(father, "tb.pdf")
+
+
+# ---------------------------------------------- decision 137: the security review ----
+
+
+def test_a_drop_over_the_size_ceiling_goes_to_review_unread(engagement, monkeypatch):
+    """Decision 137 (M5): past ``validators.MAX_READ_MB`` a drop is never
+    opened by the reader - no text layer, no OCR - and parks for a person
+    with the one sentence that says why. It is still counted: moved out of
+    the inbox into the year's originals and recorded like any other drop."""
+    import tracker.content_check as content_check
+    import tracker.validators as validators
+
+    drop(engagement, "huge.pdf", "Form W-2 Wage and Tax Statement 2025")
+    size = (inbox_of(engagement) / "huge.pdf").stat().st_size
+    monkeypatch.setattr(validators, "MAX_READ_MB", size / (1024 * 1024) / 2)
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the reader opened a file past the ceiling")
+
+    monkeypatch.setattr(content_check, "_extract", never)
+    monkeypatch.setattr(content_check, "extract_by_ocr", never)
+
+    report = sort(engagement, today=DAY1)
+
+    assert report.filed == []
+    [parked] = report.review
+    assert parked.decision == NEEDS_REVIEW
+    assert reasons.TOO_LARGE.matches(parked.reason)
+    assert parked.reason.startswith("Too large to read (") and "A person looks at it." in parked.reason
+    assert [p.name for p in originals(engagement).iterdir()] == ["huge.pdf"]   # counted and kept
+    assert [row.original_name for row in read_index(engagement)] == ["huge.pdf"]
+
+
+def _link_to(target, link):
+    """A junction on Windows, a symlink elsewhere: a folder that is a link."""
+    if sys.platform == "win32":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_path, monkeypatch):
+    """Decision 137 (L2): the link check is made again immediately before
+    the rename. The walk refuses what lies behind a junction, but the move
+    comes later; a drop's folder swapped for a junction in between must not
+    have the rename fetch a file from wherever the junction points."""
+    import tracker.filer as filer
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "theirs.pdf").write_bytes(b"%PDF-1.4 somebody else's file")
+    inbox = inbox_of(engagement)
+    _link_to(outside, inbox / "swapped")
+    behind = inbox / "swapped" / "theirs.pdf"
+
+    # Directly: the move itself refuses, and says why.
+    with pytest.raises(filer.MovedThroughALinkError, match="reached through a link"):
+        filer._move_whole(behind, originals(engagement) / "theirs.pdf", within=inbox)
+    assert (outside / "theirs.pdf").exists()
+
+    # Through a pass whose listing was made before the swap: left in place.
+    monkeypatch.setattr(filer, "iter_drops", lambda folder: [behind])
+    report = sort(engagement, today=DAY1)
+    assert [e.name for e in report.errors] == ["theirs.pdf"]
+    assert report.errors[0].left_in_place and "reached through a link" in report.errors[0].error
+    assert (outside / "theirs.pdf").exists()
+    assert report.filed == [] and report.review == []

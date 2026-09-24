@@ -119,6 +119,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import ledger, store
+from tracker.content_check import OCR_SCRATCH_DIR_NAME, ocr_scratch
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -176,6 +177,7 @@ from tracker.settings import (
     clients_root,
     firm,
     product_name,
+    settings_dir,
     settings_path,
 )
 from tracker.store import StoreError
@@ -1463,8 +1465,12 @@ def main(argv: list[str] | None = None) -> int:
     if ns.only and not loaded.find(ns.only):
         raise SystemExit(f"Nothing in {loaded.source} matches {ns.only!r}")
 
-    result = run_registry(loaded, today=when, dry_run=ns.dry_run,
-                          reminders=ns.reminders, weekday=day, only=ns.only)
+    # OCR's temporary page images go to the app's own folder for the
+    # pass, which is emptied first (decision 137, L7): a pass the scheduler
+    # killed mid-page leaves a client's page there, not in %TEMP%.
+    with ocr_scratch(settings_dir() / OCR_SCRATCH_DIR_NAME):
+        result = run_registry(loaded, today=when, dry_run=ns.dry_run,
+                              reminders=ns.reminders, weekday=day, only=ns.only)
     print(format_report(result))
 
     if ns.log:

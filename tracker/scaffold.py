@@ -75,6 +75,7 @@ from tracker.manifest import (
     WINDOWS_ILLEGAL_CHARS,
     Override,
     RequestItem,
+    is_reserved_name,
     label_for,
     load_engagement_info,
     load_manifest,
@@ -157,10 +158,21 @@ _MAX_FOLDER_NAME = 100
 
 
 def sanitize_component(text: str) -> str:
-    """Make ``text`` safe as (part of) a Windows folder name."""
+    """Make ``text`` safe as (part of) a Windows folder name.
+
+    A name Windows keeps for a device (``CON``, ``NUL``, ``COM1`` ...,
+    ``manifest.WINDOWS_RESERVED_NAMES``) is never handed back as itself
+    (decision 137, L6): it gains a trailing ``_``, so a folder is made
+    rather than a device opened - and every caller that refuses a name the
+    sanitiser changed (a household, a return, a feed) refuses it.
+    """
     cleaned = _ILLEGAL_CHARS.sub("-", text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned.rstrip(". ")
+    cleaned = cleaned.rstrip(". ")
+    if cleaned and is_reserved_name(cleaned):
+        stem, dot, rest = cleaned.partition(".")
+        cleaned = f"{stem.rstrip(' ')}_{dot}{rest}"
+    return cleaned
 
 
 def folder_name_for(item: RequestItem) -> str:

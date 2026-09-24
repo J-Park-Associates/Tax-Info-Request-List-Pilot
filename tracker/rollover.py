@@ -65,6 +65,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from tracker.fsio import make_new_folders
 from tracker.households import household_returns, load_household_info, open_years
 from tracker.layout import household_of, return_dir_for, root_of
 from tracker.manifest import (  # shift_years/detect_year re-exported: they live in manifest
@@ -83,7 +84,7 @@ from tracker.manifest import (  # shift_years/detect_year re-exported: they live
     shift_item,
     shift_years,
 )
-from tracker.records import EngagementInfo, HouseholdInfo
+from tracker.records import EngagementInfo, HouseholdInfo, link_problem
 from tracker.templates import ask_by_for, filing_deadline_for, template_items
 
 #: Why a row is on the new list. Reported in the CLI and the API's reply.
@@ -147,6 +148,9 @@ class RolloverReport:
     rolled: list[RolledItem] = field(default_factory=list)
     offered: list[RolledItem] = field(default_factory=list)   # template rows not added
     unfiled_last_year: list[str] = field(default_factory=list)
+    #: :data:`LINK_NOT_CARRIED` when the prior's link was left behind
+    #: because it is not a web address (decision 137, L5), else ``""``.
+    link_dropped: str = ""
 
     @property
     def items(self) -> list[RequestItem]:
@@ -204,6 +208,23 @@ class HouseholdRollover:
 
 
 # ------------------------------------------------------------- carry rules ----
+
+#: What a rollover says of a link it did not carry (decision 137, L5, the
+#: owner's ruling on phase 1): a link recorded before the rule that is not a
+#: web address is dropped, with this reason, rather than refusing the roll -
+#: the same treatment an existing letter gives it.
+LINK_NOT_CARRIED = ("The link '{link}' was not carried into the new year: it is not a web "
+                    "address (http:// or https://). Paste the inbox's link into the "
+                    "household's or the return's details.")
+
+
+def carried_link(link: str) -> tuple[str, str]:
+    """The link a rolled return starts with, and why it was dropped when it
+    was: a web address is carried as it is; anything else is dropped with
+    :data:`LINK_NOT_CARRIED` (decision 137, L5)."""
+    if link_problem(link):
+        return "", LINK_NOT_CARRIED.format(link=str(link).strip())
+    return link, ""
 
 
 def next_tax_year(prior_year: int) -> int:
@@ -619,12 +640,15 @@ def _roll_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
         # The inbox is the household's and does not change from one year
         # to the next, so its link and its greeting are refilled here
         # rather than left blank for somebody to notice in February.
+        link, report.link_dropped = carried_link(carried.link or household_info.link)
         carried = replace(carried,
                           client=carried.client or household_info.contact,
-                          link=carried.link or household_info.link,
+                          link=link,
                           household=household, return_name=return_name)
         info = with_default_dates(carried, carried.form or plan.form, target_year)
-        target.mkdir(parents=True)
+        # The return and, in a new year, its year folder - and only what
+        # this call's own mkdir made is removed again (decision 137).
+        made = make_new_folders(target)
         try:
             create_engagement(target, report.items, info)
             scaffold_engagement(target)
@@ -634,7 +658,8 @@ def _roll_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
             # happens next, then the store's row in its own try, because
             # a store that cannot be reached at this moment must not
             # replace the refusal the person is owed with its own.
-            shutil.rmtree(target, ignore_errors=True)
+            for folder in reversed(made):
+                shutil.rmtree(folder, ignore_errors=True)
             try:
                 store.forget(store.connect(), target)
             except Exception:

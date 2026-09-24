@@ -226,7 +226,14 @@ ENV_STORE = "TRACKER_STORE"
 #: version-10 file may hold two years of one return as one row. It is
 #: refused, deleted and rebuilt from the journals like every version
 #: before it, and each return is keyed by household, year and return.
-SCHEMA_VERSION = 11
+#: Version 12 (decision 137, A3) added ``applied_digest`` to
+#: ``engagements``: the running chain over the journal lines the store has
+#: applied (``ledger.read_with_chain``), so a journal rewritten or reordered
+#: to the same length is refused rather than blessed. A version-11 file has
+#: no such column, so it is refused, deleted and rebuilt from the journals
+#: like every version before it, and the rebuild computes the chain as it
+#: replays.
+SCHEMA_VERSION = 12
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by
@@ -366,6 +373,7 @@ SCHEMA: tuple[str, ...] = (
         kind TEXT NOT NULL DEFAULT '{KIND_RETURN}',
         ledger_head TEXT NOT NULL DEFAULT '',
         applied_seq INTEGER NOT NULL DEFAULT 0,
+        applied_digest TEXT NOT NULL DEFAULT '',
         built_at TEXT NOT NULL
     )""",
     f"""CREATE TABLE IF NOT EXISTS requests (
@@ -760,7 +768,7 @@ def _to_sql(value: object) -> object:
 #: writers insert a row - the reader's top-up, the rebuild and nothing
 #: else - and a column added to either record must reach all of them.
 _NEW_ENGAGEMENT_COLUMNS = f'"path", {_names(ENGAGEMENT_COLUMNS)}, {_names(HOUSEHOLD_COLUMNS)}, ' \
-                          "kind, ledger_head, applied_seq, built_at"
+                          "kind, ledger_head, applied_seq, applied_digest, built_at"
 
 
 def _new_engagement_defaults() -> list[object]:
@@ -795,6 +803,10 @@ def _rule_from_sql(stored: sqlite3.Row) -> dict:
         value = stored[name]
         if name in RULE_LIST_FIELDS:
             row[name] = json.loads(value or "[]")
+            # Read back as it was written: a list of words (decision 137, L4).
+            if problem := records.word_list_problem(row[name]):
+                raise StoreError(f"the stored rule {stored['identifier']!r}'s {name!r} {problem}; "
+                                 f"run the store check, then rebuild")
         elif name in RULE_FLAG_FIELDS:
             # A null is a line that never said - a journal from before the
             # field existed - and what that means is the record's answer,
@@ -1118,7 +1130,14 @@ def _write_status(
 
 
 def _write_rule(conn: sqlite3.Connection, engagement_id: int, row: dict) -> None:
-    """One rule row, as ``records.rule_to_json`` shapes it, into ``requests``."""
+    """One rule row, as ``records.rule_to_json`` shapes it, into ``requests``.
+
+    Its list fields are lists of words, or nothing is written (decision
+    137, L4): the line was checked on its way in, and this is the same
+    rule said where the row reaches the table."""
+    for name in RULE_LIST_FIELDS:
+        if problem := records.word_list_problem(row.get(name)):
+            raise StoreError(f"the rule {row.get('identifier')!r}'s {name!r} {problem}")
     columns = f"engagement_id, {_names(RULE_COLUMNS)}"
     conn.execute(
         f"INSERT OR REPLACE INTO requests ({columns}) VALUES ({_marks(len(RULE_COLUMNS) + 1)})",
@@ -1227,7 +1246,11 @@ def _household_cell(name: str, info: dict) -> object:
     return _to_sql([value] if isinstance(value, str) else list(value or []))
 
 
-MALFORMED_LINE = "{where}: line {seq} ({event}) {problem}; the journal is not applied past it"
+#: The one sentence a line the store will not apply is refused with
+#: (decision 137, L4): which line of which record, that it is malformed,
+#: and what is wrong with it.
+MALFORMED_LINE = ("{where}: line {seq} of the record is malformed ({event} {problem}); "
+                  "the journal is not applied past it")
 #: The key decision 129's hand-over intent carried the other record's half
 #: under. Named here, by the one reader that still speaks of it, so that
 #: the refusal says it by name (decision 132).
@@ -1268,6 +1291,11 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
         for row in rows or []:
             if not isinstance(row, dict):
                 refuse(f"carries a rule that is not a row: {row!r:.60}")
+            # A list field that is not a list of words (decision 137, L4):
+            # a string there would be read as one keyword per letter.
+            for field_name in sorted(RULE_LIST_FIELDS):
+                if problem := records.word_list_problem(row.get(field_name)):
+                    refuse(f"carries a rule whose {field_name!r} {problem}")
         removed = event.get(ledger.REMOVED_KEY)
         if removed is not None and not isinstance(removed, list):
             refuse(f"carries {ledger.REMOVED_KEY!r} that is not a list")
@@ -1287,6 +1315,18 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str) -> None:
                 records.people_from_json(info["people"])
             except (ValueError, TypeError, json.JSONDecodeError) as exc:
                 refuse(f"carries people this version cannot read ({exc})")
+    elif name in ledger.ROW_EVENTS:
+        # An index row (decision 137, L4). Its key is the row's identity and
+        # its row is a mapping; left to the fold, a row that is a string or
+        # a key that is missing ended the whole pass inside discovery.
+        key = event.get(ledger.KEY_KEY)
+        if not isinstance(key, str) or not key:
+            refuse(f"carries no {ledger.KEY_KEY!r}")
+        if not isinstance(event.get(ledger.ROW_KEY), dict):
+            refuse(f"carries {ledger.ROW_KEY!r} that is not a row")
+        leaving = event.get(ledger.WAS_KEY)
+        if leaving is not None and not isinstance(leaving, str):
+            refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
     elif name == ledger.SCANNED:
         statuses = event.get(ledger.STATUSES_KEY)
         if statuses is not None and not isinstance(statuses, dict):
@@ -1555,12 +1595,17 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
             raise StoreError(f"{name!r} is not an event this version writes; nothing was written")
     row = _held_under_the_lock(conn, engagement_dir,
                                unwritten=f"{len(events)} event(s) were", doing="recording to it")
-    already = len(ledger.read_events(engagement_dir))
+    lines, _head, chain = ledger.read_with_chain(engagement_dir)
+    already = len(lines)
     if already != row["applied_seq"]:
         raise StoreError(
             f"{engagement_dir.name}: the store has applied {row['applied_seq']} of the journal's "
             f"{already} line(s); sync() it before recording to it"
         )
+    # The same count is not the same lines (decision 137, A3): a journal
+    # rewritten to its own length would otherwise have this call's line
+    # appended to it and its head blessed.
+    _refuse_a_rewrite(conn, row, lines, chain, engagement_dir.name)
     if not events:
         return row["applied_seq"]
     for event in events:
@@ -1632,15 +1677,21 @@ def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_d
     fails the look and is caught up.
     """
     row = _engagement_row(conn, engagement_dir, root)
-    look = ledger.read_with_head(engagement_dir)
+    look = ledger.read_with_chain(engagement_dir)
     if row is not None and len(look[0]) == row["applied_seq"]:
+        # Equal counts are "nothing to do" only when they are the same
+        # lines (decision 137, A3; SPEC-135's no-lock look): a journal
+        # rewritten to its own length is refused here, and nothing is
+        # written, exactly as it is inside the transaction.
+        _refuse_a_rewrite(conn, row, look[0], look[2],
+                          engagement_path(key_root(engagement_dir, root), engagement_dir))
         return row["applied_seq"]
     with _transaction(conn):
         return _catch_up(conn, root, engagement_dir, build=build, known=look)
 
 
 def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir: Path | str,
-              *, build: bool, known: tuple[list[dict], str] | None = None) -> int:
+              *, build: bool, known: tuple[list[dict], str, list[str]] | None = None) -> int:
     """Apply what the journal holds past the store. The caller holds the transaction.
 
     **One read, inside the transaction** (decision 135). The row, the
@@ -1663,11 +1714,18 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
 
     ``known`` is the look :func:`_look_then_catch_up` made outside; it
     saves a second parse of the same bytes and nothing else - the file is
-    read here all the same (:func:`tracker.ledger.read_with_head`).
+    read here all the same (:func:`tracker.ledger.read_with_chain`).
+
+    **The prefix is proved before the tail is replayed** (decision 137,
+    A3). The store keeps the chain over the lines it has applied
+    (``applied_digest``); the chain over the same number of lines of the
+    journal read now must equal it, or the journal was rewritten behind the
+    store's back and nothing is applied (:func:`_refuse_a_rewrite`). It is
+    never repaired here: a rebuild is the answer, after the check.
     """
     engagement_dir = Path(engagement_dir)
     row = _engagement_row(conn, engagement_dir, root)
-    events, head = ledger.read_with_head(engagement_dir, known=known)
+    events, head, chain = ledger.read_with_chain(engagement_dir, known=known)
     if row is None:
         rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
         if not build:
@@ -1675,8 +1733,8 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
         defaults = _new_engagement_defaults()
         cursor = conn.execute(
             f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
-            f"VALUES ({_marks(len(defaults) + 4)})",
-            (rel, *defaults, head, len(events), ledger.stamp()),
+            f"VALUES ({_marks(len(defaults) + 5)})",
+            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), ledger.stamp()),
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)
@@ -1688,14 +1746,53 @@ def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir:
             f"{rel}: the store has applied {applied} line(s) and the journal holds {len(events)}; "
             f"the journal was truncated or replaced - rebuild the engagement"
         )
+    _refuse_a_rewrite(conn, row, events, chain,
+                      engagement_path(key_root(engagement_dir, root), engagement_dir))
     if len(events) == applied:
         return applied
     seq = _apply(conn, row["id"], events[applied:], start=applied + 1)
     conn.execute(
-        "UPDATE engagements SET applied_seq = ?, ledger_head = ? WHERE id = ?",
-        (seq, head, row["id"]),
+        "UPDATE engagements SET applied_seq = ?, ledger_head = ?, applied_digest = ? WHERE id = ?",
+        (seq, head, ledger.chain_at(chain, seq), row["id"]),
     )
     return seq
+
+
+#: What the store says of a journal whose applied lines no longer chain to
+#: the digest it kept (decision 137, A3). The same shape as the refusal of a
+#: truncated journal: what happened, that nothing was applied, what to do.
+REWRITTEN = ("The record for {rel} was changed behind the tracker's back (line {line} onward "
+             "no longer matches). Nothing was applied. Run the store check, then rebuild.")
+
+
+def _rewritten_from(conn: sqlite3.Connection, engagement_id: int, events: list[dict],
+                    applied: int) -> int:
+    """The first applied line whose event the store holds differently, by
+    the events table's own copy - or 1 when the lines differ only in their
+    bytes (a key reordered, a space), which the table cannot tell apart."""
+    stored = conn.execute("SELECT seq, payload FROM events WHERE engagement_id = ? ORDER BY seq",
+                          (engagement_id,)).fetchall()
+    held = {one["seq"]: one["payload"] for one in stored}
+    for seq, event in enumerate(events[:applied], start=1):
+        if held.get(seq) != json.dumps(event, ensure_ascii=False, sort_keys=True):
+            return seq
+    return 1
+
+
+def _refuse_a_rewrite(conn: sqlite3.Connection, row: sqlite3.Row, events: list[dict],
+                      chain: list[str], rel: str) -> None:
+    """Refuse, by :data:`REWRITTEN`, a journal whose first ``applied_seq``
+    lines are not the lines the store applied (decision 137, A3).
+
+    The chain over those lines as the file holds them now is compared with
+    the one the store kept. A journal shorter than that is the truncation
+    the callers already refuse, and is left to them."""
+    applied = row["applied_seq"]
+    if len(events) < applied:
+        return
+    if ledger.chain_at(chain, applied) == row["applied_digest"]:
+        return
+    raise StoreError(REWRITTEN.format(rel=rel, line=_rewritten_from(conn, row["id"], events, applied)))
 
 
 def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
@@ -1873,7 +1970,7 @@ def rebuild_engagement(
         # The lines and their head from one read, inside the transaction
         # (decision 135): a line a writer records while this waits for the
         # lock is in the rows, not only in the head.
-        events, head = ledger.read_with_head(engagement_dir)
+        events, head, chain = ledger.read_with_chain(engagement_dir)
         # The children go with it: every table references the engagement
         # with ON DELETE CASCADE and foreign keys are on, so one delete is
         # the whole of "forget what you knew about this folder".
@@ -1881,10 +1978,12 @@ def rebuild_engagement(
         if known is not None:
             conn.execute("DELETE FROM engagements WHERE id = ?", (known["id"],))
         defaults = _new_engagement_defaults()
+        # The applied chain is computed as the lines are replayed
+        # (decision 137, A3): a rebuild is how an older store upgrades.
         cursor = conn.execute(
             f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
-            f"VALUES ({_marks(len(defaults) + 4)})",
-            (rel, *defaults, head, len(events), built_at),
+            f"VALUES ({_marks(len(defaults) + 5)})",
+            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), built_at),
         )
         if events:
             _apply(conn, cursor.lastrowid, events, start=1)
@@ -1927,12 +2026,19 @@ def check(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str
     name = Path(engagement_dir).name
     rel = engagement_path(key_root(engagement_dir, root), engagement_dir)
     engagement = _engagement_row(conn, engagement_dir, root)
-    events, _head = ledger.read_with_head(engagement_dir)
+    events, _head, chain = ledger.read_with_chain(engagement_dir)
     folded = ledger.replay(events)
     if engagement is None:
         return [f"{rel}: the store does not hold this engagement, and its record carries "
                 f"{len(folded.rows)} index row(s) and {len(folded.rules)} request row(s)"]
-    problems = _check_documents(conn, engagement["id"], name, folded.rows)
+    problems: list[str] = []
+    applied = engagement["applied_seq"]
+    if applied <= len(events) and ledger.chain_at(chain, applied) != engagement["applied_digest"]:
+        # The applied chain (decision 137, A3): the lines the store applied
+        # are not the lines the journal holds now.
+        problems.append(REWRITTEN.format(
+            rel=rel, line=_rewritten_from(conn, engagement["id"], events, applied)))
+    problems += _check_documents(conn, engagement["id"], name, folded.rows)
     problems += _check_statuses(conn, engagement["id"], name, _recorded_statuses(events))
     problems += _check_rules(conn, engagement["id"], name, folded)
     problems += _check_intents(conn, engagement["id"], name, folded.intents)

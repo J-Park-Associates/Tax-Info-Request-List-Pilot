@@ -79,8 +79,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
+import shutil
+import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import MISSING, asdict, dataclass, fields, replace
 from pathlib import Path
 
@@ -109,7 +114,15 @@ from tracker.records import (
     format_evidence,  # noqa: F401
     parse_evidence,  # noqa: F401
 )
-from tracker.validators import IMAGE_EXTENSIONS, PDF_EXTENSION, extension_of, sha256_of
+from tracker.validators import (
+    IMAGE_EXTENSIONS,
+    PDF_EXTENSION,
+    TEXT_READ_CAP_MB,
+    extension_of,
+    picture_too_large_reason,
+    sha256_of,
+    too_large_reason,
+)
 
 log = logging.getLogger("tracker.content_check")
 
@@ -161,6 +174,16 @@ MAX_PAGES = 10
 XLSX_EXTENSIONS = ("xlsx", "xlsm")
 TEXT_EXTENSIONS = ("csv", "tsv", "txt")
 _MAX_OCR_PAGES = MAX_PAGES
+#: The most pixels one page or one photo is read at (decision 137, B1).
+#: Rendering has to stay bounded: a PDF page may be 14,400 points square,
+#: which at the old fixed scale of 2 is some 830 million pixels, and
+#: ``bitmap.to_pil()`` hands Pillow an image without its decompression-bomb
+#: guard ever being asked. Forty million is a letter page at about 600 dpi -
+#: far past what Tesseract needs - so an ordinary page is read exactly as
+#: before, and a giant one is read smaller rather than refused.
+PIXEL_BUDGET = 40_000_000
+#: The scale an ordinary PDF page is rendered at for OCR (144 dpi).
+RENDER_SCALE = 2.0
 
 #: Tesseract's own confidence in the turn it says a page has. Its scale is
 #: not a percentage: on a form it comes back in the tens, and anything
@@ -249,6 +272,9 @@ class Extraction:
     #: It is the number the reader benchmark and the owner's speed ceiling
     #: are measured in.
     seconds: float = 0.0
+    #: Only the first ``validators.TEXT_READ_CAP_MB`` of a text file was
+    #: read (decision 137). Said beside any verdict reached on it.
+    cut: bool = False
 
 
 # ------------------------------------------------------------------ rules ----
@@ -1078,6 +1104,36 @@ def _found(rule: str, text: str, keyword: str, dominant: set[str]) -> Evidence |
     return None if place is None else Evidence(rule, keyword, place[0], place[1])
 
 
+#: The longest line a Date Pattern is run over (decision 137, L3). A
+#: pattern is a person's typing, and a typo such as ``(\d+)+x`` backtracks
+#: exponentially in the length of what it is run over. Run over the whole
+#: of an OCR reading, one such pattern could hold a pass for hours; run
+#: line by line, with long lines left out, the worst it can do is bounded
+#: by one short line. A date on a real document sits on a short line.
+DATE_LINE_MAX = 500
+
+
+def date_pattern_at(pattern: str, text: str) -> int | None:
+    """Where in ``text`` the row's Date Pattern first matches, or None.
+
+    Compiled once, then run **line by line** (decision 137, L3), and a
+    line longer than :data:`DATE_LINE_MAX` is skipped. The offset is into
+    the whole text, so where the date was said is still found by
+    :func:`_where_said`. A pattern that does not compile was refused when
+    it was saved; one that reaches here anyway matches nothing.
+    """
+    try:
+        compiled = re.compile(pattern)
+    except re.error:
+        return None
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        if len(line) <= DATE_LINE_MAX and (match := compiled.search(line)):
+            return offset + match.start()
+        offset += len(line)
+    return None
+
+
 def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = None) -> ContentResult:
     """Apply the manifest row's content rules to extracted text.
 
@@ -1122,14 +1178,14 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
         found.extend(hits)
 
     if item.date_pattern:
-        match = re.search(item.date_pattern, text)
-        if not match:
+        at = date_pattern_at(item.date_pattern, text)
+        if at is None:
             return ContentResult(ok=False,
                                  reason=reasons.WRONG_PERIOD.format(pattern=item.date_pattern),
                                  evidence=tuple(found))
         # The row's Period, not the regex it derives and not a word of the
         # document: what a person reading the index needs is "TY2025".
-        where, page = _where_said(text, match.start())
+        where, page = _where_said(text, at)
         found.append(Evidence(RULE_DATE, item.period or item.date_pattern, where, page))
 
     return ContentResult(ok=True, evidence=tuple(found))
@@ -1179,14 +1235,41 @@ def _extract_xlsx(path: Path) -> str:
     return "\n".join(parts)
 
 
+def _text_cap_bytes() -> int:
+    return TEXT_READ_CAP_MB * 1024 * 1024
+
+
+def _is_cut(path: Path) -> bool:
+    """Whether :func:`_extract_textfile` reads less than the whole file."""
+    try:
+        return path.stat().st_size > _text_cap_bytes()
+    except OSError:
+        return False
+
+
 def _extract_textfile(path: Path) -> str:
-    raw = path.read_bytes()
-    for encoding in ("utf-8", "cp1252"):
-        try:
-            return raw.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return raw.decode("latin-1", errors="replace")
+    """The text of a ``.csv``/``.tsv``/``.txt``, **up to its first**
+    ``TEXT_READ_CAP_MB`` (decision 137): enough for any real statement, and
+    a file past it is read that far and no further. A UTF-8 character the
+    cut split in two is left off rather than turning the whole reading
+    into another encoding."""
+    cap = _text_cap_bytes()
+    with path.open("rb") as handle:
+        raw = handle.read(cap + 1)
+    cut = len(raw) > cap
+    raw = raw[:cap]
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        if cut and exc.start >= len(raw) - 3:
+            try:
+                return raw[:exc.start].decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+    try:
+        return raw.decode("cp1252")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1", errors="replace")
 
 
 def extract_text(path: Path) -> str | None:
@@ -1288,6 +1371,27 @@ def _upright(image):
     return image if turn % 360 == 0 else image.rotate(-turn, expand=True)
 
 
+def render_scale(width: float, height: float) -> float:
+    """The scale a PDF page of ``width`` x ``height`` points is rendered at
+    for OCR: :data:`RENDER_SCALE`, or less, so the page never passes
+    :data:`PIXEL_BUDGET` (decision 137, B1). At scale 1 a point is a pixel,
+    so the budget over the page's own area is the square of the most it
+    may be scaled by."""
+    area = max(float(width), 1.0) * max(float(height), 1.0)
+    return min(RENDER_SCALE, (PIXEL_BUDGET / area) ** 0.5)
+
+
+def _within_budget(image):
+    """``image``, reduced to :data:`PIXEL_BUDGET` if it is larger (decision
+    137, B1): a photo past it is read smaller, never refused."""
+    pixels = image.width * image.height
+    if pixels <= PIXEL_BUDGET:
+        return image
+    factor = (PIXEL_BUDGET / pixels) ** 0.5
+    size = (max(1, int(image.width * factor)), max(1, int(image.height * factor)))
+    return image.resize(size)
+
+
 def _ocr_pdf(path: Path) -> str | None:
     """OCR the first pages of a PDF. None if the OCR stack is unavailable.
 
@@ -1298,6 +1402,10 @@ def _ocr_pdf(path: Path) -> str | None:
     Each page is greyscaled and turned upright before it is read
     (:func:`_upright`), so the detector and the reading see the same
     pixels and a page scanned sideways comes back as words.
+
+    Each page is rendered at :func:`render_scale` of its own size (decision
+    137), so no page is ever drawn past :data:`PIXEL_BUDGET`: an ordinary
+    page at the scale it always had, a giant one smaller.
     """
     try:
         import pypdfium2 as pdfium
@@ -1310,7 +1418,8 @@ def _ocr_pdf(path: Path) -> str | None:
         doc = pdfium.PdfDocument(path)
         try:
             for index in range(min(len(doc), _MAX_OCR_PAGES)):
-                bitmap = doc[index].render(scale=2.0)
+                page_of = doc[index]
+                bitmap = page_of.render(scale=render_scale(*page_of.get_size()))
                 page = _upright(bitmap.to_pil().convert("L"))
                 parts.append(pytesseract.image_to_string(page))
         finally:
@@ -1333,6 +1442,14 @@ def _ocr_image(path: Path) -> str | None:
     work on the same pixels, then turned upright and read.
 
     Nothing is written: the photo on disk is the client's original.
+
+    Its size is checked against :data:`PIXEL_BUDGET` **before** it is
+    decoded (decision 137): a JPEG past it is decoded smaller by its own
+    decoder (``draft``), any other photo is reduced to the budget the moment
+    it is decoded, and Pillow's own decompression-bomb guard stays on for
+    both. A photo too large even for that is refused by Pillow rather than
+    decoded, and that refusal is a kept "Too large to read" verdict for a
+    person (:class:`TooLargeToRead`), not a retry every pass.
     """
     try:
         import pytesseract
@@ -1342,10 +1459,18 @@ def _ocr_image(path: Path) -> str | None:
 
     try:
         with Image.open(path) as opened:
-            image = ImageOps.exif_transpose(opened).convert("L")
+            if opened.width * opened.height > PIXEL_BUDGET and opened.format == "JPEG":
+                factor = (PIXEL_BUDGET / (opened.width * opened.height)) ** 0.5
+                opened.draft("L", (int(opened.width * factor), int(opened.height * factor)))
+            image = _within_budget(ImageOps.exif_transpose(opened).convert("L"))
         return pytesseract.image_to_string(_upright(image))
     except pytesseract.TesseractNotFoundError:
         return None  # pip packages present but the Tesseract engine is not
+    except Image.DecompressionBombError as exc:
+        # Pillow's own guard, which stays on (decision 137, B1): a picture
+        # too large even to decode smaller. A size rule, so it is a kept
+        # verdict for a person, not a retry every pass.
+        raise TooLargeToRead(picture_too_large_reason(exc)) from exc
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
         raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
@@ -1353,6 +1478,12 @@ def _ocr_image(path: Path) -> str | None:
 
 class OcrError(RuntimeError):
     """OCR is installed but failed on this file this time; try again later."""
+
+
+class TooLargeToRead(Exception):
+    """The file is too large to read at all (decision 137): its reason is
+    ``reasons.TOO_LARGE``, and it is the file's, not the machine's - a kept
+    verdict, not retried until the file changes."""
 
 
 def extract(path: Path, *, ocr: bool = True) -> Extraction:
@@ -1370,6 +1501,11 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
     its slowest reading and finishes it.
     """
     started = time.perf_counter()
+    # A file past the ceiling is never opened (decision 137, M5): the
+    # reason is the whole reading, and it is the file's, not the machine's,
+    # so the verdict is kept and the file is not tried again next pass.
+    if too_large := too_large_reason(path):
+        return Extraction(None, reason=too_large, extractable=False)
     reading = _extract(path, ocr=ocr)
     return replace(reading, seconds=time.perf_counter() - started)
 
@@ -1399,7 +1535,7 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
         if not ocr:
             return Extraction(text, needs_ocr=True)
         return extract_by_ocr(path)
-    return Extraction(text)
+    return Extraction(text, cut=extension in TEXT_EXTENSIONS and _is_cut(path))
 
 
 def extract_by_ocr(path: Path) -> Extraction:
@@ -1408,6 +1544,8 @@ def extract_by_ocr(path: Path) -> Extraction:
     reader = _ocr_image if extension_of(path) in IMAGE_EXTENSIONS else _ocr_pdf
     try:
         ocr_text = reader(path)
+    except TooLargeToRead as exc:
+        return Extraction(None, reason=str(exc), extractable=False)
     except OcrError as exc:
         # Ours to retry, not the client's to resend: the file may be fine.
         return Extraction(
@@ -1465,7 +1603,60 @@ def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
         return ContentResult(
             ok=False, reason=reading.reason, extractable=False, transient=reading.transient,
         )
-    return evaluate_rules(reading.text, item, own_forms(reading.text))
+    verdict = evaluate_rules(reading.text, item, own_forms(reading.text))
+    if reading.cut and not verdict.ok:
+        # The rules were asked of the first part only, and a person reading
+        # the reason must know that before believing "not found".
+        verdict = replace(verdict, reason=f"{verdict.reason}; "
+                                          f"{reasons.TEXT_CUT.format(limit=TEXT_READ_CAP_MB)}")
+    return verdict
+
+
+# ------------------------------------------------------------ OCR's scratch ----
+
+#: The folder, beside the settings file, that OCR's temporary page images
+#: go to during a pass (decision 137, L7). ``pytesseract`` writes each page
+#: it reads to a temporary file before Tesseract reads it back, and a pass
+#: killed mid-page (Task Scheduler's two-hour stop) leaves those images -
+#: a client's pages - in the machine's ``%TEMP%``, where nothing ever
+#: looks. Here, each pass empties the folder before it starts, so a killed
+#: pass's leftovers last until the next one.
+OCR_SCRATCH_DIR_NAME = "ocr-scratch"
+
+
+@contextmanager
+def ocr_scratch(folder: Path) -> Iterator[Path]:
+    """Point this process's temporary files at ``folder`` for the block.
+
+    The folder is emptied first - what a killed pass left - and made if it
+    is not there. ``TMPDIR`` and the ``tempfile`` module's own cached
+    answer are both set, because ``tempfile`` reads the variable once and
+    remembers it, and both are put back when the block ends, so nothing
+    outside the pass is moved.
+    """
+    folder = Path(folder)
+    if folder.is_dir():
+        for leftover in folder.iterdir():
+            try:
+                if leftover.is_dir() and not leftover.is_symlink():
+                    shutil.rmtree(leftover)
+                else:
+                    leftover.unlink()
+            except OSError as exc:
+                log.warning("Could not remove %s from %s (%s)", leftover.name, folder, exc)
+    folder.mkdir(parents=True, exist_ok=True)
+    before_env = os.environ.get("TMPDIR")
+    before_cached = tempfile.tempdir
+    os.environ["TMPDIR"] = str(folder)
+    tempfile.tempdir = str(folder)
+    try:
+        yield folder
+    finally:
+        if before_env is None:
+            os.environ.pop("TMPDIR", None)
+        else:
+            os.environ["TMPDIR"] = before_env
+        tempfile.tempdir = before_cached
 
 
 # ------------------------------------------------------------------- cache ----

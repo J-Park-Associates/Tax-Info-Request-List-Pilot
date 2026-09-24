@@ -56,8 +56,12 @@ def test_a_cleared_folder_box_is_refused_not_recorded_as_the_working_folder(besi
     for typed in ("", "   "):
         with pytest.raises(SettingsError, match="no folder given"):
             set_clients_root(typed)
-    for typed in (".", " . ", "./", "tests/.."):        # the twelfth reading: the working folder by another name
-        with pytest.raises(SettingsError, match="working folder itself"):
+    # The twelfth reading: the working folder by another name. The suite
+    # runs from the repository, which is the app's own folder from source,
+    # and that is refused by name since decision 137 - the check against
+    # the working folder it replaced meant nothing in the packaged build.
+    for typed in (".", " . ", "./", "tests/.."):
+        with pytest.raises(SettingsError, match="holds the app itself"):
             set_clients_root(typed)
     assert clients_root() is None
 
@@ -97,16 +101,13 @@ def test_the_real_corpus_is_a_folder_outside_the_repo_or_it_is_nothing(tmp_path,
 
 
 def test_the_root_is_stored_absolute_and_a_bare_drive_is_its_root(beside_the_app, monkeypatch):
-    import os
-    from pathlib import Path
-
     clients = beside_the_app / "Clients"
     clients.mkdir()
     monkeypatch.chdir(beside_the_app)
     assert set_clients_root("Clients") == clients.resolve()
-    if os.name == "nt":
-        drive = Path.cwd().drive
-        assert set_clients_root(drive) == Path(drive + os.sep)
+    # A bare drive letter is that drive's root ("D:" is the drive's current
+    # folder to Windows); the system drive's is refused since decision 137,
+    # and another drive's is kept - see the tests below.
 
 
 def test_the_firm_phone_is_written_beside_the_firm_name_and_blank_when_unset(beside_the_app):
@@ -130,3 +131,77 @@ def test_the_firm_phone_is_written_beside_the_firm_name_and_blank_when_unset(bes
 
     assert set_firm_phone("") == "" and firm_phone() == ""
     assert clients_root() == clients, "clearing the number touches nothing else"
+
+
+# ------------------------------------------ decision 137: the root cannot swallow the app ----
+
+
+def test_the_clients_root_cannot_be_the_settings_folder_the_app_folder_or_their_ancestors(
+        beside_the_app):
+    """Decision 137 (M3): a root that holds the settings file and the store,
+    or the app itself, would be walked every two hours, have runs.log and
+    status.html written into it, and widen "under the clients root" to the
+    app's own files. Refused by name: the settings folder, any folder that
+    holds it and any folder inside it, and the app's folder and any folder
+    that holds it. A folder beside them is a clients root like any other."""
+    from tracker.settings import ROOT_HOLDS_APP, ROOT_HOLDS_SETTINGS, ROOT_INSIDE_SETTINGS, app_dir
+
+    settings = settings_dir()
+    (settings / "inside").mkdir(parents=True)
+    refused = {
+        settings: ROOT_HOLDS_SETTINGS,
+        beside_the_app: ROOT_HOLDS_SETTINGS,             # the folder that holds it
+        settings / "inside": ROOT_INSIDE_SETTINGS,
+        app_dir(): ROOT_HOLDS_APP,
+        app_dir().parent: ROOT_HOLDS_APP,
+    }
+    for folder, sentence in refused.items():
+        marker = sentence.split("{root}", 1)[1].split("(", 1)[0].strip()
+        with pytest.raises(SettingsError, match=marker):
+            set_clients_root(folder)
+    assert clients_root() is None
+    beside = beside_the_app / "Clients"
+    beside.mkdir()
+    assert set_clients_root(beside) == beside.resolve()
+
+
+def test_the_system_drive_root_is_refused_and_another_drive_root_is_kept(beside_the_app):
+    """Decision 137 (M3): the system drive's root is the whole machine and
+    is refused; another drive's root is a real clients root (the firm's
+    ``S:`` convention, a Shared Drive letter) and is kept, with the old
+    ``"D:"`` -> ``"D:\\"`` normalisation. Run on Windows, the rule meets the
+    machine's real drives; the pure rule is held on every OS."""
+    import os
+    import string
+    from pathlib import Path
+
+    from tracker.settings import ROOT_IS_SYSTEM_DRIVE, app_dir, root_refusal, system_drive_root
+
+    system = system_drive_root()
+    marker = ROOT_IS_SYSTEM_DRIVE.split("{root}", 1)[1].split(";", 1)[0].strip()
+    with pytest.raises(SettingsError, match=marker):
+        set_clients_root(system)
+    if os.name == "nt":
+        with pytest.raises(SettingsError, match=marker):
+            set_clients_root(system.drive)                   # "C:" is the same root
+        others = [f"{letter}:" for letter in string.ascii_uppercase
+                  if f"{letter}:" != system.drive and Path(f"{letter}:\\").is_dir()]
+        for drive in others:                                  # a machine with a second drive
+            root = Path(drive + os.sep)
+            if root_refusal(root, settings=settings_dir().resolve(), app=app_dir(),
+                            system=system) == "":
+                assert set_clients_root(drive) == root        # "D:" recorded as "D:\"
+    else:
+        assert clients_root() is None
+
+    # The rule itself, on any machine: another drive's root is allowed,
+    # the system drive's is not, whatever holds the settings and the app.
+    if os.name == "nt":
+        app = settings = Path(r"C:\Program Files\Tracker")
+        system_root, other = Path("C:\\"), Path("S:\\")
+    else:
+        app = settings = Path("/opt/tracker")
+        system_root, other = Path("/"), Path("/mnt/clients")
+    assert (root_refusal(system_root, settings=settings, app=app, system=system_root)
+            == ROOT_IS_SYSTEM_DRIVE.format(root=system_root))
+    assert root_refusal(other, settings=settings, app=app, system=system_root) == ""

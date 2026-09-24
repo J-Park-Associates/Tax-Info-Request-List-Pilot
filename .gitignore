@@ -65,6 +65,15 @@ settings.json
 tracker.db
 tracker.db-wal
 tracker.db-shm
+# OCR's temporary page images during a pass (decision 137, L7): a folder
+# beside the settings file, which from source is this one. A client's page
+# may be in it until the next pass empties it.
+ocr-scratch/
+
+# Tools' own working folders (decision 137): Claude Code's worktrees and
+# settings, and the knowledge-graph tool's output, which quotes the tree.
+.claude/
+graphify-out/
 tax-tracker.xml
 reminder-draft.txt
 reminder-draft.NEW.txt

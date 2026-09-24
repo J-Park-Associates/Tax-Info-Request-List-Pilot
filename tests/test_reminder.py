@@ -1499,3 +1499,45 @@ def test_an_inbox_of_another_household_that_feeds_this_return_does_not_hold_it(t
     assert unsorted_in_inbox(other) == 1, "it waits in the other household's own inbox"
     draft = draft_reminder(folder)
     assert draft.unsorted == 0 and not draft.is_held
+
+
+# ---------------------------------------------- decision 137: the security review ----
+
+
+def test_a_reminder_link_is_only_http_or_https_refused_on_save_and_dropped_from_a_letter(tmp_path):
+    """Decision 137 (L5): the link a letter pastes is a web address or
+    nothing. Any other kind is refused when the return's or the household's
+    details are saved; one already in a record from before the rule is left
+    out of the letter, and the draft says so and where to fix it."""
+    from tracker import store
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import household_of
+    from tracker.locking import engagement_lock
+    from tracker.manifest import EngagementInfo, ManifestError, load_manifest, save_rules
+    from tracker.records import LINK_REFUSED
+    from tracker.reminder import LINK_DROPPED, write_draft
+
+    # Nothing a person has to decide first, so the draft is written.
+    folder = engagement(tmp_path, items=[i for i in SCANNED if i.status != Status.FAILED])
+    for bad in ("file:///C:/Users/firm/secret", "javascript:alert(1)", "mailto:x@example.com",
+                r"\\server\share"):
+        with pytest.raises(ManifestError, match="is not a web address"):
+            save_rules(folder, load_manifest(folder), EngagementInfo(client="Dana", link=bad))
+        household = household_of(folder)
+        with pytest.raises(ManifestError, match="is not a web address"):
+            save_household(household, replace(load_household_info(household), link=bad))
+    for good in ("https://drive.example/abc", "HTTP://drive.example/abc", ""):
+        save_rules(folder, load_manifest(folder), EngagementInfo(client="Dana", link=good))
+    assert LINK_REFUSED.format(link="ftp://x").startswith("The link 'ftp://x'")
+
+    # A link recorded before the rule, written straight into the record.
+    old = "file:///C:/Users/firm/secret"
+    with engagement_lock(folder):
+        store.record(store.connect(), folder, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [], ledger.REMOVED_KEY: [], ledger.INFO_KEY: {"link": old}}))
+    draft = draft_reminder(folder)
+    assert old not in draft.body
+    assert draft.link_dropped == LINK_DROPPED.format(link=old)
+    written = write_draft(draft, engagement_dir=folder).read_text(encoding="utf-8")
+    assert draft.link_dropped in written
+    assert old not in written.split(draft.link_dropped)[0]           # never in the letter itself

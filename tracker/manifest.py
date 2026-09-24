@@ -98,6 +98,7 @@ from tracker.records import (
     StatusUpdate,
     identifier_key,
     info_to_json,
+    link_problem,
     rule_from_json,
     rule_to_json,
 )
@@ -222,6 +223,25 @@ _PERIOD_YEAR = YEAR_PATTERN
 _ILLEGAL_PUNCTUATION = '\\/:*?"<>|'
 WINDOWS_ILLEGAL_CHARS = re.compile("[" + re.escape(_ILLEGAL_PUNCTUATION) + r"\x00-\x1f]")
 WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
+#: The names Windows keeps for devices (decision 137, L6). A folder or a
+#: file named one of them - with or without an extension, in any case - is
+#: not a folder at all: ``NUL`` is the null device, ``COM1`` a serial port,
+#: and a request folder, a household or a return named one could never
+#: hold a document.
+WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{n}" for n in range(1, 10)}
+    | {f"LPT{n}" for n in range(1, 10)}
+)
+WINDOWS_RESERVED_NAMES_TEXT = "CON, PRN, AUX, NUL, COM1-COM9, LPT1-LPT9"
+
+
+def is_reserved_name(name: str) -> bool:
+    """Whether Windows reads ``name`` as a device rather than a file or a
+    folder: a reserved name, alone or before an extension (``nul.txt``),
+    whatever its case and any spaces before the dot."""
+    stem = str(name).split(".", 1)[0].rstrip(" ")
+    return stem.upper() in WINDOWS_RESERVED_NAMES
 #: How a date is asked for on a command line or in the wizard.
 ISO_DATE_HINT = "YYYY-MM-DD"
 
@@ -690,6 +710,9 @@ def identifier_problem(identifier: str) -> str:
         return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it becomes a folder name)"
     if identifier != identifier.rstrip(". "):
         return "may not end with a dot or a space (Windows drops them from folder names)"
+    if is_reserved_name(identifier):
+        return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
+                f"it becomes a folder name")
     return ""
 
 
@@ -1092,6 +1115,9 @@ def create_engagement(
         raise ManifestError(f"Refusing to overwrite an engagement that already has a record: {folder}")
     rows = [rule_to_json(item) for item in validated(items)]
     info = info or EngagementInfo()
+    # A reminder's link is a web address or nothing (decision 137, L5).
+    if problem := link_problem(info.link):
+        raise ManifestError(problem)
     if form:
         info = replace(info, form=form)
     conn = store.connect()
@@ -1169,6 +1195,13 @@ def save_rules(
             moved = {name: value for name, value in now.items() if before.get(name) != value}
         if not (changed or removed or moved):
             return RulesSaved(changed=(), removed=(), info_fields=(), recorded=False)
+        # A reminder's link is a web address or nothing (decision 137, L5),
+        # refused when a save changes it. A link recorded before this
+        # decision does not block every later save of the list - the letter
+        # drops it and says so - only a save that sets it.
+        changing_link = moved.get("link")
+        if changing_link is not None and (problem := link_problem(str(changing_link))):
+            raise ManifestError(problem)
         store.record(conn, folder, ledger.new(ledger.RULES_CHANGED, **{
             ledger.RULES_KEY: changed,
             ledger.REMOVED_KEY: removed,

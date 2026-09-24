@@ -193,11 +193,84 @@ def set_firm_phone(number: str) -> str:
     return data[KEY_FIRM_PHONE]
 
 
+def app_dir() -> Path:
+    """The app's own folder: the packaged executable's, or the repository
+    root when run from source.
+
+    Not :func:`settings_dir`, which the Electron shell may point elsewhere:
+    this is where the program itself lives, whatever the settings say.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def system_drive_root() -> Path:
+    """The root of the drive the operating system lives on
+    (``%SystemDrive%\\``), or ``/`` where there are no drive letters."""
+    if os.name == "nt":
+        return Path(os.environ.get("SystemDrive", "C:") + os.sep)
+    return Path("/")
+
+
+#: Why a folder is refused as the clients root (decision 137). One sentence
+#: per reason, each naming the folder, so a person knows what to choose
+#: instead. The walk every two hours, the run log and the status page, and
+#: the API's "under the clients root" check all follow the root, so a root
+#: that holds the app's own folder would walk it, write into it and accept
+#: its files as engagements.
+ROOT_IS_SYSTEM_DRIVE = ("{root} is the whole system drive; the tracker would walk all of it. "
+                        "Choose the folder the firm keeps its clients in")
+ROOT_HOLDS_SETTINGS = ("{root} holds the app's own settings and store ({settings}); "
+                       "choose the folder the firm keeps its clients in")
+ROOT_INSIDE_SETTINGS = ("{root} is inside the app's settings folder ({settings}); "
+                        "choose the folder the firm keeps its clients in")
+ROOT_HOLDS_APP = ("{root} holds the app itself ({app}); "
+                  "choose the folder the firm keeps its clients in")
+
+
+def _within(inner: Path, outer: Path) -> bool:
+    """Whether ``inner`` is ``outer`` or lies below it, compared as the
+    filesystem compares names (without case on Windows)."""
+    a = os.path.normcase(os.path.normpath(str(inner)))
+    b = os.path.normcase(os.path.normpath(str(outer)))
+    if a == b:
+        return True
+    return a.startswith(b.rstrip(os.sep) + os.sep)
+
+
+def root_refusal(root: Path, *, settings: Path, app: Path, system: Path) -> str:
+    """Why ``root`` may not be the clients root, or ``""`` when it may.
+
+    Pure, so every rule is testable on any machine: ``settings`` is the
+    folder holding ``SETTINGS_FILENAME`` (and the store beside it), ``app`` the
+    app's own folder, ``system`` the system drive's root. Refused (decision
+    137): the system drive's root; the settings folder, any folder that
+    holds it, and any folder inside it; the app's folder and any folder
+    that holds it. **Another drive's root is allowed**: a letter mapped to
+    the clients share (``S:``, a Shared Drive letter) is a real root.
+    """
+    if _within(system, root) and _within(root, system):
+        return ROOT_IS_SYSTEM_DRIVE.format(root=root)
+    if _within(settings, root):
+        return ROOT_HOLDS_SETTINGS.format(root=root, settings=settings)
+    if _within(root, settings):
+        return ROOT_INSIDE_SETTINGS.format(root=root, settings=settings)
+    if _within(app, root):
+        return ROOT_HOLDS_APP.format(root=root, app=app)
+    return ""
+
+
 def set_clients_root(root: Path | str) -> Path:
     """Record ``root`` as the clients root. It must already be a folder.
 
     Creating it here would turn a typo into an empty "clients" folder that
-    the run walks for ever and finds nothing in.
+    the run walks for ever and finds nothing in. And it may not be a folder
+    that would swallow the app (decision 137, :func:`root_refusal`): the
+    system drive's root, the settings folder or anything around or inside
+    it, the app's own folder or anything around it. That replaced a check
+    against the working folder, which in the packaged build is whatever
+    folder the app happened to be started from.
     """
     typed = str(root).strip()
     if not typed:
@@ -209,11 +282,11 @@ def set_clients_root(root: Path | str) -> Path:
         raise SettingsError(f"not a folder: {root}")
     if str(root).rstrip("/") == root.drive:       # "D:" is the drive's current folder to Windows
         root = Path(root.drive + os.sep)
-    elif root.resolve() == Path.cwd().resolve():
-        # "." typed into the app's folder box is the app's own folder,
-        # which is a folder, and would be recorded in the real root's place.
-        raise SettingsError("the working folder itself is not a clients root; give the folder's path")
     root = root.resolve()   # the scheduled job and the app do not share a working folder
+    refusal = root_refusal(root, settings=settings_dir().resolve(), app=app_dir(),
+                           system=system_drive_root())
+    if refusal:
+        raise SettingsError(refusal)
     data = _read()
     data[KEY_CLIENTS_ROOT] = str(root)
     _write(data)
