@@ -1659,7 +1659,7 @@ def test_a_cached_verdict_starts_no_child(tmp_path, in_a_child):
     run_registry(discover_engagements(tmp_path), today=dt.date(2026, 7, 2), reminders=REMINDERS_NEVER)
     assert started == ["w2.pdf"]                       # a second pass starts nothing
 
-    loose = page_pdf(tmp_path / "loose.pdf", "Form W-2 2025")
+    loose = page_pdf(tmp_path / "loose.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
     rules = item(required_keywords=("W-2",))
     cache = ContentCache()
     assert check_content(loose, rules, cache).ok
