@@ -2,7 +2,7 @@
 # next month must freeze the same code as one made today. Bump deliberately,
 # run the suite, commit the new pin. (Build-time tools: requirements-build.txt.)
 openpyxl==3.1.5
-pypdf==6.7.4
+pypdf==6.19.0
 pdfplumber==0.11.10
 
 # An email a client forwards, saved from Outlook (.msg), is opened to take
