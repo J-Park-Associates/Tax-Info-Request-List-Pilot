@@ -169,6 +169,7 @@ from tracker.layout import (
     household_name_of,
     household_of,
     inbox_of,
+    limit_for,
     locate,
     location_of,
     lock_order_key,
@@ -420,31 +421,198 @@ class FileReport:
 # ------------------------------------------------------------------ names ----
 
 
-def prepared_name_for(item: RequestItem, extension: str, taken: set[str]) -> str:
+#: The numbered suffix a shortest name leaves room for: two digits, so a
+#: request expecting a dozen files still fits the room it was measured in.
+_ROOM_COUNTER = 99
+
+
+def _parts_of(item: RequestItem) -> tuple[str, str, str]:
+    """A request's identifier, document and period as a file name spells them."""
+    return (sanitize_component(item.identifier), sanitize_component(item.document),
+            sanitize_component(item.period) if item.period else "")
+
+
+def _stem_of(identifier: str, document: str, period: str) -> str:
+    """``label_for(identifier, document, period)`` capped at ``_MAX_STEM``."""
+    return label_for(identifier, document, period)[:_MAX_STEM].rstrip(". ")
+
+
+def _named(stem: str, counter: int, suffix: str) -> str:
+    """The first name of a series, or its ``counter``-th (:func:`numbered`)."""
+    return f"{stem}{suffix}" if counter == 1 else numbered(stem, counter, suffix)
+
+
+def _fitted(identifier: str, document: str, period: str, counter: int, suffix: str,
+            room: int | None) -> str | None:
+    """The ``counter``-th name of a request's series cut to ``room``
+    characters, or None when not even its shortest form fits.
+
+    Only the **document part** is cut, from its end (decision 131): the
+    identifier the folder is found by, the period that says which year,
+    the numbered suffix that keeps a series one series and the extension a
+    program opens it by are never cut. ``None`` for ``room`` is no limit:
+    the canonical name, exactly as it was before there was a room.
+    """
+    name = _named(_stem_of(identifier, document, period), counter, suffix)
+    if room is None or len(name) <= room:
+        return name
+    for keep in range(len(document) - 1, -1, -1):
+        name = _named(_stem_of(identifier, document[:keep].rstrip(". -"), period), counter, suffix)
+        if len(name) <= room:
+            return name
+    return None
+
+
+def prepared_name_for(item: RequestItem, extension: str, taken: set[str], *,
+                      room: int | None = None) -> str:
     """Canonical working-copy name: ``label_for(identifier, document, period)`` plus the extension.
 
     ``taken`` holds names already used in the destination folder; collisions
     get ``(2)``, ``(3)``… so a request expecting several files keeps them in
     one predictable series.
-    """
-    parts = [sanitize_component(item.identifier), sanitize_component(item.document)]
-    if item.period:
-        parts.append(sanitize_component(item.period))
-    stem = label_for(*parts)[:_MAX_STEM].rstrip(". ")
-    suffix = f".{extension}" if extension else ""
 
-    candidate = f"{stem}{suffix}"
-    counter = 2
-    while candidate.lower() in taken:
-        candidate = numbered(stem, counter, suffix)
+    ``room`` is how many characters the whole file name may take - the
+    caller's ``limit_for(extension) - len(str(dest_folder)) - 1`` - and
+    ``None`` is the canonical name exactly (creation's measure passes none;
+    every writer passes one). A name longer than its room is **cut to fit**
+    (decision 131): the document part alone, from its end, with the
+    numbered suffix counted, because the suffix is chosen in the same
+    loop - the ``n``-th copy of a series is the ``n``-th whatever its cut.
+    When not even the identifier, the period, the suffix and the extension
+    fit, :class:`NoRoom` says so with both numbers, and the caller decides:
+    the pass parks the document, a person is refused.
+    """
+    identifier, document, period = _parts_of(item)
+    suffix = f".{extension}" if extension else ""
+    counter = 1
+    while True:
+        candidate = _fitted(identifier, document, period, counter, suffix, room)
+        if candidate is None:
+            shortest = _named(_stem_of(identifier, "", period), counter, suffix)
+            limit = limit_for(extension)
+            raise NoRoom(limit - room + len(shortest), limit)
+        if candidate.lower() not in taken:
+            taken.add(candidate.lower())
+            return candidate
         counter += 1
-    taken.add(candidate.lower())
-    return candidate
+
+
+def shortest_name_for(item: RequestItem, extension: str) -> str:
+    """The shortest name a working copy of ``item`` can take: the identifier,
+    the period, room for a two-digit numbered suffix and the extension
+    (decision 131). What :func:`room_for` measures a request's floor by."""
+    identifier, _document, period = _parts_of(item)
+    return numbered(_stem_of(identifier, "", period), _ROOM_COUNTER,
+                    f".{extension}" if extension else "")
 
 
 def prepared_location(folder: Path, name: str) -> str:
     """Where a working copy is, relative to the engagement: ``PREPARED_DIR_NAME/<folder>/<name>``."""
     return f"{PREPARED_DIR_NAME}/{folder.name}/{name}"
+
+
+#: A request whose folder leaves no room for even the shortest working-copy
+#: name: the document parks, and this is the row's reason (a firm-side
+#: reason; it carries no ask, like the three of decision 128). A person's
+#: filing and a hand-over are refused with the same sentence.
+PATH_NO_ROOM = ("the working copy's path would be {length} characters at its shortest, past the "
+                "{limit} Windows allows; shorten the clients root, or this request's label in the editor")
+#: A return whose review folder leaves no room for a copy at all: nothing
+#: in its household is sorted this pass. The household's skip sentence.
+HOUSEHOLD_NO_ROOM = ("no room under {label} for even a review copy ({length} characters at its shortest, "
+                     "past the {limit} Windows allows); nothing in this household is sorted until the "
+                     "clients root is shorter")
+#: What the practice page and the app say of a return whose canonical
+#: copies no longer fit: the number, and the three levers a person has.
+ROOM_SHORT = ("{short} characters short of the room its working copies need, so their names are cut "
+              "to fit; a shorter clients root, a shorter label in the editor, or a shorter return "
+              "name at the next rollover gives it back")
+#: The same, when some request cannot receive at all.
+ROOM_PARKS = ("{count} request(s) have no room for a working copy under this root; a document for "
+              "them parks for a person until the clients root is shorter")
+
+
+class NoRoom(FilingError):
+    """Not even the shortest name fits the room left under its folder
+    (decision 131). Carries both numbers; its sentence is
+    :data:`PATH_NO_ROOM`, so a person's refusal needs no second wording."""
+
+    def __init__(self, length: int, limit: int) -> None:
+        self.length = length
+        self.limit = limit
+        super().__init__(PATH_NO_ROOM.format(length=length, limit=limit))
+
+
+@dataclass(frozen=True, slots=True)
+class Room:
+    """How much room a return's request list has under its folder, in
+    characters, from the list alone (decision 131).
+
+    ``need`` is creation's figure - the deepest canonical working copy over
+    the active rows, at each row's longest extension - and what the refusal
+    at creation and at the rollover still measures. ``least`` is the same
+    at the shortest name each row can take (:func:`shortest_name_for`);
+    ``floor`` is the review folder plus the shortest review-copy name at
+    the longest extension the list allows. ``parks`` counts the rows whose
+    shortest name does not fit the limit of one of their extensions.
+    ``short`` is how far the deepest canonical copy passes the limit that
+    applies to it - its own extension's (``layout.limit_for``), so a
+    workbook measured against the 218 characters a reader allows is short
+    where a PDF at the same depth is not; with no reader's limit in play it
+    is ``need - limit``. ``limit`` is Windows's own.
+    """
+
+    need: int
+    least: int
+    floor: int
+    parks: int
+    short: int
+    limit: int = MAX_PATH_LENGTH
+
+
+def _extensions_of(item: RequestItem) -> list[str]:
+    """The extensions a row's copies can have, as creation measures them."""
+    return [e for e in (item.allowed_extensions or DEFAULT_EXTENSIONS)
+            if e and e != ANY_EXTENSION] or list(DEFAULT_EXTENSIONS)
+
+
+def room_for(engagement_dir: Path, items: Sequence[RequestItem]) -> Room:
+    """The room one return's list has under its folder: one measure, one
+    function (decision 131).
+
+    **From the list alone** - no disk, no store, no lock - so the pass,
+    the app's banner, the reply to setting the root and the editor's save
+    all ask the same question and get the same answer, and a folder that
+    does not exist yet is measured as readily as one that does. A row set
+    Not Applicable is not measured, as creation does not measure it.
+    """
+    engagement_dir = Path(engagement_dir)
+    prepared = engagement_dir / PREPARED_DIR_NAME
+    canonical: list[str] = []
+    least = short = parks = 0
+    longest_of_all = ""
+    for item in items:
+        if getattr(item, "manual_override", "") == Override.NOT_APPLICABLE:
+            continue
+        extensions = _extensions_of(item)
+        longest = max(extensions, key=len)
+        longest_of_all = max((longest_of_all, longest), key=len)
+        folder = prepared / folder_name_for(item)
+        canonical.append(f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/"
+                         f"{prepared_name_for(item, longest, set())}")
+        least = max(least, len(str(folder / shortest_name_for(item, longest))))
+        parked = False
+        for extension in extensions:
+            limit = limit_for(extension)
+            short = max(short, len(str(folder / prepared_name_for(item, extension, set()))) - limit)
+            parked = parked or len(str(folder / shortest_name_for(item, extension))) > limit
+        parks += parked
+    # The floor at the longest extension the list allows; a list with no
+    # active row still parks everything, at the defaults' longest.
+    longest_of_all = longest_of_all or max(DEFAULT_EXTENSIONS, key=len)
+    review = prepared / REVIEW_DIR_NAME / numbered("x", _ROOM_COUNTER, f".{longest_of_all}")
+    return Room(need=deepest_path_length(engagement_dir, canonical), least=least,
+                floor=len(str(review)), parks=parks, short=max(0, short))
 
 
 def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestItem]) -> None:
@@ -454,32 +622,24 @@ def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestIt
     The deepest thing the tracker ever writes under a return is a working
     copy this module writes: ``PREPARED_DIR_NAME/<request folder>/<canonical
     name>``, over every active row of the list the call is about to record
-    and the longest extension each row allows. The client's own file names
-    are not measured - they are the client's, and :func:`unreachable_drops`
-    already says a name the index cannot hold - and neither are the ``..``
-    locations that cross the trees, because Windows normalises them away
-    before the limit applies and :func:`tracker.layout.locate` normalises
-    them first too.
+    and the longest extension each row allows - :func:`room_for`'s
+    ``need``. The client's own file names are not measured - they are the
+    client's, and :func:`unreachable_drops` already says a name the index
+    cannot hold - and neither are the ``..`` locations that cross the
+    trees, because Windows normalises them away before the limit applies
+    and :func:`tracker.layout.locate` normalises them first too.
 
     Decision 125 put this refusal on creation; decision 126 gave the
     household rollover the same one, and it lives here rather than in
     ``tracker.api`` because a rollover at layer 3 cannot reach the API at
     layer 5 - and because the file it measures is the one this module
-    writes.
+    writes. Decision 131 gave the editor's save the same standard for the
+    rows it changes, and measured every later write where it happens.
     """
-    subpaths = []
-    for item in items:
-        if getattr(item, "manual_override", "") == Override.NOT_APPLICABLE:
-            continue
-        extensions = [e for e in (item.allowed_extensions or DEFAULT_EXTENSIONS)
-                      if e and e != ANY_EXTENSION] or list(DEFAULT_EXTENSIONS)
-        longest = max(extensions, key=len)
-        name = prepared_name_for(item, longest, set())
-        subpaths.append(f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/{name}")
-    length = deepest_path_length(engagement_dir, subpaths)
-    if length > MAX_PATH_LENGTH:
+    need = room_for(engagement_dir, items).need
+    if need > MAX_PATH_LENGTH:
         raise ManifestError(PATH_TOO_LONG.format(
-            folder=engagement_dir, length=length, limit=MAX_PATH_LENGTH))
+            folder=engagement_dir, length=need, limit=MAX_PATH_LENGTH))
 
 
 def request_folder(item: RequestItem, assigned: dict[str, list[Path]], prepared_dir: Path) -> Path:
@@ -613,15 +773,27 @@ def _move_whole(source: Path, target: Path) -> None:
     os.rename(source, target)
 
 
-def _unique_path(folder: Path, name: str) -> Path:
-    """A free path in ``folder`` for ``name``, never overwriting anything."""
-    target = folder / name
-    if not target.exists():
-        return target
+def _unique_path(folder: Path, name: str, *, room: int | None = None) -> Path:
+    """A free path in ``folder`` for ``name``, never overwriting anything.
+
+    ``room`` is how many characters the file name may take (decision 131):
+    the stem is cut from its end to fit, keeping the extension and the
+    numbered suffix, down to one character; below that, :class:`NoRoom`.
+    ``None`` is no limit. Only ever a copy's name - an original is moved
+    under its own name, uncut, always.
+    """
     stem, suffix = Path(name).stem, Path(name).suffix
-    counter = 2
+    counter = 1
     while True:
-        target = folder / numbered(stem, counter, suffix)
+        fitted: str | None = _named(stem, counter, suffix)
+        if room is not None and len(fitted) > room:
+            cuts = (stem[:keep].rstrip(". ") for keep in range(len(stem) - 1, 0, -1))
+            fitted = next((_named(cut, counter, suffix) for cut in cuts
+                           if cut and len(_named(cut, counter, suffix)) <= room), None)
+            if fitted is None:
+                raise NoRoom(len(str(folder / _named(stem[:1], counter, suffix))),
+                             len(str(folder)) + 1 + room)
+        target = folder / fitted
         if not target.exists():
             return target
         counter += 1
@@ -2897,12 +3069,20 @@ def _decide_across(
     stage = _by_the_name(text, accepting, runs)
     kept = stage.kept
 
+    no_room: NoRoom | None = None
     if len(kept) == 1:
         run, routing = kept[0]
         item = run.context.by_id.get(routing.identifier or "")
         if item is not None:
-            return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
-                                 confirmed=stage.confirmed.get(id(run), ""))
+            try:
+                return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
+                                     confirmed=stage.confirmed.get(id(run), ""))
+            except NoRoom as exc:
+                # Every rule accepted it and the request's folder has no
+                # room for even its shortest name (decision 131): the last
+                # reason the filing branch can give. It parks, and the
+                # request that accepted it is its candidate.
+                no_room = exc
 
     # Nothing may be filed, so the document waits where it was dropped
     # (decision 129): the original rests under the household the return
@@ -2910,6 +3090,14 @@ def _decide_across(
     # is, the household that was dropped in is the one that has it.
     home, home_routing = _the_home(accepting, routed, runs)
     home_routing = stage.graded.get(id(home), home_routing)
+
+    if no_room is not None:
+        said = routing if home is run else home_routing
+        return home, _park_it(
+            drop, original, digest, size_kb, stamp, home,
+            reason=str(no_room), candidates=said.candidates,
+            evidence=format_evidence(said.evidence_record),
+        )
 
     if len(kept) > 1:
         # Two returns ask for the same row - two 1040s share every row of
@@ -3017,7 +3205,14 @@ def _plan_working_copy(
             if dest_folder.is_dir()
             else set()
         )
-    filed_as = prepared_name_for(item, extension_of(drop), run.reserved[dest_folder])
+    # Named to fit the room its folder leaves (decision 131): the exact
+    # path about to be written is what is measured, so a root that grew,
+    # a label the editor lengthened and the numbered suffix are all
+    # counted. No room for even the shortest name raises NoRoom, and the
+    # caller parks the document instead.
+    extension = extension_of(drop)
+    filed_as = prepared_name_for(item, extension, run.reserved[dest_folder],
+                                 room=limit_for(extension) - len(str(dest_folder)) - 1)
     if run.dry_run:
         return prepared_location(dest_folder, filed_as), None
     dest_folder.mkdir(parents=True, exist_ok=True)
@@ -3136,9 +3331,19 @@ def _file_it(
     that the name agreed.
     """
     context = run.context
-    resting = _rests_at(run, original)
     wanted = [item] + [context.by_id[i] for i in routing.also if i in context.by_id]
-    planned = [_plan_working_copy(one, drop, original, digest, context) for one in wanted]
+    # Every copy is named before anything is written (decision 131): a
+    # request with no room for even its shortest name raises NoRoom here,
+    # the names this filing had claimed are handed back, and the caller
+    # parks the document - nothing has moved yet.
+    claimed = {folder: set(names) for folder, names in context.reserved.items()}
+    try:
+        planned = [_plan_working_copy(one, drop, original, digest, context) for one in wanted]
+    except NoRoom:
+        context.reserved.clear()
+        context.reserved.update(claimed)
+        raise
+    resting = _rests_at(run, original)
     locations = [location for location, _copy in planned]
     entry = IndexEntry(
         received=stamp, original_name=drop.name, size_kb=size_kb,
@@ -3162,6 +3367,24 @@ def _file_it(
     return entry
 
 
+def _review_copy_path(review_dir: Path, drop: Path) -> Path:
+    """Where a parked document's review copy goes: the client's own name,
+    cut to the room the review folder leaves (decision 131).
+
+    The row's ``original_name`` keeps the client's name whole - it is the
+    record's, and the queue reads the row, not the copy. The room is the
+    extension's (a reader's shorter limit cuts a workbook's name), but a
+    reader's limit never stops a park: where it leaves no room, the copy is
+    fitted to Windows's own, which the pass's floor (``Room.floor``) has
+    already proved there is room for before anything was read.
+    """
+    folder = len(str(review_dir)) + 1
+    try:
+        return _unique_path(review_dir, drop.name, room=limit_for(extension_of(drop)) - folder)
+    except NoRoom:
+        return _unique_path(review_dir, drop.name, room=MAX_PATH_LENGTH - folder)
+
+
 def _park_it(
     drop: Path, original: Path, digest: str, size_kb: float, stamp: str,
     run: _ReturnRun, *, reason: str, candidates, evidence: str, resent: str = "",
@@ -3181,7 +3404,7 @@ def _park_it(
         # state: two arrivals, two decisions to make.
         review_target = None if resent else _existing_copy(context.review_dir, original, digest)
         if review_target is None:
-            review_target = _unique_path(context.review_dir, drop.name)
+            review_target = _review_copy_path(context.review_dir, drop)
             parking.append(_op(run.engagement_dir, ledger.OP_COPY,
                                original, review_target, digest))
         review_name = review_target.name
@@ -3297,9 +3520,14 @@ def _sort_one(
         stage = _by_the_name(text, [(run, routing)], runs)
         if stage.kept:
             _kept, routing = stage.kept[0]
-            return _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
-                            refiled=refiled, resent=resent,
-                            confirmed=stage.confirmed.get(id(run), ""))
+            try:
+                return _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
+                                refiled=refiled, resent=resent,
+                                confirmed=stage.confirmed.get(id(run), ""))
+            except NoRoom as exc:        # decision 131: no room even for the shortest name
+                return _park_it(drop, original, digest, size_kb, stamp, run,
+                                reason=str(exc), candidates=routing.candidates,
+                                evidence=format_evidence(routing.evidence_record), resent=resent)
         routing = stage.graded.get(id(run), routing)
         return _park_it(drop, original, digest, size_kb, stamp, run,
                         reason=stage.reason or routing.reason, candidates=routing.candidates,
@@ -3556,9 +3784,14 @@ def assign_review_file(
             )
 
         dest_folder = request_folder(item, assign_folders(prepared_dir, list(items)), prepared_dir)
+        # Named to fit the room the folder leaves, before anything is made
+        # (decision 131): no room even for the shortest name refuses with
+        # PATH_NO_ROOM, and nothing has moved.
+        taken = {p.name.lower() for p in dest_folder.iterdir()} if dest_folder.is_dir() else set()
+        extension = extension_of(source)
+        filed_as = prepared_name_for(item, extension, taken,
+                                     room=limit_for(extension) - len(str(dest_folder)) - 1)
         dest_folder.mkdir(parents=True, exist_ok=True)
-        taken = {p.name.lower() for p in dest_folder.iterdir()}
-        filed_as = prepared_name_for(item, extension_of(source), taken)
         target = dest_folder / filed_as
 
         moved = reused = parked_stood_in = False
@@ -3803,11 +4036,14 @@ def hand_over(
         target_prepared = target_return / PREPARED_DIR_NAME
         dest_folder = request_folder(item, assign_folders(target_prepared, list(items)),
                                      target_prepared)
-        dest_folder.mkdir(parents=True, exist_ok=True)
-        taken = {p.name.lower() for p in dest_folder.iterdir()}
+        taken = {p.name.lower() for p in dest_folder.iterdir()} if dest_folder.is_dir() else set()
         existing = _existing_copy(dest_folder, source, digest)
+        # Named to fit, before anything is made (decision 131): no room even
+        # for the shortest name refuses with PATH_NO_ROOM, nothing moved.
+        extension = extension_of(source)
         filed_as = existing.name if existing is not None else prepared_name_for(
-            item, extension_of(source), taken)
+            item, extension, taken, room=limit_for(extension) - len(str(dest_folder)) - 1)
+        dest_folder.mkdir(parents=True, exist_ok=True)
 
         # The parked copy here goes: the document is the other return's
         # now, and two copies of it in two queues would be two documents

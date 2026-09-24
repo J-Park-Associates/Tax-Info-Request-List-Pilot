@@ -6,7 +6,11 @@ clients folder:
 
     python -m tracker.runner <clients root>
 
-That is the whole scheduled task. There is nothing to register: a folder
+That is the whole pass. The scheduled task names no root at all (decision
+131): it runs ``python -m tracker.runner --settings <the app's settings
+folder> --log`` and reads the clients root from the settings file at every
+run, so the root has one home and changing it in the app is enough. There
+is nothing to register: a folder
 holding the engagement's own record is an engagement, and the details in
 that record say who the client is and how they are chased. Creating an
 engagement in the desktop app is all it takes for the nightly run to pick
@@ -107,6 +111,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import traceback
 from collections.abc import Iterable
 from contextlib import ExitStack, nullcontext
@@ -115,11 +120,15 @@ from pathlib import Path
 
 from tracker import ledger, store
 from tracker.filer import (
+    HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
+    ROOM_PARKS,
+    ROOM_SHORT,
     ensure,
     file_household_drops,
     read_index,
     refresh_household_readme,
+    room_for,
 )
 from tracker.fsio import write_text_atomically
 from tracker.households import load_household_info, open_years, resolve_feeds
@@ -161,7 +170,15 @@ from tracker.reminder import (
 )
 from tracker.scaffold import scaffold_engagement, scaffold_household
 from tracker.scanner import ScanLockedError, scan_engagement
-from tracker.settings import SettingsError, firm, product_name
+from tracker.settings import (
+    ENV_SETTINGS_DIR,
+    SET_ROOT_HINT,
+    SettingsError,
+    clients_root,
+    firm,
+    product_name,
+    settings_path,
+)
 from tracker.store import StoreError
 from tracker.view import VIEW_FILENAME, write_view
 
@@ -192,6 +209,11 @@ STATUS_PAGE_FILENAME = "status.html"
 #: line the parser below still accepts.
 LOG_FLAG = "--log"
 DATE_FLAG = "--date"
+#: The app's settings folder, which the scheduled job names instead of a
+#: clients root (decision 131): the root has one home, the settings file,
+#: and the job reads it at every run - so changing it in the app is enough,
+#: and no re-install is remembered or forgotten.
+SETTINGS_FLAG = "--settings"
 #: How the packaged app's one executable (api_entry.py) is told to be the
 #: scheduled job rather than the API: this flag first, then the runner's own
 #: arguments. tracker.scheduling builds the packaged command line from it.
@@ -234,6 +256,10 @@ class EngagementRun:
     waiting: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
+    #: The request list :func:`_worth_a_pass` loaded for ``check_rules``,
+    #: kept so the room is measured from the same list (decision 131) and
+    #: the record is not read a second time for it.
+    items: list = field(default_factory=list)
     #: The view was not regenerated because somebody had it open. Not a
     #: failure: it holds no fact of its own, so it simply stays one pass
     #: behind until the next pass lands one.
@@ -492,6 +518,11 @@ def run_household(
     inbox is not read; the scan, the draft and the page still run, because
     what each return already holds is still true.
 
+    **The room is measured before anything is read** (decision 131,
+    :func:`_no_room`): a return short of room is warned and still sorted,
+    its copies named to fit; a return with no room for even a review copy
+    skips the whole household, as a held lock does.
+
     Never raises for a return-level problem: anything that goes wrong is
     recorded on that return's :class:`EngagementRun` so the caller can keep
     going through the rest of the practice.
@@ -506,6 +537,8 @@ def run_household(
         return runs
     working = [run for run in runs if _worth_a_pass(run)]
     if not working:
+        return runs
+    if _no_room(working):
         return runs
 
     years = open_years([run.engagement for run in working])
@@ -580,6 +613,37 @@ def run_household(
                 + "; ".join(run.file_errors[:3])
             )
     return runs
+
+
+def _no_room(working: list[EngagementRun]) -> bool:
+    """Measure every working return's room before anything is read, and
+    say whether the household must stop (decision 131).
+
+    Each return's room is one number from one function
+    (``filer.room_for``), measured from the list :func:`_worth_a_pass`
+    already loaded: a return short of room is warned (:data:`ROOM_SHORT`,
+    and :data:`ROOM_PARKS` when some request cannot receive at all) and
+    **still sorted** - its names are cut to fit where they are written. A
+    return whose review folder leaves no room for even a review copy stops
+    its whole household, exactly as a lock held elsewhere does: one inbox
+    feeds every return, and a pass that cannot park cannot honour a scan
+    that regresses a copy either, so nothing is read, scanned, drafted or
+    drawn, and every working return carries :data:`HOUSEHOLD_NO_ROOM`.
+    """
+    stopped = ""
+    for run in working:
+        room = room_for(run.engagement.path, run.items)
+        if room.short:
+            run.warnings.append(ROOM_SHORT.format(short=room.short))
+        if room.parks:
+            run.warnings.append(ROOM_PARKS.format(count=room.parks))
+        if room.floor > room.limit and not stopped:
+            stopped = HOUSEHOLD_NO_ROOM.format(label=run.engagement.label, length=room.floor,
+                                               limit=room.limit)
+    if stopped:
+        for run in working:
+            run.skipped = stopped
+    return bool(stopped)
 
 
 def _feeds_of(household: Path, year: int, registry: object) -> tuple[list[Engagement], list[str]]:
@@ -782,7 +846,8 @@ def _worth_a_pass(run: EngagementRun) -> bool:
         run.error = RECORD_UNREADABLE.format(problem=engagement.problem)
         return False
     try:
-        run.warnings = check_rules(load_manifest(engagement.path))
+        run.items = load_manifest(engagement.path)
+        run.warnings = check_rules(run.items)
     except (ManifestError, LedgerError, StoreError) as exc:
         # A folder with no record, a journal line that will not parse, a
         # store that will not open: the registry names these as the
@@ -1309,7 +1374,12 @@ def main(argv: list[str] | None = None) -> int:
         description=f"File, scan and (on {DRAFT_DAY_NAME}s) draft reminders for every "
                     "engagement found under the clients folder. Never sends anything."
     )
-    parser.add_argument("root", help="the folder the firm keeps its clients in")
+    parser.add_argument("root", nargs="?", default="",
+                        help="the folder the firm keeps its clients in (default: the one in the "
+                             "settings file)")
+    parser.add_argument(SETTINGS_FLAG, default="", metavar="FOLDER",
+                        help="the app's settings folder, whose settings file names the clients root "
+                             "(what the scheduled job passes)")
     parser.add_argument("--only", default="",
                         help="just the engagements matching this text")
     parser.add_argument("--dry-run", action="store_true",
@@ -1325,8 +1395,25 @@ def main(argv: list[str] | None = None) -> int:
                         help=f"append the run summary to a log (default: {LOG_FILENAME})")
     ns = parser.parse_args(argv)
 
+    # The clients root has one home (decision 131): the scheduled job names
+    # the app's settings folder, and this process reads everything the app
+    # reads from there - the root and the store beside it - before anything
+    # reads settings at all. A root on the command line still wins: a
+    # person running one folder by hand.
+    if ns.settings:
+        os.environ[ENV_SETTINGS_DIR] = ns.settings
+    root = ns.root
+    if not root:
+        try:
+            configured = clients_root()
+        except SettingsError as exc:
+            raise SystemExit(f"Clients folder problem: {exc}") from None
+        if configured is None:
+            raise SystemExit(f"no clients root given and none in {settings_path()}; {SET_ROOT_HINT}")
+        root = str(configured)
+
     try:
-        loaded = discover_engagements(ns.root)
+        loaded = discover_engagements(root)
     except RegistryError as exc:
         raise SystemExit(f"Clients folder problem: {exc}") from None
 

@@ -56,6 +56,7 @@ from tracker.runner import (
     REMINDERS_ALWAYS,
     REMINDERS_AUTO,
     REMINDERS_NEVER,
+    SETTINGS_FLAG,
     STAGE_NOTE,
     STATUS_GENERATED,
     STATUS_HELD,
@@ -1763,3 +1764,150 @@ def test_a_document_dropped_here_and_filed_into_another_households_return_is_on_
     there = (inbox_of(fed.path) / README_NAME).read_text(encoding="utf-8")
     assert f"  {b01.label}  Received {day_text(FRIDAY)}" in there
     assert "trial balance.pdf" not in there and "Park Family" not in there
+# ------------------------------------ decision 131: the room a return has ----
+
+
+def _a_pass_over(engagement, **kwargs):
+    """One household pass over one return, the way the practice runs it."""
+    from tracker.layout import root_of
+
+    registry = discover_engagements(root_of(engagement))
+    [found] = registry.engagements
+    return run_household(household_of(engagement), [found], today=FRIDAY,
+                         reminders=REMINDERS_NEVER, registry=registry, **kwargs)
+
+
+def test_a_return_short_of_room_is_warned_on_the_page_and_still_sorted(tmp_path):
+    """Ten characters short: the pass says so - in the run's warnings, the
+    run log's lines and the practice page's Warnings column - and files the
+    W-2 all the same, under a name cut to fit."""
+    from tests.test_filer import drop, tight_return
+    from tracker.filer import ROOM_SHORT
+
+    engagement = tight_return(tmp_path, 10)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    [run] = _a_pass_over(engagement)
+
+    said = ROOM_SHORT.format(short=10)
+    assert said in run.warnings and not run.skipped and not run.error
+    assert run.filed == 1
+    [entry] = read_index(engagement)
+    assert entry.prepared_location.endswith("/A01 - W-2 Wage - TY2025.pdf")
+    report = RunReport(today=FRIDAY, runs=[run])
+    assert f"! {said}" in format_report(report)
+    page = write_status_page(tmp_path, report).read_text(encoding="utf-8")
+    assert f"<td>{len(run.warnings)}</td>" in page
+
+
+def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path):
+    """A request whose folder leaves no room for even its shortest name is
+    counted and said: a document for it parks until the root is shorter."""
+    from tests.test_filer import CANONICAL_BELOW, tight_return
+    from tracker.filer import ROOM_PARKS, ROOM_SHORT
+
+    engagement = tight_return(tmp_path, 210 + CANONICAL_BELOW - 260)   # A01's folder: 245
+
+    [run] = _a_pass_over(engagement)
+
+    assert ROOM_PARKS.format(count=1) in run.warnings
+    assert ROOM_SHORT.format(short=24) in run.warnings
+    assert not run.skipped and not run.error
+
+
+def test_a_household_with_no_room_for_a_review_copy_is_skipped_whole_before_anything_is_read(
+    tmp_path, monkeypatch,
+):
+    """A return whose review folder leaves no room for even ``x (99).pdf``
+    stops its household: every working return carries HOUSEHOLD_NO_ROOM,
+    the inbox is untouched, no lock is taken, and nothing is scaffolded,
+    scanned, drafted or drawn - the held-lock shape."""
+    from tests.conftest import root_for_a_return_of
+    from tests.test_filer import ROOM_ITEMS, drop
+    from tracker.filer import HOUSEHOLD_NO_ROOM
+    from tracker.layout import README_NAME
+    from tracker.locking import LOCK_FILENAME
+    from tracker.page import esc
+    from tracker.view import VIEW_FILENAME
+
+    root = root_for_a_return_of(tmp_path, 223)          # its floor: 223 + 38 = 261
+    engagement = make_engagement(root, ROOM_ITEMS, scaffold=False)
+    inbox = inbox_of(engagement)
+    inbox.mkdir(parents=True)
+    dropped = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    events = len(ledger.read_events(engagement))
+    locks = []
+    real_lock = runner_module.engagement_lock
+    monkeypatch.setattr(runner_module, "engagement_lock",
+                        lambda folder: (locks.append(folder), real_lock(folder))[1])
+
+    [run] = _a_pass_over(engagement)
+
+    said = HOUSEHOLD_NO_ROOM.format(label=run.engagement.label, length=261, limit=260)
+    assert run.skipped == said and not run.error
+    assert locks == []
+    assert dropped.is_file() and [p.name for p in inbox.iterdir()] == ["w2.pdf"]
+    assert not (inbox / README_NAME).exists()
+    assert not (engagement / LOCK_FILENAME).exists()
+    assert not (engagement / VIEW_FILENAME).exists()
+    assert not (engagement / DRAFT_FILENAME).exists()
+    assert not (engagement / PREPARED_DIR_NAME).exists()
+    assert len(ledger.read_events(engagement)) == events        # no scan, nothing recorded
+    page = write_status_page(tmp_path, RunReport(today=FRIDAY, runs=[run])).read_text(encoding="utf-8")
+    assert esc(said) in page
+
+
+def test_the_runner_reads_the_clients_root_from_the_settings_file_when_given_none(
+    tmp_path, monkeypatch, capsys,
+):
+    """The job names the app's settings folder and no root (decision 131):
+    with a root recorded there the pass runs over it; with none it exits
+    saying how to set one; a root on the command line still wins."""
+    from tracker.settings import ENV_SETTINGS_DIR, SET_ROOT_HINT, set_clients_root
+
+    recorded = tmp_path / "Recorded"
+    by_hand = tmp_path / "ByHand"
+    # Two households, so the one store the test has keys them apart.
+    for folder, name in ((recorded, "Recorded"), (by_hand, "By Hand")):
+        make_engagement(folder, [RequestItem(identifier="A01", document="W-2")],
+                        household=f"{name} Household", return_name=f"1040 - {name}")
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))     # put back when the test ends
+    set_clients_root(recorded)
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "elsewhere"))
+
+    assert main([SETTINGS_FLAG, str(settings), "--reminders", "never"]) == 0
+    assert (recorded / STATUS_PAGE_FILENAME).is_file()
+    assert not (by_hand / STATUS_PAGE_FILENAME).exists()
+
+    assert main([str(by_hand), SETTINGS_FLAG, str(settings), "--reminders", "never"]) == 0
+    assert (by_hand / STATUS_PAGE_FILENAME).is_file()
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(SystemExit) as refused:
+        main([SETTINGS_FLAG, str(empty)])
+    assert "no clients root given" in str(refused.value) and SET_ROOT_HINT in str(refused.value)
+    capsys.readouterr()
+
+
+def test_the_room_is_measured_from_the_list_the_pass_already_loaded(tmp_path, monkeypatch):
+    """One read of each return's list for the pass's own checks: the room is
+    measured from the list ``check_rules`` was handed, not a second read."""
+    from tests.test_filer import ROOM_ITEMS
+
+    root = tmp_path / "Clients"
+    make_engagement(root, ROOM_ITEMS, return_name="1040 - One")
+    make_engagement(root, ROOM_ITEMS, return_name="1040 - Two")
+    registry = discover_engagements(root)
+    reads = []
+    real = runner_module.load_manifest
+    monkeypatch.setattr(runner_module, "load_manifest", lambda folder: (reads.append(folder), real(folder))[1])
+
+    [(household, returns)] = registry.by_household().items()
+    runs = run_household(household, returns, today=FRIDAY, reminders=REMINDERS_NEVER, registry=registry)
+
+    assert all(not run.error for run in runs)
+    assert sorted(reads) == sorted(one.path for one in returns)
+    assert all(run.items for run in runs)

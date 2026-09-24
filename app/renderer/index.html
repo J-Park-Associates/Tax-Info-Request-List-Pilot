@@ -114,6 +114,13 @@
         </div>
         <p id="setup-note" class="wiz-note"></p>
       </section>
+      <!-- Decision 131: the returns short of room under the root a person
+           has just set, one line each. Shown only when there are some;
+           every word of it is the API's. -->
+      <details id="room-card" class="dismissed hidden" open>
+        <summary id="room-heading"></summary>
+        <ul id="room-list" class="review"></ul>
+      </details>
       <div id="lock-notice" class="banner hidden" role="status">
         <span id="lock-text"></span>
         <button id="btn-unlock" class="btn btn-small hidden">Clear lock</button>

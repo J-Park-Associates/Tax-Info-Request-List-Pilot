@@ -1435,12 +1435,24 @@ async function saveRoot() {
       phone: $("phone-input").value.trim(),
     });
     banner(`Clients folder set to ${result.root} (written to ${result.settings_path}).`, "ok");
+    renderShortOfRoom(result.short_of_room || []);
     await refresh();
   } catch (err) {
     toast(err.message);
   } finally {
     btn.disabled = false;
   }
+}
+
+// Decision 131: every return short of room under the root just set, one
+// line each - the return's label and the API's own sentences - or nothing.
+function renderShortOfRoom(shortOf) {
+  $("room-card").classList.toggle("hidden", shortOf.length === 0);
+  $("room-heading").textContent = `${vocab.room.heading} (${shortOf.length})`;
+  show("room-list", shortOf.map((one) =>
+    el("li", { className: "r-item" },
+      el("div", { className: "r-name" }, one.engagement),
+      el("div", { className: "r-why" }, one.sentences.join(" ")))));
 }
 
 async function installSchedule() {

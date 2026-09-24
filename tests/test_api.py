@@ -1527,8 +1527,30 @@ def test_install_schedule_uses_the_same_root_as_the_app(capsys, demo_root, monke
     assert code == 0, payload
     assert payload["root"] == str(demo_root)
     xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
-    assert str(demo_root) in xml and "T06:30:00" in xml and "PT60M" in xml
+    # The job reads the root the app reads, from the one settings file
+    # (decision 131) - it names the folder of that file, never the root.
+    assert payload["settings"] in xml and "T06:30:00" in xml and "PT60M" in xml
     assert calls == [Path(payload["xml"])]
+
+
+def test_install_schedule_writes_the_job_from_the_apps_own_settings_folder(
+    capsys, demo_root, monkeypatch, tmp_path,
+):
+    """Decision 131: the job's command line names the settings folder this
+    app runs with - the one the Electron shell hands it - and no clients
+    root, so a root changed in the app is the root the job walks next."""
+    import tracker.api as api_module
+    from tracker.runner import SETTINGS_FLAG
+    from tracker.scheduling import quote_argument
+    from tracker.settings import settings_dir
+
+    monkeypatch.setattr(api_module, "install_task", lambda xml, name=TASK_NAME: ["schtasks"])
+    code, payload = run(capsys, "install-schedule", stdin={})
+    assert code == 0, payload
+    assert payload["settings"] == str(settings_dir()) == str(tmp_path / "app")
+    xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
+    assert f"{SETTINGS_FLAG} {quote_argument(settings_dir())}" in xml
+    assert str(demo_root) not in xml
 
 
 def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys, demo_root, monkeypatch, tmp_path):
@@ -1548,7 +1570,7 @@ def test_the_packaged_app_installs_a_schedule_against_its_own_executable(capsys,
     assert payload["frozen"] is True
     xml = Path(payload["xml"]).read_text(encoding=SCHEDULE_XML_ENCODING)
     assert f"<Command>{exe}</Command>" in xml
-    assert f"<Arguments>{RUNNER_MODE_FLAG} " in xml and LOG_FLAG in xml and str(demo_root) in xml
+    assert f"<Arguments>{RUNNER_MODE_FLAG} " in xml and LOG_FLAG in xml and payload["settings"] in xml
     assert f"<WorkingDirectory>{exe.parent}</WorkingDirectory>" in xml
     assert "-m tracker.runner" not in xml
 
@@ -3265,3 +3287,124 @@ def test_unfiling_moves_it_back_to_under_review_at_once(capsys, demo_root, tmp_p
     assert f"  {label}  Received" not in after
     assert UNDER_REVIEW_HEADING in after and "  1 document received " in after
     assert filed["original_name"] not in after
+# ------------------------------------ decision 131: the room a return has ----
+
+
+def _a_long_row_return(root, return_name="1040 - Long", household=HOUSEHOLD):
+    """A return made the way a test makes one - past creation's refusal - whose
+    second row's canonical copy no longer fits under ``root``: the state a
+    root that grew leaves behind."""
+    from tracker.manifest import RequestItem
+
+    return make_engagement(root, [
+        RequestItem(identifier="A01", document="W-2", allowed_extensions=("pdf",)),
+        RequestItem(identifier="B01", document="y" * 100, allowed_extensions=("pdf",)),
+    ], household=household, return_name=return_name)
+
+
+def test_set_root_answers_with_every_return_short_of_room_under_the_new_root(
+    capsys, tmp_path, monkeypatch,
+):
+    """Setting the root is the one moment every move passes through, so its
+    reply names every return short of room under the new root, with its
+    numbers, in label order - and records the root regardless."""
+    from tests.conftest import TEST_YEAR
+    from tracker.filer import ROOM_SHORT, room_for
+    from tracker.manifest import RequestItem
+    from tracker.settings import ENV_SETTINGS_DIR, clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    root = tmp_path / "Clients"
+    fits = make_engagement(root, [RequestItem(identifier="A01", document="W-2")],
+                           return_name="1040 - Fits")
+    short = _a_long_row_return(root)
+    room = room_for(short, load_manifest(short))
+    assert room.short > 0 and room_for(fits, load_manifest(fits)).short == 0
+
+    code, payload = run(capsys, "set-root", stdin={"root": str(root)})
+
+    assert code == 0, payload
+    assert clients_root() == root.resolve()
+    [entry] = payload["short_of_room"]
+    assert entry["engagement"] == f"{HOUSEHOLD} {TEST_YEAR} 1040 - Long"
+    assert entry["short"] == room.short and entry["parks"] == room.parks
+    assert entry["sentences"][0] == ROOM_SHORT.format(short=room.short)
+
+
+def test_state_carries_the_returns_room_and_the_banner_sentence(capsys, demo_root):
+    """A person opening a return sees its room without waiting for a pass:
+    the six numbers, and the practice page's sentence in the warnings the
+    banner already shows."""
+    from tracker.filer import ROOM_SHORT, room_for
+
+    engagement = _a_long_row_return(demo_root)
+    room = room_for(engagement, load_manifest(engagement))
+
+    state = payload_of_state(capsys, engagement)
+
+    assert state["room"] == {"need": room.need, "least": room.least, "floor": room.floor,
+                             "short": room.short, "parks": room.parks, "limit": 260}
+    assert ROOM_SHORT.format(short=room.short) in state["warnings"]
+    assert run(capsys, "list")[1]["vocab"]["room"]["short"] == ROOM_SHORT
+
+
+def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and_leaves_an_unchanged_one_alone(
+    capsys, demo_root,
+):
+    """The editor's save keeps creation's standard for the rows it changes:
+    a hundred-character label typed into one row is refused with creation's
+    sentence and nothing is recorded; a row already past the limit that the
+    person did not touch never traps a save that shortens another."""
+    from tracker.layout import PATH_TOO_LONG
+
+    engagement = _a_long_row_return(demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    by_id = {row["identifier"]: row for row in rows}
+
+    before = ledger.path_for(engagement).read_bytes()
+    typed = [{**by_id["A01"], "document": "z" * 100}, by_id["B01"]]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": typed, "engagement": {}})
+    assert code == 1
+    assert payload["error"].startswith(PATH_TOO_LONG.split("{")[0])
+    assert "shorten the household or the return name" in payload["error"]
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    shortened = [{**by_id["A01"], "document": "W2"}, by_id["B01"]]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": shortened, "engagement": {}})
+    assert code == 0, payload
+    assert payload["saved"]["changed"] == ["A01"]
+
+
+def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor(
+    capsys, tmp_path, monkeypatch,
+):
+    """The API half: a person's filing into a request with no room for even
+    its shortest name comes back as the one error sentence, PATH_NO_ROOM,
+    and nothing has moved."""
+    from tests.conftest import named_page, root_for_a_return_of, sort
+    from tests.test_scanner import text_pdf
+    from tracker.filer import PATH_NO_ROOM
+    from tracker.manifest import RequestItem
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    root = root_for_a_return_of(tmp_path, 210)
+    engagement = make_engagement(root, [RequestItem(
+        identifier="A01", document="W-2 Wage Statements", period="TY2025",
+        allowed_extensions=("pdf",), required_keywords=("W-2",))])
+    set_clients_root(root)
+    text_pdf(inbox_of(engagement) / "note.pdf", named_page("A letter the list does not ask for"))
+    sort(engagement)
+    [parked] = [e for e in read_index(engagement) if e.decision == NEEDS_REVIEW]
+    seq = next(row["seq"] for row in payload_of_state(capsys, engagement)["index"]
+               if row["original_name"] == "note.pdf")
+    before = sorted(str(p) for p in root.rglob("*"))
+
+    code, payload = run(capsys, "assign", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"original": parked.pbc_location, "identifier": "A01", "seq": seq})
+
+    assert code == 1
+    assert payload["error"] == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260)
+    assert sorted(str(p) for p in root.rglob("*")) == before

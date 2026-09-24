@@ -247,6 +247,25 @@ def make_engagement(root, items, info: EngagementInfo | None = None, *,
     return folder
 
 
+def root_for_a_return_of(base, length: int, *, household: str = TEST_HOUSEHOLD,
+                         year: int = TEST_YEAR, return_name: str = TEST_RETURN) -> Path:
+    """A clients root under ``base`` whose return folder is exactly
+    ``length`` characters (decision 131).
+
+    The room a return has is arithmetic on the whole path, so a claim about
+    it is made at a known length rather than at whatever the machine's
+    temporary folder happens to spend: one folder of padding is added under
+    ``base`` to reach it. A machine whose ``base`` is already longer than
+    the claim can use says so by name and skips.
+    """
+    base = Path(base)
+    below = len(str(return_dir_for(Path("r"), household, year, return_name))) - 1
+    pad = length - below - len(str(base)) - 1
+    if pad < 1:
+        pytest.skip(f"{base} is too long to make a return folder of {length} characters under it")
+    return base / ("r" * pad)
+
+
 def sort_all(returns, *, home=None, today=None, dry_run: bool = False):
     """One pass of the household's sort over these returns, answering for
     every one of them: the mapping ``file_household_drops`` returns.

@@ -5479,3 +5479,266 @@ def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_anot
     labels = [line.label for line in received_for([engagement]).lines]
 
     assert labels.count("A01 - W-2 Wage Statement") == 1
+# ------------------------------------ decision 131: the room a return has ----
+
+
+#: One request with no second file expected, as the room's claims want it:
+#: its canonical copy is ``Prepared/A01 - W-2 Wage Statements/A01 - W-2
+#: Wage Statements - TY2025.pdf``, 74 characters below the return folder.
+ROOM_ITEMS = [
+    RequestItem(
+        identifier="A01", document="W-2 Wage Statements", period="TY2025",
+        allowed_extensions=("pdf",), min_size_kb=0,
+        required_keywords=("W-2",), date_pattern=r"(?i)\b2025\b",
+    ),
+]
+#: Below the return folder: the canonical copy's path, the request folder's.
+CANONICAL_BELOW = 74
+FOLDER_BELOW = 35
+
+
+def tight_return(base, over: int, items=ROOM_ITEMS, **kwargs):
+    """A return whose A01 canonical copy passes Windows's limit by ``over``
+    characters: its folder is ``260 + over - 74`` characters long."""
+    from tests.conftest import root_for_a_return_of
+
+    root = root_for_a_return_of(base, 260 + over - CANONICAL_BELOW)
+    engagement = make_engagement(root, items, **kwargs)
+    assert len(str(engagement)) + CANONICAL_BELOW == 260 + over
+    return engagement
+
+
+def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchanged(tmp_path):
+    """``room_for`` reads no disk: a return folder that does not exist is
+    measured as readily as one that does. Its ``need`` is creation's figure
+    exactly - the deepest canonical copy - so decision 125's measurements
+    stand: 164 for the example row, 223 for the whole 1040 core list at its
+    longest extension, 316 for a hundred-character document."""
+    from tracker.filer import Room, room_for, shortest_name_for
+    from tracker.layout import MAX_PATH_LENGTH, deepest_path_length, limit_for, return_dir_for
+    from tracker.scaffold import folder_name_for
+    from tracker.templates import template_items
+
+    root = Path("G:/Shared drives/JPA Clients")
+    engagement = return_dir_for(root, "Park Family", 2026, "1040 - John & Maria Park")
+    assert not engagement.exists()
+
+    w2 = replace(ITEMS[0], period="TY2026", expected_count=1)
+    room = room_for(engagement, [w2])
+    assert room.need == 164 and room.limit == MAX_PATH_LENGTH and room.short == 0
+    # The shortest name: the identifier, the period, a two-digit suffix, the extension.
+    assert shortest_name_for(w2, "pdf") == "A01 - TY2026 (99).pdf"
+    assert room.least == len(str(engagement / PREPARED_DIR_NAME / folder_name_for(w2)
+                                 / "A01 - TY2026 (99).pdf"))
+    assert room.floor == len(str(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / "x (99).pdf"))
+    assert room.floor == 128 and room.parks == 0
+
+    core = [replace(item, allowed_extensions=("xlsx",))
+            for item in template_items("1040", core_only=True)]
+    subpaths = [f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/{prepared_name_for(item, 'xlsx', set())}"
+                for item in core]
+    assert room_for(engagement, core).need == deepest_path_length(engagement, subpaths) == 223
+    # Every copy is a workbook, and a workbook's reader allows 218: five short.
+    assert limit_for("xlsx") == 218
+    assert room_for(engagement, core).short == 223 - 218 == 5
+
+    long_row = replace(template_items("1040", core_only=True)[0], document="x" * 100,
+                       allowed_extensions=("xlsx",))
+    long = room_for(engagement, [long_row])
+    assert long.need == 316 and long.short == 316 - 218
+    # Its folder is named after the hundred characters too, and leaves a
+    # workbook no room even for ``A01 - TY2026 (99).xlsx``: it parks.
+    assert long.least == 223 and long.parks == 1
+    assert room_for(engagement, [replace(long_row, allowed_extensions=("pdf",))]).parks == 0
+
+    # A row set aside is not measured, as creation does not measure it.
+    from tracker.manifest import Override
+
+    aside = replace(long_row, manual_override=Override.NOT_APPLICABLE)
+    nothing = len(str(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / "x (99).xlsx"))
+    assert room_for(engagement, [aside]) == Room(need=0, least=0, floor=nothing, parks=0, short=0)
+
+
+def test_a_working_copy_is_named_to_fit_the_room_left_under_its_folder(tmp_path):
+    """A root long enough that the canonical name does not fit: the pass
+    files all the same, under a name that keeps the identifier, the period
+    and the extension and loses the tail of the document label. The row
+    names the copy on disk, the scan proves it, and the next pass's reuse
+    check finds it."""
+    from tracker.filer import _existing_copy
+    from tracker.manifest import Status
+    from tracker.scanner import scan_engagement
+    from tracker.validators import sha256_of
+
+    engagement = tight_return(tmp_path, 10)
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    report = sort(engagement, today=DAY1)
+
+    [entry] = report.filed
+    folder = prepared(engagement, "A01")
+    [copy] = list(folder.iterdir())
+    assert copy.name == "A01 - W-2 Wage - TY2025.pdf"             # " Statements" cut, then the space
+    assert len(str(copy)) <= 260
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/{folder.name}/{copy.name}"
+    assert locate(engagement, entry.prepared_location) == copy
+
+    scan_engagement(engagement, today=DAY1)
+    assert load_manifest(engagement)[0].status == Status.RECEIVED
+
+    original = originals(engagement) / "w2.pdf"
+    assert _existing_copy(folder, original, sha256_of(original)) == copy
+
+
+def test_the_numbered_suffix_is_counted_when_a_name_is_cut(tmp_path):
+    """Two files for one request under the same tight root: the second's
+    ``(2)`` is counted in the same loop that cuts, so its document part
+    gives up the suffix's four characters (less what the cut had to spare)
+    and the pair is still one series - the same stem cut further, and the
+    number after it."""
+    items = [replace(ROOM_ITEMS[0], expected_count=2)]
+    engagement = tight_return(tmp_path, 10, items=items)
+    drop(engagement, "w2-a.pdf", "Form W-2 Wage and Tax Statement 2025 employer one")
+    drop(engagement, "w2-b.pdf", "Form W-2 Wage and Tax Statement 2025 employer two")
+
+    report = sort(engagement, today=DAY1)
+
+    assert len(report.filed) == 2
+    folder = prepared(engagement, "A01")
+    room = 260 - len(str(folder)) - 1
+    names = sorted(p.name for p in folder.iterdir())
+    assert names == ["A01 - W-2 W - TY2025 (2).pdf", "A01 - W-2 Wage - TY2025.pdf"]
+    assert all(len(name) <= room for name in names)
+    second, first = names
+    # One series: the second is the first's stem, cut further, numbered.
+    assert second.removesuffix(" - TY2025 (2).pdf") in first.removesuffix(" - TY2025.pdf")
+    assert len(first.removesuffix(" - TY2025.pdf")) - len(second.removesuffix(" - TY2025 (2).pdf")) == 3
+    assert sorted(e.prepared_location.rsplit("/", 1)[1] for e in report.filed) == names
+
+
+def test_a_request_with_no_room_for_its_shortest_name_parks_with_the_sentence(tmp_path):
+    """Every rule accepted the W-2 and its request's folder leaves no room
+    for even ``A01 - TY2025.pdf``: it parks, with PATH_NO_ROOM naming both
+    numbers, the request as its candidate, a review copy a person can open
+    and the original where every original rests."""
+    from tracker.filer import PATH_NO_ROOM
+
+    # The request folder is 245 characters: 14 left for a name that needs 16.
+    engagement = tight_return(tmp_path, 210 + CANONICAL_BELOW - 260, scaffold=True)
+    assert len(str(engagement)) + FOLDER_BELOW == 245
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    report = sort(engagement, today=DAY1)
+
+    assert report.filed == []
+    [parked] = report.review
+    assert parked.reason == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260)
+    assert parked.candidates == "A01"
+    copy = locate(engagement, parked.prepared_location)
+    assert copy.is_file() and copy.parent.name == REVIEW_DIR_NAME
+    assert (originals(engagement) / "w2.pdf").is_file()
+    assert list(prepared(engagement, "A01").iterdir()) == []
+
+
+def test_a_review_copy_is_named_to_fit_and_the_row_keeps_the_clients_name(short_root):
+    """A client's file name of 150 characters under a root that leaves the
+    review folder less room than that: the document parks, its review copy
+    is cut to fit - the extension kept - and the row's ``original_name`` is
+    the client's whole name, which is what the queue's *what the name says*
+    line reads."""
+    from tests.conftest import root_for_a_return_of
+    from tracker import review
+
+    root = root_for_a_return_of(short_root, 109)                  # the review folder: 135
+    engagement = make_engagement(root, ROOM_ITEMS)
+    review_dir = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+    name = "letter " + "n" * 139 + ".pdf"
+    assert len(name) == 150 and len(str(review_dir)) + 1 + len(name) > 260
+    drop(engagement, name, "A letter about nothing on the list")
+
+    report = sort(engagement, today=DAY1)
+
+    [parked] = report.review
+    assert parked.original_name == name
+    copy = locate(engagement, parked.prepared_location)
+    assert copy.is_file() and copy.suffix == ".pdf"
+    assert copy.name.startswith("letter nnn") and len(str(copy)) == 260
+    assert (originals(engagement) / name).is_file()                # the original, uncut
+    [triaged] = review.triage(engagement, read_index(engagement), items=load_manifest(engagement))
+    assert triaged.entry.original_name == name
+
+
+def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor(tmp_path):
+    """A person's filing and a hand-over name the working copy the way the
+    pass does: cut to fit where the canonical name does not, and refused
+    with PATH_NO_ROOM - nothing moved - only where not even the shortest
+    name fits."""
+    from tests.conftest import root_for_a_return_of
+    from tracker.filer import PATH_NO_ROOM, assign_review_file, hand_over
+
+    # One household, three returns: home fits; ``cut`` leaves A01 ten short;
+    # ``none`` leaves its request folder 14 characters for a 16-character name.
+    root = root_for_a_return_of(tmp_path, 150, return_name="1040 - Home")
+    home = make_engagement(root, ROOM_ITEMS, return_name="1040 - Home")
+    cut = make_engagement(root, ROOM_ITEMS, return_name="1040 - " + "s" * 50)
+    none = make_engagement(root, ROOM_ITEMS, return_name="1040 - " + "t" * 64)
+    assert len(str(cut)) + CANONICAL_BELOW == 270
+    assert len(str(none)) + FOLDER_BELOW == 245
+    drop(home, "note.pdf", "A letter the list does not ask for")
+    drop(home, "other.pdf", "Another letter the list does not ask for")
+    sort_all([home, cut, none], today=DAY1)
+    parked = {e.original_name: e for e in read_index(home) if e.decision == NEEDS_REVIEW}
+    assert set(parked) == {"note.pdf", "other.pdf"}
+
+    # Refused below the floor, with the sentence, and nothing moved.
+    before = sorted(str(p) for p in root.rglob("*"))
+    with pytest.raises(FilingError) as refused:
+        hand_over(home, parked["note.pdf"].pbc_location, none, "A01", today=DAY2)
+    assert str(refused.value) == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"),
+                                                     limit=260)
+    assert sorted(str(p) for p in root.rglob("*")) == before
+
+    # Handed to the return with room for a cut name: named to fit.
+    handed = hand_over(home, parked["note.pdf"].pbc_location, cut, "A01", today=DAY2)
+    copy = locate(cut, handed.target_entry.prepared_location)
+    assert copy.is_file() and copy.name == "A01 - W-2 Wage - TY2025.pdf" and len(str(copy)) <= 260
+
+    # A person's filing in a return with no room: refused, nothing moved.
+    tight = tight_return(tmp_path / "t", 210 + CANONICAL_BELOW - 260)
+    drop(tight, "note.pdf", "A letter the list does not ask for")
+    sort(tight, today=DAY1)
+    [waiting] = [e for e in read_index(tight) if e.decision == NEEDS_REVIEW]
+    before = sorted(str(p) for p in (tmp_path / "t").rglob("*"))
+    with pytest.raises(FilingError, match="at its shortest"):
+        assign_review_file(tight, waiting.pbc_location, "A01", today=DAY2)
+    assert sorted(str(p) for p in (tmp_path / "t").rglob("*")) == before
+
+    # And one with room for a cut name: filed under it.
+    roomy = tight_return(tmp_path / "r", 10)
+    drop(roomy, "note.pdf", "A letter the list does not ask for")
+    sort(roomy, today=DAY1)
+    [waiting] = [e for e in read_index(roomy) if e.decision == NEEDS_REVIEW]
+    done = assign_review_file(roomy, waiting.pbc_location, "A01", today=DAY2)
+    assert done.entry.prepared_location.endswith("/A01 - W-2 Wage - TY2025.pdf")
+    assert locate(roomy, done.entry.prepared_location).is_file()
+
+
+def test_creation_and_the_rollover_still_refuse_the_canonical_name_past_the_limit(tmp_path):
+    """Creation's and the rollover's refusal are unchanged: the canonical
+    name at each row's longest extension, against Windows's 260 - not a
+    reader's 218, which only cuts a name - with decision 125's words."""
+    from tracker.filer import refuse_a_path_past_the_limit
+    from tracker.layout import PATH_TOO_LONG, return_dir_for
+    from tracker.manifest import ManifestError
+    from tracker.templates import template_items
+
+    root = Path("G:/Shared drives/JPA Clients")
+    engagement = return_dir_for(root, "Park Family", 2026, "1040 - John & Maria Park")
+    core = [replace(item, allowed_extensions=("xlsx",))
+            for item in template_items("1040", core_only=True)]
+    refuse_a_path_past_the_limit(engagement, core)          # 223: past 218, inside 260 - accepted
+
+    long_row = replace(core[0], document="x" * 100)
+    with pytest.raises(ManifestError) as refused:
+        refuse_a_path_past_the_limit(engagement, [long_row])
+    assert str(refused.value) == PATH_TOO_LONG.format(folder=engagement, length=316, limit=260)

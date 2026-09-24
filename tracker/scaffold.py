@@ -68,6 +68,7 @@ from tracker.layout import (
     inbox_dir_for,
     originals_dir_for,
     root_of,
+    same_return,
     year_of,
 )
 from tracker.manifest import (
@@ -302,10 +303,15 @@ def _open_year_of(household_dir: Path, returns: list[Path] | None = None
     # finished with, exactly as ``tracker.registry.mark_superseded`` says:
     # the rollover never writes to last year, so the successor's own Rolled
     # From is what retires it - and a household the year after a rollover
-    # would otherwise read as two open years and be told nothing.
-    retired = {_resolved(one.info.rolled_from) for one in engagements if one.info.rolled_from}
+    # would otherwise read as two open years and be told nothing. By the
+    # same rule discovery uses (decision 131): the path, else its three
+    # trailing names, so a clients root that has moved - which leaves every
+    # absolute Rolled From naming a folder that is not there - still
+    # retires the prior, and the README is written for the one open year.
     for one in engagements:
-        one.superseded = _resolved(one.path) in retired
+        one.superseded = any(same_return(other.info.rolled_from, one.path)
+                             for other in engagements
+                             if other is not one and other.info.rolled_from)
     return open_years(engagements), engagements
 
 
@@ -332,16 +338,6 @@ def readme_returns(household_dir: Path | str) -> list[_ReturnLine] | None:
     once."""
     found = _readme_returns(Path(household_dir))
     return None if found is None else found[1]
-
-
-def _resolved(path) -> Path:
-    """One folder as a comparison can use it. Rolled From is written
-    absolute, and a root that has moved would otherwise resolve to
-    nothing: an unresolvable path compares as itself."""
-    try:
-        return Path(path).resolve()
-    except OSError:
-        return Path(path)
 
 
 @dataclass(slots=True)

@@ -56,6 +56,8 @@ from tracker.filer import (
     FILED,
     NEEDS_REVIEW,
     NOT_REQUESTED,
+    ROOM_PARKS,
+    ROOM_SHORT,
     FilingError,
     Spelling,
     assign_review_file,
@@ -68,6 +70,7 @@ from tracker.filer import (
     refresh_household_readme,
     refuse_a_path_past_the_limit,
     restore_working_copy,
+    room_for,
     unfile_document,
 )
 from tracker.fsio import write_text_atomically
@@ -85,6 +88,8 @@ from tracker.layout import (
     CLIENTS_TREE,
     ENGAGEMENT_LABEL_PATTERN,
     INBOX_DIR_NAME,
+    MAX_PATH_LENGTH,
+    PATH_TOO_LONG,
     PRIVATE_TREE,
     RETURN_NAME_PATTERN,
     client_household_dir,
@@ -593,6 +598,11 @@ def standing_rules() -> list[dict]:
             for headline, detail in STANDING_RULES]
 
 
+#: The heading the root dialog lists the returns short of room under, after
+#: a person sets the clients root (decision 131).
+ROOM_HEADING = "Returns short of room under this root"
+
+
 def _vocab() -> dict:
     """Every word and number the renderer shows or compares, from its owner.
 
@@ -783,6 +793,10 @@ def _vocab() -> dict:
             "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
             "task_name": TASK_NAME,
         },
+        # The room a return has under the clients root (decision 131): the
+        # two sentences the banner and the set-root reply fill, and the
+        # heading the root dialog lists them under. The renderer types none.
+        "room": {"short": ROOM_SHORT, "parks": ROOM_PARKS, "heading": ROOM_HEADING},
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
         # Every word and colour the Reminder card shows (decisions 115 and
         # 118), from the module that owns the draft. The card types none of
@@ -1327,6 +1341,10 @@ def _state(engagement: Path) -> dict:
     # card carries out and a person's action carries back (decision 112).
     seqs = store.document_seqs(conn, engagement)
     view_path = engagement / VIEW_FILENAME
+    # The room this return has under the clients root (decision 131),
+    # measured from the list already loaded - no second read - so a person
+    # opening a return sees the number without waiting for a pass.
+    room = room_for(engagement, items)
     return {
         # The derived page, and whether it still describes this engagement.
         # Reading the stamp takes no lock and tolerates another program
@@ -1354,7 +1372,9 @@ def _state(engagement: Path) -> dict:
         "rules": [rule_as_read(row) for row in rules],
         "learned": {row["identifier"]: list(taught[identifier_key(row["identifier"])])
                     for row in rules if taught.get(identifier_key(row["identifier"]))},
-        "warnings": check_rules(items),
+        "warnings": check_rules(items) + _room_sentences(room),
+        "room": {"need": room.need, "least": room.least, "floor": room.floor,
+                 "short": room.short, "parks": room.parks, "limit": room.limit},
         # The index's packed cells travel as data, not as text the app
         # would have to parse: the candidates as a list, the evidence as
         # the record it was written from keyed by candidate identifier,
@@ -1419,6 +1439,13 @@ def _state(engagement: Path) -> dict:
             "status": str(root / STATUS_PAGE_FILENAME) if root else "",
         },
     }
+
+
+def _room_sentences(room) -> list[str]:
+    """What the app's banner and the set-root reply say about one return's
+    room: the practice page's two sentences (decision 131), filled."""
+    said = [ROOM_SHORT.format(short=room.short)] if room.short else []
+    return said + ([ROOM_PARKS.format(count=room.parks)] if room.parks else [])
 
 
 def _reminder_payload(engagement: Path, items, entries) -> dict:
@@ -1614,6 +1641,7 @@ def _cmd_edit(argv: list[str]) -> dict:
         if key not in ENGAGEMENT_EDITABLE:
             raise ManifestError(f"'{key}' is not edited here")
     info = _info_from_spec(details, carry=load_engagement_info(engagement), blank_clears=True)
+    _refuse_a_changed_row_past_the_limit(engagement, items)
     saved = save_rules(engagement, items, info)
     _refresh_readmes(engagement)
     state = _state(engagement)
@@ -1623,6 +1651,36 @@ def _cmd_edit(argv: list[str]) -> dict:
         "warnings": state["warnings"],
         "state": state,
     }
+
+
+#: What a row is compared on to say the editor changed it (decision 131):
+#: the four things a working copy's path is made of.
+_PATH_FIELDS = ("identifier", "document", "period", "allowed_extensions")
+
+
+def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
+    """The editor's save keeps creation's standard for the rows it changes
+    (decision 131).
+
+    A row whose identifier, document, period or file types differ from the
+    stored list, and every new row, is measured as creation measures a
+    list (``filer.room_for``); one whose canonical working copy would pass
+    what Windows opens refuses the save with creation's own sentence, and
+    nothing is recorded - the person shortens the label and saves again.
+    A row the person did not touch is never refused: it is already in the
+    room the page and the banner report, so shortening one label is never
+    trapped by another. A row set Not Applicable is not measured, as
+    creation does not measure it.
+    """
+    stored = {item.identifier: item for item in load_manifest(engagement)}
+    changed = [item for item in items
+               if item.identifier not in stored
+               or any(getattr(item, name) != getattr(stored[item.identifier], name)
+                      for name in _PATH_FIELDS)]
+    need = room_for(engagement, changed).need
+    if need > MAX_PATH_LENGTH:
+        raise ManifestError(PATH_TOO_LONG.format(folder=engagement, length=need,
+                                                 limit=MAX_PATH_LENGTH))
 
 
 def _cmd_unlearn(argv: list[str]) -> dict:
@@ -2717,22 +2775,63 @@ def _cmd_set_root(argv: list[str]) -> dict:
         set_firm_phone(str(spec["phone"]))
     return {"root": str(root), "firm": firm(), "phone": firm_phone(),
             "settings_path": str(settings_path()),
-            "engagements": _cmd_list([])["engagements"]}
+            "engagements": _cmd_list([])["engagements"],
+            "short_of_room": _short_of_room(root)}
+
+
+def _short_of_room(root: Path) -> list[dict]:
+    """Every return short of room under a clients root a person has just
+    set, in label order (decision 131).
+
+    The one moment every move the tracker survives passes through - a root
+    that moved is a root the tracker cannot find until somebody sets it
+    again - so it is the moment to say what the move costs. The root is
+    recorded regardless: the firm's data is where it is. One walk, one read
+    of each list; the one time this is done outside a pass, because it is
+    the one moment a person is asking. A return whose list will not read
+    is left to the pass and the picker, which already say why.
+    """
+    try:
+        registry = discover_engagements(root)
+    except RegistryError:
+        return []
+    short = []
+    for engagement in registry.engagements:
+        # The returns a pass would work: a prior rolled forward and a client
+        # finished with are never written to, so their room is nobody's worry.
+        if engagement.problem or engagement.superseded_by or not engagement.active:
+            continue
+        try:
+            room = room_for(engagement.path, load_manifest(engagement.path))
+        except Exception as exc:          # the pass and the picker say this return's problem
+            log.warning("Could not measure %s (%s)", engagement.label, exc)
+            continue
+        if room.short or room.parks:
+            short.append({"engagement": engagement.label, "short": room.short, "parks": room.parks,
+                          "sentences": _room_sentences(room)})
+    return sorted(short, key=lambda one: one["engagement"])
 
 
 def _cmd_install_schedule(argv: list[str]) -> dict:
-    """Generate the Task Scheduler job for the configured root and register it.
+    """Generate the Task Scheduler job for this app's settings and register it.
 
     JSON on stdin (all optional): {"start": "HH:MM", "every": minutes},
-    defaulting to tracker.scheduling's DEFAULT_START / DEFAULT_REPEAT_MINUTES. The
-    root and the working folder are the ones this app runs with, so the job
-    walks exactly the folder the app shows. From a source checkout the job
+    defaulting to tracker.scheduling's DEFAULT_START / DEFAULT_REPEAT_MINUTES.
+    The job names this app's settings folder and the working folder it runs
+    from, and reads the clients root from the settings file at every run
+    (decision 131), so it walks exactly the folder the app shows - today
+    and after the root is changed. A root must be set before a job is
+    registered; the reply names it for the dialog's sentence. From a source checkout the job
     is the Python this API runs under; in the packaged app it is this same
     executable in runner mode (api_entry.py, RUNNER_MODE_FLAG), which needs
     none of the environment the shell gives the API.
     """
     spec = json.loads(sys.stdin.read() or "{}")
     root = _root()
+    # The job names this app's settings folder, never the root (decision
+    # 131): it reads the root from the settings file at every run, so a
+    # root changed in the app is the root the job walks next.
+    folder = settings_dir()
     start = str(spec.get("start") or DEFAULT_START)
     every = int(spec["every"]) if spec.get("every") not in (None, "") else DEFAULT_REPEAT_MINUTES
     frozen = bool(getattr(sys, "frozen", False))
@@ -2740,7 +2839,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     xml_path = settings_path().with_name(SCHEDULE_XML_FILENAME)
     write_text_atomically(
         xml_path,
-        task_scheduler_xml(python=sys.executable, root=root, working_dir=working_dir,
+        task_scheduler_xml(python=sys.executable, settings=folder, working_dir=working_dir,
                            start_time=start, repeat_minutes=every, frozen=frozen),
         encoding=SCHEDULE_XML_ENCODING,
     )
@@ -2753,6 +2852,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         "xml": str(xml_path),
         "command": command,
         "root": str(root),
+        "settings": str(folder),
         "start": start,
         "every": every,
         "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],

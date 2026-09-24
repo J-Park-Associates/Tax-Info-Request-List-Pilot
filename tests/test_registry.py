@@ -360,7 +360,8 @@ def test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves(root, 
 def test_a_rolled_forward_prior_is_retired_across_two_households_with_the_same_return_name(root):
     """A return keeps its name every year, so two households may each hold
     ``2025/1040 - John Park``: the last two names tie and the third - the
-    household's - decides (``_TAIL_NAMES`` is three since decision 125)."""
+    household's - decides (``layout.ROLLED_FROM_TAIL`` is three since decision
+    125, worded at layer 0 since decision 131)."""
     from tracker.registry import engagement_from, mark_superseded
 
     prior = make(root, household="Park Family", year=2025, name="1040 - John Park")
@@ -376,6 +377,32 @@ def test_a_rolled_forward_prior_is_retired_across_two_households_with_the_same_r
     assert retired[f"{private}/Park Family/2025/1040 - John Park"] == "Park Family 2026 1040 - John Park"
     assert retired[f"{private}/Park Family/2026/1040 - John Park"] == ""
     assert retired[f"{private}/Lee Family/2025/1040 - John Park"] == ""
+
+
+def test_discovery_retires_a_prior_by_the_layout_rule(root, tmp_path, monkeypatch):
+    """Discovery and the scaffold read one rule (decision 131): the tail a
+    Rolled From path must share with a return folder is
+    ``layout.ROLLED_FROM_TAIL``, counted by ``layout.shared_tail``, and the
+    registry keeps no copy of either - so moving the number moves both."""
+    import tracker.layout as layout
+    import tracker.registry as registry
+    from tracker.registry import engagement_from, mark_superseded
+
+    assert not hasattr(registry, "_TAIL_NAMES") and not hasattr(registry, "_shared_tail")
+    prior = make(root, year=2025)
+    make(root, year=2026, info=EngagementInfo(rolled_from=str(prior.resolve())))
+    moved = tmp_path / "Moved"
+    root.rename(moved)
+
+    def retired():
+        found = [engagement_from(p) for p in engagement_dirs(moved)]
+        return {e.path.parent.name: e.superseded_by for e in mark_superseded(found)}
+
+    # Four names in common - the private tree's, the household's, the
+    # year's, the return's - and the root's own name differs.
+    assert retired()["2025"]
+    monkeypatch.setattr(layout, "ROLLED_FROM_TAIL", 5)
+    assert not retired()["2025"]                     # the layout's rule is the rule
 
 
 def test_a_rolled_from_that_matches_nothing_is_a_warning_not_a_silence(root):

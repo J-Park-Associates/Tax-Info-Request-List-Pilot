@@ -167,3 +167,50 @@ def test_the_whole_1040_core_list_fits_under_the_firms_own_root():
                 for item in template_items("1040", core_only=True)]
     assert deepest_path_length(engagement, subpaths) == 223
     assert deepest_path_length(engagement, subpaths) <= MAX_PATH_LENGTH
+
+
+# ------------------------------------------- decision 131: a moved root ----
+
+
+def test_a_rolled_from_path_names_the_same_return_after_the_clients_root_moves():
+    """Rolled From is written absolute, so a root that moves leaves it naming
+    a folder that is not there; the household's, the year's and the
+    return's names below the root still say which return it was. Two
+    trailing names are not enough - a return keeps its name every year and
+    two households may each hold one called the same - and a path equal but
+    for its case is the same folder, as Windows says."""
+    from tracker.layout import ROLLED_FROM_TAIL, same_return, shared_tail
+
+    moved = return_dir_for(Path("E:/Archive/JPA Clients"), HOUSEHOLD, 2025, RETURN)
+    was = str(return_dir_for(ROOT, HOUSEHOLD, 2025, RETURN))
+
+    assert ROLLED_FROM_TAIL == 3
+    assert same_return(was, moved)
+    assert shared_tail(was, moved) >= ROLLED_FROM_TAIL
+    # Two names in common - another household's return of the same name.
+    elsewhere = return_dir_for(Path("E:/Archive/JPA Clients"), "Lee Family", 2025, RETURN)
+    assert shared_tail(was, elsewhere) == 2
+    assert not same_return(was, elsewhere)
+    # The same path, lexically.
+    here = return_dir_for(ROOT, HOUSEHOLD, 2025, RETURN)
+    assert same_return(str(here), here)
+    if os.name == "nt":
+        assert same_return(str(here).upper(), here)
+
+
+def test_the_limit_for_an_extension_is_the_shortest_that_applies(monkeypatch):
+    """Windows's 260 for everything no reader limits further; a reader's
+    shorter figure for its own extensions, whatever their case or dot.
+    The owner's ruling (decision 131, Q-A) sets spreadsheets at 218."""
+    import tracker.layout as layout
+    from tracker.layout import OPEN_LIMITS, limit_for
+
+    assert OPEN_LIMITS == {"xlsx": 218, "xlsm": 218, "xls": 218, "csv": 218}
+    monkeypatch.setattr(layout, "OPEN_LIMITS", {})
+    assert limit_for("xlsx") == limit_for("pdf") == MAX_PATH_LENGTH == 260
+    monkeypatch.setattr(layout, "OPEN_LIMITS", {"xlsx": 218})
+    assert limit_for("xlsx") == limit_for(".XLSX") == 218
+    assert limit_for("pdf") == 260
+    # Never above Windows's own, whatever a table says.
+    monkeypatch.setattr(layout, "OPEN_LIMITS", {"pdf": 400})
+    assert limit_for("pdf") == 260

@@ -185,8 +185,13 @@ The schedule is one daily task that starts at
 `tracker.scheduling.DEFAULT_START` and repeats every
 `tracker.scheduling.DEFAULT_REPEAT_MINUTES` through the day. Each pass
 files what arrived, scans it, and on the draft day writes the chase emails.
-The app's **Install Schedule** button registers it for the folder the app
-is showing.
+The app's **Install Schedule** button registers it for this app's own
+settings: the job names the settings folder, never the clients root, and
+reads the root from `settings.json` there at every run (decision 131). So
+changing the root in the app is all it takes for the schedule to follow.
+A job installed by a version before decision 131 carries the root it was
+installed with: **press Install Schedule once after upgrading**, and never
+again for a move.
 
 **It only runs while someone is logged on.** The task is registered to run
 as the logged-on person, not as a background service, so the designated
@@ -210,6 +215,40 @@ documents are no use arriving a day late. The exception is declared rather
 than hidden: `automation.manifest.json` carries it in the dated
 `safety.scheduled_exception` field the Command Center's contract gained the
 same day, and the tool's card there prints that sentence.
+
+### If the clients root moves
+
+A Shared Drive remounted at another letter, a parent folder renamed, the
+tree copied under an archive folder: every one of these leaves the old
+path naming nothing, so the app asks where the clients live and the next
+scheduled pass stops with *Clients folder problem*. Nothing is lost - the
+record keys every return by its path below the root - and the whole
+answer is to **set the root again in the app** (or
+`python -m tracker.settings <folder>`). The schedule follows by itself;
+it reads the root from the settings file at every run.
+
+A longer root leaves every return less room: Windows opens a path of
+`tracker.layout.MAX_PATH_LENGTH` characters at most, and a working copy
+deep in a return with a long household name, a long return name and a
+long document label can pass it. So the reply to setting the root lists,
+under *Returns short of room under this root*, every return the new root
+leaves short, with the number. Nothing is refused - the firm's data is
+where it is - and the pass copes: it cuts the document part of a working
+copy's name to fit, keeping the request's identifier, the period, the
+`(2)` of a series and the extension, and records the name it wrote. A
+reader's limit counts too: Excel opens a workbook from a path of at most
+218 characters (Microsoft's own figure), so spreadsheet copies - `.xlsx`,
+`.xlsm`, `.xls`, `.csv` - are cut to fit 218 (`tracker.layout.OPEN_LIMITS`,
+the owner's ruling of 2026-09-23); creation still refuses only past
+Windows's own limit.
+
+A person has exactly three levers, and every sentence the tracker says
+about room names one of them: **a shorter clients root** (a drive letter
+over a profile path, the Shared Drive's own folder over one deep inside
+it), **a shorter label** in the editor for the request (every copy filed
+from then on is shorter; the folder keeps its name), and **a shorter
+return name** at the next rollover. Nothing in the tracker ever renames a
+folder or a filed copy to make room.
 
 ### Sharing a household with a client
 
@@ -346,6 +385,19 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
    engagement's folder — the pass you just read about regenerated it, so it
    is that engagement's list, index and review queue as of this morning, and
    the app says beside the engagement's name whether it is still current.
+
+   Two things the page may say about room (decision 131, and *If the
+   clients root moves* in §1). A **Warnings** line *N characters short of
+   the room its working copies need* is not a failure: that return is
+   sorted as usual and its copies' names are cut to fit; the app's banner
+   says the same when the return is opened. *N request(s) have no room for
+   a working copy* means a document for those requests parks in the review
+   folder with the reason *the working copy's path would be N characters
+   at its shortest*: shorten the root or that request's label, then file
+   it. A household **skipped** with *no room under ... for even a review
+   copy* was not touched at all - nothing read, nothing moved, nothing
+   scanned - and will not be until the clients root is shorter; move the
+   root and set it again in the app.
 2. **Clear the review folder.** Anything the rules could not be sure of is
    parked in the review folder (`tracker.scaffold.REVIEW_DIR_NAME`) with a
    reason. In the app, pick the engagement, pick the request the document
@@ -730,8 +782,12 @@ with *a run was interrupted here; the next pass finishes it first* - press
    program silently loses its command line and answers every call with a
    usage error.
 3. Start the app. It asks where the clients live on first launch — give it
-   the same folder, the synced one.
-4. Press **Install Schedule**.
+   the same folder, the synced one. This is the one place the root is set;
+   if the new machine mounts it at a longer path, the reply lists every
+   return that leaves short of room (§1, *If the clients root moves*).
+4. Press **Install Schedule** - once. Since decision 131 the job names the
+   app's settings folder and reads the clients root from it at every run,
+   so a later change of root is made in the app alone.
 5. Install the **Tesseract engine** (the UB Mannheim Windows installer),
    with the `eng` and `osd` language data — `osd` is ticked by default and
    is what turns a page the right way up before it is read. The reader

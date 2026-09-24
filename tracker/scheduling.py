@@ -2,7 +2,14 @@
 
 Emits a Windows Task Scheduler job definition, or the n8n equivalent, for::
 
-    python -m tracker.runner <clients root>
+    python -m tracker.runner --settings <the app's settings folder> --log
+
+**The job names no clients root** (decision 131). The root has one home,
+the settings file beside the app, and the job reads it from there at every
+run. It used to be a second home - quoted into the job's command line when
+*Install Schedule* was pressed - so a root changed in the app left the job
+walking the old one, red every night, until somebody remembered to press
+the button again. Now changing the root in the app is enough.
 
 **One task, not two.** The runner decides for itself whether today is the day
 to draft reminders (``tracker.runner.DRAFT_WEEKDAY``), so the schedule does not
@@ -13,8 +20,9 @@ misses (laptop closed on the draft day) still drafts when it next runs, rather t
 skipping the week.
 
 Paths differ on every machine, so the definition is generated rather than
-committed: point it at the Python you use and the folder you keep your
-clients in, and ``--install`` registers it with Task Scheduler in the same
+committed: point it at the Python you use and the app's settings folder
+(the one whose settings file names the clients root), and ``--install``
+registers it with Task Scheduler in the same
 step (``schtasks /create /xml ... /f``, so re-running is also how you change
 the schedule). The packaged app has no Python: its Install Schedule button
 registers the app's own API executable in runner mode
@@ -38,7 +46,7 @@ from xml.sax.saxutils import escape
 
 from tracker.fsio import write_text_atomically
 from tracker.locking import RUN_TIME_LIMIT_SECONDS
-from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG
+from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
 from tracker.settings import SETTINGS_FILENAME, product_name
 
 #: The scheduled task is named after the product, wherever that is set.
@@ -85,7 +93,6 @@ SCHEDULE_XML_ENCODING = "utf-16"
 #: How the scheduler module is invoked, for every hint that says so.
 MODULE_INVOCATION = "python -m tracker.scheduling"
 INSTALL_FLAG = "--install"
-ROOT_FLAG = "--root"
 OUT_FLAG = "--out"
 FORMAT_FLAG = "--format"
 START_FLAG = "--start"
@@ -101,16 +108,20 @@ def is_scheduling_host() -> bool:
     return platform.system() == "Windows"
 
 
-def runner_arguments(root: str | Path, *, frozen: bool = False) -> str:
+def runner_arguments(settings_dir: str | Path, *, frozen: bool = False) -> str:
     """The one command line the scheduled job runs, whoever schedules it.
 
     After the program that runs it: ``-m tracker.runner`` for a Python
     checkout, ``RUNNER_MODE_FLAG`` for the packaged app's own executable
     (``api_entry.py`` in runner mode). The runner's arguments are the same
     either way; only the way in differs.
+
+    It names the app's settings folder and **no clients root** (decision
+    131): the runner reads the root from the settings file there at every
+    run, so the root has one home.
     """
     program = RUNNER_MODE_FLAG if frozen else "-m tracker.runner"
-    return f'{program} {quote_argument(root)} {LOG_FLAG}'
+    return f'{program} {SETTINGS_FLAG} {quote_argument(settings_dir)} {LOG_FLAG}'
 
 
 def quote_argument(value: str | Path) -> str:
@@ -133,6 +144,15 @@ def _xml_escape(value: str) -> str:
     return escape(str(value))
 
 
+def _settings_file(settings: str | Path) -> str:
+    """The settings file inside the settings folder, spelled in the folder's
+    own flavour - the job is generated for Windows, from anywhere."""
+    text = str(settings)
+    windows = bool(PureWindowsPath(text).drive) or text.startswith("\\\\")
+    flavour = PureWindowsPath if windows else PurePosixPath
+    return str(flavour(text) / SETTINGS_FILENAME)
+
+
 def is_absolute_path(text: str) -> bool:
     """True for an absolute path in *either* flavour, whatever OS we are on.
 
@@ -143,24 +163,26 @@ def is_absolute_path(text: str) -> bool:
     return PureWindowsPath(text).is_absolute() or PurePosixPath(text).is_absolute()
 
 
-def resolve_root(root: str, working_dir: str) -> str:
-    """The clients root as the scheduled job will see it.
+def resolve_folder(folder: str, working_dir: str) -> str:
+    """A folder the command line was given, as the scheduled job will see it
+    - the app's settings folder since decision 131.
 
-    A relative root hangs off the working directory, joined in the flavour
-    of that directory so a Windows task never ends up with a mixed separator.
+    A relative folder hangs off the working directory, joined in the
+    flavour of that directory so a Windows task never ends up with a mixed
+    separator.
     """
-    if is_absolute_path(root):
-        return root
+    if is_absolute_path(folder):
+        return folder
     flavour = PureWindowsPath if is_absolute_path(working_dir) and (
         PureWindowsPath(working_dir).drive or working_dir.startswith("\\\\")
     ) else PurePosixPath
-    return str(flavour(working_dir) / root)
+    return str(flavour(working_dir) / folder)
 
 
 def task_scheduler_xml(
     *,
     python: str | Path,
-    root: str | Path,
+    settings: str | Path,
     working_dir: str | Path,
     start_time: str = DEFAULT_START,
     repeat_minutes: int = 0,
@@ -173,8 +195,11 @@ def task_scheduler_xml(
     ``repeat_minutes`` adds an intra-day repetition so filing and scanning can
     run through the day; the reminder step still only drafts on ``DRAFT_WEEKDAY``.
     ``frozen`` means ``python`` is the packaged app's executable, run in
-    runner mode (see :func:`runner_arguments`).
+    runner mode (see :func:`runner_arguments`). ``settings`` is the app's
+    settings folder: the job reads the clients root from the settings file
+    there at every run (decision 131).
     """
+    settings_file = _settings_file(settings)
     if repeat_minutes and repeat_minutes < 5:
         raise ValueError("repeat_minutes below 5 would stack runs on top of each other")
     draft_day = DRAFT_DAY_NAME.capitalize()
@@ -192,7 +217,7 @@ def task_scheduler_xml(
 <Task version="1.4" xmlns="{TASK_XML_NAMESPACE}">
   <RegistrationInfo>
     <Author>{_xml_escape(author)}</Author>
-    <Description>Files and scans every engagement found under {_xml_escape(root)}.
+    <Description>Files and scans every engagement under the clients root named in {_xml_escape(settings_file)}.
 On {draft_day}s it also drafts the client reminder emails. It never sends them.</Description>
     <URI>\\{_xml_escape(task_name)}</URI>
   </RegistrationInfo>
@@ -226,7 +251,7 @@ On {draft_day}s it also drafts the client reminder emails. It never sends them.<
   <Actions Context="Author">
     <Exec>
       <Command>{_xml_escape(python)}</Command>
-      <Arguments>{_xml_escape(runner_arguments(root, frozen=frozen))}</Arguments>
+      <Arguments>{_xml_escape(runner_arguments(settings, frozen=frozen))}</Arguments>
       <WorkingDirectory>{_xml_escape(working_dir)}</WorkingDirectory>
     </Exec>
   </Actions>
@@ -237,7 +262,7 @@ On {draft_day}s it also drafts the client reminder emails. It never sends them.<
 def n8n_workflow(
     *,
     python: str | Path,
-    root: str | Path,
+    settings: str | Path,
     working_dir: str | Path,
     hour: int | None = None,
     task_name: str = TASK_NAME,
@@ -249,7 +274,7 @@ def n8n_workflow(
     if not 0 <= hour <= 23:
         raise ValueError(f"hour must be 0-23, got {hour}")
 
-    command = f'cd "{working_dir}" && "{python}" {runner_arguments(root, frozen=frozen)}'
+    command = f'cd "{working_dir}" && "{python}" {runner_arguments(settings, frozen=frozen)}'
     return {
         "name": task_name,
         "nodes": [
@@ -312,9 +337,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate the scheduled job that runs the tracker unattended"
     )
-    parser.add_argument(ROOT_FLAG, default="",
-                        help="the folder the firm keeps its clients in "
-                             f"(default: the one in {SETTINGS_FILENAME})")
+    parser.add_argument(SETTINGS_FLAG, default="", metavar="FOLDER",
+                        help=f"the app's settings folder, whose {SETTINGS_FILENAME} names the clients "
+                             "root the job walks (default: this checkout's)")
     parser.add_argument("--python", default=sys.executable,
                         help="the Python to run it with (default: this one)")
     parser.add_argument("--working-dir", default=str(Path.cwd()),
@@ -336,14 +361,16 @@ if __name__ == "__main__":
     if ns.install and (ns.format != FORMAT_XML or not ns.out):
         parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml and {OUT_FLAG}")
 
-    if not ns.root:
-        from tracker.settings import clients_root, settings_path
+    if not ns.settings:
+        # None given: this checkout's own settings folder, which must already
+        # name a clients root - a job pointed at a settings file with none
+        # would fail every run.
+        from tracker.settings import clients_root, settings_dir, settings_path
 
-        configured = clients_root()
-        if configured is None:
-            parser.error(f"no {ROOT_FLAG} given and none in {settings_path()}")
-        ns.root = str(configured)
-    root_arg = resolve_root(ns.root, ns.working_dir)
+        if clients_root() is None:
+            parser.error(f"no {SETTINGS_FLAG} given and no clients root in {settings_path()}")
+        ns.settings = str(settings_dir())
+    settings_arg = resolve_folder(ns.settings, ns.working_dir)
 
     try:
         if ns.format == FORMAT_XML:
@@ -352,7 +379,7 @@ if __name__ == "__main__":
                 parser.error(f"{START_FLAG} must be HH:MM, got {ns.start!r}")
             payload = task_scheduler_xml(
                 python=ns.python,
-                root=root_arg,
+                settings=settings_arg,
                 working_dir=ns.working_dir,
                 start_time=hhmm,
                 repeat_minutes=ns.every,
@@ -364,7 +391,7 @@ if __name__ == "__main__":
             payload = json.dumps(
                 n8n_workflow(
                     python=ns.python,
-                    root=root_arg,
+                    settings=settings_arg,
                     working_dir=ns.working_dir,
                     hour=start_hour(ns.start),
                     task_name=ns.name,
@@ -389,7 +416,7 @@ if __name__ == "__main__":
             else:
                 print("Not Windows; run this on the scheduling machine:  " + " ".join(command))
         elif ns.format == FORMAT_XML:
-            print(f'Install it with:  {MODULE_INVOCATION} {ROOT_FLAG} "{ns.root}" '
+            print(f'Install it with:  {MODULE_INVOCATION} {SETTINGS_FLAG} "{ns.settings}" '
                   f'{OUT_FLAG} "{ns.out}" {INSTALL_FLAG}')
     else:
         print(payload, end="")

@@ -10,8 +10,9 @@ walked another.
 Now it is written once, in ``SETTINGS_FILENAME`` beside the app - next to the
 packaged executable, or in the repository root when run from source - and
 both read it. The app asks for it on first launch and never again; the
-schedule is generated from the same value (``python -m tracker.scheduling``
-without ``ROOT_FLAG`` reads it too).
+scheduled job names this file's folder rather than the root, and reads the
+root from here at every run (decision 131), so the root has one home and a
+root changed in the app is the root the job walks next.
 
 Deliberately tiny: one JSON object (the clients root, the firm's name and,
 since decision 117, the firm's telephone number), read and written whole,

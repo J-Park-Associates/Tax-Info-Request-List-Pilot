@@ -780,3 +780,64 @@ def test_a_refresh_that_finds_the_readme_busy_waits_briefly_then_skips_with_a_lo
     assert readme.read_bytes() == before
     assert "Received 23 Sep 2026" in readme_of(engagement)
     assert not (household / README_LOCK_FILENAME).exists()
+# ------------------------------------ decision 131: a clients root that moves ----
+
+
+def test_the_readme_is_still_written_after_the_clients_root_moves(short_root, tmp_path, monkeypatch):
+    """Rolled From is written absolute, so after the clients root moves it
+    names a folder that is not there. The scaffold used to retire a prior by
+    resolved path only, so every household that had ever rolled over read
+    to it as two open years and its README was never rewritten again. It
+    retires by discovery's rule now - the path, else its three trailing
+    names - so the pass and the scaffold both see one open year, the README
+    is written with the new year's list, and the practice page still shows
+    the prior as rolled forward."""
+    from tracker.layout import README_NAME, inbox_dir_for, originals_dir_for, private_household_dir
+    from tracker.registry import SKIP_ROLLED_FORWARD, discover_engagements
+    from tracker.rollover import ReturnPlan, roll_household
+    from tracker.runner import (
+        REMINDERS_NEVER,
+        TWO_OPEN_YEARS,
+        run_household,
+        status_report,
+        write_status_page,
+    )
+    from tracker.scaffold import scaffold_household
+    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    (tmp_path / "app").mkdir(exist_ok=True)
+    before = short_root / "One"
+    before.mkdir()
+    set_clients_root(before)
+    w2 = [RequestItem(identifier="A01", document="W-2 Wage Statements", period="TY2025",
+                      allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("w-2",))]
+    prior = make_engagement(before, w2, household="Park Family", year=2025,
+                            return_name="1040 - John Park")
+    roll_household(private_household_dir(before, "Park Family"), target_year=2026,
+                   plans=[ReturnPlan(prior=prior)])
+
+    after = short_root / "Two"
+    before.rename(after)
+    set_clients_root(after)
+    household = private_household_dir(after, "Park Family")
+    readme = inbox_dir_for(after, "Park Family") / README_NAME
+    readme.unlink()
+
+    done = scaffold_household(household)
+    # The scaffold lays out folders only; the README's one composer is the
+    # refresh (decision 130), which reads the same open-year rule.
+    assert refresh_household_readme(household) == readme
+
+    assert done.originals == [originals_dir_for(after, "Park Family", 2026)]
+    assert readme.is_file() and "2026" in readme.read_text(encoding="utf-8")
+
+    readme.unlink()
+    registry = discover_engagements(after)
+    returns = registry.by_household()[household]
+    runs = run_household(household, returns, root=after, reminders=REMINDERS_NEVER, registry=registry)
+    said = TWO_OPEN_YEARS.split("(")[0]
+    assert [w for run in runs for w in run.warnings if said in w] == []
+    assert readme.is_file() and "2026" in readme.read_text(encoding="utf-8")   # the pass's refresh too
+    page = write_status_page(after, status_report(registry, passed=runs)).read_text(encoding="utf-8")
+    assert SKIP_ROLLED_FORWARD.split("{")[0] in page

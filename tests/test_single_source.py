@@ -317,6 +317,14 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
             continue
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
         assert f">{literal}<" not in html, literal
+    # Decision 131: the room's heading and its two sentences are the API's.
+    # The renderer fills neither pattern: the set-root reply carries each
+    # return's sentences already filled.
+    assert set(words["room"]) == {"heading", "short", "parks"}
+    for literal in words["room"].values():
+        assert literal not in js and literal not in html, literal
+        stem = literal.split("{")[0].strip() or literal.split("}")[1].split("{")[0].strip()
+        assert stem not in js and stem not in html, stem
 
 
 def test_the_renderers_one_list_writer_flattens_what_it_is_handed():
@@ -1082,3 +1090,21 @@ def test_the_pass_and_the_hand_over_file_into_another_household_through_one_func
         assert "DUPLICATE_OF_HANDED_OVER" not in text, name
     assert sum(text.count('"also_in"') for text in tracker.values()) == 1
     assert 'ALSO_IN = "also_in"' in tracker["store.py"]
+
+
+def test_documents_quote_the_jobs_command_line_as_the_scheduler_writes_it():
+    """Decision 131: the scheduled job names the app's settings folder and
+    no clients root. The README shows the job's command line, and it shows
+    it exactly as ``tracker.scheduling.runner_arguments`` writes it - so the
+    day the line changes, the document is out of step here, not at the
+    office."""
+    from tracker.runner import SETTINGS_FLAG
+    from tracker.scheduling import runner_arguments
+
+    readme = read("README.md")
+    job = f"python {runner_arguments('C:' + chr(92) + 'Tools' + chr(92) + 'tax-tracker')}"
+    assert job in readme, job
+    assert SETTINGS_FLAG in job
+    # And nothing still tells a person the scheduler takes a root.
+    for rel in ("README.md", "docs/runbook.md"):
+        assert "--root" not in read(rel), rel

@@ -494,24 +494,6 @@ def _same_folder(a: str, b: Path) -> bool:
         return False
 
 
-def _shared_tail(a: str, b: Path) -> int:
-    """How many trailing folder names ``a`` and ``b`` have in common."""
-    named = [os.path.normcase(part) for part in Path(a).parts]
-    folder = [os.path.normcase(part) for part in b.parts]
-    count = 0
-    while count < len(named) and count < len(folder) and named[-1 - count] == folder[-1 - count]:
-        count += 1
-    return count
-
-
-#: How much of a Rolled From path must match a return folder, by name, when
-#: the path itself no longer resolves: the household's folder, the year's
-#: and the return's. Three since decision 125, because a return keeps its
-#: name every year and two households may each hold ``2025/1040 - John
-#: Park`` - two names would tie and retire nothing.
-_TAIL_NAMES = 3
-
-
 def _prior_of(candidate: Engagement, index: int, engagements: list[Engagement]) -> int | None:
     """Which engagement ``candidate`` was rolled forward from, as an index.
 
@@ -520,8 +502,10 @@ def _prior_of(candidate: Engagement, index: int, engagements: list[Engagement]) 
     otherwise bring every retired prior back to life for the draft day -
     by the folder names: the engagement, other than the candidate itself,
     whose path ends in the most of Rolled From's names, at least
-    ``_TAIL_NAMES``, and only when that engagement is the only one to do
-    so. Two that tie decide nothing.
+    ``layout.ROLLED_FROM_TAIL`` (the household's, the year's and the
+    return's - worded once at layer 0 since decision 131, so the scaffold
+    retires a prior by the same rule), and only when that engagement is the
+    only one to do so. Two that tie decide nothing.
     """
     # A folder the walk could not list, or whose record it could not
     # read, is never taken as the prior: retiring it would turn its report
@@ -531,11 +515,11 @@ def _prior_of(candidate: Engagement, index: int, engagements: list[Engagement]) 
     for position, prior in readable:
         if _same_folder(candidate.rolled_from, prior.path):
             return position
-    tails = {position: _shared_tail(candidate.rolled_from, prior.path) for position, prior in readable}
+    tails = {position: layout.shared_tail(candidate.rolled_from, prior.path) for position, prior in readable}
     if not tails:
         return None
     longest = max(tails.values())
-    if longest < _TAIL_NAMES:
+    if longest < layout.ROLLED_FROM_TAIL:
         return None
     matches = [position for position, tail in tails.items() if tail == longest]
     return matches[0] if len(matches) == 1 else None
