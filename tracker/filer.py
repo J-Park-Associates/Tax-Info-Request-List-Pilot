@@ -151,6 +151,7 @@ import os
 import re
 import shutil
 import stat
+import time
 from collections.abc import Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
@@ -178,10 +179,17 @@ from tracker.layout import (
 from tracker.layout import (
     label_for as label_for_return,
 )
-from tracker.locking import engagement_lock, lock_is_held
+from tracker.locking import (
+    EngagementLockedError,
+    acquire_lock,
+    engagement_lock,
+    lock_is_held,
+    release_lock,
+)
 from tracker.manifest import (
     ANY_EXTENSION,
     DEFAULT_EXTENSIONS,
+    LABEL_SEPARATOR,
     ManifestError,
     Override,
     RequestItem,
@@ -230,7 +238,6 @@ from tracker.scaffold import (
     REVIEW_DIR_NAME,
     assign_folders,
     folder_name_for,
-    matches_identifier,
     readme_returns,
     sanitize_component,
     write_readme,
@@ -680,32 +687,55 @@ def _day_of(stamp: str) -> dt.date | None:
         return None
 
 
-def _requests_of(entry: IndexEntry, identifiers: Sequence[str]) -> list[str]:
+def _request_of_copy(folder: str, items: Sequence[RequestItem]) -> str:
+    """The request an ``also_filed`` copy's request folder names, or ``""``.
+
+    Only what the folder can prove (decision 130, the review's F1): its
+    name is the request's own folder name (:func:`folder_name_for`), or the
+    text after the request's identifier begins with ``LABEL_SEPARATOR`` -
+    the one shape a request folder is made in and a person renames within.
+    A bare prefix proves nothing: once ``A01-B`` is deleted from the list,
+    ``A01-B - Loan Statement`` starts with ``A01`` too, and the README
+    would tell the client their W-2 arrived. Without case, as Windows
+    compares names.
+    """
+    name = folder.strip().casefold()
+    for item in items:
+        if name == folder_name_for(item).casefold():
+            return item.identifier
+    separator = LABEL_SEPARATOR.casefold()
+    for item in items:
+        identifier = sanitize_component(item.identifier).casefold()
+        if identifier and name.startswith(identifier + separator):
+            return item.identifier
+    return ""
+
+
+def _requests_of(entry: IndexEntry, items: Sequence[RequestItem]) -> list[str]:
     """Every request a filed row satisfied: its identifier, then one per
     ``also_filed`` copy (decision 94).
 
     ``also_filed`` holds the copies' locations, not their requests, so each
-    is read back from the request folder the copy sits in by the scaffold's
-    own prefix rule - the longest identifier the folder name starts with.
-    A folder no request of today's list claims answers ``""``, which the
-    README says as :data:`OTHER_DOCUMENT`.
+    is read back from the request folder the copy sits in by
+    :func:`_request_of_copy`. A folder no request of today's list provably
+    names answers ``""``, which the README says as :data:`OTHER_DOCUMENT` -
+    never a guessed request.
     """
     found = [entry.identifier]
     for location in entry.filed_locations[1:]:
         parts = location.split("/")
-        folder = parts[-2] if len(parts) >= 2 else ""
-        best = ""
-        for identifier in identifiers:
-            if matches_identifier(folder, identifier) and len(identifier) > len(best):
-                best = identifier
-        found.append(best)
+        found.append(_request_of_copy(parts[-2] if len(parts) >= 2 else "", items))
     return found
 
 
-def received_for(returns: Sequence[Path | str]) -> Received:
+def received_for(returns: Sequence) -> Received:
     """What has arrived for these returns, as the client README says it
     (decision 130): one index read and one request-list read per return,
     plain data out.
+
+    Each of ``returns`` is a return folder, or a return as
+    :func:`tracker.scaffold.readme_returns` read it (its ``path`` and
+    ``items``), whose list is then not read a second time.
 
     - ``Filed`` and ``File Moved`` are **Received**, once per request the
       document satisfied, under the request's own label - the words the
@@ -722,27 +752,56 @@ def received_for(returns: Sequence[Path | str]) -> Received:
     """
     lines: list[ReceivedLine] = []
     waiting: dict[dt.date | None, int] = {}
-    for folder in returns:
-        folder = Path(folder)
+    for one in returns:
+        if isinstance(one, (str, Path)):
+            folder, items = Path(one), None
+        else:
+            folder, items = Path(one.path), one.items
         entries = read_index(folder)
         if not entries:
             continue
-        items = load_manifest(folder)
+        if items is None:
+            items = load_manifest(folder)
         labels = {item.identifier: item.label for item in items}
-        identifiers = [item.identifier for item in items]
         for entry in entries:
             day = _day_of(entry.received)
             if entry.decision in _RECEIVED_DECISIONS:
                 lines.extend(ReceivedLine(return_path=folder,
                                           label=labels.get(identifier, OTHER_DOCUMENT),
                                           day=day)
-                             for identifier in _requests_of(entry, identifiers))
+                             for identifier in _requests_of(entry, items))
             elif entry.decision == NEEDS_REVIEW:
                 waiting[day] = waiting.get(day, 0) + 1
     return Received(
         lines=tuple(lines),
         under_review=tuple(UnderReview(day=day, count=n) for day, n in waiting.items()),
     )
+
+
+#: The household README's own lock (decision 130, the review's F2), in the
+#: household's folder in the **private** tree - never the client's, where
+#: a sync client would carry it to the client. Held only around one
+#: refresh's read, render and write, so a refresh that read an older record
+#: can never write its text over a newer refresh's.
+README_LOCK_FILENAME = "_readme.lock"
+#: How long a refresh waits for another refresh of the same household to
+#: let go before it skips. A refresh holds the lock for one read of the
+#: household's returns and one small write, so this is generous.
+README_LOCK_WAIT_SECONDS = 5.0
+_README_LOCK_POLL_SECONDS = 0.1
+
+
+def _readme_lock(household_dir: Path):
+    """Take the household README's lock, waiting briefly; ``None`` if it
+    stayed busy."""
+    deadline = time.monotonic() + README_LOCK_WAIT_SECONDS
+    while True:
+        try:
+            return acquire_lock(household_dir, README_LOCK_FILENAME)
+        except EngagementLockedError:
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(_README_LOCK_POLL_SECONDS)
 
 
 def refresh_household_readme(household_dir: Path | str) -> Path | None:
@@ -752,19 +811,39 @@ def refresh_household_readme(household_dir: Path | str) -> Path | None:
     every action that creates or edits a return or changes a document's row.
 
     The README speaks for the active returns of the household's one open
-    year, and what has arrived for them is read here and rendered by
-    :func:`tracker.scaffold.write_readme`, which writes only when the text
-    changed. With two open years it is left as it is.
+    year, read once (:func:`tracker.scaffold.readme_returns`) and handed to
+    :func:`received_for` and :func:`tracker.scaffold.write_readme` both
+    (the review's F3); ``write_readme`` renders and writes only when the
+    text changed. With two open years it is left as it is.
+
+    **Under the household README's lock** (:data:`README_LOCK_FILENAME`,
+    the review's F2), from the read to the write: two refreshes of one
+    household - the pass and an app action, or two app actions - would
+    otherwise interleave, and the one that read the older record could
+    write last. A refresh waits up to :data:`README_LOCK_WAIT_SECONDS` for
+    the other to let go, then reads the record itself; one still busy
+    after that skips with a log line, and the holder writes.
 
     **Never raises.** The README is client-visible and cosmetic; a failure
     is a log line and the caller goes on.
     """
+    household_dir = Path(household_dir)
     try:
-        folders = readme_returns(household_dir)
-        return write_readme(household_dir, received_for(folders) if folders else Received())
+        lock = _readme_lock(household_dir)
+        if lock is None:
+            log.warning("The README of %s is being refreshed by another run, which "
+                        "writes it; this refresh is skipped", household_dir.name)
+            return None
+        try:
+            returns = readme_returns(household_dir)
+            if returns is None:
+                return None
+            return write_readme(household_dir, received_for(returns), returns=returns)
+        finally:
+            release_lock(lock)
     except Exception as exc:
         log.warning("Could not refresh the README of %s (%s: %s); carrying on",
-                    Path(household_dir).name, exc.__class__.__name__, exc)
+                    household_dir.name, exc.__class__.__name__, exc)
         return None
 
 

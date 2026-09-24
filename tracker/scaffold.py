@@ -304,13 +304,19 @@ def _readme_returns(household_dir: Path) -> tuple[int, list[_ReturnLine]] | None
     return year, [one for one in engagements if one.active and one.tax_year == year]
 
 
-def readme_returns(household_dir: Path | str) -> list[Path]:
-    """The return folders the household's README speaks for: the active
-    returns of its one open year, in the order the README lists them.
-    Empty when the household has two open years (or none), where the
-    README is left as it is."""
+def readme_returns(household_dir: Path | str) -> list[_ReturnLine] | None:
+    """The returns the household's README speaks for - the active returns
+    of its one open year, in the order the README lists them, each with its
+    details and its request list read once - or ``None`` when the
+    household has two open years (or none), where the README is left as it
+    is.
+
+    Read once per refresh and handed to both
+    ``tracker.filer.received_for`` and :func:`write_readme` (decision 130,
+    the review's F3), so one refresh reads each return's details and list
+    once."""
     found = _readme_returns(Path(household_dir))
-    return [one.path for one in found[1]] if found else []
+    return None if found is None else found[1]
 
 
 def _resolved(path) -> Path:
@@ -412,6 +418,7 @@ def write_readme(
     received: Received | None = None,
     *,
     contact: str | None = None,
+    returns: Sequence[_ReturnLine] | None = None,
 ) -> Path | None:
     """Write the household's client README - **the only function that
     writes** ``README_NAME`` (decision 130) - and return where it is.
@@ -434,16 +441,20 @@ def write_readme(
 
     ``contact`` overrides the household's contact line; left out, it is
     the household's, else the firm named on the first active return.
+    ``returns`` is :func:`readme_returns`' answer when the caller has
+    already read it (the refresh has); left out, it is read here.
     """
     from tracker.households import load_household_info
 
     household_dir = Path(household_dir)
     root = household_dir.parent.parent
     household = household_dir.name
-    found = _readme_returns(household_dir)
-    if found is None:
-        return None
-    _year, active = found
+    if returns is None:
+        found = _readme_returns(household_dir)
+        if found is None:
+            return None
+        returns = found[1]
+    active = list(returns)
     if contact is None:
         try:
             contact = load_household_info(household_dir).contact
@@ -483,20 +494,18 @@ def day_text(day) -> str:
 
 
 def _received_lines(returns: Sequence[_ReturnLine], received: Received) -> list[str]:
-    """The *WHAT WE HAVE RECEIVED* section, or nothing when nothing has
-    arrived (decision 130, D-f).
+    """The *WHAT WE HAVE RECEIVED* section, or nothing when no line would
+    render under its heading (decision 130, D-f; the review's F4).
 
     Received lines per return, under the return's name, in the order *WHAT
     WE STILL NEED* lists the returns, by day and then label; a return with
     none has no heading here. Under Review documents belong to no settled
     return, so they are one trailing block, one line per arrival day.
     """
-    if not received:
-        return []
     by_return: dict[Path, list[ReceivedLine]] = {}
     for line in received.lines:
         by_return.setdefault(Path(line.return_path), []).append(line)
-    lines = ["", RECEIVED_HEADING, "-" * 45]
+    lines: list[str] = []
     for one in returns:
         mine = by_return.get(Path(one.path))
         if not mine:
@@ -512,7 +521,11 @@ def _received_lines(returns: Sequence[_ReturnLine], received: Received) -> list[
             said = UNDER_REVIEW_LINE.format(n=one.count, s="" if one.count == 1 else "s",
                                             day=day_text(one.day) if one.day else "")
             lines.append(f"  {said}".rstrip())
-    return lines
+    # The heading only over a line (the review's F4): a Received line for a
+    # return the README does not speak for, or an Under Review day counted
+    # zero, renders nothing, and a heading over nothing tells the client
+    # something arrived when the section says nothing did.
+    return ["", RECEIVED_HEADING, "-" * 45, *lines] if lines else []
 
 
 def _readme_text(

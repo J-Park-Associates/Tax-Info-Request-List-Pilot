@@ -5415,3 +5415,67 @@ def test_received_for_reads_each_index_once(tmp_path, monkeypatch):
     assert [(line.return_path, line.label) for line in received.lines] == [
         (first, "A01 - W-2"), (second, "A01 - W-2")]
     assert received.under_review == ()
+
+    # And the refresh reads each return's details and list once, handing
+    # that one read to both received_for and write_readme (the review's F3).
+    import tracker.scaffold as scaffold_module
+    from tracker.filer import refresh_household_readme
+    from tracker.layout import household_of
+
+    read.clear()
+    lists.clear()
+    details = []
+    real_scaffold_list = scaffold_module.load_manifest
+    real_details = scaffold_module.load_engagement_info
+    monkeypatch.setattr(scaffold_module, "load_manifest",
+                        lambda folder: lists.append(Path(folder)) or real_scaffold_list(folder))
+    monkeypatch.setattr(scaffold_module, "load_engagement_info",
+                        lambda folder: details.append(Path(folder)) or real_details(folder))
+
+    assert refresh_household_readme(household_of(first)) is not None
+
+    assert sorted(read) == sorted([first, second])
+    assert sorted(lists) == sorted([first, second])
+    assert sorted(details) == sorted([first, second])
+
+
+def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_another_request(
+        tmp_path):
+    """The review's F1 (decision 130). A two-form page was filed under A02
+    with a second copy under A01-B; A01-B has since been deleted from the
+    list. The copy's folder, ``A01-B - Loan Statement``, starts with
+    ``A01`` - but a bare prefix proves nothing, and the README must never
+    tell the client their W-2 arrived when none did. A copy names a request
+    only when its folder is that request's own folder name, or the text
+    after the identifier begins with the label separator."""
+    from tests.conftest import seed_index
+    from tracker.filer import received_for
+    from tracker.records import IndexEntry
+    from tracker.scaffold import OTHER_DOCUMENT, PREPARED_DIR_NAME
+
+    items = [RequestItem(identifier="A01", document="W-2 Wage Statement"),
+             RequestItem(identifier="A02", document="1098 Mortgage Interest")]
+    engagement = make_engagement(tmp_path, items, return_name="1040 - Smith")
+    seed_index(engagement, [IndexEntry(
+        received="2026-09-23 10:00:00", original_name="combo.pdf", size_kb=12.0,
+        digest="d-combo", identifier="A02",
+        prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest/combo.pdf",
+        pbc_location="../../x/combo.pdf", decision=FILED, reason="a reason",
+        also_filed=f"{PREPARED_DIR_NAME}/A01-B - Loan Statement/combo.pdf")])
+
+    labels = [line.label for line in received_for([engagement]).lines]
+
+    assert labels == ["A02 - 1098 Mortgage Interest", OTHER_DOCUMENT]
+    assert "A01 - W-2 Wage Statement" not in labels
+
+    # A folder a person renamed within the shape still names its request.
+    seed_index(engagement, [IndexEntry(
+        received="2026-09-24 10:00:00", original_name="combo2.pdf", size_kb=12.0,
+        digest="d-combo2", identifier="A02",
+        prepared_location=f"{PREPARED_DIR_NAME}/A02 - 1098 Mortgage Interest/combo2.pdf",
+        pbc_location="../../x/combo2.pdf", decision=FILED, reason="a reason",
+        also_filed=f"{PREPARED_DIR_NAME}/a01 - my w2s/combo2.pdf")])
+
+    labels = [line.label for line in received_for([engagement]).lines]
+
+    assert labels.count("A01 - W-2 Wage Statement") == 1

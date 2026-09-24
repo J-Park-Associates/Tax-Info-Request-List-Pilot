@@ -526,3 +526,128 @@ def test_scaffolding_a_return_writes_no_readme(engagement):
     assert result.inbox.is_dir()
     assert not (result.inbox / README_NAME).exists()
     assert result.readme == result.inbox / README_NAME
+
+
+def test_the_received_heading_is_written_only_over_a_line_under_it(tmp_path):
+    """The review's F4 (decision 130): data that renders no line - a
+    Received line for a return the README does not speak for, an Under
+    Review day counted zero - writes no heading, which would otherwise tell
+    the client something arrived when the section says nothing did."""
+    import datetime as dt
+
+    from tracker.records import Received, ReceivedLine, UnderReview
+    from tracker.scaffold import RECEIVED_HEADING, UNDER_REVIEW_HEADING, write_readme
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    day = dt.date(2026, 9, 23)
+    nothing_renders = Received(
+        lines=(ReceivedLine(return_path=tmp_path / "not a return of this README",
+                            label="A01 - W-2", day=day),),
+        under_review=(UnderReview(day=day, count=0),),
+    )
+
+    readme = write_readme(household_of(engagement), nothing_renders).read_text(encoding="utf-8")
+
+    assert RECEIVED_HEADING not in readme
+    assert UNDER_REVIEW_HEADING not in readme
+    assert "Received" not in readme
+
+
+def test_a_readme_refresh_never_writes_older_text_over_newer(tmp_path, monkeypatch):
+    """The review's F2 (decision 130). Two refreshes of one household
+    interleave: the first has read the record and not yet written when a
+    document is recorded and the second refresh starts. Under the
+    household README's lock the second waits, then reads the record
+    itself, so the later record wins; without it the second writes first
+    and the first then lays its older text over it."""
+    import functools
+    import sqlite3
+    import threading
+
+    import tracker.filer as filer_module
+    from tests.conftest import seed_index
+    from tracker import store
+    from tracker.filer import FILED
+    from tracker.locking import EngagementLockedError
+
+    # Two threads share the process's one store connection here, never at
+    # the same moment: the first is paused outside any statement.
+    store.close()
+    monkeypatch.setattr(sqlite3, "connect",
+                        functools.partial(sqlite3.connect, check_same_thread=False))
+    engagement = make_engagement(tmp_path, ITEMS)
+    household = household_of(engagement)
+    readme = inbox_of(engagement) / README_NAME
+
+    first_has_read, first_may_write, second_waits = (threading.Event() for _ in range(3))
+    real_received_for, real_acquire = filer_module.received_for, filer_module.acquire_lock
+
+    def pausing(returns):
+        found = real_received_for(returns)
+        if threading.current_thread().name == "older":
+            first_has_read.set()
+            assert first_may_write.wait(30)
+        return found
+
+    def watched(*args, **kwargs):
+        try:
+            return real_acquire(*args, **kwargs)
+        except EngagementLockedError:
+            if threading.current_thread().name == "newer":
+                second_waits.set()
+            raise
+
+    monkeypatch.setattr(filer_module, "received_for", pausing)
+    monkeypatch.setattr(filer_module, "acquire_lock", watched)
+    older = threading.Thread(name="older", target=refresh_household_readme, args=(household,))
+    newer = threading.Thread(name="newer", target=refresh_household_readme, args=(household,))
+
+    older.start()
+    assert first_has_read.wait(30)
+    seed_index(engagement, [arrived("A01", FILED, original="bank.pdf")])   # the newer record
+    newer.start()
+    if not second_waits.wait(3):        # nothing made it wait: let it finish first
+        newer.join(30)
+    first_may_write.set()
+    older.join(30)
+    newer.join(30)
+
+    assert not older.is_alive() and not newer.is_alive()
+    assert "A01 - Dec 2025 Bank Statement (Dec 2025)  Received 23 Sep 2026" in \
+        readme.read_text(encoding="utf-8")
+
+
+def test_a_refresh_that_finds_the_readme_busy_waits_briefly_then_skips_with_a_log_line(
+        tmp_path, monkeypatch, caplog):
+    """The review's F2 (decision 130): the household README's lock is in the
+    household's private folder, never the client's, and a refresh that
+    finds it held past the brief wait leaves the README alone and says so."""
+    import logging
+
+    import tracker.filer as filer_module
+    from tests.conftest import seed_index
+    from tracker.filer import FILED, README_LOCK_FILENAME
+    from tracker.layout import client_household_dir, root_of
+    from tracker.locking import acquire_lock, release_lock
+
+    engagement = make_engagement(tmp_path, ITEMS)
+    household = household_of(engagement)
+    readme = inbox_of(engagement) / README_NAME
+    before = readme.read_bytes()
+    seed_index(engagement, [arrived("A01", FILED, original="bank.pdf")])
+    monkeypatch.setattr(filer_module, "README_LOCK_WAIT_SECONDS", 0.2)
+
+    held = acquire_lock(household, README_LOCK_FILENAME)
+    try:
+        assert held.path == household / README_LOCK_FILENAME
+        client_side = client_household_dir(root_of(engagement), household.name)
+        assert not list(client_side.rglob(README_LOCK_FILENAME))
+        with caplog.at_level(logging.WARNING):
+            assert refresh_household_readme(household) is None
+    finally:
+        release_lock(held)
+
+    assert "being refreshed by another run" in caplog.text
+    assert readme.read_bytes() == before
+    assert "Received 23 Sep 2026" in readme_of(engagement)
+    assert not (household / README_LOCK_FILENAME).exists()
