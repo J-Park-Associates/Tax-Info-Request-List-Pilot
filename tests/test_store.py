@@ -176,7 +176,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 14
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 15
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -2140,9 +2140,38 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 14
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 15
     assert all(row["asked"] is True for row in store.rules(conn, by_hand))
     assert all(item.asked for item in load_manifest(by_hand))
+    assert store.check(conn, root, by_hand) == []
+
+    before = ledger.path_for(by_hand).read_bytes()
+    assert save_rules(by_hand, load_manifest(by_hand), load_engagement_info(by_hand)).recorded is False
+    assert ledger.path_for(by_hand).read_bytes() == before
+
+
+# ------------------------------------------ decision 144: the short title ----
+
+
+def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand):
+    """Every row a journal holds from before decision 144 has no short
+    title, so a line without it folds to blank - which derives the short
+    name from the document title. The store is at version 15, rebuilt
+    from that journal, and agrees with it; the list read back and saved
+    unchanged records nothing."""
+    events = ledger.read_events(by_hand)
+    for event in events:
+        for row in event.get(ledger.RULES_KEY) or []:
+            row.pop("short_title", None)
+    ledger.path_for(by_hand).write_text(
+        "".join(json.dumps(event, sort_keys=True) + "\n" for event in events), encoding="utf-8")
+    assert "short_title" not in ledger.path_for(by_hand).read_text(encoding="utf-8")
+
+    build(conn, root, by_hand)
+    build(store.connect(), root, by_hand)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 15
+    assert all(item.short_title == "" for item in load_manifest(by_hand))
+    assert all(item.short_name for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
 
     before = ledger.path_for(by_hand).read_bytes()

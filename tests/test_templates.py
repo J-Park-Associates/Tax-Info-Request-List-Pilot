@@ -331,3 +331,34 @@ def test_every_new_row_is_in_its_catalog_with_the_owners_exact_title():
     assert all(row == notices[0] for row in notices)
     # Z01 sorts last on every catalog, so a notice reads the same everywhere.
     assert all(rows[-1]["identifier"] == "Z01" for rows in FORM_TEMPLATES.values())
+
+
+def test_every_catalog_row_has_a_legal_short_title_within_the_limit_and_unique_per_catalog():
+    """Decision 144, claim 1. Every row the catalogs write carries its own
+    short name - none is left to the derivation, because the owner approved
+    each one (2026-09-24) - of at most twenty characters, a name a folder
+    can have, unique within its catalog. A row several catalogs share has
+    one short name everywhere: the same document never has two."""
+    from tracker.manifest import SHORT_TITLE_MAX, short_title_problem
+    from tracker.scaffold import sanitize_component
+
+    by_document: dict[str, set[str]] = {}
+    for form in FORM_TEMPLATES:
+        items = template_items(form)
+        shorts = [item.short_title for item in items]
+        assert all(shorts), (form, [i.identifier for i in items if not i.short_title])
+        for item in items:
+            assert len(item.short_title) <= SHORT_TITLE_MAX, (form, item.identifier, item.short_title)
+            assert short_title_problem(item.short_title) == "", (form, item.identifier)
+            # Legal as it stands: the sanitiser leaves it alone.
+            assert sanitize_component(item.short_title) == item.short_title
+            by_document.setdefault(item.document, set()).add(item.short_title)
+        casefolded = [short.casefold() for short in shorts]
+        assert len(set(casefolded)) == len(casefolded), (form, sorted(shorts))
+    assert {doc: names for doc, names in by_document.items() if len(names) > 1} == {}
+    # Two of the owner's names, to hold the list to the one he approved.
+    first = {i.identifier: i.short_title for i in template_items("1040")}
+    assert first["A01"] == "W-2" and first["C01"] == "1098 Mortgage"
+    # A per-issuer K-1 row has none of its own: its Document derives it.
+    issuer = item_from_spec(issuer_row("F02", "ABC Partners LLC"))
+    assert issuer.short_title == "" and issuer.short_name == "Schedule K-1 - ABC"

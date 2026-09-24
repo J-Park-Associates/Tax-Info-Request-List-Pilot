@@ -360,6 +360,15 @@ def _carry(
         # asked next year: the client sent one.
         named=prior.named,
         asked=prior.asked or has_arrived(prior),
+        # The short name carries, its years moving with the document's
+        # (decision 144). A row with none takes the catalog's, but only
+        # where the row still asks for the catalog's document: a row a
+        # person renamed under the same identifier keeps deriving its own.
+        short_title=shift_years(prior.short_title, delta) or (
+            template.short_title
+            if template and shift_years(template.document, tmpl_delta) == shift_years(prior.document, delta)
+            else ""
+        ),
     )
 
     if prior.manual_override == Override.NOT_APPLICABLE:

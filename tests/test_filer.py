@@ -910,7 +910,7 @@ def test_assigning_a_parked_file_moves_it_under_the_canonical_name(engagement):
     assert result.moved_review_copy is True
     assert not review_copy.exists()
     working = engagement / result.entry.prepared_location
-    assert working.name == "C01 - Mortgage Interest Statement - TY2025.pdf"
+    assert working.name == "C01 - Mortgage Interest - TY2025.pdf"
     assert working.read_bytes() == (engagement / parked.pbc_location).read_bytes()
     assert (engagement / parked.pbc_location).exists()               # original untouched
     [row] = read_index(engagement)
@@ -1056,7 +1056,7 @@ def test_a_failed_record_puts_the_filed_copy_back_where_the_record_says(engageme
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     monkeypatch.undo()
     assert (engagement / parked.prepared_location).exists()
-    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest Statement"
+    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest"
     assert not c01.exists() or not any(c01.iterdir())
 
     result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
@@ -1167,8 +1167,8 @@ def test_assigning_reuses_a_copy_an_earlier_attempt_left_and_leaves_no_half_copy
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
-    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest Statement"
-    earlier = c01 / "C01 - Mortgage Interest Statement - TY2025.pdf"
+    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest"
+    earlier = c01 / "C01 - Mortgage Interest - TY2025.pdf"
     (engagement / parked.prepared_location).rename(earlier)      # the killed attempt's move
     result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
     assert [p.name for p in c01.iterdir()] == [earlier.name] and result.entry.filed_as == earlier.name
@@ -1595,9 +1595,9 @@ def test_a_failed_record_puts_back_a_parked_copy_a_reused_one_stood_in_for(engag
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
-    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest Statement"
+    c01 = engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest"
     c01.mkdir(parents=True, exist_ok=True)
-    attempt = c01 / "C01 - Mortgage Interest Statement - TY2025.pdf"
+    attempt = c01 / "C01 - Mortgage Interest - TY2025.pdf"
     attempt.write_bytes((engagement / parked.prepared_location).read_bytes())
 
     def disk_full(*args, **kwargs):
@@ -1920,7 +1920,7 @@ def test_filing_a_dismissed_document_is_how_the_decision_is_undone(engagement):
     result = assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
 
     assert result.moved_review_copy is True
-    assert result.entry.filed_as == "C01 - Mortgage Interest Statement - TY2025.pdf"
+    assert result.entry.filed_as == "C01 - Mortgage Interest - TY2025.pdf"
     [row] = read_index(engagement)
     assert row.decision == FILED and row.identifier == "C01"
     assert row.reason.startswith(f"{ASSIGNED_BY_PERSON} on {DAY2.isoformat()}; was: ")
@@ -2006,7 +2006,7 @@ def test_filing_an_unfiled_document_puts_it_under_the_canonical_name_again(engag
     result = assign_review_file(engagement, filed.pbc_location, "C01", today=DAY2)
 
     assert result.moved_review_copy is True
-    assert result.entry.filed_as == "C01 - Mortgage Interest Statement - TY2025.pdf"
+    assert result.entry.filed_as == "C01 - Mortgage Interest - TY2025.pdf"
     assert not list(review_dir(engagement).iterdir())
     [row] = read_index(engagement)
     assert row.decision == FILED and row.identifier == "C01"
@@ -2032,7 +2032,7 @@ def test_a_page_that_prints_two_forms_files_a_copy_under_each_and_unfiles_as_one
     assert entry.identifier == "A01"
     assert entry.filed_names == [
         "A01 - W-2 Wage Statements - TY2025.pdf",
-        "C01 - Mortgage Interest Statement - TY2025.pdf",
+        "C01 - Mortgage Interest - TY2025.pdf",
     ]
     assert entry.filed_as == entry.filed_names[0]
     copies = [engagement / location for location in entry.filed_locations]
@@ -3016,8 +3016,8 @@ def test_the_moved_sentence_is_read_back_from_any_path():
         decision=FILE_MOVED, reason=base,
     )
     for now in (
-        f"{PREPARED_DIR_NAME}/C01 - Mortgage Interest Statement/w2 (2).pdf",
-        f"{PREPARED_DIR_NAME}/C01 - Mortgage Interest Statement/impots; recus (2026) été.pdf",
+        f"{PREPARED_DIR_NAME}/C01 - Mortgage Interest/w2 (2).pdf",
+        f"{PREPARED_DIR_NAME}/C01 - Mortgage Interest/impots; recus (2026) été.pdf",
         f"{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}/scan 0012 - copy.pdf",
     ):
         sentence = MOVED_SENTENCE.format(home=home, now=now, date=DAY2.isoformat())
@@ -3960,8 +3960,8 @@ def test_a_destination_holding_other_bytes_is_never_touched_and_the_row_parks_na
     with pytest.raises(KeyboardInterrupt):
         assign_review_file(engagement, parked.pbc_location, "C01", today=DAY2)
 
-    stranger = (engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest Statement"
-                / "C01 - Mortgage Interest Statement - TY2025.pdf")
+    stranger = (engagement / PREPARED_DIR_NAME / "C01 - Mortgage Interest"
+                / "C01 - Mortgage Interest - TY2025.pdf")
     stranger.parent.mkdir(parents=True, exist_ok=True)
     stranger.write_bytes(b"%PDF-1.4 somebody elses file")
     before = digests_under(engagement)
@@ -5517,9 +5517,10 @@ def tight_return(base, over: int, items=ROOM_ITEMS, **kwargs):
 def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchanged(tmp_path):
     """``room_for`` reads no disk: a return folder that does not exist is
     measured as readily as one that does. Its ``need`` is creation's figure
-    exactly - the deepest canonical copy - so decision 125's measurements
-    stand: 164 for the example row, 223 for the whole 1040 core list at its
-    longest extension, 316 for a hundred-character document."""
+    exactly - the deepest canonical copy: 164 for the example row, 163 for
+    the whole 1040 core list at its longest extension since its rows are
+    named by their short names (decision 144; 223 with the full titles),
+    316 for a row whose name is a hundred characters."""
     from tracker.filer import Room, room_for, shortest_name_for
     from tracker.layout import MAX_PATH_LENGTH, deepest_path_length, limit_for, return_dir_for
     from tracker.scaffold import folder_name_for
@@ -5543,13 +5544,17 @@ def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchan
             for item in template_items("1040", core_only=True)]
     subpaths = [f"{PREPARED_DIR_NAME}/{folder_name_for(item)}/{prepared_name_for(item, 'xlsx', set())}"
                 for item in core]
-    assert room_for(engagement, core).need == deepest_path_length(engagement, subpaths) == 223
-    # Every copy is a workbook, and a workbook's reader allows 218: five short.
+    assert room_for(engagement, core).need == deepest_path_length(engagement, subpaths) == 163
+    # Every copy is a workbook, and a workbook's reader allows 218: with the
+    # short names every one fits (it was five short with the full titles).
     assert limit_for("xlsx") == 218
-    assert room_for(engagement, core).short == 223 - 218 == 5
+    assert room_for(engagement, core).short == 0
 
+    # A name of a hundred characters: no short title typed in the editor may
+    # be one (it is refused past twenty), but the measure is arithmetic on
+    # whatever name a row carries, and is held to it here.
     long_row = replace(template_items("1040", core_only=True)[0], document="x" * 100,
-                       allowed_extensions=("xlsx",))
+                       short_title="x" * 100, allowed_extensions=("xlsx",))
     long = room_for(engagement, [long_row])
     assert long.need == 316 and long.short == 316 - 218
     # Its folder is named after the hundred characters too, and leaves a
@@ -5743,9 +5748,11 @@ def test_creation_and_the_rollover_still_refuse_the_canonical_name_past_the_limi
     engagement = return_dir_for(root, "Park Family", 2026, "1040 - John & Maria Park")
     core = [replace(item, allowed_extensions=("xlsx",))
             for item in template_items("1040", core_only=True)]
-    refuse_a_path_past_the_limit(engagement, core)          # 223: past 218, inside 260 - accepted
+    refuse_a_path_past_the_limit(engagement, core)          # 163 with the short names - accepted
 
-    long_row = replace(core[0], document="x" * 100)
+    # A row named by a hundred characters (the measure is arithmetic on the
+    # name the row carries; a typed short title is refused past twenty).
+    long_row = replace(core[0], document="x" * 100, short_title="x" * 100)
     with pytest.raises(ManifestError) as refused:
         refuse_a_path_past_the_limit(engagement, [long_row])
     assert str(refused.value) == PATH_TOO_LONG.format(folder=engagement, length=316, limit=260)
@@ -5898,7 +5905,11 @@ def test_a_filing_that_parks_for_room_leaves_no_request_folder_it_made(short_roo
     from tracker.filer import PATH_NO_ROOM
     from tracker.scaffold import folder_name_for
 
-    long_c01 = replace(ITEMS[1], document="Mortgage Interest Statement " + "m" * 80)
+    # A request folder of a hundred characters, which a typed short title
+    # never is (decision 144 refuses one past twenty); the filing's
+    # all-or-nothing naming is what is held here.
+    long_name = "Mortgage Interest Statement " + "m" * 80
+    long_c01 = replace(ITEMS[1], document=long_name, short_title=long_name)
     assert len(folder_name_for(long_c01)) == 100
     items = [ITEMS[0], long_c01]
     engagement = make_engagement(root_for_a_return_of(short_root, 135), items, scaffold=False)
@@ -5921,7 +5932,7 @@ def test_the_period_survives_a_long_label():
     the period - the one part that says which year a copy belongs to."""
     from tracker.filer import _MAX_STEM
 
-    long = RequestItem(identifier="A01", document="X" * 120, period="TY2026")
+    long = RequestItem(identifier="A01", document="X" * 120, short_title="X" * 120, period="TY2026")
     name = prepared_name_for(long, "pdf", set())
     assert name.endswith(" - TY2026.pdf") and len(name) == _MAX_STEM + len(".pdf")
     assert name.startswith("A01 - XXX")
@@ -6272,3 +6283,114 @@ def test_a_re_sent_set_aside_document_files_under_its_not_asked_row_and_the_earl
     assert RESENT_AFTER_SET_ASIDE.format(earlier=dismissed.reason) in again.reason
     earlier = [row for row in read_index(engagement) if row.decision == NOT_REQUESTED]
     assert [row.reason for row in earlier] == [dismissed.reason]
+
+
+# ------------------------------------------------ decision 144: short names ----
+
+
+def _catalog_w2(**changes):
+    """The 1040 catalog's A01, as a return created today would have it."""
+    from tracker.templates import template_items
+
+    return replace(template_items("1040", year=2025)[0], **changes)
+
+
+def test_the_working_copy_and_its_folder_use_the_short_title(short_root):
+    """Decision 144, claim 2: the owner's example, exactly. A W-2 filed on
+    the catalog's A01 lands at ``A01 - W-2/A01 - W-2 - TY2025.pdf`` - the
+    request's short name in the folder and in the copy, where the full
+    title "W-2 Wage Statements - All Employers" used to be, twice."""
+    from tracker.scaffold import folder_name_for
+
+    w2 = _catalog_w2(expected_count=1, min_size_kb=0)
+    assert w2.short_title == "W-2" and w2.document == "W-2 Wage Statements - All Employers"
+    assert folder_name_for(w2) == "A01 - W-2"
+    assert prepared_name_for(w2, "pdf", set()) == "A01 - W-2 - TY2025.pdf"
+
+    engagement = make_engagement(short_root, [w2])
+    drop(engagement, "scan.pdf", "Form W-2 Wage and Tax Statement 2025 wages, tips, other "
+                                 "compensation employee's social security number")
+    [entry] = sort(engagement, today=DAY1).filed
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/A01 - W-2/A01 - W-2 - TY2025.pdf"
+    assert (engagement / PREPARED_DIR_NAME / "A01 - W-2" / "A01 - W-2 - TY2025.pdf").is_file()
+
+
+def test_an_existing_long_folder_keeps_its_name_and_takes_short_copies(short_root):
+    """Decision 144, claim 4: nothing is renamed. A return whose request
+    folder was made under the full title before this decision keeps that
+    folder - it is found by its identifier, as a folder always has been -
+    and a copy filed into it now takes the short name. No second folder is
+    made beside it."""
+    w2 = _catalog_w2(expected_count=1, min_size_kb=0)
+    engagement = make_engagement(short_root, [w2], scaffold=False)
+    old = engagement / PREPARED_DIR_NAME / "A01 - W-2 Wage Statements - All Employers"
+    old.mkdir(parents=True)
+    from tracker.scaffold import scaffold_engagement
+
+    scaffold_engagement(engagement)
+    assert [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir()
+            if p.name.startswith("A01")] == [old.name]
+
+    drop(engagement, "scan.pdf", "Form W-2 Wage and Tax Statement 2025 wages, tips, other "
+                                 "compensation employee's social security number")
+    [entry] = sort(engagement, today=DAY1).filed
+    assert entry.prepared_location == f"{PREPARED_DIR_NAME}/{old.name}/A01 - W-2 - TY2025.pdf"
+    assert sorted(p.name for p in old.iterdir()) == ["A01 - W-2 - TY2025.pdf"]
+    assert [p.name for p in (engagement / PREPARED_DIR_NAME).iterdir()
+            if p.name.startswith("A01")] == [old.name]
+
+
+#: The intake's 39 returns (go-live item 11), as (catalog, tax year, length
+#: of the household's folder name). The names themselves are the firm's
+#: clients' and never enter the repository; the room a return has depends
+#: only on how long they are, so each is rebuilt as a synthetic name of the
+#: same length.
+INTAKE_RETURNS = (
+    ("1040", 2014, 23), ("1040", 2016, 15), ("1040", 2017, 14), ("1040", 2017, 34),
+    ("1040", 2019, 11), ("1040", 2020, 11), ("1040", 2020, 14), ("1040", 2020, 32),
+    ("1040", 2021, 11), ("1040", 2021, 12), ("1040", 2021, 32), ("1040", 2022, 32),
+    ("1040", 2023, 11), ("1040", 2023, 12), ("1040", 2023, 26), ("1040", 2023, 27),
+    ("1040", 2024, 11), ("1040", 2024, 11), ("1040", 2024, 12), ("1040", 2024, 15),
+    ("1040", 2024, 21), ("1040", 2024, 26), ("1040", 2024, 32), ("1040", 2025, 12),
+    ("1040", 2025, 21), ("1040", 2025, 26), ("1040", 2025, 27), ("1040", 2025, 32),
+    ("1065", 2011, 28), ("1065", 2017, 14), ("1065", 2022, 27), ("1120", 2025, 12),
+    ("1120S", 2015, 19), ("1120S", 2020, 12), ("1120S", 2020, 15), ("1120S", 2020, 26),
+    ("1120S", 2025, 19), ("1120S", 2026, 20), ("990", 2025, 20),
+)
+#: The firm's clients root: the Shared Drive keeps its name (decision 144,
+#: the owner's first ruling). Thirty-five characters.
+REAL_ROOT = r"G:\Shared drives\Income Tax Clients"
+
+
+def _intake_refusals(asked_every_row: bool) -> tuple[int, int]:
+    """(refused, deepest) over the intake's 39 under the real root, with the
+    wizard's default rows asked or every row asked."""
+    from tracker.api import default_return_name
+    from tracker.filer import room_for
+    from tracker.layout import MAX_PATH_LENGTH, return_dir_for
+    from tracker.templates import FORM_TEMPLATES, template_items
+
+    refused = deepest = 0
+    for form, year, length in INTAKE_RETURNS:
+        household = ("Household " + "x" * length)[:length]
+        core = [spec["core"] for spec in FORM_TEMPLATES[form]]
+        items = [replace(item, asked=asked_every_row or ticked)
+                 for item, ticked in zip(template_items(form, year=year), core, strict=True)]
+        folder = return_dir_for(Path(REAL_ROOT), household, year, default_return_name(form, household))
+        need = room_for(folder, items).need
+        deepest = max(deepest, need)
+        refused += need > MAX_PATH_LENGTH
+    return refused, deepest
+
+
+def test_the_intake_returns_fit_under_the_real_root():
+    """Decision 144, claim 6. Under the firm's own clients root, the
+    intake's 39 returns - their household names rebuilt at the same lengths
+    - are created with the wizard's default rows asked and **none is
+    refused** (9 of 39 were, with the full titles). With every row asked
+    the figure is reported, not asserted: it is in the decision's row."""
+    assert len(REAL_ROOT) == 35 and len(INTAKE_RETURNS) == 39
+    refused, _deepest = _intake_refusals(asked_every_row=False)
+    assert refused == 0
+    every, deepest_every = _intake_refusals(asked_every_row=True)
+    print(f"every row asked: {every} of 39 refused, deepest {deepest_every}")

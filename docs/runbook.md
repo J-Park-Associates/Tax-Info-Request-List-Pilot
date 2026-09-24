@@ -281,8 +281,16 @@ it reads the root from the settings file at every run.
 
 A longer root leaves every return less room: Windows opens a path of
 `tracker.layout.MAX_PATH_LENGTH` characters at most, and a working copy
-deep in a return with a long household name, a long return name and a
-long document label can pass it. So the reply to setting the root lists,
+deep in a return with a long household name and a long return name can
+pass it. Since decision 144 a request's folder and its working copies are
+named by the request's **short name** - `A01 - W-2\A01 - W-2 - TY2025.pdf`,
+twenty characters at most, where the full title used to appear twice - so
+the firm's own root, `G:\Shared drives\Income Tax Clients` (35
+characters), refuses none of the 39 returns of the owner's intake test
+with the wizard's default rows asked (9 were refused with the full titles)
+and none with every row asked (34 were); the deepest working copy there
+is 209 and 210 characters. The client never sees a short name: the README,
+the reminder letter and the received list keep the full title. So the reply to setting the root lists,
 under *Returns short of room under this root*, every return the new root
 leaves short, with the number. Nothing is refused - the firm's data is
 where it is - and the pass copes: it cuts the document part of a working
@@ -297,9 +305,10 @@ Windows's own limit.
 A person has exactly three levers, and every sentence the tracker says
 about room names one of them: **a shorter clients root** (a drive letter
 over a profile path, the Shared Drive's own folder over one deep inside
-it), **a shorter label** in the editor for the request (every copy filed
-from then on is shorter; the folder keeps its name), and **a shorter
-return name** at the next rollover. Nothing in the tracker ever renames a
+it), **a shorter Short name** in the editor for the request (every copy
+filed from then on is shorter; the folder keeps its name - a folder made
+under the full title before decision 144 keeps that name too, and takes
+short copies), and **a shorter return name** at the next rollover. Nothing in the tracker ever renames a
 folder or a filed copy to make room.
 
 ### Sharing a household with a client

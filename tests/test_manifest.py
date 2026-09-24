@@ -188,18 +188,19 @@ def test_create_refuses_a_bad_list_before_a_line_is_written(tmp_path):
     assert store.rules(store.connect(), folder) is None      # nothing in the store either
 
 
-def test_the_list_is_the_thirteen_columns_a_person_edits():
+def test_the_list_is_the_fourteen_columns_a_person_edits():
     """Decision 103 took the four scanner columns out of the schema; 104
     keeps the ten, keyed by the record's own field names, each with the
     sentence the editor shows under its heading; 116 adds the eleventh,
     the reason an override was made; 128 the twelfth, whether the document
     this request asks for carries a name; 142 the thirteenth, whether the
-    client is asked for it."""
-    from tracker.manifest import COL_ASKED
+    client is asked for it; 144 the fourteenth, the short name the firm's
+    working folder and copies go by."""
+    from tracker.manifest import COL_ASKED, COL_SHORT_TITLE
 
     assert HEADERS == tuple(header for header, _ in COLUMNS)
-    assert len(HEADERS) == 13
-    assert HEADERS[-3:] == (COL_OVERRIDE_REASON, COL_NAMED, COL_ASKED)
+    assert len(HEADERS) == 14
+    assert HEADERS[-4:] == (COL_OVERRIDE_REASON, COL_NAMED, COL_ASKED, COL_SHORT_TITLE)
     assert tuple(field for _, field in COLUMNS) == tuple(
         f for f in RULE_FIELDS if f not in ("row", "date_pattern_derived"))
     assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
@@ -1006,3 +1007,40 @@ def test_the_asked_mark_is_read_as_the_named_mark_is():
     assert item_from_fields({"identifier": "A01", "document": "W-2", "asked": False}, where="Row 1").asked is False
     with pytest.raises(ManifestError, match=f"Row 1: {COL_ASKED} must be"):
         item_from_fields({"identifier": "A01", "document": "W-2", "asked": "maybe"}, where="Row 1")
+
+
+def test_a_row_with_no_short_title_derives_one_at_a_whole_word():
+    """Decision 144, claim 3. A row with no short title of its own - a
+    preparer's own row, a row stored before the field existed - takes the
+    first twenty characters of its document title, cut back to the last
+    whole word, with the separator it was left hanging on dropped. A title
+    that fits is itself; a single word longer than the limit is cut at it.
+    A typed one is refused past the limit or where a folder could not have
+    it, with the column named."""
+    from tracker.manifest import COL_SHORT_TITLE, SHORT_TITLE_MAX, derived_short_title, item_from_record
+
+    assert SHORT_TITLE_MAX == 20
+    assert derived_short_title("Schedule K-1 - ABC Partners LLC") == "Schedule K-1 - ABC"
+    assert derived_short_title("W-2 Wage Statements - All Employers") == "W-2 Wage Statements"
+    assert derived_short_title("1099-INT / 1099-DIV - Interest") == "1099-INT / 1099-DIV"
+    assert derived_short_title("Fiduciary, Attorney & Accounting Fees") == "Fiduciary, Attorney"
+    assert derived_short_title("Rental Records") == "Rental Records"
+    # The twentieth character ends a word when a dot follows it, not a letter.
+    assert derived_short_title("Fixed Asset Register.") == "Fixed Asset Register"
+    assert derived_short_title("x" * 30) == "x" * 20
+    # Exactly twenty, ending at a word: kept whole.
+    assert derived_short_title("Brokerage Statements and more") == "Brokerage Statements"
+
+    row = item_from_fields({"identifier": "X01", "document": "Schedule K-1 - ABC Partners LLC"},
+                           where="Row 1")
+    assert row.short_title == "" and row.short_name == "Schedule K-1 - ABC"
+    typed = item_from_fields({"identifier": "X01", "document": "Anything at all",
+                              "short_title": "  K-1 ABC  "}, where="Row 1")
+    assert typed.short_title == "K-1 ABC" and typed.short_name == "K-1 ABC"
+    # A row read out of the record from before the field: blank, derived.
+    old = rule_to_json(row)
+    del old["short_title"]
+    assert item_from_record(old).short_title == ""
+    for bad in ("x" * 21, "W-2 / 1099", "Receipts.", "NUL"):
+        with pytest.raises(ManifestError, match=f"Row 1: {COL_SHORT_TITLE} "):
+            item_from_fields({"identifier": "X01", "document": "Doc", "short_title": bad}, where="Row 1")

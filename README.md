@@ -58,8 +58,8 @@ are flagged with a note asking the client for an exported PDF/Excel copy.
                 ├── _ledger.jsonl            ← the return's record: the request list, every original, every status, every rules edit
                 ├── Status Report.html       ← this return on one page, redrawn by every pass
                 └── Prepared/                ← the firm's working set (the client never sees it)
-                    ├── A01 - W-2 Wage Statements - All Employers/
-                    │   └── A01 - W-2 Wage Statements - All Employers - TY2025.pdf
+                    ├── A01 - W-2/           ← named by the request's short name (decision 144)
+                    │   └── A01 - W-2 - TY2025.pdf
                     └── 00 - Needs Review/   ← couldn't be identified; a person decides
 ```
 
@@ -71,7 +71,7 @@ software's word for one return in one year** - the return folder is the
 engagement folder.
 
 **The request list and the engagement's details are in the record.** The
-twelve columns an accountant edits, and the client, link, due date, the
+fourteen columns an accountant edits, and the client, link, due date, the
 people the return is for and the rest, are edited in the app's **Edit Request List** editor and nowhere
 else; every save is journalled as one event and folded into one database
 on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),

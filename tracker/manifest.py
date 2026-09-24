@@ -125,13 +125,19 @@ COL_NAMED = "Named"
 #: by default everywhere, so a row written before the mark reads as the
 #: request a person ticked.
 COL_ASKED = "Asked"
+#: The short name a request's working folder and working copies are named
+#: by (decision 144): ``A01 - W-2\A01 - W-2 - TY2025.pdf`` rather than the
+#: full document title twice. Blank means derived from the document title
+#: (:func:`derived_short_title`). Firm-side only: the client README, the
+#: letter and the received list keep the full title.
+COL_SHORT_TITLE = "Short name"
 COL_STATUS = "Status"
 COL_RECEIVED_DATE = "Received Date"
 COL_FILE_COUNT = "File Count"
 COL_VALIDATION_NOTES = "Validation Notes"
 
 #: Each column's key in the record and the API, beside its header: the
-#: thirteen columns a person edits, in the order the editor shows them. The
+#: fourteen columns a person edits, in the order the editor shows them. The
 #: keys are ``records.RULE_FIELDS`` less the two the person never types
 #: (``row`` is the position, ``date_pattern_derived`` is what
 #: ``validated()`` decided), and the assertion below holds the two lists
@@ -150,6 +156,7 @@ COLUMNS: tuple[tuple[str, str], ...] = (
     (COL_OVERRIDE_REASON, "override_reason"),
     (COL_NAMED, "named"),
     (COL_ASKED, "asked"),
+    (COL_SHORT_TITLE, "short_title"),
 )
 #: The headers, in order. The roadmap's schema table lists exactly
 #: these (``tests/test_single_source.py`` holds it to that), the Status
@@ -199,6 +206,10 @@ COLUMN_HELP: dict[str, str] = {
     "asked": (
         "Yes: the client is asked for it and reminded. No: nobody asks, but a document that "
         "arrives for it is filed here"
+    ),
+    "short_title": (
+        "What the firm's working folder and file names call it, 20 characters at most; "
+        "blank takes the document's first words. The client always sees the full document name"
     ),
 }
 assert set(COLUMN_HELP) == {field for _, field in COLUMNS}
@@ -414,6 +425,18 @@ class RequestItem:
     #: considers it and a document for it files there, but it is never
     #: listed as needed, never counted as owed and never chased.
     asked: bool = True
+    #: The short name the working folder and the working copies are named
+    #: by (decision 144), at most :data:`SHORT_TITLE_MAX` characters. Blank
+    #: by default and everywhere a row is read without one: blank is
+    #: derived from the document title (:attr:`short_name`).
+    short_title: str = ""
+
+    @property
+    def short_name(self) -> str:
+        """The name the firm's working folder and copies use for this
+        request: the row's own short title, or one derived from its
+        document title (:func:`derived_short_title`)."""
+        return self.short_title or derived_short_title(self.document)
 
     @property
     def label(self) -> str:
@@ -504,6 +527,56 @@ LABEL_SEPARATOR = " - "
 def label_for(*parts: str) -> str:
     """``A01 - W-2 Wage Statements`` from its parts, blanks dropped."""
     return LABEL_SEPARATOR.join(part for part in parts if part)
+
+
+#: The most characters a short title may have (decision 144). The owner's
+#: style: ``A01 - W-2\A01 - W-2 - TY2025.pdf``, a short title of about
+#: twenty characters, so a real household's name fits under the real root.
+SHORT_TITLE_MAX = 20
+#: What a derived short title never ends with: the cut lands at a word,
+#: and a word left hanging on a separator (``Fees &``, ``1099-INT /``,
+#: ``Schedule K-1 -``) is dropped with it. A closing bracket is kept,
+#: because ``704(b)`` ends in one.
+_SHORT_TITLE_TRAILING = " .,;:-/&|+_"
+
+
+def derived_short_title(document: str) -> str:
+    """The short title of a row that has none of its own (decision 144):
+    the first :data:`SHORT_TITLE_MAX` characters of its document title,
+    cut at the last whole word, with trailing punctuation and spaces
+    removed. A title that fits is kept whole. The twenty characters end at
+    a whole word when the next character is not a letter or a digit
+    (``Fixed Asset Register.`` keeps ``Register``); otherwise the cut goes
+    back to the last space before them, and a first word longer than the
+    limit is cut at the limit, since there is no whole word to keep.
+
+    ``Schedule K-1 - ABC Partners LLC`` is ``Schedule K-1 - ABC``.
+    """
+    text = re.sub(r"\s+", " ", str(document or "")).strip()
+    if len(text) > SHORT_TITLE_MAX:
+        head = text[:SHORT_TITLE_MAX]
+        if text[SHORT_TITLE_MAX].isalnum() and (cut := head.rfind(" ")) > 0:
+            head = head[:cut]
+        text = head
+    return text.rstrip(_SHORT_TITLE_TRAILING) or text.strip()
+
+
+def short_title_problem(short_title: str) -> str:
+    """Why ``short_title`` cannot name a working folder, or "" if it can.
+
+    Refused rather than sanitised, as an identifier is: the name a person
+    types is the name the folder gets, or they are told why not.
+    """
+    if len(short_title) > SHORT_TITLE_MAX:
+        return f"may have at most {SHORT_TITLE_MAX} characters, got {len(short_title)}"
+    if WINDOWS_ILLEGAL_CHARS.search(short_title):
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it becomes a folder name)"
+    if short_title != short_title.rstrip(". "):
+        return "may not end with a dot or a space (Windows drops them from folder names)"
+    if short_title and is_reserved_name(short_title):
+        return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
+                f"it becomes a folder name")
+    return ""
 
 
 #: How a multi-file request says so, everywhere (the README, the reminder,
@@ -878,6 +951,15 @@ def _asked(value: object, where: str) -> bool:
     return _yes_no(value, COL_ASKED, where)
 
 
+def _short_title(value: object, where: str) -> str:
+    """A Short name as typed (decision 144): blank is derived, anything
+    else must be a legal folder name within :data:`SHORT_TITLE_MAX`."""
+    text = "" if value is None else str(value).strip()
+    if problem := short_title_problem(text):
+        raise ManifestError(f"{where}: {COL_SHORT_TITLE} {problem}")
+    return text
+
+
 def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem:
     """One request row from plain values: the editor's JSON, a catalog spec,
     a test's dict.
@@ -925,6 +1007,7 @@ def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem
         override_reason=text("override_reason"),
         named=_named(fields.get("named"), where),
         asked=_asked(fields.get("asked"), where),
+        short_title=_short_title(fields.get("short_title"), where),
     )
 
 
@@ -944,6 +1027,9 @@ def item_from_record(row: Mapping[str, object]) -> RequestItem:
     values["manual_override"] = _override(values.get("manual_override"), identifier)
     if values.get("override_reason") is None:
         values["override_reason"] = ""
+    # A row stored before decision 144 has no short title: blank, derived.
+    if values.get("short_title") is None:
+        values["short_title"] = ""
     return RequestItem(**values)
 
 

@@ -11,7 +11,9 @@ The year's folder, in the tree a client is shared
 ``PREPARED_DIR_NAME/<folder_name_for(item)>/``
     A renamed copy of each identified document, on the firm's side of the
     engagement, named to one convention so a preparer can work the return
-    without opening the client's filing habits.
+    without opening the client's filing habits: the request's identifier,
+    its short name and its period (``A01 - W-2/A01 - W-2 - TY2025.pdf``,
+    decision 144).
 
 **The index** maps one to the other: **one row per original**, where it
 went, what it was renamed to, and — when it was not filed — why not. One
@@ -453,8 +455,11 @@ _ROOM_COUNTER = 99
 
 
 def _parts_of(item: RequestItem) -> tuple[str, str, str]:
-    """A request's identifier, document and period as a file name spells them."""
-    return (sanitize_component(item.identifier), sanitize_component(item.document),
+    """A request's identifier, short name and period as a file name spells
+    them. The short name stands where the document title stood until
+    decision 144 (``RequestItem.short_name``), so everything below that
+    says "the document part" cuts the short name, first and alone."""
+    return (sanitize_component(item.identifier), sanitize_component(item.short_name),
             sanitize_component(item.period) if item.period else "")
 
 
@@ -502,7 +507,7 @@ def _fitted(identifier: str, document: str, period: str, counter: int, suffix: s
 
 def prepared_name_for(item: RequestItem, extension: str, taken: set[str], *,
                       room: int | None = None) -> str:
-    """Canonical working-copy name: ``label_for(identifier, document, period)`` plus the extension.
+    """Canonical working-copy name: ``label_for(identifier, short name, period)`` plus the extension.
 
     ``taken`` holds names already used in the destination folder; collisions
     get ``(2)``, ``(3)``… so a request expecting several files keeps them in
@@ -558,13 +563,13 @@ def prepared_location(folder: Path, name: str) -> str:
 #: limit is a reader's 218, not Windows's 260 (decision 131's review, F2).
 PATH_NO_ROOM = ("the working copy's path would be {length} characters at its shortest, past the "
                 "{limit} characters a {ext} copy may have; shorten the clients root, or this "
-                "request's label in the editor")
+                "request's Short name in the editor")
 #: The same, when the request that accepted the document is in a return
 #: this household's drop folder feeds (decision 129): the document parks at
 #: home, so "this request" would name a list the person is not looking at.
 PATH_NO_ROOM_IN = ("the working copy's path in {label} would be {length} characters at its shortest, "
                    "past the {limit} characters a {ext} copy may have; shorten the clients root, or "
-                   "that request's label in {label}'s list in the editor")
+                   "that request's Short name in {label}'s list in the editor")
 #: A return whose review folder leaves no room for a copy at all: nothing
 #: in its household is sorted this pass. The household's skip sentence.
 HOUSEHOLD_NO_ROOM = ("no room under {label} for even a review copy ({length} characters at its shortest, "
@@ -591,8 +596,8 @@ REVIEW_COPY_PAST_READER = ("the review copy's path is longer than a spreadsheet 
 #: are cut to fit and everything still files, and a warning that is on
 #: every pass is a warning nobody reads.
 ROOM_SHORT = ("{short} characters short of the room its working copies need, so their names are cut "
-              "to fit; a shorter clients root, a shorter label in the editor, or a shorter return "
-              "name at the next rollover gives it back")
+              "to fit; a shorter clients root, a request's Short name shortened in the editor, or a "
+              "shorter return name at the next rollover gives it back")
 #: The warning, when some request cannot receive at all.
 ROOM_PARKS = ("{count} request(s) have no room for a working copy under this root; a document for "
               "them parks for a person until the clients root is shorter")
