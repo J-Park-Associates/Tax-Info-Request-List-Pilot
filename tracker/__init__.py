@@ -11,6 +11,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - content_check : tier 3 text extraction + rules + verdict cache
 - scanner       : orchestrator (scan, resolve, record)
 - router        : deterministic routing of a dropped file to one request
+- containers    : open a dropped email or zip in memory and hand back each attachment, running nothing
 - names         : whose document is this - the spellings a return's people use, matched as whole phrases
 - filer         : sort the drop folder, preserve originals, record where every one went
 - review        : triage the parked files - a ranked shortlist with its reasons, filing nothing

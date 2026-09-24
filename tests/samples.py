@@ -373,3 +373,143 @@ def listing_denied(folder: Path):
             yield
         finally:
             folder.chmod(0o700)
+
+
+# ------------------------------------------- an email's own file (decision 143) ----
+# Outlook saves an email as a compound file (CFB, [MS-CFB]), and nothing in
+# the standard library writes one; ``olefile`` only reads. So the suite's
+# ``.msg`` fixtures are written here, from nothing, to the letter of the
+# format: version 3, 512-byte sectors, streams under 4096 bytes in the mini
+# stream, every sector on the FAT. Small on purpose - one FAT sector's worth
+# of file is all a test needs, and the writer refuses anything larger.
+
+_FREE, _END, _FATSECT, _NOSTREAM = 0xFFFFFFFF, 0xFFFFFFFE, 0xFFFFFFFD, 0xFFFFFFFF
+_SECTOR, _MINI, _CUTOFF = 512, 64, 4096
+
+
+def cfb_bytes(tree: dict) -> bytes:
+    """A compound file holding ``tree``: a name maps to bytes (a stream) or
+    to a dict (a storage), nested as deep as the test likes."""
+    import struct
+
+    entries: list[dict] = [{"name": "Root Entry", "type": 5, "data": b"", "kids": []}]
+
+    def add(node: dict, into: int) -> None:
+        for name, value in node.items():
+            entries.append({"name": name, "type": 1 if isinstance(value, dict) else 2,
+                            "data": b"" if isinstance(value, dict) else bytes(value), "kids": []})
+            index = len(entries) - 1
+            entries[into]["kids"].append(index)
+            if isinstance(value, dict):
+                add(value, index)
+
+    add(tree, 0)
+    sectors: list[bytes] = []
+    fat: list[int] = []
+
+    def chain(data: bytes) -> int:
+        count = -(-len(data) // _SECTOR)
+        start = len(sectors)
+        for n in range(count):
+            sectors.append(data[n * _SECTOR:(n + 1) * _SECTOR].ljust(_SECTOR, b"\0"))
+            fat.append(start + n + 1 if n < count - 1 else _END)
+        return start
+
+    mini = bytearray()
+    minifat: list[int] = []
+    for entry in entries[1:]:
+        data = entry["data"]
+        if entry["type"] != 2 or not data:
+            entry["start"] = _END if entry["type"] == 2 else 0
+            continue
+        if len(data) >= _CUTOFF:
+            entry["start"] = chain(data)
+            continue
+        count = -(-len(data) // _MINI)
+        entry["start"] = len(minifat)
+        for n in range(count):
+            minifat.append(len(minifat) + 1 if n < count - 1 else _END)
+        mini += data.ljust(count * _MINI, b"\0")
+    entries[0]["start"] = chain(bytes(mini)) if mini else _END
+    entries[0]["size"] = len(mini)
+    minifat_start = (chain(b"".join(struct.pack("<I", n) for n in minifat)
+                           .ljust(-(-len(minifat) * 4 // _SECTOR) * _SECTOR, b"\xff"))
+                     if minifat else _END)
+    minifat_count = -(-len(minifat) * 4 // _SECTOR)
+    for entry in entries:
+        entry.setdefault("size", len(entry["data"]))
+        entry["left"] = entry["right"] = entry["child"] = _NOSTREAM
+    for entry in entries:
+        kids = entry["kids"]
+        if kids:
+            entry["child"] = kids[0]
+            for this, following in zip(kids, kids[1:], strict=False):
+                entries[this]["right"] = following
+    directory = bytearray()
+    for entry in entries:
+        name = entry["name"].encode("utf-16-le") + b"\0\0"
+        assert len(name) <= 64, entry["name"]
+        directory += struct.pack(
+            "<64sHBBIII16sIQQIQ", name, len(name), entry["type"], 1, entry["left"],
+            entry["right"], entry["child"], b"\0" * 16, 0, 0, 0, entry["start"], entry["size"])
+    while len(directory) % _SECTOR:
+        directory += struct.pack("<64sHBBIII16sIQQIQ", b"", 0, 0, 0, _NOSTREAM, _NOSTREAM,
+                                 _NOSTREAM, b"\0" * 16, 0, 0, 0, 0, 0)
+    directory_start = chain(bytes(directory))
+    fat_count = 1
+    while fat_count * (_SECTOR // 4) < len(sectors) + fat_count:
+        fat_count += 1
+    assert fat_count <= 109, "a test's compound file is one DIFAT's worth at most"
+    fat_start = len(sectors)
+    fat += [_FATSECT] * fat_count
+    fat += [_FREE] * (fat_count * (_SECTOR // 4) - len(fat))
+    table = b"".join(struct.pack("<I", n) for n in fat)
+    sectors += [table[n * _SECTOR:(n + 1) * _SECTOR] for n in range(fat_count)]
+    difat = [fat_start + n for n in range(fat_count)] + [_FREE] * (109 - fat_count)
+    header = struct.pack(
+        "<8s16sHHHHH6sIIIIIIIII", bytes.fromhex("D0CF11E0A1B11AE1"), b"\0" * 16, 0x3E, 3,
+        0xFFFE, 9, 6, b"\0" * 6, 0, fat_count, directory_start, 0, _CUTOFF,
+        minifat_start, minifat_count, _END, 0,
+    ) + b"".join(struct.pack("<I", n) for n in difat)
+    assert len(header) == _SECTOR
+    return header + b"".join(sectors)
+
+
+def _msg_properties(method: int, hidden: bool, flags: int) -> bytes:
+    """An attachment's properties stream: 8 reserved bytes, then 16-byte
+    entries - the method (PT_LONG), hidden (PT_BOOLEAN) and flags (PT_LONG)."""
+    import struct
+
+    def prop(prop_id: int, kind: int, value: int) -> bytes:
+        return struct.pack("<IIQ", (prop_id << 16) | kind, 6, value)
+
+    return (b"\0" * 8 + prop(0x3705, 0x0003, method) + prop(0x7FFE, 0x000B, int(hidden))
+            + prop(0x3714, 0x0003, flags))
+
+
+def msg_storage(attachments: list[dict]) -> dict:
+    """The storages of one message holding ``attachments``: each a dict with
+    ``name`` and ``data``, and optionally ``method`` (1 by value, 5 an
+    embedded message whose own ``attachments`` are given), ``hidden`` and
+    ``flags``."""
+    tree: dict = {"__properties_version1.0": b"\0" * 32}
+    for n, one in enumerate(attachments):
+        method = one.get("method", 1)
+        storage: dict = {"__properties_version1.0": _msg_properties(
+            method, one.get("hidden", False), one.get("flags", 0))}
+        if one.get("name"):
+            storage["__substg1.0_3707001F"] = one["name"].encode("utf-16-le")
+        if method == 5:
+            storage["__substg1.0_3701000D"] = msg_storage(one.get("attachments", []))
+        elif "data" in one:
+            storage["__substg1.0_37010102"] = one["data"]
+        tree[f"__attach_version1.0_#{n:08X}"] = storage
+    return tree
+
+
+def msg_bytes(attachments: list[dict]) -> bytes:
+    """A minimal Outlook ``.msg`` holding ``attachments`` (see
+    :func:`msg_storage`): a message body stream and its attachments."""
+    tree = msg_storage(attachments)
+    tree["__substg1.0_1000001F"] = "Please find attached.".encode("utf-16-le")
+    return cfb_bytes(tree)

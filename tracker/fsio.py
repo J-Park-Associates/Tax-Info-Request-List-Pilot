@@ -106,6 +106,20 @@ def write_text_atomically(
             handle.write(text)
 
 
+def write_bytes_atomically(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` all-or-nothing (see :func:`atomic_replacement`).
+
+    Flushed to the disk before the swap: what is written this way is a
+    document taken out of a client's email or zip (decision 143), and a
+    power cut must leave either the whole file or none of it.
+    """
+    with atomic_replacement(path) as temp:
+        with temp.open("wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+
 def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
     """Write ``payload`` as JSON to ``path`` all-or-nothing; the cache and the settings use this."""
     write_text_atomically(path, json.dumps(payload, indent=indent))

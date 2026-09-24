@@ -238,7 +238,13 @@ ENV_STORE = "TRACKER_STORE"
 #: rebuilt from the journals like every version before it - the mark
 #: travels in the ``rules_changed`` lines, and a line written before it
 #: existed reads as asked.
-SCHEMA_VERSION = 13
+#: Version 14 (decision 143) added ``container`` to ``documents``: where
+#: the email or zip a document came out of rests, and the ``opened`` row
+#: event that records the container itself. A version-13 file has no such
+#: column, so it is refused, deleted and rebuilt from the journals like
+#: every version before it - the field travels in the row events, and a
+#: row written before it existed reads as having come on its own.
+SCHEMA_VERSION = 14
 
 #: What a row of ``engagements`` holds the record of: one return, or one
 #: household (decision 125). Both are folders with a journal, keyed by

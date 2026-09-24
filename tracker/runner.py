@@ -307,6 +307,9 @@ class EngagementRun:
     engagement: Engagement
     filed: int = 0
     review: int = 0
+    #: Emails and zips this pass opened (decision 143); what came out of
+    #: each is counted in ``filed`` and ``review`` like any drop.
+    opened: int = 0
     waiting: int = 0
     file_errors: list[str] = field(default_factory=list)  # drops that went wrong
     warnings: list[str] = field(default_factory=list)     # rows the rules cannot act on; strays in Prepared/
@@ -354,6 +357,8 @@ class EngagementRun:
         if self.skipped:
             return f"SKIP    {self.engagement.label}: {self.skipped}"
         parts = [f"filed {self.filed}"]
+        if self.opened:
+            parts.append(f"opened {self.opened}")
         if self.review:
             parts.append(f"review {self.review}")
         if self.waiting:
@@ -767,6 +772,7 @@ def _sort_step(household: Path, sorting: list[EngagementRun], fed: list[Engageme
         if filed is None:
             continue
         run.filed = len(filed.filed)
+        run.opened = len(filed.opened)
         run.review = len(filed.review)
         run.waiting = len(filed.waiting)
         run.file_errors = [f"{e.name}: {e.error}" for e in filed.errors]

@@ -79,15 +79,31 @@ beside each request's Status, Received Date, File Count and Validation
 Notes and every original's index row. Nothing in the folder is a
 spreadsheet, and the machine reads and writes no workbook.
 
-**Every index row says what became of one original**, and there are five
+**Every index row says what became of one original**, and there are six
 answers: `Filed`, `Needs Review`, `Duplicate`, `Not Requested` — a
-document a person said no request asks for — and `File Moved`, which is
+document a person said no request asks for — `File Moved`, which is
 what a pass says when a working copy is not in the folder the record filed
-it into and its bytes turn up somewhere else under `Prepared/`. Each pass
+it into and its bytes turn up somewhere else under `Prepared/`, and
+`Opened`, an email or a zip whose attachments were taken out. Each pass
 proves every working copy against the fingerprint its own row carries, so
 a copy somebody dragged is identified and said rather than counted under
 whatever request it now sits in; nothing is moved over it and a person
 decides. `docs/runbook.md` §4 is what each answer means in plain words.
+
+**An email or a zip is opened** (decision 143). A client who forwards an
+email (`.msg`, `.eml`) or a zip with the documents attached is not asked to
+send them again: the pass moves the container into their folder for the
+year like any original, untouched, and records it `Opened`; each attachment
+is taken out into a hidden `_Opened` folder beside the year's returns in
+the private tree - never the client's - and sorted as a document of its
+own, its row naming the container it came in. Nothing inside is ever run;
+inline pictures and the message's own text are left inside and named on
+the container's record line. A locked, damaged or empty container, or one
+past a limit (nested more than two deep, more than 200 attachments, more
+than 250 MB unpacked, a file that unpacks past 100 times its packed size),
+parks for a person with the reason, and a document that came inside one is
+never filed into another household's return. The client README's list of
+what has arrived shows each attachment that filed, under its request.
 
 1. Roll a returning client's list forward from last year (the default), or
    pick the tax form type for a new client — the catalog lives in

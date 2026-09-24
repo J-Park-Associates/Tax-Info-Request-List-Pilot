@@ -68,7 +68,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import MISSING, asdict, dataclass, field, fields
 from pathlib import Path
 
 # ------------------------------------------------------------ derivations ----
@@ -305,6 +305,15 @@ class IndexEntry:
     #: a person unfiles in one click. Empty on every ordinary row, which
     #: is every row written before decision 94.
     also_filed: str = ""
+    #: Where the email or zip this document came out of rests (decision
+    #: 143): the container row's own location, relative to the return as
+    #: every location is. Empty on every document that arrived on its own,
+    #: which is every row written before decision 143. The row's own
+    #: ``pbc_location`` is the attachment's file, taken out into the
+    #: household-year's hidden folder in the private tree, so the key stays
+    #: one location per row and every reader that holds an original to its
+    #: fingerprint reads an attachment unchanged.
+    container: str = ""
 
     @property
     def candidate_list(self) -> list[str]:
@@ -360,6 +369,7 @@ INDEX_LAYOUT: dict[str, tuple[str, int]] = {
     "candidates": ("Candidates", 14),
     "evidence": ("Evidence", 50),
     "also_filed": ("Also Filed", 40),
+    "container": ("Came Inside", 30),
 }
 assert tuple(INDEX_LAYOUT) == tuple(f.name for f in fields(IndexEntry))
 INDEX_COLUMNS = tuple(header for header, _ in INDEX_LAYOUT.values())
@@ -384,7 +394,13 @@ def entry_from_json(row: object) -> IndexEntry:
     if not isinstance(row, dict):
         raise TypeError(f"index row is {type(row).__name__}, not an object")
     known = {f.name for f in fields(IndexEntry)}
-    return IndexEntry(**{key: value for key, value in row.items() if key in known})
+    # A column a later version added holds nothing for a row written before
+    # it (the store keeps what the line said: no such key). A field with a
+    # default reads that as its default - ``container`` is ``""`` on a row
+    # from before decision 143 - rather than as None.
+    defaulted = {f.name for f in fields(IndexEntry) if f.default is not MISSING}
+    return IndexEntry(**{key: value for key, value in row.items()
+                         if key in known and not (value is None and key in defaulted)})
 
 
 def ledger_key(entry: IndexEntry) -> str:

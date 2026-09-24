@@ -1099,6 +1099,10 @@ HELD_BEFORE_140 = {
     "extension", "too-small", "wrong-document", "no-keyword", "wrong-period",
     "extraction-failed",
 }
+#: The client-side reasons decision 143 added - a locked or damaged email or
+#: zip, which the client can fix by sending the documents on their own -
+#: hold as a locked or damaged PDF does.
+HELD_SINCE_143 = {"container-locked", "container-damaged"}
 
 
 @pytest.mark.parametrize("reason", reasons.ALL, ids=lambda r: r.code)
@@ -1124,9 +1128,10 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
         assert reason.firm_side and reason.holds
         assert holds == {"A01": (CONFIRM_HOLD.format(note=reason.firm_side_note), True)}
         return
-    assert reason.holds == (reason.code in HELD_BEFORE_140) == (not reason.firm_side)
+    held = HELD_BEFORE_140 | HELD_SINCE_143
+    assert reason.holds == (reason.code in held) == (not reason.firm_side)
     expected = ({"A01": (PARKED_HOLD.format(ask=_ask_for(reason, DROPPED[0])), False)}
-                if reason.code in HELD_BEFORE_140 else {})
+                if reason.code in held else {})
     assert holds == expected
 
 

@@ -5,6 +5,11 @@ openpyxl==3.1.5
 pypdf==6.7.4
 pdfplumber==0.11.10
 
+# An email a client forwards, saved from Outlook (.msg), is opened to take
+# its attachments out (decision 143): one pure-Python module, BSD-2-Clause,
+# no dependencies. The .eml and .zip readers are the standard library's.
+olefile==0.47
+
 # OCR readers. The packages are bundled; the Tesseract engine is a Windows
 # installer (UB Mannheim build) and must be on PATH with `eng` and `osd`
 # data: without it every scan and every photo parks for a person

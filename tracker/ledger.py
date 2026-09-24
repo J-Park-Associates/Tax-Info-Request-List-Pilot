@@ -214,6 +214,16 @@ FILED = "filed"
 PARKED = "parked"
 #: A drop whose bytes were already recorded under another row.
 DUPLICATE = "duplicate"
+#: An email or a zip was opened and each attachment taken out as a
+#: document of its own (decision 143). The row is the container's - it
+#: belongs to no request - and the line carries, besides it, what was taken
+#: out (:data:`ATTACHMENTS_KEY`: each one's name, size and fingerprint) and
+#: what was skipped and why (:data:`SKIPPED_KEY`). Those two travel in the
+#: journal only: the fold keeps the row, as for every row event, and the
+#: attachments are rows of their own that name the container.
+OPENED = "opened"
+ATTACHMENTS_KEY = "attachments"
+SKIPPED_KEY = "skipped"
 #: A person filed a parked document under a request.
 ASSIGNED_BY_PERSON = "assigned_by_person"
 #: A person said no request asks for a parked document.
@@ -365,7 +375,7 @@ MIGRATED = "migrated"
 
 #: The events that carry a whole index row. Their fold is the index.
 ROW_EVENTS = frozenset({
-    PRESERVED, FILED, PARKED, DUPLICATE, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
+    PRESERVED, FILED, PARKED, DUPLICATE, OPENED, ASSIGNED_BY_PERSON, DISMISSED_BY_PERSON,
     UNFILED_BY_PERSON, RESTORED_BY_PERSON, BYTES_RECORDED,
     COPY_MOVED, IMPORTED,
 })

@@ -146,6 +146,7 @@ old names are re-exported below for one release.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import logging
 import os
 import re
@@ -157,9 +158,9 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from tracker import ledger, reasons, store
+from tracker import containers, ledger, reasons, store
 from tracker.content_check import RETIRED_CACHE_FILENAME, ContentCache
-from tracker.fsio import TEMP_SUFFIX
+from tracker.fsio import TEMP_SUFFIX, write_bytes_atomically
 from tracker.households import household_returns
 from tracker.layout import (
     MAX_PATH_LENGTH,
@@ -173,6 +174,7 @@ from tracker.layout import (
     locate,
     location_of,
     lock_order_key,
+    opened_dir_of,
     originals_of,
     root_of,
     year_of,
@@ -194,6 +196,7 @@ from tracker.manifest import (
     ManifestError,
     Override,
     RequestItem,
+    is_reserved_name,
     label_for,
     load_engagement_info,
     load_manifest,
@@ -252,6 +255,7 @@ from tracker.validators import (
     is_sync_staging,
     iter_candidate_files,
     sha256_of,
+    too_large_reason,
 )
 
 log = logging.getLogger("tracker.filer")
@@ -294,6 +298,21 @@ NOT_REQUESTED = "Not Requested"
 #: nothing is moved, and a person decides. A copy dragged back is filed
 #: again on the next pass.
 FILE_MOVED = "File Moved"
+#: An email or a zip the pass opened (decision 143): each attachment was
+#: taken out into the household-year's hidden folder in the private tree
+#: (``layout.OPENED_DIR_NAME``) and sorted as a document of its own, with a
+#: row that names this one as its ``container``. The container's row
+#: belongs to no request and counts in no request's figures; its Reason
+#: says how many documents came out (:data:`OPENED_SENTENCE`), and the
+#: journal line (``ledger.OPENED``) names each of them and each part left.
+#: The container itself rests in the client's folder for the year like any
+#: original, untouched.
+OPENED = "Opened"
+#: What an opened container's row says, once, on the Index and the Status
+#: Report: how many documents came out, and how many parts were left (the
+#: message's text, an inline picture, an attachment by reference).
+OPENED_SENTENCE = "opened: {n} {documents}"
+OPENED_SKIPPED = "{m} part(s) left inside (named in the record)"
 
 #: What a Duplicate row says, by what the earlier row holding the bytes is.
 #: A parked document has a working copy with a name, so saying "already
@@ -308,6 +327,9 @@ DUPLICATE_OF_MOVED = "identical to {name}; its working copy {copy} is not where 
 #: for a file nobody can find. Chosen by the absence of the name, whatever
 #: the row's decision.
 DUPLICATE_OF_UNCOPIED = "identical to {name}; that row has no working copy"
+#: And of an email or a zip already opened (decision 143): its attachments
+#: are rows of their own already, so nothing is taken out again.
+DUPLICATE_OF_OPENED = "identical to {name}; already opened, and each attachment sorted"
 #: A re-send of bytes a person set aside: the earlier decision, quoted whole
 #: (it carries the date and the note), and the fact. Decision 76 amended.
 RESENT_AFTER_SET_ASIDE = "set aside as not requested ({earlier}); the client sent it again"
@@ -391,6 +413,10 @@ class FileReport:
     filed: list[IndexEntry] = field(default_factory=list)
     review: list[IndexEntry] = field(default_factory=list)
     duplicates: list[IndexEntry] = field(default_factory=list)
+    #: The emails and zips this run opened (decision 143): the container
+    #: rows. What came out of each is in ``filed``, ``review`` and
+    #: ``duplicates`` like any drop.
+    opened: list[IndexEntry] = field(default_factory=list)
     waiting: list[Path] = field(default_factory=list)   # cloud-only, left alone
     errors: list[FileError] = field(default_factory=list)
     #: Originals already sorted whose record no longer fits what is on disk
@@ -407,7 +433,7 @@ class FileReport:
 
     @property
     def handled(self) -> int:
-        return len(self.filed) + len(self.review) + len(self.duplicates)
+        return len(self.filed) + len(self.review) + len(self.duplicates) + len(self.opened)
 
     def timed(self, name: str, seconds: float) -> None:
         """Record how long one document's reading took, keeping the slowest."""
@@ -1166,6 +1192,7 @@ _LEDGER_EVENT_FOR = {
     DUPLICATE: ledger.DUPLICATE,
     NOT_REQUESTED: ledger.PARKED,
     FILE_MOVED: ledger.COPY_MOVED,
+    OPENED: ledger.OPENED,
 }
 
 
@@ -1181,6 +1208,7 @@ def _rows_changed(
     entries: list[IndexEntry],
     moved: dict[str, str],
     decided: dict[str, str],
+    extra: dict[str, dict] | None = None,
 ) -> list[dict]:
     """One event per row the index now holds that ``before`` does not already say.
 
@@ -1193,7 +1221,9 @@ def _rows_changed(
     ``moved`` maps a row's new identity to the one it is leaving; ``decided``
     names the event for the row this call decided itself, so a person's
     decision is recorded as theirs and not as the decision it happens to
-    write.
+    write. ``extra`` is what an event carries beside its row, by the row's
+    key: what an opened email or zip held (decision 143), which the journal
+    keeps and the fold does not.
     """
     events = []
     for entry in entries:
@@ -1211,7 +1241,11 @@ def _rows_changed(
             name = ledger.BYTES_RECORDED
         else:
             name = _LEDGER_EVENT_FOR.get(entry.decision, ledger.PARKED)
-        events.append(_ledger_event(name, entry, was=was))
+        event = _ledger_event(name, entry, was=was)
+        # What an opened email or zip held travels on its own line, beside
+        # the row (decision 143): the journal keeps it, the fold does not.
+        event.update((extra or {}).get(key, {}))
+        events.append(event)
     return events
 
 
@@ -1223,6 +1257,7 @@ def _record(
     moved: dict[str, str] | None = None,
     decided: dict[str, str] | None = None,
     also: list[dict] | None = None,
+    extra: dict[str, dict] | None = None,
 ) -> None:
     """Write what the index now says and the record does not - in one call.
 
@@ -1244,7 +1279,7 @@ def _record(
     because the filing and what it taught are one decision and the
     rollback that puts a moved file back asks exactly that question.
     """
-    events = _rows_changed(before, entries, moved or {}, decided or {}) + list(also or [])
+    events = _rows_changed(before, entries, moved or {}, decided or {}, extra) + list(also or [])
     if events:
         store.record(store.connect(), engagement_dir, *events)
 
@@ -1607,6 +1642,8 @@ def replaced_in_pbc(
 
     Per return over that return's own rows: the folder is the household's,
     and a file another return's row holds is that return's to answer for.
+    The pass asks it of the year's folder and of ``_Opened`` (decision
+    143's review, B2), where an attachment's row locates the file taken out.
     """
     by_path: dict[Path, IndexEntry] = {}
     for entry in entries:            # the newest row for a location wins
@@ -2489,6 +2526,13 @@ class _ReturnRun:
     dropped_in: str = ""
     moved_keys: dict[str, str] = field(default_factory=dict)
     swept: dict[str, str] = field(default_factory=dict)
+    #: What each opened email or zip held, by its row's key (decision
+    #: 143): written on the row's own journal line, beside it.
+    opened: dict[str, dict] = field(default_factory=dict)
+    #: The folders of opened emails and zips left unrecorded for the next
+    #: pass because the reader could not start on an attachment (decision
+    #: 150 over 143): what waits in them is not said as unaccounted.
+    reopen: set[Path] = field(default_factory=set)
 
     @property
     def items(self) -> list[RequestItem]:
@@ -2618,16 +2662,25 @@ def file_household_drops(
                 for run in runs:
                     run.context.prepared_dir.mkdir(parents=True, exist_ok=True)
             _sort_all(drops, strays, originals_dir, stamp, runs, first)
+        # What was taken out of emails and zips and no row names (decision
+        # 143) - after the sort, so what this pass took out is named.
+        first.report.attention.extend(_unaccounted_in_opened(first, runs))
     finally:
         # Whatever happened above, every original that was moved is on
         # record: one call and one transaction per return, in the same
         # locked section as the moves it records. A return that decided
         # nothing writes nothing - the diff against what its record
         # already said is what decides, not a count of rows.
+        # The first own return last (decision 143): an opened email or zip's
+        # row is in it, and recorded after the rows of what came out of it
+        # wherever those went - so a pass killed between two returns'
+        # transactions leaves the container unrecorded, a stray the next
+        # pass opens again, rather than a container on record whose
+        # attachments are not.
         if not dry_run:
-            for run in runs:
+            for run in reversed(runs):
                 _record(run.engagement_dir, run.before, run.entries,
-                        moved=run.moved_keys, decided=run.swept)
+                        moved=run.moved_keys, decided=run.swept, extra=run.opened)
     if not dry_run:
         for run in runs:
             run.cache.save()
@@ -2872,12 +2925,16 @@ def _follow_and_say(
         ), True))
     # An original replaced under its own name is said loudly, every run,
     # until a person has looked; it is not sorted again and not guessed.
-    for path, earlier in (replaced_in_pbc(originals_dir, engagement_dir, run.entries)
-                          if originals_dir.is_dir() else []):
-        run.report.attention.append(FileError(path.name, REPLACED_IN_PBC.format(
-            location=earlier.pbc_location, received=earlier.received,
-            prepared=earlier.prepared_location or "(none)",
-        ), True))
+    # An attachment taken out of an email or a zip rests under _Opened, and
+    # a file replaced there is said the same way (decision 143's review,
+    # B2): the row's location is the file taken out, like any original's.
+    for folder in (originals_dir, opened_dir_of(engagement_dir)):
+        for path, earlier in (replaced_in_pbc(folder, engagement_dir, run.entries)
+                              if folder.is_dir() else []):
+            run.report.attention.append(FileError(path.name, REPLACED_IN_PBC.format(
+                location=earlier.pbc_location, received=earlier.received,
+                prepared=earlier.prepared_location or "(none)",
+            ), True))
     return strays
 
 
@@ -2991,7 +3048,20 @@ def _sort_all(
             digest, size_kb = "", 0.0     # moved, unreadable now: recorded anyway
             log.warning("Preserved %s but could not read it back: %s", drop.name, exc)
 
+        # An email or a zip is opened, and each attachment decided as a
+        # document of its own (decision 143) - after the move and the
+        # fingerprint, so the container is first an ordinary original with
+        # a row of its own, and a re-send of the same bytes is a plain
+        # duplicate that is never opened again. The extension alone says
+        # what is a container; one past the size ceiling is never read and
+        # parks unread like any drop.
+        opening = (containers.is_container(drop.name) and bool(digest)
+                   and not any(digest in run.known for run in runs)
+                   and not too_large_reason(recorded_at))
         try:
+            if opening:
+                _open_container(drop, original, recorded_at, digest, size_kb, stamp, runs, first)
+                continue
             decided = _decide_across(drop, original, digest, size_kb, stamp, runs, first)
             if decided is None:
                 # The reader could not start (decision 150): the machine's
@@ -3022,6 +3092,312 @@ def _sort_all(
         run.entries.append(entry)
         if entry.decision != DUPLICATE and digest:
             run.known[digest] = entry
+
+
+# ------------------------------------------------------ an email or a zip ----
+
+#: The longest stem an opened container's folder takes, so the names of
+#: what came out of it keep their room under the path limit (decision 131).
+_OPENED_STEM = 40
+#: What a container's folder is called when its own name leaves nothing.
+_OPENED_FALLBACK = "container"
+#: Room kept, in an attachment's name, for the temporary name its atomic
+#: write passes through beside it (``fsio.temp_path_for``: a process id, a
+#: tag and the suffix).
+_TEMP_ROOM = 24
+
+#: What a pass says of a file under the hidden folder of what was taken out
+#: of emails and zips (``layout.OPENED_DIR_NAME``) that no row names, and of
+#: a folder there whose container has no row (decision 143). Said every
+#: pass, as an unrecorded working copy is; nothing there is re-sorted, and
+#: nothing is ever deleted.
+UNRECORDED_OPENED = ("{location} came out of an email or zip and no row names it; it is left "
+                     "where it is - a person should look")
+OPENED_CONTAINER_GONE = ("{location} holds what was taken out of an email or zip whose own row "
+                         "is gone; it is left where it is - a person should look")
+
+
+def _opened_sentence(opened: containers.Opened) -> str:
+    """The container row's Reason: how many documents came out, and how many
+    parts were left inside."""
+    n = len(opened.attachments)
+    said = OPENED_SENTENCE.format(n=n, documents="document" if n == 1 else "documents")
+    if opened.skipped:
+        said = f"{said}; {OPENED_SKIPPED.format(m=len(opened.skipped))}"
+    return said
+
+
+def _keep(run: _ReturnRun, entry: IndexEntry, digest: str) -> None:
+    """One decided row into its return's index, and its bytes into what the
+    return is known to hold - exactly what the sort's own loop does."""
+    run.entries.append(entry)
+    if entry.decision != DUPLICATE and digest:
+        run.known[digest] = entry
+
+
+def _opened_folder(home: _ReturnRun, original: Path, runs: list[_ReturnRun]) -> Path:
+    """The folder what comes out of ``original`` is written into: the
+    container's own name without its extension, cut to fit, under the
+    household-year's hidden folder in the private tree - numbered ``(n)``
+    where another container's documents already rest under that name.
+
+    Whose a folder is, is read off the rows: a folder is another
+    container's when a row rests inside it naming a different container.
+    One that holds only files no row names is this container's - a pass
+    killed after writing them and before recording anything left it, and
+    reopening reuses what it finds there by its bytes.
+    """
+    base = opened_dir_of(home.engagement_dir)
+    stem = original.stem[:_OPENED_STEM].rstrip(". ") or _OPENED_FALLBACK
+    elsewhere: set[Path] = set()
+    for run in runs:
+        for entry in run.entries:
+            if not entry.container or not entry.pbc_location:
+                continue
+            if locate(run.engagement_dir, entry.container) != original:
+                elsewhere.add(locate(run.engagement_dir, entry.pbc_location).parent)
+    counter = 1
+    while True:
+        folder = base / _named(stem, counter, "")
+        if folder not in elsewhere:
+            return folder
+        counter += 1
+
+
+def _take_out(folder: Path, attachment: containers.Attachment,
+              claimed: set[Path]) -> tuple[Path, str]:
+    """Write one attachment into its container's folder, whole or not at
+    all, and say where and what bytes (decision 143).
+
+    Its own name, cut to the room the folder leaves for its extension
+    (decision 131), numbered ``(n)`` past a name this container already
+    used. A file already there holding these very bytes is reused - a pass
+    killed after writing it opens the container again - and one holding
+    other bytes is kept, the new one taking the next number: nothing found
+    there is ever overwritten.
+    """
+    data = attachment.data
+    digest = hashlib.sha256(data).hexdigest()
+    name = attachment.name
+    stem, suffix = Path(name).stem, Path(name).suffix
+    if suffix and not _AN_EXTENSION.fullmatch(suffix):
+        stem, suffix = name, ""
+    limit = limit_for(suffix)
+    room = limit - len(str(folder)) - 1 - _TEMP_ROOM
+    folder.mkdir(parents=True, exist_ok=True)
+    counter = 1
+    while True:
+        fitted: str | None = _named(stem, counter, suffix)
+        if len(fitted) > room:
+            cuts = (stem[:keep].rstrip(". ") for keep in range(len(stem) - 1, 0, -1))
+            fitted = next((_named(cut, counter, suffix) for cut in cuts
+                           if cut and len(_named(cut, counter, suffix)) <= room), None)
+            if fitted is None:
+                length = len(str(folder / _named(stem[:1], counter, suffix))) + _TEMP_ROOM
+                raise NoRoom(length, limit, suffix, sentence=REVIEW_NO_ROOM.format(
+                    name=name, length=length, limit=limit, ext=_kind_of(suffix)))
+        target = folder / fitted
+        counter += 1
+        # A cut or a number never makes a device's name (decision 137, L6).
+        if target in claimed or is_reserved_name(fitted):
+            continue
+        if target.exists():
+            if target.is_file() and _digest_or_none(target) == digest:
+                claimed.add(target)
+                return target, digest
+            continue
+        write_bytes_atomically(target, data)
+        claimed.add(target)
+        return target, digest
+
+
+def _open_container(
+    drop: Path, original: Path, recorded_at: Path, digest: str, size_kb: float, stamp: str,
+    runs: list[_ReturnRun], first: _ReturnRun,
+) -> None:
+    """Open one email or zip, take each attachment out, and decide each as a
+    document of its own (decision 143). Every row it makes goes into its
+    return's index here; nothing is returned.
+
+    In order - and the order is the crash story:
+
+    1. **opened in memory** (:func:`tracker.containers.open_container`).
+       One that will not open - locked, damaged, past a limit, or with
+       nothing attached - parks whole, with the sentence that says which,
+       in the dropping household's own first return.
+    2. **every attachment written**, atomically, into the container's
+       folder under the household-year's hidden folder in the private tree
+       - never into the tree the client is shared - **before** the
+       container's row exists. A dry run opens in memory and writes nothing.
+    3. **the container's row**, ``OPENED``, in the first own return: it
+       belongs to no request, its Reason says how many documents came out,
+       and its journal line names each of them and each part left inside.
+    4. **each attachment decided** exactly as a drop is - the bytes first,
+       then one reading judged against every return, then the name, then
+       exactly one - with its row naming the container, and its copy made
+       under the intent that comes first (decision 119). An attachment
+       whose file a row already names was recorded by the recovery of a
+       killed pass, and is not decided twice.
+
+    A pass killed before the record leaves the container with no row: the
+    next pass finds it as a stray in the year's folder and opens it again,
+    reusing each file it finds by its bytes. Anything raised before step 3
+    is the sort loop's to catch: the container parks as a drop that could
+    not be filed, with nothing of its own yet in any index.
+    """
+    home = first
+    try:
+        opened = containers.open_container(recorded_at.read_bytes(), original.suffix)
+    except containers.NotOpened as exc:
+        _keep(home, _park_it(drop, original, digest, size_kb, stamp, home,
+                             reason=exc.sentence, candidates=(), evidence=""), digest)
+        return
+    dry_run = home.context.dry_run
+    at = {id(run): location_of(run.engagement_dir, original) for run in runs}
+    folder = _opened_folder(home, original, runs)
+    claimed: set[Path] = set()
+    taken: list[tuple[containers.Attachment, Path, str]] = []
+    for one in opened.attachments:
+        if dry_run:
+            taken.append((one, folder / one.name, hashlib.sha256(one.data).hexdigest()))
+        else:
+            taken.append((one, *_take_out(folder, one, claimed)))
+    entry = IndexEntry(
+        received=stamp, original_name=drop.name, size_kb=size_kb, digest=digest,
+        identifier="", prepared_location="", pbc_location=at[id(home)], decision=OPENED,
+        reason=_opened_sentence(opened),
+    )
+    home.opened[ledger_key(entry)] = {
+        ledger.ATTACHMENTS_KEY: [
+            {"name": one.name, "size": len(one.data), "digest": sha,
+             "location": "" if dry_run else location_of(home.engagement_dir, path)}
+            for one, path, sha in taken
+        ],
+        ledger.SKIPPED_KEY: [{"name": one.name, "why": one.why} for one in opened.skipped],
+    }
+    if dry_run:
+        home.report.opened.append(entry)
+        _keep(home, entry, digest)
+        return
+    named = {locate(run.engagement_dir, row.pbc_location)
+             for run in runs for row in run.entries if row.pbc_location}
+    waiting = [one.name for one, path, sha in taken
+               if path not in named
+               and not _decide_attachment(one, path, sha, stamp, runs, first, at)]
+    if waiting:
+        # The reader could not start on an attachment (decision 150): the
+        # machine's fault, not the file's, so that attachment gets no row -
+        # and neither does the container, or the next pass would know its
+        # bytes and never open it again. It rests in the year's folder as
+        # a stray; the next pass reopens it, reuses each file it finds by
+        # its bytes, skips each attachment a row already names, and reads
+        # the one that waited. The pass's one warning says how many wait.
+        home.opened.pop(ledger_key(entry), None)
+        home.reopen.add(folder)
+        log.warning("Left %s for the next pass: the reader could not start on %s",
+                    drop.name, ", ".join(waiting))
+        return
+    home.report.opened.append(entry)
+    _keep(home, entry, digest)
+
+
+def _decide_attachment(
+    attachment: containers.Attachment, path: Path, digest: str, stamp: str,
+    runs: list[_ReturnRun], first: _ReturnRun, at: dict[int, str],
+) -> bool:
+    """Decide one attachment, already written at ``path``, as a drop is
+    decided, with every row it writes naming its container - False, with
+    nothing recorded, where the reader could not start on it (decision
+    150's :func:`_not_read`), True otherwise.
+
+    It is read exactly as a drop is, through :func:`_decide_across` and so
+    through :func:`tracker.router.read_once`: the open test and the whole
+    reading run in decision 150's child, under the safety stop, and a
+    reading that stopped or crashed parks the attachment as it parks a drop.
+
+    It is judged under its own name - ``drop`` carries the attachment's
+    name, ``original`` is the file taken out - so the row, the review copy
+    and the timing all say what the client called it. One handed back with
+    a sentence of its own (a container nested too deep, or one that would
+    not open) parks with it, unless its bytes are already on record. A
+    failure is caught here, per attachment, as the sort's own loop catches
+    one per drop: the file is safe where it was written, and the row says
+    so.
+    """
+    size_kb = round(len(attachment.data) / 1024, 1)
+    named = path.with_name(attachment.name)
+    for run in runs:
+        run.context.container = at[id(run)]
+    try:
+        if attachment.parks and not any(digest in run.known and _may_hold(run) for run in runs):
+            run, entry = first, _park_it(named, path, digest, size_kb, stamp, first,
+                                         reason=attachment.parks, candidates=(), evidence="")
+        else:
+            decided = _decide_across(named, path, digest, size_kb, stamp, runs, first)
+            if decided is None:
+                return False
+            run, entry = decided
+    except Exception as exc:          # the file is safe where it was written; say so and go on
+        log.exception("Could not file %s", attachment.name)
+        run = first
+        where = location_of(run.engagement_dir, path)
+        entry = IndexEntry(
+            received=stamp, original_name=attachment.name, size_kb=size_kb, digest=digest,
+            identifier="", prepared_location="", pbc_location=where, decision=NEEDS_REVIEW,
+            reason=(f"could not be filed ({exc.__class__.__name__}: {exc}); "
+                    f"taken out to {where} - file it by hand"),
+            container=at[id(run)],
+        )
+        run.report.errors.append(FileError(attachment.name, entry.reason, False))
+        run.report.review.append(entry)
+    finally:
+        for one in runs:
+            one.context.container = ""
+    _keep(run, entry, digest)
+    return True
+
+
+def _unaccounted_in_opened(first: _ReturnRun, runs: list[_ReturnRun]) -> list[FileError]:
+    """What sits in the household-year's hidden folder of opened emails and
+    zips that the record does not account for (decision 143).
+
+    A file no row names, and a container's folder whose container has no
+    row, are said the way an unrecorded working copy is - a warning with
+    its path, every pass - and nothing is re-sorted or deleted: a person
+    looks. Read against the union of every return's rows, as the year's
+    folder of originals is.
+    """
+    base = opened_dir_of(first.engagement_dir)
+    if not base.is_dir():
+        return []
+    named: set[Path] = set()
+    came_from: dict[Path, set[Path]] = {}
+    for run in runs:
+        for entry in run.entries:
+            if not entry.pbc_location:
+                continue
+            path = locate(run.engagement_dir, entry.pbc_location)
+            named.add(path)
+            if entry.container:
+                came_from.setdefault(path.parent, set()).add(
+                    locate(run.engagement_dir, entry.container))
+    said: list[FileError] = []
+    for path in sorted(base.rglob("*")):
+        if (not path.is_file() or path.name.endswith(TEMP_SUFFIX) or path in named
+                or path.parent in first.reopen):
+            continue
+        where = location_of(first.engagement_dir, path)
+        said.append(FileError(path.name, UNRECORDED_OPENED.format(location=where), True))
+    for folder, sources in sorted(came_from.items()):
+        # A container this pass left unrecorded because the reader could
+        # not start on an attachment (decision 150) is not gone: it is a
+        # stray the next pass opens again.
+        if (folder.parent != base or folder in first.reopen
+                or all(one in named for one in sources)):
+            continue
+        where = location_of(first.engagement_dir, folder)
+        said.append(FileError(folder.name, OPENED_CONTAINER_GONE.format(location=where), True))
+    return said
 
 
 class _NoRouting:
@@ -3185,11 +3561,26 @@ def _decide_across(
     """
     if digest:
         holders = [run for run in runs if digest in run.known]
-        if holders:
+        # Out of an email or a zip (decision 143, ruling 7 and the review's
+        # B1): a return in another household is not asked. Its record would
+        # otherwise take a Duplicate row naming this household's attachment
+        # and the private _Opened path it rests under - the other
+        # household's record reached by the bytes, where the requests may
+        # never reach it. A loose drop is asked as decision 132 says.
+        mine = [run for run in holders if _may_hold(run)]
+        if mine:
             # Own returns first, as they are handed in (decision 132's
             # second order; the locks were taken in the global one).
-            run = holders[0]
+            run = mine[0]
             return _sort_one(drop, original, digest, size_kb, stamp, run, runs)
+        if holders:
+            # Only another household holds these bytes: the attachment
+            # waits at home, in the words a first arrival gets, and nothing
+            # is written in that household's record.
+            home = next((one for one in runs if one.home), first)
+            return home, _park_it(drop, original, digest, size_kb, stamp, home,
+                                  reason=reasons.OPENED_NOT_ACROSS.format(),
+                                  candidates=(), evidence="")
 
     # One reading, however many returns judge it (decision 128). A dry run
     # judges the drop where it lies, as it always has.
@@ -3217,10 +3608,16 @@ def _decide_across(
     kept = stage.kept
 
     no_room: NoRoom | None = None
-    unnamed_across = False
+    unnamed_across = opened_across = False
     if len(kept) == 1:
         run, routing = kept[0]
         item = run.context.by_id.get(routing.identifier or "")
+        # Out of an email or a zip (decision 143): the attachment's original
+        # is the firm's copy of a part of the client's file, and it never
+        # moves into another household's folder. It waits at home, named
+        # or not, for a person to file it by hand.
+        if item is not None and _across_households(run) and run.context.container:
+            opened_across, item = True, None
         # Across households, filing needs a confirmed name (decision 137,
         # B2; the owner's Q-2). A document the name tier kept only because
         # its request is unnamed would otherwise move into another
@@ -3259,6 +3656,14 @@ def _decide_across(
             drop, original, digest, size_kb, stamp, home,
             reason=reason, candidates=said.candidates,
             evidence=format_evidence(said.evidence_record),
+        )
+
+    if opened_across:
+        return home, _park_it(
+            drop, original, digest, size_kb, stamp, home,
+            reason=reasons.OPENED_NOT_ACROSS.format(),
+            candidates=home_routing.candidates,
+            evidence=_with_the_wanting_return(home_routing, run, routing),
         )
 
     if unnamed_across:
@@ -3326,6 +3731,16 @@ def _across_households(run: _ReturnRun) -> bool:
     return not run.home
 
 
+def _may_hold(run: _ReturnRun) -> bool:
+    """Whether ``run``'s record may answer for the bytes of the document
+    being decided (decision 143's review, B1): any return for a loose drop
+    (decision 132), and only the dropping household's own for an
+    attachment, whose name and ``_Opened`` path never enter another
+    household's record. ``context.container`` is set on every run around
+    one attachment's decision, so the run itself says which it is."""
+    return not (run.context.container and _across_households(run))
+
+
 def _with_the_wanting_return(home_routing, run: _ReturnRun, routing) -> str:
     """The Evidence cell of a document B2 parked at home (decision 137's
     review, B #3): the home list's own evidence, then what the return in
@@ -3387,6 +3802,13 @@ class _SortContext:
     report: FileReport
     cache: ContentCache
     pdf_cache: PdfVerdictCache
+    #: Where the email or zip the document being decided came out of rests,
+    #: relative to this return (decision 143), and ``""`` for a document
+    #: that arrived on its own. Set around one attachment's decision and
+    #: cleared after it, so every row that decision writes - filed, parked
+    #: or a duplicate, and the intent written before it - names its
+    #: container, and a recovery records the row the decision would have.
+    container: str = ""
 
 
 def _plan_working_copy(
@@ -3577,6 +3999,7 @@ def _file_it(
         candidates=_CANDIDATE_SEP.join(routing.candidates),
         evidence=format_evidence(routing.evidence_record),
         also_filed=_CANDIDATE_SEP.join(locations[1:]),
+        container=context.container,
     )
     # The move first, then the copies from where it will have moved to:
     # a step may stand on the one before it, and the recovery finishes
@@ -3655,6 +4078,7 @@ def _park_it(
         reason=reason,
         candidates=_CANDIDATE_SEP.join(candidates),
         evidence=evidence,
+        container=context.container,
     )
     _carry_out(entry, parking, ledger.PARKED, context)
     run.report.review.append(entry)
@@ -3680,6 +4104,11 @@ def _sort_one(
     A re-send whose earlier row was filed and whose copy is gone is filed
     again; one a person set aside is routed afresh against that return's
     list; anything else is a duplicate of the row that holds it.
+
+    An attachment (decision 143) never arrives here with a return in
+    another household: :func:`_decide_across` asks only the returns
+    :func:`_may_hold` allows, so every road below - the duplicate row, the
+    re-file and the set-aside re-route - stays in the dropping household.
 
     Both roads that route afresh are name-checked before they file
     (decision 128): a W-2 set aside the day the list had no row for it and
@@ -3726,6 +4155,7 @@ def _sort_one(
         # that instead, whatever its decision, rather than ending on the
         # word "as" with nothing after it.
         words = (
+            DUPLICATE_OF_OPENED if earlier.decision == OPENED else
             DUPLICATE_OF_UNCOPIED if not earlier.filed_as else
             {FILED: DUPLICATE_OF_FILED, NEEDS_REVIEW: DUPLICATE_OF_PARKED,
              FILE_MOVED: DUPLICATE_OF_MOVED}[earlier.decision]
@@ -3736,7 +4166,7 @@ def _sort_one(
             digest=digest, identifier=earlier.identifier,
             prepared_location="",
             pbc_location=location_of(run.engagement_dir, original), decision=DUPLICATE,
-            reason=said,
+            reason=said, container=context.container,
         )
         run.report.duplicates.append(entry)
         return run, entry
@@ -4262,6 +4692,12 @@ def hand_over(
         position = find_parked(entries, original)
         entry = entries[position]
         _refuse_if_stale(home_return, entry, seq)
+        # Out of an email or a zip (decision 143): the file is the firm's
+        # copy of a part of the client's file, and never moves into another
+        # household's folder - the pass parks it at home in these words,
+        # and a person's hand-over refuses it in the same ones.
+        if entry.container and household_of(target_return) != household_of(home_return):
+            raise FilingError(reasons.OPENED_NOT_ACROSS.format())
         source = locate(home_return, entry.pbc_location)
         if not source.is_file():
             raise FilingError(f"the original {entry.pbc_location} is no longer there")

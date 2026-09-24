@@ -199,7 +199,8 @@ changes nothing:
   107 is refused by name; delete it and run `rebuild` — nothing is lost,
   the ledgers are what it is made of, and the first pass after it reads
   every document once to fill the verdict cache the database also keeps.
-- **Once, when decision 137 lands.** Its database is a new version
+- **Once, when decision 137 lands** (and again at decisions 142 and 143,
+  `user_version` 13 and 14). Its database is a new version
   (`user_version` 12), so the `tracker.db` already on the machine is refused
   by name. Delete it and run `rebuild` as above. The rebuild itself takes
   minutes; what takes longer is the **first pass after it**, which reads
@@ -397,6 +398,46 @@ wrong return, unfile it *there*.
 If the machine dies in the middle of one of these, each household's next pass
 finishes its own half; the queue of a return with a half-finished decision
 refuses actions until that pass has run, as it does for any interrupted move.
+
+### An email or a zip
+
+A client who forwards an email (`.msg` from Outlook, `.eml` from most other
+mail programs) or drops a zip with the documents attached does not have to
+send them again (decision 143). The pass:
+
+1. moves the container into the client's folder for the year, like any
+   original - same name, same bytes - and records it **Opened**;
+2. takes out each attachment, in memory, into a hidden folder in the
+   **private** tree, `J Park & Associates/<household>/<year>/_Opened/<the
+   container's name>/`, never into anything the client is shared;
+3. sorts each attachment as a document of its own: filed where exactly one
+   request accepts it, parked for you where several or none do. Its row's
+   Came Inside column names the container, and the client's README lists
+   each one that filed under its request.
+
+Nothing inside is ever run. The message's own text, pictures shown inside
+the message (a logo, a signature) and attachments that are only links are
+left inside and named on the container's line in the record. An email held
+inside a zip, or a zip inside an email, is opened through; one level deeper
+is taken out whole and parks. The same email sent twice is recognised by
+its bytes and not opened again, and an attachment the client also sent on
+its own is a duplicate of it.
+
+**When a container parks** (§4 has each sentence): a locked or damaged one
+is the client's to fix - they send the documents on their own, and the
+reminder asks for them; one with nothing attached, or past a limit, is
+yours - open it on this machine and read it, and drop any document you find
+into the client's folder for the year: the next pass sorts it like any
+other. Close the container with **Not requested** once you have. A
+document from inside a container is never filed into another household's
+return, by the pass or by **File under another return**: file it by hand
+in the return it belongs to, from its own row.
+
+The `_Opened` folder is synced with the rest of the private tree, on
+purpose (the owner's decision of 2026-09-23, a named exception to decision
+107's rule): a pass that recovers an interrupted filing, and a move to
+another machine, both need what is in it. Do not tidy it by hand; a file
+there that no row names is said on every pass until a person has looked.
 
 ### Rolling a household into the next year
 
@@ -697,6 +738,11 @@ became, and — when it was not filed — why not.
 | `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary and the run log say it once. | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
 | `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it. If it is that return's, file it there with **File it**; if it is this household's, file it here. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. |
+| `reasons.CONTAINER_LOCKED` | An email or a zip arrived and one of the files inside is locked with a password (or packed in a way this machine cannot unpack), so nothing in it was opened. The container is kept like any original, with a review copy. | Ask the client for the documents themselves; the reminder does. If you have the password, open it yourself and drop the documents in the client's folder for the year. |
+| `reasons.CONTAINER_DAMAGED` | An email or a zip arrived that does not read as one - a broken zip, an Outlook file whose structure is damaged, an email with no headers at all. Nothing in it was opened. | Try opening it yourself. If it will not open, ask the client to send the documents on their own; the reminder does. |
+| `reasons.CONTAINER_EMPTY` | An email or a zip arrived with nothing attached - only the message's own text, or a picture shown inside it. Ours, never the client's. | Open it and read it: the message may say what they meant to send. Close it with **Not requested** once read. |
+| `reasons.CONTAINER_LIMIT` | An email or a zip past one of the limits it is opened under, named in the sentence: nested more than two deep, more than 200 attachments, more than 250 MB once unpacked, a file inside that unpacks to more than 100 times its packed size (the shape of a "zip bomb"), or more than 200 parts that are not documents. Nothing was taken out. A container nested too deep inside another is taken out whole and parks with this reason on its own row, while the rest of what was attached files. | Open it yourself, on this machine, and drop the documents you find in the client's folder for the year; the next pass sorts them. |
+| `reasons.OPENED_NOT_ACROSS` | A document that came inside an email or a zip, which a return in **another** household would have taken. A document from inside a container is the firm's copy of a part of the client's file, and it is never moved into another household's folder. The Evidence names the return and the request that wanted it. It is also what an attachment says when its bytes are already on record only in another household: nothing is written in that household's record, and the Evidence is empty. | File it by hand where it belongs (§1, *An email or a zip*). **File under another return** refuses it in the same words. |
 | `router.PENDING` | A cloud placeholder, still copying down. | Nothing. The next pass picks it up. |
 
 Beside the Reason sits the Evidence column, which says what the decision
@@ -715,9 +761,18 @@ Three more appear as warnings on the run rather than as index rows:
 
 | The run warns | In plain words | What you do |
 |---|---|---|
-| `filer.REPLACED_IN_PBC` | The client replaced an original we had already filed; the working copy was made from the earlier file. | Look at both, and re-file if the new one differs. |
+| `filer.REPLACED_IN_PBC` | The client replaced an original we had already filed; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Look at both, and re-file if the new one differs. |
 | `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Look at it. Nothing is adopted automatically, by design. |
+| `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Look at it. If it is a document the client sent, drop a copy in the client's folder for the year and the next pass sorts it; then delete the stray by hand. |
 | `filer.UNRECORDED_COPY` | A file is sitting in a request folder (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what its folder holds — but nobody can say where it came from. | Open the app and file it, or take it out and drop it in the client's folder so the next pass sorts and records it. Said every pass until you do. |
+
+And since decision 143 the Decision column has a sixth value, for an email
+or a zip the pass opened:
+
+| The index says | In plain words | What you do |
+|---|---|---|
+| `filer.OPENED` | An email (`.msg`, `.eml`) or a zip the client dropped. It rests in their folder for the year, untouched; each attachment was taken out and has a row of its own, whose Came Inside column names this one. The Reason says how many documents came out (`filer.OPENED_SENTENCE`) and how many parts were left inside - the message's text, a picture shown in it, an attachment that was only a link. It belongs to no request. | Nothing. Work each attachment's own row. |
+| `filer.DUPLICATE_OF_OPENED` | The same email or zip again, byte for byte. It was not opened a second time. | Nothing. |
 
 And since decision 109 the Decision column has a fifth value, for a working
 copy that is not where the record put it:

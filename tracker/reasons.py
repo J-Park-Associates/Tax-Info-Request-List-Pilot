@@ -109,7 +109,11 @@ GOOGLE_EXPORT_HINT = "File > Download > PDF or Excel"
 
 PASSWORD_PROTECTED = Reason(
     "password", "PDF is password-protected; please ask the client for an unlocked copy",
-    "password-protected", "the file is password-protected; please send an unlocked copy",
+    # "PDF is ..." since decision 143, when a locked email or zip began
+    # saying "password-protected" in a sentence of its own: the marker is
+    # still a literal part of this template, so every note written before
+    # is found by it as it was.
+    "PDF is password-protected", "the file is password-protected; please send an unlocked copy",
     holds=True,
 )
 NO_PAGES = Reason("no-pages", "PDF contains no pages", "contains no pages", holds=True)
@@ -472,6 +476,69 @@ UNNAMED_ACROSS_HOUSEHOLDS = Reason(
               "a person here decides",
 )
 
+# ---- an email or a zip (decision 143) ----------------------------------------
+
+#: An email or a zip that will not open because it is locked: a zip member
+#: carrying the encryption flag, or packed with a method this reader has
+#: not got (AES is the common one). Nothing inside was read or written. The
+#: client's to fix - they can send the documents themselves - so it holds
+#: the letter like a locked PDF does.
+CONTAINER_LOCKED = Reason(
+    "container-locked",
+    "an email or zip that is password-protected, so nothing in it was opened; "
+    "ask the client for the documents themselves",
+    "so nothing in it was opened",
+    "the email or zip file that arrived is password-protected; please send the documents "
+    "in it on their own",
+    holds=True,
+)
+#: An email or a zip that does not read as one: a zip whose directory is
+#: broken, an ``.msg`` whose structure is not a compound file, an ``.eml``
+#: with no message headers at all. The client's to fix, like a damaged PDF.
+CONTAINER_DAMAGED = Reason(
+    "container-damaged",
+    "could not be opened as an email or a zip ({error}); read it here",
+    "could not be opened as an email or a zip",
+    "the email or zip file that arrived could not be opened; please send the documents "
+    "in it on their own",
+    holds=True,
+)
+#: An email or a zip with nothing attached - every part was the message's
+#: own text or an inline picture. Ours: a person reads the message, which
+#: may say what the client meant to send.
+CONTAINER_EMPTY = Reason(
+    "container-empty",
+    "{kind} with nothing attached; read it here",
+    "with nothing attached; read it here", firm_side=True,
+    firm_note="an email or zip arrived with nothing attached; a person here reads it - "
+              "never the client",
+)
+#: An email or a zip past one of the limits it is opened under (each named
+#: in ``tracker.containers``, the limit in the sentence): too deep, too
+#: many attachments, too large once unpacked, or a member that unpacks far
+#: past its packed size. Ours: nothing about it is wrong for the client to
+#: fix, and a person opens it by hand.
+CONTAINER_LIMIT = Reason(
+    "container-limit",
+    "not opened: it passes a limit for an email or a zip ({error}); a person opens it here",
+    "passes a limit for an email or a zip", firm_side=True,
+    firm_note="an email or zip was too large or too deep to open here; a person here opens "
+              "it by hand - never the client",
+)
+#: A document that came out of an email or a zip, which a return in
+#: **another** household would have taken: an attachment's original is the
+#: firm's copy of a part of the client's file, not a file of the client's,
+#: so it never moves into another household's folder (decision 143). It
+#: parks at home, and a person's hand-over refuses it in the same words.
+OPENED_NOT_ACROSS = Reason(
+    "opened-not-across",
+    "came inside an email or zip; a document from inside one is not filed into another "
+    "household. Open it here and file it by hand.",
+    "a document from inside one is not filed into another household", firm_side=True,
+    firm_note="it came inside an email or zip and is not filed into another household; "
+              "a person here files it",
+)
+
 #: What a verdict on a ``.csv``/``.tsv``/``.txt`` says when only the first
 #: ``validators.TEXT_READ_CAP_MB`` of it was read (decision 137). Appended
 #: to the reason, never a reason itself: the cut explains a verdict, it does
@@ -481,14 +548,15 @@ TEXT_CUT = "only the first {limit} MB of this file's text was read"
 #: Every reason, in the order the reminder tries them: the specific causes
 #: before the vague ones, so a note carrying two markers gets the better ask.
 ALL: tuple[Reason, ...] = (
+    CONTAINER_LOCKED, CONTAINER_DAMAGED, CONTAINER_EMPTY, CONTAINER_LIMIT,
     PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, TOO_LARGE, EXTENSION_NOT_ALLOWED,
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
     NO_PAGES, UNREADABLE_PDF, UNREADABLE_IMAGE, HEIC_NOT_SUPPORTED, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
     ISSUER_NOT_NAMED, SHOWS_ITS_FORM_NUMBER, NAME_POINTS_AT,
     NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE, UNNAMED_ACROSS_HOUSEHOLDS,
-    FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST, READING_STOPPED,
-    READING_CRASHED, READER_UNAVAILABLE, PENDING_SYNC, VANISHED,
+    OPENED_NOT_ACROSS, FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST,
+    READING_STOPPED, READING_CRASHED, READER_UNAVAILABLE, PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )
 
