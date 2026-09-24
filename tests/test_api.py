@@ -3801,3 +3801,43 @@ def test_the_editor_round_trips_asked_and_named(capsys, demo_root):
     assert 'named: rule.named === false ? vocab.editor.no : vocab.editor.yes' in js
     assert 'asked: rule.asked === false ? vocab.editor.no : vocab.editor.yes' in js
     assert "vocab.editor.yes_no_fields.includes(key)" in js
+
+
+def test_the_apps_request_table_folds_not_asked_rows_with_no_document_into_a_closed_group(capsys, demo_root):
+    """The designer's ruling on the 142 build, the app's half: every state
+    item says whether a document is in it and whether it folds, by the one
+    rule the Status Report uses - only a row nobody asked for with no
+    document at all folds - and the request table draws those rows in a
+    closed "Not asked (N)" group headed in the API's words; the editor
+    regroups a row live on the same fact."""
+    from tests.conftest import seed_statuses
+    from tracker.manifest import Status, StatusUpdate
+
+    spec = {"household": HOUSEHOLD, "return_name": "Folded", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+        {"identifier": "B01", "document": "SSA-1099", "required_keywords": "ssa-1099", "asked": False},
+        {"identifier": "B02", "document": "W-2G", "required_keywords": "w-2g", "asked": False},
+        {"identifier": "B03", "document": "1099-C", "required_keywords": "1099-c", "asked": False},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Folded")
+    seed_statuses(engagement, {
+        "B01": StatusUpdate(status=Status.RECEIVED, file_count=1),
+        "B02": StatusUpdate(status=Status.FAILED, file_count=0, validation_notes="w2g.pdf: refused"),
+        "B03": StatusUpdate(status=Status.MISSING, file_count=0),
+    })
+    items = {i["identifier"]: i for i in payload_of_state(capsys, engagement)["items"]}
+
+    assert {i: (one["has_document"], one["not_asked_idle"]) for i, one in items.items()} == {
+        "A01": (False, False), "B01": (True, False), "B02": (True, False), "B03": (False, True)}
+
+    here = Path(__file__).resolve().parent.parent / "app" / "renderer"
+    js = (here / "app.js").read_text(encoding="utf-8")
+    html = (here / "index.html").read_text(encoding="utf-8")
+    assert 'show("rows", state.items.filter((item) => !item.not_asked_idle).map(requestTableRow));' in js
+    assert 'show("rows-not-asked", idle.map(requestTableRow));' in js
+    assert "fill(vocab.editor.not_asked_heading, { n: idle.length })" in js
+    assert "known && known.has_document" in js
+    group = html[html.index('<details id="rows-not-asked-group"'):]
+    group = group[:group.index(">") + 1]
+    assert " open" not in group                                  # closed until a person opens it

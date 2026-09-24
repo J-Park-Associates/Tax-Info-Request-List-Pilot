@@ -296,10 +296,16 @@ NOT_ASKED_LABEL = "Not asked"
 #: beside the asked rows' figures, so a letter never reads "7 of 5".
 ALSO_RECEIVED_LABEL = "Also received"
 #: The statuses that mean a document has arrived for a row, as far as a
-#: row nobody asked for is concerned (decision 142): it is then real work,
-#: sits in the active table, is counted in ``also_received`` and is asked
-#: for next year.
+#: row nobody asked for is concerned (decision 142): it is counted in
+#: ``also_received`` and is asked for next year.
 ARRIVED = (Status.RECEIVED, Status.PARTIAL)
+#: The statuses that mean *any* document is in a row's folder - one that
+#: passed, one of several, one the rules refused, or one still syncing
+#: down. A row nobody asked for with any of these is work for the
+#: preparer and sits in the active table, in the Status Report and in the
+#: app; only one with no document at all folds away (the designer's
+#: ruling on the 142 build).
+HAS_A_DOCUMENT = (Status.RECEIVED, Status.PARTIAL, Status.FAILED, Status.PENDING_SYNC)
 #: How ``Summary.line`` joins its counts, and what it says with no rows.
 SUMMARY_SEPARATOR = " · "
 SUMMARY_EMPTY = "no requests"
@@ -1412,7 +1418,8 @@ class Summary:
     #: Rows nobody asked for that did receive a document (decision 142):
     #: counted apart, so "N of M are in" is a figure about what was asked.
     also_received: int = 0
-    #: Rows nobody asked for with nothing received: on nobody's list.
+    #: Rows nobody asked for with no document at all: on nobody's list,
+    #: and the N of every "Not asked (N)" fold.
     not_asked: int = 0
 
     @property
@@ -1444,12 +1451,21 @@ def has_arrived(item: RequestItem) -> bool:
     return effective_status(item) in ARRIVED
 
 
+def has_a_document(item: RequestItem) -> bool:
+    """Is any document in this row's folder (:data:`HAS_A_DOCUMENT`)? An
+    Accepted row counts as one, as it counts as Received everywhere."""
+    return effective_status(item) in HAS_A_DOCUMENT
+
+
 def is_idle_unasked(item: RequestItem) -> bool:
-    """A row nobody asked for, not Not Applicable, with nothing received:
-    on neither of the client's lists, folded away in the Status Report and
-    the editor, and called :data:`NOT_ASKED_LABEL` (decision 142)."""
+    """A row nobody asked for, not Not Applicable, with no document at all:
+    on neither of the client's lists, folded away under "Not asked (N)" in
+    the Status Report, the app's request table and its editor, and called
+    :data:`NOT_ASKED_LABEL` (decision 142). A document of any status -
+    even one the rules refused - brings the row back into the active
+    table, because it is work for the preparer."""
     return (not item.asked and item.manual_override != Override.NOT_APPLICABLE
-            and not has_arrived(item))
+            and not has_a_document(item))
 
 
 def status_label(item: RequestItem) -> str:
@@ -1482,7 +1498,7 @@ def summarize(items: Iterable[RequestItem]) -> Summary:
         if not item.asked:
             if has_arrived(item):
                 also_received += 1
-            else:
+            elif is_idle_unasked(item):
                 not_asked += 1
             continue
         total += 1

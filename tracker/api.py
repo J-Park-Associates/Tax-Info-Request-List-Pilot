@@ -126,6 +126,8 @@ from tracker.manifest import (
     check_rules,
     check_tax_year,
     create_engagement,
+    has_a_document,
+    is_idle_unasked,
     item_from_fields,
     load_engagement_info,
     load_manifest,
@@ -931,6 +933,8 @@ def _vocab() -> dict:
             # that are a yes/no pick rather than a box - so the editor
             # sends each back as the record holds it.
             "not_asked_heading": NOT_ASKED_SECTION,
+            # The app's request table folds the same rows the same way,
+            # closed, under the same heading.
             "yes_no_fields": [key for _, key in COLUMNS if key in RULE_FLAG_FIELDS],
         },
     }
@@ -1425,7 +1429,12 @@ def _state(engagement: Path) -> dict:
         # asked for with nothing in (decision 142) - so it types none.
         "items": [
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None,
-                         "year": i.year, "status_label": status_label(i)}
+                         "year": i.year, "status_label": status_label(i),
+                         # Decision 142, the designer's ruling on the build:
+                         # a row nobody asked for folds away in the request
+                         # table only while no document at all is in it; the
+                         # editor regroups a row live from ``has_document``.
+                         "has_document": has_a_document(i), "not_asked_idle": is_idle_unasked(i)}
             for i in items
         ],
         # The person's rows as stored - read the way every reader reads

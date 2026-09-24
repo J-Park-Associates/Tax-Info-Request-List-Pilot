@@ -24,10 +24,11 @@ might be. Four sections, in the order a person reads them:
   ``Override.NOT_APPLICABLE`` are not in that table: they sit below it in
   a folded block per year (:data:`NOT_APPLICABLE_SECTION`), dimmed, in
   the same columns - off the working view, kept and findable (decision
-  116). The rows nobody asked for with nothing received fold the same
+  116). The rows nobody asked for with no document at all fold the same
   way into one block, :data:`NOT_ASKED_SECTION` (decision 142); a row
-  nobody asked for that *has* received a document is real work, and sits
-  in the table like any row, marked not asked.
+  nobody asked for with *any* document - received, partial, refused or
+  still syncing - is real work, and sits in the table like any row,
+  marked not asked.
 - **Index** - every original, in the index's own column order.
 - **Needs Review** - the rows parked for a person, and under each the
   shortlist the app's review card shows, in the words
@@ -211,7 +212,7 @@ NOT_APPLICABLE_SECTION = "{label} ({n})"
 #: while it waits in its fold and marked in the table once a document has
 #: arrived for it (decision 142).
 NOT_ASKED_CLASS = "not-asked"
-#: The one folded block of rows nobody asked for with nothing received,
+#: The one folded block of rows nobody asked for with no document at all,
 #: and how many it holds (decision 142).
 NOT_ASKED_SECTION = NOT_ASKED_LABEL + " ({n})"
 _BADGE_COLOURS: dict[str, str] = {
@@ -408,7 +409,7 @@ def _request_cells(item: RequestItem) -> Row:
 
 
 def _not_asked_block(items: list[RequestItem]) -> list[str]:
-    """The rows nobody asked for with nothing received (decision 142),
+    """The rows nobody asked for with no document at all (decision 142),
     folded away under the Requests table in one ``<details>``, in the same
     columns, the way the set-aside rows fold. Nothing is drawn when there
     are none."""

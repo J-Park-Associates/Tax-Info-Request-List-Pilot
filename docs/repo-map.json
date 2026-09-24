@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 123,
     "edges": 740,
-    "reused": 71
+    "reused": 91
   },
   "node_types": [
     "artifact",
@@ -117,8 +117,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "66290f3d14c0a1c9",
-      "lines": 3048,
+      "sha256": "4fab553a977ae39b",
+      "lines": 3057,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_LABEL",
@@ -870,8 +870,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "789bf28e849a30f1",
-      "lines": 1558,
+      "sha256": "1599ffd941bf4239",
+      "lines": 1574,
       "exports": [
         "ALSO_RECEIVED_LABEL",
         "ANY_EXTENSION",
@@ -899,6 +899,7 @@
         "EMPTY_KEYWORD_WARNING",
         "EXPECTED_PATTERN",
         "FORM_FAMILIES",
+        "HAS_A_DOCUMENT",
         "HEADERS",
         "ISO_DATE_HINT",
         "JURAT",
@@ -940,6 +941,7 @@
         "detect_year",
         "effective_status",
         "entity_keyword",
+        "has_a_document",
         "has_arrived",
         "has_routing_rules",
         "identifier_problem",
@@ -2128,8 +2130,8 @@
       "id": "tracker/view.py",
       "type": "module",
       "layer": "core",
-      "sha256": "aa1eca9ba703d211",
-      "lines": 764,
+      "sha256": "88309e5e468242a1",
+      "lines": 765,
       "cli": "python -m tracker.view",
       "exports": [
         "BADGE_CLASS",
@@ -2223,8 +2225,8 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "e6121794ef343b5a",
-      "lines": 2618,
+      "sha256": "edb3438bf4e68a83",
+      "lines": 2639,
       "role": "The desktop UI: the form-type wizard, the request list and the scan results, and (decision 104) the request-list editor - the only place a rule is entered. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); SCAN_LABEL is the one label it owns. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: renderUnfileList() is the same list for what is already filed - folded away, there for the one row that is wrong - and the function cannot be called after the decision it shows, because the guard on the renderer's vocabulary forbids that word anywhere in the file. Decision 84: the Needs Review card shows the shortlist. renderReview() maps state.review by pbc_location and hands each parked row its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the wizard's custom-request section (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook. Decision 112: both row builders put the row's sequence number on the <li> (dataset.seq, from state.index[].seq and state.review[].seq) and assignParked(), dismissParked() and unfileDocument() send it back as seq; assignParked's banner shows the API's overrode_shortlist sentence as a warn note beside left_in_review. A refusal goes through refused(): the API's sentence is toasted, the button re-enabled and refresh() re-reads the state, so the card shows the row as the record now holds it. The renderer types no sentence of its own here either. Decision 113: the learned cell is a list rather than a line - learnedCell() draws the API's learned_note and then one span.ed-learned-word per taught keyword, each with its own button.ed-unlearn carrying the identifier and the word - and a click calls the unlearn command, then re-draws only the learned column from the state that comes back (renderLearnedCells), because unlearning is its own event and lands at once while the rows may hold edits the person has not saved. The note area says the API's unlearned_note, and its scan_note under it when the re-scan could not run; the renderer types no word of it. Decision 110: renderMoved() draws #moved-card above the review card from state.moved - one row per moved working copy, its home and where its bytes are now, with restoreMoved (the restore command), keepMoved (assign, with the request the picker was left on and the keyword typed) and reviewMoved (unfile) behind the three buttons, delegated on #moved-list. The picker and the keyword box are shown only where the API said which request's folder holds the copy, and the picker starts on it; every word is vocab.review_labels', including the word for a copy that is nowhere. Decision 114: renderReview() draws the same queue twice - the list in #review-list and, in #review-deck, one card at a time. renderDeck() builds the deck from state.review in the API's order with the rows a person sent to the back after it (skipped, pbc_locations, dropped as soon as a row leaves the queue), shows the first card, and is called again from every render, so a row filed or set aside anywhere else simply leaves the deck and the total is always the queue's. The card shows the row's reason, the top suggestion's sentence under the list's own 'suggested' heading (or the vocabulary's nothing_suggested), the set-aside sentences, a keyword box and the position line; acceptCard() files to the suggestion the card carries, openCardInList() switches to the list and outlines the row, skipCard() reorders and sends nothing. fileRow() is the one place the assign call is made - assignParked(), acceptCard() and keepMoved() all reach it, and a guard in tests/test_single_source.py keeps it the only one, so Accept and File it cannot drift apart. reviewMode is the person's choice of rendering, read and written in localStorage under REVIEW_MODE_STORAGE_KEY inside try/catch (a blocked store leaves the app on the list); it is a key and not a word, and nothing about the deck is recorded (decision 83). Decision 118: renderReminder()/loadReminder()/drawReminder() are the Reminder card - the record's last word on the draft, the four stages as a toggle coloured from the API's palette, the letter drawn from its own shape with el() (never from the clipboard's markup, which would be an HTML string), Copy for Outlook putting text/html and text/plain on the clipboard with the same words, Approve sending back the fingerprint of the text on screen, and Open the draft file on the path state.paths names. The stage a person picked is the only thing the page holds of its own and is dropped when the engagement changes. It types no colour: every hex it draws with is looked up in vocab.reminder.palette by the key a stage carries, and a guard reads the file for one. Decision 129 added the household card's two feed lines, the editor's feed list with its picker and its warning, and File under another return on both renderings of the queue - every word of it from the API's vocabulary, as always."
     },
@@ -2232,8 +2234,8 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "63a90cd4ffb69bf6",
-      "lines": 557,
+      "sha256": "a259af2c573b0023",
+      "lines": 565,
       "role": "Desktop app shell markup: empty placeholders the renderer fills from the API's vocabulary, under a Content-Security-Policy that allows nothing but the app's own files. Since decision 104 it holds the request-list editor's modal (#editor), every label of which the renderer fills, and the Edit Request List button (#btn-edit) that opens it; the min of a number input is never typed here."
     },
     {
@@ -2247,8 +2249,8 @@
       "id": "app/renderer/style.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "26dad0e2c7d3200b",
-      "lines": 934,
+      "sha256": "1e1bbd5d5622ad19",
+      "lines": 937,
       "role": "Desktop app styling."
     },
     {
@@ -2279,7 +2281,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7d8ea558711a877a",
+      "sha256": "1a89a58b8f5e6b1c",
       "lines": 396,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -2324,7 +2326,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "4e4cdb831a0ed882",
+      "sha256": "6acc43eaa3563669",
       "lines": 9299,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -2593,8 +2595,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e00d3e35223e156d",
-      "lines": 3803,
+      "sha256": "7151ae32a4bfe0e9",
+      "lines": 3843,
       "exports": [
         "HOUSEHOLD",
         "PEOPLE",
@@ -2708,6 +2710,7 @@
         "test_the_apps_pass_appends_the_line_the_scheduled_run_appends",
         "test_the_apps_pass_is_the_runners_pass",
         "test_the_apps_pass_regenerates_the_practices_status_page",
+        "test_the_apps_request_table_folds_not_asked_rows_with_no_document_into_a_closed_group",
         "test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve",
         "test_the_editor_clears_a_detail_it_sends_blank_and_keeps_one_it_leaves_out",
         "test_the_editor_round_trips_asked_and_named",
@@ -4645,8 +4648,8 @@
       "id": "tests/test_view.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6872b4e55e64d419",
-      "lines": 693,
+      "sha256": "c38227d9ab329ab8",
+      "lines": 735,
       "exports": [
         "DAY1",
         "ITEMS",
@@ -4663,6 +4666,7 @@
         "tables",
         "teach_a_keyword",
         "test_a_keyword_a_filing_taught_is_on_the_page_beside_the_typed_ones",
+        "test_a_not_asked_row_with_any_document_sits_in_the_active_table_and_only_one_with_none_folds",
         "test_a_page_somebody_is_reading_is_still_read_and_says_what_each_system_does",
         "test_a_parked_file_carries_the_shortlist_the_app_would_show",
         "test_a_parked_file_the_evidence_says_nothing_about_says_so",

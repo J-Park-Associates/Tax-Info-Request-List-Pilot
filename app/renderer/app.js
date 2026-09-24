@@ -142,29 +142,40 @@ function ruleTooltip(item) {
   return rules.join("  ·  ") || "No content rules";
 }
 
+function requestTableRow(item) {
+  return el("tr", { title: ruleTooltip(item), className: item.asked === false ? "not-asked" : "" },
+    el("td", { className: "col-id" }, el("span", { className: "req-id" }, item.identifier)),
+    el("td", {},
+      el("div", { className: "req-doc" }, item.document),
+      el("div", { className: "req-period" },
+        item.period,
+        item.manual_override ? ` · override: ${overrideLabel(item.manual_override, item.year)}` : ""),
+    ),
+    el("td", { className: "col-num" },
+      `${item.file_count ?? "–"}${item.expected_count > 1 ? ` / ${item.expected_count}` : ""}`),
+    el("td", { className: "col-status" }, chip(item),
+      // The reason the person gave beside the override: the judgment,
+      // not only the fact that the rules were overridden.
+      item.override_reason ? el("div", { className: "req-reason", title: item.override_reason }, item.override_reason) : null),
+    el("td", { className: "col-recv" }, el("span", { className: "req-recv" }, item.received_date || "—")),
+    el("td", {}, el("div", { className: "req-notes", title: item.validation_notes || "" },
+      item.validation_notes || "—")),
+  );
+}
+
 function render(state) {
   paths = state.paths;
   lastState = state;
 
-  show("rows", state.items.map((item) =>
-    el("tr", { title: ruleTooltip(item) },
-      el("td", { className: "col-id" }, el("span", { className: "req-id" }, item.identifier)),
-      el("td", {},
-        el("div", { className: "req-doc" }, item.document),
-        el("div", { className: "req-period" },
-          item.period,
-          item.manual_override ? ` · override: ${overrideLabel(item.manual_override, item.year)}` : ""),
-      ),
-      el("td", { className: "col-num" },
-        `${item.file_count ?? "–"}${item.expected_count > 1 ? ` / ${item.expected_count}` : ""}`),
-      el("td", { className: "col-status" }, chip(item),
-        // The reason the person gave beside the override: the judgment,
-        // not only the fact that the rules were overridden.
-        item.override_reason ? el("div", { className: "req-reason", title: item.override_reason }, item.override_reason) : null),
-      el("td", { className: "col-recv" }, el("span", { className: "req-recv" }, item.received_date || "—")),
-      el("td", {}, el("div", { className: "req-notes", title: item.validation_notes || "" },
-        item.validation_notes || "—")),
-    )));
+  // Decision 142: a row nobody asked for with no document at all folds
+  // into one closed "Not asked (N)" group under the table, as the Status
+  // Report folds it; one with any document is work and stays in the table.
+  // Which rows fold is the API's answer (state.items[].not_asked_idle).
+  const idle = state.items.filter((item) => item.not_asked_idle);
+  show("rows", state.items.filter((item) => !item.not_asked_idle).map(requestTableRow));
+  show("rows-not-asked", idle.map(requestTableRow));
+  $("rows-not-asked-summary").textContent = fill(vocab.editor.not_asked_heading, { n: idle.length });
+  $("rows-not-asked-group").classList.toggle("hidden", idle.length === 0);
 
   // The one count, from the same summarize() the run log and the reminder use.
   // Nothing waits for anything: the statuses and the request list are both
@@ -1446,6 +1457,8 @@ async function refresh(preferPath) {
       if (!$("setup-card").classList.contains("hidden")) return;   // waiting for the folder
       banner(`No engagements under ${clientsRoot} yet — click ${$("btn-new").textContent.trim()} to create the first.`, "ok");
       show("rows", []);
+      show("rows-not-asked", []);
+      $("rows-not-asked-group").classList.add("hidden");
       return;
     }
     render(await call(withEng("state")));
@@ -2218,9 +2231,17 @@ function editorRowYear(row) {
 // label, so it can never collide with a set-aside group's.
 const NOT_ASKED_GROUP = "\u0001";
 
+// A row set to not asked folds only while no document is in it (the
+// designer's ruling on the 142 build): one with any document stays with
+// the active rows, as it does in the table and the Status Report.
+function editorRowHasDocument(row) {
+  const known = ((editorState && editorState.items) || []).find((i) => i.identifier === row.identifier);
+  return Boolean(known && known.has_document);
+}
+
 function editorGroupKey(row) {
   if (isSetAside(row.manual_override)) return overrideLabel(row.manual_override, editorRowYear(row));
-  return row.asked === vocab.editor.no ? NOT_ASKED_GROUP : "";
+  return row.asked === vocab.editor.no && !editorRowHasDocument(row) ? NOT_ASKED_GROUP : "";
 }
 
 // The active rows in one table; the rows set aside as not applicable in a

@@ -691,3 +691,45 @@ def test_not_asked_rows_fold_away_until_a_document_arrives_and_then_sit_in_the_t
     assert page.count(f'<tr class="{view.NOT_ASKED_CLASS}">') == 2        # C01 in the table, G01 folded
     assert re.findall(r"<details><summary>(.*?)</summary>", page)[0] == view.NOT_ASKED_SECTION.format(n=1)
     assert "<h2>Requests (2)</h2>" in page
+
+
+def test_a_not_asked_row_with_any_document_sits_in_the_active_table_and_only_one_with_none_folds(tmp_path):
+    """The designer's ruling on the 142 build: a document of any status in a
+    row nobody asked for - Received, Partial, Failed Validation or still
+    syncing - is work for the preparer, so the row sits in the active table
+    with its real status; only a row with no document at all folds, and
+    only those are counted in the fold's N and ``Summary.not_asked``."""
+    from tests.conftest import seed_statuses
+    from tracker.manifest import StatusUpdate, is_idle_unasked, summarize
+
+    def unasked(identifier):
+        return RequestItem(identifier=identifier, document=f"Document {identifier}", period="TY2025",
+                           allowed_extensions=("pdf",), min_size_kb=0,
+                           required_keywords=(f"keyword {identifier.lower()}",), asked=False)
+
+    rows = [ITEMS[0], unasked("B01"), unasked("B02"), unasked("B03"), unasked("B04"),
+            unasked("B05"), unasked("B06")]
+    engagement = make_engagement(tmp_path, rows, household="Smith Family", scaffold=False)
+    seed_statuses(engagement, {
+        "B01": StatusUpdate(status=Status.RECEIVED, file_count=1, received_date=DAY1),
+        "B02": StatusUpdate(status=Status.PARTIAL, file_count=1),
+        "B03": StatusUpdate(status=Status.FAILED, file_count=0, validation_notes="b03.pdf: refused"),
+        "B04": StatusUpdate(status=Status.PENDING_SYNC, file_count=0),
+        "B05": StatusUpdate(status=Status.MISSING, file_count=0),
+    })
+    view.write_view(engagement)
+    page = page_of(engagement)
+
+    active = {row[0]: dict(zip(view.REQUEST_COLUMNS, row, strict=True))
+              for row in requests_table(engagement)[1:]}
+    assert list(active) == ["A01", "B01", "B02", "B03", "B04"]
+    assert [active[i][COL_STATUS] for i in ("B01", "B02", "B03", "B04")] == [
+        Status.RECEIVED, Status.PARTIAL, Status.FAILED, Status.PENDING_SYNC]
+    [folded] = not_applicable_tables(engagement)
+    assert [row[0] for row in folded[1:]] == ["B05", "B06"]
+    assert re.findall(r"<details><summary>(.*?)</summary>", page) == [view.NOT_ASKED_SECTION.format(n=2)]
+
+    items = load_manifest(engagement)
+    assert [i.identifier for i in items if is_idle_unasked(i)] == ["B05", "B06"]
+    summary = summarize(items)
+    assert summary.not_asked == 2 and summary.also_received == 2
