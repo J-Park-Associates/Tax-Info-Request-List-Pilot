@@ -879,3 +879,20 @@ def test_windows_reserved_device_names_are_never_folder_names(tmp_path):
         assert not is_reserved_name(name) and sanitize_component(name) == name, name
     assert api._feeds_from_spec([{"household": "Smith", "return_name": "1040 - John"}],
                                 tmp_path / "Park Family")
+
+
+def test_superscript_ports_and_the_console_devices_are_reserved_too():
+    """Decision 137's review (F6): Windows also keeps COM and LPT with a
+    superscript 1, 2 or 3, and CONIN$ and CONOUT$. None of them is ever a
+    folder name, alone or before an extension, in any case."""
+    from tracker.manifest import identifier_problem, is_reserved_name
+    from tracker.scaffold import sanitize_component
+
+    for name in ("COM\u00b9", "com\u00b2", "LPT\u00b3", "lpt\u00b9.txt", "CONIN$", "conout$",
+                 "CONOUT$.log"):
+        assert is_reserved_name(name), name
+        cleaned = sanitize_component(name)
+        assert cleaned != name and not is_reserved_name(cleaned), (name, cleaned)
+    assert "device" in identifier_problem("CONIN$")
+    for name in ("COM\u00b9\u00b2", "CONINS", "LPT4x"):
+        assert not is_reserved_name(name), name

@@ -298,6 +298,9 @@ function drawReminder(card) {
   $("reminder-hint").classList.toggle("hidden", held || (!card.editable && !quiet));
   $("reminder-edited").textContent = words.edited_by_hand;
   $("reminder-edited").classList.toggle("hidden", held || !card.file.edited);
+  // Why the letter has no link (decision 137, L5): the API's sentence.
+  $("reminder-link-dropped").textContent = card.link_dropped || "";
+  $("reminder-link-dropped").classList.toggle("hidden", !card.link_dropped);
 
   const subject = $("reminder-subject");
   const marks = (stageOf(card.stage) || {}).emphasis || {};
@@ -2141,7 +2144,10 @@ async function createEngagement() {
       result.checklist.lines.forEach((line, n) => lines.push(`${n + 1}. ${line}`));
       lines.push(result.checklist.note);
     }
-    banner(lines.join("\n"), "ok");
+    // Decision 137: a household link that was not a web address was left
+    // out of the new return; the sentence is the API's.
+    if (result.link_dropped) lines.push(result.link_dropped);
+    banner(lines.join("\n"), result.link_dropped ? "warn" : "ok");
   } catch (err) {
     toast(err.message);
   } finally {

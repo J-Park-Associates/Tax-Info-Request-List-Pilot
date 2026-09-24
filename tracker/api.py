@@ -1896,8 +1896,15 @@ def _cmd_create(argv: list[str]) -> dict:
     # The wizard's dates, or the form's own (decision 117) - a new return
     # is on the reminder's ladder from its first draft. Its greeting and
     # its link come from the household where the spec is silent.
-    base_info = EngagementInfo(client=household_info.contact, link=household_info.link)
+    # A household link recorded before decision 137's rule that is not a web
+    # address is left behind with the reason, as at rollover - never a
+    # refusal of a link nobody typed here (the review's F2). A link the spec
+    # itself sends is still refused by create_engagement.
+    link, link_dropped = carried_link(household_info.link)
+    base_info = EngagementInfo(client=household_info.contact, link=link)
     info = with_default_dates(_info_from_spec(spec, carry=base_info), form, year)
+    if info.link:
+        link_dropped = ""
     info = _placed(info, household, year, engagement.name)
     # A return with nobody on it can never file a named request (decision
     # 128), so it is refused at setup rather than left to park every W-2
@@ -1907,6 +1914,7 @@ def _cmd_create(argv: list[str]) -> dict:
     #: Every folder this call's own mkdir made, outermost first: the whole
     #: of what a failure may remove (decision 137).
     made: list[Path] = []
+    owned: set[Path] = {engagement}
     try:
         # The household first, so a return never exists under one the
         # record does not know; then the return.
@@ -1916,6 +1924,7 @@ def _cmd_create(argv: list[str]) -> dict:
             except FileExistsError:
                 # Made by someone else between the look above and now.
                 raise ManifestError(HOUSEHOLD_NOT_OURS.format(name=household)) from None
+            owned.add(household_dir)
             create_household(household_dir, household_info)
             made_household = household_dir
         made += make_new_folders(engagement)
@@ -1929,12 +1938,13 @@ def _cmd_create(argv: list[str]) -> dict:
         # Never a half-built return, in the folder or in the store - and
         # never a folder this call did not make: the return, its year and
         # its household go only where this call's own mkdir made them.
-        _undo_made(made)
+        _undo_made(made, owned)
         raise
     _refresh_readmes(engagement)
     reply = {"created": Engagement(path=engagement, info=info,
                                    household_path=household_dir).label,
-             "state": _state(engagement)}
+             "state": _state(engagement),
+             "link_dropped": link_dropped}
     # A household's **first** return is the moment the two grants have to
     # be made, so the checklist comes back with it and the app shows it
     # once (decision 126). A second return added to a household already
@@ -1945,11 +1955,24 @@ def _cmd_create(argv: list[str]) -> dict:
     return reply
 
 
-def _undo_made(made: list[Path]) -> None:
+def _undo_made(made: list[Path], owned: set[Path]) -> None:
     """Undo, innermost first, the folders one create or rollover made -
-    :func:`tracker.fsio.make_new_folders`' list and nothing else."""
+    :func:`tracker.fsio.make_new_folders`' list and nothing else.
+
+    Only a folder this call **owns** - the return, or a household whose
+    record it wrote - is removed whole (:func:`_undo_create`). A level
+    above one, such as a year folder it had to make, is removed only when
+    it is empty (the review's F4): a second create running at the same
+    moment may have put its own return there, and that is not this call's
+    to take."""
     for folder in reversed(made):
-        _undo_create(folder)
+        if folder in owned:
+            _undo_create(folder)
+            continue
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
 
 
 def _undo_create(engagement: Path) -> None:
@@ -2166,12 +2189,13 @@ def _cmd_rollover(argv: list[str]) -> dict:
     made: list[Path] = []
     try:
         # The return and, in a new year, the year folder: only what this
-        # call's own mkdir made is undone (decision 137).
+        # call's own mkdir made is undone (decision 137), and the year only
+        # when it is empty.
         made += make_new_folders(engagement)
         create_engagement(engagement, report.items, info)
         scaffold_engagement(engagement)
     except Exception:
-        _undo_made(made)
+        _undo_made(made, {engagement})
         raise
     _refresh_readmes(engagement)
 
@@ -2749,6 +2773,9 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "asked": draft.asked,
         "stages": _stages(),
         "editable": not draft.is_held and not edited and draft.has_outstanding,
+        # Why the letter has no link, when the record's was not a web
+        # address (decision 137, L5; the review's F3).
+        "link_dropped": draft.link_dropped,
     }
 
 

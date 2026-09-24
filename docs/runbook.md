@@ -36,8 +36,11 @@ store keeps a fingerprint of every line of a return's record it has read
 (decision 137). If a sync client or a person rewrote or reordered the record
 while keeping its length, the pass and the app refuse that return, apply
 nothing and say so. Run the store check (`python -m tracker.store "<the app folder>" check "<clients root>"`)
-to see it named, then rebuild that return; the record itself is the truth
-and nothing is lost.
+to see it named, then rebuild **that return only**, with
+`python -m tracker.store "<the app folder>" rebuild "<clients root>" --engagement "<the return's folder>"`
+- without `--engagement` it rebuilds every return, and the next pass
+re-reads every document in the firm. The record itself is the truth and
+nothing is lost.
 
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its
@@ -193,6 +196,17 @@ changes nothing:
   107 is refused by name; delete it and run `rebuild` — nothing is lost,
   the ledgers are what it is made of, and the first pass after it reads
   every document once to fill the verdict cache the database also keeps.
+- **Once, when decision 137 lands.** Its database is a new version
+  (`user_version` 12), so the `tracker.db` already on the machine is refused
+  by name. Delete it and run `rebuild` as above. The rebuild itself takes
+  minutes; what takes longer is the **first pass after it**, which reads
+  and OCRs every document again to refill the verdict cache - on a full
+  season that can run past the scheduler's two-hour limit. A pass the
+  scheduler stops keeps what it read for the returns it finished, and the
+  next pass goes on from there. So
+  do it outside office hours, and if one return matters first, rebuild it
+  alone ahead of the rest with `--engagement "<the return's folder>"`. It
+  happens once; later passes read only what is new.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
@@ -674,8 +688,8 @@ became, and — when it was not filed — why not.
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
 | `reasons.SEVERAL_FORMS_UNSORTED` | One page prints two or more forms' own names (a stack scanned in one pass) and they will not sort one to a request: a form no row asks for, two rows wanting one form, or a row that accepted the page on a phrase rather than a form number. When they do sort, the page files a copy under each request and the row's Reason says so (`reasons.NAMES_SEVERAL_FORMS`). | Split the scan, or file the whole page to the one request that matters and note the rest. |
 | `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | Open it yourself and file it, or ask the client what it was meant to be. |
-| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document; it will not be tried again until the file changes. | Open it and file it yourself. |
-| `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). | Open it. If it is that return's, file it there with **File it**; if it is this household's, file it here. |
+| `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time; it will not be tried again until the file changes. The stop covers the OCR reading; a file whose text layer or single page takes longer still is not stopped by it (decision 150 will). | Open it and file it yourself. |
+| `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it. If it is that return's, file it there with **File it**; if it is this household's, file it here. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. |
 | `router.PENDING` | A cloud placeholder, still copying down. | Nothing. The next pass picks it up. |
 

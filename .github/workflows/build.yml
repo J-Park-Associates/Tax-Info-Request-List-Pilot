@@ -39,17 +39,21 @@ jobs:
     steps:
       # git comes with the checkout, and the build reads it: BUILD-INFO.txt
       # records the commit the package was made from.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      #
+      # Every action is pinned by the commit of the release named beside it
+      # (decision 137, B3): a tag can be moved to other code, a commit
+      # cannot. tests/test_build.py holds every workflow to that.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
       # The interpreter the firm's machine runs, which is therefore the one
       # this package IS: the batch file freezes with whatever `python` is on
       # the machine. pyproject.toml's [tool.office] is the one place that
       # version is written down, and tests/test_build.py pins this line to it.
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.14"
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: lts/*
 
@@ -141,7 +145,7 @@ jobs:
       # Seven days: long enough to fetch it and copy it to the stick, short
       # enough that nobody installs a package from a forgotten run.
       - name: Upload the package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: portable-package
           path: ${{ env.PACKAGE_DIR }}

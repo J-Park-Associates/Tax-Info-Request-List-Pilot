@@ -658,8 +658,16 @@ def _roll_one(prior: Path, prior_info: EngagementInfo, plan: ReturnPlan,
             # happens next, then the store's row in its own try, because
             # a store that cannot be reached at this moment must not
             # replace the refusal the person is owed with its own.
+            # The return is this call's; a year folder above it goes only
+            # when it is empty (the review's F4).
             for folder in reversed(made):
-                shutil.rmtree(folder, ignore_errors=True)
+                if folder == target:
+                    shutil.rmtree(folder, ignore_errors=True)
+                    continue
+                try:
+                    folder.rmdir()
+                except OSError:
+                    pass
             try:
                 store.forget(store.connect(), target)
             except Exception:

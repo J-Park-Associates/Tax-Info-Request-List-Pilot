@@ -1969,3 +1969,23 @@ def test_the_room_is_measured_from_the_list_the_pass_already_loaded(tmp_path, mo
     assert all(not run.error for run in runs)
     assert sorted(reads) == sorted(one.path for one in returns)
     assert all(run.items for run in runs)
+
+
+def test_the_pass_refuses_a_saved_clients_root_the_rule_now_refuses(tmp_path, monkeypatch):
+    """Decision 137's review (F12): a root saved before the rule - here the
+    folder that holds the app's own settings, written straight into the
+    settings file - is held to it at the start of every pass. The pass
+    refuses to walk it, in the sentence the app would have given."""
+    import json
+
+    from tracker.settings import ENV_SETTINGS_DIR, SETTINGS_FILENAME
+
+    settings = tmp_path / "app"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    (settings / SETTINGS_FILENAME).write_text(json.dumps({"clients_root": str(tmp_path)}),
+                                              encoding="utf-8")
+    with pytest.raises(SystemExit) as refused:
+        main(["--reminders", "never"])
+    assert "Clients folder problem" in str(refused.value)
+    assert "holds the app's own settings" in str(refused.value)

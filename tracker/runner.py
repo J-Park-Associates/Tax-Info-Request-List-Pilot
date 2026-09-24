@@ -175,6 +175,7 @@ from tracker.settings import (
     NO_ROOT_HINT,
     SettingsError,
     clients_root,
+    clients_root_refusal,
     firm,
     product_name,
     settings_dir,
@@ -1450,6 +1451,11 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"Clients folder problem: {exc}") from None
         if configured is None:
             raise SystemExit(f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}")
+        # A root saved before decision 137's rule is held to it here, at
+        # the start of every pass (the review's F12): a pass never walks
+        # the system drive or the app's own folder, whenever it was saved.
+        if refusal := clients_root_refusal(configured):
+            raise SystemExit(f"Clients folder problem: {refusal}")
         root = str(configured)
     elif ns.log:
         _refuse_an_old_jobs_root(root)

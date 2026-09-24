@@ -1305,7 +1305,7 @@ def test_a_reading_past_the_safety_stop_is_abandoned_cached_and_not_retried(tmp_
 
     monkeypatch.setattr(pytesseract, "image_to_string", killed)
     stopped = content_check.extract(photo)
-    said = "The reader stopped after 1 minutes on this file. A person reads it."
+    said = "The reader stopped after 1 minute on this file. A person reads it."
     assert stopped.text is None and stopped.reason == said and not stopped.transient
     routed = route_file(photo, [rules])
     assert routed.identifier is None and routed.reason == said
@@ -1354,3 +1354,55 @@ def test_a_reading_past_the_safety_stop_is_abandoned_cached_and_not_retried(tmp_
     stop.page()
     assert stop.remaining() == 10.0
     assert content_check._STOP is None                       # nothing outlives the reading
+
+
+def test_only_a_staff_date_pattern_runs_line_by_line():
+    """Decision 137's review (F7): the line-by-line bound is for a pattern a
+    person typed. The one the tracker derives from the Period is its own and
+    runs over the whole text as it always did, so a month and its year split
+    by a line break still say the year."""
+    import re
+
+    from tracker.manifest import derived_date_pattern
+
+    derived = derived_date_pattern("TY2025")
+    split = "Statement period\nDecember\n2025 and more\n"
+    assert derived and re.search(derived, split) is not None       # the premise
+    firm = item(period="TY2025", date_pattern=derived, date_pattern_derived=True)
+    assert evaluate_rules(split, firm).ok
+
+    typed = item(period="TY2025", date_pattern=r"December\s2025", date_pattern_derived=False)
+    assert not evaluate_rules(split, typed).ok                      # a person's: line by line
+    assert evaluate_rules("December 2025\n", typed).ok
+
+
+def test_orientation_is_scored_on_a_small_copy_and_only_the_chosen_turn_is_full_size(monkeypatch):
+    """Decision 137's review of Part B (#2): which way up a page is does not
+    need its full resolution. The four turns are scored on a copy whose
+    long side is at most ``SCORING_LONG_SIDE``; only the chosen turn of the
+    full page is handed back, to be read once."""
+    from PIL import Image
+
+    import tracker.content_check as content_check
+
+    pytesseract = pytest.importorskip("pytesseract")
+
+    def osd_cannot_say(image, **kw):
+        raise pytesseract.TesseractError(1, "Too few characters. Skipping this page")
+
+    scored = []
+    scores = iter([10.0, 90.0, 20.0, 30.0])                    # the quarter turn reads best
+
+    def by_turn(image, **kw):
+        scored.append(image.size)
+        confidence = next(scores)
+        return {"text": ["Wage", "and", "Statement"], "conf": [confidence] * 3}
+
+    monkeypatch.setattr(pytesseract, "image_to_osd", osd_cannot_say)
+    monkeypatch.setattr(pytesseract, "image_to_data", by_turn)
+    page = Image.new("L", (4032, 3024), 255)                     # a 12-megapixel photo
+    turned = content_check._upright(page)
+
+    assert len(scored) == 4
+    assert all(max(size) <= content_check.SCORING_LONG_SIDE for size in scored)
+    assert turned.size == (3024, 4032)                           # the full page, turned

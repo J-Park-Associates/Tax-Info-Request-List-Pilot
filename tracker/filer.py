@@ -1476,8 +1476,17 @@ def _through_a_link(path: Path, root: Path) -> bool:
     the engagement whose files would then be *moved* into PBC as the
     client's originals. What lies behind a link is not a drop.
     """
+    # Only what lies between the root and the path is judged (decision
+    # 137's review, F5): the clients root may itself sit under a folder
+    # that is a link - ``G:\\Shared drives`` is Drive for desktop's own -
+    # and that must never refuse a move. A path that is not under the root
+    # at all is not a path this walk was asked about, and is refused.
+    base = os.path.normcase(os.path.normpath(str(root)))
+    here = os.path.normcase(os.path.normpath(str(path)))
+    if here != base and not here.startswith(base.rstrip(os.sep) + os.sep):
+        return True
     for part in (path, *path.parents):
-        if part == root:
+        if os.path.normcase(os.path.normpath(str(part))) == base:
             return False
         if _is_link(part):
             return True
@@ -2999,6 +3008,14 @@ def _sort_all(
             run.known[digest] = entry
 
 
+class _NoRouting:
+    """A routing that said nothing: no evidence of its own."""
+
+    evidence_record: dict = {}
+
+
+_NO_ROUTING = _NoRouting()
+
 #: What a filed row's Reason gains when the name on the page confirmed it
 #: (decision 128). The firm's own spelling, never a word of the document -
 #: which is the same line :class:`tracker.records.Evidence` draws.
@@ -3154,7 +3171,7 @@ def _decide_across(
             # Own returns first, as they are handed in (decision 132's
             # second order; the locks were taken in the global one).
             run = holders[0]
-            return run, _sort_one(drop, original, digest, size_kb, stamp, run, runs)
+            return _sort_one(drop, original, digest, size_kb, stamp, run, runs)
 
     # One reading, however many returns judge it (decision 128). A dry run
     # judges the drop where it lies, as it always has.
@@ -3189,7 +3206,7 @@ def _decide_across(
         # its request is unnamed would otherwise move into another
         # household's folder, which that household's people can open, on
         # the strength of its keywords alone. It waits at home for a person.
-        if item is not None and _across_households(run, first) and id(run) not in stage.confirmed:
+        if item is not None and _across_households(run) and id(run) not in stage.confirmed:
             unnamed_across, item = True, None
         if item is not None:
             try:
@@ -3229,7 +3246,7 @@ def _decide_across(
             drop, original, digest, size_kb, stamp, home,
             reason=reasons.UNNAMED_ACROSS_HOUSEHOLDS.format(),
             candidates=home_routing.candidates,
-            evidence=format_evidence(home_routing.evidence_record),
+            evidence=_with_the_wanting_return(home_routing, run, routing),
         )
 
     if len(kept) > 1:
@@ -3259,14 +3276,32 @@ def _decide_across(
     )
 
 
-def _across_households(run: _ReturnRun, first: _ReturnRun) -> bool:
+def _across_households(run: _ReturnRun) -> bool:
     """Whether ``run`` lives in another household than the one the drop was
-    made in - ``first`` is always the dropping household's own - so filing
-    there would move the original into a folder other people are shared on
-    (decision 129's feeds). Compared as Windows compares folder names."""
-    here = os.path.normcase(os.path.normpath(str(household_of(first.engagement_dir))))
-    there = os.path.normcase(os.path.normpath(str(household_of(run.engagement_dir))))
-    return here != there
+    made in, so filing there would move the original into a folder other
+    people are shared on (decision 129's feeds).
+
+    Read off the run itself: ``home`` marks the dropping household's own
+    returns, and every other run is one its drop folder feeds. Never
+    against a "first" run, which falls back to a fed return when a
+    household has none of its own (decision 137's review, B #4)."""
+    return not run.home
+
+
+def _with_the_wanting_return(home_routing, run: _ReturnRun, routing) -> str:
+    """The Evidence cell of a document B2 parked at home (decision 137's
+    review, B #3): the home list's own evidence, then what the return in
+    the other household accepted it under - keyed by that return's label
+    and the request's identifier, so a person knows where **File it**
+    goes. Only the firm's words travel: labels, identifiers and the
+    keywords the row asked for, never a word of the document. The key is
+    qualified by the label, so it can never be offered as a request of the
+    home list's own that happens to share the identifier."""
+    wanted = {f"{run.label} / {identifier}": found
+              for identifier, found in routing.evidence_record.items()
+              if identifier in routing.filed_to}
+    return "; ".join(part for part in (format_evidence(home_routing.evidence_record),
+                                       format_evidence(wanted)) if part)
 
 
 def _the_home(accepting, routed, runs: list[_ReturnRun]) -> tuple[_ReturnRun, object]:
@@ -3596,7 +3631,7 @@ def _sort_one(
     stamp: str,
     run: _ReturnRun,
     runs: list[_ReturnRun],
-) -> IndexEntry:
+) -> tuple[_ReturnRun, IndexEntry]:
     """Decide one preserved original's fate inside the one return whose
     record already holds its bytes, and, unless dry-running, copy it.
 
@@ -3664,7 +3699,7 @@ def _sort_one(
             reason=said,
         )
         run.report.duplicates.append(entry)
-        return entry
+        return run, entry
 
     judged = drop if context.dry_run else original
     reading = read_once(judged)
@@ -3682,23 +3717,34 @@ def _sort_one(
         # parks it.
         text = "" if reading.needs_ocr else (reading.text or "")
         stage = _by_the_name(text, [(run, routing)], runs)
+        if stage.kept and _across_households(run) and id(run) not in stage.confirmed:
+            # A re-send whose bytes a return in another household already
+            # holds is held to the same rule as a first arrival (decision
+            # 137's review, B #5, the owner's "never"): unnamed, it is not
+            # filed there, and parks in the drop's own household.
+            home = next((one for one in runs if one.home), run)
+            return home, _park_it(drop, original, digest, size_kb, stamp, home,
+                                  reason=reasons.UNNAMED_ACROSS_HOUSEHOLDS.format(),
+                                  candidates="",
+                                  evidence=_with_the_wanting_return(_NO_ROUTING, run, routing),
+                                  resent=resent)
         if stage.kept:
             _kept, routing = stage.kept[0]
             try:
-                return _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
-                                refiled=refiled, resent=resent,
-                                confirmed=stage.confirmed.get(id(run), ""))
+                return run, _file_it(drop, original, digest, size_kb, stamp, run, routing, item,
+                                     refiled=refiled, resent=resent,
+                                     confirmed=stage.confirmed.get(id(run), ""))
             except NoRoom as exc:        # decision 131: no room even for the shortest name
-                return _park_it(drop, original, digest, size_kb, stamp, run,
-                                reason=str(exc), candidates=routing.candidates,
-                                evidence=format_evidence(routing.evidence_record), resent=resent)
+                return run, _park_it(drop, original, digest, size_kb, stamp, run,
+                                     reason=str(exc), candidates=routing.candidates,
+                                     evidence=format_evidence(routing.evidence_record), resent=resent)
         routing = stage.graded.get(id(run), routing)
-        return _park_it(drop, original, digest, size_kb, stamp, run,
-                        reason=stage.reason or routing.reason, candidates=routing.candidates,
-                        evidence=format_evidence(routing.evidence_record), resent=resent)
-    return _park_it(drop, original, digest, size_kb, stamp, run,
-                    reason=routing.reason, candidates=routing.candidates,
-                    evidence=format_evidence(routing.evidence_record), resent=resent)
+        return run, _park_it(drop, original, digest, size_kb, stamp, run,
+                             reason=stage.reason or routing.reason, candidates=routing.candidates,
+                             evidence=format_evidence(routing.evidence_record), resent=resent)
+    return run, _park_it(drop, original, digest, size_kb, stamp, run,
+                         reason=routing.reason, candidates=routing.candidates,
+                         evidence=format_evidence(routing.evidence_record), resent=resent)
 
 
 # ------------------------------------------------------------- freshness ----

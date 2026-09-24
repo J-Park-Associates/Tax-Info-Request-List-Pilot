@@ -48,6 +48,7 @@ from tracker.records import (
     Evidence,
     Person,
     ledger_key,
+    parse_evidence,
     rule_from_json,
     rule_to_json,
 )
@@ -6075,6 +6076,12 @@ def test_an_unnamed_document_is_not_filed_across_households(tmp_path):
     assert parked.decision == NEEDS_REVIEW
     assert parked.reason == "Unnamed, so it was not filed into another household's return."
     assert reasons.UNNAMED_ACROSS_HOUSEHOLDS.matches(parked.reason)
+    # Where it was wanted, in the firm's words only (review of Part B, #3):
+    # the other return's label and the request that accepted it.
+    wanted = parse_evidence(parked.evidence)
+    llc_label = "Park & Lee LLC 2025 1120S - Park & Lee LLC"
+    assert f"{llc_label} / B01" in wanted
+    assert all(e.term == "trial balance" or e.rule == "date" for e in wanted[f"{llc_label} / B01"])
     assert [p.name for p in originals(father).iterdir()] == ["tb.pdf"]    # it stays at home
     assert not originals(llc).exists() or not any(originals(llc).iterdir())
 
@@ -6087,3 +6094,63 @@ def test_an_unnamed_document_is_not_filed_across_households(tmp_path):
     sort_all([personal, business], today=DAY1)
     [filed] = read_index(business)
     assert filed.decision == FILED and filed.identifier == "B01"
+
+
+def test_the_link_check_stops_at_the_clients_root(tmp_path):
+    """Decision 137's review (F5): only what lies between the clients root
+    and the file is judged. A root reached through a link above it - the
+    office's sits under Drive for desktop's own folder - files exactly as
+    any other; and a path that is not under the root it is checked against
+    is refused rather than judged all the way up to the drive."""
+    import tracker.filer as filer
+
+    real = tmp_path / "real"
+    real.mkdir()
+    _link_to(real, tmp_path / "linked")                  # a link ABOVE the clients root
+    root = tmp_path / "linked" / "Clients root"
+    engagement = make_engagement(root, ITEMS)
+    drop(engagement, "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    report = sort(engagement, today=DAY1)
+
+    assert [e.original_name for e in report.filed] == ["scan0012.pdf"]
+    assert report.errors == []
+    inbox = inbox_of(engagement)
+    assert not filer._through_a_link(inbox / "a.pdf", inbox)
+    assert filer._through_a_link(tmp_path / "elsewhere" / "a.pdf", inbox)
+
+
+def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path):
+    """Decision 137's review of Part B (#5; the owner's "never"): the bytes
+    a return in another household already holds are decided by that record
+    (decision 111), and a re-send it would file again - here a person
+    handed the unnamed page over, and the working copy has since gone - is
+    held to the same rule as a first arrival. Unnamed, it is not filed
+    into the other household; it parks in the drop's own household with the
+    same sentence."""
+    import shutil
+
+    from tracker.filer import hand_over
+    from tracker.records import Feed
+
+    unnamed = [replace(BUSINESS[0], named=False)]
+    father = make_engagement(tmp_path, ITEMS, household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    llc = make_engagement(tmp_path, unnamed, household="Park & Lee LLC",
+                          return_name="1120S - Park & Lee LLC", people=LLC_PEOPLE)
+    feeding(tmp_path, [Feed("Park & Lee LLC", "1120S - Park & Lee LLC")])
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="")
+    sort_all([father, llc], home=[father], today=DAY1)
+    [parked] = read_index(father)
+    hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)        # a person decided
+    [taken] = read_index(llc)
+    held = locate(llc, taken.pbc_location)
+    (llc / taken.prepared_location).unlink()                             # the copy went
+    shutil.copyfile(held, inbox_of(father) / "tb again.pdf")              # the same bytes again
+
+    sort_all([father, llc], home=[father], today=DAY3)
+
+    assert [r.decision for r in read_index(llc)] == [FILED]              # nothing filed again there
+    again = [r for r in read_index(father) if r.original_name == "tb again.pdf"]
+    assert [r.decision for r in again] == [NEEDS_REVIEW]
+    assert again[0].reason.startswith("Unnamed, so it was not filed into another household's return.")

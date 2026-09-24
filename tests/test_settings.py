@@ -205,3 +205,38 @@ def test_the_system_drive_root_is_refused_and_another_drive_root_is_kept(beside_
     assert (root_refusal(system_root, settings=settings, app=app, system=system_root)
             == ROOT_IS_SYSTEM_DRIVE.format(root=system_root))
     assert root_refusal(other, settings=settings, app=app, system=system_root) == ""
+
+
+def test_the_clients_root_is_judged_by_the_folder_itself_not_its_spelling(beside_the_app):
+    """Decision 137's review (F1): the refusals compare the folders
+    themselves, so the long-path and administrative-share spellings of the
+    system drive, the app's folder and the settings folder are refused like
+    their plain names. The admin-share spellings are asked only where this
+    machine answers them."""
+    import os
+    from pathlib import Path
+
+    from tracker.settings import app_dir, system_drive_root
+
+    if os.name != "nt":
+        pytest.skip("the \\\\?\\ and C$ spellings are Windows'")
+    settings = settings_dir()
+    settings.mkdir(parents=True, exist_ok=True)
+    drive = system_drive_root().drive                          # "C:"
+    letter = drive.rstrip(":")
+    spellings = [
+        "\\\\?\\" + drive + "\\",
+        "\\\\?\\" + str(app_dir()),
+        "\\\\?\\" + str(settings.resolve()),
+    ]
+    for host in ("localhost", "127.0.0.1"):
+        share = f"\\\\{host}\\{letter}$\\"
+        if Path(share).is_dir():
+            spellings += [share, share + str(app_dir())[3:]]
+    for typed in spellings:
+        with pytest.raises(SettingsError):
+            set_clients_root(typed)
+    assert clients_root() is None
+    clients = beside_the_app / "Clients"
+    clients.mkdir()
+    assert set_clients_root("\\\\?\\" + str(clients)) is not None   # a real clients folder still is one

@@ -229,11 +229,14 @@ WINDOWS_ILLEGAL_CHARS_TEXT = " ".join(_ILLEGAL_PUNCTUATION)
 #: and a request folder, a household or a return named one could never
 #: hold a document.
 WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
-    {"CON", "PRN", "AUX", "NUL"}
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
     | {f"COM{n}" for n in range(1, 10)}
     | {f"LPT{n}" for n in range(1, 10)}
+    # The superscript digits Windows reserves too (the review's F6).
+    | {f"{port}{digit}" for port in ("COM", "LPT") for digit in "\u00b9\u00b2\u00b3"}
 )
-WINDOWS_RESERVED_NAMES_TEXT = "CON, PRN, AUX, NUL, COM1-COM9, LPT1-LPT9"
+WINDOWS_RESERVED_NAMES_TEXT = ("CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, LPT1-LPT9 "
+                               "and their superscript-1, 2 and 3 forms")
 
 
 def is_reserved_name(name: str) -> bool:

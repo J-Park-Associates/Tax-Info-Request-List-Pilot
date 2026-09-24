@@ -1192,7 +1192,15 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
         found.extend(hits)
 
     if item.date_pattern:
-        at = date_pattern_at(item.date_pattern, text)
+        # A pattern a person typed runs line by line (decision 137, L3); the
+        # one derived from the Period is the firm's own and runs over the
+        # whole text as it always did (the review's F7), so "December" and
+        # "2025" split by a line break still say the year.
+        if item.date_pattern_derived:
+            hit = re.search(item.date_pattern, text)
+            at = hit.start() if hit else None
+        else:
+            at = date_pattern_at(item.date_pattern, text)
         if at is None:
             return ContentResult(ok=False,
                                  reason=reasons.WRONG_PERIOD.format(pattern=item.date_pattern),
@@ -1395,14 +1403,34 @@ def _four_way(image):
     turn is handed back untouched: a turn the reading did not earn is a
     guess, and nothing here guesses.
     """
+    # The four turns are scored on a small copy (decision 137's review,
+    # B #2): which way up a page is does not need its full resolution, and
+    # four full readings of a dense 12-megapixel photo took the whole of its
+    # minute on the office machine. Only the chosen turn is read in full.
+    small = _for_scoring(image)
     best_turn, best_score = 0, None
     for turn in _TURNS:
-        score = _score_of(image if turn == 0 else image.rotate(-turn, expand=True))
+        score = _score_of(small if turn == 0 else small.rotate(-turn, expand=True))
         if score is not None and (best_score is None or score > best_score):
             best_turn, best_score = turn, score
     if best_score is None or best_turn == 0:
         return image
     return image.rotate(-best_turn, expand=True)
+
+
+#: The longest side of the copy the four-way scorer reads (decision 137's
+#: review, B #2). A letter page at 150 dpi is 1,650 px on its long side.
+SCORING_LONG_SIDE = 2000
+
+
+def _for_scoring(image):
+    """``image`` reduced so its longer side is at most
+    :data:`SCORING_LONG_SIDE`, or ``image`` itself when it already is."""
+    longest = max(image.width, image.height)
+    if longest <= SCORING_LONG_SIDE:
+        return image
+    factor = SCORING_LONG_SIDE / longest
+    return image.resize((max(1, int(image.width * factor)), max(1, int(image.height * factor))))
 
 
 def _upright(image):
@@ -1575,7 +1603,12 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
     and finishes it. The one exception is the safety stop, ten times the
     owner's ceiling (decision 137, B1.2, :data:`READING_STOP_PAGE_SECONDS`
     and :data:`READING_STOP_DOCUMENT_SECONDS`): a reading that reaches it
-    is abandoned, and its verdict kept.
+    is abandoned, and its verdict kept. **What the stop covers:** OCR -
+    every Tesseract call is killed at its timeout - and an overrun noticed
+    between pages. It cannot interrupt the PDF text layer (pdfplumber), a
+    workbook's reading, or a single page render, which run inside this
+    process and can only be seen to have overrun once they return. The
+    bound on a whole reading is decision 150's.
     """
     started = time.perf_counter()
     # A file past the ceiling is never opened (decision 137, M5): the
@@ -1630,7 +1663,8 @@ def extract_by_ocr(path: Path) -> Extraction:
     except ReadingStopped as exc:
         # Abandoned, and kept: the file's verdict until the file changes.
         minutes = max(1, round(exc.seconds / 60))
-        return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=minutes),
+        said = "1 minute" if minutes == 1 else f"{minutes} minutes"
+        return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=said),
                           extractable=False)
     except TooLargeToRead as exc:
         return Extraction(None, reason=str(exc), extractable=False)

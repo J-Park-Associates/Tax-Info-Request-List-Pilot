@@ -239,6 +239,30 @@ def _within(inner: Path, outer: Path) -> bool:
     return a.startswith(b.rstrip(os.sep) + os.sep)
 
 
+def _inside(inner: Path, outer: Path) -> bool:
+    r"""Whether ``inner`` is ``outer`` or lies below it - by its spelling, or
+    by **the folder itself** (decision 137's review, F1).
+
+    The spelling alone is a string check, and ``\\?\C:\``,
+    ``\\localhost\C$\`` and ``\\127.0.0.1\C$`` are the system drive under
+    other names. So where both exist, ``inner`` and every folder above it
+    are asked whether they *are* ``outer`` (``os.path.samefile``: the same
+    volume and file id), which no spelling changes. A folder that is not
+    there has no identity, and only its spelling is compared.
+    """
+    if _within(inner, outer):
+        return True
+    if not os.path.exists(outer):
+        return False
+    for level in (inner, *inner.parents):
+        try:
+            if os.path.samefile(level, outer):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def root_refusal(root: Path, *, settings: Path, app: Path, system: Path) -> str:
     """Why ``root`` may not be the clients root, or ``""`` when it may.
 
@@ -250,15 +274,26 @@ def root_refusal(root: Path, *, settings: Path, app: Path, system: Path) -> str:
     that holds it. **Another drive's root is allowed**: a letter mapped to
     the clients share (``S:``, a Shared Drive letter) is a real root.
     """
-    if _within(system, root) and _within(root, system):
+    if _inside(system, root) and _inside(root, system):
         return ROOT_IS_SYSTEM_DRIVE.format(root=root)
-    if _within(settings, root):
+    if _inside(settings, root):
         return ROOT_HOLDS_SETTINGS.format(root=root, settings=settings)
-    if _within(root, settings):
+    if _inside(root, settings):
         return ROOT_INSIDE_SETTINGS.format(root=root, settings=settings)
-    if _within(app, root):
+    if _inside(app, root):
         return ROOT_HOLDS_APP.format(root=root, app=app)
     return ""
+
+
+def clients_root_refusal(root: Path | str) -> str:
+    """:func:`root_refusal` for ``root`` on this machine, with this app's
+    settings folder, its own folder and the system drive: ``""`` when it
+    may be the clients root. What :func:`set_clients_root` asks before it
+    records a root, and what the scheduled pass asks again of the root it
+    was saved with (decision 137's review, F12), so a root recorded before
+    the rule is not walked either."""
+    return root_refusal(Path(root), settings=settings_dir().resolve(), app=app_dir(),
+                        system=system_drive_root())
 
 
 def set_clients_root(root: Path | str) -> Path:
@@ -283,8 +318,7 @@ def set_clients_root(root: Path | str) -> Path:
     if str(root).rstrip("/") == root.drive:       # "D:" is the drive's current folder to Windows
         root = Path(root.drive + os.sep)
     root = root.resolve()   # the scheduled job and the app do not share a working folder
-    refusal = root_refusal(root, settings=settings_dir().resolve(), app=app_dir(),
-                           system=system_drive_root())
+    refusal = clients_root_refusal(root)
     if refusal:
         raise SettingsError(refusal)
     data = _read()

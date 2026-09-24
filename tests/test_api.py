@@ -3595,3 +3595,83 @@ def test_a_rollover_drops_a_link_that_is_not_a_web_address_and_says_why(capsys, 
     assert rolled["link_dropped"] == said and payload["skipped"] == []
     assert load_engagement_info(
         where(demo_root, "Smith 2025", year=2026, household="Other Household")).link == ""
+
+
+def test_a_failed_create_removes_a_year_folder_only_when_it_is_empty(capsys, demo_root, monkeypatch):
+    """Decision 137's review (F4): a create that fails removes the return
+    it made whole, and a year folder it made only if nothing else is in it -
+    a second create running at the same moment may have put its own return
+    there, and that return is not this call's to take."""
+    from tracker.layout import private_household_dir
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    new_year = private_household_dir(demo_root, HOUSEHOLD) / "2026"
+    theirs = new_year / "1040 - Somebody Else"
+
+    def another_create_lands_then_the_scaffold_fails(*_args, **_kwargs):
+        theirs.mkdir()
+        (theirs / "their file.txt").write_text("theirs", encoding="utf-8")
+        raise OSError("the scaffold failed half way")
+
+    monkeypatch.setattr(api, "scaffold_engagement", another_create_lands_then_the_scaffold_fails)
+    code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith 2026", "year": 2026})
+    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert not where(demo_root, "Smith 2026", year=2026).exists()        # its own return: gone
+    assert (theirs / "their file.txt").read_text(encoding="utf-8") == "theirs"   # theirs: kept
+    assert new_year.is_dir()                                             # and the year with it
+
+
+def test_a_new_return_drops_a_households_old_link_with_the_reason_not_a_refusal(capsys, demo_root):
+    """Decision 137's review (F2): a household link recorded before the rule
+    that is not a web address does not refuse the next return created in
+    that household. The return starts without it and the reply says why, as
+    a rollover does; a link the create itself sends is still refused."""
+    from tracker.layout import private_household_dir
+    from tracker.locking import engagement_lock
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import LINK_NOT_CARRIED
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040",
+            "link": "https://drive.example/inbox",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    household = private_household_dir(demo_root, HOUSEHOLD)
+    bad = "S:\\Clients\\Inbox"
+    with engagement_lock(household):
+        store.record(store.connect(), household, ledger.new(
+            ledger.HOUSEHOLD_CHANGED, **{ledger.HOUSEHOLD_KEY: {"link": bad}}))
+
+    second = {"household": HOUSEHOLD, "return_name": "Smith Trust", "form": "1040",
+              "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=second)
+    assert code == 0, payload
+    assert payload["link_dropped"] == LINK_NOT_CARRIED.format(link=bad)
+    assert load_engagement_info(where(demo_root, "Smith Trust")).link == ""
+
+    code, payload = run(capsys, "create", stdin={**second, "return_name": "Smith Estate",
+                                                 "link": "file:///C:/x"})
+    assert code == 1 and "is not a web address" in payload["error"]
+
+
+def test_the_reminder_card_says_why_a_link_was_left_out(capsys, demo_root):
+    """Decision 137's review (F3): the reminder card carries the sentence
+    the draft file and the command line give when the record's link is not
+    a web address, so the person reading the letter in the app knows why
+    it has no link. A card with a good link says nothing."""
+    from tracker.locking import engagement_lock
+    from tracker.reminder import LINK_DROPPED
+
+    folder = chased_engagement(capsys, demo_root)
+    assert reminder_card(capsys, folder)["link_dropped"] == ""
+    bad = "file:///C:/Users/firm/inbox"
+    with engagement_lock(folder):
+        store.record(store.connect(), folder, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [], ledger.REMOVED_KEY: [], ledger.INFO_KEY: {"link": bad}}))
+    card = reminder_card(capsys, folder)
+    assert card["link_dropped"] == LINK_DROPPED.format(link=bad)
+    assert bad not in card["text"]
+    js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8")
+    assert "card.link_dropped" in js

@@ -370,7 +370,7 @@ NO_REQUEST_FOLDER = Reason(
 #: the file may be perfectly good, and a person reads it.
 READING_STOPPED = Reason(
     "reading-stopped",
-    "The reader stopped after {minutes} minutes on this file. A person reads it.",
+    "The reader stopped after {minutes} on this file. A person reads it.",
     "The reader stopped after", firm_side=True,
     firm_note="the reader gave up on it at the safety stop; a person here reads it",
 )
