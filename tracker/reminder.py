@@ -213,8 +213,13 @@ DROP_ANYWHERE = "Everything goes in the same place - just drop it into the share
 #: What is said before the stage's own opening, at every stage, whenever
 #: anything at all has arrived. It is true at every stage, and a client who
 #: has sent half of it should never read a final notice that talks as
-#: though they sent nothing.
-THANK_YOU = "Thank you for what you have sent so far - {received} of {total} items are in."
+#: though they sent nothing. In Jason's words (decision 142, 2026-09-24):
+#: the count is of what we **asked** for, and a document that arrived for a
+#: row nobody asked for is thanked in a second sentence, said only when
+#: there is one - so the figure never reads "7 of 5". Worded in the
+#: singular and the plural by :func:`progress_line`.
+PROGRESS_ASKED = "Of the {m} {items} we asked for, {n} {verb} in."
+PROGRESS_ALSO = "We have also received {k} other {documents} from you."
 #: The footer headings for what the draft deliberately did not ask for.
 HELD_BACK_HEADING = "NOT ASKED FOR"
 HELD_BACK_LINE = "NOT ASKED"
@@ -1067,6 +1072,25 @@ def _deadline_runs(stage: Stage, *, engagement: str, due_date: dt.date,
     return _cut_runs(marked)
 
 
+def progress_line(received: int, total: int, also_received: int = 0) -> str:
+    """The letter's count, in Jason's words (decision 142), or nothing when
+    nothing has arrived at all.
+
+    ``Of the 5 items we asked for, 1 is in.`` - the asked rows only - and,
+    only when a document arrived for a row nobody asked for, ``We have also
+    received 2 other documents from you.`` Each noun and verb agrees with
+    its number, because this is a sentence a client reads.
+    """
+    if not received and not also_received:
+        return ""
+    said = PROGRESS_ASKED.format(m=total, items="item" if total == 1 else "items",
+                                 n=received, verb="is" if received == 1 else "are")
+    if also_received:
+        said += " " + PROGRESS_ALSO.format(
+            k=also_received, documents="document" if also_received == 1 else "documents")
+    return said
+
+
 def _compose_letter(
     lines: Sequence[ReminderLine],
     *,
@@ -1081,6 +1105,7 @@ def _compose_letter(
     stage: Stage | None,
     filing_deadline: dt.date | None = None,
     phone: str = "",
+    also_received: int = 0,
 ) -> Letter:
     """The letter as a shape: the greeting, the stage's own three sentences
     around the list, and the sign-off.
@@ -1111,7 +1136,7 @@ def _compose_letter(
     )
     return Letter(
         greeting=greeting,
-        progress=THANK_YOU.format(received=received, total=total) if received else "",
+        progress=progress_line(received, total, also_received),
         intro=stage.intro.format(**words),
         sections=sections,
         drop=(DROP_ANYWHERE, DROP_WITH_LINK if share_link else DROP_NO_LINK),
@@ -1277,6 +1302,7 @@ def draft_reminder(
         firm=firm,
         received=received,
         total=total,
+        also_received=summary.also_received,
         stage=rung,
         filing_deadline=filing_deadline,
         phone=phone,

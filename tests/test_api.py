@@ -897,6 +897,29 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
         assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
     for word in (*Override.ALL, OVERRIDE_REASON_OTHER, "Not Applicable in"):
         assert word not in renderer, word
+    # Decision 142 (its review, R1): the words it adds reach the page only
+    # through this vocabulary, and the renderer types none of them.
+    from tracker.manifest import NOT_ASKED_LABEL
+    from tracker.rollover import ORIGIN_NEW
+
+    assert vocab["not_asked_label"] == NOT_ASKED_LABEL
+    assert vocab["not_asked_key"] == api._slug(NOT_ASKED_LABEL)
+    assert vocab["ask_the_client"] == api.ASK_THE_CLIENT
+    assert vocab["ask_the_client_note"] == api.ASK_THE_CLIENT_NOTE
+    assert vocab["not_asked_table_label"] == api.NOT_ASKED_TABLE_LABEL
+    assert vocab["roll_template_label"] == api.ROLL_TEMPLATE_LABEL
+    assert vocab["nothing_asked"] == api.NOTHING_ASKED
+    assert vocab["origin_new"] == ORIGIN_NEW
+    assert vocab["new_not_asked_carried"] == api.NEW_NOT_ASKED_CARRIED
+    assert vocab["editor"]["not_asked_heading"] == view.NOT_ASKED_SECTION
+    assert vocab["editor"]["yes_no_fields"] == ["named", "asked"]
+    html = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "index.html").read_text(
+        encoding="utf-8")
+    for word in (NOT_ASKED_LABEL, api.ASK_THE_CLIENT, api.ASK_THE_CLIENT_NOTE,
+                 api.NOT_ASKED_TABLE_LABEL, api.ROLL_TEMPLATE_LABEL, api.NOTHING_ASKED,
+                 api.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
+                 view.NOT_ASKED_SECTION.split("{")[0].strip() + " ("):
+        assert word not in renderer and word not in html, word
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
@@ -3841,3 +3864,43 @@ def test_the_apps_request_table_folds_not_asked_rows_with_no_document_into_a_clo
     group = html[html.index('<details id="rows-not-asked-group"'):]
     group = group[:group.index(">") + 1]
     assert " open" not in group                                  # closed until a person opens it
+
+
+
+def test_the_editor_refuses_a_list_nobody_is_asked_for_in_creations_words(capsys, demo_root):
+    """Decision 142's review, R6: a return always asks for at least one
+    thing. The editor's save of a list with no asked row is refused with
+    creation's own sentence, and nothing is recorded."""
+    spec = {"household": HOUSEHOLD, "return_name": "Asks Something", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"},
+        {"identifier": "B01", "document": "1099-R", "required_keywords": "1099-r", "asked": False},
+    ]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Asks Something")
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [{**row, "asked": False} for row in rows], "engagement": {}})
+    assert code == 1 and payload["error"] == api.NOTHING_ASKED
+    assert ledger.path_for(engagement).read_bytes() == before
+
+    code, payload = run(capsys, "create", stdin={**spec, "return_name": "Asks Nothing", "items": [
+        {**one, "asked": False} for one in spec["items"]]})
+    assert code == 1 and payload["error"] == api.NOTHING_ASKED
+
+
+def test_the_returning_client_page_picks_the_returns_recorded_form_by_default(capsys, demo_root):
+    """Decision 142's review, R2: each prior carries the catalog it was cut
+    from, and the page's template pick defaults to it, so the catalog rows
+    the return never had arrive as not asked without anybody choosing; a
+    return that recorded no form defaults to no template."""
+    spec = {"household": HOUSEHOLD, "return_name": "Recorded", "form": "1040",
+            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    [prior] = run(capsys, "priors")[1]["priors"]
+    assert prior["form"] == "1040"
+
+    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
+    assert "selected: f.id === p.form" in js
+    assert "selected: !forms.some((f) => f.id === p.form)" in js

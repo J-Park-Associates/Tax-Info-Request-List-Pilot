@@ -143,7 +143,7 @@ function ruleTooltip(item) {
 }
 
 function requestTableRow(item) {
-  return el("tr", { title: ruleTooltip(item), className: item.asked === false ? "not-asked" : "" },
+  return el("tr", { title: ruleTooltip(item), className: item.asked === false ? vocab.not_asked_key : "" },
     el("td", { className: "col-id" }, el("span", { className: "req-id" }, item.identifier)),
     el("td", {},
       el("div", { className: "req-doc" }, item.document),
@@ -168,13 +168,14 @@ function render(state) {
   lastState = state;
 
   // Decision 142: a row nobody asked for with no document at all folds
-  // into one closed "Not asked (N)" group under the table, as the Status
+  // into one closed group under the table, as the Status
   // Report folds it; one with any document is work and stays in the table.
   // Which rows fold is the API's answer (state.items[].not_asked_idle).
   const idle = state.items.filter((item) => item.not_asked_idle);
   show("rows", state.items.filter((item) => !item.not_asked_idle).map(requestTableRow));
   show("rows-not-asked", idle.map(requestTableRow));
   $("rows-not-asked-summary").textContent = fill(vocab.editor.not_asked_heading, { n: idle.length });
+  $("rows-not-asked-table").setAttribute("aria-label", vocab.not_asked_table_label);
   $("rows-not-asked-group").classList.toggle("hidden", idle.length === 0);
 
   // The one count, from the same summarize() the run log and the reminder use.
@@ -1689,10 +1690,15 @@ function renderPriorPage() {
                        dataset: { path: p.path } }, vocab.people.review_people),
       ),
       el("label", { className: "field roll-form" },
-        el("span", {}, "Form template (fills blanks, adds the rows this client never had as not asked)"),
+        el("span", {}, vocab.roll_template_label),
+        // The return's own recorded form is picked by default (decision
+        // 142's review, R2), so the catalog rows it never had arrive as not
+        // asked without anybody choosing; "No template" is the default only
+        // for a return that never recorded one.
         el("select", { className: "roll-form-pick", dataset: { path: p.path } },
-          el("option", { value: "" }, "No template — carry last year's list as it is"),
-          forms.map((f) => el("option", { value: f.id }, `${f.label} · ${f.who}`)),
+          el("option", { value: "", selected: !forms.some((f) => f.id === p.form) },
+            "No template — carry last year's list as it is"),
+          forms.map((f) => el("option", { value: f.id, selected: f.id === p.form }, `${f.label} · ${f.who}`)),
         ),
       ),
     )));
@@ -2141,7 +2147,7 @@ async function createEngagement() {
   const items = [...catalog, ...customItems.map((c) => ({ ...c, asked: true }))];
   const asked = items.filter((i) => i.asked).length;
   if (!asked) {
-    toast("Select at least one request item.");
+    toast(vocab.nothing_asked);
     return;
   }
   const btn = $("ne-create");
@@ -2281,7 +2287,7 @@ function renderEditorRows() {
     const heading = label === NOT_ASKED_GROUP
       ? fill(vocab.editor.not_asked_heading, { n: rows.length })
       : fill(vocab.editor.set_aside_heading, { label, n: rows.length });
-    return el("details", { className: label === NOT_ASKED_GROUP ? "ed-not-asked" : "ed-set-aside" },
+    return el("details", { className: label === NOT_ASKED_GROUP ? "ed-unasked" : "ed-set-aside" },
       el("summary", {}, heading), box);
   });
   $("ed-rows").replaceChildren(activeBox, ...folded);

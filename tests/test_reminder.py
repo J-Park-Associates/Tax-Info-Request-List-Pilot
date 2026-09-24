@@ -353,7 +353,7 @@ def test_draft_greets_signs_and_counts(tmp_path):
     )
     assert draft.body.startswith("Hi Dana Smith,")
     # A06 is Accepted: signed off, so it is in (the one count, decision 38).
-    assert "2 of 6 items are in" in draft.body
+    assert "Of the 6 items we asked for, 2 are in." in draft.body
     assert "https://drive.example/abc" in draft.body
     assert "March 15, 2026" in draft.body
     assert draft.body.rstrip().endswith("J Park & Associates, CPA")
@@ -1675,7 +1675,28 @@ def test_the_reminder_never_chases_or_reports_a_not_asked_row(tmp_path):
         share_link="https://drive.example/abc", due_date=DUE,
         today=DUE - dt.timedelta(days=15), sender="Jason Park", firm="J Park & Associates, CPA",
     )
-    assert "2 of 5 items are in" in draft.body
+    assert "Of the 5 items we asked for, 2 are in." in draft.body
+    # B04 is a not-asked row that received a document: thanked apart.
+    assert "We have also received 1 other document from you." in draft.body
     assert draft.total_requests == 5 and draft.received_requests == 2
     for word in ("Social Security", "1099-C", "W-2G", "1098-E"):
         assert word not in draft.body, word
+
+
+@pytest.mark.parametrize("received, total, also, said", [
+    (1, 5, 0, "Of the 5 items we asked for, 1 is in."),
+    (2, 5, 0, "Of the 5 items we asked for, 2 are in."),
+    (1, 1, 0, "Of the 1 item we asked for, 1 is in."),
+    (1, 5, 2, "Of the 5 items we asked for, 1 is in. We have also received 2 other documents from you."),
+    (3, 5, 1, "Of the 5 items we asked for, 3 are in. We have also received 1 other document from you."),
+    (0, 5, 2, "Of the 5 items we asked for, 0 are in. We have also received 2 other documents from you."),
+    (0, 5, 0, ""),
+])
+def test_the_letters_count_is_jasons_sentence_in_the_singular_and_the_plural(received, total, also, said):
+    """Decision 142, Jason's wording of 2026-09-24: the count is of what we
+    asked for, and the documents that arrived for rows nobody asked for are
+    thanked in a second sentence, said only when there are any. Every noun
+    and verb agrees with its number: this is a sentence a client reads."""
+    from tracker.reminder import progress_line
+
+    assert progress_line(received, total, also) == said

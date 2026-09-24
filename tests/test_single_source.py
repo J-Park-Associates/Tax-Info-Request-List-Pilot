@@ -319,6 +319,28 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
             continue
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
         assert f">{literal}<" not in html, literal
+    # Decision 142 (its review, R1): every word it adds is the API's - the
+    # status of a row nobody asked for, the count beside it, the wizard's
+    # heading and note, the folded table's name and heading, the rollover's
+    # label and line, the one refusal, the column's help and the rollover's
+    # notes. None is typed in the renderer or the page, quoted or not.
+    from tracker import rollover
+    from tracker.manifest import ALSO_RECEIVED_LABEL, COLUMN_HELP, NOT_ASKED_LABEL
+
+    added = (NOT_ASKED_LABEL, ALSO_RECEIVED_LABEL, api_module.ASK_THE_CLIENT,
+             api_module.ASK_THE_CLIENT_NOTE, api_module.NOT_ASKED_TABLE_LABEL,
+             api_module.ROLL_TEMPLATE_LABEL, api_module.NOTHING_ASKED, COLUMN_HELP["asked"],
+             api_module.NEW_NOT_ASKED_CARRIED.split("{n}")[1].split(" - ")[0].strip(),
+             rollover.NEW_NOT_ASKED_NOTE, rollover.NOT_ASKED_NOTE,
+             rollover.NOW_ASKED_NOTE.split("{")[0].strip(), '"' + _slug(NOT_ASKED_LABEL) + '"',
+             api_module.NOT_ASKED_SECTION.split("{")[0].strip() + " (")
+    for literal in added:
+        assert literal and literal not in js and literal not in html, literal
+    for key in ("not_asked_label", "not_asked_key", "ask_the_client", "ask_the_client_note",
+                "not_asked_table_label", "roll_template_label", "nothing_asked",
+                "new_not_asked_carried", "origin_new"):
+        assert f"vocab.{key}" in js, key
+    assert "vocab.editor.not_asked_heading" in js and "vocab.editor.yes_no_fields" in js
     # Decision 131: the room's heading and its two sentences are the API's.
     # The renderer fills neither pattern: the set-root reply carries each
     # return's sentences already filled.

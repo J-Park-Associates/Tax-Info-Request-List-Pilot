@@ -6245,7 +6245,8 @@ def test_two_returns_in_one_household_that_both_accept_a_notice_park_it_unless_t
     assert reasons.NAME_NOT_ON_PAGE.matches(parked["nobody.pdf"].reason)
 
 
-def test_a_document_set_aside_as_not_requested_keeps_that_answer_when_re_sent(tmp_path):
+def test_a_re_sent_set_aside_document_files_under_its_not_asked_row_and_the_earlier_entry_keeps_its_answer(
+        tmp_path):
     """Decision 111 is untouched by decision 142. A document a person set
     aside as Not requested - the day the list had no row for it - keeps
     that row and its answer. The client sending it again is a new arrival,

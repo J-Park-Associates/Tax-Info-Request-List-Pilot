@@ -462,6 +462,10 @@ NEW_NOT_ASKED_CARRIED = ("{n} catalog row(s) this client never had added as not 
 #: under it (decision 142): a tick is a request the client is asked for
 #: and reminded of; every row is on the return either way.
 ASK_THE_CLIENT = "Ask the client"
+#: The name the app's folded table of not-asked rows is read out by, and
+#: the returning-client page's label over the template pick (decision 142).
+NOT_ASKED_TABLE_LABEL = "Requests not asked for"
+ROLL_TEMPLATE_LABEL = "Form template (fills blanks, adds the rows this client never had as not asked)"
 ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for and reminded; "
                        "an unticked one is never asked for, but a document that arrives for "
                        "it is filed there.")
@@ -669,6 +673,11 @@ def _vocab() -> dict:
         # The wizard's heading over the catalog's ticks, and its sentence.
         "ask_the_client": ASK_THE_CLIENT,
         "ask_the_client_note": ASK_THE_CLIENT_NOTE,
+        "not_asked_table_label": NOT_ASKED_TABLE_LABEL,
+        # The one refusal of a list nobody is asked for (R6), which the
+        # wizard also says before it calls.
+        "nothing_asked": NOTHING_ASKED,
+        "roll_template_label": ROLL_TEMPLATE_LABEL,
         "overrides": {"accepted": Override.ACCEPTED, "not_applicable": Override.NOT_APPLICABLE},
         # How a set-aside row is named to a person: the value with the
         # row's year, which travels per item as ``year`` in the state so
@@ -1715,6 +1724,7 @@ def _cmd_edit(argv: list[str]) -> dict:
         raise ManifestError("The editor sent no rows")
     items = [item_from_fields(row if isinstance(row, dict) else {}, where=f"Row {n}")
              for n, row in enumerate(rows, start=1)]
+    _refuse_a_list_nobody_is_asked_for(items)
     details = spec.get("engagement") or {}
     for key in details:
         if key not in ENGAGEMENT_EDITABLE:
@@ -1933,8 +1943,7 @@ def _cmd_create(argv: list[str]) -> dict:
     # as ``asked``, and the custom rows (always asked). A list nobody is
     # asked for is still refused - it would chase nothing.
     items = [item_from_spec(s) for s in spec.get("items", [])]
-    if not any(item.asked for item in items):
-        raise ManifestError("Select at least one request item")
+    _refuse_a_list_nobody_is_asked_for(items)
     # The wizard sends catalog rows as written (the base year); shift them
     # to the return's year so TY2025 does not get asked for in 2027.
     base = base_year(form) if form else None
@@ -2024,6 +2033,20 @@ def _undo_made(made: list[Path], owned: set[Path]) -> None:
             folder.rmdir()
         except OSError:
             pass
+
+
+#: Creation's refusal of a list that asks the client for nothing, and the
+#: editor's (decision 142's review, R6): one refusal, one sentence.
+NOTHING_ASKED = "Select at least one request item"
+
+
+def _refuse_a_list_nobody_is_asked_for(items: list) -> None:
+    """A return always asks for at least one thing: every catalog row is on
+    it, but a list with no asked row would chase nothing and list nothing
+    as needed. Refused at creation and at every editor save, in the same
+    words, before anything is recorded."""
+    if not any(item.asked for item in items):
+        raise ManifestError(NOTHING_ASKED)
 
 
 def _undo_create(engagement: Path) -> None:
@@ -2153,6 +2176,10 @@ def _cmd_priors(argv: list[str]) -> dict:
             "household": str(engagement.household_path),
             "household_name": engagement.info.household or engagement.household_path.name,
             "return_name": engagement.info.return_name or engagement.path.name,
+            # The catalog the return was cut from, which the returning-client
+            # page picks by default so the rows it never had arrive as not
+            # asked without anybody choosing (decision 142's review, R2).
+            "form": engagement.info.form,
             "client": engagement.client,
             # Who the return is for (decision 128): the returning-client
             # page lists them under each ticked return, because the roll
