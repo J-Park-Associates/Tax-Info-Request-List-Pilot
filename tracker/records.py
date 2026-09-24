@@ -654,6 +654,24 @@ def people_from_json(raw: object) -> tuple[Person, ...]:
 YES = "yes"
 NO = "no"
 
+#: The only kinds of address a reminder's link may be (decision 137, L5).
+#: The link is pasted into a letter a client clicks; ``file:``, a mail
+#: link or a script address is not an inbox, and a letter that opened one
+#: would be the firm's letter doing it.
+LINK_SCHEMES: tuple[str, ...] = ("http://", "https://")
+#: What a link of any other kind is refused with, when the details are saved.
+LINK_REFUSED = ("The link '{link}' is not a web address; a link must start with "
+                "http:// or https://")
+
+
+def link_problem(link: str) -> str:
+    """:data:`LINK_REFUSED` for a link that is not a web address, or
+    ``""`` - for one that is, and for no link at all."""
+    text = str(link or "").strip()
+    if not text or text.lower().startswith(LINK_SCHEMES):
+        return ""
+    return LINK_REFUSED.format(link=text)
+
 
 @dataclass(frozen=True, slots=True)
 class EngagementInfo:
@@ -1052,6 +1070,26 @@ RULE_FLAG_DEFAULTS: dict[str, bool] = {"date_pattern_derived": False, "named": T
 assert set(RULE_FLAG_DEFAULTS) == set(RULE_FLAG_FIELDS)
 
 
+def word_list_problem(value: object) -> str:
+    """Why ``value`` is not a rule's list of words, or ``""`` when it is.
+
+    A list field travels as a JSON array and is read back as one (decision
+    137, L4). A string in its place is the one that does harm without a
+    sound: ``tuple("W-2")`` is three one-character keywords, and every
+    document with a hyphen in it would match. So the shape is checked where
+    a row is written into the record and where it is read back out, and a
+    row that fails is refused by name rather than read as letters.
+    """
+    if value is None:
+        return ""
+    if not isinstance(value, (list, tuple)):
+        return f"is {type(value).__name__}, not a list of words"
+    for word in value:
+        if not isinstance(word, str):
+            return f"holds {word!r:.40}, which is not a word"
+    return ""
+
+
 def rule_to_json(item: object) -> dict:
     """One request row's *rules* as they are stored: the person's fields,
     the word lists as JSON lists.
@@ -1083,6 +1121,8 @@ def rule_from_json(raw: dict) -> dict:
             continue
         value = raw[name]
         if name in RULE_LIST_FIELDS:
+            if problem := word_list_problem(value):
+                raise ValueError(f"the rule's {name!r} {problem}")
             values[name] = tuple(value or ())
         elif name in RULE_FLAG_FIELDS:
             values[name] = bool(value)

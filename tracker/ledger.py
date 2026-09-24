@@ -527,6 +527,12 @@ def _parse(data: bytes, name: str) -> list[dict]:
     is corruption in the middle of the file and is refused loudly: this is
     the record, and nothing is guessed past it.
     """
+    return [event for event, _raw in _parse_lines(data, name)]
+
+
+def _parse_lines(data: bytes, name: str) -> list[tuple[dict, bytes]]:
+    """:func:`_parse`, with each event's own line as it is in the file
+    (without its newline): what :func:`read_with_chain` digests."""
     if not data:
         return []
     lines = data.split(_NEWLINE)
@@ -543,8 +549,16 @@ def _parse(data: bytes, name: str) -> list[dict]:
             raise LedgerError(f"{name} line {number} does not read as an event: {exc}") from exc
         if not isinstance(event, dict) or event.get(EVENT_KEY) is None:
             raise LedgerError(f"{name} line {number} is not an event")
-        events.append(event)
+        events.append((event, raw))
     return events
+
+
+def chain_link(before: str, line: bytes) -> str:
+    """One step of the applied chain (decision 137, A3): ``sha256(before ||
+    line)`` as hex, where ``before`` is the chain up to the line before
+    (``""`` before the first) and ``line`` is the line's own bytes as the
+    file holds them, without the newline."""
+    return hashlib.sha256(before.encode("ascii") + line).hexdigest()
 
 
 def _digest(data: bytes | None) -> str:
@@ -594,6 +608,47 @@ def read_with_head(
     if known is not None and known[1] == now:
         return known[0], now
     return ([] if data is None else _parse(data, path.name)), now
+
+
+def read_with_chain(
+    engagement_dir: Path | str,
+    *,
+    known: tuple[list[dict], str, list[str]] | None = None,
+) -> tuple[list[dict], str, list[str]]:
+    """:func:`read_with_head`, and the running **applied chain** after each
+    line, all from one read (decision 137, A3).
+
+    ``chain[n - 1]`` is the chain over the first ``n`` lines
+    (:func:`chain_link`, from ``""``). The store keeps the chain over the
+    lines it has applied and compares it with this one before it applies
+    another: a rewrite or a reorder of the journal that keeps the line
+    count - a sync client resolving a conflict - changes the chain even
+    where it leaves the count, and is refused rather than blessed. The
+    chain lives in the store, which is rebuildable, and not in the journal,
+    whose format is the record's and unchanged.
+
+    ``known`` is a triple this function returned earlier, reused exactly as
+    :func:`read_with_head` reuses its pair: when the bytes read now still
+    digest to its head, they are the bytes it came from.
+    """
+    path = path_for(engagement_dir)
+    data = _bytes_of(path)
+    now = _digest(data)
+    if known is not None and known[1] == now:
+        return known[0], now, known[2]
+    events: list[dict] = []
+    chain: list[str] = []
+    before = ""
+    for event, raw in ([] if data is None else _parse_lines(data, path.name)):
+        before = chain_link(before, raw)
+        events.append(event)
+        chain.append(before)
+    return events, now, chain
+
+
+def chain_at(chain: list[str], count: int) -> str:
+    """The applied chain over the first ``count`` lines: ``""`` for none."""
+    return chain[count - 1] if count else ""
 
 
 def fold(events: list[dict]) -> dict[str, dict]:

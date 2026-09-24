@@ -1267,8 +1267,11 @@ def test_two_open_years_sort_nothing_and_say_so_on_every_return(tmp_path, sample
     # name every year, and the store keys a folder by its path below that
     # root - with none written down, this year's and next year's would be
     # one row.
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    (tmp_path / "app").mkdir(exist_ok=True)
+    # The settings beside the root, not inside it: a root that holds the
+    # app's settings is refused (decision 137).
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    settings.mkdir(exist_ok=True)
     set_clients_root(tmp_path)
 
     personal, business = a_household(tmp_path, samples,
@@ -1313,8 +1316,11 @@ def test_a_household_with_two_open_years_and_a_waiting_file_drafts_no_reminder_a
     from tracker.runner import TWO_OPEN_YEARS
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    (tmp_path / "app").mkdir(exist_ok=True)
+    # The settings beside the root, not inside it: a root that holds the
+    # app's settings is refused (decision 137).
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    settings.mkdir(exist_ok=True)
     set_clients_root(tmp_path)
     personal, business = a_household(tmp_path, samples,
                                      drops=(f"W-2 John Smith {YEAR}.pdf",))
@@ -1358,10 +1364,10 @@ def test_the_pass_that_sorts_the_inbox_drafts_the_held_reminder_the_same_day(
     inbox = inbox_of(engagement.path)
     real = filer_module._move_whole
 
-    def refused_once(source, target):
+    def refused_once(source, target, *, within):
         if Path(source).parent == inbox:
             raise PermissionError("held open by the sync client")
-        return real(source, target)
+        return real(source, target, within=within)
 
     # The draft day's first pass: the drop cannot be moved, so it fails to
     # sort and stays in the inbox - and the reminder waits for it.
@@ -1963,3 +1969,23 @@ def test_the_room_is_measured_from_the_list_the_pass_already_loaded(tmp_path, mo
     assert all(not run.error for run in runs)
     assert sorted(reads) == sorted(one.path for one in returns)
     assert all(run.items for run in runs)
+
+
+def test_the_pass_refuses_a_saved_clients_root_the_rule_now_refuses(tmp_path, monkeypatch):
+    """Decision 137's review (F12): a root saved before the rule - here the
+    folder that holds the app's own settings, written straight into the
+    settings file - is held to it at the start of every pass. The pass
+    refuses to walk it, in the sentence the app would have given."""
+    import json
+
+    from tracker.settings import ENV_SETTINGS_DIR, SETTINGS_FILENAME
+
+    settings = tmp_path / "app"
+    settings.mkdir()
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    (settings / SETTINGS_FILENAME).write_text(json.dumps({"clients_root": str(tmp_path)}),
+                                              encoding="utf-8")
+    with pytest.raises(SystemExit) as refused:
+        main(["--reminders", "never"])
+    assert "Clients folder problem" in str(refused.value)
+    assert "holds the app's own settings" in str(refused.value)

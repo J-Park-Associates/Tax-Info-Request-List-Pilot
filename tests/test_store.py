@@ -18,6 +18,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -39,7 +40,7 @@ from tracker.manifest import (
     load_manifest,
     save_rules,
 )
-from tracker.records import RULE_FIELDS, StatusUpdate, entry_to_json, rule_from_json
+from tracker.records import RULE_FIELDS, StatusUpdate, entry_to_json, rule_from_json, rule_to_json
 
 REPO = Path(__file__).resolve().parents[1]
 DAY1 = dt.date(2026, 7, 1)
@@ -175,7 +176,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 11
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 12
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -1377,8 +1378,11 @@ def test_the_settings_root_still_wins_over_the_position(root, engagement, tmp_pa
     layout reads - and it wins over a root a caller has in hand too."""
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    (tmp_path / "app").mkdir(exist_ok=True)
+    # The settings beside the root, not inside it: a root that holds the
+    # app's settings is refused (decision 137).
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    settings.mkdir(exist_ok=True)
     set_clients_root(tmp_path)
 
     assert store.key_root(engagement) == tmp_path
@@ -1772,13 +1776,15 @@ def test_a_reader_keeps_the_fast_path_and_parses_nothing_when_the_head_has_not_m
     line parsed. The moment it moves, the lines are parsed once."""
     build(conn, root, by_hand)
     parses = []
-    real = ledger._parse
+    # The one parser every reading goes through (with each line's bytes
+    # since decision 137, for the applied chain).
+    real = ledger._parse_lines
 
     def counted(data, name):
         parses.append(name)
         return real(data, name)
 
-    monkeypatch.setattr(ledger, "_parse", counted)
+    monkeypatch.setattr(ledger, "_parse_lines", counted)
     assert store.follow_the_journal(conn, root, by_hand) == 1
     assert store.follow_the_journal(conn, root, by_hand) == 1
     assert parses == []
@@ -1890,3 +1896,135 @@ def test_a_catch_up_with_nothing_to_apply_takes_no_lock(root, by_hand, tmp_path)
     finally:
         looker.close()
         the_pass.close()
+
+
+# ---------------------------------------------- decision 137: the security review ----
+
+
+def test_a_malformed_row_or_rule_line_is_refused_as_line_n_of_the_record(conn, root, by_hand):
+    """Decision 137 (L4): one malformed index-row line, or one rule whose
+    list field is not a list of words, is refused with the sentence "line N
+    of the record is malformed" - one folder's problem, before a value of it
+    reaches a table. A rule's list fields are held to that shape when a row
+    is written into the table and when it is read back out."""
+    build(conn, root, by_hand)
+    path = ledger.path_for(by_hand)
+    first = path.read_bytes()
+
+    def refused_at_line_2(event: dict) -> str:
+        path.write_bytes(first + json.dumps(event).encode("utf-8") + b"\n")
+        with pytest.raises(store.StoreError) as refused:
+            store.sync(conn, root, by_hand)
+        said_so = str(refused.value)
+        assert "line 2 of the record is malformed" in said_so, said_so
+        assert "not applied past it" in said_so
+        return said_so
+
+    stamp = ledger.stamp()
+    assert "not a row" in refused_at_line_2({
+        ledger.EVENT_KEY: ledger.IMPORTED, ledger.AT_KEY: stamp,
+        ledger.KEY_KEY: A_ROW_ORIGINAL, ledger.ROW_KEY: "w2.pdf"})
+    assert repr(ledger.KEY_KEY) in refused_at_line_2({
+        ledger.EVENT_KEY: ledger.IMPORTED, ledger.AT_KEY: stamp, ledger.ROW_KEY: a_row()})
+    rule = rule_to_json(ITEMS[0])
+    said_so = refused_at_line_2({
+        ledger.EVENT_KEY: ledger.RULES_CHANGED, ledger.AT_KEY: stamp,
+        ledger.RULES_KEY: [{**rule, "any_keywords": "W-2"}], ledger.REMOVED_KEY: []})
+    assert "'any_keywords'" in said_so and "not a list of words" in said_so
+    path.write_bytes(first)
+    store.sync(conn, root, by_hand)                   # the record as it was still reads
+
+    # Written: the table refuses a row whose list is a string.
+    with pytest.raises(store.StoreError, match="not a list of words"):
+        store._write_rule(conn, id_of(conn, by_hand), {**rule, "required_keywords": "W-2"})
+    # Read: a column that holds a string comes back refused, never as letters.
+    conn.execute('UPDATE requests SET any_keywords = ? WHERE engagement_id = ?',
+                 (json.dumps("W-2"), id_of(conn, by_hand)))
+    with pytest.raises(store.StoreError, match="not a list of words"):
+        store.rules(conn, by_hand)
+    with pytest.raises(ValueError, match="not a list of words"):
+        rule_from_json({**rule, "any_keywords": "W-2"})
+
+
+def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record(
+        conn, root, by_hand):
+    """Decision 137 (A3): a rewrite or a reorder of the journal that keeps
+    its line count - a sync client resolving a conflict - is refused, by
+    the sentence a truncated journal gets, and nothing is applied: by
+    ``sync``, by the pass's full catch-up and its no-lock look (equal
+    counts with a different chain is never "nothing to do", SPEC §5.0), by
+    a reader whose head moved, and by ``record``, which would otherwise
+    append to it and bless the new head. The check names it."""
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, ledger.new(
+            ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+        store.record(conn, by_hand, ledger.new(
+            ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row(decision="Needs Review")))
+    assert [row["decision"] for row in store.documents(conn, by_hand)] == ["Needs Review"]
+    path = ledger.path_for(by_hand)
+    lines = path.read_bytes().split(b"\n")
+    first, filed, parked = lines[0], lines[1], lines[2]
+    path.write_bytes(b"\n".join([first, parked, filed]) + b"\n")     # reordered, same length
+
+    sentence = "was changed behind the tracker's back (line 2 onward no longer matches)"
+    for reading in (store.sync, store.catch_up, store.follow_the_journal):
+        with pytest.raises(store.StoreError, match=re.escape(sentence)) as refused:
+            reading(conn, root, by_hand)
+        assert "Nothing was applied. Run the store check, then rebuild." in str(refused.value)
+    with engagement_lock(by_hand), pytest.raises(store.StoreError, match=re.escape(sentence)):
+        store.record(conn, by_hand, ledger.new(
+            ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+    assert len(ledger.read_events(by_hand)) == 3                     # nothing appended
+    assert [row["decision"] for row in store.documents(conn, by_hand)] == ["Needs Review"]
+    assert any(sentence in problem for problem in said(conn, root, by_hand))
+
+    # A rebuild, after the check, is the answer - and then all is well.
+    build(conn, root, by_hand)
+    assert said(conn, root, by_hand) == []
+    assert store.sync(conn, root, by_hand) == 3
+
+
+def test_a_rebuild_computes_the_applied_digest_and_an_old_store_upgrades(
+        conn, root, by_hand, tmp_path):
+    """Decision 137 (A3): the store keeps the running chain over the lines
+    it has applied - ``d0 = ""``, ``dn = sha256(dn-1 || line n)`` over each
+    line's own bytes - and a rebuild computes it as it replays. A store of
+    the version before has no column for it, so it is refused by name and
+    upgrades the way every older store has: delete it, rebuild."""
+    import hashlib
+
+    def chain_of(folder, count):
+        digest = ""
+        for raw in ledger.path_for(folder).read_bytes().split(b"\n")[:count]:
+            digest = hashlib.sha256(digest.encode("ascii") + raw).hexdigest()
+        return digest
+
+    def kept(folder):
+        return conn.execute("SELECT applied_digest, applied_seq FROM engagements WHERE path = ?",
+                            (store.engagement_path(store.key_root(folder, root), folder),)).fetchone()
+
+    build(conn, root, by_hand)
+    assert tuple(kept(by_hand)) == (chain_of(by_hand, 1), 1)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, ledger.new(
+            ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
+    assert tuple(kept(by_hand)) == (chain_of(by_hand, 2), 2)
+    build(conn, root, by_hand)
+    assert tuple(kept(by_hand)) == (chain_of(by_hand, 2), 2)
+
+    old = tmp_path / "old" / store.STORE_FILENAME
+    store.open(old).close()
+    before = sqlite3.connect(old)
+    before.execute(f"PRAGMA user_version = {store.SCHEMA_VERSION - 1}")
+    before.close()
+    with pytest.raises(store.StoreError, match=f"user_version {store.SCHEMA_VERSION - 1}"):
+        store.open(old)
+    old.unlink()
+    upgraded = store.open(old)
+    try:
+        store.rebuild_engagement(upgraded, root, by_hand)
+        assert upgraded.execute("SELECT applied_digest FROM engagements").fetchone()[0] \
+            == chain_of(by_hand, 2)
+    finally:
+        upgraded.close()

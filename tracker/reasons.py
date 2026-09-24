@@ -137,6 +137,17 @@ TOO_SMALL = Reason(
     "possible placeholder or failed upload",
     "the file arrived almost empty, so the upload may not have finished; please send it again",
 )
+#: A drop past ``validators.MAX_READ_MB`` (decision 137, M5), or a picture
+#: past Pillow's own decompression-bomb limit (decision 137, B1). Not read
+#: at all - no text, no OCR - and parked for a person, because reading it is
+#: how a pass stalls. Ours to look at, never the client's to fix: the file
+#: may be exactly what was asked for, only large. ``size`` is "N MB" for a
+#: file, "N megapixels" for a picture.
+TOO_LARGE = Reason(
+    "too-large", "Too large to read ({size}). A person looks at it.",
+    "Too large to read", firm_side=True,
+    firm_note="too large for the tracker to read; a person here opens it",
+)
 PENDING_SYNC = Reason(
     "pending-sync", "cloud-only placeholder; waiting for OneDrive/Google Drive to sync",
     "cloud-only placeholder", firm_side=True,
@@ -352,16 +363,49 @@ NO_REQUEST_FOLDER = Reason(
     firm_note="no request folder, so nothing could be filed here; the next pass creates it",
 )
 
+#: A reading that hit the safety stop (decision 137, B1.2; the owner's
+#: Q-1 of 2026-09-24): ten times the speed ceiling he approved for decision
+#: 127 - a minute a page, ten minutes a file. The reading is abandoned and
+#: the verdict kept, so the file is not read again until it changes. Ours:
+#: the file may be perfectly good, and a person reads it.
+READING_STOPPED = Reason(
+    "reading-stopped",
+    "The reader stopped after {minutes} on this file. A person reads it.",
+    "The reader stopped after", firm_side=True,
+    firm_note="the reader gave up on it at the safety stop; a person here reads it",
+)
+
+#: A document the household's drop folder feeds to a return in **another**
+#: household, whose page names nobody (decision 137, B2; the owner's Q-2 of
+#: 2026-09-24: "never; a person decides"). Within one household an unnamed
+#: request still files on its keywords (decision 128's table); across
+#: households filing needs the name confirmed, because the original moves
+#: into a folder that household's people can open. Ours: a person here
+#: decides which return it is.
+UNNAMED_ACROSS_HOUSEHOLDS = Reason(
+    "unnamed-across",
+    "Unnamed, so it was not filed into another household's return.",
+    "not filed into another household's return", firm_side=True,
+    firm_note="no name on it, so it was not filed into another household's return; "
+              "a person here decides",
+)
+
+#: What a verdict on a ``.csv``/``.tsv``/``.txt`` says when only the first
+#: ``validators.TEXT_READ_CAP_MB`` of it was read (decision 137). Appended
+#: to the reason, never a reason itself: the cut explains a verdict, it does
+#: not decide one - so it is outside ``ALL``, like the templates above.
+TEXT_CUT = "only the first {limit} MB of this file's text was read"
+
 #: Every reason, in the order the reminder tries them: the specific causes
 #: before the vague ones, so a note carrying two markers gets the better ask.
 ALL: tuple[Reason, ...] = (
-    PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, EXTENSION_NOT_ALLOWED,
+    PASSWORD_PROTECTED, GOOGLE_STUB, TOO_SMALL, TOO_LARGE, EXTENSION_NOT_ALLOWED,
     WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
     NO_PAGES, UNREADABLE_PDF, UNREADABLE_IMAGE, HEIC_NOT_SUPPORTED, EXTRACTION_FAILED,
     UNCHECKABLE_TYPE, NO_TEXT_LAYER, NO_TEXT_AFTER_OCR, OCR_FAILED, NO_READABLE_TEXT,
     ISSUER_NOT_NAMED,
-    NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE,
-    FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST,
+    NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE, UNNAMED_ACROSS_HOUSEHOLDS,
+    FILE_MOVED, COPY_CHANGED, INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST, READING_STOPPED,
     PENDING_SYNC, VANISHED,
     NO_REQUEST_FOLDER,
 )

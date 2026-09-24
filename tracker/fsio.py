@@ -1,4 +1,4 @@
-"""The one way a file is replaced whole or not at all.
+"""The one way a file is replaced whole or not at all, and a folder is made.
 
 The tracker writes a handful of small files of its own - the settings file
 beside the app, the Task Scheduler XML, the pages a person opens - and
@@ -18,6 +18,13 @@ So there is one way to do it, and it is here:
   and ``os.replace`` it over the target when the block ends cleanly.
 - :func:`write_text_atomically` / :func:`write_json_atomically` - the two
   writers over it, which is all most callers want.
+
+- :func:`make_new_folders` - the one way a folder the tracker is about to
+  fill is made (decision 137): every missing level is made by a ``mkdir``
+  that would refuse an existing one, and the levels this call made are
+  handed back, so a failure afterwards removes those and nothing else. A
+  folder that was already there - a person's own, an old return's - is
+  never on that list and never removed.
 
 They lived in :mod:`tracker.manifest` until decision 120, because the
 manifest was once the workbook they were written for; they are here now
@@ -102,3 +109,38 @@ def write_text_atomically(
 def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
     """Write ``payload`` as JSON to ``path`` all-or-nothing; the cache and the settings use this."""
     write_text_atomically(path, json.dumps(payload, indent=indent))
+
+
+def make_new_folders(folder: Path) -> list[Path]:
+    """Make ``folder`` and every missing folder above it; return the ones
+    this call made, outermost first.
+
+    Each level is made with ``exist_ok=False``, so a level is on the list
+    only when this call's own ``mkdir`` created it - never because it was
+    found there. That list is the whole of what an undo may remove
+    (decision 137): a failed create that removed the folder it *found*
+    would take a person's folder, or an old return, with it. ``folder``
+    itself existing already raises ``FileExistsError`` and makes nothing;
+    anything that fails half way removes what it made before raising.
+    """
+    folder = Path(folder)
+    missing: list[Path] = []
+    for level in (folder, *folder.parents):
+        if level.exists():
+            break
+        missing.append(level)
+    if not missing:
+        raise FileExistsError(f"{folder} is already there")
+    made: list[Path] = []
+    try:
+        for level in reversed(missing):
+            level.mkdir(exist_ok=False)
+            made.append(level)
+    except BaseException:
+        for level in reversed(made):
+            try:
+                level.rmdir()
+            except OSError:
+                pass
+        raise
+    return made

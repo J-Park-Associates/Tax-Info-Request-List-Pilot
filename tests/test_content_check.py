@@ -1076,3 +1076,333 @@ def test_a_verdict_read_back_from_the_store_brings_its_evidence(tmp_path):
     assert [(e.rule, e.term, e.where) for e in hit.evidence] == [
         (RULE_REQUIRED, "Chase", WHERE_TITLE),
     ]
+
+
+# ---------------------------------------------- decision 137: the security review ----
+
+
+def test_a_long_text_file_is_read_to_the_cap_and_says_so(tmp_path, monkeypatch):
+    """Decision 137 (M5): a ``.csv``/``.tsv``/``.txt`` is read up to its first
+    ``TEXT_READ_CAP_MB`` and no further, and a verdict reached on the cut
+    text says the rest was never read."""
+    import tracker.content_check as content_check
+
+    monkeypatch.setattr(content_check, "TEXT_READ_CAP_MB", 1)
+    cap = 1024 * 1024
+    early = tmp_path / "early.csv"
+    early.write_bytes(b"Form 1099-B proceeds\n" + b"x," * cap)
+    late = tmp_path / "late.csv"
+    late.write_bytes(b"x," * cap + b"\nForm 1099-B proceeds\n")
+
+    reading = content_check.extract(early)
+    assert reading.cut and len(reading.text) == cap
+    rules = item(required_keywords=("1099-B",))
+    assert check_content(early, rules).ok                    # found in the part that was read
+
+    verdict = check_content(late, rules)
+    assert not verdict.ok
+    assert reasons.WRONG_DOCUMENT.matches(verdict.reason)
+    assert verdict.reason.endswith(reasons.TEXT_CUT.format(limit=1))
+
+    whole = tmp_path / "short.txt"
+    whole.write_text("Form 1099-B proceeds", encoding="utf-8")
+    assert not content_check.extract(whole).cut
+
+
+def test_a_giant_pdf_page_is_rendered_within_the_pixel_budget(tmp_path, monkeypatch):
+    """Decision 137 (B1, the ruling's first half): each page is rendered at
+    ``min(2, sqrt(budget / page area))``. A maximum-size PDF page (14,400
+    points square) at the old fixed scale of 2 is some 830 million pixels,
+    handed to Pillow past its own guard. An ordinary page keeps scale 2."""
+    import tracker.content_check as content_check
+
+    pypdfium2 = pytest.importorskip("pypdfium2")
+    pytest.importorskip("pytesseract")      # _ocr_pdf reaches the render only with both
+
+    def pdf(path, width, height):
+        writer = PdfWriter()
+        writer.add_blank_page(width=width, height=height)
+        with path.open("wb") as handle:
+            writer.write(handle)
+        return path
+
+    asked: list[tuple[float, float]] = []
+
+    class Stop(Exception):
+        pass
+
+    def render(page, *, scale=1.0, **_kwargs):
+        width, height = page.get_size()
+        asked.append((width * scale, height * scale))
+        raise Stop("rendering stops here: the scale is what is under test")
+
+    monkeypatch.setattr(pypdfium2.PdfPage, "render", render)
+
+    for path in (pdf(tmp_path / "giant.pdf", 14400, 14400), pdf(tmp_path / "letter.pdf", 612, 792)):
+        with pytest.raises(content_check.OcrError):
+            content_check._ocr_pdf(path)
+    (giant_w, giant_h), (letter_w, letter_h) = asked
+    assert giant_w * giant_h <= content_check.PIXEL_BUDGET * 1.0001
+    assert giant_w * giant_h > content_check.PIXEL_BUDGET * 0.99       # read smaller, not refused
+    assert (letter_w, letter_h) == (612 * 2.0, 792 * 2.0)              # an ordinary page as before
+
+
+def test_a_photo_past_the_pixel_budget_is_read_smaller(tmp_path, monkeypatch):
+    """Decision 137 (B1): a photo is checked against the same budget before
+    it is decoded, and read reduced to it rather than refused."""
+    from PIL import Image
+
+    import tracker.content_check as content_check
+
+    pytesseract = pytest.importorskip("pytesseract")
+    monkeypatch.setattr(content_check, "PIXEL_BUDGET", 10_000)
+    seen = []
+    monkeypatch.setattr(content_check, "_upright", lambda image: image)
+    monkeypatch.setattr(pytesseract, "image_to_string",
+                        lambda image, *a, **k: seen.append(image.size) or "words")
+    for name in ("photo.png", "photo.jpg"):
+        Image.new("RGB", (400, 300), "white").save(tmp_path / name)
+        assert content_check._ocr_image(tmp_path / name) == "words"
+    for width, height in seen:
+        assert width * height <= 10_000
+
+
+def test_a_date_pattern_runs_line_by_line_and_skips_lines_over_the_limit():
+    """Decision 137 (L3): a staff Date Pattern is compiled and run one line
+    at a time, and a line longer than ``DATE_LINE_MAX`` is skipped, so a
+    typo that backtracks is bounded by one short line rather than the whole
+    OCR text. Where it matched is still found in the whole text."""
+    import tracker.content_check as content_check
+
+    rules = item(period="TY2025", date_pattern=r"2025")
+    text = "Statement\n" + "2025 " * 200 + "\nPeriod ending 12/31/2025\n"
+    verdict = evaluate_rules(text, rules)
+    assert verdict.ok
+    assert content_check.date_pattern_at(r"2025", text) == text.index("12/31/2025") + 6
+
+    only_long = "x" + "2025 " * 200
+    assert content_check.date_pattern_at(r"2025", only_long) is None
+    assert not evaluate_rules(only_long, rules).ok
+    assert content_check.date_pattern_at(r"(unclosed", "anything") is None
+    # A catastrophic pattern over a long run of what it backtracks on
+    # finishes at once: the line holding the run is past the limit.
+    evil = "a" * 5000 + "!"
+    assert content_check.date_pattern_at(r"(a+)+b", evil) is None
+
+
+def test_ocr_temporary_images_go_to_a_private_folder_each_pass_empties(tmp_path):
+    """Decision 137 (L7): during a pass the process's temporary files go to
+    a folder beside the settings file, emptied at the start of each pass,
+    so a pass killed mid-page leaves a client's page there and not in
+    ``%TEMP%``; outside the pass nothing is moved."""
+    import os
+    import tempfile
+
+    import tracker.content_check as content_check
+
+    before = tempfile.gettempdir()
+    before_env = os.environ.get("TMPDIR")
+    scratch = tmp_path / "app" / content_check.OCR_SCRATCH_DIR_NAME
+    scratch.mkdir(parents=True)
+    (scratch / "tess_left_by_a_killed_pass.png").write_bytes(b"a client's page")
+    (scratch / "tess_folder").mkdir()
+
+    with content_check.ocr_scratch(scratch) as folder:
+        assert folder == scratch and list(scratch.iterdir()) == []       # emptied first
+        assert tempfile.gettempdir() == str(scratch)
+        with tempfile.NamedTemporaryFile(prefix="tess_", delete=False) as handle:
+            written = handle.name
+        assert os.path.dirname(written) == str(scratch)
+
+    assert tempfile.gettempdir() == before and os.environ.get("TMPDIR") == before_env
+    with content_check.ocr_scratch(scratch):
+        assert list(scratch.iterdir()) == []                              # the next pass empties it
+
+
+def test_a_picture_past_pillows_guard_is_a_kept_too_large_verdict_not_a_retry(tmp_path, monkeypatch):
+    """Decision 137 (B1, the owner's ruling on phase 1): a picture Pillow
+    refuses as a decompression bomb is a size rule, like the file-size
+    ceiling - "Too large to read ... A person looks at it." - kept as the
+    verdict, parked for a person, and not read again until the file changes.
+    Pillow's guard itself stays on."""
+    from PIL import Image
+
+    import tracker.content_check as content_check
+    from tracker.content_check import ContentCache
+    from tracker.router import route_file
+    from tracker.validators import check_file
+
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1_000)          # 2,000 px is a bomb now
+    photo = tmp_path / "photo.png"
+    Image.new("L", (100, 100), "white").save(photo)
+    rules = item(allowed_extensions=("pdf",), any_keywords=("w-2",), min_size_kb=0)
+
+    assert reasons.TOO_LARGE.matches(check_file(photo, rules).reason)   # tier 2: ours, not the client's
+    reading = content_check.extract(photo)
+    assert reading.text is None and not reading.transient
+    assert reading.reason == "Too large to read (0 megapixels). A person looks at it."
+    routed = route_file(photo, [rules])
+    assert routed.identifier is None and reasons.TOO_LARGE.matches(routed.reason)
+
+    cache = ContentCache()
+    first = check_content(photo, rules, cache)
+    assert not first.ok and reasons.TOO_LARGE.matches(first.reason)
+
+    def never(_path):
+        raise AssertionError("a kept verdict was read again")
+
+    monkeypatch.setattr(content_check, "_ocr_image", never)
+    assert check_content(photo, rules, cache) == first                 # not retried
+    Image.new("L", (100, 101), "white").save(photo)                     # the file changed
+    with pytest.raises(AssertionError, match="read again"):
+        check_content(photo, rules, cache)
+
+
+def test_a_reading_past_the_safety_stop_is_abandoned_cached_and_not_retried(tmp_path, monkeypatch):
+    """Decision 137 (B1.2; the owner's Q-1 of 2026-09-24): a reading gets a
+    minute a page (a photo is one page) and ten minutes a document,
+    rendering included. Every Tesseract call is given what is left of that
+    as its timeout; a reading that reaches the stop is abandoned - "The
+    reader stopped after N minutes on this file. A person reads it." - kept
+    as the verdict, parked for a person, and not read again until the file
+    changes. A slow reading under the stop is finished as before. The
+    clock is moved, not waited for."""
+    from PIL import Image
+    from pypdf import PdfWriter
+
+    import tracker.content_check as content_check
+    from tracker.content_check import ContentCache
+    from tracker.router import route_file
+
+    pytesseract = pytest.importorskip("pytesseract")
+    pytest.importorskip("pypdfium2")
+    now = [1000.0]
+    monkeypatch.setattr(content_check, "_clock", lambda: now[0])
+    monkeypatch.setattr(content_check, "_upright", lambda image: image)
+    assert (content_check.READING_STOP_PAGE_SECONDS,
+            content_check.READING_STOP_DOCUMENT_SECONDS) == (60.0, 600.0)
+    photo = tmp_path / "photo.png"
+    Image.new("L", (40, 40), "white").save(photo)
+    rules = item(allowed_extensions=("pdf",), any_keywords=("w-2",), min_size_kb=0)
+
+    # Slow but under the stop: finished and read, as decision 127 says.
+    given = []
+
+    def slow(image, *, timeout=0, **kwargs):
+        given.append(timeout)
+        now[0] += 59.0
+        return "Form W-2"
+
+    monkeypatch.setattr(pytesseract, "image_to_string", slow)
+    assert content_check.extract(photo).text == "Form W-2"
+    assert given == [60.0]                                   # a photo: one page's minute
+
+    # Past it: Tesseract is killed at its timeout, and the reading is abandoned.
+    def killed(image, *, timeout=0, **kwargs):
+        given.append(timeout)
+        now[0] += timeout
+        raise RuntimeError("Tesseract process timeout")
+
+    monkeypatch.setattr(pytesseract, "image_to_string", killed)
+    stopped = content_check.extract(photo)
+    said = "The reader stopped after 1 minute on this file. A person reads it."
+    assert stopped.text is None and stopped.reason == said and not stopped.transient
+    routed = route_file(photo, [rules])
+    assert routed.identifier is None and routed.reason == said
+
+    cache = ContentCache()
+    verdict = check_content(photo, rules, cache)
+    assert not verdict.ok and reasons.READING_STOPPED.matches(verdict.reason)
+    monkeypatch.setattr(pytesseract, "image_to_string",
+                        lambda *a, **k: pytest.fail("a kept verdict was read again"))
+    assert check_content(photo, rules, cache) == verdict      # not retried
+    Image.new("L", (40, 41), "white").save(photo)             # the file changed
+    monkeypatch.setattr(pytesseract, "image_to_string", killed)
+    before = len(given)
+    assert reasons.READING_STOPPED.matches(check_content(photo, rules, cache).reason)
+    assert len(given) == before + 1                           # read again, stopped again
+
+    # A document: the render counts against the budget. Two pages render
+    # in half a minute each; the third's render alone runs past its minute,
+    # and the stop comes before Tesseract is asked about it.
+    writer = PdfWriter()
+    for _ in range(10):
+        writer.add_blank_page(width=612, height=792)
+    scan = tmp_path / "scan.pdf"
+    with scan.open("wb") as handle:
+        writer.write(handle)
+    import pypdfium2
+
+    real_render = pypdfium2.PdfPage.render
+    renders = iter([30.0, 30.0, 61.0])
+
+    def slow_render(page, **kwargs):
+        now[0] += next(renders)
+        return real_render(page, scale=0.1)
+
+    asked = []
+    monkeypatch.setattr(pypdfium2.PdfPage, "render", slow_render)
+    monkeypatch.setattr(pytesseract, "image_to_string",
+                        lambda image, *, timeout=0, **k: asked.append(timeout) or "page")
+    stopped = content_check.extract_by_ocr(scan)
+    assert stopped.reason == "The reader stopped after 2 minutes on this file. A person reads it."
+    assert asked == [30.0, 30.0]                              # page 3 never reached Tesseract
+    # Each page's timeout is what is left of its own minute, never more
+    # than what is left of the document's ten.
+    stop = content_check._SafetyStop()
+    now[0] = stop.started + 590.0
+    stop.page()
+    assert stop.remaining() == 10.0
+    assert content_check._STOP is None                       # nothing outlives the reading
+
+
+def test_only_a_staff_date_pattern_runs_line_by_line():
+    """Decision 137's review (F7): the line-by-line bound is for a pattern a
+    person typed. The one the tracker derives from the Period is its own and
+    runs over the whole text as it always did, so a month and its year split
+    by a line break still say the year."""
+    import re
+
+    from tracker.manifest import derived_date_pattern
+
+    derived = derived_date_pattern("TY2025")
+    split = "Statement period\nDecember\n2025 and more\n"
+    assert derived and re.search(derived, split) is not None       # the premise
+    firm = item(period="TY2025", date_pattern=derived, date_pattern_derived=True)
+    assert evaluate_rules(split, firm).ok
+
+    typed = item(period="TY2025", date_pattern=r"December\s2025", date_pattern_derived=False)
+    assert not evaluate_rules(split, typed).ok                      # a person's: line by line
+    assert evaluate_rules("December 2025\n", typed).ok
+
+
+def test_orientation_is_scored_on_a_small_copy_and_only_the_chosen_turn_is_full_size(monkeypatch):
+    """Decision 137's review of Part B (#2): which way up a page is does not
+    need its full resolution. The four turns are scored on a copy whose
+    long side is at most ``SCORING_LONG_SIDE``; only the chosen turn of the
+    full page is handed back, to be read once."""
+    from PIL import Image
+
+    import tracker.content_check as content_check
+
+    pytesseract = pytest.importorskip("pytesseract")
+
+    def osd_cannot_say(image, **kw):
+        raise pytesseract.TesseractError(1, "Too few characters. Skipping this page")
+
+    scored = []
+    scores = iter([10.0, 90.0, 20.0, 30.0])                    # the quarter turn reads best
+
+    def by_turn(image, **kw):
+        scored.append(image.size)
+        confidence = next(scores)
+        return {"text": ["Wage", "and", "Statement"], "conf": [confidence] * 3}
+
+    monkeypatch.setattr(pytesseract, "image_to_osd", osd_cannot_say)
+    monkeypatch.setattr(pytesseract, "image_to_data", by_turn)
+    page = Image.new("L", (4032, 3024), 255)                     # a 12-megapixel photo
+    turned = content_check._upright(page)
+
+    assert len(scored) == 4
+    assert all(max(size) <= content_check.SCORING_LONG_SIDE for size in scored)
+    assert turned.size == (3024, 4032)                           # the full page, turned

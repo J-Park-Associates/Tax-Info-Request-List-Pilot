@@ -63,7 +63,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tracker.layout import is_year_folder, return_dir_for
-from tracker.records import HouseholdInfo, household_to_json
+from tracker.records import HouseholdInfo, household_to_json, link_problem
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +112,8 @@ def create_household(household_dir: Path | str, info: HouseholdInfo) -> None:
     from tracker.manifest import ManifestError
 
     folder = Path(household_dir)
+    if problem := link_problem(info.link):
+        raise ManifestError(problem)       # decision 137, L5: a web address or nothing
     if not folder.is_dir():
         raise ManifestError(f"{folder} is not a folder; make it before creating the household")
     if ledger.path_for(folder).exists():
@@ -172,6 +174,12 @@ def save_household(
         moved = {name: value for name, value in now.items() if before.get(name) != value}
         if not moved:
             return HouseholdSaved(fields=(), recorded=False)
+        # The inbox link is a web address or nothing (decision 137, L5),
+        # refused when a save changes it.
+        if "link" in moved and (problem := link_problem(str(moved["link"] or ""))):
+            from tracker.manifest import ManifestError
+
+            raise ManifestError(problem)
         store.record(conn, folder, ledger.new(ledger.HOUSEHOLD_CHANGED, **{
             ledger.HOUSEHOLD_KEY: moved,
         }))

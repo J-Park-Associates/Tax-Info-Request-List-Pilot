@@ -48,6 +48,7 @@ from tracker.records import (
     Evidence,
     Person,
     ledger_key,
+    parse_evidence,
     rule_from_json,
     rule_to_json,
 )
@@ -3564,9 +3565,9 @@ def moves_made(monkeypatch) -> list[tuple[str, str]]:
     real = filer_module._move_whole
     made: list[tuple[str, str]] = []
 
-    def counted(source, target):
+    def counted(source, target, *, within):
         made.append((str(source), str(target)))
-        return real(source, target)
+        return real(source, target, within=within)
 
     monkeypatch.setattr(filer_module, "_move_whole", counted)
     return made
@@ -3605,8 +3606,8 @@ def killed_after_the_move(monkeypatch):
     real = filer_module._move_whole
     state = {"died": False}
 
-    def dying(source, target):
-        real(source, target)
+    def dying(source, target, *, within):
+        real(source, target, within=within)
         if not state["died"]:
             state["died"] = True
             raise KeyboardInterrupt
@@ -5977,3 +5978,179 @@ def test_a_fed_return_with_no_room_parks_at_home_naming_the_fed_return(tmp_path)
     assert parked.reason == PATH_NO_ROOM_IN.format(label=label, length=261, limit=260, ext=".pdf")
     assert "this request" not in parked.reason
     assert parked.pbc_location == original_at(father, "tb.pdf")
+
+
+# ---------------------------------------------- decision 137: the security review ----
+
+
+def test_a_drop_over_the_size_ceiling_goes_to_review_unread(engagement, monkeypatch):
+    """Decision 137 (M5): past ``validators.MAX_READ_MB`` a drop is never
+    opened by the reader - no text layer, no OCR - and parks for a person
+    with the one sentence that says why. It is still counted: moved out of
+    the inbox into the year's originals and recorded like any other drop."""
+    import tracker.content_check as content_check
+    import tracker.validators as validators
+
+    drop(engagement, "huge.pdf", "Form W-2 Wage and Tax Statement 2025")
+    size = (inbox_of(engagement) / "huge.pdf").stat().st_size
+    monkeypatch.setattr(validators, "MAX_READ_MB", size / (1024 * 1024) / 2)
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the reader opened a file past the ceiling")
+
+    monkeypatch.setattr(content_check, "_extract", never)
+    monkeypatch.setattr(content_check, "extract_by_ocr", never)
+
+    report = sort(engagement, today=DAY1)
+
+    assert report.filed == []
+    [parked] = report.review
+    assert parked.decision == NEEDS_REVIEW
+    assert reasons.TOO_LARGE.matches(parked.reason)
+    assert parked.reason.startswith("Too large to read (") and "A person looks at it." in parked.reason
+    assert [p.name for p in originals(engagement).iterdir()] == ["huge.pdf"]   # counted and kept
+    assert [row.original_name for row in read_index(engagement)] == ["huge.pdf"]
+
+
+def _link_to(target, link):
+    """A junction on Windows, a symlink elsewhere: a folder that is a link."""
+    if sys.platform == "win32":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_path, monkeypatch):
+    """Decision 137 (L2): the link check is made again immediately before
+    the rename. The walk refuses what lies behind a junction, but the move
+    comes later; a drop's folder swapped for a junction in between must not
+    have the rename fetch a file from wherever the junction points."""
+    import tracker.filer as filer
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "theirs.pdf").write_bytes(b"%PDF-1.4 somebody else's file")
+    inbox = inbox_of(engagement)
+    _link_to(outside, inbox / "swapped")
+    behind = inbox / "swapped" / "theirs.pdf"
+
+    # Directly: the move itself refuses, and says why.
+    with pytest.raises(filer.MovedThroughALinkError, match="reached through a link"):
+        filer._move_whole(behind, originals(engagement) / "theirs.pdf", within=inbox)
+    assert (outside / "theirs.pdf").exists()
+
+    # Through a pass whose listing was made before the swap: left in place.
+    monkeypatch.setattr(filer, "iter_drops", lambda folder: [behind])
+    report = sort(engagement, today=DAY1)
+    assert [e.name for e in report.errors] == ["theirs.pdf"]
+    assert report.errors[0].left_in_place and "reached through a link" in report.errors[0].error
+    assert (outside / "theirs.pdf").exists()
+    assert report.filed == [] and report.review == []
+
+
+def test_an_unnamed_document_is_not_filed_across_households(tmp_path):
+    """Decision 137 (B2; the owner's Q-2 of 2026-09-24, "never; a person
+    decides"). A page that names nobody, accepted by an unnamed request of a
+    return in another household the drop folder feeds, used to be filed there
+    on its keywords - moving the original into a folder that household's
+    people can open. It now parks in the dropping household's own Needs
+    Review with the one sentence that says why. The same page within one
+    household files as it always did, and a page that names the fed
+    return's people still crosses (decision 129's headline case)."""
+    from tracker.records import Feed
+
+    unnamed = [replace(BUSINESS[0], named=False)]
+    father = make_engagement(tmp_path / "a", ITEMS, household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    llc = make_engagement(tmp_path / "a", unnamed, household="Park & Lee LLC",
+                          return_name="1120S - Park & Lee LLC", people=LLC_PEOPLE)
+    feeding(tmp_path / "a", [Feed("Park & Lee LLC", "1120S - Park & Lee LLC")])
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="")
+
+    done = sort_all([father, llc], home=[father], today=DAY1)
+
+    assert read_index(llc) == [] and done[llc].filed == []
+    [parked] = read_index(father)
+    assert parked.decision == NEEDS_REVIEW
+    assert parked.reason == "Unnamed, so it was not filed into another household's return."
+    assert reasons.UNNAMED_ACROSS_HOUSEHOLDS.matches(parked.reason)
+    # Where it was wanted, in the firm's words only (review of Part B, #3):
+    # the other return's label and the request that accepted it.
+    wanted = parse_evidence(parked.evidence)
+    llc_label = "Park & Lee LLC 2025 1120S - Park & Lee LLC"
+    assert f"{llc_label} / B01" in wanted
+    assert all(e.term == "trial balance" or e.rule == "date" for e in wanted[f"{llc_label} / B01"])
+    assert [p.name for p in originals(father).iterdir()] == ["tb.pdf"]    # it stays at home
+    assert not originals(llc).exists() or not any(originals(llc).iterdir())
+
+    # Within one household the same unnamed page files, as decision 128 says.
+    personal = make_engagement(tmp_path / "b", ITEMS, household="Park Family",
+                               return_name="1040 - John Park", people=FATHER)
+    business = make_engagement(tmp_path / "b", unnamed, household="Park Family",
+                               return_name="1120S - Park Landscaping")
+    drop(personal, "tb.pdf", "Trial balance as of December 31 2025", who="")
+    sort_all([personal, business], today=DAY1)
+    [filed] = read_index(business)
+    assert filed.decision == FILED and filed.identifier == "B01"
+
+
+def test_the_link_check_stops_at_the_clients_root(tmp_path):
+    """Decision 137's review (F5): only what lies between the clients root
+    and the file is judged. A root reached through a link above it - the
+    office's sits under Drive for desktop's own folder - files exactly as
+    any other; and a path that is not under the root it is checked against
+    is refused rather than judged all the way up to the drive."""
+    import tracker.filer as filer
+
+    real = tmp_path / "real"
+    real.mkdir()
+    _link_to(real, tmp_path / "linked")                  # a link ABOVE the clients root
+    root = tmp_path / "linked" / "Clients root"
+    engagement = make_engagement(root, ITEMS)
+    drop(engagement, "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
+
+    report = sort(engagement, today=DAY1)
+
+    assert [e.original_name for e in report.filed] == ["scan0012.pdf"]
+    assert report.errors == []
+    inbox = inbox_of(engagement)
+    assert not filer._through_a_link(inbox / "a.pdf", inbox)
+    assert filer._through_a_link(tmp_path / "elsewhere" / "a.pdf", inbox)
+
+
+def test_an_unnamed_re_send_already_held_in_another_household_parks_too(tmp_path):
+    """Decision 137's review of Part B (#5; the owner's "never"): the bytes
+    a return in another household already holds are decided by that record
+    (decision 111), and a re-send it would file again - here a person
+    handed the unnamed page over, and the working copy has since gone - is
+    held to the same rule as a first arrival. Unnamed, it is not filed
+    into the other household; it parks in the drop's own household with the
+    same sentence."""
+    import shutil
+
+    from tracker.filer import hand_over
+    from tracker.records import Feed
+
+    unnamed = [replace(BUSINESS[0], named=False)]
+    father = make_engagement(tmp_path, ITEMS, household="Park Family",
+                             return_name="1040 - John Park", people=FATHER)
+    llc = make_engagement(tmp_path, unnamed, household="Park & Lee LLC",
+                          return_name="1120S - Park & Lee LLC", people=LLC_PEOPLE)
+    feeding(tmp_path, [Feed("Park & Lee LLC", "1120S - Park & Lee LLC")])
+    drop(father, "tb.pdf", "Trial balance as of December 31 2025", who="")
+    sort_all([father, llc], home=[father], today=DAY1)
+    [parked] = read_index(father)
+    hand_over(father, parked.pbc_location, llc, "B01", today=DAY2)        # a person decided
+    [taken] = read_index(llc)
+    held = locate(llc, taken.pbc_location)
+    (llc / taken.prepared_location).unlink()                             # the copy went
+    shutil.copyfile(held, inbox_of(father) / "tb again.pdf")              # the same bytes again
+
+    sort_all([father, llc], home=[father], today=DAY3)
+
+    assert [r.decision for r in read_index(llc)] == [FILED]              # nothing filed again there
+    again = [r for r in read_index(father) if r.original_name == "tb again.pdf"]
+    assert [r.decision for r in again] == [NEEDS_REVIEW]
+    assert again[0].reason.startswith("Unnamed, so it was not filed into another household's return.")

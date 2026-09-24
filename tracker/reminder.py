@@ -160,6 +160,7 @@ from tracker.manifest import (
     summarize,
 )
 from tracker.reasons import GENERIC_ASK  # re-exported; the one generic sentence
+from tracker.records import link_problem
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
     REVIEW_DIR_NAME,
@@ -260,6 +261,14 @@ CHANGED_REMOVED = "  - {label}   (no longer asked)"
 #: The footer's warning about parked files, and what to do about it.
 REVIEW_WARNING = "{n} file(s) the client already sent are still in " + REVIEW_DIR_NAME + "."
 REVIEW_ADVICE = "Identify them before sending, or you may ask for something you have."
+#: What a draft says, above the letter's footer and on the command line,
+#: when the recorded link is not a web address (decision 137, L5). The
+#: letter is written without it - it says "the folder we shared with you"
+#: as a letter with no link does - and a person is told why and where to
+#: fix it, because a link recorded before the rule is not refused anywhere
+#: else.
+LINK_DROPPED = ("The link '{link}' was left out of this letter: it is not a web address "
+                "(http:// or https://). Fix it in the household's or the return's details.")
 #: What a Partial row is asked with.
 PARTIAL_ASK = "{have} of {expected} received, {missing} still to come"
 #: The file-type ask, in the row's own terms (the reason's generic ask is for rows that take anything).
@@ -636,6 +645,9 @@ class ReminderDraft:
     #: body is its text; the HTML for the clipboard and the app's preview
     #: are the same structure rendered two other ways.
     letter: Letter | None = None
+    #: :data:`LINK_DROPPED` when the recorded link was left out because it
+    #: is not a web address (decision 137, L5), else ``""``.
+    link_dropped: str = ""
 
     @property
     def has_outstanding(self) -> bool:
@@ -1175,6 +1187,12 @@ def draft_reminder(
     client_name = client_name or info.client
     engagement_name = engagement_name or info.name
     share_link = share_link or info.link
+    # Only a web address reaches a letter (decision 137, L5). A link
+    # recorded before that rule is dropped here, and the draft says so.
+    link_dropped = ""
+    if link_problem(share_link):
+        link_dropped = LINK_DROPPED.format(link=share_link.strip())
+        share_link = ""
     due_date = due_date or info.due
     filing_deadline = filing_deadline or info.filing_deadline
     sender = sender or info.sender
@@ -1247,6 +1265,7 @@ def draft_reminder(
         received_requests=received,
         labels={item.identifier: item.label for item in items},
         letter=letter,
+        link_dropped=link_dropped,
     )
 
 
@@ -1676,6 +1695,8 @@ def write_draft(draft: ReminderDraft, path: Path | str | None = None,
             raise DraftsEditedError(BOTH_DRAFTS_EDITED)
 
     footer: list[str] = []
+    if draft.link_dropped:
+        footer += ["", FOOTER_RULE, draft.link_dropped]
     if draft.scaffold_gaps:
         footer += ["", FOOTER_RULE,
                    f"{HELD_BACK_HEADING} - fix these here first:"]
@@ -1851,6 +1872,8 @@ if __name__ == "__main__":
         print(f"{HELD_BACK_LINE}: {flag.item.label}: {flag.reason}")
     for flag in result.held:
         print(f"{HELD_LINE}: {flag.item.label}: {flag.reason}")
+    if result.link_dropped:
+        print(f"\n{result.link_dropped}")
     if result.needs_review_files:
         print(f"\nWARNING: {REVIEW_WARNING.format(n=result.needs_review_files)}")
         print(REVIEW_ADVICE)

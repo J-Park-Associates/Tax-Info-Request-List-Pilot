@@ -3,7 +3,8 @@ rem ── Build the portable app package ────────────�
 rem Output: <OUT>\dist\<productName>-<PLATFORM>-<ARCH>\ (the variables below)
 rem Copy that whole folder to a USB stick or any Windows laptop.
 rem
-rem Reproducible: the Python packages (requirements-build.txt), the Electron
+rem Reproducible: the Python packages (requirements-build.txt, and the whole
+rem tree under them in constraints.txt), the Electron
 rem packages (app\package-lock.json, installed with npm ci) and the freeze
 rem itself (api_entry.spec) are all pinned in the commit being built, and
 rem BUILD-INFO.txt records which commit and which tools made the package.
@@ -36,7 +37,10 @@ rem would be frozen into every later package.
 python -m venv --clear "%VENV%"
 if errorlevel 1 (echo Could not create the build environment & call :wait & exit /b 1)
 set PY="%VENV%\Scripts\python.exe"
-%PY% -m pip install -r requirements-build.txt --quiet
+rem -c constraints.txt pins everything those packages pull in as well
+rem (decision 137): without it pip takes the newest of each on the day,
+rem and two builds of one commit freeze different code.
+%PY% -m pip install -r requirements-build.txt -c constraints.txt --quiet
 if errorlevel 1 (echo Installing requirements-build.txt failed & call :wait & exit /b 1)
 %PY% -m PyInstaller --noconfirm --clean --distpath %OUT%\py --workpath %OUT%\pyi-work api_entry.spec
 if errorlevel 1 (echo PyInstaller failed & call :wait & exit /b 1)

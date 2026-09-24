@@ -3422,3 +3422,256 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     assert payload["error"] == PATH_NO_ROOM.format(length=245 + 1 + len("A01 - TY2025.pdf"), limit=260,
                                                    ext=".pdf")
     assert sorted(str(p) for p in root.rglob("*")) == before
+
+
+# ---------------------------------------------- decision 137: the security review ----
+
+
+def test_a_household_folder_the_tracker_did_not_make_is_refused_and_left_whole(capsys, demo_root):
+    """Decision 137 (M1): a household folder that is already there and holds
+    no record is a misfit - the tracker did not make it - and the misfit
+    rule is that it is left alone. Creating a household of that name is
+    refused before anything is written, in the one sentence that says what
+    to do; the folder and everything in it stay exactly as they were."""
+    from tracker.layout import private_household_dir
+
+    theirs = private_household_dir(demo_root, "Old Smith")
+    (theirs / "2019").mkdir(parents=True)
+    (theirs / "2019" / "notes.txt").write_text("a person's own notes", encoding="utf-8")
+    before = sorted(p.relative_to(theirs) for p in theirs.rglob("*"))
+
+    code, payload = run(capsys, "create", stdin={
+        "household": "Old Smith", "return_name": "1040 - Old Smith", "form": "1040",
+        "items": [{"identifier": "A01", "document": "W-2"}]})
+
+    assert code == 1
+    assert payload["error"] == api.HOUSEHOLD_NOT_OURS.format(name="Old Smith")
+    assert payload["error"].endswith("Nothing was changed.")
+    assert sorted(p.relative_to(theirs) for p in theirs.rglob("*")) == before
+    assert (theirs / "2019" / "notes.txt").read_text(encoding="utf-8") == "a person's own notes"
+    assert not ledger.path_for(theirs).exists()
+
+
+def test_a_failed_create_removes_only_the_folders_it_made(capsys, demo_root, monkeypatch):
+    """Decision 137 (M1): a create or a rollover that fails part way removes
+    the folders its own mkdir made - the return, a year folder it had to
+    make, a new household - and nothing it found there. A year the
+    household already had, the household's record and its other returns
+    stay."""
+    from tracker.layout import PRIVATE_TREE, private_household_dir
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    prior = where(demo_root, "Smith 2025")
+    household = private_household_dir(demo_root, HOUSEHOLD)
+    new_year = household / "2026"
+    assert not new_year.exists()
+
+    def the_scaffold_fails(*_args, **_kwargs):
+        raise OSError("the scaffold failed half way")
+
+    monkeypatch.setattr(api, "scaffold_engagement", the_scaffold_fails)
+
+    # A second return in a year the household did not have: the year goes too.
+    code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith 2026", "year": 2026})
+    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert not new_year.exists()
+    # A second return in the year it did have: the year stays.
+    code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith Trust"})
+    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert prior.parent.is_dir() and not where(demo_root, "Smith Trust").exists()
+    # A rollover into a new year: the same.
+    code, payload = run(capsys, "rollover", stdin={"prior": str(prior), "year": 2026})
+    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert not new_year.exists()
+    # A new household: it goes, and the private tree it sat in - which was
+    # already there - stays.
+    code, payload = run(capsys, "create", stdin={**spec, "household": "New Family"})
+    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert not private_household_dir(demo_root, "New Family").exists()
+    assert (demo_root / PRIVATE_TREE).is_dir()
+
+    # Nothing that was there before was touched.
+    assert ledger.path_for(prior).is_file() and ledger.path_for(household).is_file()
+    assert sorted(p.name for p in household.iterdir() if p.is_dir()) == [prior.parent.name]
+    assert [p.name for p in prior.parent.iterdir()] == ["Smith 2025"]
+
+
+def test_a_command_names_a_return_by_its_place_under_a_clients_root_that_is_set(
+        capsys, demo_root, tmp_path, monkeypatch):
+    """Decision 137 (L1): with no clients root set, no folder is under it,
+    so a command naming one is refused rather than let read anywhere; and a
+    year or a household folder - which holds a record of its own - is
+    refused by where it sits, not read as a return one level too high."""
+    from tracker.layout import private_household_dir
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith 2025")
+    household = private_household_dir(demo_root, HOUSEHOLD)
+
+    assert run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[0] == 0
+    for too_high in (household, engagement.parent, demo_root):
+        code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(too_high))
+        assert code == 1, too_high
+        assert "is not a return's folder" in payload["error"], payload
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "unconfigured"))
+    code, payload = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
+    assert code == 1
+    assert payload["error"].startswith("Tell the app where your clients live first")
+
+
+def test_the_renderer_sets_only_the_attributes_its_allowlist_names():
+    """Decision 137 (info): ``el()`` - the one builder of every node - sets
+    only the attribute names its allowlist holds and throws on any other,
+    so no handler, address or style can reach a node through it. Every
+    call in the renderer passes names on the list."""
+    import re
+
+    js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8")
+    listed = re.search(r"const EL_ATTRIBUTES = new Set\(\[(.*?)\]\);", js, re.S).group(1)
+    allowed = set(re.findall(r'"([^"]+)"', listed))
+    assert not {name for name in allowed if name.lower().startswith("on")}
+    assert not allowed & {"href", "src", "style", "srcdoc", "action", "formaction", "innerHTML"}
+    body = js.split("function el(", 1)[1].split("\n}\n", 1)[0]
+    assert "if (!EL_ATTRIBUTES.has(key)) throw" in body
+
+    used: set[str] = set()
+    for call in re.finditer(r"\bel\(\s*(?:\"[^\"]*\"|'[^']*'|`[^`]*`|\w+)\s*,\s*\{", js):
+        depth, end = 1, call.end()
+        while depth:
+            depth += {"{": 1, "}": -1}.get(js[end], 0)
+            end += 1
+        top, level = [], 0
+        for ch in js[call.end():end - 1]:
+            level += {"{": 1, "[": 1, "(": 1, "}": -1, "]": -1, ")": -1}.get(ch, 0)
+            top.append(ch if level == 0 else " ")
+        used |= {a or b for a, b in re.findall(
+            r'(?:^|,)\s*(?:"([^"]+)"|([A-Za-z_$][\w$-]*))\s*(?=[:,]|$)', "".join(top))}
+    assert used and used <= allowed, used - allowed
+
+
+def test_a_rollover_drops_a_link_that_is_not_a_web_address_and_says_why(capsys, demo_root):
+    """Decision 137 (L5, the owner's ruling on phase 1): a household link
+    recorded before the rule that is not a web address does not refuse the
+    rollover. The new return starts without it, and the reason rides back to
+    the app beside the return it is about - for the one-return rollover and
+    for the household's."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+    from tracker.locking import engagement_lock
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import LINK_NOT_CARRIED
+
+    bad = "file:///C:/Users/firm/inbox"
+    said = LINK_NOT_CARRIED.format(link=bad)
+    for household in (HOUSEHOLD, "Other Household"):
+        assert run(capsys, "create", stdin={
+            "household": household, "return_name": "Smith 2025", "form": "1040",
+            "link": "https://drive.example/inbox",
+            "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+        folder = private_household_dir(demo_root, household)
+        with engagement_lock(folder):                     # written before the rule existed
+            store.record(store.connect(), folder, ledger.new(
+                ledger.HOUSEHOLD_CHANGED, **{ledger.HOUSEHOLD_KEY: {"link": bad}}))
+        assert load_household_info(folder).link == bad
+
+    code, payload = run(capsys, "rollover", stdin={
+        "prior": str(where(demo_root, "Smith 2025")), "year": 2026})
+    assert code == 0, payload
+    assert payload["rollover"]["link_dropped"] == said
+    assert load_engagement_info(where(demo_root, "Smith 2025", year=2026)).link == ""
+
+    prior = where(demo_root, "Smith 2025", household="Other Household")
+    code, payload = run(capsys, "roll-household", api.ENGAGEMENT_FLAG, str(prior),
+                        stdin={"year": 2026, "returns": [{"prior": str(prior)}]})
+    assert code == 0, payload
+    [rolled] = payload["rolled"]
+    assert rolled["link_dropped"] == said and payload["skipped"] == []
+    assert load_engagement_info(
+        where(demo_root, "Smith 2025", year=2026, household="Other Household")).link == ""
+
+
+def test_a_failed_create_removes_a_year_folder_only_when_it_is_empty(capsys, demo_root, monkeypatch):
+    """Decision 137's review (F4): a create that fails removes the return
+    it made whole, and a year folder it made only if nothing else is in it -
+    a second create running at the same moment may have put its own return
+    there, and that return is not this call's to take."""
+    from tracker.layout import private_household_dir
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    new_year = private_household_dir(demo_root, HOUSEHOLD) / "2026"
+    theirs = new_year / "1040 - Somebody Else"
+
+    def another_create_lands_then_the_scaffold_fails(*_args, **_kwargs):
+        theirs.mkdir()
+        (theirs / "their file.txt").write_text("theirs", encoding="utf-8")
+        raise OSError("the scaffold failed half way")
+
+    monkeypatch.setattr(api, "scaffold_engagement", another_create_lands_then_the_scaffold_fails)
+    code, payload = run(capsys, "create", stdin={**spec, "return_name": "Smith 2026", "year": 2026})
+    assert code == 1 and "the scaffold failed" in payload["error"]
+    assert not where(demo_root, "Smith 2026", year=2026).exists()        # its own return: gone
+    assert (theirs / "their file.txt").read_text(encoding="utf-8") == "theirs"   # theirs: kept
+    assert new_year.is_dir()                                             # and the year with it
+
+
+def test_a_new_return_drops_a_households_old_link_with_the_reason_not_a_refusal(capsys, demo_root):
+    """Decision 137's review (F2): a household link recorded before the rule
+    that is not a web address does not refuse the next return created in
+    that household. The return starts without it and the reply says why, as
+    a rollover does; a link the create itself sends is still refused."""
+    from tracker.layout import private_household_dir
+    from tracker.locking import engagement_lock
+    from tracker.manifest import load_engagement_info
+    from tracker.rollover import LINK_NOT_CARRIED
+
+    spec = {"household": HOUSEHOLD, "return_name": "Smith 2025", "form": "1040",
+            "link": "https://drive.example/inbox",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    household = private_household_dir(demo_root, HOUSEHOLD)
+    bad = "S:\\Clients\\Inbox"
+    with engagement_lock(household):
+        store.record(store.connect(), household, ledger.new(
+            ledger.HOUSEHOLD_CHANGED, **{ledger.HOUSEHOLD_KEY: {"link": bad}}))
+
+    second = {"household": HOUSEHOLD, "return_name": "Smith Trust", "form": "1040",
+              "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin=second)
+    assert code == 0, payload
+    assert payload["link_dropped"] == LINK_NOT_CARRIED.format(link=bad)
+    assert load_engagement_info(where(demo_root, "Smith Trust")).link == ""
+
+    code, payload = run(capsys, "create", stdin={**second, "return_name": "Smith Estate",
+                                                 "link": "file:///C:/x"})
+    assert code == 1 and "is not a web address" in payload["error"]
+
+
+def test_the_reminder_card_says_why_a_link_was_left_out(capsys, demo_root):
+    """Decision 137's review (F3): the reminder card carries the sentence
+    the draft file and the command line give when the record's link is not
+    a web address, so the person reading the letter in the app knows why
+    it has no link. A card with a good link says nothing."""
+    from tracker.locking import engagement_lock
+    from tracker.reminder import LINK_DROPPED
+
+    folder = chased_engagement(capsys, demo_root)
+    assert reminder_card(capsys, folder)["link_dropped"] == ""
+    bad = "file:///C:/Users/firm/inbox"
+    with engagement_lock(folder):
+        store.record(store.connect(), folder, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [], ledger.REMOVED_KEY: [], ledger.INFO_KEY: {"link": bad}}))
+    card = reminder_card(capsys, folder)
+    assert card["link_dropped"] == LINK_DROPPED.format(link=bad)
+    assert bad not in card["text"]
+    js = (Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js").read_text(
+        encoding="utf-8")
+    assert "card.link_dropped" in js

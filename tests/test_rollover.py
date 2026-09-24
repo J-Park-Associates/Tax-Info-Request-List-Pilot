@@ -84,8 +84,11 @@ def prior(tmp_path, monkeypatch):
     """
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
-    (tmp_path / "app").mkdir(exist_ok=True)
+    # The settings beside the root, not inside it: a root that holds the
+    # app's settings is refused (decision 137).
+    settings = tmp_path.parent / f"{tmp_path.name}-app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    settings.mkdir(exist_ok=True)
     set_clients_root(tmp_path)
     eng = make_engagement(tmp_path, PRIOR, household="Smith Family", scaffold=False)
     seed_statuses(eng, {

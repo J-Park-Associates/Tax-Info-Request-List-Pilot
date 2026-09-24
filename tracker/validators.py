@@ -59,6 +59,51 @@ try:  # pragma: no cover - the absent branch needs the package uninstalled
 except Exception:  # not installed, or installed and unusable on this machine
     HEIC_READABLE = False
 
+#: The largest drop the reader will open, in megabytes (decision 137, M5).
+#: A bigger one is still counted, moved out of the inbox and parked for a
+#: person like any other drop - it is never *read*: no text layer, no OCR,
+#: no page rendered. Real client documents are far below it (a 30-page
+#: scan is a few megabytes); what is above it is a video, a disk image or a
+#: whole mailbox, and reading one is how a pass stops. A constant beside
+#: the smallest-size rule (each row's ``min_size_kb``), not a setting.
+MAX_READ_MB = 250
+#: How much of a ``.csv``/``.tsv``/``.txt`` the reader takes, in megabytes
+#: (decision 137): enough for any real statement. The rest is not read, and
+#: a verdict on a cut text says so (``reasons.TEXT_CUT``).
+TEXT_READ_CAP_MB = 20
+_MB = 1024 * 1024
+
+
+def size_mb(path: Path) -> float:
+    """The file's size in megabytes, or 0.0 when it cannot be read."""
+    try:
+        return path.stat().st_size / _MB
+    except OSError:
+        return 0.0
+
+
+def too_large_reason(path: Path) -> str:
+    """``reasons.TOO_LARGE`` when the file is past :data:`MAX_READ_MB`,
+    else ``""``. Asked before anything opens the file."""
+    size = size_mb(path)
+    if size > MAX_READ_MB:
+        return reasons.TOO_LARGE.format(size=f"{size:,.0f} MB")
+    return ""
+
+
+def picture_too_large_reason(exc: BaseException) -> str:
+    """``reasons.TOO_LARGE`` for a picture Pillow refused as a decompression
+    bomb (decision 137, B1, the owner's ruling on phase 1): a size rule, so
+    a kept verdict for a person and never a retry. The pixel count is the
+    one Pillow's own sentence names."""
+    import re
+
+    said = re.search(r"\((\d+) pixels\)", str(exc))
+    if said:
+        return reasons.TOO_LARGE.format(size=f"{int(said.group(1)) / 1_000_000:,.0f} megapixels")
+    return reasons.TOO_LARGE.format(size="too many pixels")
+
+
 # Junk that never counts as a client document.
 _IGNORED_NAMES = {"desktop.ini", "thumbs.db", ".ds_store"}
 #: Office lock files.
@@ -292,6 +337,10 @@ def _image_error(path: Path) -> str | None:
 
         with Image.open(path) as image:
             image.verify()
+    except Image.DecompressionBombError as exc:
+        # Past Pillow's own limit (decision 137, B1): a size, not a broken
+        # file, so it is ours to look at rather than the client's to resend.
+        return picture_too_large_reason(exc)
     except Exception as exc:  # Pillow raises many types on a file that is not one
         return reasons.UNREADABLE_IMAGE.format(error=f"{exc.__class__.__name__}: {exc}")
     return None

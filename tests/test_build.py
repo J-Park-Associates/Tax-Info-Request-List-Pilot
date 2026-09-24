@@ -172,3 +172,96 @@ def test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk(tmp_path, ca
     printed = capsys.readouterr().out
     assert SCRATCH_RETURN in printed and SCRATCH_HOUSEHOLD in printed
     assert "0 draft(s) written" in printed                    # dry: decided, not written
+
+
+# ------------------------------------------ decision 137: the whole tree pinned ----
+
+CONSTRAINTS = "constraints.txt"
+#: The line of BUILD-INFO.txt after which the build lists what it froze
+#: (written by "Build App.bat" from ``pip freeze``).
+FROZEN_HEADING = "Python packages frozen"
+
+
+def _name(package: str) -> str:
+    """A distribution's name as pip compares them (PEP 503)."""
+    return re.sub(r"[-_.]+", "-", package).lower()
+
+
+def _pins(lines) -> dict[str, str]:
+    pins = {}
+    for line in lines:
+        line = line.split("#", 1)[0].strip()
+        if "==" in line and not line.startswith("-"):
+            package, version = line.split("==", 1)
+            pins[_name(package)] = version.strip()
+    return pins
+
+
+def frozen_in(build_info: str) -> dict[str, str]:
+    """What one BUILD-INFO.txt says the package froze, name -> version."""
+    after = build_info.split(FROZEN_HEADING, 1)
+    return _pins(after[1].splitlines()[1:]) if len(after) == 2 else {}
+
+
+def constraints() -> dict[str, str]:
+    return _pins(read(CONSTRAINTS).splitlines())
+
+
+def drift(frozen: dict[str, str], pinned: dict[str, str]) -> list[str]:
+    """Every package a build froze at a version the constraints do not say,
+    or froze with no constraint at all: the build is not the commit's."""
+    return sorted(f"{name}: froze {version}, constraints say {pinned.get(name, 'nothing')}"
+                  for name, version in frozen.items() if pinned.get(name) != version)
+
+
+def test_the_build_fails_when_a_frozen_version_differs_from_the_constraints():
+    """Decision 137 (M5): requirements*.txt pin what the tracker imports by
+    name; constraints.txt pins the whole tree under them, "Build App.bat"
+    installs with it, and a package whose BUILD-INFO.txt froze anything
+    else is not the build of its commit (the build of 09/17 froze pypdfium2
+    5.13.0 against a pinned 5.11.0). Every package BUILD-INFO.txt lists in
+    this checkout's build folder is held to it; with no build here, the rule
+    is held on the freeze that exposed it."""
+    pinned = constraints()
+    # The tree the ruling names, and every direct pin agreeing with it.
+    for package in ("pdfminer.six", "pypdfium2", "cryptography", "charset-normalizer",
+                    "pillow-heif", "pyinstaller"):
+        assert _name(package) in pinned, package
+    for requirements in ("requirements.txt", "requirements-build.txt"):
+        for name, version in _pins(read(requirements).splitlines()).items():
+            assert pinned.get(name) == version, (requirements, name, version, pinned.get(name))
+    script = read(BUILD_SCRIPT)
+    assert re.search(r"pip install -r requirements-build\.txt -c constraints\.txt", script)
+
+    # The rule, on the freeze of 09/17.
+    old = ("Commit:   a1d261b\n\nPython packages frozen (pip freeze):\n"
+           + "\n".join(f"{name}=={version}" for name, version in pinned.items()
+                       if name != "pypdfium2") + "\npypdfium2==5.13.0\n")
+    assert drift(frozen_in(old), pinned) == ["pypdfium2: froze 5.13.0, constraints say 5.11.0"]
+    assert drift({**pinned, "numpy": "2.0"}, pinned) == ["numpy: froze 2.0, constraints say nothing"]
+    assert drift(dict(pinned), pinned) == []
+
+    # And on whatever this checkout last built.
+    for info in (REPO / "build-portable" / "dist").glob("*/BUILD-INFO.txt"):
+        frozen = frozen_in(info.read_text(encoding="utf-8", errors="replace"))
+        assert frozen, info
+        assert drift(frozen, pinned) == [], info
+
+
+def test_every_action_the_workflows_run_is_pinned_by_commit():
+    """Decision 137 (B3): an action named by tag runs whatever code the tag
+    names on the day - a tag can be moved. Every action a workflow takes
+    from another repository is pinned by a full commit SHA, with the tag it
+    stood for beside it; the repository's own reusable workflow is not
+    somebody else's code and is named by path."""
+    used = []
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            found = re.search(r"^\s*-?\s*uses:\s*(\S+)(.*)$", line)
+            if found:
+                used.append((path.name, found.group(1), found.group(2)))
+    remote = [(name, ref, rest) for name, ref, rest in used if not ref.startswith("./")]
+    assert remote
+    for name, ref, rest in remote:
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), (name, ref)
+        assert re.search(r"#\s*v\d+", rest), (name, ref, "the tag it stood for")

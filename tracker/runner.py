@@ -118,7 +118,8 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import ledger, store
+from tracker import content_check, ledger, store
+from tracker.content_check import OCR_SCRATCH_DIR_NAME, ocr_scratch
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -174,8 +175,10 @@ from tracker.settings import (
     NO_ROOT_HINT,
     SettingsError,
     clients_root,
+    clients_root_refusal,
     firm,
     product_name,
+    settings_dir,
     settings_path,
 )
 from tracker.store import StoreError
@@ -267,11 +270,17 @@ VIEW_NOT_REGENERATED = "status report open (not regenerated)"
 #: scanned page costs about a second to read on the office machine, so
 #: twenty seconds is a document doing something unusual - a long scan, a
 #: photo of a whole desk, a page the four-way scorer had to read four
-#: times. **Nothing is cut short at this number or any other**: it decides
-#: only whether the run's line mentions the document. Photos and scans are
-#: the readings the owner's speed ceiling will be measured against, and a
-#: pass that quietly abandoned the slow ones could not measure them.
+#: times. **Nothing is cut short at this number**: it decides only whether
+#: the run's line mentions the document. Photos and scans are the readings
+#: the owner's speed ceiling will be measured against, and a pass that
+#: quietly abandoned the slow ones could not measure them. The one stop is
+#: the safety stop beside it, ten times that ceiling (decision 137, B1.2).
 SLOW_READING_SECONDS = 20.0
+#: The safety stop, a minute a page and ten minutes a document: the reader
+#: owns them (``tracker.content_check``) and they are named here beside the
+#: number a slow reading is said at, so the two are read together.
+READING_STOP_PAGE_SECONDS = content_check.READING_STOP_PAGE_SECONDS
+READING_STOP_DOCUMENT_SECONDS = content_check.READING_STOP_DOCUMENT_SECONDS
 SLOW_READING_NOTE = "slow reading: {name} took {seconds:.0f} s"
 
 
@@ -1442,6 +1451,11 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"Clients folder problem: {exc}") from None
         if configured is None:
             raise SystemExit(f"no clients root given and none in {settings_path()}; {NO_ROOT_HINT}")
+        # A root saved before decision 137's rule is held to it here, at
+        # the start of every pass (the review's F12): a pass never walks
+        # the system drive or the app's own folder, whenever it was saved.
+        if refusal := clients_root_refusal(configured):
+            raise SystemExit(f"Clients folder problem: {refusal}")
         root = str(configured)
     elif ns.log:
         _refuse_an_old_jobs_root(root)
@@ -1463,8 +1477,12 @@ def main(argv: list[str] | None = None) -> int:
     if ns.only and not loaded.find(ns.only):
         raise SystemExit(f"Nothing in {loaded.source} matches {ns.only!r}")
 
-    result = run_registry(loaded, today=when, dry_run=ns.dry_run,
-                          reminders=ns.reminders, weekday=day, only=ns.only)
+    # OCR's temporary page images go to the app's own folder for the
+    # pass, which is emptied first (decision 137, L7): a pass the scheduler
+    # killed mid-page leaves a client's page there, not in %TEMP%.
+    with ocr_scratch(settings_dir() / OCR_SCRATCH_DIR_NAME):
+        result = run_registry(loaded, today=when, dry_run=ns.dry_run,
+                              reminders=ns.reminders, weekday=day, only=ns.only)
     print(format_report(result))
 
     if ns.log:

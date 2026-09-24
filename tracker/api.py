@@ -73,7 +73,7 @@ from tracker.filer import (
     room_for,
     unfile_document,
 )
-from tracker.fsio import write_text_atomically
+from tracker.fsio import make_new_folders, write_text_atomically
 from tracker.households import (
     create_household,
     fed_by,
@@ -96,6 +96,7 @@ from tracker.layout import (
     household_of,
     inbox_dir_for,
     inbox_of,
+    is_year_folder,
     originals_dir_for,
     private_household_dir,
     return_dir_for,
@@ -177,6 +178,7 @@ from tracker.rollover import (
     ORIGIN_PRIOR,
     UNKNOWN_YEAR_LABEL,
     ReturnPlan,
+    carried_link,
     carry_engagement_info,
     detect_year,
     next_tax_year,
@@ -517,13 +519,31 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
     return engagement
 
 
+#: What creating a household says when a folder of that name is already
+#: there and holds no record (decision 137, M1): the tracker did not make
+#: it, so it is a misfit, and a misfit is left alone. Refused before
+#: anything is written.
+HOUSEHOLD_NOT_OURS = ("A folder named '{name}' is already there and the tracker did not make it. "
+                      "Choose another name, or move that folder aside first. Nothing was changed.")
+#: What a command naming a folder that is not a return is told (decision
+#: 137, L1). A year folder or a household folder holds a journal too - the
+#: household's own record - so a folder is a return by where it sits, as
+#: discovery reads it, and not by whether some record is in it.
+NOT_A_RETURN = ("{name} is not a return's folder (a return sits at <clients root>\\{tree}"
+                "\\<household>\\<year>\\<return>); it is not an engagement")
+
+
 def _engagement_dir(argv: list[str]) -> Path:
     """The engagement a command is about: ``ENGAGEMENT_FLAG <folder>``.
 
     A flag with nothing after it, or an empty folder, gets the same sentence
-    as no flag at all (it used to be a bare IndexError). Once a clients root
-    is set, the folder must lie under it: the app only ever names folders
-    the root listed, so anything else is a mistake, not a request.
+    as no flag at all (it used to be a bare IndexError). The folder must lie
+    under the clients root, and **a clients root must be set** (decision
+    137): the app only ever names folders the root listed, so anything else
+    is a mistake, not a request, and with no root there is nothing to be
+    under. It must also be a return by its place in the layout - four
+    levels down, under a year - so a year or a household folder is refused
+    rather than read one level too high.
     """
     hint = f"Pick an engagement first ({ENGAGEMENT_FLAG} <folder>)"
     if ENGAGEMENT_FLAG not in argv:
@@ -532,23 +552,29 @@ def _engagement_dir(argv: list[str]) -> Path:
     given = argv[position].strip() if position < len(argv) else ""
     if not given:
         raise ManifestError(hint)
-    return _under_root(Path(given))
+    folder = _under_root(Path(given))
+    parts = folder.resolve().relative_to(_root().resolve()).parts
+    if (len(parts) != 4 or parts[0].casefold() != PRIVATE_TREE.casefold()
+            or not is_year_folder(parts[2])):
+        raise ManifestError(NOT_A_RETURN.format(name=folder.name or folder, tree=PRIVATE_TREE))
+    return folder
 
 
 def _under_root(folder: Path) -> Path:
     """``folder`` if it lies under the clients root, else a ManifestError.
 
-    Checked whenever a root is *set*, whether or not the folder it names is
-    reachable right now: an unplugged drive is not a licence to read from
-    anywhere. Resolved on both sides, so ``..``, a junction out of the root
-    and a case difference are all seen for what they are.
+    Checked whether or not the folder it names is reachable right now: an
+    unplugged drive is not a licence to read from anywhere. Resolved on
+    both sides, so ``..``, a junction out of the root and a case difference
+    are all seen for what they are. **With no root set it refuses**
+    (decision 137, L1): it used to pass any folder at all then, which made
+    an unconfigured app a reader of anywhere.
     """
-    root = clients_root()
-    if root is not None:
-        try:
-            folder.resolve().relative_to(root.resolve())
-        except ValueError:
-            raise ManifestError(f"{folder} is not under the clients root {root}") from None
+    root = _root()
+    try:
+        folder.resolve().relative_to(root.resolve())
+    except ValueError:
+        raise ManifestError(f"{folder} is not under the clients root {root}") from None
     return folder
 
 
@@ -1840,6 +1866,12 @@ def _cmd_create(argv: list[str]) -> dict:
     made_household: Path | None = None
     if existing:
         household_info = load_household_info(household_dir)
+    elif household_dir.exists():
+        # A folder of that name the tracker never made (decision 137): a
+        # misfit, and the misfit rule is that it is left alone. Adopting it
+        # would put a record into a person's folder, and a failure after
+        # that would remove the folder whole.
+        raise ManifestError(HOUSEHOLD_NOT_OURS.format(name=household))
     else:
         household_info = HouseholdInfo(
             name=household,
@@ -1864,22 +1896,38 @@ def _cmd_create(argv: list[str]) -> dict:
     # The wizard's dates, or the form's own (decision 117) - a new return
     # is on the reminder's ladder from its first draft. Its greeting and
     # its link come from the household where the spec is silent.
-    base_info = EngagementInfo(client=household_info.contact, link=household_info.link)
+    # A household link recorded before decision 137's rule that is not a web
+    # address is left behind with the reason, as at rollover - never a
+    # refusal of a link nobody typed here (the review's F2). A link the spec
+    # itself sends is still refused by create_engagement.
+    link, link_dropped = carried_link(household_info.link)
+    base_info = EngagementInfo(client=household_info.contact, link=link)
     info = with_default_dates(_info_from_spec(spec, carry=base_info), form, year)
+    if info.link:
+        link_dropped = ""
     info = _placed(info, household, year, engagement.name)
     # A return with nobody on it can never file a named request (decision
     # 128), so it is refused at setup rather than left to park every W-2
     # that arrives and say why afterwards.
     if not info.people:
         raise ManifestError(NO_PEOPLE)
+    #: Every folder this call's own mkdir made, outermost first: the whole
+    #: of what a failure may remove (decision 137).
+    made: list[Path] = []
+    owned: set[Path] = {engagement}
     try:
         # The household first, so a return never exists under one the
         # record does not know; then the return.
         if not existing:
-            household_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                made += make_new_folders(household_dir)
+            except FileExistsError:
+                # Made by someone else between the look above and now.
+                raise ManifestError(HOUSEHOLD_NOT_OURS.format(name=household)) from None
+            owned.add(household_dir)
             create_household(household_dir, household_info)
             made_household = household_dir
-        engagement.mkdir(parents=True)
+        made += make_new_folders(engagement)
         # The catalog the wizard chose is recorded in the details: a
         # return that cannot say which checklist it came from cannot be
         # checked against it later. The list is validated whole before a
@@ -1888,15 +1936,15 @@ def _cmd_create(argv: list[str]) -> dict:
         scaffold_engagement(engagement)
     except Exception:
         # Never a half-built return, in the folder or in the store - and
-        # never a household this call made and nothing else.
-        _undo_create(engagement)
-        if made_household is not None:
-            _undo_create(made_household)
+        # never a folder this call did not make: the return, its year and
+        # its household go only where this call's own mkdir made them.
+        _undo_made(made, owned)
         raise
     _refresh_readmes(engagement)
     reply = {"created": Engagement(path=engagement, info=info,
                                    household_path=household_dir).label,
-             "state": _state(engagement)}
+             "state": _state(engagement),
+             "link_dropped": link_dropped}
     # A household's **first** return is the moment the two grants have to
     # be made, so the checklist comes back with it and the app shows it
     # once (decision 126). A second return added to a household already
@@ -1907,8 +1955,34 @@ def _cmd_create(argv: list[str]) -> dict:
     return reply
 
 
+def _undo_made(made: list[Path], owned: set[Path]) -> None:
+    """Undo, innermost first, the folders one create or rollover made -
+    :func:`tracker.fsio.make_new_folders`' list and nothing else.
+
+    Only a folder this call **owns** - the return, or a household whose
+    record it wrote - is removed whole (:func:`_undo_create`). A level
+    above one, such as a year folder it had to make, is removed only when
+    it is empty (the review's F4): a second create running at the same
+    moment may have put its own return there, and that is not this call's
+    to take."""
+    for folder in reversed(made):
+        if folder in owned:
+            _undo_create(folder)
+            continue
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
+
+
 def _undo_create(engagement: Path) -> None:
     """What a failed create or rollover leaves behind: nothing.
+
+    **Only ever called on a folder this call's own mkdir created**
+    (decision 137; :func:`_undo_made` is how every caller reaches it). The
+    ``rmtree`` is whole because everything under such a folder is this
+    call's too; called on a folder that was already there it would remove
+    a person's folder, or an old return, which is what it once did.
 
     The folder first, so the name is free again whatever happens next;
     then the store's row, in its own try, because a store that cannot be
@@ -1945,6 +2019,11 @@ def _feeds_from_spec(sent: object, household_dir: Path) -> tuple[Feed, ...]:
         refusal = FEED_REFUSED.format(household=household or "(blank)",
                                       return_name=return_name or "(blank)")
         if not household or not return_name:
+            raise ManifestError(refusal)
+        # A feed names two folders, so each half must be a folder name the
+        # sanitiser leaves as it is (decision 137, L6): a separator, a
+        # device name or a trailing dot names no folder a pass could find.
+        if sanitize_component(household) != household or sanitize_component(return_name) != return_name:
             raise ManifestError(refusal)
         if household.casefold() == household_dir.name.casefold():
             raise ManifestError(refusal)
@@ -2096,20 +2175,27 @@ def _cmd_rollover(argv: list[str]) -> dict:
         household_info = load_household_info(household_dir)
     except ManifestError:
         household_info = HouseholdInfo()
+    # A link that is not a web address is dropped with the reason, not a
+    # refused roll (decision 137, L5); the reason rides back to the app.
+    link, report.link_dropped = carried_link(carried.link or household_info.link)
     carried = replace(carried,
                       client=carried.client or household_info.contact,
-                      link=carried.link or household_info.link)
+                      link=link)
     # Last year's deadline did not carry, and this year's is the form's:
     # the rolled engagement starts on the ladder as a new one does.
     info = with_default_dates(_info_from_spec(spec, carry=carried),
                               carried.form or form, report.target_year)
     info = _placed(info, household, report.target_year, engagement.name)
-    engagement.mkdir(parents=True)
+    made: list[Path] = []
     try:
+        # The return and, in a new year, the year folder: only what this
+        # call's own mkdir made is undone (decision 137), and the year only
+        # when it is empty.
+        made += make_new_folders(engagement)
         create_engagement(engagement, report.items, info)
         scaffold_engagement(engagement)
     except Exception:
-        _undo_create(engagement)
+        _undo_made(made, {engagement})
         raise
     _refresh_readmes(engagement)
 
@@ -2140,6 +2226,8 @@ def _carried_payload(report) -> dict:
             for r in report.offered
         ],
         "unfiled_last_year": report.unfiled_last_year,
+        # Decision 137 (L5): the prior's link, when it was left behind.
+        "link_dropped": report.link_dropped,
     }
 
 
@@ -2685,6 +2773,9 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "asked": draft.asked,
         "stages": _stages(),
         "editable": not draft.is_held and not edited and draft.has_outstanding,
+        # Why the letter has no link, when the record's was not a web
+        # address (decision 137, L5; the review's F3).
+        "link_dropped": draft.link_dropped,
     }
 
 

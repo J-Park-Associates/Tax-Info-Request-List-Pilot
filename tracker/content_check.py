@@ -79,8 +79,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
+import shutil
+import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import MISSING, asdict, dataclass, fields, replace
 from pathlib import Path
 
@@ -109,7 +114,15 @@ from tracker.records import (
     format_evidence,  # noqa: F401
     parse_evidence,  # noqa: F401
 )
-from tracker.validators import IMAGE_EXTENSIONS, PDF_EXTENSION, extension_of, sha256_of
+from tracker.validators import (
+    IMAGE_EXTENSIONS,
+    PDF_EXTENSION,
+    TEXT_READ_CAP_MB,
+    extension_of,
+    picture_too_large_reason,
+    sha256_of,
+    too_large_reason,
+)
 
 log = logging.getLogger("tracker.content_check")
 
@@ -161,6 +174,30 @@ MAX_PAGES = 10
 XLSX_EXTENSIONS = ("xlsx", "xlsm")
 TEXT_EXTENSIONS = ("csv", "tsv", "txt")
 _MAX_OCR_PAGES = MAX_PAGES
+#: The most pixels one page or one photo is read at (decision 137, B1).
+#: Rendering has to stay bounded: a PDF page may be 14,400 points square,
+#: which at the old fixed scale of 2 is some 830 million pixels, and
+#: ``bitmap.to_pil()`` hands Pillow an image without its decompression-bomb
+#: guard ever being asked. Forty million is a letter page at about 600 dpi -
+#: far past what Tesseract needs - so an ordinary page is read exactly as
+#: before, and a giant one is read smaller rather than refused.
+PIXEL_BUDGET = 40_000_000
+#: The scale an ordinary PDF page is rendered at for OCR (144 dpi).
+RENDER_SCALE = 2.0
+#: The reader's safety stop (decision 137, B1.2; the owner's Q-1 of
+#: 2026-09-24): ten times the ceiling he approved for decision 127 (6 s a
+#: photo, 60 s a ten-page scan). A page - a photo is one page - gets a
+#: minute and a document ten, rendering included. A reading that reaches
+#: either is **abandoned**: a kept verdict, ``reasons.READING_STOPPED``,
+#: not read again until the file changes. Under the stop nothing changes:
+#: a slow reading is finished and named (``runner.SLOW_READING_SECONDS``).
+#: Before this, the only stop was Task Scheduler's two-hour kill, which
+#: ended the whole pass and met the same file again next time.
+READING_STOP_PAGE_SECONDS = 60.0
+READING_STOP_DOCUMENT_SECONDS = 600.0
+#: The clock the stop reads. A name of its own so the suite can move it
+#: rather than wait ten minutes.
+_clock = time.monotonic
 
 #: Tesseract's own confidence in the turn it says a page has. Its scale is
 #: not a percentage: on a form it comes back in the tens, and anything
@@ -249,6 +286,9 @@ class Extraction:
     #: It is the number the reader benchmark and the owner's speed ceiling
     #: are measured in.
     seconds: float = 0.0
+    #: Only the first ``validators.TEXT_READ_CAP_MB`` of a text file was
+    #: read (decision 137). Said beside any verdict reached on it.
+    cut: bool = False
 
 
 # ------------------------------------------------------------------ rules ----
@@ -1078,6 +1118,36 @@ def _found(rule: str, text: str, keyword: str, dominant: set[str]) -> Evidence |
     return None if place is None else Evidence(rule, keyword, place[0], place[1])
 
 
+#: The longest line a Date Pattern is run over (decision 137, L3). A
+#: pattern is a person's typing, and a typo such as ``(\d+)+x`` backtracks
+#: exponentially in the length of what it is run over. Run over the whole
+#: of an OCR reading, one such pattern could hold a pass for hours; run
+#: line by line, with long lines left out, the worst it can do is bounded
+#: by one short line. A date on a real document sits on a short line.
+DATE_LINE_MAX = 500
+
+
+def date_pattern_at(pattern: str, text: str) -> int | None:
+    """Where in ``text`` the row's Date Pattern first matches, or None.
+
+    Compiled once, then run **line by line** (decision 137, L3), and a
+    line longer than :data:`DATE_LINE_MAX` is skipped. The offset is into
+    the whole text, so where the date was said is still found by
+    :func:`_where_said`. A pattern that does not compile was refused when
+    it was saved; one that reaches here anyway matches nothing.
+    """
+    try:
+        compiled = re.compile(pattern)
+    except re.error:
+        return None
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        if len(line) <= DATE_LINE_MAX and (match := compiled.search(line)):
+            return offset + match.start()
+        offset += len(line)
+    return None
+
+
 def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = None) -> ContentResult:
     """Apply the manifest row's content rules to extracted text.
 
@@ -1122,14 +1192,22 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
         found.extend(hits)
 
     if item.date_pattern:
-        match = re.search(item.date_pattern, text)
-        if not match:
+        # A pattern a person typed runs line by line (decision 137, L3); the
+        # one derived from the Period is the firm's own and runs over the
+        # whole text as it always did (the review's F7), so "December" and
+        # "2025" split by a line break still say the year.
+        if item.date_pattern_derived:
+            hit = re.search(item.date_pattern, text)
+            at = hit.start() if hit else None
+        else:
+            at = date_pattern_at(item.date_pattern, text)
+        if at is None:
             return ContentResult(ok=False,
                                  reason=reasons.WRONG_PERIOD.format(pattern=item.date_pattern),
                                  evidence=tuple(found))
         # The row's Period, not the regex it derives and not a word of the
         # document: what a person reading the index needs is "TY2025".
-        where, page = _where_said(text, match.start())
+        where, page = _where_said(text, at)
         found.append(Evidence(RULE_DATE, item.period or item.date_pattern, where, page))
 
     return ContentResult(ok=True, evidence=tuple(found))
@@ -1179,14 +1257,41 @@ def _extract_xlsx(path: Path) -> str:
     return "\n".join(parts)
 
 
+def _text_cap_bytes() -> int:
+    return TEXT_READ_CAP_MB * 1024 * 1024
+
+
+def _is_cut(path: Path) -> bool:
+    """Whether :func:`_extract_textfile` reads less than the whole file."""
+    try:
+        return path.stat().st_size > _text_cap_bytes()
+    except OSError:
+        return False
+
+
 def _extract_textfile(path: Path) -> str:
-    raw = path.read_bytes()
-    for encoding in ("utf-8", "cp1252"):
-        try:
-            return raw.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return raw.decode("latin-1", errors="replace")
+    """The text of a ``.csv``/``.tsv``/``.txt``, **up to its first**
+    ``TEXT_READ_CAP_MB`` (decision 137): enough for any real statement, and
+    a file past it is read that far and no further. A UTF-8 character the
+    cut split in two is left off rather than turning the whole reading
+    into another encoding."""
+    cap = _text_cap_bytes()
+    with path.open("rb") as handle:
+        raw = handle.read(cap + 1)
+    cut = len(raw) > cap
+    raw = raw[:cap]
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        if cut and exc.start >= len(raw) - 3:
+            try:
+                return raw[:exc.start].decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+    try:
+        return raw.decode("cp1252")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1", errors="replace")
 
 
 def extract_text(path: Path) -> str | None:
@@ -1207,6 +1312,58 @@ def extract_text(path: Path) -> str | None:
     return None
 
 
+class ReadingStopped(Exception):
+    """A reading reached the safety stop (decision 137, B1.2). ``seconds``
+    is how long it had been reading the file when it stopped."""
+
+    def __init__(self, seconds: float):
+        super().__init__(f"the reading stopped after {seconds:.0f} s")
+        self.seconds = seconds
+
+
+class _SafetyStop:
+    """The time one document's reading may take: a document deadline and,
+    within it, one page's (decision 137, B1.2)."""
+
+    def __init__(self) -> None:
+        self.started = _clock()
+        self.deadline = self.started + READING_STOP_DOCUMENT_SECONDS
+        self.page_deadline = self.deadline
+
+    def page(self) -> None:
+        """A page starts: it has a minute, or what is left of the ten."""
+        self.page_deadline = min(_clock() + READING_STOP_PAGE_SECONDS, self.deadline)
+
+    def remaining(self) -> float:
+        """Seconds left for the page now being read, or the stop."""
+        left = self.page_deadline - _clock()
+        if left <= 0:
+            raise ReadingStopped(_clock() - self.started)
+        return left
+
+
+#: The stop of the reading under way, set by :func:`extract_by_ocr`. None
+#: outside a reading, where a Tesseract call has no timeout (a test's).
+_STOP: _SafetyStop | None = None
+
+
+def _tesseract(call, image, **kwargs):
+    """One call into Tesseract, inside what is left of the page's time.
+
+    Every ``pytesseract`` call is made through here (decision 137, B1.2):
+    its ``timeout=`` is the page's remaining budget, which is never more
+    than the document's, and a Tesseract that is killed at it is the
+    safety stop, not an OCR failure to retry."""
+    if _STOP is None:
+        return call(image, **kwargs)
+    try:
+        return call(image, timeout=_STOP.remaining(), **kwargs)
+    except RuntimeError as exc:
+        if "timeout" in str(exc).lower():
+            raise ReadingStopped(_clock() - _STOP.started) from exc
+        raise
+
+
 def _score_of(image) -> float | None:
     """How well Tesseract reads this image, or None when there is too little.
 
@@ -1219,7 +1376,7 @@ def _score_of(image) -> float | None:
     import pytesseract
     from pytesseract import Output
 
-    data = pytesseract.image_to_data(image, output_type=Output.DICT)
+    data = _tesseract(pytesseract.image_to_data, image, output_type=Output.DICT)
     # strict: the words and their confidences are two columns of one table,
     # and a reading whose columns do not line up is a broken reading. It
     # raises here, becomes OcrError, and the file is tried again next pass -
@@ -1246,14 +1403,34 @@ def _four_way(image):
     turn is handed back untouched: a turn the reading did not earn is a
     guess, and nothing here guesses.
     """
+    # The four turns are scored on a small copy (decision 137's review,
+    # B #2): which way up a page is does not need its full resolution, and
+    # four full readings of a dense 12-megapixel photo took the whole of its
+    # minute on the office machine. Only the chosen turn is read in full.
+    small = _for_scoring(image)
     best_turn, best_score = 0, None
     for turn in _TURNS:
-        score = _score_of(image if turn == 0 else image.rotate(-turn, expand=True))
+        score = _score_of(small if turn == 0 else small.rotate(-turn, expand=True))
         if score is not None and (best_score is None or score > best_score):
             best_turn, best_score = turn, score
     if best_score is None or best_turn == 0:
         return image
     return image.rotate(-best_turn, expand=True)
+
+
+#: The longest side of the copy the four-way scorer reads (decision 137's
+#: review, B #2). A letter page at 150 dpi is 1,650 px on its long side.
+SCORING_LONG_SIDE = 2000
+
+
+def _for_scoring(image):
+    """``image`` reduced so its longer side is at most
+    :data:`SCORING_LONG_SIDE`, or ``image`` itself when it already is."""
+    longest = max(image.width, image.height)
+    if longest <= SCORING_LONG_SIDE:
+        return image
+    factor = SCORING_LONG_SIDE / longest
+    return image.resize((max(1, int(image.width * factor)), max(1, int(image.height * factor))))
 
 
 def _upright(image):
@@ -1275,10 +1452,10 @@ def _upright(image):
     from pytesseract import Output
 
     try:
-        said = pytesseract.image_to_osd(image, output_type=Output.DICT)
+        said = _tesseract(pytesseract.image_to_osd, image, output_type=Output.DICT)
         turn = int(said.get("rotate", 0) or 0)
         confidence = float(said.get("orientation_conf", 0) or 0)
-    except pytesseract.TesseractNotFoundError:
+    except (pytesseract.TesseractNotFoundError, ReadingStopped):
         raise
     except Exception:
         # No `osd` data, or too little text for the detector to speak.
@@ -1286,6 +1463,27 @@ def _upright(image):
     if confidence < OSD_MIN_CONFIDENCE:
         return _four_way(image)
     return image if turn % 360 == 0 else image.rotate(-turn, expand=True)
+
+
+def render_scale(width: float, height: float) -> float:
+    """The scale a PDF page of ``width`` x ``height`` points is rendered at
+    for OCR: :data:`RENDER_SCALE`, or less, so the page never passes
+    :data:`PIXEL_BUDGET` (decision 137, B1). At scale 1 a point is a pixel,
+    so the budget over the page's own area is the square of the most it
+    may be scaled by."""
+    area = max(float(width), 1.0) * max(float(height), 1.0)
+    return min(RENDER_SCALE, (PIXEL_BUDGET / area) ** 0.5)
+
+
+def _within_budget(image):
+    """``image``, reduced to :data:`PIXEL_BUDGET` if it is larger (decision
+    137, B1): a photo past it is read smaller, never refused."""
+    pixels = image.width * image.height
+    if pixels <= PIXEL_BUDGET:
+        return image
+    factor = (PIXEL_BUDGET / pixels) ** 0.5
+    size = (max(1, int(image.width * factor)), max(1, int(image.height * factor)))
+    return image.resize(size)
 
 
 def _ocr_pdf(path: Path) -> str | None:
@@ -1298,6 +1496,10 @@ def _ocr_pdf(path: Path) -> str | None:
     Each page is greyscaled and turned upright before it is read
     (:func:`_upright`), so the detector and the reading see the same
     pixels and a page scanned sideways comes back as words.
+
+    Each page is rendered at :func:`render_scale` of its own size (decision
+    137), so no page is ever drawn past :data:`PIXEL_BUDGET`: an ordinary
+    page at the scale it always had, a giant one smaller.
     """
     try:
         import pypdfium2 as pdfium
@@ -1310,14 +1512,21 @@ def _ocr_pdf(path: Path) -> str | None:
         doc = pdfium.PdfDocument(path)
         try:
             for index in range(min(len(doc), _MAX_OCR_PAGES)):
-                bitmap = doc[index].render(scale=2.0)
+                if _STOP is not None:
+                    _STOP.page()              # a page's minute starts before its render
+                page_of = doc[index]
+                bitmap = page_of.render(scale=render_scale(*page_of.get_size()))
+                if _STOP is not None:
+                    _STOP.remaining()         # the render counts against the budget
                 page = _upright(bitmap.to_pil().convert("L"))
-                parts.append(pytesseract.image_to_string(page))
+                parts.append(_tesseract(pytesseract.image_to_string, page))
         finally:
             doc.close()
         return "\n".join(parts)
     except pytesseract.TesseractNotFoundError:
         return None  # pip packages present but the Tesseract engine is not
+    except ReadingStopped:
+        raise
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
         raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
@@ -1333,6 +1542,14 @@ def _ocr_image(path: Path) -> str | None:
     work on the same pixels, then turned upright and read.
 
     Nothing is written: the photo on disk is the client's original.
+
+    Its size is checked against :data:`PIXEL_BUDGET` **before** it is
+    decoded (decision 137): a JPEG past it is decoded smaller by its own
+    decoder (``draft``), any other photo is reduced to the budget the moment
+    it is decoded, and Pillow's own decompression-bomb guard stays on for
+    both. A photo too large even for that is refused by Pillow rather than
+    decoded, and that refusal is a kept "Too large to read" verdict for a
+    person (:class:`TooLargeToRead`), not a retry every pass.
     """
     try:
         import pytesseract
@@ -1342,10 +1559,20 @@ def _ocr_image(path: Path) -> str | None:
 
     try:
         with Image.open(path) as opened:
-            image = ImageOps.exif_transpose(opened).convert("L")
-        return pytesseract.image_to_string(_upright(image))
+            if opened.width * opened.height > PIXEL_BUDGET and opened.format == "JPEG":
+                factor = (PIXEL_BUDGET / (opened.width * opened.height)) ** 0.5
+                opened.draft("L", (int(opened.width * factor), int(opened.height * factor)))
+            image = _within_budget(ImageOps.exif_transpose(opened).convert("L"))
+        return _tesseract(pytesseract.image_to_string, _upright(image))
     except pytesseract.TesseractNotFoundError:
         return None  # pip packages present but the Tesseract engine is not
+    except ReadingStopped:
+        raise
+    except Image.DecompressionBombError as exc:
+        # Pillow's own guard, which stays on (decision 137, B1): a picture
+        # too large even to decode smaller. A size rule, so it is a kept
+        # verdict for a person, not a retry every pass.
+        raise TooLargeToRead(picture_too_large_reason(exc)) from exc
     except Exception as exc:
         log.warning("OCR failed on %s: %s", path.name, exc)
         raise OcrError(f"{exc.__class__.__name__}: {exc}") from exc
@@ -1353,6 +1580,12 @@ def _ocr_image(path: Path) -> str | None:
 
 class OcrError(RuntimeError):
     """OCR is installed but failed on this file this time; try again later."""
+
+
+class TooLargeToRead(Exception):
+    """The file is too large to read at all (decision 137): its reason is
+    ``reasons.TOO_LARGE``, and it is the file's, not the machine's - a kept
+    verdict, not retried until the file changes."""
 
 
 def extract(path: Path, *, ocr: bool = True) -> Extraction:
@@ -1366,10 +1599,23 @@ def extract(path: Path, *, ocr: bool = True) -> Extraction:
 
     Every reading is timed and the seconds ride back on the
     :class:`Extraction` (decision 127). Nothing acts on the number: no
-    reading is cut short, capped or abandoned for being slow - a pass says
-    its slowest reading and finishes it.
+    reading is cut short for being slow - a pass says its slowest reading
+    and finishes it. The one exception is the safety stop, ten times the
+    owner's ceiling (decision 137, B1.2, :data:`READING_STOP_PAGE_SECONDS`
+    and :data:`READING_STOP_DOCUMENT_SECONDS`): a reading that reaches it
+    is abandoned, and its verdict kept. **What the stop covers:** OCR -
+    every Tesseract call is killed at its timeout - and an overrun noticed
+    between pages. It cannot interrupt the PDF text layer (pdfplumber), a
+    workbook's reading, or a single page render, which run inside this
+    process and can only be seen to have overrun once they return. The
+    bound on a whole reading is decision 150's.
     """
     started = time.perf_counter()
+    # A file past the ceiling is never opened (decision 137, M5): the
+    # reason is the whole reading, and it is the file's, not the machine's,
+    # so the verdict is kept and the file is not tried again next pass.
+    if too_large := too_large_reason(path):
+        return Extraction(None, reason=too_large, extractable=False)
     reading = _extract(path, ocr=ocr)
     return replace(reading, seconds=time.perf_counter() - started)
 
@@ -1399,21 +1645,37 @@ def _extract(path: Path, *, ocr: bool) -> Extraction:
         if not ocr:
             return Extraction(text, needs_ocr=True)
         return extract_by_ocr(path)
-    return Extraction(text)
+    return Extraction(text, cut=extension in TEXT_EXTENSIONS and _is_cut(path))
 
 
 def extract_by_ocr(path: Path) -> Extraction:
     """Read a scan or a photo by OCR; says why when it cannot (no OCR
-    installed, or no words)."""
+    installed, no words, or the safety stop)."""
+    global _STOP
+
     reader = _ocr_image if extension_of(path) in IMAGE_EXTENSIONS else _ocr_pdf
+    # The safety stop (decision 137, B1.2): one per document, and a photo
+    # is its own one page.
+    _STOP = _SafetyStop()
+    _STOP.page()
     try:
         ocr_text = reader(path)
+    except ReadingStopped as exc:
+        # Abandoned, and kept: the file's verdict until the file changes.
+        minutes = max(1, round(exc.seconds / 60))
+        said = "1 minute" if minutes == 1 else f"{minutes} minutes"
+        return Extraction(None, reason=reasons.READING_STOPPED.format(minutes=said),
+                          extractable=False)
+    except TooLargeToRead as exc:
+        return Extraction(None, reason=str(exc), extractable=False)
     except OcrError as exc:
         # Ours to retry, not the client's to resend: the file may be fine.
         return Extraction(
             None, reason=reasons.OCR_FAILED.format(error=str(exc)),
             extractable=False, error=str(exc), transient=True,
         )
+    finally:
+        _STOP = None
     if ocr_text is None:
         # No OCR on this machine: a fact about the machine, remembered by
         # nobody, so the day it is installed the scan reads the file.
@@ -1421,7 +1683,6 @@ def extract_by_ocr(path: Path) -> Extraction:
     if not ocr_text.strip():
         return Extraction(None, reason=reasons.NO_TEXT_AFTER_OCR.format(), extractable=False)
     return Extraction(ocr_text, from_ocr=True)
-
 
 # ---------------------------------------------------------------- checking ----
 
@@ -1465,7 +1726,60 @@ def _check_uncached(path: Path, item: RequestItem) -> ContentResult:
         return ContentResult(
             ok=False, reason=reading.reason, extractable=False, transient=reading.transient,
         )
-    return evaluate_rules(reading.text, item, own_forms(reading.text))
+    verdict = evaluate_rules(reading.text, item, own_forms(reading.text))
+    if reading.cut and not verdict.ok:
+        # The rules were asked of the first part only, and a person reading
+        # the reason must know that before believing "not found".
+        verdict = replace(verdict, reason=f"{verdict.reason}; "
+                                          f"{reasons.TEXT_CUT.format(limit=TEXT_READ_CAP_MB)}")
+    return verdict
+
+
+# ------------------------------------------------------------ OCR's scratch ----
+
+#: The folder, beside the settings file, that OCR's temporary page images
+#: go to during a pass (decision 137, L7). ``pytesseract`` writes each page
+#: it reads to a temporary file before Tesseract reads it back, and a pass
+#: killed mid-page (Task Scheduler's two-hour stop) leaves those images -
+#: a client's pages - in the machine's ``%TEMP%``, where nothing ever
+#: looks. Here, each pass empties the folder before it starts, so a killed
+#: pass's leftovers last until the next one.
+OCR_SCRATCH_DIR_NAME = "ocr-scratch"
+
+
+@contextmanager
+def ocr_scratch(folder: Path) -> Iterator[Path]:
+    """Point this process's temporary files at ``folder`` for the block.
+
+    The folder is emptied first - what a killed pass left - and made if it
+    is not there. ``TMPDIR`` and the ``tempfile`` module's own cached
+    answer are both set, because ``tempfile`` reads the variable once and
+    remembers it, and both are put back when the block ends, so nothing
+    outside the pass is moved.
+    """
+    folder = Path(folder)
+    if folder.is_dir():
+        for leftover in folder.iterdir():
+            try:
+                if leftover.is_dir() and not leftover.is_symlink():
+                    shutil.rmtree(leftover)
+                else:
+                    leftover.unlink()
+            except OSError as exc:
+                log.warning("Could not remove %s from %s (%s)", leftover.name, folder, exc)
+    folder.mkdir(parents=True, exist_ok=True)
+    before_env = os.environ.get("TMPDIR")
+    before_cached = tempfile.tempdir
+    os.environ["TMPDIR"] = str(folder)
+    tempfile.tempdir = str(folder)
+    try:
+        yield folder
+    finally:
+        if before_env is None:
+            os.environ.pop("TMPDIR", None)
+        else:
+            os.environ["TMPDIR"] = before_env
+        tempfile.tempdir = before_cached
 
 
 # ------------------------------------------------------------------- cache ----
